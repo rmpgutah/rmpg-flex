@@ -65,6 +65,7 @@ type Step = 'source' | 'columns' | 'filters' | 'preview';
 
 export default function CustomReportBuilder() {
   const isMobile = useIsMobile();
+  const { addToast } = useToast();
   const [step, setStep] = useState<Step>('source');
   const [source, setSource] = useState('');
   const [selectedCols, setSelectedCols] = useState<string[]>([]);
@@ -126,8 +127,10 @@ export default function CustomReportBuilder() {
       setResultColumns(data.columns || selectedCols);
       setRowCount(data.count || 0);
       setStep('preview');
+      addToast(`Query returned ${data.count || 0} rows`, 'success');
     } catch (err: any) {
       setError(err?.message || 'Query failed');
+      addToast('Failed to run report query', 'error');
     }
     setLoading(false);
   }, [source, selectedCols, filters, sortBy, sortDir, limit]);

@@ -313,6 +313,7 @@ router.delete('/entity/:id', validateParamId, requireRole('admin', 'manager', 's
   try {
     const db = getDb();
     db.prepare('DELETE FROM entity_statutes WHERE id = ?').run(req.params.id);
+    auditLog(req, 'DELETE' as any, 'entity_statute' as any, req.params.id, `Removed statute link ${req.params.id}`);
     res.json({ success: true });
   } catch (error: any) {
     console.error('Unlink statute error:', error?.message || 'Unknown error');

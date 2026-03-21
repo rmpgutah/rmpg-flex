@@ -47,6 +47,7 @@ import {
   IdCard,
   Crosshair,
   UserSearch,
+  ShieldAlert,
   Microscope,
   BookOpen,
   Scale,

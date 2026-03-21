@@ -299,6 +299,7 @@ export default function ArrestRecordsPage() {
 
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useEffect(() => { fetchRecords(recordsPage); }, [fetchRecords, recordsPage]);
+  useLiveSync('arrests', () => { fetchRecords(recordsPage); fetchStats(); });
 
   // ── WebSocket live sync ─────────────────────────────────
 

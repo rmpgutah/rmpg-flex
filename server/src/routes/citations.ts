@@ -14,6 +14,7 @@ import { localNow, localToday } from '../utils/timeUtils';
 import { createNotificationForRoles } from './notifications';
 import { resolveDistrict } from '../utils/districtResolver';
 import { auditLog } from '../utils/auditLogger';
+import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 
@@ -467,46 +468,26 @@ router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: R
   try {
     const db = getDb();
     const rows = db.prepare(`
-      SELECT citation_number, issuing_officer_name, person_name,
-             violation_description, violation_date, location, fine_amount, status
+      SELECT citation_number, person_name, violation_description,
+             violation_date, location, fine_amount, status, issuing_officer_name
       FROM citations
       WHERE status != 'voided'
       ORDER BY violation_date DESC, id DESC
     `).all() as any[];
 
-    const headers = ['citation_number', 'officer_name', 'violator_name', 'violation', 'date', 'location', 'fine_amount', 'status'];
-
-    // Escape CSV field: wrap in quotes if it contains comma, quote, or newline
-    const escapeField = (val: any): string => {
-      if (val == null) return '';
-      const str = String(val);
-      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-        return '"' + str.replace(/"/g, '""') + '"';
-      }
-      return str;
-    };
-
-    const csvLines = [headers.join(',')];
-    for (const row of rows) {
-      csvLines.push([
-        escapeField(row.citation_number),
-        escapeField(row.issuing_officer_name),
-        escapeField(row.person_name),
-        escapeField(row.violation_description),
-        escapeField(row.violation_date),
-        escapeField(row.location),
-        escapeField(row.fine_amount),
-        escapeField(row.status),
-      ].join(','));
-    }
-
-    const csv = csvLines.join('\n');
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename=citations-export.csv');
-    res.send(csv);
+    sendCsv(res, 'citations-export.csv', [
+      { key: 'citation_number', header: 'Citation Number' },
+      { key: 'person_name', header: 'Violator Name' },
+      { key: 'violation_description', header: 'Violation Description' },
+      { key: 'violation_date', header: 'Violation Date' },
+      { key: 'location', header: 'Location' },
+      { key: 'fine_amount', header: 'Fine Amount' },
+      { key: 'status', header: 'Status' },
+      { key: 'issuing_officer_name', header: 'Officer Name' },
+    ], rows);
   } catch (error: any) {
     console.error('Citation CSV export error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Export failed' });
   }
 });
 

@@ -184,6 +184,7 @@ export default function SexOffenderRegistryPage() {
 
   useEffect(() => { fetchRecords(); }, [fetchRecords]);
   useEffect(() => { fetchStats(); }, [fetchStats]);
+  useLiveSync('sex-offender-registry', () => { fetchRecords(); fetchStats(); });
 
   // ── Debounced search ──────────────────────────────────────
   const [searchInput, setSearchInput] = useState('');

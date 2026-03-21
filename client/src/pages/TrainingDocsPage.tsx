@@ -17,6 +17,7 @@ import {
   apiUploadFiles,
 } from '../hooks/useApi';
 import { authUrl } from '../components/FileAttachments';
+import { useLiveSync } from '../hooks/useLiveSync';
 import type { CompanyDocCategory } from '../types';
 import { useToast } from '../components/ToastProvider';
 
@@ -62,6 +63,7 @@ function formatFileSize(bytes?: number) {
 // ── Main component ──────────────────────────────────────────
 export default function TrainingDocsPage() {
   const { user } = useAuth();
+  const { addToast } = useToast();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
 
   const [documents, setDocuments] = useState<any[]>([]);
@@ -78,12 +80,14 @@ export default function TrainingDocsPage() {
       setDocuments(data || []);
     } catch (err) {
       console.error('Failed to load documents:', err);
+      addToast('Failed to load documents', 'error');
     } finally {
       setLoading(false);
     }
   }, [category]);
 
   useEffect(() => { loadDocuments(); }, [loadDocuments]);
+  useLiveSync('company-documents', loadDocuments);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return documents;
@@ -97,9 +101,11 @@ export default function TrainingDocsPage() {
     if (!confirm(`Delete "${doc.title}"? This cannot be undone.`)) return;
     try {
       await apiDeleteCompanyDocument(doc.id);
+      addToast('Document deleted successfully', 'success');
       loadDocuments();
     } catch (err) {
       console.error('Delete failed:', err);
+      addToast('Failed to delete document', 'error');
     }
   };
 
@@ -303,6 +309,7 @@ interface ModalProps {
 
 function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
   const isEdit = !!doc;
+  const { addToast } = useToast();
   const [title, setTitle] = useState(doc?.title || '');
   const [description, setDescription] = useState(doc?.description || '');
   const [category, setCategory] = useState<CompanyDocCategory>(doc?.category || 'general');
@@ -345,12 +352,15 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
 
       if (isEdit) {
         await apiUpdateCompanyDocument(doc.id, payload);
+        addToast('Document updated successfully', 'success');
       } else {
         await apiCreateCompanyDocument(payload);
+        addToast('Document created successfully', 'success');
       }
       onSaved();
     } catch (err: any) {
       setError(err.message || 'Failed to save document');
+      addToast('Failed to save document', 'error');
     } finally {
       setSaving(false);
     }

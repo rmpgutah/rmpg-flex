@@ -14,11 +14,13 @@ import {
 import PanelTitleBar from '../components/PanelTitleBar';
 import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
+import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 
 export default function CrimeAnalysisPage() {
   const isMobile = useIsMobile();
+  const { addToast } = useToast();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState('90');
@@ -39,11 +41,14 @@ export default function CrimeAnalysisPage() {
       }
       const res = await apiFetch<{ data: any }>(url);
       if (mountedRef.current) setData(res.data);
-    } catch { /* silent */ }
+    } catch {
+      if (mountedRef.current) addToast('Failed to load crime analysis data', 'error');
+    }
     finally { if (mountedRef.current) setLoading(false); }
   }, [dateRange, startDate, endDate]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+  useLiveSync('incidents', fetchData);
 
   if (loading) {
     return (

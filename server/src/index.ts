@@ -236,9 +236,18 @@ app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'applicati
   child.unref();
 });
 
-app.use(express.json({ limit: '2mb' }));
-app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(sanitizeInput);
+
+// ─── Request ID for Tracing ─────────────────────────
+// Generate a unique ID per request for log correlation and debugging
+app.use((req, res, next) => {
+  const requestId = (req.headers['x-request-id'] as string) || crypto.randomUUID();
+  (req as any).requestId = requestId;
+  res.setHeader('X-Request-Id', requestId);
+  next();
+});
 
 // ─── Slow Request Logging ─────────────────────────────
 // Warn when any request takes longer than 2 seconds to complete

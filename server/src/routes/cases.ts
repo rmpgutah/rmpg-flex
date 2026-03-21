@@ -13,6 +13,7 @@ import { localNow, localToday } from '../utils/timeUtils';
 import { generateCaseNumber } from '../utils/caseNumbers';
 import { validateParamId, escapeLike } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
+import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 router.use(authenticateToken);
@@ -274,6 +275,34 @@ router.post('/:id/calculate-solvability', validateParamId, requireRole('admin', 
   } catch (error: any) {
     console.error('Calculate solvability error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── GET /export/csv ────────────────────────────────────
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT c.case_number, c.title, c.case_type, c.status,
+             u.full_name as assigned_to_name, c.opened_date, c.closed_date
+      FROM cases c
+      LEFT JOIN users u ON c.lead_investigator_id = u.id
+      WHERE c.archived_at IS NULL
+      ORDER BY c.created_at DESC
+    `).all() as any[];
+
+    sendCsv(res, 'cases-export.csv', [
+      { key: 'case_number', header: 'Case Number' },
+      { key: 'title', header: 'Title' },
+      { key: 'case_type', header: 'Case Type' },
+      { key: 'status', header: 'Status' },
+      { key: 'assigned_to_name', header: 'Assigned To' },
+      { key: 'opened_date', header: 'Opened Date' },
+      { key: 'closed_date', header: 'Closed Date' },
+    ], rows);
+  } catch (error: any) {
+    console.error('Cases CSV export error:', error?.message);
+    res.status(500).json({ error: 'Export failed' });
   }
 });
 

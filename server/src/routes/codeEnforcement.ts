@@ -14,6 +14,7 @@ import { localNow, localToday } from '../utils/timeUtils';
 import { resolveDistrict } from '../utils/districtResolver';
 import { auditLog } from '../utils/auditLogger';
 import { broadcast } from '../utils/websocket';
+import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 router.use(authenticateToken);
@@ -324,6 +325,31 @@ router.put('/tows/:id/status', validateParamId, requireRole('admin', 'manager', 
     broadcast('records', 'tow:updated', { id: parseInt(req.params.id as string, 10), status });
     res.json({ data: { id: parseInt(req.params.id as string, 10), status } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ─── GET /violations/export/csv ─────────────────────────
+router.get('/violations/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT violation_number as case_number, violation_type, location as address,
+             created_at as reported_date, status, reporting_officer_name as assigned_to_name
+      FROM code_violations
+      ORDER BY created_at DESC
+    `).all() as any[];
+
+    sendCsv(res, 'code-violations-export.csv', [
+      { key: 'case_number', header: 'Case Number' },
+      { key: 'violation_type', header: 'Violation Type' },
+      { key: 'address', header: 'Address' },
+      { key: 'reported_date', header: 'Reported Date' },
+      { key: 'status', header: 'Status' },
+      { key: 'assigned_to_name', header: 'Assigned To' },
+    ], rows);
+  } catch (error: any) {
+    console.error('Code violations CSV export error:', error?.message);
+    res.status(500).json({ error: 'Export failed' });
+  }
 });
 
 export default router;

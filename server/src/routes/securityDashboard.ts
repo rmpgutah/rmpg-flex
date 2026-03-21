@@ -236,6 +236,9 @@ router.post('/unblock-ip', authenticateToken, requireRole('admin'), (req: Reques
     const count = unblockIp(ip || undefined);
     const msg = ip ? `Unblocked IP ${ip}` : `Unblocked all ${count} IPs`;
     console.log(`[Security] ${msg} — by ${req.user!.username}`);
+
+    auditLog(req, 'UPDATE' as any, 'user' as any, 0, msg);
+
     res.json({ success: true, message: msg, unblocked: count });
   } catch (error: any) {
     console.error('Unblock IP error:', error?.message || 'Unknown error');

@@ -51,6 +51,7 @@ interface Filters {
 }
 
 const AuditLogPage: React.FC = () => {
+  const { addToast } = useToast();
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [stats, setStats] = useState<AuditStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -128,6 +129,7 @@ const AuditLogPage: React.FC = () => {
     } catch (err) {
       console.error('Error fetching audit logs:', err);
       setError('Failed to load audit logs. Please try again.');
+      addToast('Failed to load audit logs', 'error');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -142,6 +144,7 @@ const AuditLogPage: React.FC = () => {
     } catch (err) {
       console.error('Error fetching audit stats:', err);
       setError('Failed to load audit statistics.');
+      addToast('Failed to load audit statistics', 'error');
     }
   }, []);
 

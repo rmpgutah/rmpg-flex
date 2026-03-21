@@ -189,14 +189,7 @@ export default function ServePage() {
   }, [refreshJobs]);
 
   // ── WebSocket live updates ─────────────────────────────────────────
-  useEffect(() => {
-    const unsubs = [
-      subscribe('serve:created' as any, () => refreshJobs()),
-      subscribe('serve:updated' as any, () => refreshJobs()),
-      subscribe('serve:attempt' as any, () => refreshJobs()),
-    ];
-    return () => { unsubs.forEach(u => u()); };
-  }, [subscribe, refreshJobs]);
+  useLiveSync('process-server', refreshJobs);
 
   // ══════════════════════════════════════════════════════════════════════
   // Handlers

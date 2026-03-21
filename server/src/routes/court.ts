@@ -12,6 +12,7 @@ import { localNow, localToday } from '../utils/timeUtils';
 import { escapeLike, validateParamId } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 import { broadcast } from '../utils/websocket';
+import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 router.use(authenticateToken);
@@ -230,6 +231,34 @@ router.put('/events/:id/outcome', validateParamId, requireRole('admin', 'manager
     broadcast('records', 'courtEvent:updated', { id: parseInt(req.params.id as string, 10), outcome, status: 'completed' });
     res.json({ data: { id: parseInt(req.params.id as string, 10), outcome } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ─── GET /events/export/csv ─────────────────────────────
+router.get('/events/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT e.court_case_number, e.event_type, e.event_date, e.event_time,
+             e.court_name, e.judge_name, e.defendant_name, e.status, e.outcome
+      FROM court_events e
+      ORDER BY e.event_date DESC, e.event_time DESC
+    `).all() as any[];
+
+    sendCsv(res, 'court-events-export.csv', [
+      { key: 'court_case_number', header: 'Case Number' },
+      { key: 'event_type', header: 'Event Type' },
+      { key: 'event_date', header: 'Court Date' },
+      { key: 'event_time', header: 'Court Time' },
+      { key: 'court_name', header: 'Court Name' },
+      { key: 'judge_name', header: 'Judge' },
+      { key: 'defendant_name', header: 'Officer Name' },
+      { key: 'status', header: 'Status' },
+      { key: 'outcome', header: 'Outcome' },
+    ], rows);
+  } catch (error: any) {
+    console.error('Court events CSV export error:', error?.message);
+    res.status(500).json({ error: 'Export failed' });
+  }
 });
 
 export default router;

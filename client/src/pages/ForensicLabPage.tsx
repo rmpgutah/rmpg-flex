@@ -312,6 +312,7 @@ export default function ForensicLabPage() {
   }, [searchTerm, filterStatus, filterType]);
 
   useEffect(() => { fetchCases(); }, [fetchCases]);
+  useLiveSync('forensic-lab', fetchCases);
 
   const fetchCaseDetail = useCallback(async (id: number) => {
     try {
