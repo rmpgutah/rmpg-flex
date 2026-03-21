@@ -434,6 +434,7 @@ export default function MenuBar({
         adminOnly: true,
         items: [
           { type: 'action', label: 'Admin Panel', icon: Settings, action: () => navigate('/admin') },
+          { type: 'action', label: 'Human Resources', icon: Briefcase, action: () => navigate('/hr') },
           { type: 'action', label: 'Audit Trail', icon: ScrollText, action: () => navigate('/audit') },
         ],
       },

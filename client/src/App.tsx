@@ -17,6 +17,7 @@ import MapPage from './pages/map';
 import IncidentsPage from './pages/IncidentsPage';
 import RecordsPage from './pages/RecordsPage';
 import PersonnelPage from './pages/personnel';
+import HrPage from './pages/hr/HrPage';
 import CommunicationsPage from './pages/CommunicationsPage';
 import ReportsPage from './pages/ReportsPage';
 import AdminPage from './pages/AdminPage';
@@ -178,6 +179,7 @@ function AppRoutes() {
           <Route path="/incidents" element={<IncidentsPage />} />
           <Route path="/records" element={<RecordsPage />} />
           <Route path="/personnel" element={<PersonnelPage />} />
+          <Route path="/hr" element={<HrPage />} />
           <Route path="/communications" element={<CommunicationsPage />} />
           <Route path="/radio" element={<RadioPage />} />
           <Route path="/reports" element={<ReportsPage />} />

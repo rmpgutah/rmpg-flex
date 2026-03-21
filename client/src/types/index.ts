@@ -4,7 +4,7 @@
 
 // --- Auth & Users ---
 
-export type UserRole = 'admin' | 'manager' | 'supervisor' | 'officer' | 'dispatcher' | 'client_viewer' | 'contract_manager';
+export type UserRole = 'admin' | 'manager' | 'supervisor' | 'officer' | 'dispatcher' | 'client_viewer' | 'contract_manager' | 'human_resources';
 
 export interface User {
   id: string;
@@ -1484,7 +1484,9 @@ export type WSMessageType =
   | 'serve:created'
   | 'serve:updated'
   | 'serve:attempt'
-  | 'call:warrant_alert';
+  | 'call:warrant_alert'
+  // Dashcam
+  | 'dashcam_burn_progress';
 
 export interface WSMessage {
   type: WSMessageType;
@@ -2507,4 +2509,127 @@ export interface ServeSkipAddress {
   zip: string;
   type: string;
   last_seen: string | null;
+}
+
+// ═══════════════════════════════════════════════════
+// HR MODULE TYPES
+// ═══════════════════════════════════════════════════
+
+export interface LeaveType {
+  id: number; name: string; accrual_rate: number; max_balance: number;
+  requires_approval: boolean; is_active: boolean; created_at: string;
+}
+
+export interface LeaveBalance {
+  id: number; user_id: number; leave_type_id: number; leave_type_name?: string;
+  balance_hours: number; used_hours: number; year: number; user_name?: string;
+}
+
+export interface LeaveRequest {
+  id: number; user_id: number; user_name?: string; badge_number?: string;
+  leave_type_id: number; leave_type_name?: string; start_date: string;
+  end_date: string; hours_requested: number; reason?: string;
+  status: 'requested' | 'approved' | 'denied' | 'cancelled';
+  reviewed_by?: number; reviewer_name?: string; reviewed_at?: string;
+  review_notes?: string; created_at: string; updated_at: string;
+}
+
+export interface ReviewCycle {
+  id: number; name: string; start_date: string; end_date: string;
+  status: 'active' | 'closed'; created_by?: number; created_at: string;
+}
+
+export interface PerformanceReview {
+  id: number; user_id: number; user_name?: string; reviewer_id: number;
+  reviewer_name?: string; cycle_id?: number; cycle_name?: string;
+  review_date: string; overall_rating?: number; strengths?: string;
+  areas_for_improvement?: string; goals?: string; comments?: string;
+  employee_comments?: string; status: 'draft' | 'submitted' | 'acknowledged';
+  acknowledged_at?: string; created_at: string; updated_at: string;
+}
+
+export interface PerformanceGoal {
+  id: number; user_id: number; user_name?: string; review_id?: number;
+  title: string; description?: string; target_date?: string;
+  status: 'active' | 'completed' | 'deferred' | 'cancelled';
+  progress: number; created_at: string; updated_at: string;
+}
+
+export interface DisciplinaryAction {
+  id: number; user_id: number; user_name?: string; issued_by: number;
+  issuer_name?: string; action_type: string; severity: string;
+  incident_date: string; description: string; corrective_action?: string;
+  follow_up_date?: string; status: string; resolution_notes?: string;
+  resolved_at?: string; resolved_by?: number; related_incident_id?: number;
+  created_at: string; updated_at: string;
+}
+
+export interface Grievance {
+  id: number; grievance_number?: string; filed_by: number; filer_name?: string;
+  against_user_id?: number; against_name?: string; grievance_type: string;
+  subject: string; description: string; status: string; priority: string;
+  assigned_to?: number; assignee_name?: string; resolution?: string;
+  resolved_at?: string; created_at: string; updated_at: string;
+}
+
+export interface OnboardingChecklist {
+  id: number; name: string; description?: string; role_target?: string;
+  is_active: boolean; task_count?: number; created_by?: number; created_at: string;
+}
+
+export interface OnboardingTask {
+  id: number; checklist_id: number; title: string; description?: string;
+  category: string; sort_order: number; required: boolean;
+}
+
+export interface OnboardingProgress {
+  id: number; user_id: number; checklist_id: number; task_id: number;
+  task_title?: string; status: 'pending' | 'in_progress' | 'completed' | 'skipped' | 'na';
+  completed_at?: string; completed_by?: number; completer_name?: string; notes?: string;
+}
+
+export interface HrDocument {
+  id: number; user_id: number; user_name?: string; document_type: string;
+  title: string; file_id?: string; file_size?: number; notes?: string;
+  uploaded_by: number; uploader_name?: string; expires_at?: string;
+  status: string; created_at: string; acknowledged?: boolean; acknowledged_at?: string;
+}
+
+export interface PayRate {
+  id: number; user_id: number; user_name?: string; pay_type: string;
+  rate: number; overtime_rate?: number; holiday_rate?: number;
+  effective_date: string; end_date?: string; notes?: string;
+  created_by?: number; created_at: string;
+}
+
+export interface PayPeriod {
+  id: number; name?: string; start_date: string; end_date: string;
+  pay_date: string; status: 'open' | 'processing' | 'finalized' | 'paid';
+  employee_count?: number; total_gross?: number; total_net?: number;
+  created_at: string;
+}
+
+export interface PayrollEntry {
+  id: number; user_id: number; user_name?: string; badge_number?: string;
+  pay_period_id: number; pay_rate_id?: number; regular_hours: number;
+  overtime_hours: number; holiday_hours: number; pto_hours: number;
+  sick_hours: number; other_hours: number; other_hours_description?: string;
+  base_pay: number; overtime_pay: number; holiday_pay: number;
+  other_pay: number; gross_pay: number; total_deductions: number;
+  net_pay: number; status: string; approved_by?: number; approved_at?: string;
+  notes?: string; created_at: string; updated_at: string;
+}
+
+export interface PayDeduction {
+  id: number; user_id: number; name: string; deduction_type: string;
+  amount?: number; percentage?: number; is_pretax: boolean;
+  is_active: boolean; effective_date: string; end_date?: string;
+  notes?: string; created_at: string;
+}
+
+export interface HrDashboardStats {
+  active_employees: number; pending_leave_requests: number;
+  upcoming_reviews: number; overdue_onboarding: number;
+  expiring_documents: number; current_pay_period?: PayPeriod;
+  recent_disciplinary: number;
 }

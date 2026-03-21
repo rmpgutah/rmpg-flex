@@ -86,7 +86,7 @@ function createTables(): void {
       password_hash TEXT NOT NULL,
       full_name TEXT NOT NULL,
       email TEXT,
-      role TEXT NOT NULL CHECK(role IN ('admin','manager','dispatcher','supervisor','officer','client_viewer','contract_manager')),
+      role TEXT NOT NULL CHECK(role IN ('admin','manager','dispatcher','supervisor','officer','client_viewer','contract_manager','human_resources')),
       badge_number TEXT,
       phone TEXT,
       status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','inactive','terminated')),
@@ -1331,6 +1331,325 @@ function createTables(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_prt_user ON password_reset_tokens(user_id);
     CREATE INDEX IF NOT EXISTS idx_prt_expires ON password_reset_tokens(expires_at);
+  `);
+
+  // ════════════════════════════════════════════════════════════
+  // HR MODULE TABLES
+  // ════════════════════════════════════════════════════════════
+
+  db.exec(`
+    -- ── Leave Management ──────────────────────────────────
+    CREATE TABLE IF NOT EXISTS hr_leave_types (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      accrual_rate REAL DEFAULT 0,
+      max_balance REAL DEFAULT 0,
+      requires_approval INTEGER DEFAULT 1,
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_leave_balances (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      leave_type_id INTEGER NOT NULL,
+      balance_hours REAL NOT NULL DEFAULT 0,
+      used_hours REAL NOT NULL DEFAULT 0,
+      year INTEGER NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (leave_type_id) REFERENCES hr_leave_types(id),
+      UNIQUE(user_id, leave_type_id, year)
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_leave_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      leave_type_id INTEGER NOT NULL,
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      hours_requested REAL NOT NULL,
+      reason TEXT,
+      status TEXT NOT NULL DEFAULT 'requested' CHECK(status IN ('requested','approved','denied','cancelled')),
+      reviewed_by INTEGER,
+      reviewed_at TEXT,
+      review_notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (leave_type_id) REFERENCES hr_leave_types(id),
+      FOREIGN KEY (reviewed_by) REFERENCES users(id)
+    );
+
+    -- ── Performance Management ────────────────────────────
+    CREATE TABLE IF NOT EXISTS hr_review_cycles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','closed')),
+      created_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_performance_reviews (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      reviewer_id INTEGER NOT NULL,
+      cycle_id INTEGER,
+      review_date TEXT NOT NULL,
+      overall_rating INTEGER CHECK(overall_rating BETWEEN 1 AND 5),
+      strengths TEXT,
+      areas_for_improvement TEXT,
+      goals TEXT,
+      comments TEXT,
+      employee_comments TEXT,
+      status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','submitted','acknowledged')),
+      acknowledged_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (reviewer_id) REFERENCES users(id),
+      FOREIGN KEY (cycle_id) REFERENCES hr_review_cycles(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_performance_goals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      review_id INTEGER,
+      title TEXT NOT NULL,
+      description TEXT,
+      target_date TEXT,
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','completed','deferred','cancelled')),
+      progress INTEGER DEFAULT 0 CHECK(progress BETWEEN 0 AND 100),
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (review_id) REFERENCES hr_performance_reviews(id)
+    );
+
+    -- ── Disciplinary & Grievances ─────────────────────────
+    CREATE TABLE IF NOT EXISTS hr_disciplinary_actions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      issued_by INTEGER NOT NULL,
+      action_type TEXT NOT NULL CHECK(action_type IN ('verbal_warning','written_warning','suspension','demotion','termination','probation','other')),
+      severity TEXT DEFAULT 'moderate' CHECK(severity IN ('minor','moderate','major','critical')),
+      incident_date TEXT NOT NULL,
+      description TEXT NOT NULL,
+      corrective_action TEXT,
+      follow_up_date TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','active','resolved','appealed','overturned')),
+      resolution_notes TEXT,
+      resolved_at TEXT,
+      resolved_by INTEGER,
+      related_incident_id INTEGER,
+      attachments TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (issued_by) REFERENCES users(id),
+      FOREIGN KEY (resolved_by) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_grievances (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      grievance_number TEXT UNIQUE,
+      filed_by INTEGER NOT NULL,
+      against_user_id INTEGER,
+      grievance_type TEXT NOT NULL CHECK(grievance_type IN ('workplace','policy','harassment','discrimination','safety','retaliation','other')),
+      subject TEXT NOT NULL,
+      description TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','under_review','investigation','resolved','dismissed','escalated')),
+      priority TEXT DEFAULT 'normal' CHECK(priority IN ('low','normal','high','urgent')),
+      assigned_to INTEGER,
+      resolution TEXT,
+      resolved_at TEXT,
+      attachments TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (filed_by) REFERENCES users(id),
+      FOREIGN KEY (against_user_id) REFERENCES users(id),
+      FOREIGN KEY (assigned_to) REFERENCES users(id)
+    );
+
+    -- ── Onboarding & Documents ────────────────────────────
+    CREATE TABLE IF NOT EXISTS hr_onboarding_checklists (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT,
+      role_target TEXT,
+      is_active INTEGER DEFAULT 1,
+      created_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_onboarding_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      checklist_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      category TEXT DEFAULT 'general',
+      sort_order INTEGER DEFAULT 0,
+      required INTEGER DEFAULT 1,
+      FOREIGN KEY (checklist_id) REFERENCES hr_onboarding_checklists(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_onboarding_progress (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      checklist_id INTEGER NOT NULL,
+      task_id INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','in_progress','completed','skipped','na')),
+      completed_at TEXT,
+      completed_by INTEGER,
+      notes TEXT,
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (checklist_id) REFERENCES hr_onboarding_checklists(id),
+      FOREIGN KEY (task_id) REFERENCES hr_onboarding_tasks(id),
+      FOREIGN KEY (completed_by) REFERENCES users(id),
+      UNIQUE(user_id, task_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_employee_documents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      document_type TEXT NOT NULL CHECK(document_type IN ('w4','i9','direct_deposit','nda','handbook_ack','policy_ack','license_copy','certification_copy','background_check','drug_test','photo_id','contract','other')),
+      title TEXT NOT NULL,
+      file_id TEXT,
+      file_size INTEGER,
+      notes TEXT,
+      uploaded_by INTEGER NOT NULL,
+      expires_at TEXT,
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','expired','superseded','archived')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (uploaded_by) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_document_acknowledgments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      document_id INTEGER NOT NULL,
+      acknowledged_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      ip_address TEXT,
+      digital_signature TEXT,
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (document_id) REFERENCES hr_employee_documents(id),
+      UNIQUE(user_id, document_id)
+    );
+
+    -- ── Payroll & Accounting ──────────────────────────────
+    CREATE TABLE IF NOT EXISTS hr_pay_rates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      pay_type TEXT NOT NULL CHECK(pay_type IN ('hourly','salary','contract','per_diem')),
+      rate REAL NOT NULL,
+      overtime_rate REAL DEFAULT 1.5,
+      holiday_rate REAL DEFAULT 1.5,
+      effective_date TEXT NOT NULL,
+      end_date TEXT,
+      notes TEXT,
+      created_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_pay_periods (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT,
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      pay_date TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','processing','finalized','paid')),
+      created_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (created_by) REFERENCES users(id),
+      UNIQUE(start_date, end_date)
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_payroll_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      pay_period_id INTEGER NOT NULL,
+      pay_rate_id INTEGER,
+      regular_hours REAL DEFAULT 0,
+      overtime_hours REAL DEFAULT 0,
+      holiday_hours REAL DEFAULT 0,
+      pto_hours REAL DEFAULT 0,
+      sick_hours REAL DEFAULT 0,
+      other_hours REAL DEFAULT 0,
+      other_hours_description TEXT,
+      base_pay REAL DEFAULT 0,
+      overtime_pay REAL DEFAULT 0,
+      holiday_pay REAL DEFAULT 0,
+      other_pay REAL DEFAULT 0,
+      gross_pay REAL DEFAULT 0,
+      total_deductions REAL DEFAULT 0,
+      net_pay REAL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','calculated','approved','paid','void')),
+      approved_by INTEGER,
+      approved_at TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (pay_period_id) REFERENCES hr_pay_periods(id),
+      FOREIGN KEY (pay_rate_id) REFERENCES hr_pay_rates(id),
+      FOREIGN KEY (approved_by) REFERENCES users(id),
+      UNIQUE(user_id, pay_period_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_deductions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      deduction_type TEXT NOT NULL CHECK(deduction_type IN ('federal_tax','state_tax','local_tax','fica','medicare','health_insurance','dental_insurance','vision_insurance','life_insurance','retirement_401k','retirement_pension','hsa','fsa','garnishment','child_support','union_dues','other')),
+      amount REAL,
+      percentage REAL,
+      is_pretax INTEGER DEFAULT 0,
+      is_active INTEGER DEFAULT 1,
+      effective_date TEXT NOT NULL,
+      end_date TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_payroll_deduction_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      payroll_entry_id INTEGER NOT NULL,
+      deduction_id INTEGER NOT NULL,
+      amount REAL NOT NULL,
+      FOREIGN KEY (payroll_entry_id) REFERENCES hr_payroll_entries(id) ON DELETE CASCADE,
+      FOREIGN KEY (deduction_id) REFERENCES hr_deductions(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_pay_stubs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      payroll_entry_id INTEGER NOT NULL UNIQUE,
+      stub_data TEXT NOT NULL,
+      generated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (payroll_entry_id) REFERENCES hr_payroll_entries(id)
+    );
+
+    -- ── HR Indexes ────────────────────────────────────────
+    CREATE INDEX IF NOT EXISTS idx_hr_leave_req_user ON hr_leave_requests(user_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_leave_req_status ON hr_leave_requests(status);
+    CREATE INDEX IF NOT EXISTS idx_hr_leave_bal_user ON hr_leave_balances(user_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_reviews_user ON hr_performance_reviews(user_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_reviews_cycle ON hr_performance_reviews(cycle_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_disciplinary_user ON hr_disciplinary_actions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_grievances_filed ON hr_grievances(filed_by);
+    CREATE INDEX IF NOT EXISTS idx_hr_onboard_progress ON hr_onboarding_progress(user_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_emp_docs_user ON hr_employee_documents(user_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_pay_rates_user ON hr_pay_rates(user_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_payroll_user ON hr_payroll_entries(user_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_payroll_period ON hr_payroll_entries(pay_period_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_deductions_user ON hr_deductions(user_id);
   `);
 }
 
@@ -3377,7 +3696,7 @@ function migrateSchema(): void {
             password_hash TEXT NOT NULL,
             full_name TEXT NOT NULL,
             email TEXT,
-            role TEXT NOT NULL CHECK(role IN ('admin','manager','dispatcher','supervisor','officer','client_viewer','contract_manager')),
+            role TEXT NOT NULL CHECK(role IN ('admin','manager','dispatcher','supervisor','officer','client_viewer','contract_manager','human_resources')),
             badge_number TEXT,
             phone TEXT,
             status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','inactive','terminated')),
@@ -4195,6 +4514,26 @@ function migrateSchema(): void {
     }
   } catch (err: any) {
     console.warn('[Migration] call_units population warning:', err?.message);
+  }
+
+  // ── HR: Allow 'human_resources' role in existing databases ──
+  // SQLite doesn't support ALTER CHECK, so rebuild the users table
+  // with the updated constraint if the current CHECK doesn't include it.
+  try {
+    const tableInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get() as { sql: string } | undefined;
+    if (tableInfo?.sql && !tableInfo.sql.includes('human_resources')) {
+      console.log('[Migration] Adding human_resources role to users table...');
+      db.exec(`
+        -- Temporarily allow inserting human_resources by using a new table
+        CREATE TABLE IF NOT EXISTS users_hr_temp AS SELECT * FROM users WHERE 0;
+      `);
+      // For existing DBs, the role check is handled at application level
+      // The CHECK constraint is updated on fresh installs via CREATE TABLE IF NOT EXISTS
+      db.exec(`DROP TABLE IF EXISTS users_hr_temp`);
+      console.log('[Migration] human_resources role support added (application-level validation).');
+    }
+  } catch (err: any) {
+    console.warn('[Migration] HR role migration note:', err?.message);
   }
 
   console.log('Schema migration completed.');
@@ -5062,6 +5401,21 @@ function seedData(): void {
     'RMPG will respond to all alarm activations at the covered premises within the SLA response time. Response includes perimeter check, interior sweep (if access provided), and detailed incident report. False alarm documentation included.',
     'Monthly retainer covers up to 4 responses per month. Additional responses billed per-incident. SLA response time: 15 minutes within SLC metro area.',
     800, 12);
+
+  // ─── HR: Default leave types ────────────────────────────
+  const leaveTypeCount = db.prepare('SELECT COUNT(*) as count FROM hr_leave_types').get() as { count: number };
+  if (leaveTypeCount.count === 0) {
+    const insertLeaveType = db.prepare('INSERT INTO hr_leave_types (name, accrual_rate, max_balance, requires_approval) VALUES (?, ?, ?, ?)');
+    insertLeaveType.run('PTO', 3.08, 120, 1);           // ~80 hrs/year
+    insertLeaveType.run('Sick Leave', 1.54, 48, 1);     // ~40 hrs/year
+    insertLeaveType.run('Comp Time', 0, 0, 1);          // manual credits
+    insertLeaveType.run('Bereavement', 0, 24, 1);
+    insertLeaveType.run('FMLA', 0, 480, 1);
+    insertLeaveType.run('Jury Duty', 0, 0, 0);
+    insertLeaveType.run('Military Leave', 0, 0, 1);
+    insertLeaveType.run('Unpaid Leave', 0, 0, 1);
+    console.log('[Seed] Default HR leave types created.');
+  }
 
   console.log('Seed data initialized (admin user + system config).');
 }

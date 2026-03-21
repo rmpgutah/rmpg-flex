@@ -114,6 +114,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/training': 'Training Management',
   '/training-docs': 'Training Documents',
   '/serve': 'Process Server',
+  '/hr': 'Human Resources',
   '/admin': 'Admin',
   '/body-cameras': 'Body Cameras',
   '/dash-cameras': 'Dash Cameras',
@@ -178,6 +179,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/dash-cameras', icon: Camera, label: 'Dash Cameras' },
     { path: '/training', icon: GraduationCap, label: 'Training' },
     { path: '/training-docs', icon: GraduationCap, label: 'Training Documents' },
+    { path: '/hr', icon: Briefcase, label: 'Human Resources' },
   ]},
   { path: '/communications', icon: MessageSquare, label: 'Comms', group: 'comms', shortcut: 'F9', children: [
     { path: '/communications', icon: MessageSquare, label: 'Comms' },
@@ -203,12 +205,12 @@ const TOOLBAR_NAV: NavItem[] = [
 const CLIENT_VIEWER_BLOCKED_PATHS = new Set([
   '/admin', '/audit', '/personnel', '/fleet', '/ncic',
   '/radio', '/patrol', '/shift-plans', '/statute-analytics',
-  '/reports/custom', '/crime-analysis', '/dar',
+  '/reports/custom', '/crime-analysis', '/dar', '/hr',
 ]);
 
 // Paths that contract_manager role is NOT allowed to see
 const CONTRACT_MANAGER_BLOCKED_PATHS = new Set([
-  '/admin', '/personnel', '/users',
+  '/admin', '/personnel', '/users', '/hr',
 ]);
 
 export default function Layout() {
@@ -395,13 +397,9 @@ export default function Layout() {
       const item = visibleNav[idx];
       e.preventDefault();
 
-      // External links open in new tab
+      // External links open in new tab (no token in URL — external sites don't need it)
       if (item.externalUrl) {
-        const token = localStorage.getItem('rmpg_token');
-        const url = token
-          ? `${item.externalUrl}?token=${encodeURIComponent(token)}`
-          : item.externalUrl;
-        window.open(url, '_blank', 'noopener,noreferrer');
+        window.open(item.externalUrl, '_blank', 'noopener,noreferrer');
         return;
       }
 

@@ -1097,7 +1097,7 @@ router.put('/users/:id/role', rateLimit({ maxRequests: 5, windowMs: 60000 }), re
     const { role } = req.body;
     const ip = String(req.ip || 'unknown');
 
-    const validRoles = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
+    const validRoles = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager', 'human_resources'];
     if (!role || !validRoles.includes(role)) {
       res.status(400).json({ error: 'Invalid role' });
       return;

@@ -87,15 +87,33 @@ const chunkUpload = multer({
 
 const router = Router();
 
-// Promote query-string token to Authorization header BEFORE authenticateToken runs.
-// <video> elements can't set custom headers, so the VideoPlayer passes the JWT as
-// ?token=... on the streaming URL. This middleware promotes it so authenticateToken
-// can validate it normally. Scoped to video streaming routes ONLY to limit attack surface.
+// Accept HMAC signed access or legacy query-string token for body cam streaming.
+// Signed URLs prevent JWT leakage in browser history, Referer headers, and logs.
 router.use((req: Request, res: Response, next: NextFunction) => {
   const isVideoRoute = /\/(bodycam-videos|body-cameras)\//.test(req.path)
     && /(stream|download|thumbnail)/.test(req.path);
-  if (!req.headers['authorization'] && req.query.token && isVideoRoute) {
-    req.headers['authorization'] = `Bearer ${req.query.token}`;
+  if (isVideoRoute) {
+    // Prefer HMAC signed access (no JWT in URL)
+    if (!req.headers['authorization'] && typeof req.query.sig === 'string') {
+      const { verifyResourceAccess } = require('../utils/signedAccess');
+      const idMatch = req.path.match(/\/(\d+)\/(stream|download|thumbnail)/);
+      const resourceId = idMatch?.[1];
+      if (resourceId) {
+        const exp = parseInt(req.query.exp as string, 10);
+        const nonce = req.query.nonce as string | undefined;
+        if (verifyResourceAccess('bodycam', resourceId, req.query.sig as string, exp, nonce)) {
+          req.user = { userId: 0, username: 'signed-access', role: 'viewer', fullName: 'Signed Access' };
+          next();
+          return;
+        }
+        res.status(403).json({ error: 'Invalid or expired signature' });
+        return;
+      }
+    }
+    // Legacy: promote ?token= to Authorization header
+    if (!req.headers['authorization'] && req.query.token) {
+      req.headers['authorization'] = `Bearer ${req.query.token}`;
+    }
   }
   next();
 });
@@ -296,7 +314,7 @@ router.post('/', requireRole('admin', 'manager'), personnelCreateRateLimit, (req
     }
 
     // Validate role against allowlist
-    const VALID_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
+    const VALID_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager', 'human_resources'];
     if (!VALID_ROLES.includes(role)) {
       res.status(400).json({ error: 'Invalid role' });
       return;
@@ -394,7 +412,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
     }
 
     // Validate role against allowlist if provided
-    const VALID_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
+    const VALID_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager', 'human_resources'];
     if (req.body.role && !VALID_ROLES.includes(req.body.role)) {
       res.status(400).json({ error: 'Invalid role' });
       return;
@@ -462,10 +480,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
 
     // Audit log for admin password resets
     if (passwordChanged) {
-      auditLog(req, 'ADMIN_PASSWORD_RESET', 'users', id, null, {
-        target_user: user.username,
-        reset_by: req.user!.userId,
-      });
+      auditLog(req, 'ADMIN_PASSWORD_RESET', 'users', id, `Admin password reset for ${user.username}`);
     }
 
     const updated = db.prepare(`
@@ -2790,8 +2805,20 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   });
 
   // GET /api/personnel/bodycam-videos/:videoId/stream - Stream video with Range support
-  // Accept token from query string for <video> elements that can't set Authorization headers
+  // Prefer HMAC signed access; legacy ?token= still accepted during migration
   parentRouter.get('/personnel/bodycam-videos/:videoId/stream', (req: Request, res: Response, next) => {
+    if (!req.headers['authorization'] && typeof req.query.sig === 'string') {
+      const { verifyResourceAccess } = require('../utils/signedAccess');
+      const exp = parseInt(req.query.exp as string, 10);
+      const nonce = req.query.nonce as string | undefined;
+      if (verifyResourceAccess('bodycam', req.params.videoId, req.query.sig as string, exp, nonce)) {
+        req.user = { userId: 0, username: 'signed-access', role: 'viewer', fullName: 'Signed Access' };
+        next();
+        return;
+      }
+      res.status(403).json({ error: 'Invalid or expired signature' });
+      return;
+    }
     if (!req.headers['authorization'] && req.query.token) {
       req.headers['authorization'] = `Bearer ${req.query.token}`;
     }
