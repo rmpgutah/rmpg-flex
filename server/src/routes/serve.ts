@@ -8,7 +8,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { validateParamId } from '../middleware/sanitize';
-import { auditLog } from '../utils/auditLogger';
+import { auditLog, securityEvent } from '../utils/auditLogger';
 import { broadcast, broadcastDispatchUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
 import { generateCallNumber, generateCaseNumber } from '../utils/caseNumbers';
@@ -110,6 +110,12 @@ router.post('/routes', requireRole(...WRITE_ROLES), (req: Request, res: Response
 
     if (!officer_id || !route_date) {
       res.status(400).json({ error: 'officer_id and route_date are required' });
+      return;
+    }
+
+    // IDOR protection: only supervisors+ can create/modify routes for other officers
+    if (Number(officer_id) !== req.user!.userId && !['admin', 'manager', 'supervisor', 'dispatcher'].includes(req.user!.role)) {
+      res.status(403).json({ error: 'You can only modify your own routes' });
       return;
     }
 
@@ -276,7 +282,13 @@ router.get('/', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: R
   try {
     const db = getDb();
     const parsedOid = req.query.officer_id ? Number(req.query.officer_id) : null;
-    const officerId = (parsedOid != null && !isNaN(parsedOid)) ? parsedOid : req.user!.userId;
+    let officerId = (parsedOid != null && !isNaN(parsedOid)) ? parsedOid : req.user!.userId;
+
+    // IDOR protection: officers can only list their own queue
+    if (req.user!.role === 'officer' && officerId !== req.user!.userId) {
+      officerId = req.user!.userId;
+    }
+
     const date = req.query.date as string || localToday();
     const status = req.query.status as string | undefined;
 
@@ -322,6 +334,20 @@ router.post('/', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
       return res.status(400).json({ error: 'recipient_name is required' });
     }
 
+    // Validate GPS coordinates if provided
+    if (recipient_lat !== undefined && recipient_lat !== null) {
+      const lat = parseFloat(recipient_lat);
+      if (isNaN(lat) || lat < -90 || lat > 90) {
+        return res.status(400).json({ error: 'recipient_lat must be between -90 and 90' });
+      }
+    }
+    if (recipient_lng !== undefined && recipient_lng !== null) {
+      const lng = parseFloat(recipient_lng);
+      if (isNaN(lng) || lng < -180 || lng > 180) {
+        return res.status(400).json({ error: 'recipient_lng must be between -180 and 180' });
+      }
+    }
+
     const info = db.prepare(`
       INSERT INTO serve_queue (
         sm_job_id, officer_id, serve_date, recipient_name,
@@ -346,7 +372,7 @@ router.post('/', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
     const id = Number(info.lastInsertRowid);
     const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(id);
     auditLog(req, 'CREATE', 'serve_queue', id, `Created serve job for ${recipient_name || 'unknown'}`);
-    broadcast('serve', 'serve_created', job);
+    broadcast('serve', 'serve:created', job);
 
     res.status(201).json(job);
   } catch (err: any) {
@@ -363,6 +389,13 @@ router.get('/:id', validateParamId, requireRole(...WRITE_ROLES, 'dispatcher'), (
 
     if (!job) {
       res.status(404).json({ error: 'Serve job not found' });
+      return;
+    }
+
+    // IDOR protection: officers can only view their own assigned jobs
+    if (req.user!.role === 'officer' && job.officer_id && job.officer_id !== req.user!.userId) {
+      securityEvent('idor_rejected', 'warning', { userId: req.user!.userId, route: 'GET /serve/:id', targetResource: req.params.id, targetOwnerId: job.officer_id, ip: req.ip });
+      res.status(403).json({ error: 'You can only view jobs assigned to you' });
       return;
     }
 
@@ -401,6 +434,36 @@ router.put('/:id', validateParamId, requireRole(...WRITE_ROLES), (req: Request, 
       return;
     }
 
+    // IDOR protection: officers can only modify their own assigned jobs
+    if (req.user!.role === 'officer' && existing.officer_id && existing.officer_id !== req.user!.userId) {
+      securityEvent('idor_rejected', 'warning', { userId: req.user!.userId, route: 'PUT /serve/:id', targetResource: req.params.id, targetOwnerId: existing.officer_id, ip: req.ip });
+      res.status(403).json({ error: 'You can only modify jobs assigned to you' });
+      return;
+    }
+
+    // Validate status enum if provided
+    const VALID_SERVE_STATUSES = ['pending', 'in_progress', 'served', 'failed', 'on_hold', 'cancelled'];
+    if (req.body.status !== undefined && !VALID_SERVE_STATUSES.includes(req.body.status)) {
+      res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_SERVE_STATUSES.join(', ')}` });
+      return;
+    }
+
+    // Validate GPS coordinates if provided
+    if (req.body.recipient_lat !== undefined && req.body.recipient_lat !== null) {
+      const lat = parseFloat(req.body.recipient_lat);
+      if (isNaN(lat) || lat < -90 || lat > 90) {
+        res.status(400).json({ error: 'recipient_lat must be between -90 and 90' });
+        return;
+      }
+    }
+    if (req.body.recipient_lng !== undefined && req.body.recipient_lng !== null) {
+      const lng = parseFloat(req.body.recipient_lng);
+      if (isNaN(lng) || lng < -180 || lng > 180) {
+        res.status(400).json({ error: 'recipient_lng must be between -180 and 180' });
+        return;
+      }
+    }
+
     const updatableFields = [
       'officer_id', 'serve_date', 'recipient_name', 'recipient_address',
       'recipient_city', 'recipient_state', 'recipient_zip', 'recipient_lat', 'recipient_lng',
@@ -432,7 +495,7 @@ router.put('/:id', validateParamId, requireRole(...WRITE_ROLES), (req: Request, 
 
     const updated = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id);
     auditLog(req, 'UPDATE', 'serve_queue', String(req.params.id), `Updated serve job: ${setClauses.map(c => c.split(' =')[0]).join(', ')}`);
-    broadcast('serve', 'serve_updated', updated);
+    broadcast('serve', 'serve:updated', updated);
 
     res.json(updated);
   } catch (err: any) {
@@ -451,10 +514,31 @@ router.post('/:id/attempt', validateParamId, requireRole(...WRITE_ROLES), (req: 
       return;
     }
 
+    // IDOR protection: officers can only record attempts on their own assigned jobs
+    if (req.user!.role === 'officer' && job.officer_id && job.officer_id !== req.user!.userId) {
+      securityEvent('idor_rejected', 'warning', { userId: req.user!.userId, route: 'POST /serve/:id/attempt', targetResource: req.params.id, targetOwnerId: job.officer_id, ip: req.ip });
+      res.status(403).json({ error: 'You can only record attempts on jobs assigned to you' });
+      return;
+    }
+
     const {
       result, gps_lat, gps_lng, notes, method, recipient_response,
       photo_url, signature_url, mileage,
     } = req.body;
+
+    // Validate GPS coordinates for serve attempt location tracking
+    if (gps_lat !== undefined && gps_lat !== null) {
+      const lat = parseFloat(gps_lat);
+      if (isNaN(lat) || lat < -90 || lat > 90) {
+        return res.status(400).json({ error: 'gps_lat must be between -90 and 90' });
+      }
+    }
+    if (gps_lng !== undefined && gps_lng !== null) {
+      const lng = parseFloat(gps_lng);
+      if (isNaN(lng) || lng < -180 || lng > 180) {
+        return res.status(400).json({ error: 'gps_lng must be between -180 and 180' });
+      }
+    }
 
     // Enforce posting requirements: need 2+ prior failed attempts
     if (result === 'posted') {
@@ -512,7 +596,7 @@ router.post('/:id/attempt', validateParamId, requireRole(...WRITE_ROLES), (req: 
     const dueDiligenceComplete = attemptNumber >= 2 && newStatus !== 'served';
 
     auditLog(req, 'CREATE', 'serve_queue', String(req.params.id), `Attempt #${attemptNumber}: ${result}`);
-    broadcast('serve', 'serve_attempt', { job: updatedJob, attempt });
+    broadcast('serve', 'serve:attempt', { job: updatedJob, attempt });
 
     // Sync back to linked dispatch call (atomic to prevent race conditions)
     try {

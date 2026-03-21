@@ -64,7 +64,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       params.push(req.user!.userId);
     }
 
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.min(1000, Math.max(1, parseInt(page as string, 10) || 1));
     const limitNum = Math.max(1, Math.min(500, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
@@ -338,6 +338,12 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       return;
     }
 
+    // Validate narrative length (max 100KB — large reports are common but must be bounded)
+    if (narrative && typeof narrative === 'string' && narrative.length > 100000) {
+      res.status(400).json({ error: 'Narrative exceeds 100,000 character limit. Please use supplemental reports for additional detail.' });
+      return;
+    }
+
     // Auto-resolve client_id from property if not provided
     let resolvedClientId = requestClientId || null;
     if (!resolvedClientId && property_id) {
@@ -495,6 +501,12 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     if (latitude !== undefined || longitude !== undefined) {
       const coordErr = validateCoordinates(latitude, longitude);
       if (coordErr) { res.status(400).json({ error: coordErr }); return; }
+    }
+
+    // Validate narrative length on updates
+    if (narrative && typeof narrative === 'string' && narrative.length > 100000) {
+      res.status(400).json({ error: 'Narrative exceeds 100,000 character limit. Use supplemental reports for additional detail.' });
+      return;
     }
 
     // Build dynamic SET clause — only update fields explicitly provided
@@ -1133,6 +1145,12 @@ router.post('/:id/supplements', validateParamId, requireRole('admin', 'manager',
     const { report_type, subject, narrative } = req.body;
     if (!report_type || !subject || !narrative) {
       res.status(400).json({ error: 'report_type, subject, and narrative are required' });
+      return;
+    }
+
+    // Validate supplemental narrative length
+    if (typeof narrative === 'string' && narrative.length > 100000) {
+      res.status(400).json({ error: 'Narrative exceeds 100,000 character limit' });
       return;
     }
 

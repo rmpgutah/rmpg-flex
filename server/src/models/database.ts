@@ -4667,6 +4667,11 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_activity_log_created ON activity_log(created_at);
     CREATE INDEX IF NOT EXISTS idx_activity_log_entity ON activity_log(entity_type, entity_id);
     CREATE INDEX IF NOT EXISTS idx_activity_log_action ON activity_log(action);
+    CREATE INDEX IF NOT EXISTS idx_activity_log_hash ON activity_log(log_hash);
+
+    -- Composite indexes for common dispatch queries (status + priority, status + date)
+    CREATE INDEX IF NOT EXISTS idx_calls_status_priority ON calls_for_service(status, priority);
+    CREATE INDEX IF NOT EXISTS idx_calls_status_created ON calls_for_service(status, created_at);
 
     CREATE INDEX IF NOT EXISTS idx_credentials_officer ON credentials(officer_id);
     CREATE INDEX IF NOT EXISTS idx_credentials_status ON credentials(status);

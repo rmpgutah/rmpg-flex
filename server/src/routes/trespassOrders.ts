@@ -63,7 +63,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       where += ' AND t.archived_at IS NULL';
     }
 
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.min(1000, Math.max(1, parseInt(page as string, 10) || 1));
     const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 25));
     const offset = (pageNum - 1) * perPage;
 
@@ -202,7 +202,14 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       }
     }
 
-    // Auto-calc expiration if duration_days provided
+    // Validate and auto-calc expiration if duration_days provided
+    if (duration_days !== undefined && duration_days !== null) {
+      const dv = parseInt(String(duration_days), 10);
+      if (isNaN(dv) || dv < 1 || dv > 3650) {
+        res.status(400).json({ error: 'duration_days must be a positive integer between 1 and 3650 (10 years)' });
+        return;
+      }
+    }
     let exp = expiration_date || null;
     if (!exp && duration_days) {
       const parsedDays = parseInt(duration_days, 10);
