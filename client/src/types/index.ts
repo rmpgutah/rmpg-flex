@@ -2511,6 +2511,8 @@ export interface ServeJobLinkedCall {
   pso_requestor_name: string | null;
   contract_id: string | null;
   pso_service_windows: string | null;
+  parentCall?: { id: number; call_number: string; status: string; pso_attempt_number?: number } | null;
+  childCalls?: Array<{ id: number; call_number: string; status: string; pso_attempt_number?: number }>;
 }
 
 export interface ServeAttempt {
