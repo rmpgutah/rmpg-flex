@@ -194,6 +194,17 @@ function createTables(): void {
       FOREIGN KEY (current_call_id) REFERENCES calls_for_service(id)
     );
 
+    CREATE TABLE IF NOT EXISTS call_units (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_id INTEGER NOT NULL,
+      unit_id INTEGER NOT NULL,
+      assigned_at TEXT DEFAULT (datetime('now','localtime')),
+      unassigned_at TEXT,
+      FOREIGN KEY (call_id) REFERENCES calls_for_service(id) ON DELETE CASCADE,
+      FOREIGN KEY (unit_id) REFERENCES units(id) ON DELETE CASCADE,
+      UNIQUE(call_id, unit_id)
+    );
+
     CREATE TABLE IF NOT EXISTS incidents (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       incident_number TEXT UNIQUE,
@@ -4138,6 +4149,54 @@ function migrateSchema(): void {
     console.warn('[Migration] dispatch_code backfill warning:', err?.message);
   }
 
+  // ── Populate call_units junction table from assigned_unit_ids JSON ──
+  try {
+    const hasCallUnits = db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='call_units'"
+    ).get();
+    if (hasCallUnits) {
+      const callUnitsCount = (db.prepare('SELECT COUNT(*) as cnt FROM call_units').get() as any).cnt;
+      if (callUnitsCount === 0) {
+        const calls = db.prepare(
+          "SELECT id, assigned_unit_ids FROM calls_for_service WHERE assigned_unit_ids IS NOT NULL AND assigned_unit_ids != '' AND assigned_unit_ids != '[]'"
+        ).all() as { id: number; assigned_unit_ids: string }[];
+
+        if (calls.length > 0) {
+          const validUnitIds = new Set(
+            (db.prepare('SELECT id FROM units').all() as { id: number }[]).map(r => r.id)
+          );
+          const insertStmt = db.prepare(
+            'INSERT OR IGNORE INTO call_units (call_id, unit_id) VALUES (?, ?)'
+          );
+          let migrated = 0;
+          const migrateAll = db.transaction(() => {
+            for (const call of calls) {
+              try {
+                const unitIds = JSON.parse(call.assigned_unit_ids);
+                if (!Array.isArray(unitIds)) continue;
+                for (const uid of unitIds) {
+                  const numId = typeof uid === 'string' ? parseInt(uid, 10) : uid;
+                  if (typeof numId === 'number' && !isNaN(numId) && validUnitIds.has(numId)) {
+                    insertStmt.run(call.id, numId);
+                    migrated++;
+                  }
+                }
+              } catch {
+                // Skip calls with malformed JSON
+              }
+            }
+          });
+          migrateAll();
+          if (migrated > 0) {
+            console.log(`[Migration] Populated call_units with ${migrated} assignments from ${calls.length} calls`);
+          }
+        }
+      }
+    }
+  } catch (err: any) {
+    console.warn('[Migration] call_units population warning:', err?.message);
+  }
+
   console.log('Schema migration completed.');
 }
 
@@ -4448,6 +4507,17 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_offender_alerts_type ON offender_alerts(alert_type);
     CREATE INDEX IF NOT EXISTS idx_offender_alerts_status ON offender_alerts(status);
     CREATE INDEX IF NOT EXISTS idx_offender_alerts_severity ON offender_alerts(severity);
+
+    -- Call-units junction indexes
+    CREATE INDEX IF NOT EXISTS idx_call_units_call ON call_units(call_id);
+    CREATE INDEX IF NOT EXISTS idx_call_units_unit ON call_units(unit_id);
+
+    -- Composite indexes for common query patterns
+    CREATE INDEX IF NOT EXISTS idx_cfs_status_priority ON calls_for_service(status, priority);
+    CREATE INDEX IF NOT EXISTS idx_units_officer_status ON units(officer_id, status);
+    CREATE INDEX IF NOT EXISTS idx_gps_unit_timestamp ON gps_breadcrumbs(unit_id, recorded_at);
+    CREATE INDEX IF NOT EXISTS idx_incidents_type ON incidents(incident_type);
+    CREATE INDEX IF NOT EXISTS idx_incidents_location ON incidents(location_address);
 
   `);
 

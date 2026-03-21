@@ -9,6 +9,7 @@ import { generateIncidentNumber } from '../../utils/caseNumbers';
 import { createNotification, createNotificationForRoles } from '../notifications';
 import { universalWarrantCheck } from '../../utils/universalWarrantScanner';
 import { auditLog } from '../../utils/auditLogger';
+import { getCallUnitIds, assignUnitsToCall, unassignUnitFromCall, unassignAllUnitsFromCall, getCallUnitsDetailed } from '../../utils/callUnits';
 
 const router = Router();
 
@@ -83,26 +84,19 @@ router.post('/calls/:id/dispatch', validateParamId, requireRole('admin', 'manage
 
     const now = localNow();
 
-    // Merge with existing assigned units
-    let currentUnits: number[] = [];
-    try {
-      const parsed = JSON.parse(call.assigned_unit_ids || '[]');
-      currentUnits = (Array.isArray(parsed) ? parsed : []).filter((n: any) => typeof n === 'number' && !isNaN(n));
-    } catch (e) { console.error(`Failed to parse assigned_unit_ids for call ${call.id}:`, e); }
-
-    const allUnits = [...new Set([...currentUnits, ...unit_ids])];
-
-    // Transaction: update call + all units + activity logs atomically
+    // Transaction: update call + assign units + update unit statuses atomically
     const dispatchTx = db.transaction(() => {
-      // Update call
+      // Assign units via junction table (idempotent — INSERT OR IGNORE)
+      assignUnitsToCall(call.id, unit_ids);
+
+      // Update call status
       db.prepare(`
         UPDATE calls_for_service SET
           status = CASE WHEN status = 'pending' THEN 'dispatched' ELSE status END,
-          assigned_unit_ids = ?,
           dispatched_at = COALESCE(dispatched_at, ?),
           dispatcher_id = COALESCE(dispatcher_id, ?)
         WHERE id = ?
-      `).run(JSON.stringify(allUnits), now, req.user!.userId, call.id);
+      `).run(now, req.user!.userId, call.id);
 
       // Update each unit status
       for (const unitId of unit_ids) {
@@ -111,13 +105,17 @@ router.post('/calls/:id/dispatch', validateParamId, requireRole('admin', 'manage
           WHERE id = ? AND (current_call_id IS NULL OR current_call_id = ?)
         `).run(call.id, now, unitId, call.id);
 
-        // Log activity
         const unit = db.prepare('SELECT call_sign FROM units WHERE id = ?').get(unitId) as any;
         db.prepare(`
           INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
           VALUES (?, 'unit_dispatched', 'unit', ?, ?, ?)
         `).run(req.user!.userId, unitId, `Dispatched ${unit?.call_sign || unitId} to ${call.call_number}`, req.ip || 'unknown');
       }
+
+      // Keep assigned_unit_ids in sync for backward compatibility
+      const allUnitIds = getCallUnitIds(call.id);
+      db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?')
+        .run(JSON.stringify(allUnitIds), call.id);
     });
     dispatchTx();
 
@@ -126,17 +124,12 @@ router.post('/calls/:id/dispatch', validateParamId, requireRole('admin', 'manage
       broadcastDispatchUpdate({ action: 'units_dispatched', call: updated, unit_ids });
     }
 
-    // Broadcast individual unit updates so Map/MDT get full unit state with call details
-    for (const unitId of unit_ids) {
-      const unitData = db.prepare(`
-        SELECT u.*, usr.full_name as officer_name, usr.badge_number, usr.phone as officer_phone,
-          c.call_number, c.incident_type as current_call_type, c.location_address as current_call_location
-        FROM units u
-        LEFT JOIN users usr ON u.officer_id = usr.id
-        LEFT JOIN calls_for_service c ON u.current_call_id = c.id
-        WHERE u.id = ?
-      `).get(unitId);
-      if (unitData) broadcastUnitUpdate({ action: 'unit_status_changed', unit: unitData });
+    // Broadcast individual unit updates — batch query instead of N+1
+    const updatedUnits = getCallUnitsDetailed(call.id);
+    for (const unitData of updatedUnits) {
+      if (unit_ids.includes(unitData.id)) {
+        broadcastUnitUpdate({ action: 'unit_status_changed', unit: unitData });
+      }
     }
 
     // Notify dispatched officers individually (non-fatal — dispatch must not fail on notification error)
@@ -200,44 +193,31 @@ router.post('/calls/:id/assign-unit', validateParamId, requireRole('admin', 'man
 
     const now = localNow();
 
-    // Merge with existing assigned units
-    let currentUnits: number[] = [];
-    try {
-      const parsed = JSON.parse(call.assigned_unit_ids || '[]');
-      currentUnits = (Array.isArray(parsed) ? parsed : []).filter((n: any) => typeof n === 'number' && !isNaN(n));
-    } catch (e) { console.error(`Failed to parse assigned_unit_ids for call ${call.id}:`, e); }
-
-    const unitIdNum = Number(unit_id);
-    if (isNaN(unitIdNum)) {
-      res.status(400).json({ error: 'Invalid unit_id' });
-      return;
-    }
-    if (!currentUnits.includes(unitIdNum)) {
-      currentUnits.push(unitIdNum);
-    }
-
-    // Transaction: update call + unit + activity log atomically
+    // Transaction: assign unit via junction table + update statuses
     const assignTx = db.transaction(() => {
-      // Update call: add unit to assigned_unit_ids, set dispatched if pending
+      assignUnitsToCall(call.id, [Number(unit_id)]);
+
       db.prepare(`
         UPDATE calls_for_service SET
           status = CASE WHEN status = 'pending' THEN 'dispatched' ELSE status END,
-          assigned_unit_ids = ?,
           dispatched_at = COALESCE(dispatched_at, ?)
         WHERE id = ?
-      `).run(JSON.stringify(currentUnits), now, call.id);
+      `).run(now, call.id);
 
-      // Update unit: set status to dispatched and link to this call
       db.prepare(`
         UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = ?
         WHERE id = ? AND (current_call_id IS NULL OR current_call_id = ?)
       `).run(call.id, now, unit_id, call.id);
 
-      // Log activity
       db.prepare(`
         INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
         VALUES (?, 'unit_dispatched', 'call', ?, ?, ?)
       `).run(req.user!.userId, call.id, `Assigned ${unit.call_sign} to ${call.call_number}`, req.ip || 'unknown');
+
+      // Keep assigned_unit_ids in sync
+      const allUnitIds = getCallUnitIds(call.id);
+      db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?')
+        .run(JSON.stringify(allUnitIds), call.id);
     });
     assignTx();
 
@@ -286,21 +266,9 @@ router.post('/calls/:id/unassign-unit', validateParamId, requireRole('admin', 'm
 
     const now = localNow();
 
-    // Transaction: update call + unit + activity log atomically
-    // Read assigned_unit_ids INSIDE the transaction to prevent stale data race
     const unassignTx = db.transaction(() => {
-      // Re-read call inside transaction to get fresh assigned_unit_ids
-      const freshCall = db.prepare('SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?').get(call.id) as any;
-      let currentUnits: number[] = [];
-      try {
-        currentUnits = JSON.parse(freshCall?.assigned_unit_ids || '[]');
-      } catch { /* ignore */ }
-      currentUnits = currentUnits.filter((id) => id !== Number(unit_id));
-
-      // Update call: remove unit from assigned_unit_ids
-      db.prepare(`
-        UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?
-      `).run(JSON.stringify(currentUnits), call.id);
+      // Remove unit from junction table
+      unassignUnitFromCall(call.id, Number(unit_id));
 
       // Update unit: set status to available and clear current_call_id
       db.prepare(`
@@ -313,6 +281,11 @@ router.post('/calls/:id/unassign-unit', validateParamId, requireRole('admin', 'm
         INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
         VALUES (?, 'unit_unassigned', 'call', ?, ?, ?)
       `).run(req.user!.userId, call.id, `Removed ${unit.call_sign} from ${call.call_number}`, req.ip || 'unknown');
+
+      // Keep assigned_unit_ids in sync
+      const allUnitIds = getCallUnitIds(call.id);
+      db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?')
+        .run(JSON.stringify(allUnitIds), call.id);
     });
     unassignTx();
 
@@ -492,20 +465,18 @@ router.post('/calls/:id/status', validateParamId, requireRole('admin', 'manager'
 
       // If cleared, closed, cancelled, or archived, free up units
       if (['cleared', 'closed', 'cancelled', 'archived'].includes(status)) {
-        let unitIds: number[] = [];
-        try {
-          const parsed = JSON.parse(call.assigned_unit_ids || '[]');
-          unitIds = Array.isArray(parsed) ? parsed : [];
-        } catch {
-          console.warn(`[Dispatch] Corrupted assigned_unit_ids for call ${call.call_number}: ${call.assigned_unit_ids}`);
-        }
-
+        const unitIds = getCallUnitIds(call.id);
         for (const unitId of unitIds) {
           const result = db.prepare(`
             UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ? AND current_call_id = ?
           `).run(now, unitId, call.id);
           if (result.changes > 0) freedUnitIds.push(unitId);
         }
+        // Mark all as unassigned in junction table
+        unassignAllUnitsFromCall(call.id);
+
+        // Sync assigned_unit_ids
+        db.prepare("UPDATE calls_for_service SET assigned_unit_ids = '[]' WHERE id = ?").run(call.id);
       }
 
       // Log activity
@@ -621,21 +592,29 @@ router.post('/calls/:id/revert-status', validateParamId, requireRole('admin', 'm
       // If reverting from cleared/closed, re-dispatch assigned units
       // Only re-assign units that are still available (not already on another call)
       if (['cleared', 'closed'].includes(call.status)) {
-        let unitIds: number[] = [];
-        try {
-          const parsed = JSON.parse(call.assigned_unit_ids || '[]');
-          unitIds = Array.isArray(parsed) ? parsed : [];
-        } catch { /* ignore */ }
+        // Get ALL unit IDs from junction table (including recently unassigned)
+        const unitIds = (db.prepare(
+          'SELECT unit_id FROM call_units WHERE call_id = ? ORDER BY assigned_at DESC'
+        ).all(call.id) as any[]).map((r: any) => r.unit_id);
 
         for (const unitId of unitIds) {
           const prevUnitStatus = previousStatus === 'onscene' ? 'onscene' : previousStatus === 'enroute' ? 'enroute' : 'dispatched';
-          // Guard: only re-assign if unit is available (not already dispatched to another call)
           const result = db.prepare(`
             UPDATE units SET status = ?, current_call_id = ?, last_status_change = ?
             WHERE id = ? AND (current_call_id IS NULL OR current_call_id = ?)
           `).run(prevUnitStatus, call.id, now, unitId, call.id);
-          if (result.changes > 0) revertedUnitIds.push(unitId);
+          if (result.changes > 0) {
+            revertedUnitIds.push(unitId);
+            // Re-activate in junction table
+            db.prepare("UPDATE call_units SET unassigned_at = NULL WHERE call_id = ? AND unit_id = ?")
+              .run(call.id, unitId);
+          }
         }
+
+        // Sync assigned_unit_ids
+        const activeUnitIds = getCallUnitIds(call.id);
+        db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?')
+          .run(JSON.stringify(activeUnitIds), call.id);
       }
 
       // Log activity
@@ -1179,13 +1158,11 @@ router.post('/calls/:id/send-to-serve', validateParamId, requireRole('admin', 'm
 
     // Try to get assigned officer
     let officerId: number | null = null;
-    try {
-      const unitIds = JSON.parse(call.assigned_unit_ids || '[]');
-      if (Array.isArray(unitIds) && unitIds.length > 0) {
-        const unit = db.prepare('SELECT officer_id FROM units WHERE id = ?').get(unitIds[0]) as any;
-        if (unit?.officer_id) officerId = unit.officer_id;
-      }
-    } catch {}
+    const unitIds = getCallUnitIds(call.id);
+    if (unitIds.length > 0) {
+      const unit = db.prepare('SELECT officer_id FROM units WHERE id = ?').get(unitIds[0]) as any;
+      if (unit?.officer_id) officerId = unit.officer_id;
+    }
 
     // Map document type
     const docTypeMap: Record<string, string> = {

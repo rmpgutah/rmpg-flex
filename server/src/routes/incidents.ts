@@ -7,7 +7,7 @@ import { localNow, localToday } from '../utils/timeUtils';
 import { identifyBeat } from '../utils/geofence';
 import { createNotificationForRoles } from './notifications';
 import { auditLog } from '../utils/auditLogger';
-import { validateParamId, validateNumericParams, escapeLike } from '../middleware/sanitize';
+import { validateParamId, validateNumericParams, escapeLike, validateCoordinates, validateDateField } from '../middleware/sanitize';
 import { exportRateLimit } from '../middleware/rateLimiter';
 import { universalWarrantCheck } from '../utils/universalWarrantScanner';
 
@@ -456,6 +456,17 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
       return;
     }
 
+    // Optimistic locking: if client sends updated_at, verify it matches
+    const clientUpdatedAt = req.body.updated_at;
+    if (clientUpdatedAt && clientUpdatedAt !== incident.updated_at) {
+      res.status(409).json({
+        error: 'This incident has been modified by another user. Please refresh and try again.',
+        code: 'CONFLICT',
+        server_updated_at: incident.updated_at,
+      });
+      return;
+    }
+
     // Permission checks:
     // - Admin/manager/supervisor can edit any incident in any status
     // - Officers can edit their own incidents in draft, returned, submitted, or approved
@@ -479,6 +490,12 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
       weapons_involved, alcohol_involved, drugs_involved, domestic_violence,
       disposition, zone_beat, section_id, zone_id, beat_id, responding_le_agency, le_case_number,
     } = req.body;
+
+    // Validate coordinates if provided
+    if (latitude !== undefined || longitude !== undefined) {
+      const coordErr = validateCoordinates(latitude, longitude);
+      if (coordErr) { res.status(400).json({ error: coordErr }); return; }
+    }
 
     // Build dynamic SET clause — only update fields explicitly provided
     const iFields: string[] = [];

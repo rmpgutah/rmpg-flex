@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { sendCsv } from '../utils/csvExport';
-import { escapeLike, validateParamId } from '../middleware/sanitize';
+import { escapeLike, validateParamId, validateCoordinates, validateDateField } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
 import { searchUtahWarrants } from '../utils/utahWarrantScraper';
 import { searchOfacLocal } from '../utils/ofacScraper';
@@ -580,12 +580,19 @@ router.delete('/persons/:id', validateParamId, requireRole('admin', 'manager'), 
       return;
     }
 
+    let deleted = false;
     const deleteTx = db.transaction(() => {
       db.prepare('DELETE FROM incident_persons WHERE person_id = ?').run(person.id);
       db.prepare('UPDATE vehicles_records SET owner_person_id = NULL WHERE owner_person_id = ?').run(person.id);
-      db.prepare('DELETE FROM persons WHERE id = ?').run(person.id);
+      const result = db.prepare('DELETE FROM persons WHERE id = ?').run(person.id);
+      deleted = result.changes > 0;
     });
     deleteTx();
+
+    if (!deleted) {
+      res.status(500).json({ error: 'Failed to delete person record' });
+      return;
+    }
 
     auditLog(req, 'person_deleted', 'person', person.id, `Deleted person record #${person.id}`);
 
@@ -941,11 +948,19 @@ router.delete('/vehicles/:id', validateParamId, requireRole('admin', 'manager'),
       return;
     }
 
+    let deleted = false;
     const deleteTx = db.transaction(() => {
       db.prepare('DELETE FROM incident_vehicles WHERE vehicle_id = ?').run(vehicle.id);
-      db.prepare('DELETE FROM vehicles_records WHERE id = ?').run(vehicle.id);
+      const result = db.prepare('DELETE FROM vehicles_records WHERE id = ?').run(vehicle.id);
+      deleted = result.changes > 0;
     });
     deleteTx();
+
+    if (!deleted) {
+      res.status(500).json({ error: 'Failed to delete vehicle record' });
+      return;
+    }
+
     auditLog(req, 'vehicle_deleted', 'vehicle', vehicle.id, `Deleted vehicle record #${vehicle.id}`);
     res.json({ message: 'Vehicle deleted' });
   } catch (error: any) {
@@ -1360,7 +1375,11 @@ router.delete('/evidence/:id', validateParamId, requireRole('admin', 'manager'),
       return;
     }
 
-    db.prepare('DELETE FROM evidence WHERE id = ?').run(req.params.id);
+    const result = db.prepare('DELETE FROM evidence WHERE id = ?').run(req.params.id);
+    if (result.changes === 0) {
+      res.status(500).json({ error: 'Failed to delete evidence record' });
+      return;
+    }
     auditLog(req, 'evidence_deleted', 'evidence', evidence.id, `Deleted evidence #${evidence.id}`);
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
@@ -1617,6 +1636,7 @@ router.delete('/properties/:id', validateParamId, requireRole('admin', 'manager'
       return;
     }
 
+    let deleted = false;
     const delTx = db.transaction(() => {
       // Remove any record links involving this property
       db.prepare("DELETE FROM record_links WHERE (source_type = 'property' AND source_id = ?) OR (target_type = 'property' AND target_id = ?)").run(req.params.id, req.params.id);
@@ -1627,9 +1647,16 @@ router.delete('/properties/:id', validateParamId, requireRole('admin', 'manager'
       db.prepare('DELETE FROM patrol_checkpoints WHERE property_id = ?').run(req.params.id);
       // Remove attachments referencing this property
       db.prepare("DELETE FROM attachments WHERE entity_type = 'property' AND entity_id = ?").run(req.params.id);
-      db.prepare('DELETE FROM properties WHERE id = ?').run(req.params.id);
+      const result = db.prepare('DELETE FROM properties WHERE id = ?').run(req.params.id);
+      deleted = result.changes > 0;
     });
     delTx();
+
+    if (!deleted) {
+      res.status(500).json({ error: 'Failed to delete property record' });
+      return;
+    }
+
     auditLog(req, 'property_deleted', 'property', property.id, `Deleted property #${property.id}: ${property.name}`);
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {

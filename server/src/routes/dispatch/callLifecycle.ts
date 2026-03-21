@@ -5,6 +5,7 @@ import { validateParamId } from '../../middleware/sanitize';
 import { broadcastDispatchUpdate } from '../../utils/websocket';
 import { generateIncidentNumber } from '../../utils/caseNumbers';
 import { localNow } from '../../utils/timeUtils';
+import { getCallUnitIds, unassignAllUnitsFromCall } from '../../utils/callUnits';
 
 const router = Router();
 
@@ -72,11 +73,12 @@ router.post('/calls/archive-bulk', requireRole('admin', 'manager', 'dispatcher')
         archiveStmt.run('archived', now, call.id);
 
         // Free up any assigned units
-        let unitIds: number[] = [];
-        try { const p = JSON.parse(call.assigned_unit_ids || '[]'); unitIds = Array.isArray(p) ? p : []; } catch { /* ignore */ }
+        const unitIds = getCallUnitIds(call.id);
         for (const unitId of unitIds) {
           freeUnitStmt.run(now, unitId, call.id);
         }
+        unassignAllUnitsFromCall(call.id);
+        db.prepare("UPDATE calls_for_service SET assigned_unit_ids = '[]' WHERE id = ?").run(call.id);
 
         logStmt.run(req.user!.userId, call.id, `${call.call_number} bulk archived`, req.ip || 'unknown');
       }
@@ -116,15 +118,13 @@ router.post('/calls/:id/archive', validateParamId, requireRole('admin', 'manager
         .run('archived', now, call.id);
 
       // Free up any assigned units when archiving
-      let unitIds: number[] = [];
-      try {
-        const parsed = JSON.parse(call.assigned_unit_ids || '[]');
-        unitIds = Array.isArray(parsed) ? parsed : [];
-      } catch { /* ignore */ }
+      const unitIds = getCallUnitIds(call.id);
       for (const unitId of unitIds) {
         db.prepare(`UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ? AND current_call_id = ?`)
           .run(now, unitId, call.id);
       }
+      unassignAllUnitsFromCall(call.id);
+      db.prepare("UPDATE calls_for_service SET assigned_unit_ids = '[]' WHERE id = ?").run(call.id);
 
       db.prepare(`
         INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -187,13 +187,14 @@ router.delete('/calls/:id', validateParamId, requireRole('admin', 'manager'), (r
     // Transaction: free units, nullify FKs, delete call atomically
     const deleteTx = db.transaction(() => {
       // If call has active units assigned, free them first
-      let unitIds: number[] = [];
-      try { const p = JSON.parse(call.assigned_unit_ids || '[]'); unitIds = Array.isArray(p) ? p : []; } catch { /* ignore */ }
+      const unitIds = getCallUnitIds(call.id);
       for (const unitId of unitIds) {
         db.prepare(`
           UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ? AND current_call_id = ?
         `).run(now, unitId, call.id);
       }
+      unassignAllUnitsFromCall(call.id);
+      db.prepare("UPDATE calls_for_service SET assigned_unit_ids = '[]' WHERE id = ?").run(call.id);
 
       // Nullify FK references in related tables before deleting the call
       try { db.prepare('UPDATE incidents SET call_id = NULL WHERE call_id = ?').run(call.id); } catch { /* ignore */ }

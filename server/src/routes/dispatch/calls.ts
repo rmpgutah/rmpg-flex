@@ -10,6 +10,7 @@ import { identifyBeat } from '../../utils/geofence';
 import { broadcastDispatchUpdate } from '../../utils/websocket';
 import { createNotificationForRoles } from '../notifications';
 import { exportRateLimit } from '../../middleware/rateLimiter';
+import { getCallUnitIds, getCallUnitsDetailed, getUnitsForCalls } from '../../utils/callUnits';
 
 // ── PSO Service Window helpers (shared with callActions.ts) ──
 type ServiceWindow = 'early_morning' | 'daytime' | 'evening';
@@ -521,21 +522,8 @@ router.get('/calls/:id', validateParamId, requireRole('admin', 'manager', 'super
       return;
     }
 
-    // Get assigned units with officer info
-    let assignedUnits: any[] = [];
-    try {
-      const parsed = JSON.parse(call.assigned_unit_ids || '[]');
-      const unitIds = (Array.isArray(parsed) ? parsed : []).filter((id: any) => typeof id === 'number' && !isNaN(id));
-      if (unitIds.length > 0) {
-        const placeholders = unitIds.map(() => '?').join(',');
-        assignedUnits = db.prepare(`
-          SELECT u.*, usr.full_name as officer_name, usr.badge_number
-          FROM units u
-          LEFT JOIN users usr ON u.officer_id = usr.id
-          WHERE u.id IN (${placeholders})
-        `).all(...unitIds);
-      }
-    } catch { /* ignore parse errors */ }
+    // Get assigned units with officer info (from call_units junction table)
+    const assignedUnits = getCallUnitsDetailed(Number(req.params.id));
 
     // Get related incidents
     const incidents = db.prepare(`
@@ -871,16 +859,13 @@ router.post('/calls/:id/redispatch', validateParamId, requireRole('admin', 'mana
     };
 
     // ── Snapshot current visit into history BEFORE resetting ──
-    // Get assigned unit call signs for the snapshot
+    // Get assigned unit call signs for the snapshot (from call_units junction table)
+    const callUnitIds = getCallUnitIds(call.id);
     let assignedCallSigns: string[] = [];
-    try {
-      const parsedIds = JSON.parse(call.assigned_unit_ids || '[]');
-      const unitIds = (Array.isArray(parsedIds) ? parsedIds : []).filter((id: any) => typeof id === 'number' && !isNaN(id));
-      if (unitIds.length) {
-        const units = db.prepare(`SELECT call_sign FROM units WHERE id IN (${unitIds.map(() => '?').join(',')})`).all(...unitIds) as any[];
-        assignedCallSigns = units.map((u: any) => u.call_sign).filter(Boolean);
-      }
-    } catch { /* ignore parse errors */ }
+    if (callUnitIds.length) {
+      const units = db.prepare(`SELECT call_sign FROM units WHERE id IN (${callUnitIds.map(() => '?').join(',')})`).all(...callUnitIds) as any[];
+      assignedCallSigns = units.map((u: any) => u.call_sign).filter(Boolean);
+    }
 
     // Classify this visit's time window for PSO compliance tracking
     const attemptTime = call.onscene_at || call.cleared_at || call.closed_at || now;

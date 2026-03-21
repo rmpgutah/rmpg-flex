@@ -208,6 +208,34 @@ export function safePagination(
   return { page, limit, offset: (page - 1) * limit };
 }
 
+/** Validate latitude/longitude are within valid ranges and provided together */
+export function validateCoordinates(lat: any, lng: any): string | null {
+  if (lat != null && lat !== '') {
+    const n = Number(lat);
+    if (isNaN(n) || n < -90 || n > 90) return 'Invalid latitude (must be -90 to 90)';
+  }
+  if (lng != null && lng !== '') {
+    const n = Number(lng);
+    if (isNaN(n) || n < -180 || n > 180) return 'Invalid longitude (must be -180 to 180)';
+  }
+  if ((lat != null && lat !== '' && (lng == null || lng === '')) || (lat == null || lat === '') && (lng != null && lng !== '')) {
+    return 'Both latitude and longitude must be provided together';
+  }
+  return null;
+}
+
+/** Validate a date string is ISO 8601 or YYYY-MM-DD format */
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?.*)?$/;
+export function validateDateField(val: any, fieldName: string): string | null {
+  if (val == null || val === '') return null;
+  if (typeof val !== 'string' || !ISO_DATE_RE.test(val)) {
+    return `Invalid ${fieldName} format (use YYYY-MM-DD or ISO 8601)`;
+  }
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return `Invalid ${fieldName} date value`;
+  return null;
+}
+
 export function sanitizeInput(req: Request, _res: Response, next: NextFunction): void {
   if (req.body && typeof req.body === 'object') {
     req.body = sanitizeObject(req.body);
