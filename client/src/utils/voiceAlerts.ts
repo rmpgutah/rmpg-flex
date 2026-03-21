@@ -65,11 +65,11 @@ const VOICE_ALERTS_KEY = 'rmpg-voice-alerts';
 const VOICE_SPEED_KEY = 'rmpg-voice-speed';     // 'slow' | 'normal' | 'fast'
 const VOICE_VOLUME_KEY = 'rmpg-voice-volume';    // 0.0 - 1.0
 
-/** Inter-phrase pause — natural breathing gap between sentences */
-const PHRASE_GAP_MS = 350;
+/** Inter-phrase pause — deliberate gap between sentences, like a real dispatcher pausing to read the next line */
+const PHRASE_GAP_MS = 500;
 
-/** Post-tone pause before speech begins */
-const TONE_GAP_MS = 300;
+/** Post-tone pause before speech begins — let the tone ring out */
+const TONE_GAP_MS = 400;
 
 /** Deduplication cache TTL (60 seconds) */
 const DEDUP_TTL_MS = 60_000;
@@ -79,11 +79,11 @@ const PRIORITY_URGENCY: Record<string, number> = {
   PANIC: 0, P1: 1, P2: 2, P3: 3, P4: 4, INFO: 5,
 };
 
-/** User-configurable speed presets — deliberate, human pace */
+/** User-configurable speed presets — slower, measured, clear */
 const SPEED_PRESETS: Record<string, number> = {
-  slow: 0.85,
-  normal: 0.95,
-  fast: 1.08,
+  slow: 0.78,
+  normal: 0.88,
+  fast: 1.0,
 };
 
 /** Base speech configuration */
@@ -1044,22 +1044,47 @@ export async function announceDispatchEvent(call: DispatchCallData): Promise<voi
     phrases.push({ text: `Scene safety note: ${call.scene_safety}.` });
   }
 
-  // ── Additional flags as human sentences ──
+  // ── Additional context flags ──
   if (call.juvenile_involved) {
-    phrases.push({ text: 'Be advised, there\'s a juvenile involved.' });
+    phrases.push({ text: 'Be advised, there\'s a juvenile involved on this one.' });
+  }
+  if (call.alcohol_involved) {
+    phrases.push({ text: 'Alcohol is involved.' });
   }
   if (call.fire_requested) {
-    phrases.push({ text: 'Fire department has been requested.' });
+    phrases.push({ text: 'Fire department has been requested and is en route.' });
+  }
+  if (call.ems_requested) {
+    phrases.push({ text: 'E.M.S. has been requested.' });
+  }
+  if (call.k9_requested) {
+    phrases.push({ text: 'K-9 unit has been requested.' });
   }
   if (call.le_notified && call.le_agency) {
-    phrases.push({ text: `${call.le_agency} has been notified.` });
+    phrases.push({ text: `${call.le_agency} has been notified and is aware.` });
+  } else if (call.le_notified) {
+    phrases.push({ text: 'Local law enforcement has been notified.' });
+  }
+
+  // ── Call source context ──
+  if (call.source === '911' || call.source === 'emergency') {
+    phrases.push({ text: 'This came in through 9-1-1.' });
+  } else if (call.source === 'alarm') {
+    phrases.push({ text: 'This is an alarm activation.' });
   }
 
   // ── Safety flags (last = sticks in memory) ──
   const safetyPhrases = buildCallPhrases(call);
-  for (const sp of safetyPhrases) {
-    phrases.push(sp);
+  if (safetyPhrases.length > 0) {
+    // Add a transition before safety block
+    phrases.push({ text: 'Safety information follows.' });
+    for (const sp of safetyPhrases) {
+      phrases.push(sp);
+    }
   }
+
+  // ── Closing ──
+  phrases.push({ text: 'Use caution.' });
 
   enqueuePhrases(phrases, call.priority);
 }
@@ -1117,52 +1142,83 @@ export async function announceNewCall(call: DispatchCallData): Promise<void> {
     phrases.push({ text: areaParts.join(', ') + '.' });
   }
 
-  // ── Detail (P1/P2 get the full story) ──
-  if (isHighPriority) {
-    const narr = call.narrative || call.description || call.comments || '';
-    if (narr) {
-      const cleaned = truncateForSpeech(narr, 150);
-      const verb = call.source === 'phone' ? 'Caller says' :
-                   call.source === 'officer' ? 'Officer reports' : 'We\'re told';
-      phrases.push({ text: `${verb} ${cleaned.charAt(0).toLowerCase()}${cleaned.slice(1)}${cleaned.endsWith('.') ? '' : '.'}` });
-    }
+  // ── Narrative (ALL priorities get it now — officers need to know what they're walking into) ──
+  const narr = call.narrative || call.description || call.comments || '';
+  if (narr) {
+    const maxLen = isHighPriority ? 200 : 120;
+    const cleaned = truncateForSpeech(narr, maxLen);
+    const verb = call.source === 'phone' || call.source === '911' ? 'Caller says' :
+                 call.source === 'walk_in' ? 'Walk-in is reporting' :
+                 call.source === 'officer' ? 'Officer on scene reports' :
+                 call.source === 'alarm' ? 'Alarm company reports' : 'We\'re told';
+    phrases.push({ text: `${verb} ${cleaned.charAt(0).toLowerCase()}${cleaned.slice(1)}${cleaned.endsWith('.') ? '' : '.'}` });
+  }
 
-    if (call.caller_name && call.caller_name !== 'Anonymous') {
-      let rpLine = `Reporting party is ${call.caller_name}`;
-      if (call.caller_relationship) rpLine += `, the ${call.caller_relationship}`;
-      if (call.caller_phone) rpLine += `. Callback is ${formatPhone(call.caller_phone)}`;
-      phrases.push({ text: rpLine + '.' });
-    }
+  // ── Caller info ──
+  if (call.caller_name && call.caller_name !== 'Anonymous') {
+    let rpLine = `Your reporting party is ${call.caller_name}`;
+    if (call.caller_relationship) rpLine += `, the ${call.caller_relationship}`;
+    if (call.caller_phone) rpLine += `. You can reach them at ${formatPhone(call.caller_phone)}`;
+    phrases.push({ text: rpLine + '.' });
+  } else if (call.source === 'phone' || call.source === '911') {
+    phrases.push({ text: 'Caller declined to give a name.' });
+  }
 
-    if (call.num_subjects || call.num_victims) {
-      const ppl: string[] = [];
-      if (call.num_subjects) ppl.push(`${call.num_subjects} subject${call.num_subjects > 1 ? 's' : ''}`);
-      if (call.num_victims) ppl.push(`${call.num_victims} victim${call.num_victims > 1 ? 's' : ''}`);
-      phrases.push({ text: `${ppl.join(' and ')} on scene.` });
-    }
+  // ── People on scene ──
+  if (call.num_subjects || call.num_victims) {
+    const ppl: string[] = [];
+    if (call.num_subjects) ppl.push(`${call.num_subjects} subject${call.num_subjects > 1 ? 's' : ''}`);
+    if (call.num_victims) ppl.push(`${call.num_victims} victim${call.num_victims > 1 ? 's' : ''}`);
+    phrases.push({ text: `We're looking at ${ppl.join(' and ')} on scene.` });
+  }
 
-    const suspDesc = call.suspect_description || call.subject_description;
-    if (suspDesc) {
-      let suspLine = `Suspect's described as ${suspDesc}`;
-      if (call.direction_of_travel) suspLine += `, last seen heading ${call.direction_of_travel}`;
-      phrases.push({ text: suspLine + '.' });
-    }
+  // ── Suspect description (all priorities) ──
+  const suspDesc = call.suspect_description || call.subject_description;
+  if (suspDesc) {
+    let suspLine = `Your suspect's described as ${suspDesc}`;
+    if (call.direction_of_travel) suspLine += `, last seen heading ${call.direction_of_travel}`;
+    phrases.push({ text: suspLine + '.' });
+  }
 
-    if (call.vehicle_description) {
-      let vLine = `There's a ${call.vehicle_description}`;
-      if (call.vehicle_plate) vLine += `, plate ${spellOutPlate(call.vehicle_plate)}`;
-      phrases.push({ text: vLine + '.' });
-    }
+  // ── Vehicle (all priorities) ──
+  if (call.vehicle_description) {
+    let vLine = `There's a ${call.vehicle_description}`;
+    if (call.vehicle_plate) vLine += `, plate ${spellOutPlate(call.vehicle_plate)}`;
+    if (call.direction_of_travel && !suspDesc) vLine += `, last seen heading ${call.direction_of_travel}`;
+    phrases.push({ text: vLine + '.' });
+  }
 
-    if (call.juvenile_involved) {
-      phrases.push({ text: 'Be advised, juvenile involved.' });
-    }
+  // ── Additional context flags ──
+  if (call.juvenile_involved) {
+    phrases.push({ text: 'Be advised, there\'s a juvenile involved.' });
+  }
+  if (call.alcohol_involved) {
+    phrases.push({ text: 'Alcohol is a factor on this one.' });
+  }
+  if (call.drugs_involved) {
+    phrases.push({ text: 'Drugs are involved.' });
+  }
+
+  // ── Scene conditions (all priorities — officer safety) ──
+  if (call.lighting_conditions || call.weather_conditions) {
+    const conds: string[] = [];
+    if (call.lighting_conditions) conds.push(`it's ${call.lighting_conditions.toLowerCase()} out there`);
+    if (call.weather_conditions) conds.push(call.weather_conditions.toLowerCase());
+    phrases.push({ text: `Just so you know, ${conds.join(', with ')}.` });
+  }
+
+  // ── Call source context ──
+  if (call.source === '911' || call.source === 'emergency') {
+    phrases.push({ text: 'This came in through 9-1-1.' });
   }
 
   // ── Safety flags ──
   const safetyPhrases = buildCallPhrases(call);
-  for (const sp of safetyPhrases) {
-    phrases.push(sp);
+  if (safetyPhrases.length > 0) {
+    phrases.push({ text: 'Safety information follows.' });
+    for (const sp of safetyPhrases) {
+      phrases.push(sp);
+    }
   }
 
   enqueuePhrases(phrases, call.priority);
