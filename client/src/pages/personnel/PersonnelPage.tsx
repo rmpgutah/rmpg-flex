@@ -41,6 +41,7 @@ import type { EquipmentFormData } from './modals/EquipmentFormModal';
 import BodyCameraFormModal from './modals/BodyCameraFormModal';
 import type { BodyCameraFormData } from './modals/BodyCameraFormModal';
 import VideoUploadModal from '../../components/VideoUploadModal';
+import VideoEditModal from '../../components/VideoEditModal';
 import VideoPlayer from '../../components/VideoPlayer';
 import DeploymentFormModal from './modals/DeploymentFormModal';
 import type { DeploymentFormData } from './modals/DeploymentFormModal';
@@ -106,6 +107,7 @@ export default function PersonnelPage() {
   const [bodyCameraEditData, setBodyCameraEditData] = useState<(Partial<BodyCameraFormData> & { id?: number }) | undefined>(undefined);
   const [bodyCameraModalMode, setBodyCameraModalMode] = useState<'create' | 'edit'>('create');
   const [playingVideo, setPlayingVideo] = useState<BodyCamVideo | null>(null);
+  const [editingVideo, setEditingVideo] = useState<BodyCamVideo | null>(null);
 
   // All properties from the database (for deployment/schedule dropdowns)
   const [allProperties, setAllProperties] = useState<{ id: string; name: string }[]>([]);
@@ -549,6 +551,24 @@ export default function PersonnelPage() {
     }
   };
 
+  const handleVideoEdit = async (videoId: number, data: Record<string, any>) => {
+    setIsSubmitting(true);
+    try {
+      await apiFetch(`/personnel/bodycam-videos/${videoId}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      });
+      await refreshBodyCameras();
+      setEditingVideo(null);
+      setModal('none');
+      addToast('Video metadata updated', 'success');
+    } catch {
+      addToast('Failed to update video', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleDeploymentSubmit = async (data: DeploymentFormData) => {
     setIsSubmitting(true);
     try {
@@ -760,7 +780,7 @@ export default function PersonnelPage() {
     try {
       await apiFetch(`/personnel/time/${data.id}`, {
         method: 'PUT',
-        body: JSON.stringify({ clock_in: data.clock_in, clock_out: data.clock_out || null }),
+        body: JSON.stringify({ clock_in: data.clock_in, clock_out: data.clock_out || null, reason: data.reason, notes: data.notes || undefined }),
       });
       setModal('none');
       setEditingTimeEntry(null);
@@ -909,6 +929,7 @@ export default function PersonnelPage() {
       onDeleteBodyCamera={handleBodyCameraDelete}
       onUploadVideo={() => setModal('upload_video')}
       onDeleteVideo={handleVideoDelete}
+      onEditVideo={(vid) => { setEditingVideo(vid); setModal('edit_video'); }}
       onPlayVideo={setPlayingVideo}
       onAddDeployment={id => openAddDeployment(id)}
       onEditOfficer={openEditOfficer}
@@ -1185,6 +1206,14 @@ export default function PersonnelPage() {
           }}
         />
       )}
+
+      <VideoEditModal
+        isOpen={modal === 'edit_video'}
+        onClose={() => { setModal('none'); setEditingVideo(null); }}
+        onSave={handleVideoEdit}
+        video={editingVideo}
+        isSubmitting={isSubmitting}
+      />
 
       <VideoPlayer
         isOpen={!!playingVideo}
