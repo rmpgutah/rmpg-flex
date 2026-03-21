@@ -41,6 +41,7 @@ import {
   ClipboardList,
   Calendar,
   ShieldBan,
+  UserCog,
 } from 'lucide-react';
 import RmpgLogo from '../RmpgLogo';
 import { toDisplayLabel } from '../../utils/formatters';
@@ -120,7 +121,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Personnel',
     items: [
       { path: '/personnel', icon: Users, label: 'Personnel' },
-      { path: '/hr', icon: ClipboardCheck, label: 'HR Console' },
+      { path: '/hr', icon: UserCog, label: 'HR Console' },
       { path: '/fleet', icon: Car, label: 'Fleet' },
     ],
   },
@@ -140,6 +141,8 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/shift-plans', icon: Calendar, label: 'Shift Plans' },
       { path: '/crime-analysis', icon: TrendingUp, label: 'Crime Analysis' },
       { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
+      { path: '/forensic-lab', icon: Shield, label: 'Forensic Lab' },
+      { path: '/training', icon: ClipboardCheck, label: 'Training' },
     ],
   },
   {

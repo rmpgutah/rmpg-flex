@@ -7,11 +7,20 @@
 // - OAuth2 callback (no JWT — CSRF state validated)
 
 import { Router, Request, Response } from 'express';
-import crypto from 'crypto';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
-import { escapeLike, validateParamId, validateNumericParams } from '../middleware/sanitize';
+import { escapeLike, validateParamId } from '../middleware/sanitize';
+import type { NextFunction } from 'express';
+
+/** Validate Graph API string IDs (alphanumeric, hyphens, underscores, equals, plus). Blocks path traversal. */
+function validateGraphId(req: Request, res: Response, next: NextFunction) {
+  const id = req.params.id || req.params.aid;
+  if (!id || !/^[A-Za-z0-9_=+\-]{10,250}$/.test(id)) {
+    return res.status(400).json({ error: 'Invalid message ID' });
+  }
+  next();
+}
 import { localNow } from '../utils/timeUtils';
 import config from '../config';
 import {
@@ -36,31 +45,6 @@ import { sendEmail } from '../utils/emailSender';
 import { syncNow, restartEmailPoller } from '../utils/emailPoller';
 
 const router = Router();
-
-/** Validate email address — blocks header injection (CRLF) and malformed addresses. */
-const EMAIL_RE = /^[^\s@<>(){}\[\]\\,;:"\r\n]+@[^\s@<>(){}\[\]\\,;:"\r\n]+\.[^\s@<>(){}\[\]\\,;:"\r\n]+$/;
-function validateEmailAddress(addr: string): boolean {
-  if (!addr || typeof addr !== 'string') return false;
-  const trimmed = addr.trim();
-  // Block any control characters (CRLF injection prevention)
-  if (/[\x00-\x1f\x7f]/.test(trimmed)) return false;
-  if (trimmed.length > 254) return false;
-  return EMAIL_RE.test(trimmed);
-}
-
-function validateEmailList(emails: string[]): string | null {
-  for (const e of emails) {
-    if (!validateEmailAddress(e)) return `Invalid email address: ${e.slice(0, 50)}`;
-  }
-  return null;
-}
-
-/** Validate Microsoft Graph folder ID — prevents path traversal in API URLs. */
-function validateFolderId(id: string): boolean {
-  if (!id || typeof id !== 'string') return false;
-  // Graph folder IDs are alphanumeric with = and - characters
-  return /^[a-zA-Z0-9_=+-]+$/.test(id) && id.length <= 200;
-}
 
 /** Convert plain text to a proper HTML email body.
  *  Escapes entities, converts basic markdown-like syntax,
@@ -120,11 +104,9 @@ router.get('/oauth/callback', async (req: Request, res: Response) => {
       return;
     }
 
-    // Validate CSRF state (timing-safe to prevent side-channel leakage)
+    // Validate CSRF state
     const storedState = getConfigValue(CONFIG_KEYS.oauthState);
-    const stateStr = String(state);
-    if (!storedState || storedState.length !== stateStr.length ||
-        !crypto.timingSafeEqual(Buffer.from(storedState), Buffer.from(stateStr))) {
+    if (!storedState || storedState !== String(state)) {
       res.redirect('/admin?tab=email&status=error&message=Invalid+state+token');
       return;
     }
@@ -132,8 +114,8 @@ router.get('/oauth/callback', async (req: Request, res: Response) => {
     // Clear state to prevent replay
     deleteConfigValue(CONFIG_KEYS.oauthState);
 
-    // Exchange code for tokens — use config domain to prevent Host header injection
-    const host = config.isProduction ? config.primaryDomain : (req.get('host') || 'localhost:3001');
+    // Exchange code for tokens — use hardcoded production domain to prevent Host header injection
+    const host = config.isProduction ? 'rmpgutah.us' : (req.get('host') || 'localhost:3001');
     const redirectUri = `https://${host}/api/email/oauth/callback`;
     await exchangeCodeForTokens(String(code), redirectUri);
 
@@ -187,20 +169,12 @@ router.put('/signature', (req: Request, res: Response) => {
     const { signature } = req.body;
     const db = getDb();
     const key = `email_signature_${req.user!.userId}`;
-
-    // Validate signature size (max 10KB — includes HTML formatting)
-    if (signature && typeof signature === 'string' && signature.length > 10240) {
-      res.status(400).json({ error: 'Email signature exceeds 10KB size limit' });
-      return;
-    }
-
     // Delete existing signature first, then insert if non-empty
     db.prepare("DELETE FROM system_config WHERE config_key = ?").run(key);
     if (signature && signature.trim()) {
       db.prepare("INSERT INTO system_config (config_key, config_value, category) VALUES (?, ?, 'email')")
         .run(key, signature.trim());
     }
-    auditLog(req, 'UPDATE', 'system_config', req.user!.userId, 'Email signature updated');
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
@@ -258,7 +232,7 @@ router.get('/folders', async (req: Request, res: Response) => {
 });
 
 // GET /api/email/folders/:id/children — List child folders
-router.get('/folders/:id/children', async (req: Request, res: Response) => {
+router.get('/folders/:id/children', validateGraphId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.json([]); return; }
     const client = await getGraphClient();
@@ -274,18 +248,12 @@ router.get('/folders/:id/children', async (req: Request, res: Response) => {
   }
 });
 
-// POST /api/email/folders — Create a new folder (admin/manager only)
-router.post('/folders', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+// POST /api/email/folders — Create a new folder
+router.post('/folders', async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
     const { displayName, parentFolderId } = req.body;
     if (!displayName?.trim()) { res.status(400).json({ error: 'Folder name required' }); return; }
-
-    // Validate folder ID to prevent path traversal in Graph API URL
-    if (parentFolderId && !validateFolderId(parentFolderId)) {
-      res.status(400).json({ error: 'Invalid folder ID format' });
-      return;
-    }
 
     const client = await getGraphClient();
     const apiPath = parentFolderId
@@ -301,11 +269,10 @@ router.post('/folders', requireRole('admin', 'manager'), async (req: Request, re
   }
 });
 
-// PATCH /api/email/folders/:id — Rename a folder (admin/manager only)
-router.patch('/folders/:id', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+// PATCH /api/email/folders/:id — Rename a folder
+router.patch('/folders/:id', validateGraphId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
-    if (!validateFolderId(req.params.id)) { res.status(400).json({ error: 'Invalid folder ID format' }); return; }
     const { displayName } = req.body;
     if (!displayName?.trim()) { res.status(400).json({ error: 'Folder name required' }); return; }
 
@@ -319,11 +286,10 @@ router.patch('/folders/:id', requireRole('admin', 'manager'), async (req: Reques
   }
 });
 
-// DELETE /api/email/folders/:id — Delete a folder (admin/manager only)
-router.delete('/folders/:id', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+// DELETE /api/email/folders/:id — Delete a folder
+router.delete('/folders/:id', validateGraphId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
-    if (!validateFolderId(req.params.id)) { res.status(400).json({ error: 'Invalid folder ID format' }); return; }
     const client = await getGraphClient();
     await client.api(`/me/mailFolders/${req.params.id}`).delete();
     auditLog(req, 'DELETE', 'email_folder', 0, JSON.stringify({ folderId: req.params.id }));
@@ -344,7 +310,7 @@ router.get('/messages', async (req: Request, res: Response) => {
       search,
     } = req.query;
 
-    const pageNum = Math.min(1000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const perPage = Math.min(50, Math.max(1, parseInt(per_page as string, 10) || 25));
 
     // Try live from Graph API
@@ -352,7 +318,7 @@ router.get('/messages', async (req: Request, res: Response) => {
       try {
         const client = await getGraphClient();
         // Sanitize folder ID to prevent path traversal in Graph API URL
-        const safeFolder = String(folder).replace(/[^a-zA-Z0-9_-]/g, '') || 'inbox';
+        const safeFolder = String(folder).replace(/[^a-zA-Z0-9_-]/g, '');
         let apiPath = safeFolder === 'inbox'
           ? '/me/mailFolders/inbox/messages'
           : `/me/mailFolders/${safeFolder}/messages`;
@@ -365,17 +331,9 @@ router.get('/messages', async (req: Request, res: Response) => {
           .skip((pageNum - 1) * perPage);
 
         if (search) {
-          // Sanitize search term — escape KQL special characters to prevent injection
-          // KQL operators: AND, OR, NOT, parentheses, colons, brackets, quotes
-          const safeSearch = String(search)
-            .replace(/["\\]/g, ' ')         // Remove quotes and backslashes
-            .replace(/[()[\]{}:!~?&|]/g, ' ') // Remove KQL operator chars
-            .replace(/\s+/g, ' ')            // Collapse whitespace
-            .trim()
-            .slice(0, 200);
-          if (safeSearch) {
-            query = query.search(`"${safeSearch}"`);
-          }
+          // Sanitize search term — escape double quotes to prevent KQL injection
+          const safeSearch = String(search).replace(/"/g, '\\"').slice(0, 200);
+          query = query.search(`"${safeSearch}"`);
         }
 
         const result = await query.get();
@@ -542,7 +500,7 @@ router.post('/messages/mark-all-read', async (req: Request, res: Response) => {
 });
 
 // GET /api/email/messages/:id — Full message with body
-router.get('/messages/:id', async (req: Request, res: Response) => {
+router.get('/messages/:id', validateGraphId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) {
       res.status(503).json({ error: 'Email not authorized' });
@@ -593,7 +551,7 @@ router.get('/messages/:id', async (req: Request, res: Response) => {
 });
 
 // GET /api/email/messages/:id/attachments — List attachments
-router.get('/messages/:id/attachments', async (req: Request, res: Response) => {
+router.get('/messages/:id/attachments', validateGraphId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
 
@@ -618,7 +576,7 @@ router.get('/messages/:id/attachments', async (req: Request, res: Response) => {
 });
 
 // GET /api/email/messages/:id/attachments/:aid — Download attachment
-router.get('/messages/:id/attachments/:aid', async (req: Request, res: Response) => {
+router.get('/messages/:id/attachments/:aid', validateGraphId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
 
@@ -652,48 +610,14 @@ router.post('/send', async (req: Request, res: Response) => {
     const ccList = cc ? (Array.isArray(cc) ? cc : [cc]) : undefined;
     const bccList = bcc ? (Array.isArray(bcc) ? bcc : [bcc]) : undefined;
 
-    // Validate all email addresses to prevent header injection (CRLF attacks)
-    const toErr = validateEmailList(toList);
-    if (toErr) { res.status(400).json({ error: toErr }); return; }
-    if (ccList) { const e = validateEmailList(ccList); if (e) { res.status(400).json({ error: e }); return; } }
-    if (bccList) { const e = validateEmailList(bccList); if (e) { res.status(400).json({ error: e }); return; } }
-
     const signature = getUserSignature(req.user!.userId);
 
-    // Validate attachments before processing
-    const MAX_ATTACHMENTS = 10;
-    const MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024; // 25MB per attachment
-    const MAX_TOTAL_SIZE = 50 * 1024 * 1024; // 50MB total
-    const rawAttachments = attachments || [];
-    if (rawAttachments.length > MAX_ATTACHMENTS) {
-      res.status(400).json({ error: `Maximum ${MAX_ATTACHMENTS} attachments allowed` });
-      return;
-    }
-
-    // Build attachment array from client-sent base64 data with size validation
-    let totalSize = 0;
-    const emailAttachments: { filename: string; content: Buffer; contentType: string }[] = [];
-    for (const att of rawAttachments as { name: string; contentType: string; contentBytes: string }[]) {
-      if (!att.contentBytes || typeof att.contentBytes !== 'string') continue;
-      // Estimate decoded size from base64 (base64 is ~4/3 the binary size)
-      const estimatedSize = Math.ceil(att.contentBytes.length * 3 / 4);
-      if (estimatedSize > MAX_ATTACHMENT_SIZE) {
-        res.status(400).json({ error: `Attachment "${att.name}" exceeds 25MB size limit` });
-        return;
-      }
-      totalSize += estimatedSize;
-      if (totalSize > MAX_TOTAL_SIZE) {
-        res.status(400).json({ error: 'Total attachment size exceeds 50MB limit' });
-        return;
-      }
-      // Sanitize filename — strip path separators to prevent path traversal
-      const safeName = (att.name || 'attachment').replace(/[/\\]/g, '_').slice(0, 255);
-      emailAttachments.push({
-        filename: safeName,
-        content: Buffer.from(att.contentBytes, 'base64'),
-        contentType: att.contentType || 'application/octet-stream',
-      });
-    }
+    // Build attachment array from client-sent base64 data
+    const emailAttachments = (attachments || []).map((att: { name: string; contentType: string; contentBytes: string }) => ({
+      filename: att.name,
+      content: Buffer.from(att.contentBytes, 'base64'),
+      contentType: att.contentType || 'application/octet-stream',
+    }));
 
     const sent = await sendEmail({
       to: toList,
@@ -717,7 +641,7 @@ router.post('/send', async (req: Request, res: Response) => {
 });
 
 // POST /api/email/messages/:id/reply — Reply to message
-router.post('/messages/:id/reply', async (req: Request, res: Response) => {
+router.post('/messages/:id/reply', validateGraphId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
 
@@ -738,7 +662,7 @@ router.post('/messages/:id/reply', async (req: Request, res: Response) => {
 });
 
 // POST /api/email/messages/:id/reply-all — Reply all
-router.post('/messages/:id/reply-all', async (req: Request, res: Response) => {
+router.post('/messages/:id/reply-all', validateGraphId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
 
@@ -759,7 +683,7 @@ router.post('/messages/:id/reply-all', async (req: Request, res: Response) => {
 });
 
 // POST /api/email/messages/:id/forward — Forward message
-router.post('/messages/:id/forward', async (req: Request, res: Response) => {
+router.post('/messages/:id/forward', validateGraphId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
 
@@ -767,9 +691,6 @@ router.post('/messages/:id/forward', async (req: Request, res: Response) => {
     if (!to) { res.status(400).json({ error: 'Recipient required' }); return; }
 
     const toList = Array.isArray(to) ? to : [to];
-    const fwdErr = validateEmailList(toList);
-    if (fwdErr) { res.status(400).json({ error: fwdErr }); return; }
-
     const client = await getGraphClient();
 
     const signature = getUserSignature(req.user!.userId);
@@ -789,7 +710,7 @@ router.post('/messages/:id/forward', async (req: Request, res: Response) => {
 });
 
 // PATCH /api/email/messages/:id — Update message (read/unread, flag)
-router.patch('/messages/:id', async (req: Request, res: Response) => {
+router.patch('/messages/:id', validateGraphId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
 
@@ -813,7 +734,6 @@ router.patch('/messages/:id', async (req: Request, res: Response) => {
       db.prepare('UPDATE email_cache SET is_flagged = ? WHERE graph_id = ?').run(isFlagged ? 1 : 0, req.params.id);
     }
 
-    auditLog(req, 'UPDATE', 'email', 0, JSON.stringify({ messageId: req.params.id, isRead, isFlagged }));
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
@@ -822,7 +742,7 @@ router.patch('/messages/:id', async (req: Request, res: Response) => {
 });
 
 // DELETE /api/email/messages/:id — Move to trash
-router.delete('/messages/:id', async (req: Request, res: Response) => {
+router.delete('/messages/:id', validateGraphId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
 
@@ -846,13 +766,12 @@ router.delete('/messages/:id', async (req: Request, res: Response) => {
 });
 
 // POST /api/email/messages/:id/move — Move to folder
-router.post('/messages/:id/move', async (req: Request, res: Response) => {
+router.post('/messages/:id/move', validateGraphId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
 
     const { folderId } = req.body;
     if (!folderId) { res.status(400).json({ error: 'Folder ID required' }); return; }
-    if (!validateFolderId(folderId)) { res.status(400).json({ error: 'Invalid folder ID format' }); return; }
 
     const client = await getGraphClient();
     await client.api(`/me/messages/${req.params.id}/move`).post({
@@ -863,7 +782,6 @@ router.post('/messages/:id/move', async (req: Request, res: Response) => {
     const db = getDb();
     db.prepare('UPDATE email_cache SET folder_id = ? WHERE graph_id = ?').run(folderId, req.params.id);
 
-    auditLog(req, 'MOVE_EMAIL', 'email', 0, JSON.stringify({ messageId: req.params.id, folderId }));
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
@@ -998,7 +916,7 @@ router.get('/contacts/search', (req: Request, res: Response) => {
     // Search persons (external contacts)
     const persons = db.prepare(`
       SELECT first_name, last_name, email FROM persons
-      WHERE ((first_name || ' ' || last_name) LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\')
+      WHERE (first_name || ' ' || last_name LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\')
         AND email IS NOT NULL AND email != ''
         AND archived_at IS NULL
       ORDER BY last_name, first_name LIMIT 10
@@ -1061,7 +979,7 @@ router.get('/links/:emailGraphId', (req: Request, res: Response) => {
     const db = getDb();
     const links = db.prepare(`
       SELECT el.*,
-        i.incident_number as incident_case_number,
+        i.case_number as incident_case_number,
         c.call_number as call_number,
         p.first_name || ' ' || p.last_name as person_name,
         u.full_name as linked_by_name
@@ -1081,7 +999,7 @@ router.get('/links/:emailGraphId', (req: Request, res: Response) => {
 });
 
 // GET /api/email/links/incident/:incidentId — Get emails linked to an incident
-router.get('/links/incident/:incidentId', validateNumericParams('incidentId'), (req: Request, res: Response) => {
+router.get('/links/incident/:incidentId', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const links = db.prepare(`
@@ -1105,7 +1023,6 @@ router.delete('/link/:id', validateParamId, requireRole('admin', 'manager', 'sup
   try {
     const db = getDb();
     db.prepare('DELETE FROM email_incident_links WHERE id = ?').run(req.params.id);
-    auditLog(req, 'DELETE', 'email_link', parseInt(String(req.params.id), 10), 'Email-incident link removed');
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
@@ -1180,7 +1097,6 @@ router.delete('/scheduled/:id', validateParamId, (req: Request, res: Response) =
     if (row.status !== 'pending') { res.status(400).json({ error: 'Can only cancel pending emails' }); return; }
 
     db.prepare("UPDATE scheduled_emails SET status = 'cancelled' WHERE id = ?").run(req.params.id);
-    auditLog(req, 'CANCEL_EMAIL', 'scheduled_email', parseInt(String(req.params.id), 10), `Cancelled scheduled email: ${row.subject || 'untitled'}`);
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
@@ -1250,9 +1166,8 @@ router.get('/admin/oauth/authorize', requireRole('admin'), (req: Request, res: R
     // Store who initiated the OAuth flow
     setConfigValue(CONFIG_KEYS.oauthInitiator, String(req.user!.userId));
 
-    // Use hardcoded domain in production to prevent Host header injection
-    const host = config.isProduction ? config.primaryDomain : (req.get('host') || 'localhost:3001');
-    const redirectUri = `https://${host}/api/email/oauth/callback`;
+    // Always use https — req.protocol may report http incorrectly with https.createServer
+    const redirectUri = `https://${req.get('host')}/api/email/oauth/callback`;
     const url = getAuthorizationUrl(redirectUri);
 
     auditLog(req, 'OAUTH_INITIATE', 'system_config', 0, 'ms_email_oauth_started');

@@ -3020,6 +3020,9 @@ function migrateSchema(): void {
     `);
   } catch { /* table already exists */ }
 
+  // Add metadata JSON column to forensic_cases (stores device info, custody log, imaging data)
+  try { db.exec(`ALTER TABLE forensic_cases ADD COLUMN metadata TEXT DEFAULT '{}'`); } catch { /* column already exists */ }
+
   try {
     db.exec(`
       CREATE TABLE IF NOT EXISTS forensic_exhibits (

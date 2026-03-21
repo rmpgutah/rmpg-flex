@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   DollarSign, Calendar, Plus, RefreshCw, Loader2, Users, Clock,
   ChevronDown, ChevronRight, Edit3, Trash2, Check, X, AlertTriangle,
-  Banknote, TrendingUp, FileText,
+  Banknote, TrendingUp, FileText, Download,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 
@@ -269,6 +269,56 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
     });
   };
 
+  // ─── CSV Export ──────────────────────────────────────────
+  const handleExportCSV = useCallback(() => {
+    if (!entries.length || !selectedPeriod) return;
+    const headers = ['Employee','Badge','Rate','Reg Hours','OT Hours','Holiday Hours','PTO Hours','Sick Hours','Base Pay','OT Pay','Holiday Pay','Gross Pay','Status'];
+    const rows = entries.map(e => [
+      e.officer_name,
+      e.badge_number || '',
+      e.hourly_rate ? e.hourly_rate.toFixed(2) : '',
+      e.regular_hours.toString(),
+      e.overtime_hours.toString(),
+      e.holiday_hours.toString(),
+      e.pto_hours.toString(),
+      e.sick_hours.toString(),
+      e.base_pay.toFixed(2),
+      e.overtime_pay.toFixed(2),
+      e.holiday_pay.toFixed(2),
+      e.gross_pay.toFixed(2),
+      e.status,
+    ]);
+    // Totals row
+    const totals = [
+      'TOTALS','','',
+      entries.reduce((s, e) => s + e.regular_hours, 0).toString(),
+      entries.reduce((s, e) => s + e.overtime_hours, 0).toString(),
+      entries.reduce((s, e) => s + e.holiday_hours, 0).toString(),
+      entries.reduce((s, e) => s + e.pto_hours, 0).toString(),
+      entries.reduce((s, e) => s + e.sick_hours, 0).toString(),
+      entries.reduce((s, e) => s + e.base_pay, 0).toFixed(2),
+      entries.reduce((s, e) => s + e.overtime_pay, 0).toFixed(2),
+      entries.reduce((s, e) => s + e.holiday_pay, 0).toFixed(2),
+      entries.reduce((s, e) => s + e.gross_pay, 0).toFixed(2),
+      '',
+    ];
+    rows.push(totals);
+
+    const escapeCsv = (val: string) => val.includes(',') || val.includes('"') ? `"${val.replace(/"/g, '""')}"` : val;
+    const csv = [headers.map(escapeCsv).join(','), ...rows.map(r => r.map(escapeCsv).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const periodName = (selectedPeriod.name || 'period').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `payroll-${periodName}-${dateStr}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [entries, selectedPeriod]);
+
   // ─── Sub-tabs ─────────────────────────────────────────────
 
   const SUB_TABS: { key: SubTab; label: string; icon: typeof DollarSign }[] = [
@@ -289,7 +339,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
       )}
 
       {/* Sub-tab bar */}
-      <div className="flex items-center gap-1 px-3 py-1.5 border-b border-[#1e3048] bg-[#0d1520]">
+      <div className="flex flex-wrap items-center gap-1 px-3 py-1.5 border-b border-[#1e3048] bg-[#0d1520]">
         {SUB_TABS.map(t => {
           const Icon = t.icon;
           return (
@@ -551,6 +601,14 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
               <option value="">Select pay period...</option>
               {periods.map(p => <option key={p.id} value={p.id}>{p.name} ({p.status})</option>)}
             </select>
+            {selectedPeriod && entries.length > 0 && (
+              <button
+                onClick={handleExportCSV}
+                className="flex items-center gap-1 px-2 py-1 text-[11px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/30 rounded transition-colors"
+              >
+                <Download size={12} /> Export CSV
+              </button>
+            )}
             <div className="flex-1" />
             {selectedPeriod && (
               <div className="flex items-center gap-3 text-[10px]">
