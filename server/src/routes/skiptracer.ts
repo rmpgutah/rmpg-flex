@@ -411,8 +411,8 @@ router.get('/person/:id', validateParamId, async (req: Request, res: Response) =
   }
 });
 
-// ── Search History ──────────────────────────────────────────
-router.get('/history', async (req: Request, res: Response) => {
+// ── Search History (admin/manager/supervisor — contains PII search audit trail) ──
+router.get('/history', requireRole('admin', 'manager', 'supervisor'), async (req: Request, res: Response) => {
   try {
     ensureTable();
     const db = getDb();
@@ -436,8 +436,8 @@ router.get('/history', async (req: Request, res: Response) => {
   }
 });
 
-// ── Search Stats ────────────────────────────────────────────
-router.get('/stats', async (_req: Request, res: Response) => {
+// ── Search Stats (admin/manager only — aggregate usage data) ────
+router.get('/stats', requireRole('admin', 'manager'), async (_req: Request, res: Response) => {
   try {
     ensureTable();
     const db = getDb();

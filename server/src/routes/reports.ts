@@ -429,9 +429,11 @@ router.get('/officer-activity', requireRole('admin', 'manager', 'supervisor'), (
       `).all(officer.id, ...params);
 
       // Total hours worked
+      // Use replace() with regex to swap column name safely (only replace exact matches)
+      const clockInFilter = dateFilter.replace(/\bcreated_at\b/g, 'clock_in');
       const hours = db.prepare(`
         SELECT SUM(total_hours) as total FROM time_entries
-        WHERE officer_id = ? AND status = 'completed' ${dateFilter.replaceAll('created_at', 'clock_in')}
+        WHERE officer_id = ? AND status = 'completed' ${clockInFilter}
       `).get(officer.id, ...params) as any;
 
       // Calls responded to (via unit assignment)

@@ -52,16 +52,20 @@ export async function sendViaSMTP(options: SmtpSendOptions): Promise<void> {
 
   const transporter = createTransporter();
 
-  const to = Array.isArray(options.to) ? options.to.join(', ') : options.to;
-  const cc = options.cc?.join(', ');
+  // Sanitize email addresses to prevent CRLF header injection
+  const sanitizeHeader = (val: string): string => val.replace(/[\r\n]/g, '');
+  const to = sanitizeHeader(Array.isArray(options.to) ? options.to.join(', ') : options.to);
+  const cc = options.cc ? sanitizeHeader(options.cc.join(', ')) : undefined;
+  const safeReplyTo = options.replyTo ? sanitizeHeader(options.replyTo) : undefined;
+  const safeSubject = options.subject ? sanitizeHeader(options.subject) : '';
 
   try {
     await transporter.sendMail({
       from: mailbox,
       to,
       cc,
-      replyTo: options.replyTo,
-      subject: options.subject,
+      replyTo: safeReplyTo,
+      subject: safeSubject,
       html: options.html,
       attachments: options.attachments?.map(a => ({
         filename: a.filename,

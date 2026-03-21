@@ -36,11 +36,19 @@ router.get('/config', requireRole('admin', 'manager'), (req: Request, res: Respo
       ORDER BY category, sort_order ASC
     `).all();
 
-    // Group by category
+    // Redact sensitive config values for non-admin roles
+    const SENSITIVE_KEY_PATTERN = /secret|password|token|key|smtp_pass|api_key|private/i;
+    const isAdmin = req.user!.role === 'admin';
+
+    // Group by category, redacting sensitive values for non-admins
     const grouped: Record<string, any[]> = {};
     for (const item of items as any[]) {
       if (!grouped[item.category]) grouped[item.category] = [];
-      grouped[item.category].push(item);
+      const safeItem = { ...item };
+      if (!isAdmin && SENSITIVE_KEY_PATTERN.test(item.config_key)) {
+        safeItem.config_value = item.config_value ? '••••••••' : null;
+      }
+      grouped[item.category].push(safeItem);
     }
 
     res.json(grouped);

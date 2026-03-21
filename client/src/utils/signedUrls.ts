@@ -133,9 +133,9 @@ export async function buildSignedUrl(
   if (params) {
     return `${basePath}?sig=${params.sig}&exp=${params.exp}&nonce=${params.nonce}`;
   }
-  // Fallback to legacy token (will be removed after migration)
-  const token = localStorage.getItem('rmpg_token');
-  return token ? `${basePath}?token=${encodeURIComponent(token)}` : basePath;
+  // No fallback — signed URLs are mandatory for secure resource access
+  console.warn('[signedUrls] Failed to generate signed URL for', basePath);
+  return basePath;
 }
 
 /**
@@ -146,8 +146,8 @@ export function buildSignedQuerySync(params: SignedParams | null): string {
   if (params) {
     return `sig=${params.sig}&exp=${params.exp}&nonce=${params.nonce}`;
   }
-  const token = localStorage.getItem('rmpg_token');
-  return token ? `token=${encodeURIComponent(token)}` : '';
+  // No fallback — signed params are mandatory
+  return '';
 }
 
 /** Clear the signed URL cache (call on logout). */

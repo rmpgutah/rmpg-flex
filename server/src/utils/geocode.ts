@@ -58,8 +58,9 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
       return { latitude: loc.lat, longitude: loc.lng };
     }
     return null;
-  } catch (err) {
-    console.error('[geocode] Error geocoding address:', err);
+  } catch (err: any) {
+    // Log error message only — avoid logging full URL which contains API key
+    console.error('[geocode] Error geocoding address:', err?.message || 'Unknown error');
     return null;
   }
 }

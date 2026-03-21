@@ -330,7 +330,7 @@ router.get('/dossiers', (req: Request, res: Response) => {
 // POST /dossiers — Save a dossier
 // ============================================================
 
-router.post('/dossiers', (req: Request, res: Response) => {
+router.post('/dossiers', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const {
@@ -415,7 +415,7 @@ router.get('/dossiers/:id', (req: Request, res: Response) => {
 // PUT /dossiers/:id — Update a dossier (notes, tags, links)
 // ============================================================
 
-router.put('/dossiers/:id', (req: Request, res: Response) => {
+router.put('/dossiers/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -486,7 +486,7 @@ router.delete('/dossiers/:id', requireRole('admin'), (req: Request, res: Respons
 // GET /history — Search history with pagination
 // ============================================================
 
-router.get('/history', (req: Request, res: Response) => {
+router.get('/history', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
