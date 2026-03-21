@@ -6,7 +6,7 @@
 // Respects the user's sound toggle (localStorage 'rmpg-sound').
 // ============================================================
 
-type ToneType = 'caution' | 'warning' | 'info' | 'error' | 'alarm';
+type ToneType = 'caution' | 'warning' | 'info' | 'error' | 'alarm' | 'pursuit' | 'all_units' | 'code3' | 'officer_down';
 
 let audioCtx: AudioContext | null = null;
 
@@ -93,6 +93,62 @@ const PROFILES: Record<ToneType, ToneProfile> = {
       { freq: 600, start: 0.50, dur: 0.12 },
       { freq: 800, start: 0.70, dur: 0.12 },
       { freq: 600, start: 0.85, dur: 0.12 },
+    ],
+  },
+
+  // ── Pursuit: Fast alternating hi-lo siren (vehicle/foot pursuit)
+  pursuit: {
+    type: 'sawtooth',
+    gain: 0.3,
+    steps: [
+      { freq: 900, start: 0,    dur: 0.1 },
+      { freq: 700, start: 0.12, dur: 0.1 },
+      { freq: 900, start: 0.24, dur: 0.1 },
+      { freq: 700, start: 0.36, dur: 0.1 },
+      { freq: 900, start: 0.48, dur: 0.1 },
+      { freq: 700, start: 0.60, dur: 0.1 },
+      { freq: 900, start: 0.72, dur: 0.1 },
+      { freq: 700, start: 0.84, dur: 0.1 },
+    ],
+  },
+
+  // ── All Units: Three ascending attention-grabbing pulses
+  all_units: {
+    type: 'sine',
+    gain: 0.35,
+    steps: [
+      { freq: 523, start: 0,    dur: 0.15 },  // C5
+      { freq: 659, start: 0.2,  dur: 0.15 },  // E5
+      { freq: 784, start: 0.4,  dur: 0.25 },  // G5 (held longer)
+    ],
+  },
+
+  // ── Code 3: Urgent warbling tone (emergency response, lights & sirens)
+  code3: {
+    type: 'sine',
+    gain: 0.3,
+    steps: [
+      { freq: 760, start: 0,    dur: 0.08 },
+      { freq: 960, start: 0.1,  dur: 0.08 },
+      { freq: 760, start: 0.2,  dur: 0.08 },
+      { freq: 960, start: 0.3,  dur: 0.08 },
+      { freq: 760, start: 0.4,  dur: 0.08 },
+      { freq: 960, start: 0.5,  dur: 0.08 },
+      { freq: 760, start: 0.6,  dur: 0.08 },
+      { freq: 960, start: 0.7,  dur: 0.15 },
+    ],
+  },
+
+  // ── Officer Down: Long wailing tone (max urgency)
+  officer_down: {
+    type: 'sawtooth',
+    gain: 0.4,
+    steps: [
+      { freq: 600,  start: 0,    dur: 0.3 },
+      { freq: 1000, start: 0.35, dur: 0.3 },
+      { freq: 600,  start: 0.7,  dur: 0.3 },
+      { freq: 1000, start: 1.05, dur: 0.3 },
+      { freq: 600,  start: 1.4,  dur: 0.3 },
     ],
   },
 };

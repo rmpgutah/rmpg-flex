@@ -49,6 +49,9 @@ interface CallFlags {
   drugs_involved?: boolean;
   alcohol_involved?: boolean;
   injuries_reported?: boolean;
+  zone?: string;
+  beat?: string;
+  cross_street?: string;
 }
 
 interface VoicePhrase {
@@ -57,8 +60,10 @@ interface VoicePhrase {
 
 // ─── Constants ──────────────────────────────────────────────
 
-/** localStorage key for voice alerts toggle (separate from rmpg-sound) */
+/** localStorage keys */
 const VOICE_ALERTS_KEY = 'rmpg-voice-alerts';
+const VOICE_SPEED_KEY = 'rmpg-voice-speed';     // 'slow' | 'normal' | 'fast'
+const VOICE_VOLUME_KEY = 'rmpg-voice-volume';    // 0.0 - 1.0
 
 /** Inter-phrase pause in milliseconds — tight for rapid-fire dispatch cadence */
 const PHRASE_GAP_MS = 200;
@@ -69,23 +74,48 @@ const TONE_GAP_MS = 250;
 /** Deduplication cache TTL (60 seconds) */
 const DEDUP_TTL_MS = 60_000;
 
-/** SpeechSynthesisUtterance configuration — tuned for dispatch radio brevity */
-const SPEECH_RATE = 1.05;   // slightly faster — dispatch cadence, not conversational
-const SPEECH_PITCH = 1.02;  // very slight pitch lift for authority/clarity
-const SPEECH_VOLUME = 0.95; // loud and clear
+/** Priority urgency levels for preemption (lower = more urgent) */
+const PRIORITY_URGENCY: Record<string, number> = {
+  PANIC: 0, P1: 1, P2: 2, P3: 3, P4: 4, INFO: 5,
+};
+
+/** User-configurable speed presets */
+const SPEED_PRESETS: Record<string, number> = {
+  slow: 0.85,
+  normal: 1.05,
+  fast: 1.2,
+};
+
+/** Base speech configuration */
+function getSpeechRate(): number {
+  try {
+    const pref = localStorage.getItem(VOICE_SPEED_KEY) || 'normal';
+    return SPEED_PRESETS[pref] ?? SPEED_PRESETS.normal;
+  } catch { return SPEED_PRESETS.normal; }
+}
+
+function getSpeechVolume(): number {
+  try {
+    const v = parseFloat(localStorage.getItem(VOICE_VOLUME_KEY) || '0.95');
+    return isNaN(v) ? 0.95 : Math.max(0, Math.min(1, v));
+  } catch { return 0.95; }
+}
+
+const SPEECH_PITCH = 1.02;
 
 /** Priority-based speech parameters — adjusts rate/pitch/volume for urgency level */
 interface PrioritySpeechParams {
-  rate: number;
-  pitch: number;
-  volume: number;
+  rateMultiplier: number;  // multiplied against user's base rate
+  pitchOffset: number;     // added to base pitch
+  volumeMultiplier: number;
 }
 
 const PRIORITY_PARAMS: Record<string, PrioritySpeechParams> = {
-  P1: { rate: 1.1, pitch: 1.15, volume: 1.0 },
-  P2: { rate: 1.0, pitch: 1.05, volume: 0.95 },
-  P3: { rate: 0.95, pitch: 1.0, volume: 0.9 },
-  P4: { rate: 0.9, pitch: 0.98, volume: 0.85 },
+  PANIC: { rateMultiplier: 1.15, pitchOffset: 0.15, volumeMultiplier: 1.0 },
+  P1:    { rateMultiplier: 1.1,  pitchOffset: 0.12, volumeMultiplier: 1.0 },
+  P2:    { rateMultiplier: 1.0,  pitchOffset: 0.05, volumeMultiplier: 0.95 },
+  P3:    { rateMultiplier: 0.95, pitchOffset: 0,    volumeMultiplier: 0.9 },
+  P4:    { rateMultiplier: 0.9,  pitchOffset: -0.02, volumeMultiplier: 0.85 },
 };
 
 // ─── Voice Selection ────────────────────────────────────────
@@ -183,6 +213,24 @@ export function getVoiceAlertsEnabled(): boolean {
   try { return localStorage.getItem(VOICE_ALERTS_KEY) !== 'false'; } catch { return true; }
 }
 
+/** Set voice speed preference: 'slow', 'normal', or 'fast' */
+export function setVoiceSpeed(speed: 'slow' | 'normal' | 'fast'): void {
+  try { localStorage.setItem(VOICE_SPEED_KEY, speed); } catch { /* ignore */ }
+}
+
+export function getVoiceSpeed(): string {
+  try { return localStorage.getItem(VOICE_SPEED_KEY) || 'normal'; } catch { return 'normal'; }
+}
+
+/** Set voice volume: 0.0 to 1.0 */
+export function setVoiceVolume(volume: number): void {
+  try { localStorage.setItem(VOICE_VOLUME_KEY, String(Math.max(0, Math.min(1, volume)))); } catch { /* ignore */ }
+}
+
+export function getVoiceVolume(): number {
+  return getSpeechVolume();
+}
+
 // ─── Deduplication Cache ────────────────────────────────────
 
 const announcedCache = new Map<string, number>();
@@ -208,12 +256,19 @@ function markAnnounced(key: string): void {
   }
 }
 
-// ─── Speech Queue ───────────────────────────────────────────
+// ─── Speech Queue (with priority preemption) ────────────────
 
-/** Active priority for the current phrase batch — affects speech rate/pitch/volume */
+interface QueuedBatch {
+  phrases: VoicePhrase[];
+  priority: string;
+}
+
 let activePriority: string | undefined;
-let phraseQueue: VoicePhrase[] = [];
+let phraseQueue: QueuedBatch[] = [];
 let isSpeaking = false;
+
+/** Last announced batch — for repeat functionality */
+let lastAnnouncement: { phrases: VoicePhrase[]; priority: string; timestamp: number } | null = null;
 
 function speakPhrase(phrase: VoicePhrase): Promise<void> {
   return new Promise((resolve) => {
@@ -223,15 +278,17 @@ function speakPhrase(phrase: VoicePhrase): Promise<void> {
     const voice = selectFemaleVoice();
     if (voice) utterance.voice = voice;
 
-    // Apply priority-based speech parameters if set
+    // Apply priority-based speech parameters combined with user preferences
+    const baseRate = getSpeechRate();
+    const baseVolume = getSpeechVolume();
     const params = activePriority ? PRIORITY_PARAMS[activePriority] : undefined;
-    utterance.rate = params?.rate ?? SPEECH_RATE;
-    utterance.pitch = params?.pitch ?? SPEECH_PITCH;
-    utterance.volume = params?.volume ?? SPEECH_VOLUME;
+    utterance.rate = params ? baseRate * params.rateMultiplier : baseRate;
+    utterance.pitch = SPEECH_PITCH + (params?.pitchOffset ?? 0);
+    utterance.volume = params ? baseVolume * params.volumeMultiplier : baseVolume;
 
     utterance.lang = 'en-US';
     utterance.onend = () => resolve();
-    utterance.onerror = () => resolve(); // don't block queue on errors
+    utterance.onerror = () => resolve();
     speechSynthesis.speak(utterance);
   });
 }
@@ -241,9 +298,18 @@ async function processQueue(): Promise<void> {
   isSpeaking = true;
 
   while (phraseQueue.length > 0) {
-    const phrase = phraseQueue.shift()!;
-    await speakPhrase(phrase);
-    // Inter-phrase pause
+    const batch = phraseQueue.shift()!;
+    activePriority = batch.priority;
+    lastAnnouncement = { phrases: batch.phrases, priority: batch.priority, timestamp: Date.now() };
+
+    for (const phrase of batch.phrases) {
+      await speakPhrase(phrase);
+      if (batch.phrases.indexOf(phrase) < batch.phrases.length - 1) {
+        await delay(PHRASE_GAP_MS);
+      }
+    }
+
+    // Pause between batches
     if (phraseQueue.length > 0) {
       await delay(PHRASE_GAP_MS);
     }
@@ -253,11 +319,41 @@ async function processQueue(): Promise<void> {
   isSpeaking = false;
 }
 
+/**
+ * Enqueue phrases with priority preemption.
+ * Higher-priority batches (lower urgency number) interrupt lower-priority speech.
+ * P1 active shooter preempts P4 noise complaint announcement.
+ */
 function enqueuePhrases(phrases: VoicePhrase[], priority?: string): void {
   if (phrases.length === 0) return;
-  // Set priority for this batch (first batch wins if queue is already running)
-  if (!isSpeaking && priority) activePriority = priority;
-  phraseQueue.push(...phrases);
+  const prio = priority || 'INFO';
+  const newUrgency = PRIORITY_URGENCY[prio] ?? 5;
+
+  // If currently speaking a lower-priority batch, interrupt it
+  if (isSpeaking && activePriority) {
+    const currentUrgency = PRIORITY_URGENCY[activePriority] ?? 5;
+    if (newUrgency < currentUrgency) {
+      // Cancel current speech, prepend new batch
+      if (isSpeechAvailable()) speechSynthesis.cancel();
+      isSpeaking = false;
+      phraseQueue.unshift({ phrases, priority: prio });
+      processQueue().catch(() => { isSpeaking = false; });
+      return;
+    }
+  }
+
+  // Insert in priority order (higher priority = earlier in queue)
+  let inserted = false;
+  for (let i = 0; i < phraseQueue.length; i++) {
+    const existingUrgency = PRIORITY_URGENCY[phraseQueue[i].priority] ?? 5;
+    if (newUrgency < existingUrgency) {
+      phraseQueue.splice(i, 0, { phrases, priority: prio });
+      inserted = true;
+      break;
+    }
+  }
+  if (!inserted) phraseQueue.push({ phrases, priority: prio });
+
   processQueue().catch(() => { isSpeaking = false; });
 }
 
@@ -275,6 +371,25 @@ export function resetVoiceState(): void {
   clearVoiceQueue();
   announcedCache.clear();
   cachedVoice = null;
+  lastAnnouncement = null;
+}
+
+/**
+ * Replay the last announcement. Useful when officers miss an alert.
+ * Skips dedup cache — always plays regardless of timing.
+ */
+export function repeatLastAnnouncement(): void {
+  if (!isVoiceEnabled() || !isSpeechAvailable() || !lastAnnouncement) return;
+  enqueuePhrases(lastAnnouncement.phrases, lastAnnouncement.priority);
+}
+
+/** Get info about the last announcement for UI display. */
+export function getLastAnnouncement(): { text: string; timestamp: number } | null {
+  if (!lastAnnouncement) return null;
+  return {
+    text: lastAnnouncement.phrases.map(p => p.text).join(' '),
+    timestamp: lastAnnouncement.timestamp,
+  };
 }
 
 // ─── Natural Speech Helpers ─────────────────────────────────
@@ -413,8 +528,19 @@ function buildScreeningPhrases(result: ScreeningResult): VoicePhrase[] {
 function buildCallPhrases(call: CallFlags): VoicePhrase[] {
   const phrases: VoicePhrase[] = [];
 
-  // Critical
-  if (call.weapons_involved && call.weapons_involved !== 'None') phrases.push({ text: naturalPhrase('ARMED SUBJECT') });
+  // Critical — weapon type specificity
+  if (call.weapons_involved && call.weapons_involved !== 'None') {
+    const weapon = call.weapons_involved.toLowerCase();
+    if (weapon.includes('firearm') || weapon.includes('gun') || weapon.includes('rifle') || weapon.includes('pistol')) {
+      phrases.push({ text: `Caution, subject armed with ${weapon}.` });
+    } else if (weapon.includes('knife') || weapon.includes('blade') || weapon.includes('edged')) {
+      phrases.push({ text: `Caution, subject armed with edged weapon.` });
+    } else if (weapon === 'unknown' || weapon === 'yes') {
+      phrases.push({ text: naturalPhrase('ARMED SUBJECT') });
+    } else {
+      phrases.push({ text: `Caution, subject armed, ${weapon}.` });
+    }
+  }
   if (call.felony_in_progress) phrases.push({ text: naturalPhrase('FELONY IN PROGRESS') });
   if (call.officer_safety_caution) phrases.push({ text: naturalPhrase('OFFICER SAFETY CAUTION') });
   if (call.vehicle_pursuit) phrases.push({ text: naturalPhrase('VEHICLE PURSUIT') });
@@ -496,15 +622,15 @@ export async function announcePanicAlert(officerName?: string): Promise<void> {
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);
 
-  // Play alarm tone (urgent repeating two-tone)
-  await playToneAsync('alarm');
+  // Play officer_down siren (max urgency wailing tone)
+  await playToneAsync('officer_down');
   await delay(TONE_GAP_MS);
 
   // Single urgent utterance — no pauses for panic
   const msg = officerName
-    ? `Panic alert, officer ${officerName} needs assistance.`
-    : 'Panic alert, officer needs assistance.';
-  enqueuePhrases([{ text: msg }]);
+    ? `Panic alert, officer ${officerName} needs immediate assistance.`
+    : 'Panic alert, officer needs immediate assistance.';
+  enqueuePhrases([{ text: msg }], 'PANIC');
 }
 
 /**
@@ -523,16 +649,21 @@ export async function announceDispatchEvent(call: CallFlags & {
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);
 
-  // Play info tone for dispatch confirmation
-  await playToneAsync('info');
+  // Select tone based on pursuit/priority
+  const isP = call.vehicle_pursuit || call.foot_pursuit;
+  const tone = isP ? 'pursuit' : (call.priority === 'P1' ? 'code3' : 'info');
+  await playToneAsync(tone as any);
   await delay(TONE_GAP_MS);
 
-  // Build single condensed utterance: "Dispatch, call 42, Suspicious Activity, P1, 500 South State."
+  // Build single condensed utterance: "Dispatch, call 42, Suspicious Activity, P1, Zone 3, 500 South State."
   const parts: string[] = ['Dispatch'];
   if (call.call_number) parts.push(shortCallNumber(call.call_number));
-  if (call.incident_type) parts.push(call.incident_type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()));
+  if (call.incident_type) parts.push(formatIncidentType(call.incident_type));
   if (call.priority === 'P1' || call.priority === 'P2') parts.push(call.priority);
+  if ((call as any).zone) parts.push(`Zone ${(call as any).zone}`);
+  if ((call as any).beat) parts.push(`Beat ${(call as any).beat}`);
   if (call.location) parts.push(abbreviateAddress(call.location));
+  if ((call as any).cross_street) parts.push(`cross ${abbreviateAddress((call as any).cross_street)}`);
 
   const phrases: VoicePhrase[] = [{ text: parts.join(', ') + '.' }];
 
@@ -565,11 +696,13 @@ export async function announceNewCall(call: CallFlags & {
   await playToneAsync(tone);
   await delay(TONE_GAP_MS);
 
-  // Build single condensed utterance: "New call, 42, Burglary, P1."
+  // Build single condensed utterance: "New call, 42, Burglary, P1, Zone 3."
   const parts: string[] = ['New call'];
   if (call.call_number) parts.push(shortCallNumber(call.call_number));
-  if (call.incident_type) parts.push(call.incident_type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()));
+  if (call.incident_type) parts.push(formatIncidentType(call.incident_type));
   if (call.priority === 'P1' || call.priority === 'P2') parts.push(call.priority);
+  if ((call as any).zone) parts.push(`Zone ${(call as any).zone}`);
+  if ((call as any).beat) parts.push(`Beat ${(call as any).beat}`);
 
   const phrases: VoicePhrase[] = [{ text: parts.join(', ') + '.' }];
 
@@ -676,6 +809,83 @@ export async function announceWarrantHit(data: any): Promise<void> {
   enqueuePhrases([{ text: msg }]);
 }
 
+// ─── All-Units / Backup / Pursuit Announcements ─────────────
+
+/**
+ * Announce an all-units broadcast. Plays the distinctive 3-note ascending tone.
+ * Used for BOLOs, APBs, and supervisor-initiated all-channel alerts.
+ */
+export async function announceAllUnits(message: string): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `allunits:${message.slice(0, 50)}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('all_units');
+  await delay(TONE_GAP_MS);
+  enqueuePhrases([{ text: `All units, ${message}.` }], 'P1');
+}
+
+/**
+ * Announce a backup request with location.
+ * Uses code3 tone and P1 priority for immediate attention.
+ */
+export async function announceBackupRequest(data: {
+  officer_name?: string;
+  location?: string;
+  call_number?: string;
+  urgency?: 'routine' | 'urgent' | 'emergency';
+}): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `backup:${data.officer_name || ''}:${data.call_number || Date.now()}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  const tone = data.urgency === 'emergency' ? 'officer_down' : 'code3';
+  await playToneAsync(tone);
+  await delay(TONE_GAP_MS);
+
+  const parts: string[] = ['Backup requested'];
+  if (data.officer_name) parts.push(`by ${data.officer_name}`);
+  if (data.call_number) parts.push(`call ${shortCallNumber(data.call_number)}`);
+  if (data.location) parts.push(abbreviateAddress(data.location));
+
+  const priority = data.urgency === 'emergency' ? 'PANIC' : 'P1';
+  enqueuePhrases([{ text: parts.join(', ') + '.' }], priority);
+}
+
+/**
+ * Announce a pursuit update (vehicle or foot).
+ * Uses the pursuit siren tone.
+ */
+export async function announcePursuit(data: {
+  type: 'vehicle' | 'foot';
+  direction?: string;
+  speed?: string;
+  location?: string;
+  description?: string;
+  call_number?: string;
+}): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `pursuit:${data.call_number || Date.now()}:${data.location || ''}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('pursuit');
+  await delay(TONE_GAP_MS);
+
+  const parts: string[] = [data.type === 'foot' ? 'Foot pursuit' : 'Vehicle pursuit'];
+  if (data.direction) parts.push(data.direction);
+  if (data.location) parts.push(abbreviateAddress(data.location));
+  if (data.speed) parts.push(`${data.speed} miles per hour`);
+  if (data.description) parts.push(data.description);
+
+  enqueuePhrases([{ text: parts.join(', ') + '.' }], 'P1');
+}
+
 // ─── Demo / Test ─────────────────────────────────────────────
 
 /**
@@ -778,6 +988,47 @@ export async function demoAllVoiceAlerts(): Promise<void> {
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Format incident types for natural speech.
+ * "suspicious_activity" → "Suspicious Activity"
+ * "dv_assault" → "DV Assault"
+ * Common dispatch abbreviations are preserved (DV, DUI, etc.)
+ */
+function formatIncidentType(type: string): string {
+  const INCIDENT_SPEECH: Record<string, string> = {
+    'dv_assault': 'Domestic violence assault',
+    'dv_dispute': 'Domestic violence dispute',
+    'dui': 'D.U.I.',
+    'dwi': 'D.W.I.',
+    'agg_assault': 'Aggravated assault',
+    'owi': 'Operating while intoxicated',
+    'hit_and_run': 'Hit and run',
+    'shots_fired': 'Shots fired',
+    'man_with_gun': 'Man with a gun',
+    'man_with_knife': 'Man with a knife',
+    'armed_robbery': 'Armed robbery',
+    'subject_stop': 'Subject stop',
+    'traffic_stop': 'Traffic stop',
+    'welfare_check': 'Welfare check',
+    'missing_person': 'Missing person',
+    'suicidal_subject': 'Suicidal subject',
+    'stolen_vehicle': 'Stolen vehicle',
+    'noise_complaint': 'Noise complaint',
+    'suspicious_vehicle': 'Suspicious vehicle',
+    'suspicious_activity': 'Suspicious activity',
+    'trespass': 'Trespass',
+    'burglary_in_progress': 'Burglary in progress',
+    'alarm_residential': 'Residential alarm',
+    'alarm_commercial': 'Commercial alarm',
+  };
+
+  const lower = type.toLowerCase();
+  if (INCIDENT_SPEECH[lower]) return INCIDENT_SPEECH[lower];
+
+  // Default: replace underscores with spaces, title case
+  return type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
 /**

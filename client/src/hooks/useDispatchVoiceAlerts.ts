@@ -20,6 +20,9 @@ import {
   announceBolo,
   announceWarrantHit,
   announceDispatchEvent,
+  announceBackupRequest,
+  announcePursuit,
+  announceAllUnits,
 } from '../utils/voiceAlerts';
 
 /**
@@ -82,6 +85,30 @@ export function useDispatchVoiceAlerts(): void {
       subscribe('call:warrant_alert', (msg) => {
         const data = (msg.data || msg.payload || msg) as any;
         announceWarrantHit(data);
+      })
+    );
+
+    // ── Backup request ──
+    unsubs.push(
+      subscribe('backup_request', (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        announceBackupRequest(data);
+      })
+    );
+
+    // ── Pursuit update ──
+    unsubs.push(
+      subscribe('pursuit_update', (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        announcePursuit(data);
+      })
+    );
+
+    // ── All-units broadcast ──
+    unsubs.push(
+      subscribe('all_units', (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        announceAllUnits(data.message || data.text || '');
       })
     );
 
