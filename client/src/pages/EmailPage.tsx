@@ -14,6 +14,7 @@ import {
 import { apiFetch } from '../hooks/useApi';
 import { useWebSocket } from '../context/WebSocketContext';
 import type { EmailMessage, EmailFolder, EmailAttachment } from '../types';
+import { localToday, dateToLocalYMD } from '../utils/dateUtils';
 
 // ─── Well-known folder config ───
 const WELL_KNOWN_FOLDERS = ['Inbox', 'Drafts', 'Sent Items', 'Deleted Items', 'Junk Email', 'Archive'];
@@ -316,7 +317,7 @@ function ScheduleSendModal({ onSchedule, onClose }: { onSchedule: (dateTime: str
   useEffect(() => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    setDate(tomorrow.toISOString().split('T')[0]);
+    setDate(dateToLocalYMD(tomorrow));
   }, []);
 
   const handleSchedule = () => {
@@ -347,7 +348,7 @@ function ScheduleSendModal({ onSchedule, onClose }: { onSchedule: (dateTime: str
               {presets.map(preset => {
                 const d = preset.getDate();
                 return (
-                  <button key={preset.label} onClick={() => { setDate(d.toISOString().split('T')[0]); setTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`); }}
+                  <button key={preset.label} onClick={() => { setDate(dateToLocalYMD(d)); setTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`); }}
                     className="text-left px-2 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/10 hover:text-white rounded transition-colors">
                     {preset.label}
                   </button>
@@ -359,7 +360,7 @@ function ScheduleSendModal({ onSchedule, onClose }: { onSchedule: (dateTime: str
             <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider block mb-2">Custom Date & Time</span>
             <div className="flex items-center gap-2">
               <input type="date" value={date} onChange={e => setDate(e.target.value)}
-                className="input-dark text-xs flex-1" min={new Date().toISOString().split('T')[0]} />
+                className="input-dark text-xs flex-1" min={localToday()} />
               <input type="time" value={time} onChange={e => setTime(e.target.value)}
                 className="input-dark text-xs w-28" />
             </div>

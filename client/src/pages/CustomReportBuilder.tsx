@@ -8,6 +8,7 @@ import React, { useState, useCallback } from 'react';
 import { Database, Columns, Filter, Play, Download, ArrowUpDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
+import { localToday } from '../utils/dateUtils';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { toDisplayLabel } from '../utils/formatters';
 
@@ -140,7 +141,7 @@ export default function CustomReportBuilder() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `custom-report-${source}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `custom-report-${source}-${localToday()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };

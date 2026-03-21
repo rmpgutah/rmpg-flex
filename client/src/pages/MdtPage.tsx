@@ -37,7 +37,7 @@ import { mapDbCall } from './dispatch/utils/dispatchMappers';
 import StatusBadge from '../components/StatusBadge';
 import PremiseHistory from '../components/PremiseHistory';
 import NcicQueryPanel from '../components/NcicQueryPanel';
-import { formatDateTime } from '../utils/dateUtils';
+import { formatDateTime, localToday } from '../utils/dateUtils';
 
 // ── Quick Status Buttons ────────────────────────────────────
 
@@ -272,7 +272,7 @@ export default function MdtPage() {
     setGeneratingReport(true);
     try {
       const userId = localStorage.getItem('rmpg_user_id') || '';
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localToday();
       const data = await apiFetch<any>(`/reports/shift-activity/${userId}?date=${today}`);
       // Generate a text-based report and download as PDF-like text file
       const lines: string[] = [

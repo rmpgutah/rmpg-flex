@@ -54,10 +54,10 @@ function parsePaymentTermsDays(terms?: string): number {
 
 // ─── Helper: Add days to a date string ────────────────────
 function addDays(dateStr: string, days: number): string {
-  const d = new Date(dateStr);
+  const d = new Date(dateStr + 'T12:00:00');
   if (isNaN(d.getTime())) return dateStr;
   d.setDate(d.getDate() + days);
-  return d.toISOString().split('T')[0];
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 // ─── Helper: Recalculate invoice totals ───────────────────

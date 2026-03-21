@@ -10,7 +10,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { localNow } from '../utils/timeUtils';
+import { localNow, dateToLocalYMD } from '../utils/timeUtils';
 import { validateParamId, escapeLike } from '../middleware/sanitize';
 
 const router = Router();
@@ -240,7 +240,7 @@ router.put('/:id/verify', validateParamId, requireRole('admin', 'manager', 'supe
     const intervalDays = record.tier === 3 ? 90 : record.tier === 2 ? 180 : 365;
     const nextDue = new Date();
     nextDue.setDate(nextDue.getDate() + intervalDays);
-    const nextDueStr = nextDue.toISOString().split('T')[0];
+    const nextDueStr = dateToLocalYMD(nextDue);
 
     const updates: string[] = [
       'last_verification = ?',

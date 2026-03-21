@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { broadcast } from '../utils/websocket';
-import { localNow, localToday } from '../utils/timeUtils';
+import { localNow, localToday, dateToLocalYMD } from '../utils/timeUtils';
 import { createNotificationForRoles } from './notifications';
 import { resolveDistrict } from '../utils/districtResolver';
 import { escapeLike, validateParamId } from '../middleware/sanitize';
@@ -207,9 +207,9 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
     if (!exp && duration_days) {
       const parsedDays = parseInt(duration_days, 10);
       if (!isNaN(parsedDays) && parsedDays > 0 && parsedDays <= 3650) {
-        const eff = effective_date ? new Date(effective_date) : new Date();
+        const eff = effective_date ? new Date(effective_date + 'T12:00:00') : new Date();
         eff.setDate(eff.getDate() + parsedDays);
-        exp = eff.toISOString().split('T')[0];
+        exp = dateToLocalYMD(eff);
       }
     }
 

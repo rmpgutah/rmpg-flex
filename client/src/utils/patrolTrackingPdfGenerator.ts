@@ -8,6 +8,7 @@
 
 import jsPDF from 'jspdf';
 import { loadLogoDarkBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
+import { localToday } from './dateUtils';
 import { fetchPdfBranding, DEFAULT_PDF_BRANDING } from './pdfGenerator';
 import { COLOR, FONT, BORDER, SPACING, LAYOUT } from './pdfTokens';
 
@@ -595,7 +596,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   }
 
   // ── Save the PDF ─────────────────────────────────────
-  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const dateStr = localToday().replace(/-/g, '');
   const firstCallSign = data.trails[0]?.call_sign || 'ALL';
   const suffix = data.total_units === 1 ? `_${firstCallSign}` : '';
   doc.save(`RMPG_Patrol_Tracking${suffix}_${dateStr}.pdf`);

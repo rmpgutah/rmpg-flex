@@ -10,7 +10,7 @@ import { fileURLToPath } from 'url';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { rateLimit } from '../middleware/rateLimiter';
-import { localNow, localToday } from '../utils/timeUtils';
+import { localNow, localToday, dateToLocalYMD } from '../utils/timeUtils';
 import { queueOverlayProcessing, type BodyCamOverlayConfig } from '../utils/videoOverlay';
 import { validateEmail, validatePhone, validateBadgeNumber, validateAll } from '../utils/inputValidation';
 import { validateParamId, validateNumericParams } from '../middleware/sanitize';
@@ -2979,7 +2979,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         : 0;
 
       // New hires / terminations in last 30 days
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const thirtyDaysAgo = dateToLocalYMD(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
       const newHires = (db.prepare('SELECT COUNT(*) as count FROM users WHERE hire_date >= ?').get(thirtyDaysAgo) as any)?.count || 0;
       const terminations = (db.prepare('SELECT COUNT(*) as count FROM users WHERE termination_date >= ?').get(thirtyDaysAgo) as any)?.count || 0;
 

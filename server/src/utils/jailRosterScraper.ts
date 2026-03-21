@@ -1257,7 +1257,7 @@ const utahCountyParser: CountyParser = {
         if (inmate.date_in) {
           const d = new Date(inmate.date_in);
           if (!isNaN(d.getTime())) {
-            bookingDate = d.toISOString().split('T')[0];
+            bookingDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
           }
         }
 
