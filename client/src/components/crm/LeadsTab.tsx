@@ -223,7 +223,6 @@ export default function LeadsTab() {
     try {
       await apiFetch(`/api/crm/leads/${leadId}/stage`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ stage }),
       });
       addToast(`Lead moved to ${toDisplayLabel(stage)}`, 'success');
@@ -257,7 +256,6 @@ export default function LeadsTab() {
     try {
       await apiFetch(`/api/crm/leads/${selectedLead.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ notes: editNotes }),
       });
       addToast('Notes saved', 'success');
@@ -274,7 +272,6 @@ export default function LeadsTab() {
     try {
       await apiFetch('/api/crm/lead-activity', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           lead_id: selectedLead.id,
           activity_type: 'note',
@@ -298,7 +295,6 @@ export default function LeadsTab() {
     try {
       await apiFetch('/api/crm/leads/bulk-action', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action,
           lead_ids: Array.from(selectedIds),
@@ -321,7 +317,6 @@ export default function LeadsTab() {
     try {
       await apiFetch('/api/crm/leads', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...createForm,
           source: 'manual',

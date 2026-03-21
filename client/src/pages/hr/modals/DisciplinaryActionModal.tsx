@@ -60,7 +60,7 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
   const [error, setError] = useState('');
 
   useEffect(() => {
-    apiFetch<UserOption[]>('/hr/employees').then(setUsers).catch(() => {});
+    apiFetch<UserOption[]>('/hr/employees').then(setUsers).catch(err => console.warn('[API] Data load failed:', err));
   }, []);
 
   const handleSubmit = async () => {
@@ -83,13 +83,11 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
       if (action?.id) {
         await apiFetch(`/hr/disciplinary-actions/${action.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
       } else {
         await apiFetch('/hr/disciplinary-actions', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
       }

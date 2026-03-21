@@ -387,7 +387,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispa
     let activeWarrants: any[] = [];
     if (person_id) {
       activeWarrants = db.prepare(
-        `SELECT * FROM warrants WHERE person_id = ? AND status = 'active'`
+        `SELECT * FROM warrants WHERE subject_person_id = ? AND status = 'active'`
       ).all(person_id) as any[];
     }
 

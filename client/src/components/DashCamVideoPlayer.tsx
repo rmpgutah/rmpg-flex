@@ -184,9 +184,12 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
 
   // ── Derived values ──────────────────────────────────────────
 
-  const headers = getAuthHeaders();
-  const token = headers['Authorization']?.replace('Bearer ', '') || '';
-  const streamUrl = `${apiBase}/fleet/dashcam-videos/${video.id}/stream?token=${encodeURIComponent(token)}`;
+  // Use signed URL params (pre-fetched by parent) or fall back to legacy token
+  const signedQuery = (video as any)._signedQuery || (() => {
+    const token = getAuthHeaders()['Authorization']?.replace('Bearer ', '') || '';
+    return `token=${encodeURIComponent(token)}`;
+  })();
+  const streamUrl = `${apiBase}/fleet/dashcam-videos/${video.id}/stream?${signedQuery}`;
   const vehDesc = [video.vehicle_year, video.vehicle_make, video.vehicle_model].filter(Boolean).join(' ');
   const displaySpeed = liveTelemetry?.speedMph ?? video.speed_mph;
   const displayLat = liveTelemetry?.lat ?? video.latitude;

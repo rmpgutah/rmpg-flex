@@ -172,14 +172,12 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
     if (editRecord) {
       await apiFetch(`/api/hr/disciplinary/${editRecord.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
       toast.addToast('Record updated', 'success');
     } else {
       await apiFetch('/api/hr/disciplinary', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
       toast.addToast('Record created', 'success');

@@ -308,7 +308,6 @@ export default function InvoicesPage() {
     try {
       const res = await apiFetch<{ data: Invoice }>('/invoices', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(createForm),
       });
       // Switch to detail view of the new invoice
@@ -329,7 +328,6 @@ export default function InvoicesPage() {
     try {
       await apiFetch(`/invoices/${invoiceId}/status`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       });
       await fetchDetail(invoiceId);
@@ -362,7 +360,6 @@ export default function InvoicesPage() {
     try {
       await apiFetch(`/invoices/${selectedInvoice.id}/payments`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...paymentForm, amount: parseFloat(paymentForm.amount) }),
       });
       await fetchDetail(selectedInvoice.id);
@@ -398,7 +395,6 @@ export default function InvoicesPage() {
     try {
       await apiFetch(`/invoices/${selectedInvoice.id}/line-items`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...lineItemForm,
           quantity: parseFloat(lineItemForm.quantity) || 1,

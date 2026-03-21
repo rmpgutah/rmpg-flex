@@ -48,6 +48,8 @@ export const COLOR = {
 // Labels: Helvetica (clean, small-caps feel)
 
 export const FONT = {
+  /** Cap-height ≈ fontSize × BASELINE_FACTOR (mm). Used to vertically center text. */
+  BASELINE_FACTOR:        0.35,
   SIZE_HEADER_TITLE:      13,    // Agency name in header bar
   SIZE_SECTION_TITLE:     8,     // Section header bar text (all-caps)
   SIZE_FIELD_VALUE:       8.5,   // Courier values inside field boxes
@@ -107,9 +109,9 @@ export const SPACING = {
 
   CONTENT_INSET:      1.5,   // Left/right padding inside sections
   SECTION_HEADER_H:   4.5,   // Section header bar height
-  SECTION_GAP:        0.8,   // Gap between sections
-  SECTION_CONTENT_PAD: 1.8,  // Gap from header bar to first content
-  SECTION_BOTTOM_PAD:  1.2,  // Padding inside section before bottom border
+  SECTION_GAP:        1.5,   // Gap between sections (enough to see separation)
+  SECTION_CONTENT_PAD: 2.2,  // Gap from header bar to first content (breathing room)
+  SECTION_BOTTOM_PAD:  1.8,  // Padding inside section before bottom border
 
   FIELD_ROW_HEIGHT:   7,     // Height of field box
   FIELD_ROW_ADVANCE:  7.5,   // Y-advance after field row
@@ -121,6 +123,10 @@ export const SPACING = {
   FORM_CELL_PAD:      0.8,   // Padding inside form cells
   FORM_CELL_LABEL_H:  2.5,   // Form cell label strip height
   FORM_CELL_H:        7.5,   // Form cell total height (label + value + padding)
+
+  CONTINUATION_Y:     13.5,  // Y after continuation header on new pages
+  CAUTION_LINE_H:     3.5,   // Line height in caution blocks
+  CAUTION_PAD:        4,     // Internal padding in caution blocks
 } as const;
 
 // ── Layout Tokens ────────────────────────────────────────────
@@ -137,6 +143,10 @@ export const LAYOUT = {
   LINE_HEIGHT:       3.2,    // Base line height for wrapped text
   DIAGRAM_GRID_STEP: 10,     // Grid spacing in accident diagram
   SIDEBAR_TAB_W:     18,     // Sidebar tab width
+  INVOICE_TOTAL_ROW_H: 6,   // Bold total row in invoices
+  PATROL_HEADER_H:   14,     // Patrol tracking header bar
+  PATROL_FOOTER_H:   8,      // Patrol tracking footer bar
+  DIAGRAM_AREA_H:    55,     // Accident diagram area height
 } as const;
 
 // ── Computed Layout Helpers ──────────────────────────────────
@@ -203,6 +213,16 @@ export function getProportionalColumns(doc: jsPDF, ratios: number[]): number[] {
     x += (r / totalRatio) * availW;
   }
   return positions;
+}
+
+/** Standard line height for wrapped text at a given font size (mm) */
+export function getLineHeight(fontSize: number): number {
+  return fontSize * 0.42 + 1.2;
+}
+
+/** Cap-height for a given font size (mm) — use for vertical centering */
+export function getCapHeight(fontSize: number): number {
+  return fontSize * FONT.BASELINE_FACTOR;
 }
 
 // ── NIBRS Grid Layout Helpers ─────────────────────────────────

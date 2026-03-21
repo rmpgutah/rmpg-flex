@@ -77,11 +77,8 @@ router.post('/config', requireRole('admin', 'manager'), (req: Request, res: Resp
     const item = db.prepare('SELECT * FROM system_config WHERE id = ?').get(result.lastInsertRowid);
     if (!item) { res.status(500).json({ error: 'Failed to retrieve created config' }); return; }
 
-    // Log activity
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'config_created', 'system_config', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Added config: ${config_key} = ${config_value}`, req.ip || 'unknown');
+    auditLog(req, 'CREATE', 'system_config', result.lastInsertRowid as number,
+      `Added config: ${config_key} = ${/secret|password|token|key|smtp_pass/i.test(config_key) ? '[REDACTED]' : config_value}`);
 
     res.status(201).json(item);
   } catch (error: any) {
@@ -122,7 +119,7 @@ router.put('/config/:id', validateParamId, requireRole('admin', 'manager'), (req
       db.prepare(`UPDATE system_config SET ${cfgSet.join(', ')} WHERE id = ?`).run(...cfgVals);
     }
 
-    auditLog(req, 'UPDATE', 'system_config', item.id, { config_key: item.config_key, config_value: item.config_value }, req.body);
+    auditLog(req, 'UPDATE', 'system_config', item.id, `Updated config: ${item.config_key}`);
 
     const updated = db.prepare('SELECT * FROM system_config WHERE id = ?').get(item.id);
     res.json(updated);
@@ -145,10 +142,8 @@ router.delete('/config/:id', validateParamId, requireRole('admin', 'manager'), (
     const now = localNow();
     db.prepare('UPDATE system_config SET is_active = 0, updated_at = ? WHERE id = ?').run(now, item.id);
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'config_deleted', 'system_config', ?, ?, ?, ?)
-    `).run(req.user!.userId, item.id, `Removed config: ${item.config_key} = ${item.config_value}`, req.ip || 'unknown', now);
+    auditLog(req, 'DELETE', 'system_config', item.id,
+      `Removed config: ${item.config_key} = ${/secret|password|token|key|smtp_pass/i.test(item.config_key) ? '[REDACTED]' : item.config_value}`);
 
     res.json({ message: 'Config item removed' });
   } catch (error: any) {

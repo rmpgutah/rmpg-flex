@@ -12,6 +12,7 @@ import {
   Settings, BarChart3, Download, Trash2, Eye, RefreshCw, Filter,
   X, Clock, Bookmark, Car, Home, Award, Fingerprint, Hash,
   ExternalLink, ArrowRight, Zap, Radio, UserCheck,
+  List, Link2, PhoneCall, MapPinned, Calendar,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import PanelTitleBar from '../../components/PanelTitleBar';
@@ -500,6 +501,9 @@ export default function SkipTracerV2Page() {
       for (const [key, val] of Object.entries(advancedFields)) {
         if (val.trim()) params.set(key, val.trim());
       }
+      if (selectedCategories.size > 0) {
+        params.set('categories', Array.from(selectedCategories).join(','));
+      }
       const data = await apiFetch<SearchResult>(`/skiptracer-v2/search?${params.toString()}`);
       setResult(data);
       if (data.profiles?.length === 1) setSelected(data.profiles[0]);
@@ -524,11 +528,15 @@ export default function SkipTracerV2Page() {
     setSaveSuccess(false);
     try {
       const name = selected.fullName || [selected.firstName, selected.lastName].filter(Boolean).join(' ') || 'Unknown';
-      await apiFetch('/skiptracer-v2/dossiers', {
+      const resp = await apiFetch('/skiptracer-v2/dossiers', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subjectName: name, profileSnapshot: selected, notes: '', tags: [] }),
-      });
+      }) as any;
+      const id = resp?.id || resp?.dossierId;
+      if (id) {
+        setActiveDossierId(id);
+        setDossierNotes('');
+      }
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch { /* silent */ }
@@ -559,6 +567,8 @@ export default function SkipTracerV2Page() {
     try {
       const profile = JSON.parse(dossier.profile_snapshot);
       setSelected(profile);
+      setActiveDossierId(dossier.id);
+      setDossierNotes(dossier.notes || '');
       setActiveTab('search');
     } catch { /* silent */ }
   }, []);
@@ -581,6 +591,193 @@ export default function SkipTracerV2Page() {
 
   const getDisplayName = useCallback((p: Profile) => {
     return p.fullName || [p.firstName, p.middleName, p.lastName].filter(Boolean).join(' ') || 'Unknown';
+  }, []);
+
+  // ─── Batch Search ─────────────────────────────────────────
+
+  const [batchOpen, setBatchOpen] = useState(false);
+  const [batchText, setBatchText] = useState('');
+  const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
+  const [batchResults, setBatchResults] = useState<Profile[]>([]);
+
+  const handleBatchSearch = useCallback(async () => {
+    const names = batchText.split('\n').map(n => n.trim()).filter(Boolean);
+    if (names.length === 0) return;
+
+    setLoading(true);
+    setError(null);
+    setSelected(null);
+    setResult(null);
+    setBatchResults([]);
+    setBatchProgress({ done: 0, total: names.length });
+
+    const allProfiles: Profile[] = [];
+    const allSourcesQueried = new Set<string>();
+    const allSourcesResponded = new Set<string>();
+    let totalCost = 0;
+    let totalDuration = 0;
+
+    const promises = names.map(async (name, idx) => {
+      try {
+        const params = new URLSearchParams();
+        params.set('q', name);
+        if (selectedCategories.size > 0) {
+          params.set('categories', Array.from(selectedCategories).join(','));
+        }
+        const data = await apiFetch<SearchResult>(`/skiptracer-v2/search?${params.toString()}`);
+        if (data.profiles) allProfiles.push(...data.profiles);
+        data.sourcesQueried.forEach(s => allSourcesQueried.add(s));
+        data.sourcesResponded.forEach(s => allSourcesResponded.add(s));
+        totalCost += data.totalCost || 0;
+        totalDuration = Math.max(totalDuration, data.durationMs || 0);
+      } catch { /* silent */ }
+      setBatchProgress(prev => prev ? { ...prev, done: prev.done + 1 } : null);
+    });
+
+    await Promise.all(promises);
+
+    setBatchResults(allProfiles);
+    setResult({
+      profiles: allProfiles,
+      sourcesQueried: Array.from(allSourcesQueried),
+      sourcesResponded: Array.from(allSourcesResponded),
+      totalResults: allProfiles.length,
+      totalCost,
+      durationMs: totalDuration,
+    });
+    setBatchProgress(null);
+    setLoading(false);
+    setBatchOpen(false);
+  }, [batchText]);
+
+  // ─── Source Category Filters ─────────────────────────────
+
+  const ALL_CATEGORIES = ['people', 'court', 'property', 'business', 'osint', 'registry'] as const;
+  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
+
+  const toggleCategory = useCallback((cat: string) => {
+    setSelectedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+  }, []);
+
+  // ─── Dossier Notes ───────────────────────────────────────
+
+  const [dossierNotes, setDossierNotes] = useState('');
+  const [notesSaveStatus, setNotesSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const notesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [activeDossierId, setActiveDossierId] = useState<number | null>(null);
+
+  const handleNotesChange = useCallback((value: string, dossierId: number) => {
+    setDossierNotes(value);
+    setNotesSaveStatus('idle');
+    if (notesTimerRef.current) clearTimeout(notesTimerRef.current);
+    notesTimerRef.current = setTimeout(async () => {
+      setNotesSaveStatus('saving');
+      try {
+        await apiFetch(`/skiptracer-v2/dossiers/${dossierId}`, {
+          method: 'PUT',
+          body: JSON.stringify({ notes: value }),
+        });
+        setNotesSaveStatus('saved');
+        setTimeout(() => setNotesSaveStatus('idle'), 2000);
+      } catch {
+        setNotesSaveStatus('idle');
+      }
+    }, 1000);
+  }, []);
+
+  useEffect(() => () => { if (notesTimerRef.current) clearTimeout(notesTimerRef.current); }, []);
+
+  // ─── Link to Incident/Case ──────────────────────────────
+
+  const [linkDropdownOpen, setLinkDropdownOpen] = useState(false);
+  const [linkType, setLinkType] = useState<'incident' | 'case'>('incident');
+  const [linkValue, setLinkValue] = useState('');
+  const [linkSaving, setLinkSaving] = useState(false);
+  const linkDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (linkDropdownRef.current && !linkDropdownRef.current.contains(e.target as Node)) {
+        setLinkDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const handleLinkDossier = useCallback(async () => {
+    if (!activeDossierId || !linkValue.trim()) return;
+    setLinkSaving(true);
+    try {
+      const body: any = {};
+      if (linkType === 'incident') body.linkedIncidentId = linkValue.trim();
+      else body.linkedCaseId = linkValue.trim();
+      await apiFetch('/skiptracer-v2/dossiers', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      setLinkDropdownOpen(false);
+      setLinkValue('');
+    } catch { /* silent */ }
+    setLinkSaving(false);
+  }, [activeDossierId, linkType, linkValue]);
+
+  // ─── Export PDF from Search ──────────────────────────────
+
+  const [exporting, setExporting] = useState(false);
+
+  const handleExportFromSearch = useCallback(async () => {
+    if (!selected) return;
+    setExporting(true);
+    try {
+      const name = selected.fullName || [selected.firstName, selected.lastName].filter(Boolean).join(' ') || 'Unknown';
+      const resp = await apiFetch('/skiptracer-v2/dossiers', {
+        method: 'POST',
+        body: JSON.stringify({ subjectName: name, profileSnapshot: selected, notes: '', tags: [] }),
+      }) as any;
+      const dossierId = resp?.id || resp?.dossierId;
+      if (dossierId) {
+        await handleExportPdf(dossierId);
+      }
+    } catch { /* silent */ }
+    setExporting(false);
+  }, [selected, handleExportPdf]);
+
+  // ─── Timeline builder ───────────────────────────────────
+
+  const buildTimeline = useCallback((profile: Profile) => {
+    const events: Array<{ date: string; label: string; detail: string; category: string }> = [];
+    profile.courtRecords?.forEach(c => {
+      const d = c.filingDate || c.date;
+      if (d) events.push({ date: d, label: 'Court Filing', detail: `${c.caseType || c.type || 'Case'}: ${c.charge || c.charges?.join('; ') || c.caseNumber || ''}`, category: 'court' });
+    });
+    profile.custodyRecords?.forEach(c => {
+      if (c.bookingDate) events.push({ date: c.bookingDate, label: 'Booking', detail: `${c.facility || 'Facility'} — ${c.charges?.join('; ') || ''}`, category: 'registry' });
+    });
+    profile.addresses?.forEach(a => {
+      if (a.type?.toLowerCase() === 'current') return;
+      const addr = a.address || a.street || '';
+      if (addr) events.push({ date: '', label: 'Address', detail: [addr, a.city, a.state].filter(Boolean).join(', '), category: 'property' });
+    });
+    profile.licenses?.forEach(l => {
+      if (l.expirationDate) events.push({ date: l.expirationDate, label: 'License Expires', detail: `${l.type || 'License'} — ${l.state || ''}`, category: 'business' });
+    });
+    profile.businesses?.forEach(b => {
+      events.push({ date: '', label: 'Business', detail: `${b.name} (${b.role || 'Unknown role'})`, category: 'business' });
+    });
+    // Sort: dated events first (chronological), undated last
+    events.sort((a, b) => {
+      if (!a.date && !b.date) return 0;
+      if (!a.date) return 1;
+      if (!b.date) return -1;
+      return a.date.localeCompare(b.date);
+    });
+    return events;
   }, []);
 
   // ─── Source counts by category ─────────────────────────────
@@ -644,47 +841,96 @@ export default function SkipTracerV2Page() {
 
       {/* Search bar */}
       <div className="p-2 border-b border-[#1e2d40] space-y-2">
-        <div className="relative flex items-center">
-          <Search size={14} className="absolute left-2.5 text-[#556677] pointer-events-none" />
-          <input
-            type="text"
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSearch()}
-            placeholder="Name, phone, email, or address..."
-            className="w-full pl-8 pr-24 py-2 bg-[#0d1520] border border-[#1e2d40] rounded-sm text-[12px] text-white placeholder-[#445566] focus:outline-none focus:border-[#1a5a9e] font-mono"
-          />
-          {query.trim() && (
-            <>
-              <span
-                className="absolute right-16 text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm"
-                style={{ backgroundColor: INPUT_BADGE_COLORS[inputType] + '22', color: INPUT_BADGE_COLORS[inputType] }}
-              >
-                {inputType}
-              </span>
-              <button onClick={() => setQuery('')} className="absolute right-10 p-0.5 text-[#556677] hover:text-white">
-                <X size={12} />
-              </button>
-            </>
-          )}
+        <div className="relative flex items-center gap-1">
+          <div className="relative flex-1">
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#556677] pointer-events-none" />
+            <input
+              type="text"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSearch()}
+              placeholder="Name, phone, email, or address..."
+              className="w-full pl-8 pr-24 py-2 bg-[#0d1520] border border-[#1e2d40] rounded-sm text-[12px] text-white placeholder-[#445566] focus:outline-none focus:border-[#1a5a9e] font-mono"
+            />
+            {query.trim() && (
+              <>
+                <span
+                  className="absolute right-16 top-1/2 -translate-y-1/2 text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm"
+                  style={{ backgroundColor: INPUT_BADGE_COLORS[inputType] + '22', color: INPUT_BADGE_COLORS[inputType] }}
+                >
+                  {inputType}
+                </span>
+                <button onClick={() => setQuery('')} className="absolute right-10 top-1/2 -translate-y-1/2 p-0.5 text-[#556677] hover:text-white">
+                  <X size={12} />
+                </button>
+              </>
+            )}
+            <button
+              onClick={() => handleSearch()}
+              disabled={loading || (!query.trim() && !Object.values(advancedFields).some(v => v.trim()))}
+              className="absolute right-1 top-1/2 -translate-y-1/2 px-2.5 py-1.5 bg-[#1a5a9e] hover:bg-[#1e6ab8] disabled:opacity-40 rounded-sm text-[10px] font-bold text-white transition-colors"
+            >
+              {loading ? <Loader2 size={12} className="animate-spin" /> : 'GO'}
+            </button>
+          </div>
           <button
-            onClick={() => handleSearch()}
-            disabled={loading || (!query.trim() && !Object.values(advancedFields).some(v => v.trim()))}
-            className="absolute right-1 px-2.5 py-1.5 bg-[#1a5a9e] hover:bg-[#1e6ab8] disabled:opacity-40 rounded-sm text-[10px] font-bold text-white transition-colors"
+            onClick={() => setBatchOpen(!batchOpen)}
+            className={`px-2 py-2 rounded-sm text-[10px] font-bold transition-colors flex items-center gap-1 ${
+              batchOpen ? 'bg-[#1a5a9e] text-white' : 'bg-[#1a2636] text-[#8899aa] hover:text-white hover:bg-[#1e2d40] border border-[#1e2d40]'
+            }`}
+            title="Batch search multiple names"
           >
-            {loading ? <Loader2 size={12} className="animate-spin" /> : 'GO'}
+            <List size={12} />
           </button>
         </div>
 
+        {/* Batch search textarea */}
+        {batchOpen && (
+          <div className="p-2 bg-[#0d1520] border border-[#1e2d40] rounded-sm space-y-2">
+            <div className="text-[9px] text-[#8899aa] uppercase tracking-wider font-bold">Batch Search — one name per line</div>
+            <textarea
+              value={batchText}
+              onChange={e => setBatchText(e.target.value)}
+              placeholder={"John Smith\nJane Doe\nBob Johnson"}
+              rows={5}
+              className="w-full px-2 py-1.5 bg-[#141e2b] border border-[#1e2d40] rounded-sm text-[11px] text-white font-mono placeholder-[#445566] focus:outline-none focus:border-[#1a5a9e] resize-y"
+            />
+            <div className="flex items-center justify-between">
+              <span className="text-[9px] text-[#556677] font-mono">
+                {batchText.split('\n').filter(l => l.trim()).length} name(s)
+              </span>
+              <button
+                onClick={handleBatchSearch}
+                disabled={loading || !batchText.trim()}
+                className="px-3 py-1.5 bg-[#1a5a9e] hover:bg-[#1e6ab8] disabled:opacity-40 rounded-sm text-[10px] font-bold text-white transition-colors flex items-center gap-1.5"
+              >
+                {batchProgress ? (
+                  <>
+                    <Loader2 size={12} className="animate-spin" />
+                    Searching {batchProgress.done}/{batchProgress.total}...
+                  </>
+                ) : (
+                  <>
+                    <Search size={12} />
+                    Search All
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Advanced search toggle */}
-        <button
-          onClick={() => setAdvancedOpen(!advancedOpen)}
-          className="flex items-center gap-1 text-[9px] text-[#556677] hover:text-[#8899aa] uppercase tracking-wider"
-        >
-          <Filter size={10} />
-          Advanced Search
-          {advancedOpen ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setAdvancedOpen(!advancedOpen)}
+            className="flex items-center gap-1 text-[9px] text-[#556677] hover:text-[#8899aa] uppercase tracking-wider"
+          >
+            <Filter size={10} />
+            Advanced Search
+            {advancedOpen ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+          </button>
+        </div>
 
         {advancedOpen && (
           <div className="grid grid-cols-2 gap-1.5 p-2 bg-[#0d1520] border border-[#1e2d40] rounded-sm">
@@ -708,6 +954,37 @@ export default function SkipTracerV2Page() {
             ))}
           </div>
         )}
+
+        {/* Source category filters */}
+        <div className="flex items-center gap-1.5 px-0.5 flex-wrap">
+          <span className="text-[8px] text-[#445566] uppercase tracking-wider mr-0.5">Filter:</span>
+          {ALL_CATEGORIES.map(cat => {
+            const isActive = selectedCategories.has(cat);
+            const color = categoryColor(cat);
+            return (
+              <button
+                key={cat}
+                onClick={() => toggleCategory(cat)}
+                className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm border transition-colors"
+                style={{
+                  backgroundColor: isActive ? color + '33' : 'transparent',
+                  color: isActive ? color : '#556677',
+                  borderColor: isActive ? color + '55' : '#1e2d40',
+                }}
+              >
+                {cat}
+              </button>
+            );
+          })}
+          {selectedCategories.size > 0 && (
+            <button
+              onClick={() => setSelectedCategories(new Set())}
+              className="text-[8px] text-[#556677] hover:text-white uppercase tracking-wider px-1 py-0.5"
+            >
+              Clear
+            </button>
+          )}
+        </div>
 
         {/* Source status row */}
         {sources.length > 0 && (
@@ -872,6 +1149,67 @@ export default function SkipTracerV2Page() {
                 )}
               </div>
               <div className="flex items-center gap-2 flex-wrap">
+                {/* Export PDF from search */}
+                <button
+                  onClick={handleExportFromSearch}
+                  disabled={exporting}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0d1520] hover:bg-[#1e2d40] border border-[#1e2d40] rounded-sm text-[10px] font-bold text-[#8899aa] hover:text-white transition-colors"
+                  title="Save & export as PDF"
+                >
+                  {exporting ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                  Export
+                </button>
+
+                {/* Link to Incident/Case */}
+                <div className="relative" ref={linkDropdownRef}>
+                  <button
+                    onClick={() => setLinkDropdownOpen(!linkDropdownOpen)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-[10px] font-bold transition-colors border ${
+                      linkDropdownOpen
+                        ? 'bg-[#1a5a9e] text-white border-[#1a5a9e]'
+                        : 'bg-[#0d1520] text-[#8899aa] hover:text-white border-[#1e2d40] hover:bg-[#1e2d40]'
+                    }`}
+                  >
+                    <Link2 size={12} />
+                    Link
+                    <ChevronDown size={10} />
+                  </button>
+                  {linkDropdownOpen && (
+                    <div className="absolute right-0 top-full mt-1 w-64 bg-[#1a2636] border border-[#1e2d40] rounded-sm shadow-xl z-50 p-3 space-y-2">
+                      <div className="text-[9px] font-bold text-[#8899aa] uppercase tracking-wider">Link to Record</div>
+                      <div className="flex gap-1">
+                        {(['incident', 'case'] as const).map(t => (
+                          <button
+                            key={t}
+                            onClick={() => setLinkType(t)}
+                            className={`flex-1 text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-sm transition-colors ${
+                              linkType === t ? 'bg-[#1a5a9e] text-white' : 'bg-[#0d1520] text-[#556677] hover:text-white'
+                            }`}
+                          >
+                            {t}
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        type="text"
+                        value={linkValue}
+                        onChange={e => setLinkValue(e.target.value)}
+                        placeholder={linkType === 'incident' ? 'Incident number...' : 'Case number...'}
+                        className="w-full px-2 py-1.5 bg-[#0d1520] border border-[#1e2d40] rounded-sm text-[11px] text-white font-mono placeholder-[#445566] focus:outline-none focus:border-[#1a5a9e]"
+                        onKeyDown={e => e.key === 'Enter' && handleLinkDossier()}
+                      />
+                      <button
+                        onClick={handleLinkDossier}
+                        disabled={linkSaving || !linkValue.trim()}
+                        className="w-full px-2 py-1.5 bg-[#1a5a9e] hover:bg-[#1e6ab8] disabled:opacity-40 rounded-sm text-[10px] font-bold text-white transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        {linkSaving ? <Loader2 size={12} className="animate-spin" /> : <Link2 size={12} />}
+                        Link
+                      </button>
+                    </div>
+                  )}
+                </div>
+
                 <button
                   onClick={handleSaveDossier}
                   disabled={saving}
@@ -882,6 +1220,26 @@ export default function SkipTracerV2Page() {
                 </button>
               </div>
             </div>
+
+            {/* Dossier Notes */}
+            {activeDossierId && (
+              <div className="mt-3 pt-3 border-t border-[#1e2d40]">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[9px] font-bold text-[#556677] uppercase tracking-wider">Notes</span>
+                  <span className="text-[9px] font-mono text-[#445566]">
+                    {notesSaveStatus === 'saving' && <span className="text-amber-500 flex items-center gap-1"><Loader2 size={9} className="animate-spin" /> Saving...</span>}
+                    {notesSaveStatus === 'saved' && <span className="text-green-500 flex items-center gap-1"><CheckCircle2 size={9} /> Saved</span>}
+                  </span>
+                </div>
+                <textarea
+                  value={dossierNotes}
+                  onChange={e => handleNotesChange(e.target.value, activeDossierId)}
+                  placeholder="Add investigative notes..."
+                  rows={3}
+                  className="w-full px-2 py-1.5 bg-[#0d1520] border border-[#1e2d40] rounded-sm text-[11px] text-white font-mono placeholder-[#445566] focus:outline-none focus:border-[#1a5a9e] resize-y"
+                />
+              </div>
+            )}
           </div>
 
           {/* Summary bar */}
@@ -939,6 +1297,7 @@ export default function SkipTracerV2Page() {
                 {selected.addresses!.map((a, i) => {
                   const addr = a.address || a.street || '';
                   const fullAddr = [addr, a.city, a.state, a.zip].filter(Boolean).join(', ');
+                  const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(fullAddr)}`;
                   return (
                     <tr key={i} className="hover:bg-white/5">
                       <td className="px-2 py-1.5 text-white">{addr}</td>
@@ -949,7 +1308,16 @@ export default function SkipTracerV2Page() {
                         <span className={`text-[9px] uppercase ${(a.type || '').toLowerCase() === 'current' ? 'text-green-400' : 'text-[#556677]'}`}>{a.type || '—'}</span>
                       </td>
                       <td className="px-2 py-1.5"><SourceBadge source={a.source} /></td>
-                      <td className="px-2 py-1.5"><CopyBtn value={fullAddr} label={`addr-${i}`} copied={copied} copy={copy} /></td>
+                      <td className="px-2 py-1.5">
+                        <div className="flex items-center gap-1">
+                          {fullAddr && (
+                            <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="p-0.5 rounded-sm hover:bg-white/10 text-[#f59e0b] hover:text-[#fbbf24] transition-colors" title="Open in Google Maps">
+                              <MapPinned size={12} />
+                            </a>
+                          )}
+                          <CopyBtn value={fullAddr} label={`addr-${i}`} copied={copied} copy={copy} />
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
@@ -972,7 +1340,14 @@ export default function SkipTracerV2Page() {
                       )}
                     </td>
                     <td className="px-2 py-1.5"><SourceBadge source={p.source} /></td>
-                    <td className="px-2 py-1.5"><CopyBtn value={p.number} label={`phone-${i}`} copied={copied} copy={copy} /></td>
+                    <td className="px-2 py-1.5">
+                      <div className="flex items-center gap-1">
+                        <a href={`tel:${p.number.replace(/\D/g, '')}`} className="p-0.5 rounded-sm hover:bg-white/10 text-[#3b82f6] hover:text-[#60a5fa] transition-colors" title="Call">
+                          <PhoneCall size={12} />
+                        </a>
+                        <CopyBtn value={p.number} label={`phone-${i}`} copied={copied} copy={copy} />
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </DataTable>
@@ -992,7 +1367,14 @@ export default function SkipTracerV2Page() {
                         <Mail size={11} className="text-[#556677]" />
                         <span className="text-white">{emailAddr}</span>
                         <SourceBadge source={e.source} />
-                        {emailAddr && <CopyBtn value={emailAddr} label={`email-${i}`} copied={copied} copy={copy} />}
+                        {emailAddr && (
+                          <>
+                            <a href={`mailto:${emailAddr}`} className="p-0.5 rounded-sm hover:bg-white/10 text-[#f472b6] hover:text-[#f9a8d4] transition-colors" title="Send email">
+                              <ExternalLink size={11} />
+                            </a>
+                            <CopyBtn value={emailAddr} label={`email-${i}`} copied={copied} copy={copy} />
+                          </>
+                        )}
                       </div>
                     );
                   })}
@@ -1222,6 +1604,49 @@ export default function SkipTracerV2Page() {
               </div>
             </DossierSection>
           )}
+
+          {/* Timeline */}
+          {(() => {
+            const events = buildTimeline(selected);
+            if (events.length === 0) return null;
+            return (
+              <DossierSection title="Timeline" icon={Calendar} count={events.length}>
+                <div className="relative pl-6">
+                  {/* Vertical line */}
+                  <div className="absolute left-[9px] top-0 bottom-0 w-[2px] bg-[#1e2d40]" />
+                  <div className="space-y-3">
+                    {events.map((ev, i) => {
+                      const color = categoryColor(ev.category);
+                      return (
+                        <div key={i} className="relative">
+                          {/* Dot on the line */}
+                          <div
+                            className="absolute -left-6 top-1 w-[12px] h-[12px] rounded-full border-2 flex-shrink-0"
+                            style={{ backgroundColor: color + '33', borderColor: color }}
+                          />
+                          <div className="pb-0.5">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-[10px] font-bold text-white">{ev.label}</span>
+                              <span
+                                className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm"
+                                style={{ backgroundColor: color + '22', color }}
+                              >
+                                {ev.category}
+                              </span>
+                              {ev.date && (
+                                <span className="text-[9px] font-mono text-[#8899aa]">{ev.date}</span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-[#c0ccdd] mt-0.5">{ev.detail}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </DossierSection>
+            );
+          })()}
         </div>
       )}
     </div>

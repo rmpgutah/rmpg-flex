@@ -77,7 +77,7 @@ function SignatureEditor({ onClose }: { onClose: () => void }) {
 
   const handleSave = async () => {
     setSaving(true);
-    try { await apiFetch('/email/signature', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ signature }) }); onClose(); }
+    try { await apiFetch('/email/signature', { method: 'PUT', body: JSON.stringify({ signature }) }); onClose(); }
     catch { /* ignore */ } finally { setSaving(false); }
   };
 
@@ -462,7 +462,6 @@ function EmailIncidentLinks({ emailId, onSnackbar }: { emailId: string; onSnackb
       payload[`${linkTarget}Id`] = parseInt(linkId, 10);
       await apiFetch('/email/link', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       setShowForm(false);
@@ -936,7 +935,6 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
     try {
       await apiFetch('/email/schedule', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           to: to.split(',').map(s => s.trim()).filter(Boolean),
           cc: cc.trim() ? cc.split(',').map(s => s.trim()).filter(Boolean) : undefined,
@@ -1018,7 +1016,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
       if (cc.trim() && (mode === 'new' || mode === 'forward')) payload.cc = cc.split(',').map((s: string) => s.trim());
       if (bcc.trim() && (mode === 'new' || mode === 'forward')) payload.bcc = bcc.split(',').map((s: string) => s.trim());
 
-      await apiFetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      await apiFetch(endpoint, { method: 'POST', body: JSON.stringify(payload) });
       clearDraft();
       onSent();
       onClose();
@@ -1385,7 +1383,7 @@ function InlineReply({ messageId, onSent }: { messageId: string; onSent: () => v
     if (!body.trim()) return;
     setSending(true);
     try {
-      await apiFetch(`/email/messages/${messageId}/reply`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body }) });
+      await apiFetch(`/email/messages/${messageId}/reply`, { method: 'POST', body: JSON.stringify({ body }) });
       setBody(''); setExpanded(false); onSent();
     } catch { /* ignore */ } finally { setSending(false); }
   };
@@ -1675,7 +1673,7 @@ export default function EmailPage() {
 
   const handleToggleRead = async (msg: EmailMessage) => {
     try {
-      await apiFetch(`/email/messages/${msg.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isRead: !msg.isRead }) });
+      await apiFetch(`/email/messages/${msg.id}`, { method: 'PATCH', body: JSON.stringify({ isRead: !msg.isRead }) });
       setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, isRead: !msg.isRead } : m));
       showSnackbar(msg.isRead ? 'Marked as unread' : 'Marked as read');
       debouncedFolderRefresh();
@@ -1684,7 +1682,7 @@ export default function EmailPage() {
 
   const handleToggleFlag = async (msg: EmailMessage) => {
     try {
-      await apiFetch(`/email/messages/${msg.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isFlagged: !msg.isFlagged }) });
+      await apiFetch(`/email/messages/${msg.id}`, { method: 'PATCH', body: JSON.stringify({ isFlagged: !msg.isFlagged }) });
       setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, isFlagged: !msg.isFlagged } : m));
       showSnackbar(msg.isFlagged ? 'Flag removed' : 'Flagged');
     } catch { showSnackbar('Failed to update', 'error'); }
@@ -1704,7 +1702,7 @@ export default function EmailPage() {
   const handleArchive = async (msg: EmailMessage) => {
     const shouldAdvance = selectedMessage?.id === msg.id;
     try {
-      await apiFetch(`/email/messages/${msg.id}/move`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ folderId: 'archive' }) });
+      await apiFetch(`/email/messages/${msg.id}/move`, { method: 'POST', body: JSON.stringify({ folderId: 'archive' }) });
       if (shouldAdvance) autoAdvance(msg.id, messages); else { setSelectedMessage(null); setFullMessage(null); }
       setMessages(prev => prev.filter(m => m.id !== msg.id));
       setSelectedIds(prev => { const n = new Set(prev); n.delete(msg.id); return n; });
@@ -1716,7 +1714,7 @@ export default function EmailPage() {
     const target = msg || selectedMessage;
     if (!target) return;
     try {
-      await apiFetch(`/email/messages/${target.id}/move`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ folderId }) });
+      await apiFetch(`/email/messages/${target.id}/move`, { method: 'POST', body: JSON.stringify({ folderId }) });
       if (selectedMessage?.id === target.id) autoAdvance(target.id, messages);
       setMessages(prev => prev.filter(m => m.id !== target.id));
       showSnackbar('Moved to folder'); debouncedFolderRefresh();
@@ -1735,7 +1733,7 @@ export default function EmailPage() {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
     try {
-      await apiFetch('/email/messages/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ids }) });
+      await apiFetch('/email/messages/batch', { method: 'POST', body: JSON.stringify({ action, ids }) });
       if (action === 'delete' || action === 'archive') {
         if (selectedMessage && selectedIds.has(selectedMessage.id)) {
           const remaining = messages.filter(m => !selectedIds.has(m.id));
@@ -1755,7 +1753,7 @@ export default function EmailPage() {
 
   const handleMarkAllRead = async () => {
     try {
-      await apiFetch('/email/messages/mark-all-read', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ folder: selectedFolder }) });
+      await apiFetch('/email/messages/mark-all-read', { method: 'POST', body: JSON.stringify({ folder: selectedFolder }) });
       setMessages(prev => prev.map(m => ({ ...m, isRead: true }))); showSnackbar('All messages marked as read'); debouncedFolderRefresh();
     } catch { showSnackbar('Failed to mark all as read', 'error'); }
   };
@@ -1764,7 +1762,7 @@ export default function EmailPage() {
   const handleCreateFolder = async (parentId?: string) => {
     if (!newFolderName.trim()) return;
     try {
-      await apiFetch('/email/folders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ displayName: newFolderName.trim(), parentFolderId: parentId }) });
+      await apiFetch('/email/folders', { method: 'POST', body: JSON.stringify({ displayName: newFolderName.trim(), parentFolderId: parentId }) });
       setNewFolderName(''); setShowNewFolder(false); fetchFolders();
       if (parentId) fetchChildFolders(parentId);
       showSnackbar('Folder created');
@@ -1774,7 +1772,7 @@ export default function EmailPage() {
   const handleRenameFolder = async (folderId: string) => {
     if (!renameValue.trim()) return;
     try {
-      await apiFetch(`/email/folders/${folderId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ displayName: renameValue.trim() }) });
+      await apiFetch(`/email/folders/${folderId}`, { method: 'PATCH', body: JSON.stringify({ displayName: renameValue.trim() }) });
       setRenamingFolder(null); setRenameValue(''); fetchFolders();
       showSnackbar('Folder renamed');
     } catch { showSnackbar('Failed to rename folder', 'error'); }

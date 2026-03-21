@@ -201,8 +201,18 @@ router.delete('/calls/:id', validateParamId, requireRole('admin', 'manager'), (r
       try { db.prepare('UPDATE units SET current_call_id = NULL WHERE current_call_id = ?').run(call.id); } catch { /* ignore */ }
       try { db.prepare('DELETE FROM record_links WHERE (source_type = ? AND source_id = ?) OR (target_type = ? AND target_id = ?)').run('call', String(call.id), 'call', String(call.id)); } catch { /* ignore */ }
 
+      // Clear FK references from tables that lack ON DELETE CASCADE
+      try { db.prepare('UPDATE citations SET call_id = NULL WHERE call_id = ?').run(call.id); } catch { /* ignore */ }
+      try { db.prepare('UPDATE serve_queue SET call_id = NULL WHERE call_id = ?').run(call.id); } catch { /* ignore */ }
+      try { db.prepare('UPDATE calls_for_service SET parent_call_id = NULL WHERE parent_call_id = ?').run(call.id); } catch { /* ignore */ }
+      try { db.prepare('DELETE FROM call_visit_history WHERE call_id = ?').run(call.id); } catch { /* ignore */ }
+      try { db.prepare('UPDATE dossiers SET linked_call_id = NULL WHERE linked_call_id = ?').run(call.id); } catch { /* ignore */ }
+
       // Delete related activity log entries
       try { db.prepare('DELETE FROM activity_log WHERE entity_type = ? AND entity_id = ?').run('call', call.id); } catch { /* ignore */ }
+
+      // Delete timeline entries (call_timeline has ON DELETE CASCADE but be safe)
+      try { db.prepare('DELETE FROM call_timeline WHERE call_id = ?').run(call.id); } catch { /* ignore */ }
 
       db.prepare('DELETE FROM calls_for_service WHERE id = ?').run(call.id);
 

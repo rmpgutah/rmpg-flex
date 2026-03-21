@@ -10,7 +10,7 @@ import jsPDF from 'jspdf';
 import { loadLogoDarkBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
 import { localToday } from './dateUtils';
 import { fetchPdfBranding, DEFAULT_PDF_BRANDING } from './pdfGenerator';
-import { COLOR, FONT, BORDER, SPACING, LAYOUT } from './pdfTokens';
+import { COLOR, FONT, BORDER, SPACING, LAYOUT, getCapHeight } from './pdfTokens';
 
 // ── Types matching the server patrol-tracking response ──────
 
@@ -150,9 +150,9 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   function addHeaderFooter(pageNum: number, totalPages: number) {
     // Only draw the top header bar on pages 2+
     if (pageNum > 1) {
-      // Dark gray header bar
-      doc.setFillColor(55, 60, 72);
-      doc.rect(0, 0, pageW, 14, 'F');
+      // Dark gray header bar (edge-to-edge for cover-style report)
+      doc.setFillColor(...COLOR.BG_SECTION_HDR);
+      doc.rect(0, 0, pageW, LAYOUT.PATROL_HEADER_H, 'F');
 
       // Logo in header
       if (logoB64) {
@@ -162,14 +162,14 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
       }
 
       const textX = logoB64 ? margin + 14 : margin;
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(9);
+      doc.setTextColor(...COLOR.TEXT_INVERTED);
+      doc.setFontSize(FONT.SIZE_CASE_NUMBER);
       doc.setFont('helvetica', 'bold');
       doc.text(branding.report_header_text, textX, 6);
-      doc.setFontSize(6.5);
+      doc.setFontSize(FONT.SIZE_SUBHEADER);
       doc.setFont('helvetica', 'normal');
       doc.text('PATROL DIVISION', textX, 10);
-      doc.setFontSize(7);
+      doc.setFontSize(FONT.SIZE_REPORT_TYPE);
       doc.text(`PATROL TRACKING REPORT  |  ${formNum}  |  ${FORM_REVISION}`, pageW - margin, 9, { align: 'right' });
 
       // Accent strip
@@ -179,14 +179,14 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
       doc.rect(pageW / 2, 14, pageW / 2, 1, 'F');
     }
 
-    // Footer on ALL pages
-    doc.setFillColor(240, 240, 245);
+    // Footer on ALL pages (edge-to-edge for cover-style report)
+    doc.setFillColor(...COLOR.BG_FORM_CELL_LABEL);
     doc.rect(0, pageH - 8, pageW, 8, 'F');
     doc.setDrawColor(...COLOR.BORDER_TABLE);
-    doc.setLineWidth(0.2);
+    doc.setLineWidth(BORDER.TABLE_ROW);
     doc.line(0, pageH - 8, pageW, pageH - 8);
     doc.setTextColor(...COLOR.TEXT_MUTED);
-    doc.setFontSize(5.5);
+    doc.setFontSize(FONT.SIZE_FOOTER_SECONDARY);
     doc.text(`Generated: ${reportDate}  |  ${formNum}  |  CONFIDENTIAL — INTERNAL USE ONLY`, margin, pageH - 3.5);
     doc.text(`Page ${pageNum} of ${totalPages}`, pageW - margin, pageH - 3.5, { align: 'right' });
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -195,10 +195,10 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   // ── Utility: draw a section header bar (dark gray bg + white text) ──
   function drawSectionHeader(title: string) {
     const barH = 7;
-    doc.setFillColor(55, 60, 72);
+    doc.setFillColor(...COLOR.BG_SECTION_HDR);
     doc.rect(margin, yPos, contentW, barH, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(9);
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.setFontSize(FONT.SIZE_CASE_NUMBER);
     doc.setFont('helvetica', 'bold');
     doc.text(title.toUpperCase(), margin + SPACING.CONTENT_INSET, yPos + barH / 2 + 1.2);
     doc.setFont('helvetica', 'normal');
@@ -213,8 +213,8 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     doc.setDrawColor(...COLOR.BORDER_TABLE);
     doc.setLineWidth(BORDER.TABLE_ROW * 3);
     doc.line(margin, yPos + 5, margin + contentW, yPos + 5);
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(6);
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.setFontSize(FONT.SIZE_TABLE_HEADER);
     doc.setFont('helvetica', 'bold');
     let xOff = margin;
     for (const col of cols) {
@@ -261,22 +261,22 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   // Bold centered agency name
   const titleY = logoB64 ? 42 : 18;
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  doc.setFontSize(18);
+  doc.setFontSize(FONT.SIZE_HEADER_TITLE + 5); // Cover page: larger than standard header
   doc.setFont('helvetica', 'bold');
   doc.text(branding.report_header_text, pageW / 2, titleY, { align: 'center' });
 
-  doc.setFontSize(10);
+  doc.setFontSize(FONT.SIZE_TOTAL_LABEL);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
   doc.text(branding.report_subheader_text, pageW / 2, titleY + 6, { align: 'center' });
 
   // Bold report title
-  doc.setFontSize(14);
+  doc.setFontSize(FONT.SIZE_BANNER);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(...primaryRgb);
   doc.text('PATROL TRACKING REPORT', pageW / 2, titleY + 14, { align: 'center' });
 
-  doc.setFontSize(7);
+  doc.setFontSize(FONT.SIZE_REPORT_TYPE);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...COLOR.TEXT_MUTED);
   doc.text(`${formNum}  |  ${FORM_REVISION}`, pageW / 2, titleY + 19, { align: 'center' });
@@ -295,7 +295,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
   // Report metadata
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  doc.setFontSize(9);
+  doc.setFontSize(FONT.SIZE_CASE_NUMBER);
   doc.setFont('helvetica', 'normal');
 
   const startLabel = data.query.startDate
@@ -330,20 +330,20 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     // Unit header line — light bg with accent left edge
     doc.setFillColor(...primaryRgb);
     doc.rect(margin, yPos, 2, 6, 'F');
-    doc.setFillColor(245, 245, 250);
+    doc.setFillColor(...COLOR.BG_FORM_CELL_LABEL);
     doc.rect(margin + 2, yPos, contentW - 2, 6, 'F');
     doc.setDrawColor(...COLOR.BORDER_FIELD);
-    doc.setLineWidth(0.2);
+    doc.setLineWidth(BORDER.TABLE_ROW);
     doc.line(margin, yPos + 6, margin + contentW, yPos + 6);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    doc.setFontSize(8);
+    doc.setFontSize(FONT.SIZE_SECTION_TITLE);
     doc.setFont('helvetica', 'bold');
-    doc.text(`${trail.call_sign}  —  ${trail.officer_name}  (Badge: ${trail.badge_number || 'N/A'})`, margin + 5, yPos + 4.2);
+    doc.text(`${trail.call_sign}  —  ${trail.officer_name}  (Badge: ${trail.badge_number || 'N/A'})`, margin + 5, yPos + 4.2, { maxWidth: contentW - 10 });
     yPos += 8;
 
     // Stats grid
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
-    doc.setFontSize(7);
+    doc.setFontSize(FONT.SIZE_TABLE_BODY);
     doc.setFont('helvetica', 'normal');
 
     const stats = trail.stats;
@@ -502,7 +502,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
       drawColumnHeaders(rCols);
 
-      doc.setFontSize(6);
+      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
       for (let si = 0; si < trail.response_segments.length; si++) {
@@ -554,7 +554,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
       drawColumnHeaders(zCols);
 
-      doc.setFontSize(6);
+      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
       // Sort by time spent descending
@@ -589,7 +589,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   }
 
   // ── Apply headers/footers to all pages ───────────────
-  const totalPages = doc.internal.pages.length - 1;
+  const totalPages = doc.getNumberOfPages();
   for (let p = 1; p <= totalPages; p++) {
     doc.setPage(p);
     addHeaderFooter(p, totalPages);

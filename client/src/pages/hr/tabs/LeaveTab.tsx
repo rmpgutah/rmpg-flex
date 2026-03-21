@@ -163,14 +163,12 @@ export default function LeaveTab() {
       if (editRequest) {
         await apiFetch(`/api/hr/leave/${editRequest.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data),
         });
         addToast('Leave request updated', 'success');
       } else {
         await apiFetch('/api/hr/leave', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data),
         });
         addToast('Leave request submitted', 'success');
@@ -198,7 +196,6 @@ export default function LeaveTab() {
     try {
       await apiFetch(`/api/hr/leave/${id}/approve`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ review_notes: reviewNotes[id] || '' }),
       });
       addToast('Leave request approved', 'success');
@@ -213,7 +210,6 @@ export default function LeaveTab() {
     try {
       await apiFetch(`/api/hr/leave/${id}/deny`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ review_notes: reviewNotes[id] || '' }),
       });
       addToast('Leave request denied', 'success');

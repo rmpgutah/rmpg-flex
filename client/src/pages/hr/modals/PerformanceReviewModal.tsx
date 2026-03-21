@@ -53,8 +53,8 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
   const [error, setError] = useState('');
 
   useEffect(() => {
-    apiFetch<UserOption[]>('/hr/employees').then(setUsers).catch(() => {});
-    apiFetch<ReviewCycle[]>('/hr/review-cycles').then(setCycles).catch(() => {});
+    apiFetch<UserOption[]>('/hr/employees').then(setUsers).catch(err => console.warn('[API] Data load failed:', err));
+    apiFetch<ReviewCycle[]>('/hr/review-cycles').then(setCycles).catch(err => console.warn('[API] Data load failed:', err));
   }, []);
 
   const handleSubmit = async () => {
@@ -78,13 +78,11 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
       if (review?.id) {
         await apiFetch(`/hr/performance-reviews/${review.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
       } else {
         await apiFetch('/hr/performance-reviews', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
       }

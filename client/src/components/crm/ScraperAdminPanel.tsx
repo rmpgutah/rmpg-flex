@@ -71,7 +71,6 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
     try {
       await apiFetch(`/api/crm/scrape-sources/${key}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_enabled: enabled ? 1 : 0 }),
       });
       addToast(`Source ${enabled ? 'enabled' : 'disabled'}`, 'success');

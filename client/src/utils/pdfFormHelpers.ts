@@ -443,7 +443,8 @@ export function drawFormSection(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
-    const textY = curY + bannerH / 2 + FONT.SIZE_SECTION_TITLE * 0.14;
+    const bannerCap = FONT.SIZE_SECTION_TITLE * 0.35;
+    const textY = curY + (bannerH + bannerCap) / 2;
     doc.text(config.sideTab.label.toUpperCase(), gridX + SPACING.CONTENT_INSET + 1, textY);
     curY += bannerH;
   }

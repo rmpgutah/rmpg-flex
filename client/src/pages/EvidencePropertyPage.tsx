@@ -160,7 +160,7 @@ export default function EvidencePropertyPage() {
   useEffect(() => { fetchItems(); }, [fetchItems]);
   useEffect(() => { fetchStats(); fetchLocations(); }, [fetchStats, fetchLocations]);
   useEffect(() => {
-    apiFetch<{ data: any[] }>('/cases?limit=500').then(r => setCaseOptions(r.data || [])).catch(() => {});
+    apiFetch<{ data: any[] }>('/cases?limit=500').then(r => setCaseOptions(r.data || [])).catch(err => console.warn('[API] Data load failed:', err));
   }, []);
   useLiveSync('records', () => { fetchItems({ silent: true }); fetchStats(); });
 

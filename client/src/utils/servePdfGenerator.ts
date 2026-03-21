@@ -27,7 +27,7 @@ import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,
   getContentWidth, getFullFieldWidth,
   getLeftX, getRightColumnX, getHalfFieldWidth,
-  getProportionalColumns,
+  getProportionalColumns, getCapHeight,
 } from './pdfTokens';
 
 // ── Data Interfaces ──────────────────────────────────────────
@@ -105,6 +105,9 @@ function addCenteredTitle(doc: jsPDF, title: string, y: number, fontSize = 14): 
   doc.setFontSize(fontSize);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   doc.text(title, pageWidth / 2, y, { align: 'center' });
+  // Reset font state so callers don't inherit bold/large size
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   return y + fontSize * 0.5 + SPACING.LG;
 }
 
@@ -129,15 +132,17 @@ function addNotarySection(doc: jsPDF, y: number): number {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
-  doc.text('NOTARY PUBLIC', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, y + barH / 2 + FONT.SIZE_SECTION_TITLE * 0.14);
+  const notaryCap = getCapHeight(FONT.SIZE_SECTION_TITLE);
+  doc.text('NOTARY PUBLIC', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, y + (barH + notaryCap) / 2);
 
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  let ny = y + barH + SPACING.LG + 2;
+  let ny = y + barH + SPACING.LG + SPACING.MD;
 
   // Notary lines
   const lineX1 = lx;
   const lineX2 = LAYOUT.PAGE_MARGIN + cw - SPACING.CONTENT_INSET;
   const lineGap = 8;
+  const notaryLabelOffset = getCapHeight(FONT.SIZE_SIGNATURE_LABEL) + SPACING.SM;
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   doc.setLineWidth(BORDER.SIGNATURE_LINE);
@@ -147,7 +152,7 @@ function addNotarySection(doc: jsPDF, y: number): number {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
-  doc.text('NOTARY NAME', lineX1, ny + 3);
+  doc.text('NOTARY NAME', lineX1, ny + notaryLabelOffset);
   ny += lineGap;
 
   // Commission # line
@@ -156,7 +161,7 @@ function addNotarySection(doc: jsPDF, y: number): number {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
-  doc.text('COMMISSION NUMBER / EXPIRATION', lineX1, ny + 3);
+  doc.text('COMMISSION NUMBER / EXPIRATION', lineX1, ny + notaryLabelOffset);
   ny += lineGap;
 
   // Date line
@@ -165,9 +170,10 @@ function addNotarySection(doc: jsPDF, y: number): number {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
-  doc.text('DATE', lineX1, ny + 3);
+  doc.text('DATE', lineX1, ny + notaryLabelOffset);
 
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   return y + boxH + SPACING.SECTION_GAP;
 }
 
@@ -193,8 +199,8 @@ function addPhotos(doc: jsPDF, photos: string[], y: number, label?: string): num
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
-      doc.text(label.toUpperCase(), lx, y + 2);
-      y += 4;
+      doc.text(label.toUpperCase(), lx, y + getCapHeight(FONT.SIZE_FIELD_LABEL) + SPACING.SM);
+      y += SPACING.CAUTION_PAD;
     }
 
     try {
@@ -543,13 +549,16 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
 
   // ── Signature Block ──
   y = checkPageBreak(doc, y, SPACING.SIGNATURE_BOX_H + SPACING.LG);
+  const sigDate = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
   y = addSignatureBlock(doc, 'Process Server Signature', lx, y, ffw, data.signature ? {
     signatureImage: data.signature,
     printedName: data.serverName,
     badgeNumber: data.serverBadge,
+    date: sigDate,
   } : {
     printedName: data.serverName,
     badgeNumber: data.serverBadge,
+    date: sigDate,
   });
   y += SPACING.SECTION_GAP;
 

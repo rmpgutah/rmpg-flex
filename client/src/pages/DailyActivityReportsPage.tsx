@@ -147,8 +147,11 @@ export default function DailyActivityReportsPage() {
   };
 
   const handleReturn = async () => {
-    const notes = prompt('Enter review notes (required):');
-    if (!notes || !selected) return;
+    const rawNotes = prompt('Enter review notes (required):');
+    if (!rawNotes || !selected) return;
+    // Sanitize: trim, limit length, strip control characters
+    const notes = rawNotes.trim().replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '').slice(0, 2000);
+    if (!notes) { addToast('Review notes cannot be empty', 'error'); return; }
     try {
       await apiFetch(`/dar/${selected.id}/return`, { method: 'PUT', body: JSON.stringify({ review_notes: notes }) });
       addToast('DAR returned for revision', 'success');

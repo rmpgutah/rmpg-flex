@@ -213,7 +213,11 @@ export type AuditAction =
   | 'UPDATE'
   | 'DELETE'
   | 'SEARCH'
-  | 'BLOCK';
+  | 'BLOCK'
+  | 'EXPORT'
+  | 'ADMIN_PASSWORD_RESET'
+  | 'MOVE_EMAIL'
+  | 'CANCEL_EMAIL';
 
 export type AuditEntityType =
   | 'user'
@@ -282,7 +286,10 @@ export type AuditEntityType =
   | 'trespass_order'
   | 'code_violation'
   | 'vehicle_tow'
-  | 'attachment';
+  | 'attachment'
+  | 'company_documents'
+  | 'users'
+  | 'scheduled_email';
 
 // ─── Audit Log Integrity ─────────────────────────────────
 // Each log entry includes an HMAC hash of its contents, chained to the previous

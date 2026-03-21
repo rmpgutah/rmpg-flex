@@ -261,7 +261,6 @@ export default function ForensicLabPage() {
     try {
       const caseRes = await apiFetch<ForensicCase>('/forensic-lab', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: wizardData.title,
           case_type: wizardData.case_type,
@@ -277,7 +276,6 @@ export default function ForensicLabPage() {
         if (exhibit.description.trim()) {
           await apiFetch(`/forensic-lab/${caseRes.id}/exhibits`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(exhibit),
           });
         }
@@ -302,7 +300,6 @@ export default function ForensicLabPage() {
     try {
       await apiFetch(`/forensic-lab/${selectedCase.id}/analyses`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(analysisForm),
       });
       setShowAnalysisModal(false);
@@ -320,7 +317,6 @@ export default function ForensicLabPage() {
     try {
       await apiFetch(`/forensic-lab/${selectedCase.id}/exhibits`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(exhibitForm),
       });
       setShowExhibitModal(false);
@@ -338,7 +334,6 @@ export default function ForensicLabPage() {
     try {
       await apiFetch(`/forensic-lab/${selectedCase.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       });
       fetchCaseDetail(selectedCase.id);
@@ -367,7 +362,6 @@ export default function ForensicLabPage() {
     try {
       await apiFetch(`/forensic-lab/${selectedCase.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editForm),
       });
       setShowEditModal(false);
@@ -385,7 +379,6 @@ export default function ForensicLabPage() {
     try {
       await apiFetch(`/forensic-lab/${selectedCase.id}/analyses/${analysisId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus, ...extras }),
       });
       fetchCaseDetail(selectedCase.id);
@@ -401,7 +394,6 @@ export default function ForensicLabPage() {
     try {
       await apiFetch(`/forensic-lab/${selectedCase.id}/exhibits/${exhibitId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus, ...extras }),
       });
       fetchCaseDetail(selectedCase.id);
@@ -418,7 +410,6 @@ export default function ForensicLabPage() {
     try {
       await apiFetch(`/forensic-lab/${selectedCase.id}/timeline`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'note', description: timelineNote }),
       });
       setTimelineNote('');
@@ -451,7 +442,6 @@ export default function ForensicLabPage() {
     try {
       await apiFetch(`/forensic-lab/${selectedCase.id}/links`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ entity_type: entityType, entity_id: entityId, relationship }),
       });
       setLinkSearchResults([]);

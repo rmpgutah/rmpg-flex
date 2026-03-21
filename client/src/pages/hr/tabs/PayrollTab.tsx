@@ -178,7 +178,6 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
     }
     try {
       await apiFetch('/api/hr/payroll/periods', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(periodForm),
       });
       addToast('Pay period created', 'success');
@@ -201,7 +200,6 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
   const handleClosePeriod = async (id: number) => {
     try {
       await apiFetch(`/api/hr/payroll/periods/${id}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'closed' }),
       });
       addToast('Pay period closed', 'success');
@@ -224,7 +222,6 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
     }
     try {
       await apiFetch('/api/hr/payroll/rates', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: Number(rateForm.user_id), pay_type: rateForm.pay_type,
           rate: Number(rateForm.rate), overtime_rate: Number(rateForm.overtime_rate),
@@ -242,7 +239,6 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
   const handleSaveEntry = async (entryId: number) => {
     try {
       await apiFetch(`/api/hr/payroll/entries/${entryId}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editValues),
       });
       addToast('Entry updated', 'success');
@@ -255,7 +251,6 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
   const handleApproveEntry = async (entryId: number) => {
     try {
       await apiFetch(`/api/hr/payroll/entries/${entryId}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'approved' }),
       });
       addToast('Entry approved', 'success');

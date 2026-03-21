@@ -22,6 +22,12 @@ import NsopwSource from './nsopw';
 import UtahBusinessSource from './utahBusiness';
 import UtahDoplSource from './utahDOPL';
 import UsernameSearchSource from './usernameSearch';
+import UsMarshalsSource from './usMarshals';
+import DeaFugitivesSource from './deaFugitives';
+import UtahVoterRecordsSource from './utahVoterRecords';
+import PacerLookupSource from './pacerLookup';
+import UccFilingsSource from './uccFilings';
+import SocialBladeSource from './socialBlade';
 
 /** Lazy-initialized sources (avoids calling getDb() before initDatabase()) */
 let sources: DataSource[] | null = null;
@@ -44,6 +50,12 @@ function ensureSources(): DataSource[] {
       new UtahBusinessSource(),
       new UtahDoplSource(),
       new UsernameSearchSource(),
+      new UsMarshalsSource(),
+      new DeaFugitivesSource(),
+      new UtahVoterRecordsSource(),
+      new PacerLookupSource(),
+      new UccFilingsSource(),
+      new SocialBladeSource(),
     ];
   }
   return sources;

@@ -209,7 +209,6 @@ export default function IncidentsPage() {
     try {
       await apiFetch(`/records/evidence/${custodyTransfer.evidenceId}/chain-action`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: custodyAction,
           from_location: custodyTransfer.currentLocation || null,
@@ -277,7 +276,6 @@ export default function IncidentsPage() {
       // the request completes even during page navigation
       apiFetch(`/incidents/${selectedIncidentRef.current.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ narrative }),
         keepalive: true,
       }).catch(() => { /* best-effort save */ });
