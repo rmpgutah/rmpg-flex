@@ -72,6 +72,8 @@ import offlineRoutes from './routes/offline';
 import companyDocumentsRoutes from './routes/companyDocuments';
 import forensicsRoutes from './routes/forensics';
 import ipedRoutes from './routes/iped';
+import clearpathgpsRoutes from './routes/clearpathgps';
+import integrationsRoutes from './routes/integrations';
 
 const app = express();
 
@@ -178,6 +180,8 @@ app.use('/api/offline', offlineRoutes);
 app.use('/api/company-documents', companyDocumentsRoutes);
 app.use('/api/forensics', forensicsRoutes);
 app.use('/api/iped', ipedRoutes);
+app.use('/api/clearpathgps', clearpathgpsRoutes);
+app.use('/api/integrations', integrationsRoutes);
 
 // Mount download page and file serving routes (outside /api)
 // Also mounts /updates/latest.yml, /updates/latest-mac.yml for electron-updater
