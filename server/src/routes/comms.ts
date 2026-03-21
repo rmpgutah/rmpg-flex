@@ -401,6 +401,19 @@ router.post('/bolos', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       return;
     }
 
+    // Validate expiration date is in the future if provided
+    if (expires_at) {
+      const expDate = new Date(expires_at);
+      if (isNaN(expDate.getTime())) {
+        res.status(400).json({ error: 'expires_at must be a valid date' });
+        return;
+      }
+      if (expDate.getTime() < Date.now()) {
+        res.status(400).json({ error: 'expires_at must be in the future' });
+        return;
+      }
+    }
+
     // Wrap sequence generation + INSERT in a transaction to prevent duplicate BOLO numbers
     const createBolo = db.transaction(() => {
       const lastBolo = db.prepare(`SELECT bolo_number FROM bolos ORDER BY id DESC LIMIT 1`).get() as any;

@@ -28,9 +28,8 @@ router.use(authenticateToken);
 
 // ── GET /status ─────────────────────────────────────────────
 // Per-county sync status, stats, circuit breaker state
-// Available to all authenticated users
 
-router.get('/status', (_req: Request, res: Response) => {
+router.get('/status', requireRole('admin', 'manager', 'supervisor'), (_req: Request, res: Response) => {
   try {
     const status = getJailRosterStatus();
     res.json(status);
@@ -160,7 +159,7 @@ router.post('/reset-errors/:county', requireRole('admin'), (req: Request, res: R
 // ── GET /statistics ──────────────────────────────────────────
 // Intake/release statistics per county with daily trends
 
-router.get('/statistics', (_req: Request, res: Response) => {
+router.get('/statistics', requireRole('admin', 'manager', 'supervisor'), (_req: Request, res: Response) => {
   try {
     const stats = getJailRosterStatistics();
     res.json(stats);
