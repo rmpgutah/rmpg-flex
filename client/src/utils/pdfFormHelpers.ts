@@ -9,6 +9,7 @@ import jsPDF from 'jspdf';
 import {
   COLOR, FONT, BORDER, SPACING, LAYOUT,
   getGridStartX, getGridContentWidth,
+  getCapHeight,
   type RGBColor,
 } from './pdfTokens';
 
@@ -132,7 +133,7 @@ export function drawFormCell(
 
     // Center value text baseline in the value area
     const fontSize = cell.valueFontSize || FONT.SIZE_FORM_CELL_VALUE;
-    const textH = fontSize * 0.35;  // Approximate cap height in mm
+    const textH = getCapHeight(fontSize);
     const valueY = valueAreaTop + (valueAreaH + textH) / 2;
     const maxW = w - 2 * pad;
 
@@ -340,8 +341,9 @@ export function drawCodeReferenceTable(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
-  doc.text(title.toUpperCase(), x + 1.5, y + 2.8);
-  let curY = y + 4;
+  const titleBarH = 4;
+  doc.text(title.toUpperCase(), x + 1.5, y + (titleBarH + getCapHeight(FONT.SIZE_FORM_CELL_LABEL)) / 2);
+  let curY = y + titleBarH;
 
   // Code entries in columns
   for (let i = 0; i < codes.length; i++) {
@@ -443,7 +445,8 @@ export function drawFormSection(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
-    const textY = curY + bannerH / 2 + FONT.SIZE_SECTION_TITLE * 0.14;
+    const bannerCap = getCapHeight(FONT.SIZE_SECTION_TITLE);
+    const textY = curY + (bannerH + bannerCap) / 2;
     doc.text(config.sideTab.label.toUpperCase(), gridX + SPACING.CONTENT_INSET + 1, textY);
     curY += bannerH;
   }

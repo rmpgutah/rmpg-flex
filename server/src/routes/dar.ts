@@ -11,6 +11,7 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { escapeLike, validateParamId } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
+import { securityEvent } from '../utils/auditLogger';
 
 const router = Router();
 router.use(authenticateToken);
@@ -46,14 +47,22 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: 
   try {
     const db = getDb();
     const { status, officer_id, property_id, date_from, date_to, search, page = '1', limit = '50' } = req.query;
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.min(1000, Math.max(1, parseInt(page as string, 10) || 1));
     const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
     let where = 'WHERE 1=1';
     const params: any[] = [];
+
+    // Officers can only see their own DARs; supervisors+ see all
+    if (req.user!.role === 'officer') {
+      where += ' AND d.officer_id = ?';
+      params.push(req.user!.userId);
+    } else if (officer_id) {
+      where += ' AND d.officer_id = ?';
+      params.push(officer_id);
+    }
     if (status) { where += ' AND d.status = ?'; params.push(status); }
-    if (officer_id) { where += ' AND d.officer_id = ?'; params.push(officer_id); }
     if (property_id) { where += ' AND d.property_id = ?'; params.push(property_id); }
     if (date_from) { where += ' AND d.shift_date >= ?'; params.push(date_from); }
     if (date_to) { where += ' AND d.shift_date <= ?'; params.push(date_to); }
@@ -83,8 +92,13 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: 
 router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const row = db.prepare('SELECT * FROM daily_activity_reports WHERE id = ?').get(req.params.id);
+    const row = db.prepare('SELECT * FROM daily_activity_reports WHERE id = ?').get(req.params.id) as any;
     if (!row) return res.status(404).json({ error: 'DAR not found' });
+    // Officers can only view their own DARs
+    if (req.user!.role === 'officer' && row.officer_id !== req.user!.userId) {
+      securityEvent('idor_rejected', 'warning', { userId: req.user!.userId, route: 'GET /dar/:id', targetResource: req.params.id, targetOwnerId: row.officer_id, ip: req.ip });
+      return res.status(403).json({ error: 'You can only view your own reports' });
+    }
     res.json({ data: row });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -275,6 +289,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     if (!existing) { res.status(404).json({ error: 'DAR not found' }); return; }
     // Officers can only edit their own DARs
     if (req.user!.role === 'officer' && existing.officer_id !== req.user!.userId) {
+      securityEvent('idor_rejected', 'warning', { userId: req.user!.userId, route: 'PUT /dar/:id', targetResource: req.params.id, targetOwnerId: existing.officer_id, ip: req.ip });
       res.status(403).json({ error: 'You can only edit your own DAR' }); return;
     }
     const now = localNow();
@@ -300,8 +315,14 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
 router.put('/:id/submit', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const existing = db.prepare('SELECT id FROM daily_activity_reports WHERE id = ?').get(req.params.id);
+    const existing = db.prepare('SELECT id, officer_id FROM daily_activity_reports WHERE id = ?').get(req.params.id) as any;
     if (!existing) { res.status(404).json({ error: 'DAR not found' }); return; }
+    // Officers can only submit their own DARs
+    if (req.user!.role === 'officer' && existing.officer_id !== req.user!.userId) {
+      securityEvent('idor_rejected', 'warning', { userId: req.user!.userId, route: 'PUT /dar/:id/submit', targetResource: req.params.id, targetOwnerId: existing.officer_id, ip: req.ip });
+      res.status(403).json({ error: 'You can only submit your own reports' });
+      return;
+    }
     const now = localNow();
     db.prepare('UPDATE daily_activity_reports SET status = ?, submitted_at = ?, updated_at = ? WHERE id = ?')
       .run('submitted', now, now, req.params.id);

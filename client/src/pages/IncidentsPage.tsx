@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   Plus,
@@ -207,9 +207,8 @@ export default function IncidentsPage() {
     if (!custodyTransfer) return;
     setCustodySubmitting(true);
     try {
-      await apiFetch(`/api/records/evidence/${custodyTransfer.evidenceId}/chain-action`, {
+      await apiFetch(`/records/evidence/${custodyTransfer.evidenceId}/chain-action`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: custodyAction,
           from_location: custodyTransfer.currentLocation || null,
@@ -224,7 +223,7 @@ export default function IncidentsPage() {
       setCustodyNotes('');
       // Refresh evidence for the selected incident
       if (selectedIncident) {
-        const evData = await apiFetch<any>(`/api/records/evidence?incident_id=${selectedIncident.id}`);
+        const evData = await apiFetch<any>(`/records/evidence?incident_id=${selectedIncident.id}`);
         setDetailEvidence(evData?.data || evData || []);
       }
     } catch {
@@ -240,6 +239,10 @@ export default function IncidentsPage() {
   const [dispositionCodes, setDispositionCodes] = useState<{code: string; description: string; color?: string}[]>([]);
   // Clients list for client selector
   const [clientsList, setClientsList] = useState<{ id: string; name: string }[]>([]);
+
+  // ---------- URL search params (prefill from call) ----------
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [formPrefillData, setFormPrefillData] = useState<(Partial<IncidentFormData> & { call_id?: string | number }) | undefined>(undefined);
 
   // ---------- modal / dialog state ----------
   const [showFormModal, setShowFormModal] = useState(false);
@@ -273,7 +276,6 @@ export default function IncidentsPage() {
       // the request completes even during page navigation
       apiFetch(`/incidents/${selectedIncidentRef.current.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ narrative }),
         keepalive: true,
       }).catch(() => { /* best-effort save */ });
@@ -313,6 +315,34 @@ export default function IncidentsPage() {
       .then((data) => setClientsList((Array.isArray(data) ? data : []).filter((c: any) => c.status === 'active').map((c: any) => ({ id: String(c.id), name: c.name }))))
       .catch((err) => { console.warn('[IncidentsPage] fetch clients list failed:', err); });
   }, [fetchIncidents]);
+
+  // ---------- Prefill from dispatch call (URL param) ----------
+  useEffect(() => {
+    const callId = searchParams.get('prefill_call_id');
+    if (!callId) return;
+    // Clear the param immediately so it doesn't re-trigger
+    setSearchParams((prev) => { const next = new URLSearchParams(prev); next.delete('prefill_call_id'); return next; }, { replace: true });
+    (async () => {
+      try {
+        const call = await apiFetch<any>(`/dispatch/calls/${callId}`);
+        if (!call) return;
+        const descParts = [call.description, call.notes].filter(Boolean);
+        setFormPrefillData({
+          call_id: call.id,
+          incident_type: call.call_type || '',
+          priority: call.priority || 'P3',
+          location_address: call.location_address || '',
+          narrative: descParts.join('\n\n') || '',
+          client_id: call.client_id ? String(call.client_id) : '',
+        });
+        setEditingIncident(undefined);
+        setShowFormModal(true);
+      } catch (err) {
+        console.warn('[IncidentsPage] Failed to fetch call for prefill:', err);
+        addToast('Could not load call data for prefill', 'error');
+      }
+    })();
+  }, [searchParams]);
 
   // Live sync — auto-refresh when any device modifies incidents (silent to avoid unmounting UI)
   const silentRefreshIncidents = useCallback(() => fetchIncidents({ silent: true }), [fetchIncidents]);
@@ -1142,7 +1172,7 @@ export default function IncidentsPage() {
       </PanelTitleBar>
 
       {/* Detail Body — Collapsible Sections */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-4 card-glass">
         {/* Returned Warning */}
         {selectedIncident.status === 'returned' && selectedIncident.review_notes && (
           <div className="p-3 bg-red-900/20 border border-red-700/40 mb-3">
@@ -1265,7 +1295,7 @@ export default function IncidentsPage() {
                 <label className="field-label">District:</label>
                 <div className="flex items-center gap-2 mt-0.5">
                   {inc.dispatch_code && (
-                    <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1.5 py-0.5 tracking-wide">
+                    <span className="badge-pill font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40">
                       {inc.dispatch_code}
                     </span>
                   )}
@@ -1279,7 +1309,7 @@ export default function IncidentsPage() {
               <div>
                 <label className="field-label">Disposition:</label>
                 <p className="text-sm text-rmpg-200">
-                  <span className="inline-block px-1.5 py-0.5 bg-brand-900/40 text-brand-300 text-[11px] uppercase font-bold border border-brand-600/40 mr-1">
+                  <span className="badge-pill bg-brand-900/40 text-brand-300 border border-brand-600/40 mr-1">
                     {inc.disposition}
                   </span>
                   {(() => {
@@ -1440,14 +1470,14 @@ export default function IncidentsPage() {
                 return (
                   <div key={lp.id} className="flex items-center justify-between px-3 py-1.5 bg-surface-sunken border border-rmpg-700 group">
                     <div className="flex items-center gap-3">
-                      <span className="px-1.5 py-0.5 bg-brand-900/40 text-brand-300 text-[10px] uppercase font-bold border border-brand-600/40">
+                      <span className="badge-pill bg-brand-900/40 text-brand-300 border border-brand-600/40">
                         {lp.role.replace(/_/g, ' ')}
                       </span>
                       <span className="text-sm text-white font-medium">{lp.last_name}, {lp.first_name}</span>
                       <WarrantBadge flags={lp.flags || '[]'} size="sm" />
                       {lp.dob && <span className="text-[11px] text-rmpg-400">DOB: {lp.dob}</span>}
                       {flags.map((f, i) => (
-                        <span key={i} className="px-1 py-0.5 bg-red-900/40 text-red-400 text-[10px] uppercase font-bold">
+                        <span key={i} className="badge-pill bg-red-900/40 text-red-400">
                           {f}
                         </span>
                       ))}
@@ -1489,7 +1519,7 @@ export default function IncidentsPage() {
               {detailVehicles.map((lv) => (
                 <div key={lv.id} className="flex items-center justify-between px-3 py-1.5 bg-surface-sunken border border-rmpg-700 group">
                   <div className="flex items-center gap-3">
-                    <span className="px-1.5 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold border border-amber-600/40">
+                    <span className="badge-pill bg-amber-900/40 text-amber-300 border border-amber-600/40">
                       {lv.role.replace(/_/g, ' ')}
                     </span>
                     <span className="text-sm text-white font-medium">
@@ -1527,9 +1557,17 @@ export default function IncidentsPage() {
           defaultOpen
           actions={
             ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status) ? (
-              <button onClick={() => setShowEvidenceModal(true)} className="toolbar-btn toolbar-btn-primary">
-                <Plus className="w-3 h-3" /> Add
-              </button>
+              <div className="flex items-center gap-1">
+                <button onClick={() => setShowEvidenceModal(true)} className="toolbar-btn toolbar-btn-primary">
+                  <Plus className="w-3 h-3" /> Add
+                </button>
+                <button
+                  onClick={() => navigate(`/evidence?new=true&incident_id=${selectedIncident.id}&location=${encodeURIComponent(selectedIncident.location || '')}`)}
+                  className="toolbar-btn"
+                >
+                  <ExternalLink className="w-3 h-3" /> Log Evidence
+                </button>
+              </div>
             ) : undefined
           }
         >
@@ -1545,7 +1583,7 @@ export default function IncidentsPage() {
                 return (
                   <div key={ev.id} className="px-3 py-1.5 bg-surface-sunken border border-rmpg-700">
                     <div className="flex items-center gap-3">
-                      <span className="px-1.5 py-0.5 bg-purple-900/40 text-purple-300 text-[10px] uppercase font-bold border border-purple-600/40">
+                      <span className="badge-pill bg-purple-900/40 text-purple-300 border border-purple-600/40">
                         {ev.evidence_type || 'physical'}
                       </span>
                       <span className="text-xs text-white font-mono font-bold">{ev.evidence_number}</span>
@@ -1843,7 +1881,7 @@ export default function IncidentsPage() {
   ) : null;
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col app-grid-bg">
       <SplitPanel
         left={tablePanel}
         right={detailPanel}
@@ -1860,6 +1898,7 @@ export default function IncidentsPage() {
           setShowFormModal(false);
           setEditingIncident(undefined);
           setFormDefaultType('');
+          setFormPrefillData(undefined);
         }}
         onSubmit={editingIncident ? handleUpdate : handleCreate}
         isSubmitting={isSubmitting}
@@ -1867,6 +1906,7 @@ export default function IncidentsPage() {
         dispositionCodes={dispositionCodes}
         clients={clientsList}
         defaultType={formDefaultType}
+        prefillData={formPrefillData}
       />
 
       {/* Delete Confirmation Dialog */}

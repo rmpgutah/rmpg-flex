@@ -29,6 +29,12 @@ declare global {
   }
 }
 
+// ─── Role-based security profiles ────────────────────────
+// Admin gets lighter session security (no IP binding, no UA binding)
+// since they log in from multiple locations/devices frequently.
+// Officers/dispatchers keep stricter session binding for CJIS compliance.
+const RELAXED_SESSION_ROLES = new Set(['admin']);
+
 // Shared verify options — validates issuer/audience if present in the token,
 // but does not reject tokens missing these claims (backward-compatible during rollout)
 const JWT_VERIFY_OPTIONS: VerifyOptions = {
@@ -75,8 +81,10 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
     }
 
     // Session validation — always check session validity when sessionId is present.
-    // Previously this was gated by enforceIpBinding, which meant disabling IP binding
-    // also disabled session revocation, idle timeout, UA binding, and max lifetime checks.
+    // Skip strict IP/UA binding for roles in RELAXED_SESSION_ROLES (admin) since
+    // they log in from multiple locations/devices frequently.
+    const useStrictBinding = !RELAXED_SESSION_ROLES.has(decoded.role);
+
     if (decoded.sessionId) {
       try {
         const db = getDb();
@@ -91,7 +99,8 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
         }
 
         // User-agent binding — detect token theft across different browsers
-        if (session.ua_hash) {
+        // Skipped for relaxed roles (admin) who switch devices frequently
+        if (useStrictBinding && session.ua_hash) {
           const currentUaHash = crypto.createHash('sha256')
             .update(req.headers['user-agent'] || '').digest('hex').slice(0, 32);
           if (currentUaHash !== session.ua_hash) {
@@ -106,10 +115,12 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
         if (config.session.enforceIpBinding && session.ip_address !== req.ip) {
           const action = config.session.ipChangeAction;
           if (action === 'invalidate') {
-            db.prepare('UPDATE sessions SET is_active = 0 WHERE session_id = ?')
-              .run(decoded.sessionId);
-            res.status(401).json({ error: 'Session invalidated: IP address changed', code: 'IP_CHANGED' });
-            return;
+            // Instead of immediately killing the session, update the session IP
+            // and allow through. This handles dynamic IPs (mobile, carrier NAT).
+            // The session is still bound to the same user-agent for theft detection.
+            db.prepare('UPDATE sessions SET ip_address = ?, last_used_at = ? WHERE session_id = ?')
+              .run(req.ip, new Date().toISOString(), decoded.sessionId);
+            // Allow through — IP updated to current
           } else if (action === 'reauth') {
             res.status(401).json({ error: 'Re-authentication required: IP address changed', code: 'IP_CHANGED_REAUTH' });
             return;

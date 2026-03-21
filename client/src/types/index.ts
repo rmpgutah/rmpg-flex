@@ -890,13 +890,11 @@ export interface DashCamVideo {
   linked_dashcam_event_id?: number;
   /** JSON string of GPS track: [{latitude,longitude,speed,altitude,timestamp},...] */
   cpg_gps_track?: string;
-  /** Overlay / burn / thumbnail fields */
-  thumbnail_path?: string;
-  processed_file_path?: string;
-  burned_file_path?: string;
-  burn_status?: 'none' | 'pending' | 'processing' | 'complete' | 'error';
-  burn_error?: string;
+  // DVD burn / export fields
+  burn_status?: string;
   burn_progress?: number;
+  burn_error?: string;
+  thumbnail_path?: string;
 }
 
 // --- Equipment ---
@@ -986,6 +984,99 @@ export interface PersonnelAnalytics {
     new_hires_30d: number;
     terminations_30d: number;
   };
+}
+
+// ─── HR Console Types ─────────────────────────────────────────
+
+export type LeaveType = 'vacation' | 'sick' | 'personal' | 'bereavement' | 'training' | 'unpaid';
+export type LeaveStatus = 'pending' | 'approved' | 'denied' | 'cancelled';
+
+export interface LeaveRequest {
+  id: number;
+  officer_id: number;
+  officer_name?: string;
+  type: LeaveType;
+  start_date: string;
+  end_date: string;
+  hours_requested: number;
+  reason: string;
+  status: LeaveStatus;
+  reviewed_by: number | null;
+  reviewer_name?: string;
+  reviewed_at: string | null;
+  review_notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LeaveBalance {
+  id: number;
+  officer_id: number;
+  officer_name?: string;
+  year: number;
+  vacation_total: number;
+  vacation_used: number;
+  sick_total: number;
+  sick_used: number;
+  personal_total: number;
+  personal_used: number;
+}
+
+export type DisciplinaryType = 'verbal_warning' | 'written_warning' | 'suspension' | 'termination' | 'commendation' | 'counseling';
+export type DisciplinarySeverity = 'minor' | 'moderate' | 'major' | 'critical';
+export type DisciplinaryStatus = 'open' | 'closed' | 'appealed';
+
+export interface DisciplinaryRecord {
+  id: number;
+  officer_id: number;
+  officer_name?: string;
+  type: DisciplinaryType;
+  severity: DisciplinarySeverity;
+  incident_date: string;
+  description: string;
+  action_taken: string | null;
+  follow_up_date: string | null;
+  follow_up_notes: string | null;
+  status: DisciplinaryStatus;
+  issued_by: number;
+  issuer_name?: string;
+  witness: string | null;
+  attachments: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export type ReviewType = 'annual' | 'probationary' | 'quarterly' | 'improvement_plan';
+export type ReviewStatus = 'draft' | 'submitted' | 'acknowledged' | 'completed';
+
+export interface PerformanceReview {
+  id: number;
+  officer_id: number;
+  officer_name?: string;
+  reviewer_id: number;
+  reviewer_name?: string;
+  review_period_start: string;
+  review_period_end: string;
+  review_date: string | null;
+  type: ReviewType;
+  overall_rating: number | null;
+  categories: Record<string, number>;
+  strengths: string | null;
+  areas_for_improvement: string | null;
+  goals: string | null;
+  officer_comments: string | null;
+  status: ReviewStatus;
+  acknowledged_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HRDashboardData {
+  headcount: { active: number; new_hires_30d: number; terminations_30d: number; on_leave_today: number };
+  compliance: { training_pct: number; credential_pct: number; overdue_count: number };
+  pending_leave: number;
+  pending_reviews: number;
+  recent_activity: Array<{ id: number; type: string; description: string; officer_name: string; created_at: string }>;
 }
 
 // --- Patrol ---
@@ -1484,7 +1575,10 @@ export type WSMessageType =
   | 'serve:created'
   | 'serve:updated'
   | 'serve:attempt'
-  | 'call:warrant_alert';
+  | 'call:warrant_alert'
+  | 'backup_request'
+  | 'pursuit_update'
+  | 'all_units';
 
 export interface WSMessage {
   type: WSMessageType;
@@ -2420,6 +2514,8 @@ export interface ServeJobLinkedCall {
   pso_requestor_name: string | null;
   contract_id: string | null;
   pso_service_windows: string | null;
+  parentCall?: { id: number; call_number: string; status: string; pso_attempt_number?: number } | null;
+  childCalls?: Array<{ id: number; call_number: string; status: string; pso_attempt_number?: number }>;
 }
 
 export interface ServeAttempt {

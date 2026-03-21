@@ -20,6 +20,7 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
+import { localToday } from '../utils/dateUtils';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
@@ -48,7 +49,7 @@ export default function DailyActivityReportsPage() {
 
   // New DAR form
   const [createFormOpen, setCreateFormOpen] = useState(false);
-  const [newDarDate, setNewDarDate] = useState(new Date().toISOString().slice(0, 10));
+  const [newDarDate, setNewDarDate] = useState(localToday());
   const [newDarShiftStart, setNewDarShiftStart] = useState('');
   const [newDarShiftEnd, setNewDarShiftEnd] = useState('');
   const [autoPopulateData, setAutoPopulateData] = useState<any>(null);
@@ -146,8 +147,11 @@ export default function DailyActivityReportsPage() {
   };
 
   const handleReturn = async () => {
-    const notes = prompt('Enter review notes (required):');
-    if (!notes || !selected) return;
+    const rawNotes = prompt('Enter review notes (required):');
+    if (!rawNotes || !selected) return;
+    // Sanitize: trim, limit length, strip control characters
+    const notes = rawNotes.trim().replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '').slice(0, 2000);
+    if (!notes) { addToast('Review notes cannot be empty', 'error'); return; }
     try {
       await apiFetch(`/dar/${selected.id}/return`, { method: 'PUT', body: JSON.stringify({ review_notes: notes }) });
       addToast('DAR returned for revision', 'success');

@@ -54,11 +54,10 @@ export default function ScheduleDetailTab({
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <h3 className="field-label text-brand-400 flex items-center gap-1.5">
-          <Calendar className="w-3 h-3" />
-          Schedules
-        </h3>
+      <div className="section-header">
+        <Calendar className="w-3.5 h-3.5 section-icon" />
+        <h3>Schedules</h3>
+        <div className="flex-1" />
         <button
           onClick={onAddSchedule}
           className="toolbar-btn toolbar-btn-primary flex items-center gap-1 text-[10px]"
@@ -79,10 +78,10 @@ export default function ScheduleDetailTab({
             return (
               <div
                 key={sched.id}
-                className={`panel-beveled p-3 bg-surface-base ${
+                className={`cascade-item schedule-shift panel-beveled p-3 bg-surface-base ${
                   night
-                    ? 'border-t-2 border-t-purple-500'
-                    : 'border-t-2 border-t-brand-500'
+                    ? 'schedule-shift-night border-t-2 border-t-purple-500'
+                    : 'schedule-shift-day border-t-2 border-t-brand-500'
                 }`}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -91,7 +90,7 @@ export default function ScheduleDetailTab({
                     {/* Day/Night + time */}
                     <div className="flex items-center gap-2 flex-wrap">
                       <span
-                        className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 ${
+                        className={`badge-pill inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 ${
                           night
                             ? 'bg-purple-900/40 text-purple-300'
                             : 'bg-brand-900/40 text-brand-300'
@@ -109,7 +108,7 @@ export default function ScheduleDetailTab({
 
                     {/* Status badge */}
                     <div className="flex items-center gap-2">
-                      <span className={`text-[9px] px-1.5 py-0.5 font-bold uppercase ${statusClass}`}>
+                      <span className={`badge-pill text-[9px] px-1.5 py-0.5 font-bold uppercase ${statusClass}`}>
                         {sched.status.replace(/_/g, ' ')}
                       </span>
                     </div>
@@ -144,9 +143,10 @@ export default function ScheduleDetailTab({
           })}
         </div>
       ) : (
-        <div className="panel-beveled p-8 text-center bg-surface-base">
-          <Calendar className="w-8 h-8 text-rmpg-600 mx-auto mb-2" />
+        <div className="empty-state-container panel-beveled p-8 text-center bg-surface-base">
+          <Calendar className="w-8 h-8 text-rmpg-600 mx-auto mb-2 empty-state-icon" />
           <p className="text-xs text-rmpg-400">No schedules on file</p>
+          <p className="text-[10px] text-rmpg-600 mt-1">Click &quot;Add Schedule&quot; to create one.</p>
         </div>
       )}
     </div>

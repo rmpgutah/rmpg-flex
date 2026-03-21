@@ -20,6 +20,7 @@ import {
   Square,
 } from 'lucide-react';
 import { useRadio } from '../hooks/useRadio';
+import { localToday } from '../utils/dateUtils';
 import { usePrivateCall } from '../hooks/usePrivateCall';
 import { useAuth } from '../context/AuthContext';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -246,7 +247,7 @@ export default function RadioPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `radio-transcripts-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `radio-transcripts-${localToday()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };

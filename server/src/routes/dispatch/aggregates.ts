@@ -7,6 +7,7 @@ import { localNow } from '../../utils/timeUtils';
 import { reverseGeocodeAddress } from '../../utils/geocode';
 import { identifyBeat } from '../../utils/geofence';
 import { escapeLike } from '../../middleware/sanitize';
+import { assignUnitsToCall } from '../../utils/callUnits';
 
 const router = Router();
 
@@ -273,9 +274,11 @@ router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', '
         db.prepare('UPDATE units SET status = ?, current_call_id = ?, last_status_change = ? WHERE id = ?')
           .run('dispatched', call.id, now, unit.id);
 
+        // Write to both assigned_unit_ids (backward compat) and call_units junction table
         const unitIds = JSON.stringify([unit.id]);
         db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?')
           .run(unitIds, call.id);
+        assignUnitsToCall(call.id, [unit.id]);
       }
 
       // Log call creation

@@ -18,8 +18,10 @@ import {
   RotateCcw,
   Copy,
   Map as MapIcon,
+  Download,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { exportToCsv } from '../utils/csvExport';
 import { useLiveSync } from '../hooks/useLiveSync';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { usePersistedTab } from '../hooks/usePersistedState';
@@ -101,7 +103,7 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
         styles: DARK_MAP_STYLE,
         disableDefaultUI: true,
         zoomControl: true,
-        backgroundColor: '#060c14',
+        backgroundColor: '#0a1220',
         gestureHandling: 'greedy',
         renderingType: 'RASTER' as any,
       });
@@ -412,13 +414,11 @@ const PatrolPage: React.FC = () => {
       if (editingCheckpoint) {
         await apiFetch(`/patrol/checkpoints/${editingCheckpoint.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
       } else {
         await apiFetch('/patrol/checkpoints', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
       }
@@ -536,7 +536,7 @@ const PatrolPage: React.FC = () => {
   ];
 
   return (
-    <div className="flex flex-col h-full animate-fade-in">
+    <div className="flex flex-col h-full animate-fade-in app-grid-bg">
       {/* Portal Header */}
       {!isMobile && (
         <div className="panel-beveled bg-surface-base overflow-hidden">
@@ -554,17 +554,74 @@ const PatrolPage: React.FC = () => {
       {!isMobile && <PanelTitleBar title="PATROL MANAGEMENT" icon={MapPin}>
         <PrintButton />
         {activeTab === 'scans' && (
-          <ExportButton exportUrl="/patrol/scans/export?format=csv" exportFilename="patrol_scans_export.csv" />
+          <>
+            <ExportButton exportUrl="/patrol/scans/export?format=csv" exportFilename="patrol_scans_export.csv" />
+            <button
+              onClick={() => exportToCsv('patrol_scans_filtered.csv', scans, [
+                { key: 'scanned_at', label: 'Timestamp' },
+                { key: 'officer_name', label: 'Officer' },
+                { key: 'checkpoint_name', label: 'Checkpoint' },
+                { key: 'property_name', label: 'Property' },
+                { key: 'status', label: 'Status' },
+                { key: 'latitude', label: 'Latitude' },
+                { key: 'longitude', label: 'Longitude' },
+                { key: 'notes', label: 'Notes' },
+              ])}
+              className="toolbar-btn"
+              title="Export filtered scans to CSV"
+              disabled={scans.length === 0}
+            >
+              <Download className="w-3.5 h-3.5" /> CSV
+            </button>
+          </>
         )}
         {activeTab === 'checkpoints' && (
-          <button onClick={handleCreateCheckpoint} className="toolbar-btn toolbar-btn-primary">
-            <Plus className="w-3.5 h-3.5" /> Add Checkpoint
-          </button>
+          <>
+            <button
+              onClick={() => exportToCsv('patrol_checkpoints.csv', checkpoints, [
+                { key: 'name', label: 'Name' },
+                { key: 'property_name', label: 'Property' },
+                { key: 'description', label: 'Description' },
+                { key: 'qr_code', label: 'QR Code' },
+                { key: 'scan_required_interval_minutes', label: 'Interval (min)' },
+                { key: 'is_active', label: 'Active' },
+                { key: 'latitude', label: 'Latitude' },
+                { key: 'longitude', label: 'Longitude' },
+                { key: 'created_at', label: 'Created' },
+              ])}
+              className="toolbar-btn"
+              title="Export checkpoints to CSV"
+              disabled={checkpoints.length === 0}
+            >
+              <Download className="w-3.5 h-3.5" /> CSV
+            </button>
+            <button onClick={handleCreateCheckpoint} className="toolbar-btn toolbar-btn-primary">
+              <Plus className="w-3.5 h-3.5" /> Add Checkpoint
+            </button>
+          </>
         )}
         {activeTab === 'compliance' && (
-          <button onClick={loadCompliance} className="toolbar-btn">
-            <RefreshCw className="w-3.5 h-3.5" /> Refresh
-          </button>
+          <>
+            <button
+              onClick={() => exportToCsv('patrol_compliance.csv', compliance, [
+                { key: 'checkpoint_name', label: 'Checkpoint' },
+                { key: 'property_name', label: 'Property' },
+                { key: 'scans_today', label: 'Scans Today' },
+                { key: 'compliance_rate', label: 'Compliance %' },
+                { key: 'last_scan_time', label: 'Last Scan' },
+                { key: 'next_scan_due', label: 'Next Due' },
+                { key: 'scan_interval_minutes', label: 'Interval (min)' },
+              ])}
+              className="toolbar-btn"
+              title="Export compliance to CSV"
+              disabled={compliance.length === 0}
+            >
+              <Download className="w-3.5 h-3.5" /> CSV
+            </button>
+            <button onClick={loadCompliance} className="toolbar-btn">
+              <RefreshCw className="w-3.5 h-3.5" /> Refresh
+            </button>
+          </>
         )}
       </PanelTitleBar>}
 
@@ -853,7 +910,7 @@ const PatrolPage: React.FC = () => {
                 return (
                   <div
                     key={item.checkpoint_id}
-                    className={`panel-beveled p-6 border-2 bg-surface-base ${complianceColor}`}
+                    className={`panel-beveled card-glass p-6 border-2 bg-surface-base ${complianceColor}`}
                   >
                     <div className="flex items-start justify-between mb-4">
                       <div>

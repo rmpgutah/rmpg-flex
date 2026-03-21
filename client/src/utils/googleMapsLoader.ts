@@ -117,7 +117,10 @@ function doScriptLoad(
   };
 
   const script = document.createElement('script');
-  script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,marker,visualization&callback=${callbackName}&v=weekly`;
+  // Use v=quarterly (stable) WITHOUT 'marker' library — the 'marker' library
+  // forces AdvancedMarkerElement which requires vector tiles (WebGL) that
+  // ignore JSON styles, causing black/unstyled map areas.
+  script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,visualization&callback=${callbackName}&v=quarterly`;
   script.async = true;
   script.defer = true;
   script.onerror = () => {
@@ -187,12 +190,20 @@ export interface TileMonitorCallbacks {
  * Monitor tile loading on a Google Maps instance.
  * Detects stalled tiles (no `tilesloaded` event within threshold) and
  * auto-recovers when device comes back online.
+ *
+ * Vehicle WiFi resilience:
+ * - Fast 5s detection threshold so drivers see "CACHED MAP" quickly
+ * - Immediate detection when browser goes offline (no timer wait)
+ * - Auto-recovery with map nudge when connectivity returns
+ * - Periodic 15s recovery attempts while stalled
+ * - Tracks online/offline transitions to reset stall state
+ *
  * Returns a cleanup function.
  */
 export function monitorTileLoading(
   map: google.maps.Map,
   callbacks: TileMonitorCallbacks,
-  thresholdMs: number = 15000,
+  thresholdMs: number = 5000,
 ): () => void {
   let tilesLoaded = false;
   let stallTimer: ReturnType<typeof setTimeout> | null = null;
@@ -216,17 +227,25 @@ export function monitorTileLoading(
 
   // Reset stall timer on map idle (user panned/zoomed — new tiles loading)
   const idleListener = google.maps.event.addListener(map, 'idle', () => {
-    if (!tilesLoaded) startStallTimer();
+    tilesLoaded = false;
+    startStallTimer();
   });
   listeners.push(idleListener);
 
+  // Immediately flag stalled when browser goes offline
+  const onOffline = () => {
+    if (stallTimer) clearTimeout(stallTimer);
+    tilesLoaded = false;
+    callbacks.onStalled();
+  };
+  window.addEventListener('offline', onOffline);
+
   // Auto-recover on connectivity restore
   const onOnline = () => {
-    if (tilesLoaded) return;
     callbacks.onRecovering();
-    // Force tile re-fetch by nudging the map
     tilesLoaded = false;
     startStallTimer();
+    // Force tile re-fetch by nudging the map
     const center = map.getCenter();
     if (center) {
       map.panTo({ lat: center.lat() + 0.0001, lng: center.lng() });
@@ -235,13 +254,13 @@ export function monitorTileLoading(
   };
   window.addEventListener('online', onOnline);
 
-  // Periodic recovery attempt every 30s if tiles are stalled
+  // Periodic recovery attempt every 15s if tiles are stalled
   const recoveryInterval = setInterval(() => {
     if (tilesLoaded) return;
     if (navigator.onLine) {
       onOnline(); // retry
     }
-  }, 30000);
+  }, 15000);
 
   // Start initial stall timer
   startStallTimer();
@@ -251,6 +270,7 @@ export function monitorTileLoading(
     clearInterval(recoveryInterval);
     listeners.forEach(l => google.maps.event.removeListener(l));
     window.removeEventListener('online', onOnline);
+    window.removeEventListener('offline', onOffline);
   };
 }
 
@@ -303,8 +323,12 @@ export const OFFLINE_TILE_MAX_ZOOM = 15;
  *
  * Returns a cleanup function that removes the layer from the map.
  */
-export function addOfflineTileLayer(map: google.maps.Map): () => void {
-  const offlineLayer = new google.maps.ImageMapType({
+/**
+ * Creates the offline ImageMapType for CartoDB dark_matter tiles.
+ * Used both as overlay and as a registered map type for offline-only mode.
+ */
+function createOfflineImageMapType(): google.maps.ImageMapType {
+  return new google.maps.ImageMapType({
     getTileUrl: (coord: google.maps.Point, zoom: number): string | null => {
       // Only serve tiles within our downloaded range
       if (zoom < OFFLINE_TILE_MIN_ZOOM || zoom > OFFLINE_TILE_MAX_ZOOM) return null;
@@ -325,17 +349,38 @@ export function addOfflineTileLayer(map: google.maps.Map): () => void {
     name: 'Offline',
     opacity: 1.0,
   });
+}
 
-  // Insert at position 0 — renders UNDER Google's base tiles.
-  // When Google tiles load, they cover the offline layer.
-  // When they fail (no WiFi), offline tiles show through.
-  map.overlayMapTypes.insertAt(0, offlineLayer);
+/**
+ * Creates and attaches an offline tile layer to a Google Maps instance.
+ * The layer renders pre-downloaded CartoDB dark_matter tiles.
+ *
+ * Two-layer strategy for vehicle WiFi resilience:
+ * 1. Overlay layer (overlayMapTypes[0]) — always active, renders on top of Google
+ *    base map. When Google tiles load, they're the base and offline is transparent.
+ *    When Google tiles fail, offline tiles show against the dark background.
+ * 2. Registered map type ('offline') — available as a base map type. When tiles
+ *    are stalled, components can switch to map.setMapTypeId('offline') which
+ *    renders ONLY the cached tiles with no Google tile requests at all.
+ *
+ * Returns a cleanup function and a reference to toggle offline-only mode.
+ */
+export function addOfflineTileLayer(map: google.maps.Map): () => void {
+  const offlineOverlay = createOfflineImageMapType();
+
+  // Register as a custom map type so it can be used as the base layer
+  const offlineBase = createOfflineImageMapType();
+  map.mapTypes.set('offline', offlineBase);
+
+  // Insert overlay at position 0 — renders on top of Google's base.
+  // Offline tiles are always present; when Google tiles load they're
+  // rendered as the base map beneath the overlay.
+  map.overlayMapTypes.insertAt(0, offlineOverlay);
 
   // Return cleanup function
   return () => {
-    // Find and remove the offline layer
     for (let i = 0; i < map.overlayMapTypes.getLength(); i++) {
-      if (map.overlayMapTypes.getAt(i) === offlineLayer) {
+      if (map.overlayMapTypes.getAt(i) === offlineOverlay) {
         map.overlayMapTypes.removeAt(i);
         break;
       }
@@ -343,45 +388,80 @@ export function addOfflineTileLayer(map: google.maps.Map): () => void {
   };
 }
 
+/**
+ * Switch a map to offline-only mode (no Google tile requests).
+ * Uses the registered 'offline' map type as the base layer.
+ * Returns the previous mapTypeId for restoration.
+ */
+export function switchToOfflineMode(map: google.maps.Map): string {
+  const prev = map.getMapTypeId() as string;
+  map.setMapTypeId('offline');
+  map.setOptions({ styles: [] }); // No styles needed for offline tiles
+  return prev;
+}
+
+/**
+ * Restore a map from offline-only mode to its previous map type.
+ */
+export function restoreFromOfflineMode(
+  map: google.maps.Map,
+  previousMapTypeId: string,
+  styles: google.maps.MapTypeStyle[],
+): void {
+  map.setMapTypeId(previousMapTypeId);
+  map.setOptions({ styles });
+}
+
 /** Dark map style matching RMPG Flex theme */
 export const DARK_MAP_STYLE: google.maps.MapTypeStyle[] = [
-  { elementType: 'geometry', stylers: [{ color: '#060c14' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#000000' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#555555' }] },
+  // Base: deep navy blue (matches app shell --surface-deep)
+  { elementType: 'geometry', stylers: [{ color: '#0a1220' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#060c16' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#4a6a8a' }] },
+  // Admin boundaries
   { featureType: 'administrative', elementType: 'geometry', stylers: [{ visibility: 'off' }] },
-  { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#5a6e80' }] },
-  { featureType: 'administrative.province', elementType: 'geometry.stroke', stylers: [{ color: '#162236' }] },
+  { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#5a7e9e' }] },
+  { featureType: 'administrative.province', elementType: 'geometry.stroke', stylers: [{ color: '#1a3050' }] },
   { featureType: 'administrative.land_parcel', stylers: [{ visibility: 'off' }] },
   { featureType: 'administrative.neighborhood', stylers: [{ visibility: 'off' }] },
-  { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#0e0e0e' }] },
-  { featureType: 'landscape.man_made', elementType: 'geometry', stylers: [{ color: '#0a1018' }] },
-  { featureType: 'landscape.natural', elementType: 'geometry', stylers: [{ color: '#0c0c0c' }] },
+  // Landscape: dark steel-blue
+  { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#0d1825' }] },
+  { featureType: 'landscape.man_made', elementType: 'geometry', stylers: [{ color: '#0f1a28' }] },
+  { featureType: 'landscape.natural', elementType: 'geometry', stylers: [{ color: '#0b1520' }] },
+  // POIs off
   { featureType: 'poi', stylers: [{ visibility: 'off' }] },
-  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#0d120d' }, { visibility: 'simplified' }] },
-  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#141e2b' }] },
-  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#222222' }] },
-  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#444444' }] },
-  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#242424' }] },
-  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#162236' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#0d1a1a' }, { visibility: 'simplified' }] },
+  // Roads: slightly lighter navy
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#152438' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#1a2d45' }] },
+  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#3a5a78' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#1a3050' }] },
+  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#1e3858' }] },
+  { featureType: 'road.highway', elementType: 'labels.text.fill', stylers: [{ color: '#4a7aa0' }] },
+  // Transit off
   { featureType: 'transit', stylers: [{ visibility: 'off' }] },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#060c14' }] },
-  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#1a2a3a' }] },
+  // Water: deepest navy
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#070e1a' }] },
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#1a3050' }] },
 ];
 
-/** Night Navigation style — high-contrast roads on near-black, optimized for driving */
+/** Night Navigation style — high-contrast roads on dark navy, optimized for driving */
 export const NIGHT_NAV_STYLE: google.maps.MapTypeStyle[] = [
-  { elementType: 'geometry', stylers: [{ color: '#0a0e14' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#000000' }] },
+  // Base: deep navy (slightly lighter than DARK_MAP_STYLE for road contrast)
+  { elementType: 'geometry', stylers: [{ color: '#0c1525' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#060c18' }] },
   { elementType: 'labels.text.fill', stylers: [{ color: '#6b8aaa' }] },
   { featureType: 'administrative', elementType: 'geometry', stylers: [{ visibility: 'off' }] },
   { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#7caccc' }] },
   { featureType: 'administrative.province', elementType: 'geometry.stroke', stylers: [{ color: '#1a3050' }] },
   { featureType: 'administrative.land_parcel', stylers: [{ visibility: 'off' }] },
   { featureType: 'administrative.neighborhood', elementType: 'labels.text.fill', stylers: [{ color: '#4a6a8a' }] },
-  { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#0c1018' }] },
-  { featureType: 'landscape.man_made', elementType: 'geometry', stylers: [{ color: '#0e1420' }] },
+  // Landscape: dark navy
+  { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#0e1828' }] },
+  { featureType: 'landscape.man_made', elementType: 'geometry', stylers: [{ color: '#101c2c' }] },
   { featureType: 'poi', stylers: [{ visibility: 'off' }] },
-  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#0a1a0a' }, { visibility: 'simplified' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#0c1c1c' }, { visibility: 'simplified' }] },
+  // Roads: brighter blue for driving visibility
   { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#1e3048' }] },
   { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#2a4060' }] },
   { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#5a8ab0' }] },
@@ -390,7 +470,8 @@ export const NIGHT_NAV_STYLE: google.maps.MapTypeStyle[] = [
   { featureType: 'road.highway', elementType: 'labels.text.fill', stylers: [{ color: '#7ab0e0' }] },
   { featureType: 'road.arterial', elementType: 'geometry', stylers: [{ color: '#1a2e44' }] },
   { featureType: 'transit', stylers: [{ visibility: 'off' }] },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#061020' }] },
+  // Water: deepest navy
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#081222' }] },
   { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#1a3050' }] },
 ];
 

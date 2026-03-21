@@ -81,6 +81,13 @@ export function localToday(): string {
 }
 
 /**
+ * Convert any Date to "YYYY-MM-DD" in local timezone (not UTC).
+ */
+export function dateToLocalYMD(d: Date): string {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/**
  * SQLite expression for current local time.
  * Note: SQLite datetime('now','localtime') uses the process TZ (America/Denver
  * per the mandatory process.env.TZ setting in index.ts). Prefer localNow()

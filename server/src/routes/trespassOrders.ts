@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { broadcast } from '../utils/websocket';
-import { localNow, localToday } from '../utils/timeUtils';
+import { localNow, localToday, dateToLocalYMD } from '../utils/timeUtils';
 import { createNotificationForRoles } from './notifications';
 import { resolveDistrict } from '../utils/districtResolver';
 import { escapeLike, validateParamId } from '../middleware/sanitize';
@@ -63,7 +63,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       where += ' AND t.archived_at IS NULL';
     }
 
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.min(1000, Math.max(1, parseInt(page as string, 10) || 1));
     const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 25));
     const offset = (pageNum - 1) * perPage;
 
@@ -202,14 +202,21 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       }
     }
 
-    // Auto-calc expiration if duration_days provided
+    // Validate and auto-calc expiration if duration_days provided
+    if (duration_days !== undefined && duration_days !== null) {
+      const dv = parseInt(String(duration_days), 10);
+      if (isNaN(dv) || dv < 1 || dv > 3650) {
+        res.status(400).json({ error: 'duration_days must be a positive integer between 1 and 3650 (10 years)' });
+        return;
+      }
+    }
     let exp = expiration_date || null;
     if (!exp && duration_days) {
       const parsedDays = parseInt(duration_days, 10);
       if (!isNaN(parsedDays) && parsedDays > 0 && parsedDays <= 3650) {
-        const eff = effective_date ? new Date(effective_date) : new Date();
+        const eff = effective_date ? new Date(effective_date + 'T12:00:00') : new Date();
         eff.setDate(eff.getDate() + parsedDays);
-        exp = eff.toISOString().split('T')[0];
+        exp = dateToLocalYMD(eff);
       }
     }
 

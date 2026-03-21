@@ -50,7 +50,7 @@ export default function ModuleTileBar({
   isContractManager,
   activeCallCount,
   emailUnreadCount,
-  activeBOLOs: _activeBOLOs,
+  activeBOLOs,
 }: ModuleTileBarProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -73,9 +73,8 @@ export default function ModuleTileBar({
   const handleNavigate = useCallback(
     (path: string, newWindow?: boolean, externalUrl?: string) => {
       if (externalUrl) {
-        const token = localStorage.getItem('accessToken') || '';
-        const sep = externalUrl.includes('?') ? '&' : '?';
-        window.open(`${externalUrl}${sep}token=${encodeURIComponent(token)}`, '_blank');
+        // Don't embed JWT token in external URLs — external sites don't need our auth token
+        window.open(externalUrl, '_blank', 'noopener,noreferrer');
         return;
       }
       if (newWindow) {
@@ -109,14 +108,6 @@ export default function ModuleTileBar({
     }
   }, []);
 
-  // Close dropdown on route change — F-key navigation calls navigate() in
-  // Layout.tsx which doesn't know about this component's internal state.
-  // Without this, pressing F6 while Records dropdown is open leaves the
-  // dropdown floating over the Records page content.
-  useEffect(() => {
-    setOpenDropdown(null);
-  }, [location.pathname]);
-
   // Close dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -131,7 +122,10 @@ export default function ModuleTileBar({
   // --- Badge helper ---
   const badgeFor = (item: NavItem): number | null => {
     if (item.path === '/' && activeCallCount > 0) return activeCallCount;
-    if (item.path === '/communications' && emailUnreadCount > 0) return emailUnreadCount;
+    if (item.path === '/communications') {
+      const total = (emailUnreadCount || 0) + (activeBOLOs || 0);
+      if (total > 0) return total;
+    }
     return null;
   };
 
@@ -140,15 +134,12 @@ export default function ModuleTileBar({
 
   return (
     <div
-      className="flex items-center gap-1 px-3 shrink-0"
+      className="flex items-center gap-1 px-3 shrink-0 relative"
       style={{
         height: 58,
         background: 'linear-gradient(180deg, #0f1722 0%, #0d1520 100%)',
         borderBottom: '1px solid #1c2d44',
-        // No z-index here — creating a stacking context on the bar traps the
-        // dropdown's z-9999 at z=bar in the root context, letting page modals
-        // (toast, command palette) appear above the open dropdown.
-        position: 'relative',
+        zIndex: 40,
       }}
     >
       {visibleItems.map((item) => {
@@ -258,7 +249,7 @@ export default function ModuleTileBar({
                   position: 'absolute',
                   top: '100%',
                   left: 0,
-                  zIndex: 9999,
+                  zIndex: 50,
                   minWidth: 180,
                   background: 'var(--surface-raised, #141e2b)',
                   border: '1px solid var(--border-default, #1c2d44)',

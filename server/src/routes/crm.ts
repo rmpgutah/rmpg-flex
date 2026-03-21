@@ -9,7 +9,7 @@ import { Router, Request, Response } from 'express';
 import { authenticateToken as authenticate, requireRole } from '../middleware/auth';
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
-import { localNow } from '../utils/timeUtils';
+import { localNow, dateToLocalYMD } from '../utils/timeUtils';
 import { escapeLike, validateParamId, validateNumericParams } from '../middleware/sanitize';
 
 const router = Router();
@@ -305,7 +305,7 @@ router.get('/expiring-contracts', requireRole('admin', 'manager', 'contract_mana
     const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 90));
     const futureDate = new Date();
     futureDate.setDate(futureDate.getDate() + days);
-    const future = futureDate.toISOString().slice(0, 10);
+    const future = dateToLocalYMD(futureDate);
 
     const rows = db.prepare(`
       SELECT id, name, contact_name, contact_email, contact_phone,

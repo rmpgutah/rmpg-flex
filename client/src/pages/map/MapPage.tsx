@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { loadGoogleMaps, DARK_MAP_STYLE, NIGHT_NAV_STYLE, TERRAIN_STYLE, registerMapInstance, unregisterMapInstance, updateMapStyles, onOnlineRetryMaps, monitorTileLoading, getFallbackMapImage, addOfflineTileLayer } from '../../utils/googleMapsLoader';
+import { loadGoogleMaps, DARK_MAP_STYLE, NIGHT_NAV_STYLE, TERRAIN_STYLE, registerMapInstance, unregisterMapInstance, updateMapStyles, onOnlineRetryMaps, monitorTileLoading, getFallbackMapImage, addOfflineTileLayer, switchToOfflineMode, restoreFromOfflineMode } from '../../utils/googleMapsLoader';
 import { devLog, devWarn } from '../../utils/devLog';
 import {
   Layers,
@@ -62,6 +62,7 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import { useMapRouting } from '../../hooks/useMapRouting';
 import MobileBottomSheet from '../../components/mobile/MobileBottomSheet';
 import OfflineMapFallback from '../../components/OfflineMapFallback';
+import GpsBreadcrumbPanel from './GpsBreadcrumbPanel';
 import type { MapUnit as Unit, ActiveCall, MapProperty as Property, MapStyleId } from './utils/mapConstants';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, MAP_STYLE_LABELS, MAP_STYLE_DESCRIPTIONS, getIncidentCategory, isLightMapStyle, isSatelliteStyle } from './utils/mapConstants';
 import { buildUnitMarkerContent, buildIncidentMarkerContent, buildPropertyMarkerContent, buildSelfPositionMarker, getOverlayMarkerClass, injectKeyframes, type OverlayMarker } from './utils/mapMarkerBuilders';
@@ -125,6 +126,8 @@ export default function MapPage() {
   const showOfflineFallback = mapError != null && !isAuthError;
   const tileMonitorCleanupRef = useRef<(() => void) | null>(null);
   const offlineTileCleanupRef = useRef<(() => void) | null>(null);
+  const prevMapTypeRef = useRef<string | null>(null);   // tracks mapTypeId before offline switch
+  const isOfflineModeRef = useRef(false);                // whether we switched to offline base map
 
   const [layers, setLayers] = useState({ units: true, incidents: true, properties: true });
 
@@ -162,6 +165,9 @@ export default function MapPage() {
 
   // Layers panel (left) collapsed/expanded
   const [layersPanelOpen, setLayersPanelOpen] = useState(true);
+
+  // GPS History panel
+  const [historyPanelOpen, setHistoryPanelOpen] = useState(false);
 
   // Sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -462,7 +468,7 @@ export default function MapPage() {
         disableDefaultUI: true,
         zoomControl: false,
         styles: DARK_MAP_STYLE,
-        backgroundColor: '#060c14',
+        backgroundColor: '#0a1220',
         // Force raster rendering — vector tiles (WebGL) ignore JSON styles,
         // causing black/unstyled map areas at certain zoom levels.
         renderingType: 'RASTER' as any,
@@ -526,18 +532,35 @@ export default function MapPage() {
       devLog('[MapPage] Using OverlayView markers (no mapId configured)');
 
       // Monitor tile loading — detect blank map on slow WiFi
+      // When tiles stall (5s), switch to offline-only base map so the map
+      // NEVER goes blank. When tiles recover, restore Google tiles.
       if (tileMonitorCleanupRef.current) tileMonitorCleanupRef.current();
       tileMonitorCleanupRef.current = monitorTileLoading(map, {
         onStalled: () => {
-          devWarn('[MapPage] Map tiles stalled — connection may be too slow');
+          devWarn('[MapPage] Map tiles stalled — switching to offline base map');
           setTilesStalled(true);
+          // Switch to offline-only base map so cached tiles fill the entire view
+          if (!isOfflineModeRef.current && mapInstanceRef.current) {
+            prevMapTypeRef.current = switchToOfflineMode(mapInstanceRef.current);
+            isOfflineModeRef.current = true;
+          }
         },
         onLoaded: () => {
           devLog('[MapPage] Map tiles loaded successfully');
           setTilesStalled(false);
+          // Restore Google tiles as base map
+          if (isOfflineModeRef.current && mapInstanceRef.current && prevMapTypeRef.current) {
+            restoreFromOfflineMode(mapInstanceRef.current, prevMapTypeRef.current, DARK_MAP_STYLE);
+            isOfflineModeRef.current = false;
+          }
         },
         onRecovering: () => {
-          devLog('[MapPage] Attempting tile recovery...');
+          devLog('[MapPage] Attempting tile recovery — restoring Google tiles...');
+          // Switch back to Google to test connectivity
+          if (isOfflineModeRef.current && mapInstanceRef.current && prevMapTypeRef.current) {
+            restoreFromOfflineMode(mapInstanceRef.current, prevMapTypeRef.current, DARK_MAP_STYLE);
+            isOfflineModeRef.current = false;
+          }
         },
       });
 
@@ -1628,6 +1651,16 @@ export default function MapPage() {
         <div className={`absolute left-2 z-10 pointer-events-none opacity-40 ${isMobile ? 'top-14' : 'top-2'}`}>
           <RmpgLogo height={20} iconOnly />
         </div>
+
+        {/* GPS History Playback Panel */}
+        {!isMobile && (
+          <GpsBreadcrumbPanel
+            map={mapInstanceRef.current}
+            mapLoaded={mapLoaded}
+            isOpen={historyPanelOpen}
+            onToggle={() => setHistoryPanelOpen(!historyPanelOpen)}
+          />
+        )}
 
         {/* Offline fallback: Leaflet map with cached tiles when Google Maps fails
             due to connectivity (not API key errors). Shows GPS, unit positions, calls. */}

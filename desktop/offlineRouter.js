@@ -73,6 +73,35 @@ function handle(method, fullPath, body) {
       return handleClockIn(body);
     }
 
+    // ─── Citations ────────────────────────────────────────
+    if (method === 'GET' && path === '/api/citations') {
+      return handleGetCitations(query);
+    }
+    if (method === 'POST' && path === '/api/citations') {
+      return handleCreateCitation(body);
+    }
+
+    // ─── Field Interviews ─────────────────────────────────
+    if (method === 'GET' && path === '/api/field-interviews') {
+      return handleGetFieldInterviews(query);
+    }
+    if (method === 'POST' && path === '/api/field-interviews') {
+      return handleCreateFieldInterview(body);
+    }
+
+    // ─── Evidence ─────────────────────────────────────────
+    if (method === 'GET' && path === '/api/evidence') {
+      return handleGetEvidence(query);
+    }
+    if (method === 'POST' && path === '/api/evidence') {
+      return handleCreateEvidence(body);
+    }
+
+    // ─── Clock Out ────────────────────────────────────────
+    if (method === 'POST' && path === '/api/personnel/time/clock-out') {
+      return handleClockOut(body);
+    }
+
     return { status: 503, error: 'Endpoint not available offline' };
   } catch (err) {
     console.error(`[OFFLINE-ROUTER] Error handling ${method} ${path}:`, err.message);
@@ -367,6 +396,150 @@ function handleClockIn(body) {
 
   const created = db.prepare('SELECT * FROM time_entries WHERE local_id = ?').get(localId);
   return { status: 201, data: created };
+}
+
+// ─── Utility ─────────────────────────────────────────────────
+
+// ─── Handler: GET /api/citations ──────────────────────────────
+
+function handleGetCitations(query) {
+  const db = getLocalDb();
+  let sql = 'SELECT * FROM citations WHERE 1=1';
+  const params = [];
+  if (query.status) { sql += ' AND status = ?'; params.push(query.status); }
+  if (query.officer_id) { sql += ' AND officer_id = ?'; params.push(query.officer_id); }
+  sql += ' ORDER BY created_at DESC LIMIT ?';
+  params.push(parseInt(query.limit) || 100);
+  return { status: 200, data: db.prepare(sql).all(...params) };
+}
+
+// ─── Handler: POST /api/citations ─────────────────────────────
+
+function handleCreateCitation(body) {
+  const db = getLocalDb();
+  const localId = `LOCAL-${crypto.randomUUID()}`;
+  const now = new Date().toISOString();
+  const citNum = `CIT-${new Date().getFullYear()}-LOCAL-${Date.now().toString(36).toUpperCase()}`;
+
+  db.prepare(`
+    INSERT INTO citations (local_id, citation_number, citation_type, person_id, person_name,
+      vehicle_id, officer_id, location_address, latitude, longitude, violation_code,
+      violation_description, fine_amount, court_date, court_location, status, notes,
+      call_id, incident_id, issued_at, created_at, updated_at, is_dirty)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, 1)
+  `).run(
+    localId, citNum, body.citation_type || 'traffic', body.person_id, body.person_name,
+    body.vehicle_id, body.officer_id, body.location_address, body.latitude, body.longitude,
+    body.violation_code, body.violation_description, body.fine_amount, body.court_date,
+    body.court_location, body.notes, body.call_id, body.incident_id, body.issued_at || now,
+    now, now
+  );
+
+  enqueue('POST', '/api/citations', body, localId, 'citations');
+  const created = db.prepare('SELECT * FROM citations WHERE local_id = ?').get(localId);
+  return { status: 201, data: created };
+}
+
+// ─── Handler: GET /api/field-interviews ───────────────────────
+
+function handleGetFieldInterviews(query) {
+  const db = getLocalDb();
+  let sql = 'SELECT * FROM field_interviews WHERE 1=1';
+  const params = [];
+  if (query.officer_id) { sql += ' AND officer_id = ?'; params.push(query.officer_id); }
+  sql += ' ORDER BY created_at DESC LIMIT ?';
+  params.push(parseInt(query.limit) || 100);
+  return { status: 200, data: db.prepare(sql).all(...params) };
+}
+
+// ─── Handler: POST /api/field-interviews ──────────────────────
+
+function handleCreateFieldInterview(body) {
+  const db = getLocalDb();
+  const localId = `LOCAL-${crypto.randomUUID()}`;
+  const now = new Date().toISOString();
+  const fiNum = `FI-${new Date().getFullYear()}-LOCAL-${Date.now().toString(36).toUpperCase()}`;
+
+  db.prepare(`
+    INSERT INTO field_interviews (local_id, fi_number, officer_id, person_name,
+      person_description, dob, address, location_address, latitude, longitude,
+      reason, narrative, associated_call_id, person_id, vehicle_description,
+      status, created_at, updated_at, is_dirty)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, 1)
+  `).run(
+    localId, fiNum, body.officer_id, body.person_name, body.person_description,
+    body.dob, body.address, body.location_address, body.latitude, body.longitude,
+    body.reason, body.narrative, body.associated_call_id, body.person_id,
+    body.vehicle_description, now, now
+  );
+
+  enqueue('POST', '/api/field-interviews', body, localId, 'field_interviews');
+  const created = db.prepare('SELECT * FROM field_interviews WHERE local_id = ?').get(localId);
+  return { status: 201, data: created };
+}
+
+// ─── Handler: GET /api/evidence ───────────────────────────────
+
+function handleGetEvidence(query) {
+  const db = getLocalDb();
+  let sql = 'SELECT * FROM evidence_property WHERE 1=1';
+  const params = [];
+  if (query.incident_id) { sql += ' AND incident_id = ?'; params.push(query.incident_id); }
+  sql += ' ORDER BY created_at DESC LIMIT ?';
+  params.push(parseInt(query.limit) || 100);
+  return { status: 200, data: db.prepare(sql).all(...params) };
+}
+
+// ─── Handler: POST /api/evidence ──────────────────────────────
+
+function handleCreateEvidence(body) {
+  const db = getLocalDb();
+  const localId = `LOCAL-${crypto.randomUUID()}`;
+  const now = new Date().toISOString();
+  const evNum = `EV-${new Date().getFullYear()}-LOCAL-${Date.now().toString(36).toUpperCase()}`;
+
+  db.prepare(`
+    INSERT INTO evidence_property (local_id, evidence_number, incident_id, case_id,
+      item_type, description, location_found, collected_by, collected_date,
+      serial_number, make, model, quantity, unit_of_measure, estimated_value,
+      status, storage_location, notes, latitude, longitude, created_at, updated_at, is_dirty)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_custody', ?, ?, ?, ?, ?, ?, 1)
+  `).run(
+    localId, evNum, body.incident_id, body.case_id, body.item_type, body.description,
+    body.location_found, body.collected_by, body.collected_date || now,
+    body.serial_number, body.make, body.model, body.quantity || 1,
+    body.unit_of_measure || 'each', body.estimated_value,
+    body.storage_location, body.notes, body.latitude, body.longitude, now, now
+  );
+
+  enqueue('POST', '/api/evidence', body, localId, 'evidence_property');
+  const created = db.prepare('SELECT * FROM evidence_property WHERE local_id = ?').get(localId);
+  return { status: 201, data: created };
+}
+
+// ─── Handler: POST /api/personnel/time/clock-out ──────────────
+
+function handleClockOut(body) {
+  const db = getLocalDb();
+  const now = new Date().toISOString();
+  const active = db.prepare(
+    `SELECT * FROM time_entries WHERE officer_id = ? AND status = 'active' ORDER BY clock_in DESC LIMIT 1`
+  ).get(body.officer_id);
+
+  if (!active) return { status: 404, error: 'No active time entry found' };
+
+  const clockIn = new Date(active.clock_in);
+  const clockOut = new Date(body.clock_out || now);
+  const totalHours = (clockOut - clockIn) / 3600000;
+
+  db.prepare(`
+    UPDATE time_entries SET clock_out = ?, clock_out_latitude = ?, clock_out_longitude = ?,
+      total_hours = ?, status = 'completed', is_dirty = 1 WHERE id = ?
+  `).run(body.clock_out || now, body.latitude, body.longitude, totalHours, active.id);
+
+  enqueue('POST', '/api/personnel/time/clock-out', body, active.local_id, 'time_entries');
+  const updated = db.prepare('SELECT * FROM time_entries WHERE id = ?').get(active.id);
+  return { status: 200, data: updated };
 }
 
 // ─── Utility ─────────────────────────────────────────────────

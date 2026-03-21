@@ -15,7 +15,7 @@ import config from '../config';
 // Rate limiter for file uploads — prevent abuse/DoS via large uploads
 const uploadRateLimit = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
-  maxRequests: 30,           // 30 uploads per 5 minutes per user
+  maxRequests: 600,          // 600 per 5 min — supports chunked parallel uploads
   keyGenerator: (req) => `upload:${req.user?.userId || req.ip || 'unknown'}`,
   message: 'Too many file uploads. Please try again later.',
 });
@@ -165,7 +165,7 @@ function verifyMagicBytes(filePath: string, ext: string): boolean {
   }
 }
 
-const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
+const MAX_FILE_SIZE = 3 * 1024 * 1024 * 1024; // 3GB
 
 // Configure multer storage
 const storage = multer.diskStorage({
@@ -301,7 +301,7 @@ function authenticateTokenOrQuery(req: Request, res: Response, next: NextFunctio
 // Rate limiter for file downloads — prevent bulk data exfiltration via file enumeration
 const downloadRateLimit = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
-  maxRequests: 100,          // 100 downloads per 5 minutes per user/IP
+  maxRequests: 500,          // 500 per 5 min — supports Range requests + bulk access
   keyGenerator: (req) => `download:${req.user?.userId || req.ip || 'unknown'}`,
   message: 'Too many file download requests. Please try again later.',
 });
@@ -324,13 +324,32 @@ router.param('fileId', (req: Request, res: Response, next: Function) => {
 router.get('/entity/:type/:id', validateParamId, authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const entityType = String(req.params.type);
+    const entityId = parseInt(String(req.params.id), 10);
+
+    // Validate entity type against allowlist
+    const VALID_ENTITY_TYPES = ['incident', 'person', 'vehicle', 'case', 'evidence', 'warrant', 'citation', 'arrest', 'call', 'training', 'company_document'];
+    if (!VALID_ENTITY_TYPES.includes(entityType)) {
+      res.status(400).json({ error: 'Invalid entity type' });
+      return;
+    }
+
+    // Role-based access: restrict sensitive entity attachments to privileged roles
+    const privilegedRoles = ['admin', 'manager', 'supervisor'];
+    const isPrivileged = privilegedRoles.includes(req.user!.role);
+    const sensitiveTypes = ['evidence', 'warrant', 'arrest'];
+    if (sensitiveTypes.includes(entityType) && !isPrivileged) {
+      res.status(403).json({ error: 'Insufficient permissions to access these attachments' });
+      return;
+    }
+
     const attachments = db.prepare(`
       SELECT a.*, u.full_name as uploader_name
       FROM attachments a
       LEFT JOIN users u ON a.uploaded_by = u.id
       WHERE a.entity_type = ? AND a.entity_id = ?
       ORDER BY a.created_at DESC
-    `).all(String(req.params.type), parseInt(String(req.params.id), 10));
+    `).all(entityType, entityId);
 
     // Enrich each attachment with an HMAC-signed access token (24h TTL)
     const enriched = (attachments as any[]).map((att) => {
@@ -379,104 +398,96 @@ router.get('/sign/:fileId', authenticateToken, (req: Request, res: Response) => 
 // File-serving routes use flexible auth (header OR query param)
 // This allows <img src="...">, <iframe src="...">, and <a href="..."> to work
 
-// ─── GET /api/uploads/:fileId ─── Serve/inline a file ───
+/** Range-aware streaming file server (HTTP 206 Partial Content support). */
+function serveFileWithRange(
+  req: Request, res: Response,
+  filePath: string, mimeType: string, disposition: 'inline' | 'attachment', originalName: string,
+  cacheControl = 'private, max-age=300',
+): void {
+  const stat = fs.statSync(filePath);
+  const fileSize = stat.size;
+  const range = req.headers.range;
+
+  setFileSecurityHeaders(res);
+  res.set('Accept-Ranges', 'bytes');
+  res.set('Cache-Control', cacheControl);
+
+  if (range) {
+    const parts = range.replace(/bytes=/, '').split('-');
+    const start = parseInt(parts[0], 10);
+    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+    if (isNaN(start) || isNaN(end) || start < 0 || end >= fileSize || start > end) {
+      res.writeHead(416, { 'Content-Range': `bytes */${fileSize}` });
+      res.end();
+      return;
+    }
+
+    res.writeHead(206, {
+      'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+      'Content-Length': end - start + 1,
+      'Content-Type': mimeType,
+      'Content-Disposition': safeContentDisposition(disposition, originalName),
+    });
+    const stream = fs.createReadStream(filePath, { start, end, highWaterMark: 1024 * 1024 });
+    stream.on('error', (err) => { console.error('Stream error:', err?.message); res.destroy(); });
+    stream.pipe(res);
+  } else {
+    res.writeHead(200, {
+      'Content-Length': fileSize,
+      'Content-Type': mimeType,
+      'Content-Disposition': safeContentDisposition(disposition, originalName),
+    });
+    const stream = fs.createReadStream(filePath, { highWaterMark: 1024 * 1024 });
+    stream.on('error', (err) => { console.error('Stream error:', err?.message); res.destroy(); });
+    stream.pipe(res);
+  }
+}
+
+// ─── GET /api/uploads/:fileId ─── Serve/inline (Range-aware) ───
 router.get('/:fileId', downloadRateLimit, authenticateTokenOrQuery, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(req.params.fileId) as any;
-
-    if (!attachment) {
-      res.status(404).json({ error: 'File not found' });
-      return;
-    }
-
+    if (!attachment) { res.status(404).json({ error: 'File not found' }); return; }
     const filePath = safeFilePath(attachment.file_path);
     if (!filePath) { res.status(403).json({ error: 'Invalid file path' }); return; }
-    if (!fs.existsSync(filePath)) {
-      res.status(404).json({ error: 'File not found on disk' });
-      return;
-    }
-
-    // Validate stored MIME type is still in the allowed list — defense against
-    // DB tampering where an attacker modifies the mime_type to bypass Content-Type restrictions
-    const serveMime = ALLOWED_TYPES.has(attachment.mime_type)
-      ? attachment.mime_type
-      : 'application/octet-stream'; // Fall back to binary download if MIME was tampered
-
-    // Set appropriate headers + security hardening for served files
-    setFileSecurityHeaders(res);
-    res.set('Content-Type', serveMime);
-    res.set('Content-Disposition', safeContentDisposition('inline', attachment.original_name));
-    res.set('Content-Length', String(attachment.file_size));
-    // Allow browser caching for 5 minutes
-    res.set('Cache-Control', 'private, max-age=300');
-
-    res.sendFile(filePath);
+    if (!fs.existsSync(filePath)) { res.status(404).json({ error: 'File not found on disk' }); return; }
+    const serveMime = ALLOWED_TYPES.has(attachment.mime_type) ? attachment.mime_type : 'application/octet-stream';
+    serveFileWithRange(req, res, filePath, serveMime, 'inline', attachment.original_name);
   } catch (error: any) {
     console.error('Download error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Download failed' });
   }
 });
 
-// ─── GET /api/uploads/:fileId/download ─── Force download ───
+// ─── GET /api/uploads/:fileId/download ─── Force download (Range-aware) ───
 router.get('/:fileId/download', downloadRateLimit, authenticateTokenOrQuery, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(req.params.fileId) as any;
-
-    if (!attachment) {
-      res.status(404).json({ error: 'File not found' });
-      return;
-    }
-
+    if (!attachment) { res.status(404).json({ error: 'File not found' }); return; }
     const filePath = safeFilePath(attachment.file_path);
     if (!filePath) { res.status(403).json({ error: 'Invalid file path' }); return; }
-    if (!fs.existsSync(filePath)) {
-      res.status(404).json({ error: 'File not found on disk' });
-      return;
-    }
-
-    setFileSecurityHeaders(res);
-    res.set('Content-Type', 'application/octet-stream');
-    res.set('Content-Disposition', safeContentDisposition('attachment', attachment.original_name));
-    res.sendFile(filePath);
+    if (!fs.existsSync(filePath)) { res.status(404).json({ error: 'File not found on disk' }); return; }
+    serveFileWithRange(req, res, filePath, 'application/octet-stream', 'attachment', attachment.original_name);
   } catch (error: any) {
     console.error('Download error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Download failed' });
   }
 });
 
-// ─── GET /api/uploads/:fileId/thumbnail ─── Serve image thumbnail (same as inline but with aggressive caching) ───
+// ─── GET /api/uploads/:fileId/thumbnail ─── Thumbnail (Range-aware, immutable cache) ───
 router.get('/:fileId/thumbnail', authenticateTokenOrQuery, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(req.params.fileId) as any;
-
-    if (!attachment) {
-      res.status(404).json({ error: 'File not found' });
-      return;
-    }
-
-    // Only serve images as thumbnails
-    if (!attachment.mime_type.startsWith('image/')) {
-      res.status(400).json({ error: 'Not an image' });
-      return;
-    }
-
+    if (!attachment) { res.status(404).json({ error: 'File not found' }); return; }
+    if (!attachment.mime_type.startsWith('image/')) { res.status(400).json({ error: 'Not an image' }); return; }
     const filePath = safeFilePath(attachment.file_path);
     if (!filePath) { res.status(403).json({ error: 'Invalid file path' }); return; }
-    if (!fs.existsSync(filePath)) {
-      res.status(404).json({ error: 'File not found on disk' });
-      return;
-    }
-
-    setFileSecurityHeaders(res);
-    res.set('Content-Type', attachment.mime_type);
-    res.set('Content-Disposition', safeContentDisposition('inline', attachment.original_name));
-    res.set('Content-Length', String(attachment.file_size));
-    res.set('Cache-Control', 'private, max-age=600');
-
-    res.sendFile(filePath);
+    if (!fs.existsSync(filePath)) { res.status(404).json({ error: 'File not found on disk' }); return; }
+    serveFileWithRange(req, res, filePath, attachment.mime_type, 'inline', attachment.original_name, 'private, max-age=600, immutable');
   } catch (error: any) {
     console.error('Thumbnail error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Thumbnail failed' });
@@ -495,7 +506,122 @@ const ALLOWED_ENTITY_TYPES = new Set([
   'crm_proposal', 'connection', 'offender', 'property',
 ]);
 
-// ─── POST /api/uploads ─── Upload one or more files ───
+// ─── Chunked Upload System (parallel workers, resumable) ────────────
+const CHUNK_SIZE = 25 * 1024 * 1024; // 25MB chunks — less overhead, faster throughput
+const CHUNK_DIR = path.join(UPLOAD_DIR, '.chunks');
+if (!fs.existsSync(CHUNK_DIR)) fs.mkdirSync(CHUNK_DIR, { recursive: true });
+
+const activeChunkedUploads = new Map<string, {
+  userId: number; originalName: string; mimeType: string;
+  totalSize: number; totalChunks: number; receivedChunks: Set<number>;
+  entityType?: string; entityId?: number; createdAt: number;
+}>();
+
+// Purge stale uploads every 30 min
+setInterval(() => {
+  const cutoff = Date.now() - 2 * 60 * 60 * 1000;
+  for (const [id, info] of activeChunkedUploads) {
+    if (info.createdAt < cutoff) {
+      activeChunkedUploads.delete(id);
+      try { fs.rmSync(path.join(CHUNK_DIR, id), { recursive: true, force: true }); } catch { /* */ }
+    }
+  }
+}, 30 * 60 * 1000);
+
+const chunkStorage = multer.diskStorage({
+  destination: (req, _file, cb) => {
+    const dir = path.join(CHUNK_DIR, req.params.uploadId);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, _file, cb) => cb(null, `chunk-${req.params.chunkIndex}`),
+});
+const chunkUpload = multer({ storage: chunkStorage, limits: { fileSize: CHUNK_SIZE + 1024 } });
+
+// POST /api/uploads/chunked/init
+router.post('/chunked/init', uploadRateLimit, (req: Request, res: Response) => {
+  try {
+    const { fileName, fileSize, mimeType, totalChunks, entityType, entityId } = req.body;
+    if (!fileName || !fileSize || !totalChunks) { res.status(400).json({ error: 'fileName, fileSize, totalChunks required' }); return; }
+    if (fileSize > MAX_FILE_SIZE) { res.status(400).json({ error: 'File too large (max 3 GB)' }); return; }
+    if (entityType && !ALLOWED_ENTITY_TYPES.has(entityType)) { res.status(400).json({ error: 'Invalid entity_type' }); return; }
+    const ext = path.extname(fileName).toLowerCase();
+    if (BLOCKED_EXTENSIONS.has(ext)) { res.status(400).json({ error: `File type "${ext}" not allowed` }); return; }
+    if (mimeType && !ALLOWED_TYPES.has(mimeType)) { res.status(400).json({ error: `MIME type ${mimeType} not allowed` }); return; }
+
+    const uploadId = crypto.randomUUID();
+    activeChunkedUploads.set(uploadId, {
+      userId: req.user!.userId, originalName: fileName, mimeType: mimeType || 'application/octet-stream',
+      totalSize: fileSize, totalChunks, receivedChunks: new Set(),
+      entityType: entityType || undefined, entityId: entityId ? parseInt(entityId, 10) : undefined,
+      createdAt: Date.now(),
+    });
+    fs.mkdirSync(path.join(CHUNK_DIR, uploadId), { recursive: true });
+    res.status(201).json({ uploadId, chunkSize: CHUNK_SIZE });
+  } catch (error: any) { console.error('Chunked init error:', error?.message); res.status(500).json({ error: 'Failed to initialize upload' }); }
+});
+
+// POST /api/uploads/chunked/:uploadId/:chunkIndex
+router.post('/chunked/:uploadId/:chunkIndex', uploadRateLimit, chunkUpload.single('chunk'), (req: Request, res: Response) => {
+  try {
+    const info = activeChunkedUploads.get(req.params.uploadId);
+    if (!info) { res.status(404).json({ error: 'Upload session not found' }); return; }
+    if (info.userId !== req.user!.userId) { res.status(403).json({ error: 'Not authorized' }); return; }
+    const idx = parseInt(req.params.chunkIndex, 10);
+    if (isNaN(idx) || idx < 0 || idx >= info.totalChunks) { res.status(400).json({ error: 'Invalid chunk index' }); return; }
+    info.receivedChunks.add(idx);
+    res.json({ received: idx, total: info.totalChunks, remaining: info.totalChunks - info.receivedChunks.size });
+  } catch (error: any) { console.error('Chunk error:', error?.message); res.status(500).json({ error: 'Chunk upload failed' }); }
+});
+
+// POST /api/uploads/chunked/:uploadId/finalize
+router.post('/chunked/:uploadId/finalize', (req: Request, res: Response) => {
+  try {
+    const info = activeChunkedUploads.get(req.params.uploadId);
+    if (!info) { res.status(404).json({ error: 'Upload session not found' }); return; }
+    if (info.userId !== req.user!.userId) { res.status(403).json({ error: 'Not authorized' }); return; }
+    if (info.receivedChunks.size !== info.totalChunks) {
+      const missing: number[] = [];
+      for (let i = 0; i < info.totalChunks; i++) { if (!info.receivedChunks.has(i)) missing.push(i); }
+      res.status(400).json({ error: 'Missing chunks', missing }); return;
+    }
+    const now = new Date();
+    const destDir = path.join(UPLOAD_DIR, `${now.getFullYear()}`, String(now.getMonth() + 1).padStart(2, '0'));
+    if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+    const ext = path.extname(info.originalName).toLowerCase();
+    const finalName = `${crypto.randomUUID()}${ext}`;
+    const finalPath = path.join(destDir, finalName);
+    const chunkDir = path.join(CHUNK_DIR, req.params.uploadId);
+
+    const writeStream = fs.createWriteStream(finalPath);
+    for (let i = 0; i < info.totalChunks; i++) {
+      writeStream.write(fs.readFileSync(path.join(chunkDir, `chunk-${i}`)));
+    }
+    writeStream.end();
+    writeStream.on('finish', () => {
+      if (!verifyMagicBytes(finalPath, ext)) {
+        try { fs.unlinkSync(finalPath); } catch { /* */ }
+        try { fs.rmSync(chunkDir, { recursive: true, force: true }); } catch { /* */ }
+        activeChunkedUploads.delete(req.params.uploadId);
+        res.status(400).json({ error: 'File content does not match type' }); return;
+      }
+      const actualSize = fs.statSync(finalPath).size;
+      const db = getDb();
+      const fileId = crypto.randomUUID();
+      db.prepare(`INSERT INTO attachments (file_id,original_name,stored_name,file_path,mime_type,file_size,entity_type,entity_id,uploaded_by) VALUES (?,?,?,?,?,?,?,?,?)`)
+        .run(fileId, info.originalName, finalName, path.relative(UPLOAD_DIR, finalPath), info.mimeType, actualSize, info.entityType || null, info.entityId || null, info.userId);
+      const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(fileId);
+      db.prepare(`INSERT INTO activity_log (user_id,action,entity_type,entity_id,details,ip_address) VALUES (?,'file_uploaded',?,?,?,?)`)
+        .run(info.userId, info.entityType || 'attachment', info.entityId || null, `Uploaded (chunked): ${info.originalName}`, req.ip || 'unknown');
+      try { fs.rmSync(chunkDir, { recursive: true, force: true }); } catch { /* */ }
+      activeChunkedUploads.delete(req.params.uploadId);
+      res.status(201).json(attachment);
+    });
+    writeStream.on('error', (err) => { console.error('Reassembly error:', err?.message); res.status(500).json({ error: 'Finalize failed' }); });
+  } catch (error: any) { console.error('Finalize error:', error?.message); res.status(500).json({ error: 'Finalize failed' }); }
+});
+
+// ─── POST /api/uploads ─── Upload one or more files (single-request) ───
 router.post('/', uploadRateLimit, upload.array('files', 10), (req: Request, res: Response) => {
   try {
     const files = req.files as Express.Multer.File[];

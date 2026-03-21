@@ -5,6 +5,7 @@ import { validateParamId } from '../../middleware/sanitize';
 import { broadcastDispatchUpdate } from '../../utils/websocket';
 import { generateIncidentNumber } from '../../utils/caseNumbers';
 import { localNow } from '../../utils/timeUtils';
+import { getCallUnitIds, unassignAllUnitsFromCall } from '../../utils/callUnits';
 
 const router = Router();
 
@@ -72,11 +73,12 @@ router.post('/calls/archive-bulk', requireRole('admin', 'manager', 'dispatcher')
         archiveStmt.run('archived', now, call.id);
 
         // Free up any assigned units
-        let unitIds: number[] = [];
-        try { const p = JSON.parse(call.assigned_unit_ids || '[]'); unitIds = Array.isArray(p) ? p : []; } catch { /* ignore */ }
+        const unitIds = getCallUnitIds(call.id);
         for (const unitId of unitIds) {
           freeUnitStmt.run(now, unitId, call.id);
         }
+        unassignAllUnitsFromCall(call.id);
+        db.prepare("UPDATE calls_for_service SET assigned_unit_ids = '[]' WHERE id = ?").run(call.id);
 
         logStmt.run(req.user!.userId, call.id, `${call.call_number} bulk archived`, req.ip || 'unknown');
       }
@@ -116,15 +118,13 @@ router.post('/calls/:id/archive', validateParamId, requireRole('admin', 'manager
         .run('archived', now, call.id);
 
       // Free up any assigned units when archiving
-      let unitIds: number[] = [];
-      try {
-        const parsed = JSON.parse(call.assigned_unit_ids || '[]');
-        unitIds = Array.isArray(parsed) ? parsed : [];
-      } catch { /* ignore */ }
+      const unitIds = getCallUnitIds(call.id);
       for (const unitId of unitIds) {
         db.prepare(`UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ? AND current_call_id = ?`)
           .run(now, unitId, call.id);
       }
+      unassignAllUnitsFromCall(call.id);
+      db.prepare("UPDATE calls_for_service SET assigned_unit_ids = '[]' WHERE id = ?").run(call.id);
 
       db.prepare(`
         INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -187,21 +187,32 @@ router.delete('/calls/:id', validateParamId, requireRole('admin', 'manager'), (r
     // Transaction: free units, nullify FKs, delete call atomically
     const deleteTx = db.transaction(() => {
       // If call has active units assigned, free them first
-      let unitIds: number[] = [];
-      try { const p = JSON.parse(call.assigned_unit_ids || '[]'); unitIds = Array.isArray(p) ? p : []; } catch { /* ignore */ }
+      const unitIds = getCallUnitIds(call.id);
       for (const unitId of unitIds) {
         db.prepare(`
           UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ? AND current_call_id = ?
         `).run(now, unitId, call.id);
       }
+      unassignAllUnitsFromCall(call.id);
+      db.prepare("UPDATE calls_for_service SET assigned_unit_ids = '[]' WHERE id = ?").run(call.id);
 
       // Nullify FK references in related tables before deleting the call
       try { db.prepare('UPDATE incidents SET call_id = NULL WHERE call_id = ?').run(call.id); } catch { /* ignore */ }
       try { db.prepare('UPDATE units SET current_call_id = NULL WHERE current_call_id = ?').run(call.id); } catch { /* ignore */ }
       try { db.prepare('DELETE FROM record_links WHERE (source_type = ? AND source_id = ?) OR (target_type = ? AND target_id = ?)').run('call', String(call.id), 'call', String(call.id)); } catch { /* ignore */ }
 
+      // Clear FK references from tables that lack ON DELETE CASCADE
+      try { db.prepare('UPDATE citations SET call_id = NULL WHERE call_id = ?').run(call.id); } catch { /* ignore */ }
+      try { db.prepare('UPDATE serve_queue SET call_id = NULL WHERE call_id = ?').run(call.id); } catch { /* ignore */ }
+      try { db.prepare('UPDATE calls_for_service SET parent_call_id = NULL WHERE parent_call_id = ?').run(call.id); } catch { /* ignore */ }
+      try { db.prepare('DELETE FROM call_visit_history WHERE call_id = ?').run(call.id); } catch { /* ignore */ }
+      try { db.prepare('UPDATE dossiers SET linked_call_id = NULL WHERE linked_call_id = ?').run(call.id); } catch { /* ignore */ }
+
       // Delete related activity log entries
       try { db.prepare('DELETE FROM activity_log WHERE entity_type = ? AND entity_id = ?').run('call', call.id); } catch { /* ignore */ }
+
+      // Delete timeline entries (call_timeline has ON DELETE CASCADE but be safe)
+      try { db.prepare('DELETE FROM call_timeline WHERE call_id = ?').run(call.id); } catch { /* ignore */ }
 
       db.prepare('DELETE FROM calls_for_service WHERE id = ?').run(call.id);
 
@@ -557,29 +568,30 @@ router.get('/calls/:id/warnings', validateParamId, requireRole('admin', 'manager
       `).all(call.id) as any[];
 
       for (const person of linkedPersons) {
+        const personName = `${person.first_name || ''} ${person.last_name || ''}`.trim() || 'Unknown';
         if (person.caution_flags) {
-          const flags = person.caution_flags.split(',').map((f: string) => f.trim()).filter(Boolean);
+          const flags = String(person.caution_flags).split(',').map((f: string) => f.trim()).filter(Boolean);
           for (const flag of flags) {
             warnings.push({
               type: 'CAUTION',
               label: flag.toUpperCase(),
               severity: 'high',
-              source: `${person.first_name} ${person.last_name}`
+              source: personName
             });
           }
         }
         if (person.is_sex_offender) {
-          warnings.push({ type: 'SEX_OFFENDER', label: 'SEX OFFENDER', severity: 'critical', source: `${person.first_name} ${person.last_name}` });
+          warnings.push({ type: 'SEX_OFFENDER', label: 'SEX OFFENDER', severity: 'critical', source: personName });
         }
         if (person.gang_affiliation) {
-          warnings.push({ type: 'GANG', label: 'GANG AFFILIATED', severity: 'critical', source: `${person.first_name} ${person.last_name}` });
+          warnings.push({ type: 'GANG', label: 'GANG AFFILIATED', severity: 'critical', source: personName });
         }
         if (person.probation_parole) {
-          warnings.push({ type: 'PROBATION', label: 'ON PROBATION/PAROLE', severity: 'high', source: `${person.first_name} ${person.last_name}` });
+          warnings.push({ type: 'PROBATION', label: 'ON PROBATION/PAROLE', severity: 'high', source: personName });
         }
         // Pre-Trial Supervision
-        if (person.probation_parole && person.probation_parole.toLowerCase().includes('pre-trial')) {
-          warnings.push({ type: 'PTS', label: 'PRE-TRIAL SUPERVISION', severity: 'high', source: `${person.first_name} ${person.last_name}` });
+        if (person.probation_parole && String(person.probation_parole).toLowerCase().includes('pre-trial')) {
+          warnings.push({ type: 'PTS', label: 'PRE-TRIAL SUPERVISION', severity: 'high', source: personName });
         }
       }
     } catch { /* linked persons table may not exist */ }
@@ -602,7 +614,7 @@ router.get('/calls/:id/warnings', validateParamId, requireRole('admin', 'manager
       for (const warrant of activeWarrants) {
         warnings.push({
           type: 'WARRANT',
-          label: `ACTIVE WARRANT: ${warrant.charge_description || warrant.type}`.toUpperCase(),
+          label: `ACTIVE WARRANT: ${warrant.charge_description || warrant.type || 'UNKNOWN'}`.toUpperCase(),
           severity: 'critical',
           source: `${warrant.first_name || ''} ${warrant.last_name || ''}`.trim() || warrant.warrant_number
         });

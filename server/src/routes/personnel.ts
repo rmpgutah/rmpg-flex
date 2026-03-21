@@ -10,7 +10,7 @@ import { fileURLToPath } from 'url';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { rateLimit } from '../middleware/rateLimiter';
-import { localNow, localToday } from '../utils/timeUtils';
+import { localNow, localToday, dateToLocalYMD } from '../utils/timeUtils';
 import { queueOverlayProcessing, type BodyCamOverlayConfig } from '../utils/videoOverlay';
 import { validateEmail, validatePhone, validateBadgeNumber, validateAll } from '../utils/inputValidation';
 import { validateParamId, validateNumericParams } from '../middleware/sanitize';
@@ -87,15 +87,33 @@ const chunkUpload = multer({
 
 const router = Router();
 
-// Promote query-string token to Authorization header BEFORE authenticateToken runs.
-// <video> elements can't set custom headers, so the VideoPlayer passes the JWT as
-// ?token=... on the streaming URL. This middleware promotes it so authenticateToken
-// can validate it normally. Scoped to video streaming routes ONLY to limit attack surface.
+// Accept HMAC signed access or legacy query-string token for body cam streaming.
+// Signed URLs prevent JWT leakage in browser history, Referer headers, and logs.
 router.use((req: Request, res: Response, next: NextFunction) => {
   const isVideoRoute = /\/(bodycam-videos|body-cameras)\//.test(req.path)
     && /(stream|download|thumbnail)/.test(req.path);
-  if (!req.headers['authorization'] && req.query.token && isVideoRoute) {
-    req.headers['authorization'] = `Bearer ${req.query.token}`;
+  if (isVideoRoute) {
+    // Prefer HMAC signed access (no JWT in URL)
+    if (!req.headers['authorization'] && typeof req.query.sig === 'string') {
+      const { verifyResourceAccess } = require('../utils/signedAccess');
+      const idMatch = req.path.match(/\/(\d+)\/(stream|download|thumbnail)/);
+      const resourceId = idMatch?.[1];
+      if (resourceId) {
+        const exp = parseInt(req.query.exp as string, 10);
+        const nonce = req.query.nonce as string | undefined;
+        if (verifyResourceAccess('bodycam', resourceId, req.query.sig as string, exp, nonce)) {
+          req.user = { userId: 0, username: 'signed-access', role: 'viewer', fullName: 'Signed Access' };
+          next();
+          return;
+        }
+        res.status(403).json({ error: 'Invalid or expired signature' });
+        return;
+      }
+    }
+    // Legacy: promote ?token= to Authorization header
+    if (!req.headers['authorization'] && req.query.token) {
+      req.headers['authorization'] = `Bearer ${req.query.token}`;
+    }
   }
   next();
 });
@@ -173,35 +191,17 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
 
 // GET /api/personnel/:id - Get user details
 // Restrict to sworn/dispatch/command roles — contract_manager must NOT see officer PII
-//
-// Sub-resource paths (body-cameras, bodycam-videos, etc.) are handled by
-// mountScheduleRoutes on the parent apiRouter. The bypass guard below must run
-// BEFORE validateParamId — otherwise validateParamId rejects those paths as
-// non-numeric IDs with a 400 "Invalid ID parameter" response, and those
-// requests never reach the apiRouter handlers.
-const _PERSONNEL_SUB_PATHS = new Set([
-  'schedules', 'time', 'credentials', 'training', 'training-requirements',
-  'deployments', 'coverage-gaps', 'analytics', 'activity', 'equipment',
-  'body-cameras', 'bodycam-videos',
-]);
-
-router.get('/:id',
-  (req: Request, _res: Response, next: NextFunction) => {
-    // Exit this router entirely for known sub-resource paths so the
-    // apiRouter's mountScheduleRoutes handlers can service them.
-    if (_PERSONNEL_SUB_PATHS.has(String(req.params.id))) return next('router');
-    next();
-  },
-  requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), validateParamId, (req: Request, res: Response, next) => {
+router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response, next) => {
   try {
-    const subPaths = _PERSONNEL_SUB_PATHS;
-    if (subPaths.has(String(req.params.id))) {
-      return next('router');
+    // Check for route conflicts with sub-paths handled by mountScheduleRoutes
+    const subPaths = ['schedules', 'time', 'credentials', 'training', 'training-requirements', 'deployments', 'coverage-gaps', 'analytics', 'activity', 'equipment', 'body-cameras', 'bodycam-videos'];
+    if (subPaths.includes(String(req.params.id))) {
+      return next('route');
     }
 
-    // Validate ID parameter
+    // Validate ID parameter (manual check after subPaths filter)
     const id = parseInt(String(req.params.id), 10);
-    if (isNaN(id)) {
+    if (isNaN(id) || id < 1) {
       res.status(400).json({ error: 'Invalid user ID' });
       return;
     }
@@ -314,7 +314,7 @@ router.post('/', requireRole('admin', 'manager'), personnelCreateRateLimit, (req
     }
 
     // Validate role against allowlist
-    const VALID_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
+    const VALID_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager', 'human_resources'];
     if (!VALID_ROLES.includes(role)) {
       res.status(400).json({ error: 'Invalid role' });
       return;
@@ -389,10 +389,12 @@ router.post('/', requireRole('admin', 'manager'), personnelCreateRateLimit, (req
 });
 
 // PUT /api/personnel/:id - Update user
-router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
+    const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid user ID' }); return; }
     const db = getDb();
-    const user = db.prepare('SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, status, archived_at FROM users WHERE id = ?').get(req.params.id) as any;
+    const user = db.prepare('SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, status, archived_at FROM users WHERE id = ?').get(id) as any;
     if (!user) {
       res.status(404).json({ error: 'User not found' });
       return;
@@ -410,7 +412,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Reque
     }
 
     // Validate role against allowlist if provided
-    const VALID_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
+    const VALID_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager', 'human_resources'];
     if (req.body.role && !VALID_ROLES.includes(req.body.role)) {
       res.status(400).json({ error: 'Invalid role' });
       return;
@@ -476,6 +478,11 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Reque
       db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(req.params.id);
     }
 
+    // Audit log for admin password resets
+    if (passwordChanged) {
+      auditLog(req, 'ADMIN_PASSWORD_RESET', 'users', id, `Admin password reset for ${user.username}`);
+    }
+
     const updated = db.prepare(`
       SELECT id, username, full_name, first_name, last_name, middle_name, email, role,
         badge_number, phone, status, avatar_url, rank, department, address, city, state, zip,
@@ -495,10 +502,12 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Reque
 });
 
 // DELETE /api/personnel/:id - Soft-delete (terminate) user
-router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
+    const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid user ID' }); return; }
     const db = getDb();
-    const user = db.prepare('SELECT id, username, full_name, status FROM users WHERE id = ?').get(req.params.id) as any;
+    const user = db.prepare('SELECT id, username, full_name, status FROM users WHERE id = ?').get(id) as any;
     if (!user) {
       res.status(404).json({ error: 'User not found' });
       return;
@@ -537,7 +546,7 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
 });
 
 // POST /api/personnel/:id/archive - Archive terminated user
-router.post('/:id/archive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/:id/archive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = db.prepare('SELECT id, full_name, status, archived_at FROM users WHERE id = ?').get(req.params.id) as any;
@@ -566,7 +575,7 @@ router.post('/:id/archive', validateParamId, requireRole('admin', 'manager'), (r
 });
 
 // POST /api/personnel/:id/unarchive
-router.post('/:id/unarchive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/:id/unarchive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = db.prepare('SELECT id, full_name, status, archived_at FROM users WHERE id = ?').get(req.params.id) as any;
@@ -2796,8 +2805,20 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   });
 
   // GET /api/personnel/bodycam-videos/:videoId/stream - Stream video with Range support
-  // Accept token from query string for <video> elements that can't set Authorization headers
+  // Prefer HMAC signed access; legacy ?token= still accepted during migration
   parentRouter.get('/personnel/bodycam-videos/:videoId/stream', (req: Request, res: Response, next) => {
+    if (!req.headers['authorization'] && typeof req.query.sig === 'string') {
+      const { verifyResourceAccess } = require('../utils/signedAccess');
+      const exp = parseInt(req.query.exp as string, 10);
+      const nonce = req.query.nonce as string | undefined;
+      if (verifyResourceAccess('bodycam', req.params.videoId, req.query.sig as string, exp, nonce)) {
+        req.user = { userId: 0, username: 'signed-access', role: 'viewer', fullName: 'Signed Access' };
+        next();
+        return;
+      }
+      res.status(403).json({ error: 'Invalid or expired signature' });
+      return;
+    }
     if (!req.headers['authorization'] && req.query.token) {
       req.headers['authorization'] = `Bearer ${req.query.token}`;
     }
@@ -2985,7 +3006,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         : 0;
 
       // New hires / terminations in last 30 days
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const thirtyDaysAgo = dateToLocalYMD(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
       const newHires = (db.prepare('SELECT COUNT(*) as count FROM users WHERE hire_date >= ?').get(thirtyDaysAgo) as any)?.count || 0;
       const terminations = (db.prepare('SELECT COUNT(*) as count FROM users WHERE termination_date >= ?').get(thirtyDaysAgo) as any)?.count || 0;
 

@@ -7,7 +7,7 @@ import { localNow, localToday } from '../utils/timeUtils';
 import { identifyBeat } from '../utils/geofence';
 import { createNotificationForRoles } from './notifications';
 import { auditLog } from '../utils/auditLogger';
-import { validateParamId, validateNumericParams, escapeLike } from '../middleware/sanitize';
+import { validateParamId, validateNumericParams, escapeLike, validateCoordinates, validateDateField } from '../middleware/sanitize';
 import { exportRateLimit } from '../middleware/rateLimiter';
 import { universalWarrantCheck } from '../utils/universalWarrantScanner';
 
@@ -64,7 +64,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       params.push(req.user!.userId);
     }
 
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.min(1000, Math.max(1, parseInt(page as string, 10) || 1));
     const limitNum = Math.max(1, Math.min(500, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
@@ -338,6 +338,12 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       return;
     }
 
+    // Validate narrative length (max 100KB — large reports are common but must be bounded)
+    if (narrative && typeof narrative === 'string' && narrative.length > 100000) {
+      res.status(400).json({ error: 'Narrative exceeds 100,000 character limit. Please use supplemental reports for additional detail.' });
+      return;
+    }
+
     // Auto-resolve client_id from property if not provided
     let resolvedClientId = requestClientId || null;
     if (!resolvedClientId && property_id) {
@@ -456,6 +462,17 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
       return;
     }
 
+    // Optimistic locking: if client sends updated_at, verify it matches
+    const clientUpdatedAt = req.body.updated_at;
+    if (clientUpdatedAt && clientUpdatedAt !== incident.updated_at) {
+      res.status(409).json({
+        error: 'This incident has been modified by another user. Please refresh and try again.',
+        code: 'CONFLICT',
+        server_updated_at: incident.updated_at,
+      });
+      return;
+    }
+
     // Permission checks:
     // - Admin/manager/supervisor can edit any incident in any status
     // - Officers can edit their own incidents in draft, returned, submitted, or approved
@@ -479,6 +496,18 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
       weapons_involved, alcohol_involved, drugs_involved, domestic_violence,
       disposition, zone_beat, section_id, zone_id, beat_id, responding_le_agency, le_case_number,
     } = req.body;
+
+    // Validate coordinates if provided
+    if (latitude !== undefined || longitude !== undefined) {
+      const coordErr = validateCoordinates(latitude, longitude);
+      if (coordErr) { res.status(400).json({ error: coordErr }); return; }
+    }
+
+    // Validate narrative length on updates
+    if (narrative && typeof narrative === 'string' && narrative.length > 100000) {
+      res.status(400).json({ error: 'Narrative exceeds 100,000 character limit. Use supplemental reports for additional detail.' });
+      return;
+    }
 
     // Build dynamic SET clause — only update fields explicitly provided
     const iFields: string[] = [];
@@ -760,6 +789,12 @@ router.post('/:id/persons', validateParamId, requireRole('admin', 'manager', 'su
       return;
     }
 
+    // Authorization: officers can only link persons to their own incidents
+    if (req.user!.role === 'officer' && incident.officer_id !== req.user!.userId) {
+      res.status(403).json({ error: 'You can only add persons to your own incidents' });
+      return;
+    }
+
     const { person_id, role, notes } = req.body;
     if (!person_id || !role) {
       res.status(400).json({ error: 'person_id and role are required' });
@@ -812,6 +847,16 @@ router.post('/:id/persons', validateParamId, requireRole('admin', 'manager', 'su
 router.put('/:id/persons/:personId', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+
+    // Authorization: officers can only modify person links on their own incidents
+    if (req.user!.role === 'officer') {
+      const incident = db.prepare('SELECT officer_id FROM incidents WHERE id = ?').get(req.params.id) as any;
+      if (!incident || incident.officer_id !== req.user!.userId) {
+        res.status(403).json({ error: 'You can only modify person links on your own incidents' });
+        return;
+      }
+    }
+
     const link = db.prepare('SELECT * FROM incident_persons WHERE incident_id = ? AND person_id = ?')
       .get(req.params.id, req.params.personId) as any;
     if (!link) {
@@ -886,6 +931,12 @@ router.post('/:id/vehicles', validateParamId, requireRole('admin', 'manager', 's
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id) as any;
     if (!incident) {
       res.status(404).json({ error: 'Incident not found' });
+      return;
+    }
+
+    // Authorization: officers can only link vehicles to their own incidents
+    if (req.user!.role === 'officer' && incident.officer_id !== req.user!.userId) {
+      res.status(403).json({ error: 'You can only add vehicles to your own incidents' });
       return;
     }
 
@@ -1116,6 +1167,12 @@ router.post('/:id/supplements', validateParamId, requireRole('admin', 'manager',
     const { report_type, subject, narrative } = req.body;
     if (!report_type || !subject || !narrative) {
       res.status(400).json({ error: 'report_type, subject, and narrative are required' });
+      return;
+    }
+
+    // Validate supplemental narrative length
+    if (typeof narrative === 'string' && narrative.length > 100000) {
+      res.status(400).json({ error: 'Narrative exceeds 100,000 character limit' });
       return;
     }
 

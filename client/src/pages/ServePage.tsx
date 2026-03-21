@@ -398,13 +398,14 @@ export default function ServePage() {
       const map = new google.maps.Map(mapContainerRef.current, {
         center,
         zoom: 11,
+        renderingType: 'RASTER' as any,
         styles: DARK_MAP_STYLE,
         disableDefaultUI: true,
         zoomControl: true,
         mapTypeControl: false,
         streetViewControl: false,
         fullscreenControl: false,
-        renderingType: 'RASTER' as any,
+        backgroundColor: '#0a1220',
       });
 
       mapRef.current = map;
@@ -504,7 +505,7 @@ export default function ServePage() {
   // ══════════════════════════════════════════════════════════════════════
 
   return (
-    <div className="flex flex-col h-full bg-surface-base">
+    <div className="flex flex-col h-full bg-surface-base app-grid-bg">
       {/* ─── Header Bar ────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1e3048] bg-[#0d1520] flex-wrap">
         <div className="flex items-center gap-1.5">

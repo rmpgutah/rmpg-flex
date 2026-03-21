@@ -27,6 +27,7 @@ import { useShiftPlanning, SHIFT_TYPES } from '../hooks/useShiftPlanning';
 import type { ShiftPlan, ShiftType, AreaAssignment } from '../hooks/useShiftPlanning';
 import { useIsMobile } from '../hooks/useIsMobile';
 import StatusBadge from '../components/StatusBadge';
+import { localToday, dateToLocalYMD } from '../utils/dateUtils';
 
 // ── Date helpers ───────────────────────────────────────────
 
@@ -36,7 +37,7 @@ function formatDate(dateStr: string) {
 }
 
 function todayStr() {
-  return new Date().toISOString().split('T')[0];
+  return localToday();
 }
 
 // ── Status badge helper ────────────────────────────────────
@@ -90,7 +91,7 @@ export default function ShiftPlansPage() {
   const navigateDate = (delta: number) => {
     const d = new Date(selectedDate + 'T12:00:00');
     d.setDate(d.getDate() + delta);
-    setSelectedDate(d.toISOString().split('T')[0]);
+    setSelectedDate(dateToLocalYMD(d));
   };
 
   // ── Create plan ──
@@ -105,7 +106,7 @@ export default function ShiftPlansPage() {
   const handleDuplicate = (planId: string) => {
     const nextDay = new Date(selectedDate + 'T12:00:00');
     nextDay.setDate(nextDay.getDate() + 1);
-    sp.duplicatePlan(planId, nextDay.toISOString().split('T')[0]);
+    sp.duplicatePlan(planId, dateToLocalYMD(nextDay));
   };
 
   // ── Save to server ──

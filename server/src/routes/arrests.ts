@@ -142,8 +142,20 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
     }
 
     const { first, middle, last } = splitName(fullName);
-    const charges = Array.isArray(b.charges) ? JSON.stringify(b.charges)
-      : typeof b.charges === 'string' ? b.charges : '[]';
+    // Normalize charges to valid JSON array string
+    let charges = '[]';
+    if (Array.isArray(b.charges)) {
+      charges = JSON.stringify(b.charges);
+    } else if (typeof b.charges === 'string') {
+      // Validate that string charges is valid JSON array
+      try {
+        const parsed = JSON.parse(b.charges);
+        charges = Array.isArray(parsed) ? JSON.stringify(parsed) : JSON.stringify([b.charges]);
+      } catch {
+        // If not valid JSON, wrap as single-element array
+        charges = JSON.stringify([b.charges]);
+      }
+    }
 
     const result = db.prepare(`
       INSERT INTO arrest_records (
@@ -226,7 +238,19 @@ router.put('/manual/:id', validateParamId, requireRole('admin', 'manager', 'offi
 
     if (b.charges !== undefined) {
       updates.push('charges = ?');
-      params.push(Array.isArray(b.charges) ? JSON.stringify(b.charges) : b.charges);
+      // Normalize charges to valid JSON array string (prevent double-encoding)
+      let chargesVal = '[]';
+      if (Array.isArray(b.charges)) {
+        chargesVal = JSON.stringify(b.charges);
+      } else if (typeof b.charges === 'string') {
+        try {
+          const parsed = JSON.parse(b.charges);
+          chargesVal = Array.isArray(parsed) ? JSON.stringify(parsed) : JSON.stringify([b.charges]);
+        } catch {
+          chargesVal = JSON.stringify([b.charges]);
+        }
+      }
+      params.push(chargesVal);
     }
 
     // If full_name changed, re-split first/last/middle
@@ -361,9 +385,23 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
           }
 
           const { first, middle, last } = splitName(fullName);
-          const charges = r.charges || r.Charges || r.CHARGES || r.offense || r.Offense || '';
-          const chargesJson = Array.isArray(charges) ? JSON.stringify(charges)
-            : typeof charges === 'string' && charges ? JSON.stringify([charges]) : '[]';
+          const rawCharges = r.charges || r.Charges || r.CHARGES || r.offense || r.Offense || '';
+          let chargesJson: string;
+          if (Array.isArray(rawCharges)) {
+            chargesJson = JSON.stringify(rawCharges);
+          } else if (typeof rawCharges === 'string' && rawCharges.trim()) {
+            // Check if it's already valid JSON array — avoid double-encoding
+            try {
+              const parsed = JSON.parse(rawCharges);
+              chargesJson = Array.isArray(parsed) ? rawCharges : JSON.stringify([rawCharges]);
+            } catch {
+              // Split on semicolons or commas to create a proper array from CSV text
+              const parts = rawCharges.includes(';') ? rawCharges.split(';') : [rawCharges];
+              chargesJson = JSON.stringify(parts.map((c: string) => c.trim()).filter(Boolean));
+            }
+          } else {
+            chargesJson = '[]';
+          }
 
           insert.run(
             `csv-${Date.now()}-${i}-${crypto.randomBytes(3).toString('hex')}`,
@@ -396,9 +434,16 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
           imported++;
         } catch (rowErr: any) {
           skipped++;
-          // Log full error server-side for debugging; return generic message to client
+          // Log full error server-side for debugging
           console.error(`[Arrests Import] Row ${i + 1} error:`, rowErr.message);
-          if (errors.length < 5) errors.push(`Row ${i + 1}: Import failed`);
+          // Return sanitized but useful error details (up to 10 rows)
+          if (errors.length < 10) {
+            const rowName = r.full_name || r.name || `Row ${i + 1}`;
+            const reason = rowErr.message?.includes('UNIQUE constraint') ? 'Duplicate record'
+              : rowErr.message?.includes('NOT NULL') ? 'Missing required field'
+              : 'Import failed';
+            errors.push(`Row ${i + 1} (${rowName}): ${reason}`);
+          }
         }
       }
     });
@@ -406,7 +451,7 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
     importTx();
 
     auditLog(req, 'arrest_imported', 'arrest_record', 0,
-      `CSV import: ${imported} of ${records.length} records (county: ${county || 'unknown'})`);
+      `CSV import: ${imported} imported, ${skipped} skipped of ${records.length} total (county: ${county || 'unknown'}, agency: ${agency || 'unknown'})${errors.length > 0 ? ` — Errors: ${errors.join('; ')}` : ''}`);
     broadcastRecordUpdate({ type: 'arrest_imported', imported, total: records.length });
 
     // Run cross-linking on all new records
@@ -434,8 +479,8 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
 // EXISTING ROUTES (JailBase API + Search + Status)
 // ============================================================
 
-// ── GET /status — Configuration + roster status ─────────────
-router.get('/status', (_req: Request, res: Response) => {
+// ── GET /status — Configuration + roster status (admin/manager only) ──
+router.get('/status', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
   try {
     const db = getDb();
     const hasApiKey = !!getDecryptedValue(CONFIG_KEYS.apiKey);
@@ -621,13 +666,15 @@ router.get('/recent', requireRole('admin', 'manager', 'supervisor', 'officer', '
 });
 
 // ── GET /sync-status ────────────────────────────────────────
-router.get('/sync-status', (_req: Request, res: Response) => {
+// Restricted to admin/manager — exposes sync config details (enabled counties, errors)
+router.get('/sync-status', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
   try { res.json(getArrestSyncStatus()); }
   catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── GET /usage ──────────────────────────────────────────────
-router.get('/usage', (_req: Request, res: Response) => {
+// Restricted to admin/manager — exposes API usage stats
+router.get('/usage', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
   try { res.json(getArrestUsageStats()); }
   catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });

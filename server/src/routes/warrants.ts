@@ -4,6 +4,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { broadcast } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
 import { searchUtahWarrants, searchUtahWarrantsLive, searchUtahWarrantsCache, getUtahWarrantSyncStatus, runWarrantWatchScan, isUtahApiBlocked, clearUtahApiBlock } from '../utils/utahWarrantScraper';
+import { searchScrapedWarrants, getActiveScrapedWarrants, getWarrantScraperStats, getWarrantScraperStatus, checkPersonWarrants, manualScrapeSource, resetWarrantSourceErrors, setWarrantSourceEnabled } from '../utils/multiStateWarrantScraper';
 import {
   searchCourtRecords, getCachedCourtRecords, getCourtRecordsByPersonId,
   getCourtRecordStats,
@@ -440,7 +441,7 @@ router.get('/watch/log', requireRole('admin', 'manager', 'supervisor', 'officer'
   try {
     const db = getDb();
     const { event, person_id, page = '1', limit = '50' } = req.query;
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.min(1000, Math.max(1, parseInt(page as string, 10) || 1));
     const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
@@ -920,6 +921,25 @@ router.put('/:id', validateParamId, requireRole('dispatcher', 'supervisor', 'adm
       }
     }
 
+    // Reject direct status changes via PUT — use dedicated endpoints (/serve, /recall, etc.)
+    if (req.body.status !== undefined) {
+      res.status(400).json({ error: 'Status cannot be changed directly. Use the dedicated serve/recall endpoints.' });
+      return;
+    }
+
+    // Validate charge_description length to prevent database bloat
+    if (req.body.charge_description && req.body.charge_description.length > 5000) {
+      res.status(400).json({ error: 'charge_description exceeds 5000 character limit' });
+      return;
+    }
+
+    // Validate type enum if provided
+    const VALID_WARRANT_TYPES = ['arrest', 'bench', 'search', 'civil', 'other'];
+    if (req.body.type && !VALID_WARRANT_TYPES.includes(req.body.type)) {
+      res.status(400).json({ error: `Invalid warrant type. Must be one of: ${VALID_WARRANT_TYPES.join(', ')}` });
+      return;
+    }
+
     // Build dynamic SET clause — only update fields explicitly provided
     const bodyKeys = Object.keys(req.body);
     const warrantFields: Record<string, (v: any) => any> = {
@@ -930,7 +950,6 @@ router.put('/:id', validateParamId, requireRole('dispatcher', 'supervisor', 'adm
       charge_description: v => v || null,
       bail_amount: v => v ?? null,
       offense_level: v => v ?? null,
-      status: v => v || null,
       expires_at: v => v ?? null,
       notes: v => v ?? null,
       statute_id: v => v || null,
@@ -965,7 +984,15 @@ router.put('/:id', validateParamId, requireRole('dispatcher', 'supervisor', 'adm
       WHERE w.id = ?
     `).get(req.params.id) as any;
 
-    auditLog(req, 'warrant_updated', 'warrant', String(req.params.id), `Updated warrant #${req.params.id}`);
+    // Log which fields changed with old/new values for audit trail
+    const changedFields: string[] = [];
+    for (const [field] of Object.entries(warrantFields)) {
+      if (bodyKeys.includes(field) && warrant[field] !== req.body[field]) {
+        changedFields.push(`${field}: "${warrant[field] ?? ''}" → "${req.body[field] ?? ''}"`);
+      }
+    }
+    auditLog(req, 'warrant_updated', 'warrant', String(req.params.id),
+      `Updated warrant #${req.params.id}${changedFields.length > 0 ? ` — ${changedFields.join(', ')}` : ''}`);
 
     res.json(updated);
   } catch (error: any) {
@@ -1115,6 +1142,135 @@ router.post('/:id/unarchive', validateParamId, requireRole('admin', 'manager', '
     res.json(updated);
   } catch (error: any) {
     console.error('Unarchive warrant error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// MULTI-STATE WARRANT SCRAPER — Scraped warrants from all states
+// ═══════════════════════════════════════════════════════════════
+
+// GET /api/warrants/scraped/search — Search scraped warrants by name
+router.get('/scraped/search', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const { q, state, status, page = '1', limit = '50' } = req.query;
+    if (!q || String(q).trim().length < 2) {
+      res.json({ data: [], total: 0, pagination: { page: 1, limit: 50, total: 0, totalPages: 0 } });
+      return;
+    }
+
+    const pageNum = Math.min(1000, Math.max(1, parseInt(page as string, 10) || 1));
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
+    const offset = (pageNum - 1) * limitNum;
+
+    const result = searchScrapedWarrants(String(q), {
+      state: state ? String(state) : undefined,
+      status: status ? String(status) : undefined,
+      limit: limitNum,
+      offset,
+    });
+
+    res.json({
+      data: result.data,
+      total: result.total,
+      pagination: { page: pageNum, limit: limitNum, total: result.total, totalPages: Math.ceil(result.total / limitNum) },
+    });
+  } catch (error: any) {
+    console.error('Search scraped warrants error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/warrants/scraped/active — All active scraped warrants
+router.get('/scraped/active', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const { state, limit = '200' } = req.query;
+    const data = getActiveScrapedWarrants({
+      state: state ? String(state) : undefined,
+      limit: Math.min(500, parseInt(limit as string, 10) || 200),
+    });
+    res.json({ data, total: data.length });
+  } catch (error: any) {
+    console.error('Get active scraped warrants error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/warrants/scraped/stats — Warrant scraper statistics
+router.get('/scraped/stats', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const stats = getWarrantScraperStats();
+    res.json(stats);
+  } catch (error: any) {
+    console.error('Get warrant scraper stats error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/warrants/scraped/status — Scraper config status for all sources
+router.get('/scraped/status', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const status = getWarrantScraperStatus();
+    res.json({ data: status });
+  } catch (error: any) {
+    console.error('Get warrant scraper status error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/warrants/scraped/person/:personId — Check person for active warrants
+router.get('/scraped/person/:personId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const personId = parseInt(String(req.params.personId), 10);
+    if (isNaN(personId)) {
+      res.status(400).json({ error: 'Invalid person ID' });
+      return;
+    }
+    const warrants = checkPersonWarrants(personId);
+    res.json({ data: warrants, total: warrants.length, has_active_warrants: warrants.length > 0 });
+  } catch (error: any) {
+    console.error('Check person warrants error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/warrants/scraped/scrape/:sourceKey — Trigger manual scrape
+router.post('/scraped/scrape/:sourceKey', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+  try {
+    const sourceKey = String(req.params.sourceKey);
+    res.json({ message: `Scrape started for ${sourceKey}`, status: 'running' });
+
+    // Run scrape in background
+    manualScrapeSource(sourceKey).catch(err => {
+      console.error(`[Warrant Scraper] Manual scrape failed for ${sourceKey}:`, err?.message || err);
+    });
+  } catch (error: any) {
+    console.error('Manual warrant scrape error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/warrants/scraped/reset/:sourceKey — Reset source errors
+router.post('/scraped/reset/:sourceKey', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const sourceKey = String(req.params.sourceKey);
+    resetWarrantSourceErrors(sourceKey);
+    res.json({ message: `Errors reset for ${sourceKey}`, success: true });
+  } catch (error: any) {
+    console.error('Reset warrant source errors:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/warrants/scraped/enable/:sourceKey — Enable/disable a source
+router.put('/scraped/enable/:sourceKey', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const sourceKey = String(req.params.sourceKey);
+    const { enabled } = req.body;
+    setWarrantSourceEnabled(sourceKey, Boolean(enabled));
+    res.json({ message: `Source ${sourceKey} ${enabled ? 'enabled' : 'disabled'}`, success: true });
+  } catch (error: any) {
+    console.error('Toggle warrant source error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

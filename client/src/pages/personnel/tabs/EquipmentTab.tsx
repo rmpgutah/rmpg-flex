@@ -80,31 +80,35 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
   }
 
   const SUMMARY_CARDS = [
-    { label: 'Total', value: stats.total, color: 'text-rmpg-300', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-500' },
-    { label: 'Issued', value: stats.issued, color: 'text-green-400', bgClass: 'bg-[#0a1a0a]', border: 'border-green-700/30', topBorder: 'border-t-green-500' },
-    { label: 'Returned', value: stats.returned, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-600' },
-    { label: 'Lost / Damaged', value: stats.lostDamaged, color: 'text-red-400', bgClass: 'bg-[#1a0a0a]', border: 'border-red-700/30', topBorder: 'border-t-red-500' },
-    { label: 'Maintenance', value: stats.maintenance, color: 'text-blue-400', bgClass: 'bg-[#0a0f1a]', border: 'border-blue-700/30', topBorder: 'border-t-blue-500' },
-    { label: 'Retired', value: stats.retired, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-600' },
+    { label: 'Total', value: stats.total, color: 'text-rmpg-300', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-500', glow: 'rgba(148,163,184,0.10)' },
+    { label: 'Issued', value: stats.issued, color: 'text-green-400', bgClass: 'bg-[#0a1a0a]', border: 'border-green-700/30', topBorder: 'border-t-green-500', glow: 'rgba(34,197,94,0.12)' },
+    { label: 'Returned', value: stats.returned, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-600', glow: 'rgba(148,163,184,0.08)' },
+    { label: 'Lost / Damaged', value: stats.lostDamaged, color: 'text-red-400', bgClass: 'bg-[#1a0a0a]', border: 'border-red-700/30', topBorder: 'border-t-red-500', glow: 'rgba(239,68,68,0.12)' },
+    { label: 'Maintenance', value: stats.maintenance, color: 'text-blue-400', bgClass: 'bg-[#0a0f1a]', border: 'border-blue-700/30', topBorder: 'border-t-blue-500', glow: 'rgba(59,130,246,0.12)' },
+    { label: 'Retired', value: stats.retired, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-600', glow: 'rgba(148,163,184,0.08)' },
   ];
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Package className="w-4 h-4 text-brand-400" />
-          <h2 className="text-sm font-bold text-rmpg-200 uppercase tracking-wider">Equipment</h2>
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+      {/* Fixed Header */}
+      <div className="flex-shrink-0 px-4 py-2.5 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Package className="w-4 h-4 section-icon" />
+            <h2 className="text-sm font-bold text-rmpg-200 uppercase tracking-wider">EQUIPMENT</h2>
+          </div>
+          <button onClick={onAddEquipment} className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
+            <Plus className="w-3 h-3" />
+            Issue Equipment
+          </button>
         </div>
-        <button onClick={onAddEquipment} className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
-          <Plus className="w-3 h-3" />
-          Issue Equipment
-        </button>
       </div>
 
+      {/* Scrollable Content */}
+      <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-3">
       {/* Alert Banner */}
       {alertCount > 0 && (
-        <div className="panel-beveled p-3 flex items-center gap-3 border border-red-700/40 border-l-2 border-l-red-500 bg-[#1a0a0a]">
+        <div className="alert-banner alert-banner-critical panel-beveled p-3 flex items-center gap-3 border border-red-700/40 border-l-2 border-l-red-500 bg-[#1a0a0a]">
           <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
           <div className="flex-1">
             <span className="text-xs text-red-400 font-semibold">
@@ -119,10 +123,11 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
         {SUMMARY_CARDS.map((card) => (
           <div
             key={card.label}
-            className={`panel-beveled p-2.5 text-center border border-t-2 ${card.border} ${card.bgClass} ${card.topBorder}`}
+            className={`stat-pod summary-card-shimmer cascade-item panel-beveled p-2.5 text-center border ${card.border} border-t-2 ${card.topBorder} ${card.bgClass}`}
+            style={{ '--pod-glow': card.glow } as React.CSSProperties}
           >
-            <div className={`text-sm font-bold font-mono ${card.color}`}>{card.value}</div>
-            <div className="text-[7px] text-rmpg-500 uppercase">{card.label}</div>
+            <div className={`stat-value text-sm font-bold font-mono ${card.color}`}>{card.value}</div>
+            <div className="stat-label text-[7px] text-rmpg-500 uppercase tracking-wide mt-0.5">{card.label}</div>
           </div>
         ))}
       </div>
@@ -144,7 +149,7 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
 
       {/* Equipment Table */}
       <div className="panel-beveled overflow-x-auto bg-surface-sunken">
-        <table className="table-dark w-full">
+        <table className="personnel-table table-dark w-full">
           <thead className="sticky top-0 z-10">
             <tr>
               <th className="text-left">Officer</th>
@@ -161,19 +166,21 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={9} className="text-center py-8">
-                  <div className="w-12 h-12 mx-auto mb-2 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-base">
-                    <Box className="w-6 h-6 text-rmpg-600" />
+                <td colSpan={9} className="text-center py-10">
+                  <div className="empty-state-container flex flex-col items-center gap-2">
+                    <div className="empty-state-icon w-12 h-12 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+                      <Box className="w-5 h-5 text-rmpg-600" />
+                    </div>
+                    <div className="text-[10px] text-rmpg-400">No equipment found</div>
+                    <div className="text-[9px] text-rmpg-600">Issue equipment to track officer gear and assets.</div>
                   </div>
-                  <p className="text-[10px] text-rmpg-500">No equipment found.</p>
-                  <p className="text-[9px] text-rmpg-600 mt-0.5">Issue equipment to track officer gear and assets.</p>
                 </td>
               </tr>
             ) : (
               filtered.map((eq) => (
                 <tr
                   key={eq.id}
-                  className={eq.status === 'lost' || eq.status === 'damaged' ? 'bg-red-900/10' : ''}
+                  className={`group ${eq.status === 'lost' || eq.status === 'damaged' ? 'row-alert' : ''}`}
                 >
                   <td>
                     <span className="text-xs text-rmpg-200">{eq.officer_name || '-'}</span>
@@ -193,7 +200,7 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
                     <span className="text-xs font-mono text-rmpg-400">{eq.asset_tag || '-'}</span>
                   </td>
                   <td>
-                    <span className={`text-xs font-medium capitalize ${EQUIPMENT_CONDITION_COLORS[eq.condition] || 'text-rmpg-400'}`}>
+                    <span className={`badge-pill text-xs font-medium capitalize ${EQUIPMENT_CONDITION_COLORS[eq.condition] || 'text-rmpg-400'}`}>
                       {eq.condition}
                     </span>
                   </td>
@@ -211,7 +218,7 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
                     </div>
                   </td>
                   <td className="text-center">
-                    <div className="flex items-center justify-center gap-1">
+                    <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
                         onClick={() => onEditEquipment(eq)}
                         className="toolbar-btn p-1"
@@ -233,6 +240,7 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
             )}
           </tbody>
         </table>
+      </div>
       </div>
     </div>
   );

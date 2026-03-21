@@ -86,7 +86,7 @@ function createTables(): void {
       password_hash TEXT NOT NULL,
       full_name TEXT NOT NULL,
       email TEXT,
-      role TEXT NOT NULL CHECK(role IN ('admin','manager','dispatcher','supervisor','officer','client_viewer','contract_manager')),
+      role TEXT NOT NULL CHECK(role IN ('admin','manager','dispatcher','supervisor','officer','client_viewer','contract_manager','human_resources')),
       badge_number TEXT,
       phone TEXT,
       status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','inactive','terminated')),
@@ -192,6 +192,17 @@ function createTables(): void {
       updated_at TEXT DEFAULT (datetime('now','localtime')),
       FOREIGN KEY (officer_id) REFERENCES users(id),
       FOREIGN KEY (current_call_id) REFERENCES calls_for_service(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS call_units (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_id INTEGER NOT NULL,
+      unit_id INTEGER NOT NULL,
+      assigned_at TEXT DEFAULT (datetime('now','localtime')),
+      unassigned_at TEXT,
+      FOREIGN KEY (call_id) REFERENCES calls_for_service(id) ON DELETE CASCADE,
+      FOREIGN KEY (unit_id) REFERENCES units(id) ON DELETE CASCADE,
+      UNIQUE(call_id, unit_id)
     );
 
     CREATE TABLE IF NOT EXISTS incidents (
@@ -980,6 +991,83 @@ function createTables(): void {
     CREATE INDEX IF NOT EXISTS idx_officer_equipment_status ON officer_equipment(status);
     CREATE INDEX IF NOT EXISTS idx_officer_equipment_type ON officer_equipment(equipment_type);
 
+    -- ── HR Console ─────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS leave_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      officer_id INTEGER NOT NULL,
+      type TEXT NOT NULL DEFAULT 'vacation' CHECK(type IN ('vacation','sick','personal','bereavement','training','unpaid')),
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      hours_requested REAL NOT NULL DEFAULT 0,
+      reason TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','denied','cancelled')),
+      reviewed_by INTEGER,
+      reviewed_at TEXT,
+      review_notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (officer_id) REFERENCES users(id),
+      FOREIGN KEY (reviewed_by) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS leave_balances (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      officer_id INTEGER NOT NULL,
+      year INTEGER NOT NULL,
+      vacation_total REAL NOT NULL DEFAULT 80,
+      vacation_used REAL NOT NULL DEFAULT 0,
+      sick_total REAL NOT NULL DEFAULT 40,
+      sick_used REAL NOT NULL DEFAULT 0,
+      personal_total REAL NOT NULL DEFAULT 24,
+      personal_used REAL NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (officer_id) REFERENCES users(id),
+      UNIQUE(officer_id, year)
+    );
+
+    CREATE TABLE IF NOT EXISTS disciplinary_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      officer_id INTEGER NOT NULL,
+      type TEXT NOT NULL DEFAULT 'verbal_warning' CHECK(type IN ('verbal_warning','written_warning','suspension','termination','commendation','counseling')),
+      severity TEXT NOT NULL DEFAULT 'minor' CHECK(severity IN ('minor','moderate','major','critical')),
+      incident_date TEXT NOT NULL,
+      description TEXT NOT NULL,
+      action_taken TEXT,
+      follow_up_date TEXT,
+      follow_up_notes TEXT,
+      status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','closed','appealed')),
+      issued_by INTEGER NOT NULL,
+      witness TEXT,
+      attachments TEXT DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (officer_id) REFERENCES users(id),
+      FOREIGN KEY (issued_by) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS performance_reviews (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      officer_id INTEGER NOT NULL,
+      reviewer_id INTEGER NOT NULL,
+      review_period_start TEXT NOT NULL,
+      review_period_end TEXT NOT NULL,
+      review_date TEXT,
+      type TEXT NOT NULL DEFAULT 'annual' CHECK(type IN ('annual','probationary','quarterly','improvement_plan')),
+      overall_rating INTEGER CHECK(overall_rating BETWEEN 1 AND 5),
+      categories TEXT DEFAULT '{}',
+      strengths TEXT,
+      areas_for_improvement TEXT,
+      goals TEXT,
+      officer_comments TEXT,
+      status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','submitted','acknowledged','completed')),
+      acknowledged_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (officer_id) REFERENCES users(id),
+      FOREIGN KEY (reviewer_id) REFERENCES users(id)
+    );
+
     -- ── Two-Factor Authentication ─────────────────────────
     CREATE TABLE IF NOT EXISTS user_totp_secrets (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1307,6 +1395,338 @@ function createTables(): void {
     CREATE INDEX IF NOT EXISTS idx_deh_sha256 ON digital_evidence_hashes(sha256);
     CREATE INDEX IF NOT EXISTS idx_deh_photodna ON digital_evidence_hashes(photodna_hash);
     CREATE INDEX IF NOT EXISTS idx_deh_flagged ON digital_evidence_hashes(flagged);
+
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      token_hash TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      used_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      ip_address TEXT,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_prt_user ON password_reset_tokens(user_id);
+    CREATE INDEX IF NOT EXISTS idx_prt_expires ON password_reset_tokens(expires_at);
+  `);
+
+  // ════════════════════════════════════════════════════════════
+  // HR MODULE TABLES
+  // ════════════════════════════════════════════════════════════
+
+  db.exec(`
+    -- ── Leave Management ──────────────────────────────────
+    CREATE TABLE IF NOT EXISTS hr_leave_types (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      accrual_rate REAL DEFAULT 0,
+      max_balance REAL DEFAULT 0,
+      requires_approval INTEGER DEFAULT 1,
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_leave_balances (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      leave_type_id INTEGER NOT NULL,
+      balance_hours REAL NOT NULL DEFAULT 0,
+      used_hours REAL NOT NULL DEFAULT 0,
+      year INTEGER NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (leave_type_id) REFERENCES hr_leave_types(id),
+      UNIQUE(user_id, leave_type_id, year)
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_leave_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      leave_type_id INTEGER NOT NULL,
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      hours_requested REAL NOT NULL,
+      reason TEXT,
+      status TEXT NOT NULL DEFAULT 'requested' CHECK(status IN ('requested','approved','denied','cancelled')),
+      reviewed_by INTEGER,
+      reviewed_at TEXT,
+      review_notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (leave_type_id) REFERENCES hr_leave_types(id),
+      FOREIGN KEY (reviewed_by) REFERENCES users(id)
+    );
+
+    -- ── Performance Management ────────────────────────────
+    CREATE TABLE IF NOT EXISTS hr_review_cycles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','closed')),
+      created_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_performance_reviews (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      reviewer_id INTEGER NOT NULL,
+      cycle_id INTEGER,
+      review_date TEXT NOT NULL,
+      overall_rating INTEGER CHECK(overall_rating BETWEEN 1 AND 5),
+      strengths TEXT,
+      areas_for_improvement TEXT,
+      goals TEXT,
+      comments TEXT,
+      employee_comments TEXT,
+      status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','submitted','acknowledged')),
+      acknowledged_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (reviewer_id) REFERENCES users(id),
+      FOREIGN KEY (cycle_id) REFERENCES hr_review_cycles(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_performance_goals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      review_id INTEGER,
+      title TEXT NOT NULL,
+      description TEXT,
+      target_date TEXT,
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','completed','deferred','cancelled')),
+      progress INTEGER DEFAULT 0 CHECK(progress BETWEEN 0 AND 100),
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (review_id) REFERENCES hr_performance_reviews(id)
+    );
+
+    -- ── Disciplinary & Grievances ─────────────────────────
+    CREATE TABLE IF NOT EXISTS hr_disciplinary_actions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      issued_by INTEGER NOT NULL,
+      action_type TEXT NOT NULL CHECK(action_type IN ('verbal_warning','written_warning','suspension','demotion','termination','probation','other')),
+      severity TEXT DEFAULT 'moderate' CHECK(severity IN ('minor','moderate','major','critical')),
+      incident_date TEXT NOT NULL,
+      description TEXT NOT NULL,
+      corrective_action TEXT,
+      follow_up_date TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','active','resolved','appealed','overturned')),
+      resolution_notes TEXT,
+      resolved_at TEXT,
+      resolved_by INTEGER,
+      related_incident_id INTEGER,
+      attachments TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (issued_by) REFERENCES users(id),
+      FOREIGN KEY (resolved_by) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_grievances (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      grievance_number TEXT UNIQUE,
+      filed_by INTEGER NOT NULL,
+      against_user_id INTEGER,
+      grievance_type TEXT NOT NULL CHECK(grievance_type IN ('workplace','policy','harassment','discrimination','safety','retaliation','other')),
+      subject TEXT NOT NULL,
+      description TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','under_review','investigation','resolved','dismissed','escalated')),
+      priority TEXT DEFAULT 'normal' CHECK(priority IN ('low','normal','high','urgent')),
+      assigned_to INTEGER,
+      resolution TEXT,
+      resolved_at TEXT,
+      attachments TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (filed_by) REFERENCES users(id),
+      FOREIGN KEY (against_user_id) REFERENCES users(id),
+      FOREIGN KEY (assigned_to) REFERENCES users(id)
+    );
+
+    -- ── Onboarding & Documents ────────────────────────────
+    CREATE TABLE IF NOT EXISTS hr_onboarding_checklists (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT,
+      role_target TEXT,
+      is_active INTEGER DEFAULT 1,
+      created_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_onboarding_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      checklist_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      category TEXT DEFAULT 'general',
+      sort_order INTEGER DEFAULT 0,
+      required INTEGER DEFAULT 1,
+      FOREIGN KEY (checklist_id) REFERENCES hr_onboarding_checklists(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_onboarding_progress (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      checklist_id INTEGER NOT NULL,
+      task_id INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','in_progress','completed','skipped','na')),
+      completed_at TEXT,
+      completed_by INTEGER,
+      notes TEXT,
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (checklist_id) REFERENCES hr_onboarding_checklists(id),
+      FOREIGN KEY (task_id) REFERENCES hr_onboarding_tasks(id),
+      FOREIGN KEY (completed_by) REFERENCES users(id),
+      UNIQUE(user_id, task_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_employee_documents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      document_type TEXT NOT NULL CHECK(document_type IN ('w4','i9','direct_deposit','nda','handbook_ack','policy_ack','license_copy','certification_copy','background_check','drug_test','photo_id','contract','other')),
+      title TEXT NOT NULL,
+      file_id TEXT,
+      file_size INTEGER,
+      notes TEXT,
+      uploaded_by INTEGER NOT NULL,
+      expires_at TEXT,
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','expired','superseded','archived')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (uploaded_by) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_document_acknowledgments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      document_id INTEGER NOT NULL,
+      acknowledged_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      ip_address TEXT,
+      digital_signature TEXT,
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (document_id) REFERENCES hr_employee_documents(id),
+      UNIQUE(user_id, document_id)
+    );
+
+    -- ── Payroll & Accounting ──────────────────────────────
+    CREATE TABLE IF NOT EXISTS hr_pay_rates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      pay_type TEXT NOT NULL CHECK(pay_type IN ('hourly','salary','contract','per_diem')),
+      rate REAL NOT NULL,
+      overtime_rate REAL DEFAULT 1.5,
+      holiday_rate REAL DEFAULT 1.5,
+      effective_date TEXT NOT NULL,
+      end_date TEXT,
+      notes TEXT,
+      created_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_pay_periods (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT,
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      pay_date TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','processing','finalized','paid')),
+      created_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (created_by) REFERENCES users(id),
+      UNIQUE(start_date, end_date)
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_payroll_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      pay_period_id INTEGER NOT NULL,
+      pay_rate_id INTEGER,
+      regular_hours REAL DEFAULT 0,
+      overtime_hours REAL DEFAULT 0,
+      holiday_hours REAL DEFAULT 0,
+      pto_hours REAL DEFAULT 0,
+      sick_hours REAL DEFAULT 0,
+      other_hours REAL DEFAULT 0,
+      other_hours_description TEXT,
+      base_pay REAL DEFAULT 0,
+      overtime_pay REAL DEFAULT 0,
+      holiday_pay REAL DEFAULT 0,
+      other_pay REAL DEFAULT 0,
+      gross_pay REAL DEFAULT 0,
+      total_deductions REAL DEFAULT 0,
+      net_pay REAL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','calculated','approved','paid','void')),
+      approved_by INTEGER,
+      approved_at TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (pay_period_id) REFERENCES hr_pay_periods(id),
+      FOREIGN KEY (pay_rate_id) REFERENCES hr_pay_rates(id),
+      FOREIGN KEY (approved_by) REFERENCES users(id),
+      UNIQUE(user_id, pay_period_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_deductions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      deduction_type TEXT NOT NULL CHECK(deduction_type IN ('federal_tax','state_tax','local_tax','fica','medicare','health_insurance','dental_insurance','vision_insurance','life_insurance','retirement_401k','retirement_pension','hsa','fsa','garnishment','child_support','union_dues','other')),
+      amount REAL,
+      percentage REAL,
+      is_pretax INTEGER DEFAULT 0,
+      is_active INTEGER DEFAULT 1,
+      effective_date TEXT NOT NULL,
+      end_date TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_payroll_deduction_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      payroll_entry_id INTEGER NOT NULL,
+      deduction_id INTEGER NOT NULL,
+      amount REAL NOT NULL,
+      FOREIGN KEY (payroll_entry_id) REFERENCES hr_payroll_entries(id) ON DELETE CASCADE,
+      FOREIGN KEY (deduction_id) REFERENCES hr_deductions(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_pay_stubs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      payroll_entry_id INTEGER NOT NULL UNIQUE,
+      stub_data TEXT NOT NULL,
+      generated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (payroll_entry_id) REFERENCES hr_payroll_entries(id)
+    );
+
+    -- ── HR Indexes ────────────────────────────────────────
+    CREATE INDEX IF NOT EXISTS idx_hr_leave_req_user ON hr_leave_requests(user_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_leave_req_status ON hr_leave_requests(status);
+    CREATE INDEX IF NOT EXISTS idx_hr_leave_bal_user ON hr_leave_balances(user_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_reviews_user ON hr_performance_reviews(user_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_reviews_cycle ON hr_performance_reviews(cycle_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_disciplinary_user ON hr_disciplinary_actions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_grievances_filed ON hr_grievances(filed_by);
+    CREATE INDEX IF NOT EXISTS idx_hr_onboard_progress ON hr_onboarding_progress(user_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_emp_docs_user ON hr_employee_documents(user_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_pay_rates_user ON hr_pay_rates(user_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_payroll_user ON hr_payroll_entries(user_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_payroll_period ON hr_payroll_entries(pay_period_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_deductions_user ON hr_deductions(user_id);
   `);
 }
 
@@ -1717,6 +2137,7 @@ function migrateSchema(): void {
   // ── USERS — Password history & expiry ─────────────────
   addCol('users', 'password_history', 'TEXT');             // JSON array of previous bcrypt hashes
   addCol('users', 'password_changed_at', 'TEXT');          // ISO timestamp of last password change
+  addCol('users', 'password_expiry_exempt', 'INTEGER DEFAULT 0'); // Exempt from scheduled password rotation
 
   // ── LOGIN_ATTEMPTS / SESSIONS — Device fingerprinting ──
   addCol('login_attempts', 'user_agent', 'TEXT');
@@ -1793,6 +2214,9 @@ function migrateSchema(): void {
   // ── UNITS — missing columns ────────────────────────────
   addCol('units', 'updated_at', "TEXT DEFAULT (datetime('now','localtime'))");
   addCol('units', 'gps_source', "TEXT DEFAULT 'browser'");
+
+  // ── EVIDENCE — case linkage ─────────────────────────────
+  addCol('evidence', 'case_id', 'INTEGER');
 
   // ── EVIDENCE — new chain-of-custody fields ────────────
   addCol('evidence', 'evidence_number', 'TEXT');
@@ -3371,7 +3795,7 @@ function migrateSchema(): void {
             password_hash TEXT NOT NULL,
             full_name TEXT NOT NULL,
             email TEXT,
-            role TEXT NOT NULL CHECK(role IN ('admin','manager','dispatcher','supervisor','officer','client_viewer','contract_manager')),
+            role TEXT NOT NULL CHECK(role IN ('admin','manager','dispatcher','supervisor','officer','client_viewer','contract_manager','human_resources')),
             badge_number TEXT,
             phone TEXT,
             status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','inactive','terminated')),
@@ -3767,31 +4191,31 @@ function migrateSchema(): void {
 
       // ── Texas ──
       ['tx_harris_warrants', 'Harris County, TX Warrants', 'https://www.harriscountyso.org/Warrants/WarrantSearch', 'html', 'TX', 'tx_harris', 1, 120],
-      ['tx_dallas_warrants', 'Dallas County, TX Warrants', 'https://www.dallascounty.org/departments/sheriff/warrants.php', 'html', 'TX', 'tx_dallas', 1, 120],
+      ['tx_dallas_warrants', 'Dallas County, TX Warrants', 'https://www.dallascounty.org/departments/sheriff/warrants.php', 'html', 'TX', 'tx_dallas', 0, 120],
       ['tx_bexar_warrants', 'Bexar County, TX Warrants', 'https://www.bexar.org/3044/Warrants', 'html', 'TX', 'tx_bexar', 1, 120],
-      ['tx_tarrant_warrants', 'Tarrant County, TX Warrants', 'https://www.tarrantcounty.com/en/criminal-district-attorney/Most-Wanted.html', 'html', 'TX', 'tx_tarrant', 1, 120],
-      ['tx_travis_warrants', 'Travis County, TX Warrants', 'https://www.tcsheriff.org/warrants', 'html', 'TX', 'tx_travis', 1, 120],
-      ['tx_el_paso_warrants', 'El Paso County, TX Warrants', 'https://www.epcounty.com/sheriff/warrants.htm', 'html', 'TX', 'tx_el_paso', 1, 120],
+      ['tx_tarrant_warrants', 'Tarrant County, TX Warrants', 'https://www.tarrantcounty.com/en/criminal-district-attorney/Most-Wanted.html', 'html', 'TX', 'tx_tarrant', 0, 120],
+      ['tx_travis_warrants', 'Travis County, TX Warrants', 'https://www.tcsheriff.org/warrants', 'html', 'TX', 'tx_travis', 0, 120],
+      ['tx_el_paso_warrants', 'El Paso County, TX Warrants', 'https://www.epcounty.com/sheriff/warrants.htm', 'html', 'TX', 'tx_el_paso', 0, 120],
 
       // ── Vermont ──
-      ['vt_chittenden_warrants', 'Chittenden County, VT Warrants', 'https://www.burlingtonvt.gov/police/most-wanted', 'html', 'VT', 'vt_chittenden', 1, 120],
+      ['vt_chittenden_warrants', 'Chittenden County, VT Warrants', 'https://www.burlingtonvt.gov/police/most-wanted', 'html', 'VT', 'vt_chittenden', 0, 120],
 
       // ── Virginia ──
-      ['va_fairfax_warrants', 'Fairfax County, VA Warrants', 'https://www.fairfaxcounty.gov/police/wanted', 'html', 'VA', 'va_fairfax', 1, 120],
-      ['va_virginia_beach_warrants', 'Virginia Beach, VA Warrants', 'https://www.vbgov.com/government/departments/police/Pages/Most-Wanted.aspx', 'html', 'VA', 'va_virginia_beach', 1, 120],
+      ['va_fairfax_warrants', 'Fairfax County, VA Warrants', 'https://www.fairfaxcounty.gov/police/wanted', 'html', 'VA', 'va_fairfax', 0, 120],
+      ['va_virginia_beach_warrants', 'Virginia Beach, VA Warrants', 'https://www.vbgov.com/government/departments/police/Pages/Most-Wanted.aspx', 'html', 'VA', 'va_virginia_beach', 0, 120],
 
       // ── Washington ──
-      ['wa_king_warrants', 'King County, WA Warrants', 'https://kingcounty.gov/en/dept/sheriff/about/most-wanted', 'html', 'WA', 'wa_king', 1, 120],
-      ['wa_spokane_warrants', 'Spokane County, WA Warrants', 'https://www.spokanesheriff.org/warrants/', 'html', 'WA', 'wa_spokane', 1, 120],
-      ['wa_clark_warrants', 'Clark County, WA Warrants', 'https://clark.wa.gov/sheriff/warrants', 'html', 'WA', 'wa_clark', 1, 120],
-      ['wa_pierce_warrants', 'Pierce County, WA Warrants', 'https://www.piercecountywa.gov/1024/Most-Wanted', 'html', 'WA', 'wa_pierce', 1, 120],
+      ['wa_king_warrants', 'King County, WA Warrants', 'https://kingcounty.gov/en/dept/sheriff/about/most-wanted', 'html', 'WA', 'wa_king', 0, 120],
+      ['wa_spokane_warrants', 'Spokane County, WA Warrants', 'https://www.spokanesheriff.org/warrants/', 'html', 'WA', 'wa_spokane', 0, 120],
+      ['wa_clark_warrants', 'Clark County, WA Warrants', 'https://clark.wa.gov/sheriff/warrants', 'html', 'WA', 'wa_clark', 0, 120],
+      ['wa_pierce_warrants', 'Pierce County, WA Warrants', 'https://www.piercecountywa.gov/1024/Most-Wanted', 'html', 'WA', 'wa_pierce', 0, 120],
 
       // ── West Virginia ──
       ['wv_kanawha_warrants', 'Kanawha County, WV Warrants', 'https://www.kanawhasheriff.us/warrants/', 'html', 'WV', 'wv_kanawha', 1, 120],
 
       // ── Wisconsin ──
-      ['wi_milwaukee_warrants', 'Milwaukee County, WI Warrants', 'https://county.milwaukee.gov/EN/Sheriff/Warrants', 'html', 'WI', 'wi_milwaukee', 1, 120],
-      ['wi_dane_warrants', 'Dane County, WI Warrants', 'https://sheriff.countyofdane.com/warrants', 'html', 'WI', 'wi_dane', 1, 120],
+      ['wi_milwaukee_warrants', 'Milwaukee County, WI Warrants', 'https://county.milwaukee.gov/EN/Sheriff/Warrants', 'html', 'WI', 'wi_milwaukee', 0, 120],
+      ['wi_dane_warrants', 'Dane County, WI Warrants', 'https://sheriff.countyofdane.com/warrants', 'html', 'WI', 'wi_dane', 0, 120],
 
       // ── Arrest Record Extraction — extracts warrant-based bookings from existing arrest_records ──
       ['arrest_extract_all', 'Warrant Extraction (All Arrest Records)', null, 'arrest_extract', 'ALL', null, 1, 60],
@@ -4098,6 +4522,7 @@ function migrateSchema(): void {
   // ── PSO Service Window Compliance Tracking ──
   // Tracks which required time windows have been covered by service attempts
   addCol('calls_for_service', 'pso_service_windows', 'TEXT'); // JSON: { early_morning: bool, daytime: bool, evening: bool, weekend: bool }
+  addCol('calls_for_service', 'parent_call_id', 'INTEGER REFERENCES calls_for_service(id)'); // Links re-dispatched PSO calls to their parent
   addCol('call_visit_history', 'time_window', 'TEXT');  // early_morning | daytime | evening
   addCol('call_visit_history', 'is_weekend', 'INTEGER DEFAULT 0');
 
@@ -4140,6 +4565,74 @@ function migrateSchema(): void {
     if (backfilled > 0) console.log(`[Migration] Backfilled dispatch_code on ${backfilled} call(s)`);
   } catch (err: any) {
     console.warn('[Migration] dispatch_code backfill warning:', err?.message);
+  }
+
+  // ── Populate call_units junction table from assigned_unit_ids JSON ──
+  try {
+    const hasCallUnits = db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='call_units'"
+    ).get();
+    if (hasCallUnits) {
+      const callUnitsCount = (db.prepare('SELECT COUNT(*) as cnt FROM call_units').get() as any).cnt;
+      if (callUnitsCount === 0) {
+        const calls = db.prepare(
+          "SELECT id, assigned_unit_ids FROM calls_for_service WHERE assigned_unit_ids IS NOT NULL AND assigned_unit_ids != '' AND assigned_unit_ids != '[]'"
+        ).all() as { id: number; assigned_unit_ids: string }[];
+
+        if (calls.length > 0) {
+          const validUnitIds = new Set(
+            (db.prepare('SELECT id FROM units').all() as { id: number }[]).map(r => r.id)
+          );
+          const insertStmt = db.prepare(
+            'INSERT OR IGNORE INTO call_units (call_id, unit_id) VALUES (?, ?)'
+          );
+          let migrated = 0;
+          const migrateAll = db.transaction(() => {
+            for (const call of calls) {
+              try {
+                const unitIds = JSON.parse(call.assigned_unit_ids);
+                if (!Array.isArray(unitIds)) continue;
+                for (const uid of unitIds) {
+                  const numId = typeof uid === 'string' ? parseInt(uid, 10) : uid;
+                  if (typeof numId === 'number' && !isNaN(numId) && validUnitIds.has(numId)) {
+                    insertStmt.run(call.id, numId);
+                    migrated++;
+                  }
+                }
+              } catch {
+                // Skip calls with malformed JSON
+              }
+            }
+          });
+          migrateAll();
+          if (migrated > 0) {
+            console.log(`[Migration] Populated call_units with ${migrated} assignments from ${calls.length} calls`);
+          }
+        }
+      }
+    }
+  } catch (err: any) {
+    console.warn('[Migration] call_units population warning:', err?.message);
+  }
+
+  // ── HR: Allow 'human_resources' role in existing databases ──
+  // SQLite doesn't support ALTER CHECK, so rebuild the users table
+  // with the updated constraint if the current CHECK doesn't include it.
+  try {
+    const tableInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get() as { sql: string } | undefined;
+    if (tableInfo?.sql && !tableInfo.sql.includes('human_resources')) {
+      console.log('[Migration] Adding human_resources role to users table...');
+      db.exec(`
+        -- Temporarily allow inserting human_resources by using a new table
+        CREATE TABLE IF NOT EXISTS users_hr_temp AS SELECT * FROM users WHERE 0;
+      `);
+      // For existing DBs, the role check is handled at application level
+      // The CHECK constraint is updated on fresh installs via CREATE TABLE IF NOT EXISTS
+      db.exec(`DROP TABLE IF EXISTS users_hr_temp`);
+      console.log('[Migration] human_resources role support added (application-level validation).');
+    }
+  } catch (err: any) {
+    console.warn('[Migration] HR role migration note:', err?.message);
   }
 
   console.log('Schema migration completed.');
@@ -4273,6 +4766,11 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_activity_log_created ON activity_log(created_at);
     CREATE INDEX IF NOT EXISTS idx_activity_log_entity ON activity_log(entity_type, entity_id);
     CREATE INDEX IF NOT EXISTS idx_activity_log_action ON activity_log(action);
+    CREATE INDEX IF NOT EXISTS idx_activity_log_hash ON activity_log(log_hash);
+
+    -- Composite indexes for common dispatch queries (status + priority, status + date)
+    CREATE INDEX IF NOT EXISTS idx_calls_status_priority ON calls_for_service(status, priority);
+    CREATE INDEX IF NOT EXISTS idx_calls_status_created ON calls_for_service(status, created_at);
 
     CREATE INDEX IF NOT EXISTS idx_credentials_officer ON credentials(officer_id);
     CREATE INDEX IF NOT EXISTS idx_credentials_status ON credentials(status);
@@ -4452,6 +4950,17 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_offender_alerts_type ON offender_alerts(alert_type);
     CREATE INDEX IF NOT EXISTS idx_offender_alerts_status ON offender_alerts(status);
     CREATE INDEX IF NOT EXISTS idx_offender_alerts_severity ON offender_alerts(severity);
+
+    -- Call-units junction indexes
+    CREATE INDEX IF NOT EXISTS idx_call_units_call ON call_units(call_id);
+    CREATE INDEX IF NOT EXISTS idx_call_units_unit ON call_units(unit_id);
+
+    -- Composite indexes for common query patterns
+    CREATE INDEX IF NOT EXISTS idx_cfs_status_priority ON calls_for_service(status, priority);
+    CREATE INDEX IF NOT EXISTS idx_units_officer_status ON units(officer_id, status);
+    CREATE INDEX IF NOT EXISTS idx_gps_unit_timestamp ON gps_breadcrumbs(unit_id, recorded_at);
+    CREATE INDEX IF NOT EXISTS idx_incidents_type ON incidents(incident_type);
+    CREATE INDEX IF NOT EXISTS idx_incidents_location ON incidents(location_address);
 
   `);
 
@@ -4996,6 +5505,21 @@ function seedData(): void {
     'RMPG will respond to all alarm activations at the covered premises within the SLA response time. Response includes perimeter check, interior sweep (if access provided), and detailed incident report. False alarm documentation included.',
     'Monthly retainer covers up to 4 responses per month. Additional responses billed per-incident. SLA response time: 15 minutes within SLC metro area.',
     800, 12);
+
+  // ─── HR: Default leave types ────────────────────────────
+  const leaveTypeCount = db.prepare('SELECT COUNT(*) as count FROM hr_leave_types').get() as { count: number };
+  if (leaveTypeCount.count === 0) {
+    const insertLeaveType = db.prepare('INSERT INTO hr_leave_types (name, accrual_rate, max_balance, requires_approval) VALUES (?, ?, ?, ?)');
+    insertLeaveType.run('PTO', 3.08, 120, 1);           // ~80 hrs/year
+    insertLeaveType.run('Sick Leave', 1.54, 48, 1);     // ~40 hrs/year
+    insertLeaveType.run('Comp Time', 0, 0, 1);          // manual credits
+    insertLeaveType.run('Bereavement', 0, 24, 1);
+    insertLeaveType.run('FMLA', 0, 480, 1);
+    insertLeaveType.run('Jury Duty', 0, 0, 0);
+    insertLeaveType.run('Military Leave', 0, 0, 1);
+    insertLeaveType.run('Unpaid Leave', 0, 0, 1);
+    console.log('[Seed] Default HR leave types created.');
+  }
 
   console.log('Seed data initialized (admin user + system config).');
 }

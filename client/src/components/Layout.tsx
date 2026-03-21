@@ -26,11 +26,15 @@ import {
   Lock,
   ChevronDown,
   Shield,
+  Menu,
+  X,
   Calendar,
   Briefcase,
   Package,
   TrendingUp,
+  Landmark,
   Construction,
+  Truck,
   ClipboardCheck,
   UserX,
   Gavel,
@@ -54,8 +58,7 @@ import { usePresence } from '../hooks/usePresence';
 import RmpgLogo from './RmpgLogo';
 import StatusBar from './StatusBar';
 import MenuBar from './MenuBar';
-import Sidebar from './Sidebar';
-import ModuleTileBar from './ModuleTileBar';
+// Sidebar removed — navigation moved to top icon toolbar
 import ErrorBoundary from './ErrorBoundary';
 import NotificationCenter from './NotificationCenter';
 import PanicButton from './PanicButton';
@@ -107,11 +110,13 @@ const PAGE_TITLES: Record<string, string> = {
   '/sex-offender-registry': 'Sex Offender Registry',
   '/reports': 'Reports',
   '/forensics': 'Connection Analysis',
+  '/forensic-lab': 'Forensic Lab',
   '/audit': 'Audit Log',
   '/crm': 'Overwatch',
   '/training': 'Training Management',
   '/training-docs': 'Training Documents',
   '/serve': 'Process Server',
+  '/hr': 'HR Console',
   '/admin': 'Admin',
 };
 
@@ -143,7 +148,8 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/dl-search', icon: CreditCard, label: 'DL Search' },
     { path: '/skip-tracer', icon: Search, label: 'Skip Tracer' },
     { path: '/evidence', icon: Package, label: 'Evidence / Property' },
-    { path: '/forensics', icon: Microscope, label: 'Forensic Lab' },
+    { path: '/forensic-lab', icon: Microscope, label: 'Forensic Lab' },
+    { path: '/forensics', icon: Network, label: 'Connections' },
     { path: '/cases', icon: Briefcase, label: 'Case Management' },
   ]},
   { path: '/warrants', icon: AlertTriangle, label: 'Enforce', group: 'records', shortcut: 'F7', newWindow: true, children: [
@@ -157,6 +163,7 @@ const TOOLBAR_NAV: NavItem[] = [
   ]},
   { path: '/personnel', icon: Users, label: 'Personnel', group: 'records', shortcut: 'F8', children: [
     { path: '/personnel', icon: Users, label: 'Personnel' },
+    { path: '/hr', icon: ClipboardCheck, label: 'HR Console' },
     { path: '/fleet', icon: Car, label: 'Fleet' },
     { path: '/body-cameras', icon: Video, label: 'Body Cameras' },
     { path: '/dash-cameras', icon: Camera, label: 'Dash Cameras' },
@@ -536,7 +543,7 @@ export default function Layout() {
   const isMacElectron = isElectron && (window as any).electron?.platform === 'darwin';
 
   return (
-    <div className="flex flex-col h-screen text-white overflow-hidden" style={{ background: 'var(--surface-base)' }}>
+    <div className="flex flex-col h-screen text-white overflow-hidden" style={{ background: '#141e2b' }}>
       {/* Auto-Update Banner (Electron only) */}
       {isElectron && <UpdateBanner />}
 
@@ -676,29 +683,9 @@ export default function Layout() {
                 <span className="text-[10px] font-bold tracking-[0.2em] leading-none" style={{ color: '#3b8ad4' }}>FLEX</span>
               </div>
             </div>
-            {/* Back/Forward + Page title */}
+            {/* Page title */}
             <div className="flex items-center gap-1.5">
               <div className="w-px h-6" style={{ background: '#2a3e58' }} />
-              <button
-                type="button"
-                onClick={handleNavBack}
-                disabled={!canGoBack}
-                className="toolbar-btn"
-                title="Back (Alt+←)"
-                style={{ padding: '2px 3px', opacity: canGoBack ? 1 : 0.3 }}
-              >
-                <ChevronLeft style={{ width: 14, height: 14 }} />
-              </button>
-              <button
-                type="button"
-                onClick={handleNavForward}
-                disabled={!canGoForward}
-                className="toolbar-btn"
-                title="Forward (Alt+→)"
-                style={{ padding: '2px 3px', opacity: canGoForward ? 1 : 0.3 }}
-              >
-                <ChevronRight style={{ width: 14, height: 14 }} />
-              </button>
               <span className="text-[11px] font-mono font-bold tracking-wider text-rmpg-400">
                 {pageTitle.toUpperCase()}
               </span>
@@ -726,8 +713,8 @@ export default function Layout() {
                 className="flex items-center gap-1 px-2 py-0.5 panel-inset cursor-pointer transition-colors bg-surface-sunken hover:bg-rmpg-800"
               >
                 <Phone style={{ width: 9, height: 9 }} className="text-red-500" />
-                <span className="text-[10px] font-mono font-bold text-rmpg-400">CALLS:</span>
-                <span className="text-[10px] font-mono font-bold text-white">{activeCallCount}</span>
+                <span className="text-[9px] font-mono font-bold text-rmpg-400">CALLS:</span>
+                <span className="text-[9px] font-mono font-bold text-white">{activeCallCount}</span>
               </button>
 
               {/* BOLO Indicator */}
@@ -738,7 +725,7 @@ export default function Layout() {
                   style={{ background: 'rgba(220, 38, 38, 0.25)', border: '1px solid #991b1b' }}
                 >
                   <span className="led-dot led-red animate-led-blink" />
-                  <span className="text-[10px] font-mono font-bold" style={{ color: '#ef7a7a' }}>
+                  <span className="text-[9px] font-mono font-bold" style={{ color: '#ef7a7a' }}>
                     BOLO: {activeBOLOs}
                   </span>
                 </button>
@@ -758,7 +745,7 @@ export default function Layout() {
               <div className="flex items-center gap-1 px-1.5 py-0.5 panel-inset bg-surface-sunken">
                 <span className={`led-dot ${isConnected ? 'led-green' : 'led-red animate-led-blink'}`} />
                 <Users style={{ width: 9, height: 9 }} className="text-rmpg-500" />
-                <span className="text-[10px] font-mono font-bold text-rmpg-300">{presence.count}</span>
+                <span className="text-[9px] font-mono font-bold text-rmpg-300">{presence.count}</span>
               </div>
 
               {/* Notifications */}
@@ -838,16 +825,16 @@ export default function Layout() {
                     <div className="text-xs font-bold text-white">
                       {user?.first_name} {user?.last_name}
                     </div>
-                    <div className="text-[10px] font-mono text-rmpg-500">
+                    <div className="text-[9px] font-mono text-rmpg-500">
                       {user?.email}
                     </div>
                     <div className="flex items-center gap-2 mt-1">
                       {user?.badge_number && (
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 bg-surface-overlay text-rmpg-400 border border-rmpg-800">
+                        <span className="text-[9px] font-mono px-1.5 py-0.5 bg-surface-overlay text-rmpg-400 border border-rmpg-800">
                           {user.badge_number}
                         </span>
                       )}
-                      <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 bg-brand-900/20 text-brand-300 border border-brand-800/40">
+                      <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 bg-brand-900/20 text-brand-300 border border-brand-800/40">
                         {toDisplayLabel(user?.role || '')}
                       </span>
                     </div>
@@ -897,10 +884,10 @@ export default function Layout() {
             flexShrink: 0,
           }}
         >
-          <span className="text-[10px] font-bold uppercase tracking-widest text-green-500">
+          <span className="text-[9px] font-bold uppercase tracking-widest text-green-500">
             Contract Manager View — ICU Investigations
           </span>
-          <span className="text-[9px] font-mono px-1.5 py-0.5 bg-amber-900/30 text-amber-400 border border-amber-800/40">
+          <span className="text-[8px] font-mono px-1.5 py-0.5 bg-amber-900/30 text-amber-400 border border-amber-800/40">
             DEMO DATA
           </span>
         </div>
@@ -916,10 +903,6 @@ export default function Layout() {
           background: 'linear-gradient(180deg, #1e3048 0%, #1a2636 100%)',
           borderBottom: '1px solid #141e2b',
           flexShrink: 0,
-          // position + z-index ensures MenuBar dropdowns (z-9990) always
-          // float above the ModuleTileBar and page content below.
-          position: 'relative',
-          zIndex: 9999,
         }}
       >
         {/* Menu Bar — File | View | Tools | Help */}
@@ -940,7 +923,243 @@ export default function Layout() {
         </div>
       </div>
 
-      {/* Toolbar row removed — navigation moved to Sidebar */}
+      {/* ============================================================ */}
+      {/* TOOLBAR ROW 2 — Icon Navigation Toolbar (Spillman Flex style) */}
+      {/* Square buttons: icon above label, F-key badge, dropdown for children */}
+      {/* ============================================================ */}
+      <div
+        className="hidden md:flex items-center gap-0 px-1 select-none"
+        style={{
+          height: 46,
+          background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
+          borderBottom: '1px solid #1e3048',
+          flexShrink: 0,
+        }}
+        data-nav-dropdown
+      >
+        {/* Back / Forward navigation buttons */}
+        <button
+          type="button"
+          onClick={handleNavBack}
+          disabled={!canGoBack}
+          className="toolbar-btn"
+          title="Back (Alt+←)"
+          style={{ height: 36, width: 30, padding: '2px 4px', opacity: canGoBack ? 1 : 0.3 }}
+        >
+          <ChevronLeft style={{ width: 16, height: 16 }} />
+        </button>
+        <button
+          type="button"
+          onClick={handleNavForward}
+          disabled={!canGoForward}
+          className="toolbar-btn"
+          title="Forward (Alt+→)"
+          style={{ height: 36, width: 30, padding: '2px 4px', opacity: canGoForward ? 1 : 0.3 }}
+        >
+          <ChevronRight style={{ width: 16, height: 16 }} />
+        </button>
+        <div
+          className="self-stretch mx-0.5"
+          style={{ width: 1, background: '#1e3048', margin: '6px 2px' }}
+        />
+
+        {(() => {
+          let lastGroup = '';
+          return TOOLBAR_NAV.filter(item => {
+            if (item.adminOnly && !isAdmin) return false;
+            if (isClientViewer && CLIENT_VIEWER_BLOCKED_PATHS.has(item.path)) return false;
+            return true;
+          }).map((item) => {
+            const Icon = item.icon;
+            const isActive = item.path === '/' ? location.pathname === '/' : location.pathname.startsWith(item.path);
+            const hasChildren = item.children && item.children.length > 0;
+            const isDropdownOpen = openDropdown === item.path;
+            const showSep = lastGroup !== '' && item.group !== lastGroup;
+            lastGroup = item.group;
+
+            // External link (e.g. CRM) — opens in new tab with SSO token
+            if (item.externalUrl) {
+              return (
+                <React.Fragment key={item.path}>
+                  {showSep && <div className="toolbar-separator" style={{ height: 36 }} />}
+                  <button
+                    onClick={() => {
+                      setOpenDropdown(null);
+                      const token = localStorage.getItem('rmpg_token');
+                      const url = token
+                        ? `${item.externalUrl}?token=${encodeURIComponent(token)}`
+                        : item.externalUrl!;
+                      window.open(url, '_blank', 'noopener,noreferrer');
+                    }}
+                    onMouseEnter={() => { if (openDropdown) setOpenDropdown(null); }}
+                    className="toolbar-btn"
+                    title={`Open ${item.label}${item.shortcut ? ` (${item.shortcut})` : ''}`}
+                    style={{ height: 44, padding: '2px 6px' }}
+                  >
+                    <Icon style={{ width: 16, height: 16, color: '#5a6e80', marginBottom: 1 }} />
+                    <span className="font-medium leading-none" style={{ fontSize: 9, letterSpacing: '0.02em' }}>{item.label}</span>
+                  </button>
+                </React.Fragment>
+              );
+            }
+
+            return (
+              <React.Fragment key={item.path}>
+                {showSep && (
+                  <div
+                    className="self-stretch mx-0.5"
+                    style={{ width: 1, background: '#1e3048', margin: '6px 2px' }}
+                  />
+                )}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (hasChildren) {
+                        setOpenDropdown(isDropdownOpen ? null : item.path);
+                      } else {
+                        setOpenDropdown(null);
+                        if (item.newWindow) {
+                          window.open(item.path, '_blank', 'noopener,noreferrer');
+                        } else {
+                          navigate(item.path);
+                        }
+                      }
+                    }}
+                    className="flex flex-col items-center justify-center transition-all"
+                    style={{
+                      width: 52,
+                      height: 42,
+                      padding: '2px 4px',
+                      background: isActive
+                        ? 'linear-gradient(180deg, rgba(26,90,158,0.35) 0%, rgba(26,90,158,0.15) 100%)'
+                        : isDropdownOpen
+                          ? 'rgba(255,255,255,0.05)'
+                          : 'transparent',
+                      borderBottom: isActive ? '2px solid #3b8ad4' : '2px solid transparent',
+                      color: isActive ? '#ffffff' : '#8a9aaa',
+                      cursor: 'pointer',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isActive && !isDropdownOpen) {
+                        (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isActive && !isDropdownOpen) {
+                        (e.currentTarget as HTMLElement).style.background = 'transparent';
+                      }
+                    }}
+                    title={`${item.label}${item.shortcut ? ` (${item.shortcut})` : ''}`}
+                  >
+                    <Icon
+                      style={{
+                        width: 16,
+                        height: 16,
+                        color: isActive ? '#3b8ad4' : '#5a6e80',
+                        marginBottom: 1,
+                      }}
+                    />
+                    {/* Email unread badge on Comms toolbar button */}
+                    {item.path === '/communications' && emailUnreadCount > 0 && (
+                      <span
+                        className="absolute flex items-center justify-center font-bold"
+                        style={{
+                          top: 1, left: 30,
+                          minWidth: 14, height: 14, padding: '0 3px',
+                          fontSize: 8, lineHeight: 1,
+                          background: '#dc2626', color: '#fff',
+                          borderRadius: 7, border: '1px solid #141e2b',
+                        }}
+                      >
+                        {emailUnreadCount > 99 ? '99+' : emailUnreadCount}
+                      </span>
+                    )}
+                    <span
+                      className="font-medium leading-none"
+                      style={{ fontSize: 9, letterSpacing: '0.02em' }}
+                    >
+                      {item.label}
+                    </span>
+                    {item.shortcut && (
+                      <span
+                        className="absolute font-mono"
+                        style={{
+                          fontSize: 7,
+                          top: 2,
+                          right: 3,
+                          color: isActive ? '#3b8ad4' : '#3a4e60',
+                        }}
+                      >
+                        {item.shortcut}
+                      </span>
+                    )}
+                    {hasChildren && (
+                      <ChevronDown
+                        style={{
+                          width: 8,
+                          height: 8,
+                          position: 'absolute',
+                          bottom: 2,
+                          right: 2,
+                          color: '#3a4e60',
+                          transform: isDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                          transition: 'transform 0.15s',
+                        }}
+                      />
+                    )}
+                  </button>
+
+                  {/* Dropdown menu for items with children */}
+                  {hasChildren && isDropdownOpen && (
+                    <div
+                      className="absolute top-full left-0 z-50 py-1 animate-dropdown-appear"
+                      style={{
+                        minWidth: 200,
+                        background: '#1a2636',
+                        border: '1px solid #2a3e58',
+                        borderTop: '2px solid #1a5a9e',
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                      }}
+                    >
+                      {item.children!.filter(child => {
+                        if (child.adminOnly && !isAdmin) return false;
+                        if (isContractManager && CONTRACT_MANAGER_BLOCKED_PATHS.has(child.path)) return false;
+                        return true;
+                      }).map((child) => {
+                        const ChildIcon = child.icon;
+                        const childActive = child.path === '/' ? location.pathname === '/' : location.pathname.startsWith(child.path);
+                        return (
+                          <button
+                            key={child.path}
+                            type="button"
+                            onClick={() => {
+                              setOpenDropdown(null);
+                              if (child.newWindow || item.newWindow) {
+                                window.open(child.path, '_blank', 'noopener,noreferrer');
+                              } else {
+                                navigate(child.path);
+                              }
+                            }}
+                            className="flex items-center gap-2.5 w-full px-3 py-1.5 text-left transition-colors hover:bg-white/[0.06]"
+                            style={{
+                              color: childActive ? '#ffffff' : '#b0bcc8',
+                              background: childActive ? 'rgba(26,90,158,0.15)' : 'transparent',
+                            }}
+                          >
+                            <ChildIcon style={{ width: 14, height: 14, color: childActive ? '#3b8ad4' : '#5a6e80', flexShrink: 0 }} />
+                            <span className="text-[11px] font-medium">{child.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </React.Fragment>
+            );
+          });
+        })()}
+      </div>
 
       {/* Mandatory Location Gate — blocks app if GPS permission denied */}
       <LocationGate
@@ -953,28 +1172,16 @@ export default function Layout() {
       />
 
       {/* ============================================================ */}
-      {/* MODULE TILE BAR — Spillman Flex module launcher ribbon        */}
-      {/* ============================================================ */}
-      {!isMobile && (
-        <ModuleTileBar
-          items={TOOLBAR_NAV}
-          isAdmin={isAdmin}
-          isClientViewer={isClientViewer}
-          isContractManager={isContractManager}
-          activeCallCount={activeCallCount}
-          emailUnreadCount={emailUnreadCount}
-          activeBOLOs={activeBOLOs}
-        />
-      )}
-
-      {/* ============================================================ */}
       {/* MAIN CONTENT AREA — Full width (no sidebar)                  */}
       {/* ============================================================ */}
-      <main className="flex-1 overflow-auto min-h-0 panel-inset app-grid-bg animate-page-enter" key={location.pathname}>
-        <ErrorBoundary>
-          <Outlet />
-        </ErrorBoundary>
-      </main>
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        {/* Page Content (recessed panel) */}
+        <main className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter" key={location.pathname} style={{ background: '#1a2636' }}>
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
+        </main>
+      </div>
 
       {/* Mobile Bottom Navigation */}
       {isMobile && (

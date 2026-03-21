@@ -49,6 +49,9 @@ interface CallFlags {
   drugs_involved?: boolean;
   alcohol_involved?: boolean;
   injuries_reported?: boolean;
+  zone?: string;
+  beat?: string;
+  cross_street?: string;
 }
 
 interface VoicePhrase {
@@ -57,22 +60,76 @@ interface VoicePhrase {
 
 // ─── Constants ──────────────────────────────────────────────
 
-/** localStorage key for voice alerts toggle (separate from rmpg-sound) */
+/** localStorage keys */
 const VOICE_ALERTS_KEY = 'rmpg-voice-alerts';
+const VOICE_SPEED_KEY = 'rmpg-voice-speed';     // 'slow' | 'normal' | 'fast'
+const VOICE_VOLUME_KEY = 'rmpg-voice-volume';    // 0.0 - 1.0
 
-/** Inter-phrase pause in milliseconds — slightly longer for natural breathing rhythm */
-const PHRASE_GAP_MS = 350;
+/** Inter-phrase pause — deliberate gap between sentences, like a real dispatcher pausing to read the next line */
+const PHRASE_GAP_MS = 500;
 
-/** Post-tone pause before speech begins */
+/** Post-tone pause before speech begins — let the tone ring out */
 const TONE_GAP_MS = 400;
 
 /** Deduplication cache TTL (60 seconds) */
 const DEDUP_TTL_MS = 60_000;
 
-/** SpeechSynthesisUtterance configuration — tuned for natural human-like cadence */
-const SPEECH_RATE = 0.95;   // slightly slower than default — clearer, more natural
-const SPEECH_PITCH = 1.02;  // very slight pitch lift for authority/clarity
-const SPEECH_VOLUME = 0.92; // loud but not clipping
+/** Priority urgency levels for preemption (lower = more urgent) */
+const PRIORITY_URGENCY: Record<string, number> = {
+  PANIC: 0, P1: 1, P2: 2, P3: 3, P4: 4, INFO: 5,
+};
+
+/** User-configurable speed presets — slower, measured, clear */
+const SPEED_PRESETS: Record<string, number> = {
+  slow: 0.78,
+  normal: 0.88,
+  fast: 1.0,
+};
+
+/** Base speech configuration */
+function getSpeechRate(): number {
+  try {
+    const pref = localStorage.getItem(VOICE_SPEED_KEY) || 'normal';
+    return SPEED_PRESETS[pref] ?? SPEED_PRESETS.normal;
+  } catch { return SPEED_PRESETS.normal; }
+}
+
+function getSpeechVolume(): number {
+  try {
+    const v = parseFloat(localStorage.getItem(VOICE_VOLUME_KEY) || '0.95');
+    return isNaN(v) ? 0.95 : Math.max(0, Math.min(1, v));
+  } catch { return 0.95; }
+}
+
+/**
+ * Female dispatcher pitch — natural female register.
+ * 0.96 is a confident, natural female voice that doesn't sound forced.
+ * Combined with rate 0.95, she sounds like a real person relaying information
+ * with practiced calm — not a computer reading a database.
+ */
+const SPEECH_PITCH = 0.96;
+
+/** Priority-based speech parameters — adjusts rate/pitch/volume for urgency level */
+interface PrioritySpeechParams {
+  rateMultiplier: number;  // multiplied against user's base rate
+  pitchOffset: number;     // added to base pitch
+  volumeMultiplier: number;
+}
+
+/**
+ * Priority tuning: dispatchers get slightly MORE clipped (faster) and
+ * MORE authoritative (lower pitch) as urgency increases — the opposite
+ * of panic. Real dispatchers lower their voice and tighten delivery
+ * when things get serious. Only PANIC breaks this pattern (higher pitch
+ * signals extreme urgency).
+ */
+const PRIORITY_PARAMS: Record<string, PrioritySpeechParams> = {
+  PANIC: { rateMultiplier: 1.15, pitchOffset: 0.08, volumeMultiplier: 1.0 },
+  P1:    { rateMultiplier: 1.08, pitchOffset: -0.03, volumeMultiplier: 1.0 },
+  P2:    { rateMultiplier: 1.0,  pitchOffset: 0,     volumeMultiplier: 0.95 },
+  P3:    { rateMultiplier: 0.95, pitchOffset: 0.02,  volumeMultiplier: 0.9 },
+  P4:    { rateMultiplier: 0.9,  pitchOffset: 0.03,  volumeMultiplier: 0.85 },
+};
 
 // ─── Voice Selection ────────────────────────────────────────
 
@@ -80,10 +137,20 @@ let cachedVoice: SpeechSynthesisVoice | null = null;
 let voicesLoaded = false;
 
 /**
- * Select the best available female voice.
- * Priority: Premium enhanced voices first (Google WaveNet, Apple Enhanced),
- * then standard female voices, then any English voice.
- * Higher-quality voices produce dramatically more natural-sounding alerts.
+ * Select the best available female voice for dispatcher-quality speech.
+ *
+ * Voice quality tiers (from most to least natural):
+ *   1. Neural/Premium voices (macOS Sequoia "Premium", Windows 11 Neural, Chrome Neural)
+ *   2. Enhanced voices (macOS "Enhanced" variants)
+ *   3. Standard named female voices
+ *   4. Any English female voice
+ *   5. Any English voice (fallback)
+ *
+ * For dispatcher use, we prefer voices that are:
+ *   - Female (industry standard for dispatch)
+ *   - US English (correct pronunciation of street names, codes)
+ *   - Lower/mature register (not chirpy or childlike)
+ *   - Neural/premium quality (natural prosody, not robotic)
  */
 function selectFemaleVoice(): SpeechSynthesisVoice | null {
   if (cachedVoice && voicesLoaded) return cachedVoice;
@@ -94,22 +161,90 @@ function selectFemaleVoice(): SpeechSynthesisVoice | null {
 
   voicesLoaded = true;
 
-  // Priority candidates — premium/enhanced voices first for natural sound
+  // Score each voice — higher score = better choice
+  const scored = voices
+    .filter(v => v.lang.startsWith('en'))
+    .map(v => {
+      let score = 0;
+      const name = v.name.toLowerCase();
+
+      // ── Quality tier (most important) ──
+      if (name.includes('premium'))      score += 1000;  // macOS Sequoia neural voices
+      if (name.includes('enhanced'))     score += 800;   // macOS Enhanced voices
+      if (name.includes('neural'))       score += 900;   // Windows 11 Neural voices
+      if (name.includes('online'))       score += 700;   // Edge Online (cloud neural)
+      if (name.includes('natural'))      score += 850;   // Natural variant voices
+
+      // ── Female voice names (dispatch standard) ──
+      // macOS voices
+      if (name.includes('ava'))          score += 200;   // Ava — mature, authoritative
+      if (name.includes('zoe'))          score += 190;   // Zoe — clear, professional
+      if (name.includes('samantha'))     score += 180;   // Samantha — classic macOS
+      if (name.includes('allison'))      score += 170;   // Allison — neutral US
+      if (name.includes('susan'))        score += 160;   // Susan — UK but clear
+      if (name.includes('karen'))        score += 150;   // Karen — AU English
+      if (name.includes('kate'))         score += 140;   // Kate — UK English
+      if (name.includes('victoria'))     score += 130;   // Victoria — formal
+      if (name.includes('tessa'))        score += 120;   // Tessa — SA English
+      // Windows voices
+      if (name.includes('jenny'))        score += 195;   // Jenny — Windows 11 neural (excellent)
+      if (name.includes('aria'))         score += 185;   // Aria — Windows neural
+      if (name.includes('zira'))         score += 160;   // Zira — classic Windows
+      if (name.includes('hazel'))        score += 155;   // Hazel — UK
+      // Chrome/Google voices
+      if (name.includes('google') && name.includes('female')) score += 170;
+
+      // ── US English preference ──
+      if (v.lang === 'en-US')            score += 50;
+      if (v.lang.startsWith('en-US'))    score += 40;
+      if (v.lang.startsWith('en-GB'))    score += 20;
+      if (v.lang.startsWith('en-AU'))    score += 15;
+
+      // ── Penalize male voices ──
+      if (name.includes('daniel'))       score -= 500;
+      if (name.includes('alex'))         score -= 500;
+      if (name.includes('david'))        score -= 500;
+      if (name.includes('tom'))          score -= 500;
+      if (name.includes('fred'))         score -= 500;
+      if (name.includes('ralph'))        score -= 500;
+      if (name.includes('guy'))          score -= 500;
+      if (name.includes('rishi'))        score -= 500;
+      if (name.includes('lee'))          score -= 500;
+      if (name.includes('male') && !name.includes('female')) score -= 500;
+
+      // ── Penalize non-human / novelty voices ──
+      if (name.includes('whisper'))      score -= 300;
+      if (name.includes('grandm'))       score -= 300;
+      if (name.includes('junior'))       score -= 300;
+      if (name.includes('bells'))        score -= 300;
+      if (name.includes('organ'))        score -= 300;
+      if (name.includes('cellos'))       score -= 300;
+      if (name.includes('trinoids'))     score -= 300;
+      if (name.includes('bad news'))     score -= 300;
+      if (name.includes('good news'))    score -= 300;
+      if (name.includes('bubbles'))      score -= 300;
+      if (name.includes('pipe'))         score -= 300;
+      if (name.includes('boing'))        score -= 300;
+      if (name.includes('bahh'))         score -= 300;
+      if (name.includes('deranged'))     score -= 300;
+      if (name.includes('hysterical'))   score -= 300;
+
+      return { voice: v, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  if (scored.length > 0 && scored[0].score > -100) {
+    cachedVoice = scored[0].voice;
+    console.log(`[VoiceAlerts] Selected voice: "${cachedVoice.name}" (${cachedVoice.lang}) score=${scored[0].score}`);
+    // Log top 3 for debugging
+    scored.slice(0, 3).forEach((s, i) => {
+      console.log(`  [${i + 1}] "${s.voice.name}" (${s.voice.lang}) score=${s.score}`);
+    });
+    return cachedVoice;
+  }
+
+  // Fallback candidates in priority order (legacy path)
   const candidates: Array<(v: SpeechSynthesisVoice) => boolean> = [
-    // Tier 1: Premium enhanced voices (dramatically more natural)
-    (v) => /samantha.*enhanced/i.test(v.name),                          // macOS Enhanced Samantha
-    (v) => /karen.*enhanced/i.test(v.name),                             // macOS Enhanced Karen
-    (v) => /google.*us.*english.*female/i.test(v.name),                 // Chrome Google HD Female
-    (v) => /microsoft.*zira.*online/i.test(v.name),                     // Edge Online Zira (neural)
-    (v) => /microsoft.*jenny/i.test(v.name),                            // Windows 11 Jenny (neural)
-    // Tier 2: Standard quality named voices
-    (v) => /zira/i.test(v.name),                                        // Windows Zira
-    (v) => /samantha/i.test(v.name),                                    // macOS Samantha (standard)
-    (v) => /karen/i.test(v.name) && v.lang.startsWith('en'),            // macOS Karen (AU English)
-    (v) => /google.*english/i.test(v.name) && /female/i.test(v.name),   // Any Google Female
-    // Tier 3: Any female English voice
-    (v) => /female/i.test(v.name) && v.lang.startsWith('en'),
-    // Tier 4: Any English voice
     (v) => v.lang.startsWith('en-US'),
     (v) => v.lang.startsWith('en'),
   ];
@@ -169,6 +304,24 @@ export function getVoiceAlertsEnabled(): boolean {
   try { return localStorage.getItem(VOICE_ALERTS_KEY) !== 'false'; } catch { return true; }
 }
 
+/** Set voice speed preference: 'slow', 'normal', or 'fast' */
+export function setVoiceSpeed(speed: 'slow' | 'normal' | 'fast'): void {
+  try { localStorage.setItem(VOICE_SPEED_KEY, speed); } catch { /* ignore */ }
+}
+
+export function getVoiceSpeed(): string {
+  try { return localStorage.getItem(VOICE_SPEED_KEY) || 'normal'; } catch { return 'normal'; }
+}
+
+/** Set voice volume: 0.0 to 1.0 */
+export function setVoiceVolume(volume: number): void {
+  try { localStorage.setItem(VOICE_VOLUME_KEY, String(Math.max(0, Math.min(1, volume)))); } catch { /* ignore */ }
+}
+
+export function getVoiceVolume(): number {
+  return getSpeechVolume();
+}
+
 // ─── Deduplication Cache ────────────────────────────────────
 
 const announcedCache = new Map<string, number>();
@@ -194,47 +347,434 @@ function markAnnounced(key: string): void {
   }
 }
 
-// ─── Speech Queue ───────────────────────────────────────────
+// ─── Speech Queue (with priority preemption) ────────────────
 
-let phraseQueue: VoicePhrase[] = [];
+interface QueuedBatch {
+  phrases: VoicePhrase[];
+  priority: string;
+}
+
+let activePriority: string | undefined;
+let phraseQueue: QueuedBatch[] = [];
 let isSpeaking = false;
 
-function speakPhrase(phrase: VoicePhrase): Promise<void> {
-  return new Promise((resolve) => {
-    if (!isSpeechAvailable()) { resolve(); return; }
+/** Last announced batch — for repeat functionality */
+let lastAnnouncement: { phrases: VoicePhrase[]; priority: string; timestamp: number } | null = null;
 
-    const utterance = new SpeechSynthesisUtterance(phrase.text);
+/** Phrase counter — used for micro-variation seeding */
+let phraseCounter = 0;
+
+// ─── Radio Static Underlay ──────────────────────────────────
+// Optional very-light radio static hiss during speech that gives
+// the unmistakable "dispatch radio" atmosphere. Barely audible (3%)
+// so it's more felt than heard. Uses continuous filtered white noise.
+
+let staticCtx: AudioContext | null = null;
+let staticSource: AudioBufferSourceNode | null = null;
+let staticGain: GainNode | null = null;
+
+function startRadioStatic(): void {
+  try {
+    if (staticCtx) return;  // Already playing
+    const radioFx = localStorage.getItem('rmpg-radio-fx');
+    if (radioFx === 'false') return;  // User disabled it
+
+    staticCtx = new AudioContext();
+    if (staticCtx.state === 'suspended') staticCtx.resume();
+
+    // 2-second looping noise buffer
+    const sr = staticCtx.sampleRate;
+    const len = sr * 2;
+    const buf = staticCtx.createBuffer(1, len, sr);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) {
+      d[i] = (Math.random() * 2 - 1);
+    }
+
+    staticSource = staticCtx.createBufferSource();
+    staticSource.buffer = buf;
+    staticSource.loop = true;
+
+    // Bandpass — radio frequency character (600-2800 Hz)
+    const bp = staticCtx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 1600;
+    bp.Q.value = 0.6;
+
+    // Highpass — remove low rumble
+    const hp = staticCtx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 500;
+
+    staticGain = staticCtx.createGain();
+    staticGain.gain.value = 0.03;  // 3% — barely perceptible
+
+    staticSource.connect(bp);
+    bp.connect(hp);
+    hp.connect(staticGain);
+    staticGain.connect(staticCtx.destination);
+
+    // Fade in over 200ms
+    staticGain.gain.setValueAtTime(0, staticCtx.currentTime);
+    staticGain.gain.linearRampToValueAtTime(0.03, staticCtx.currentTime + 0.2);
+
+    staticSource.start();
+  } catch {
+    // Audio context unavailable — skip silently
+  }
+}
+
+function stopRadioStatic(): void {
+  try {
+    if (staticGain && staticCtx) {
+      // Fade out over 300ms
+      const now = staticCtx.currentTime;
+      staticGain.gain.setValueAtTime(staticGain.gain.value, now);
+      staticGain.gain.linearRampToValueAtTime(0, now + 0.3);
+      setTimeout(() => {
+        staticSource?.stop();
+        staticCtx?.close().catch(() => {});
+        staticCtx = null;
+        staticSource = null;
+        staticGain = null;
+      }, 400);
+    }
+  } catch {
+    staticCtx = null;
+    staticSource = null;
+    staticGain = null;
+  }
+}
+
+/**
+ * Play a subtle radio PTT (push-to-talk) click between phrases.
+ * This simulates the distinctive "click-hiss" sound of a dispatch radio
+ * mic being released and re-keyed. Extremely subtle (15% volume) so it
+ * registers subliminally — the listener's brain categorizes the speech
+ * as "radio dispatch" without consciously hearing individual clicks.
+ *
+ * Technique: A 12ms burst of filtered white noise (bandpass 800-3000 Hz)
+ * with a sharp attack and fast exponential decay. This mimics the
+ * electromagnetic pop of a relay switching.
+ */
+async function playRadioClick(): Promise<void> {
+  try {
+    const ctx = new AudioContext();
+    if (ctx.state === 'suspended') await ctx.resume();
+
+    const duration = 0.012;  // 12ms — barely perceptible
+    const now = ctx.currentTime;
+
+    // White noise buffer
+    const bufferSize = Math.ceil(ctx.sampleRate * duration);
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * 0.6;
+    }
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+
+    // Bandpass filter — radio frequency character (800-3000 Hz)
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 1800;
+    filter.Q.value = 0.8;
+
+    // Gain envelope — sharp attack, fast decay
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.15, now);  // 15% volume — subliminal
+    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+    source.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+
+    source.start(now);
+    source.stop(now + duration);
+
+    // Clean up after playback
+    setTimeout(() => ctx.close().catch(() => {}), 50);
+  } catch {
+    // Audio context unavailable — silently skip
+  }
+}
+
+/**
+ * Speak a single clause (sub-sentence fragment) with computed prosody.
+ * This is the lowest-level speech function — one utterance, no splitting.
+ */
+function speakClause(
+  text: string,
+  clauseIndex: number,
+  totalClauses: number,
+  phrasePosition: 'first' | 'middle' | 'last' | 'only',
+): Promise<void> {
+  return new Promise((resolve) => {
+    if (!isSpeechAvailable() || !text.trim()) { resolve(); return; }
+
+    const utterance = new SpeechSynthesisUtterance(text);
     const voice = selectFemaleVoice();
     if (voice) utterance.voice = voice;
-    utterance.rate = SPEECH_RATE;
-    utterance.pitch = SPEECH_PITCH;
-    utterance.volume = SPEECH_VOLUME;
+
+    const baseRate = getSpeechRate();
+    const baseVolume = getSpeechVolume();
+    const params = activePriority ? PRIORITY_PARAMS[activePriority] : undefined;
+
+    // ── Organic variation — triple sine overlay ──
+    // Three waves at irrational frequency ratios create quasi-random
+    // variation that never exactly repeats across any 100-phrase window.
+    const seed = phraseCounter + clauseIndex * 0.37;
+    const rateJitter = 1.0
+      + (Math.sin(seed * 2.7) * 0.025)       // ±2.5%
+      + (Math.sin(seed * 4.3) * 0.015)       // ±1.5%
+      + (Math.sin(seed * 7.1) * 0.01);       // ±1% (high-frequency texture)
+
+    const pitchJitter =
+      (Math.sin(seed * 1.9) * 0.018)          // ±1.8%
+      + (Math.sin(seed * 3.1) * 0.012)        // ±1.2%
+      + (Math.sin(seed * 5.7) * 0.005);       // ±0.5% (shimmer)
+
+    // ── Length-based pacing ──
+    const len = text.length;
+    const lengthFactor = len > 100 ? 0.93 : len > 70 ? 0.95 : len > 40 ? 0.97 : 1.0;
+
+    // ── Emphasis detection ──
+    const lower = text.toLowerCase();
+    let emphasisRate = 1.0;
+    let emphasisPitch = 0;
+
+    if (lower.includes('be advised') || lower.includes('caution') ||
+        lower.includes('safety') || lower.includes('weapon') ||
+        lower.includes('armed') || lower.includes('dangerous') ||
+        lower.includes('shots fired') || lower.includes('officer down')) {
+      emphasisRate = 0.90;    // noticeably slower
+      emphasisPitch = 0.05;   // raised pitch — alert
+    } else if (lower.includes('suspect') || lower.includes('described as') ||
+               lower.includes('plate') || lower.includes('vehicle') ||
+               lower.includes('callback') || lower.includes('reach them')) {
+      emphasisRate = 0.93;    // deliberate readout pace
+      emphasisPitch = 0.01;
+    } else if (lower.includes('use caution') || lower.includes('copy') ||
+               lower.startsWith('that\'s all')) {
+      emphasisRate = 0.95;
+      emphasisPitch = -0.04;  // authoritative terminal drop
+    }
+
+    // ── Positional pitch contour ──
+    // First phrase in a batch: slightly higher pitch (attention-getting, "listen up")
+    // Middle phrases: neutral baseline
+    // Last phrase: pitch drops further (finality, "end of transmission")
+    let positionalPitch = 0;
+    if (phrasePosition === 'first') positionalPitch = 0.03;
+    else if (phrasePosition === 'last') positionalPitch = -0.03;
+
+    // ── Clause-position pitch arc ──
+    // Within a multi-clause sentence, pitch rises slightly through the middle
+    // clauses then falls on the final clause (natural sentence melody).
+    let clausePitch = 0;
+    if (totalClauses > 1) {
+      const progress = clauseIndex / (totalClauses - 1);  // 0 → 1
+      // Inverted parabola: rises in middle, falls at end
+      clausePitch = (-4 * (progress - 0.4) * (progress - 0.4) + 0.64) * 0.025;
+    }
+
+    // ── Terminal intonation ──
+    const trimmed = text.trim();
+    const isQuestion = trimmed.endsWith('?');
+    const isExclamation = trimmed.endsWith('!');
+    const terminalPitch = isQuestion ? 0.05 : isExclamation ? 0.02 : -0.02;
+
+    // ── Clause-position rate ──
+    // First clause of a sentence is slightly slower (establishing),
+    // middle clauses flow faster, final clause slows for clarity
+    let clauseRate = 1.0;
+    if (totalClauses > 1) {
+      if (clauseIndex === 0) clauseRate = 0.97;           // establishing
+      else if (clauseIndex === totalClauses - 1) clauseRate = 0.96;  // final — clear
+      else clauseRate = 1.02;                               // middle — flowing
+    }
+
+    const finalRate = (params ? baseRate * params.rateMultiplier : baseRate)
+      * rateJitter * lengthFactor * emphasisRate * clauseRate;
+    const finalPitch = SPEECH_PITCH
+      + (params?.pitchOffset ?? 0)
+      + pitchJitter + emphasisPitch + terminalPitch
+      + positionalPitch + clausePitch;
+
+    utterance.rate = Math.max(0.5, Math.min(2.0, finalRate));
+    utterance.pitch = Math.max(0.5, Math.min(2.0, finalPitch));
+    utterance.volume = params ? baseVolume * params.volumeMultiplier : baseVolume;
+
     utterance.lang = 'en-US';
     utterance.onend = () => resolve();
-    utterance.onerror = () => resolve(); // don't block queue on errors
+    utterance.onerror = () => resolve();
     speechSynthesis.speak(utterance);
   });
+}
+
+/** Intra-clause gap — tiny pause between comma-separated clauses (simulates breath) */
+const CLAUSE_GAP_MS = 130;
+
+/**
+ * Speak a full phrase by splitting it into clauses at natural break points
+ * (commas, semicolons, em-dashes). Each clause gets its own utterance with
+ * independently computed prosody, which dramatically improves TTS naturalness.
+ *
+ * Why: TTS engines produce far better prosody on short 5-15 word segments
+ * than on 30+ word sentences. By splitting at punctuation and speaking each
+ * clause separately with a 130ms "breath" gap, we get:
+ *   - Better word-level stress and rhythm per clause
+ *   - Natural pitch arcs within each clause
+ *   - Breathing-like pauses that sound human
+ *   - Independent rate/pitch variation per clause
+ */
+async function speakPhrase(
+  phrase: VoicePhrase,
+  phrasePosition: 'first' | 'middle' | 'last' | 'only' = 'middle',
+): Promise<void> {
+  if (!isSpeechAvailable()) return;
+
+  const spokenText = improvePronounciation(phrase.text);
+  phraseCounter++;
+
+  // Split at commas, semicolons, em-dashes, and colons — but keep each
+  // clause as a meaningful fragment. Filter out empty strings.
+  const clauses = spokenText
+    .split(/(?<=[,;:—–])\s+/)
+    .map(c => c.trim())
+    .filter(c => c.length > 0);
+
+  // If the sentence is short enough (< 50 chars), speak it whole —
+  // splitting very short phrases makes them sound choppy.
+  if (clauses.length <= 1 || spokenText.length < 50) {
+    await speakClause(spokenText, 0, 1, phrasePosition);
+    return;
+  }
+
+  for (let i = 0; i < clauses.length; i++) {
+    await speakClause(clauses[i], i, clauses.length, phrasePosition);
+    if (i < clauses.length - 1) {
+      // Variable clause gap — slightly longer after longer clauses
+      const clauseLen = clauses[i].length;
+      const gapMultiplier = clauseLen > 60 ? 1.3 : clauseLen > 30 ? 1.1 : 1.0;
+      await delay(Math.round(CLAUSE_GAP_MS * gapMultiplier));
+    }
+  }
 }
 
 async function processQueue(): Promise<void> {
   if (isSpeaking) return;
   isSpeaking = true;
 
+  // Start radio static underlay — gives the "dispatch radio" atmosphere
+  startRadioStatic();
+
   while (phraseQueue.length > 0) {
-    const phrase = phraseQueue.shift()!;
-    await speakPhrase(phrase);
-    // Inter-phrase pause
+    const batch = phraseQueue.shift()!;
+    activePriority = batch.priority;
+    lastAnnouncement = { phrases: batch.phrases, priority: batch.priority, timestamp: Date.now() };
+
+    for (let i = 0; i < batch.phrases.length; i++) {
+      const phrase = batch.phrases[i];
+
+      // Determine position in batch for pitch contour
+      const position: 'first' | 'middle' | 'last' | 'only' =
+        batch.phrases.length === 1 ? 'only' :
+        i === 0 ? 'first' :
+        i === batch.phrases.length - 1 ? 'last' : 'middle';
+
+      await speakPhrase(phrase, position);
+
+      if (i < batch.phrases.length - 1) {
+        // ── Variable phrase gaps — like a real dispatcher keying the mic ──
+        const nextText = batch.phrases[i + 1]?.text?.toLowerCase() || '';
+        const thisText = phrase.text.toLowerCase();
+
+        let gap = PHRASE_GAP_MS;
+
+        // Longer beat before safety/warning blocks
+        if (nextText.includes('safety') || nextText.includes('be advised') ||
+            nextText.includes('armed') || nextText.includes('weapon') ||
+            nextText.includes('caution') || nextText.includes('shots fired')) {
+          gap = PHRASE_GAP_MS * 1.8;  // ~900ms dramatic pause
+        }
+        // Topic transition: location → narrative (let address register)
+        else if (thisText.includes('you\'re going to') || thisText.includes('cross street') ||
+                 thisText.includes('apartment') || thisText.includes('building')) {
+          gap = PHRASE_GAP_MS * 1.4;  // ~700ms
+        }
+        // Topic transition: narrative → caller info
+        else if ((thisText.includes('caller says') || thisText.includes('we\'re told')) &&
+                 (nextText.includes('reporting party') || nextText.includes('reach them'))) {
+          gap = PHRASE_GAP_MS * 1.3;
+        }
+        // Shorter between sequential facts (zone → beat flows faster)
+        else if (thisText.includes('zone') || thisText.includes('beat')) {
+          gap = PHRASE_GAP_MS * 0.8;
+        }
+
+        // ±12% random variation (wider — humans are variable)
+        const gapJitter = 1.0 + (Math.sin(i * 3.7 + phraseCounter * 1.3) * 0.12);
+        await delay(Math.round(gap * gapJitter));
+
+        // ── Subtle radio PTT click between phrases ──
+        // Simulates the push-to-talk mic release/re-key that real dispatch
+        // radios produce. Very quiet (15% volume) so it's subliminal —
+        // the listener feels "radio" without consciously hearing clicks.
+        await playRadioClick();
+      }
+    }
+
+    // Pause between batches
     if (phraseQueue.length > 0) {
       await delay(PHRASE_GAP_MS);
     }
   }
 
+  // Fade out radio static underlay
+  stopRadioStatic();
+
+  activePriority = undefined;
   isSpeaking = false;
 }
 
-function enqueuePhrases(phrases: VoicePhrase[]): void {
+/**
+ * Enqueue phrases with priority preemption.
+ * Higher-priority batches (lower urgency number) interrupt lower-priority speech.
+ * P1 active shooter preempts P4 noise complaint announcement.
+ */
+function enqueuePhrases(phrases: VoicePhrase[], priority?: string): void {
   if (phrases.length === 0) return;
-  phraseQueue.push(...phrases);
+  const prio = priority || 'INFO';
+  const newUrgency = PRIORITY_URGENCY[prio] ?? 5;
+
+  // If currently speaking a lower-priority batch, interrupt it
+  if (isSpeaking && activePriority) {
+    const currentUrgency = PRIORITY_URGENCY[activePriority] ?? 5;
+    if (newUrgency < currentUrgency) {
+      // Cancel current speech, prepend new batch
+      if (isSpeechAvailable()) speechSynthesis.cancel();
+      isSpeaking = false;
+      phraseQueue.unshift({ phrases, priority: prio });
+      processQueue().catch(() => { isSpeaking = false; });
+      return;
+    }
+  }
+
+  // Insert in priority order (higher priority = earlier in queue)
+  let inserted = false;
+  for (let i = 0; i < phraseQueue.length; i++) {
+    const existingUrgency = PRIORITY_URGENCY[phraseQueue[i].priority] ?? 5;
+    if (newUrgency < existingUrgency) {
+      phraseQueue.splice(i, 0, { phrases, priority: prio });
+      inserted = true;
+      break;
+    }
+  }
+  if (!inserted) phraseQueue.push({ phrases, priority: prio });
+
   processQueue().catch(() => { isSpeaking = false; });
 }
 
@@ -252,54 +792,92 @@ export function resetVoiceState(): void {
   clearVoiceQueue();
   announcedCache.clear();
   cachedVoice = null;
+  lastAnnouncement = null;
+}
+
+/**
+ * Replay the last announcement. Useful when officers miss an alert.
+ * Skips dedup cache — always plays regardless of timing.
+ */
+export function repeatLastAnnouncement(): void {
+  if (!isVoiceEnabled() || !isSpeechAvailable() || !lastAnnouncement) return;
+  enqueuePhrases(lastAnnouncement.phrases, lastAnnouncement.priority);
+}
+
+/** Get info about the last announcement for UI display. */
+export function getLastAnnouncement(): { text: string; timestamp: number } | null {
+  if (!lastAnnouncement) return null;
+  return {
+    text: lastAnnouncement.phrases.map(p => p.text).join(' '),
+    timestamp: lastAnnouncement.timestamp,
+  };
 }
 
 // ─── Natural Speech Helpers ─────────────────────────────────
 
 /**
  * Convert robotic ALL-CAPS dispatch text into natural spoken English.
- * TTS engines handle sentence-case text far better — proper intonation,
- * natural pacing, and no letter-by-letter spelling of acronyms.
- * Punctuation pauses (commas, periods) add breathing room.
+ *
+ * TTS engines handle sentence-case text with proper punctuation far better:
+ * - Commas produce ~200ms pauses (breathing room)
+ * - Periods produce ~400ms pauses (sentence finality)
+ * - Semicolons produce ~300ms pauses (list separation)
+ *
+ * Phrasing follows real dispatcher cadence:
+ * - Lead with "Caution" or "Be advised" for safety alerts
+ * - Short, declarative sentences
+ * - No filler words ("um", "uh", "basically")
+ * - Professional monotone authority, not conversational
  */
 function naturalPhrase(text: string): string {
-  // Map of dispatch shorthand → natural spoken form
   const NATURAL_MAP: Record<string, string> = {
-    'ACTIVE WARRANTS': 'Active warrants on file.',
-    'ARMED SUSPECT': 'Caution, armed suspect.',
-    'VIOLENT SUSPECT': 'Caution, violent suspect.',
-    'MENTAL SUSPECT': 'Mental health concern noted.',
-    'KNOWN DRUG USER': 'Known drug user.',
-    'ESCAPE RISK': 'Caution, escape risk.',
-    'SUICIDE RISK': 'Caution, suicide risk.',
-    'REGISTERED SEX OFFENDER': 'Registered sex offender.',
-    'GANG AFFILIATED': 'Gang affiliation noted.',
-    'WATCHLIST MATCH': 'Watchlist match detected.',
-    'FEDERAL WATCHLIST HIT': 'Federal watchlist hit.',
-    'UTAH STATE WARRANT': 'Utah state warrant on file.',
-    'CRIMINAL HISTORY': 'Prior criminal history.',
-    'WARRANT HIT': 'Warrant hit.',
-    'ARMED SUBJECT': 'Caution, armed subject reported.',
+    // Safety alerts — lead with "Caution" for officer attention
+    'ACTIVE WARRANTS': 'Caution; active warrants on file.',
+    'ARMED SUSPECT': 'Caution; armed suspect.',
+    'VIOLENT SUSPECT': 'Caution; violent suspect.',
+    'MENTAL SUSPECT': 'Be advised; mental health concern.',
+    'KNOWN DRUG USER': 'Be advised; known drug user.',
+    'ESCAPE RISK': 'Caution; escape risk.',
+    'SUICIDE RISK': 'Caution; suicide risk.',
+    'REGISTERED SEX OFFENDER': 'Be advised; registered sex offender.',
+    'GANG AFFILIATED': 'Be advised; gang affiliation.',
+    'WATCHLIST MATCH': 'Caution; watchlist match.',
+    'FEDERAL WATCHLIST HIT': 'Caution; federal watchlist hit.',
+    'UTAH STATE WARRANT': 'Caution; Utah state warrant on file.',
+    'CRIMINAL HISTORY': 'Be advised; prior criminal history.',
+    'WARRANT HIT': 'Caution; warrant hit.',
+
+    // Call flags — clipped dispatcher style
+    'ARMED SUBJECT': 'Caution; armed subject reported.',
     'FELONY IN PROGRESS': 'Felony in progress.',
-    'OFFICER SAFETY CAUTION': 'Officer safety caution.',
-    'VEHICLE PURSUIT': 'Vehicle pursuit in progress.',
-    'FOOT PURSUIT': 'Foot pursuit in progress.',
+    'OFFICER SAFETY CAUTION': 'Officer safety; use caution on approach.',
+    'VEHICLE PURSUIT': 'Vehicle pursuit; in progress.',
+    'FOOT PURSUIT': 'Foot pursuit; in progress.',
     'DOMESTIC VIOLENCE': 'Domestic violence call.',
-    'GANG RELATED': 'Gang related incident.',
-    'HAZMAT': 'Hazmat situation.',
+    'GANG RELATED': 'Gang related.',
+    'HAZMAT': 'Hazmat situation; stage and hold.',
     'MENTAL HEALTH CRISIS': 'Mental health crisis.',
-    'INJURIES REPORTED': 'Injuries have been reported.',
-    'E M S REQUESTED': 'E.M.S. has been requested.',
-    'K 9 REQUESTED': 'K-9 unit has been requested.',
-    'DRUGS INVOLVED': 'Drugs are involved.',
-    'PRIOR ARMED CALLS AT LOCATION': 'Prior armed calls at this location.',
-    'PRIOR DOMESTIC VIOLENCE AT LOCATION': 'Prior domestic violence at this location.',
-    'PRIOR DRUG ACTIVITY AT LOCATION': 'Prior drug activity at this location.',
+    'INJURIES REPORTED': 'Injuries reported.',
+    'E M S REQUESTED': 'E.M.S. requested.',
+    'K 9 REQUESTED': 'K-9 requested.',
+    'DRUGS INVOLVED': 'Drugs involved.',
+    'ALCOHOL INVOLVED': 'Alcohol involved.',
+
+    // Premise history
+    'PRIOR ARMED CALLS AT LOCATION': 'Be advised; prior armed calls at this location.',
+    'PRIOR DOMESTIC VIOLENCE AT LOCATION': 'Be advised; prior D.V. at this location.',
+    'PRIOR DRUG ACTIVITY AT LOCATION': 'Be advised; prior drug activity at this location.',
+
+    // Emergency
     'PANIC ALERT': 'Panic alert.',
     'OFFICER NEEDS ASSISTANCE': 'Officer needs immediate assistance.',
+
+    // Vehicle
     'STOLEN VEHICLE': 'Stolen vehicle.',
-    'BOLO HIT': 'Be on the lookout, hit confirmed.',
+    'BOLO HIT': 'B.O.L.O. hit confirmed.',
     'HIT AND RUN': 'Hit and run.',
+
+    // Status
     'DISPATCH': 'Dispatch.',
     'NEW CALL': 'New call.',
     'PRIORITY ONE': 'Priority one.',
@@ -307,6 +885,131 @@ function naturalPhrase(text: string): string {
   };
 
   return NATURAL_MAP[text] || text;
+}
+
+/**
+ * Post-process text for TTS pronunciation improvements.
+ * Handles common dispatch abbreviations, numbers, and codes
+ * that TTS engines mispronounce.
+ */
+function improvePronounciation(text: string): string {
+  let result = text
+    // ── Street suffixes — expand for TTS clarity ──
+    .replace(/\bSt\b(?!\.)/g, 'Street')
+    .replace(/\bAve\b(?!\.)/g, 'Avenue')
+    .replace(/\bBlvd\b(?!\.)/g, 'Boulevard')
+    .replace(/\bDr\b(?!\.)/g, 'Drive')
+    .replace(/\bCt\b(?!\.)/g, 'Court')
+    .replace(/\bLn\b(?!\.)/g, 'Lane')
+    .replace(/\bPl\b(?!\.)/g, 'Place')
+    .replace(/\bCir\b(?!\.)/g, 'Circle')
+    .replace(/\bPkwy\b/gi, 'Parkway')
+    .replace(/\bTrl\b/gi, 'Trail')
+    .replace(/\bWay\b/gi, 'Way')
+    .replace(/\bRd\b(?!\.)/g, 'Road')
+    // ── Highway designators ──
+    .replace(/\bI-(\d+)\b/g, 'Interstate $1')
+    .replace(/\bSR-(\d+)\b/g, 'State Route $1')
+    .replace(/\bUS-(\d+)\b/g, 'U.S. $1')
+    .replace(/\bHwy\b/gi, 'Highway')
+    // ── Compass directions ──
+    .replace(/\bNB\b/g, 'northbound')
+    .replace(/\bSB\b/g, 'southbound')
+    .replace(/\bEB\b/g, 'eastbound')
+    .replace(/\bWB\b/g, 'westbound')
+    .replace(/\bN\.?\s/g, 'North ')
+    .replace(/\bS\.?\s/g, 'South ')
+    .replace(/\bE\.?\s/g, 'East ')
+    .replace(/\bW\.?\s/g, 'West ')
+    // ── Dispatch codes / abbreviations ──
+    .replace(/\bP1\b/g, 'Priority one')
+    .replace(/\bP2\b/g, 'Priority two')
+    .replace(/\bP3\b/g, 'Priority three')
+    .replace(/\bP4\b/g, 'Priority four')
+    .replace(/\b10-4\b/g, 'ten four')
+    .replace(/\b10-(\d+)\b/g, 'ten $1')
+    .replace(/\bDV\b/g, 'D.V.')
+    .replace(/\bDUI\b/g, 'D.U.I.')
+    .replace(/\bDWI\b/g, 'D.W.I.')
+    .replace(/\bEMS\b/g, 'E.M.S.')
+    .replace(/\bBOLO\b/g, 'B.O.L.O.')
+    .replace(/\bAPB\b/g, 'A.P.B.')
+    .replace(/\bVIN\b/g, 'V.I.N.')
+    .replace(/\bDOA\b/g, 'D.O.A.')
+    .replace(/\bAKA\b/g, 'A.K.A.')
+    .replace(/\bOUI\b/g, 'O.U.I.')
+    .replace(/\bCPR\b/g, 'C.P.R.')
+    .replace(/\bSLC\b/g, 'Salt Lake City')
+    .replace(/\bUT\b/g, 'Utah')
+    .replace(/\bDOB\b/g, 'date of birth')
+    .replace(/\bSSN\b/g, 'social security number')
+    .replace(/\bLKA\b/g, 'last known address')
+    // ── Age / physical descriptions ──
+    .replace(/\bW\/M\b/gi, 'white male')
+    .replace(/\bW\/F\b/gi, 'white female')
+    .replace(/\bB\/M\b/gi, 'Black male')
+    .replace(/\bB\/F\b/gi, 'Black female')
+    .replace(/\bH\/M\b/gi, 'Hispanic male')
+    .replace(/\bH\/F\b/gi, 'Hispanic female')
+    .replace(/\bA\/M\b/gi, 'Asian male')
+    .replace(/\bA\/F\b/gi, 'Asian female')
+    .replace(/\bYOA\b/gi, 'years old')
+    .replace(/\byoa\b/gi, 'years old')
+    .replace(/\bapprox\.?\s/gi, 'approximately ')
+    .replace(/\bunk\b/gi, 'unknown')
+    // ── Time formats ──
+    .replace(/(\d{1,2}):(\d{2}):(\d{2})/g, (_, h, m, s) => {
+      const hours = parseInt(h);
+      const mins = parseInt(m);
+      const secs = parseInt(s);
+      if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''}, ${mins} minute${mins !== 1 ? 's' : ''}`;
+      return `${mins} minute${mins !== 1 ? 's' : ''} and ${secs} second${secs !== 1 ? 's' : ''}`;
+    })
+    // ── Natural pauses — add commas before conjunctions in long phrases ──
+    .replace(/\band\b/g, ', and')
+    .replace(/,\s*,/g, ',')  // clean double commas
+    // ── Numbers — pause around street numbers ──
+    .replace(/(\d{3,5})\s+(South|North|East|West)/g, '$1, $2')
+    // ── Breathing pauses — insert micro-pauses at natural break points ──
+    // Real dispatchers pause briefly before key details. We add short pauses
+    // using periods + spaces which TTS engines interpret as brief stops.
+    .replace(/\.\s+Your suspect/g, '.. Your suspect')   // dramatic pause before suspect info
+    .replace(/\.\s+Safety/g, '.. Safety')                // pause before safety block
+    .replace(/\.\s+Be advised/g, '.. Be advised')        // pause before advisories
+    .replace(/\.\s+There's a/g, '.. There\'s a')         // pause before vehicle/weapon
+    // ── Emphasis markers — capitalize key phrases for slight TTS stress ──
+    .replace(/\barmed\b/gi, 'ARMED')
+    .replace(/\bdangerous\b/gi, 'DANGEROUS')
+    .replace(/\bweapon\b/gi, 'WEAPON')
+    .replace(/\bpanic\b/gi, 'PANIC')
+    .replace(/\bshots fired\b/gi, 'SHOTS FIRED')
+    .replace(/\bofficer down\b/gi, 'OFFICER DOWN');
+
+  // ── Auto-spell any remaining ALL-CAPS acronyms (2+ letters) ──
+  // "PSO" → "P.S.O.", "RMPG" → "R.M.P.G.", etc.
+  // Skip words already dotted, common English words, and known expansions.
+  const SKIP_WORDS = new Set([
+    // Already handled above or common words that happen to be caps in dispatch
+    'THE', 'AND', 'FOR', 'NOT', 'BUT', 'ALL', 'ARE', 'WAS', 'HAS', 'HAD',
+    'HIS', 'HER', 'SHE', 'HIM', 'WHO', 'HOW', 'OUT', 'OFF', 'GET', 'GOT',
+    'LET', 'SET', 'RUN', 'PUT', 'SAY', 'USE', 'NEW', 'OLD', 'TWO', 'ONE',
+    'MAN', 'CAR', 'GUN', 'RED', 'TAN', 'VAN',
+    // Directions / status words
+    'NORTH', 'SOUTH', 'EAST', 'WEST',
+    'ZONE', 'BEAT', 'CALL', 'UNIT',
+    // Already expanded by rules above
+    'INTERSTATE', 'HIGHWAY', 'STREET', 'AVENUE', 'BOULEVARD', 'ROAD',
+    'PRIORITY', 'CAUTION',
+  ]);
+
+  result = result.replace(/\b([A-Z]{2,})\b/g, (match) => {
+    if (SKIP_WORDS.has(match)) return match;
+    if (match.includes('.')) return match; // Already dotted
+    // Spell it out: "PSO" → "P.S.O."
+    return match.split('').join('.') + '.';
+  });
+
+  return result;
 }
 
 // ─── Phrase Builders ────────────────────────────────────────
@@ -390,8 +1093,19 @@ function buildScreeningPhrases(result: ScreeningResult): VoicePhrase[] {
 function buildCallPhrases(call: CallFlags): VoicePhrase[] {
   const phrases: VoicePhrase[] = [];
 
-  // Critical
-  if (call.weapons_involved && call.weapons_involved !== 'None') phrases.push({ text: naturalPhrase('ARMED SUBJECT') });
+  // Critical — weapon type specificity
+  if (call.weapons_involved && call.weapons_involved !== 'None') {
+    const weapon = call.weapons_involved.toLowerCase();
+    if (weapon.includes('firearm') || weapon.includes('gun') || weapon.includes('rifle') || weapon.includes('pistol')) {
+      phrases.push({ text: `Caution, subject armed with ${weapon}.` });
+    } else if (weapon.includes('knife') || weapon.includes('blade') || weapon.includes('edged')) {
+      phrases.push({ text: `Caution, subject armed with edged weapon.` });
+    } else if (weapon === 'unknown' || weapon === 'yes') {
+      phrases.push({ text: naturalPhrase('ARMED SUBJECT') });
+    } else {
+      phrases.push({ text: `Caution, subject armed, ${weapon}.` });
+    }
+  }
   if (call.felony_in_progress) phrases.push({ text: naturalPhrase('FELONY IN PROGRESS') });
   if (call.officer_safety_caution) phrases.push({ text: naturalPhrase('OFFICER SAFETY CAUTION') });
   if (call.vehicle_pursuit) phrases.push({ text: naturalPhrase('VEHICLE PURSUIT') });
@@ -473,91 +1187,627 @@ export async function announcePanicAlert(officerName?: string): Promise<void> {
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);
 
-  // Play alarm tone (urgent repeating two-tone)
-  await playToneAsync('alarm');
+  // Play officer_down siren (max urgency wailing tone)
+  await playToneAsync('officer_down');
   await delay(TONE_GAP_MS);
 
-  const phrases: VoicePhrase[] = [
-    { text: naturalPhrase('PANIC ALERT') },
-    { text: naturalPhrase('OFFICER NEEDS ASSISTANCE') },
-  ];
+  // Two sentences — the repetition is intentional, mirrors real radio urgency
+  const phrases: VoicePhrase[] = [];
   if (officerName) {
-    phrases.push({ text: `Officer ${officerName}.` });
+    phrases.push({ text: `Panic alert. Officer ${officerName} is requesting immediate assistance.` });
+    phrases.push({ text: `All units respond to officer ${officerName}'s location.` });
+  } else {
+    phrases.push({ text: 'Panic alert. An officer is requesting immediate assistance.' });
+    phrases.push({ text: 'All units respond.' });
   }
-  enqueuePhrases(phrases);
+  enqueuePhrases(phrases, 'PANIC');
 }
 
-/**
- * Announce a dispatch event: "DISPATCH — [CALL NUMBER] — [INCIDENT TYPE] — [LOCATION]"
- * plus any safety flags on the call. Triggered on call_status_changed to 'dispatched'.
- */
-export async function announceDispatchEvent(call: CallFlags & {
+/** Extended call data — mirrors CallForService for full dispatch readout */
+interface DispatchCallData extends CallFlags {
   call_number?: string;
   incident_type?: string;
   location?: string;
   priority?: string;
-}): Promise<void> {
+  // Caller
+  caller_name?: string;
+  caller_phone?: string;
+  caller_relationship?: string;
+  // Narrative
+  narrative?: string;
+  description?: string;
+  comments?: string;
+  // Location detail
+  cross_street?: string;
+  location_building?: string;
+  location_floor?: string;
+  location_room?: string;
+  apartment?: string;
+  business_name?: string;
+  property_name?: string;
+  client_name?: string;
+  zone_name?: string;
+  beat_name?: string;
+  beat_descriptor?: string;
+  section_name?: string;
+  // Subject/vehicle
+  suspect_description?: string;
+  subject_description?: string;
+  vehicle_description?: string;
+  vehicle_plate?: string;
+  direction_of_travel?: string;
+  num_subjects?: number;
+  num_victims?: number;
+  // Scene
+  scene_safety?: string;
+  weather_conditions?: string;
+  lighting_conditions?: string;
+  // Operational
+  reporting_party?: string;
+  assigned_units?: string[];
+  juvenile_involved?: boolean;
+  fire_requested?: boolean;
+  le_notified?: boolean;
+  le_agency?: string;
+  source?: string;
+}
+
+/**
+ * Announce a dispatch event like a real human dispatcher would.
+ *
+ * Natural conversational flow with contractions, transitions, and
+ * contextual detail. Every available field is read — officers in the
+ * field depend on this information.
+ *
+ * Example:
+ * "Dispatch on call 42. We've got a domestic violence, priority one.
+ *  You're going to 500 South State Street, apartment 204, that's the Marriott.
+ *  Cross street's going to be 500 East. You're in Zone 3, Beat Alpha.
+ *  Caller says there's a male subject hitting a female in the parking lot.
+ *  Your reporting party is Jane Smith, she's the neighbor. She's still on the line.
+ *  We've got two subjects and one victim on scene.
+ *  Your suspect's a white male, red shirt, about 30 years old, last seen heading southbound.
+ *  There's a black Honda Civic in the lot, plate Alpha Bravo Charlie 1 2 3.
+ *  Adam-12 and Baker-7 are responding.
+ *  Just so you know, it's dark out there with rain.
+ *  Be advised, there's a juvenile involved.
+ *  Caution, armed subject reported. Prior D.V. at this location."
+ */
+export async function announceDispatchEvent(call: DispatchCallData): Promise<void> {
   if (!isVoiceEnabled() || !isSpeechAvailable()) return;
 
   const dedupKey = `dispatch:${call.id || 'unknown'}:${call.call_number || ''}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);
 
-  // Play info tone for dispatch confirmation
-  await playToneAsync('info');
+  const isP = call.vehicle_pursuit || call.foot_pursuit;
+  const tone = isP ? 'pursuit' : (call.priority === 'P1' ? 'code3' : 'info');
+  await playToneAsync(tone as any);
   await delay(TONE_GAP_MS);
 
-  const phrases: VoicePhrase[] = [{ text: naturalPhrase('DISPATCH') }];
-  if (call.call_number) phrases.push({ text: `Call ${call.call_number}.` });
+  const phrases: VoicePhrase[] = [];
+
+  // ── Opening ──
+  let opening = 'Dispatch';
+  if (call.call_number) opening += ` on call ${shortCallNumber(call.call_number)}`;
+  phrases.push({ text: opening + '.' });
+
+  // ── What type ──
   if (call.incident_type) {
-    // Convert snake_case incident types to natural spoken form
-    const type = call.incident_type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-    phrases.push({ text: `${type}.` });
+    let typeLine = `We've got a ${formatIncidentType(call.incident_type)}`;
+    if (call.priority) typeLine += `, ${call.priority}`;
+    phrases.push({ text: typeLine + '.' });
   }
-  if (call.priority === 'P1') phrases.push({ text: naturalPhrase('PRIORITY ONE') });
-  else if (call.priority === 'P2') phrases.push({ text: naturalPhrase('PRIORITY TWO') });
-  if (call.location) phrases.push({ text: `At ${call.location}.` });
 
-  // Append safety flags
+  // ── Where — full location with building/floor/room detail ──
+  if (call.location) {
+    let locLine = `You're going to ${call.location}`;
+    if (call.apartment) locLine += `, apartment ${call.apartment}`;
+    else if (call.location_room) locLine += `, room ${call.location_room}`;
+    if (call.location_floor) locLine += `, ${ordinal(call.location_floor)} floor`;
+    if (call.location_building) locLine += `, ${call.location_building} building`;
+    if (call.business_name || call.property_name || call.client_name) {
+      const name = call.business_name || call.property_name || call.client_name;
+      locLine += `, that's the ${name}`;
+    }
+    phrases.push({ text: locLine + '.' });
+  }
+
+  if (call.cross_street) {
+    phrases.push({ text: `Cross street's going to be ${call.cross_street}.` });
+  }
+
+  // ── Zone / Beat / Section ──
+  const areaParts: string[] = [];
+  if (call.zone_name || call.zone) areaParts.push(`Zone ${call.zone_name || call.zone}`);
+  if (call.beat_name || call.beat) areaParts.push(`Beat ${call.beat_name || call.beat}`);
+  if (call.section_name) areaParts.push(`${call.section_name} section`);
+  if (areaParts.length > 0) {
+    phrases.push({ text: `You're in ${areaParts.join(', ')}.` });
+  }
+
+  // ── Narrative — the story ──
+  const narr = call.narrative || call.description || call.comments || '';
+  if (narr) {
+    const cleaned = truncateForSpeech(narr, 180);
+    // Use "Caller says" or "We're told" to make it conversational
+    const callerVerb = call.source === 'phone' ? 'Caller says' :
+                       call.source === 'walk_in' ? 'Walk-in reports' :
+                       call.source === 'officer' ? 'Officer reports' : 'We\'re told';
+    phrases.push({ text: `${callerVerb} ${cleaned.charAt(0).toLowerCase()}${cleaned.slice(1)}${cleaned.endsWith('.') ? '' : '.'}` });
+  }
+
+  // ── Who called ──
+  if (call.caller_name && call.caller_name !== 'Anonymous') {
+    let rpLine = `Your reporting party is ${call.caller_name}`;
+    if (call.caller_relationship) rpLine += `, ${call.caller_relationship}`;
+    if (call.caller_phone) rpLine += `. Callback number is ${formatPhone(call.caller_phone)}`;
+    phrases.push({ text: rpLine + '.' });
+  } else if (call.reporting_party) {
+    phrases.push({ text: `Reporting party is ${call.reporting_party}.` });
+  }
+
+  // ── How many people ──
+  if (call.num_subjects || call.num_victims) {
+    const parts: string[] = [];
+    if (call.num_subjects) parts.push(`${call.num_subjects} subject${call.num_subjects > 1 ? 's' : ''}`);
+    if (call.num_victims) parts.push(`${call.num_victims} victim${call.num_victims > 1 ? 's' : ''}`);
+    phrases.push({ text: `We've got ${parts.join(' and ')} on scene.` });
+  }
+
+  // ── Suspect description ──
+  const suspDesc = call.suspect_description || call.subject_description;
+  if (suspDesc) {
+    let suspLine = `Your suspect's described as ${suspDesc}`;
+    if (call.direction_of_travel) suspLine += `, last seen heading ${call.direction_of_travel}`;
+    phrases.push({ text: suspLine + '.' });
+  }
+
+  // ── Vehicle ──
+  if (call.vehicle_description || call.vehicle_plate) {
+    let vLine = call.vehicle_description ? `There's a ${call.vehicle_description}` : 'Vehicle';
+    if (call.vehicle_plate) vLine += `, plate ${spellOutPlate(call.vehicle_plate)}`;
+    if (call.direction_of_travel && !suspDesc) vLine += `, last seen heading ${call.direction_of_travel}`;
+    phrases.push({ text: vLine + '.' });
+  }
+
+  // ── Who's responding ──
+  if (call.assigned_units && call.assigned_units.length > 0) {
+    const unitList = call.assigned_units.length <= 2
+      ? call.assigned_units.join(' and ')
+      : call.assigned_units.slice(0, -1).join(', ') + ', and ' + call.assigned_units[call.assigned_units.length - 1];
+    phrases.push({ text: `${unitList} responding.` });
+  }
+
+  // ── Scene conditions ──
+  if (call.lighting_conditions || call.weather_conditions) {
+    const conds: string[] = [];
+    if (call.lighting_conditions) conds.push(`it's ${call.lighting_conditions.toLowerCase()}`);
+    if (call.weather_conditions) conds.push(call.weather_conditions.toLowerCase());
+    phrases.push({ text: `Just so you know, ${conds.join(' with ')}.` });
+  }
+  if (call.scene_safety) {
+    phrases.push({ text: `Scene safety note: ${call.scene_safety}.` });
+  }
+
+  // ── Additional context flags ──
+  if (call.juvenile_involved) {
+    phrases.push({ text: 'Be advised, there\'s a juvenile involved on this one.' });
+  }
+  if (call.alcohol_involved) {
+    phrases.push({ text: 'Alcohol is involved.' });
+  }
+  if (call.fire_requested) {
+    phrases.push({ text: 'Fire department has been requested and is en route.' });
+  }
+  if (call.ems_requested) {
+    phrases.push({ text: 'E.M.S. has been requested.' });
+  }
+  if (call.k9_requested) {
+    phrases.push({ text: 'K-9 unit has been requested.' });
+  }
+  if (call.le_notified && call.le_agency) {
+    phrases.push({ text: `${call.le_agency} has been notified and is aware.` });
+  } else if (call.le_notified) {
+    phrases.push({ text: 'Local law enforcement has been notified.' });
+  }
+
+  // ── Call source context ──
+  if (call.source === '911' || call.source === 'emergency') {
+    phrases.push({ text: 'This came in through 9-1-1.' });
+  } else if (call.source === 'alarm') {
+    phrases.push({ text: 'This is an alarm activation.' });
+  }
+
+  // ── Safety flags (last = sticks in memory) ──
   const safetyPhrases = buildCallPhrases(call);
-  if (safetyPhrases.length > 0) phrases.push(...safetyPhrases);
+  if (safetyPhrases.length > 0) {
+    // Add a transition before safety block
+    phrases.push({ text: 'Safety information follows.' });
+    for (const sp of safetyPhrases) {
+      phrases.push(sp);
+    }
+  }
 
-  enqueuePhrases(phrases);
+  // ── Closing ──
+  phrases.push({ text: 'Use caution.' });
+
+  enqueuePhrases(phrases, call.priority);
 }
 
 /**
- * Announce a new call arrival: "NEW CALL — [CALL NUMBER] — [INCIDENT TYPE]"
- * Plays a tone and announces call details. Used on call_created events.
+ * Announce a new call — full human readout for P1/P2, brief for P3/P4.
  */
-export async function announceNewCall(call: CallFlags & {
-  call_number?: string;
-  incident_type?: string;
-  priority?: string;
-}): Promise<void> {
+export async function announceNewCall(call: DispatchCallData): Promise<void> {
   if (!isVoiceEnabled() || !isSpeechAvailable()) return;
 
   const dedupKey = `newcall:${call.id || 'unknown'}:${call.call_number || ''}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);
 
-  // Play caution tone for new calls
-  await playToneAsync('caution');
+  const tone = call.priority === 'P1' ? 'code3' : call.priority === 'P2' ? 'warning' : 'caution';
+  await playToneAsync(tone);
   await delay(TONE_GAP_MS);
 
-  const phrases: VoicePhrase[] = [{ text: naturalPhrase('NEW CALL') }];
-  if (call.call_number) phrases.push({ text: `Call ${call.call_number}.` });
-  if (call.incident_type) {
-    const type = call.incident_type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-    phrases.push({ text: `${type}.` });
-  }
-  if (call.priority === 'P1') phrases.push({ text: naturalPhrase('PRIORITY ONE') });
-  else if (call.priority === 'P2') phrases.push({ text: naturalPhrase('PRIORITY TWO') });
+  const phrases: VoicePhrase[] = [];
+  const isHighPriority = call.priority === 'P1' || call.priority === 'P2';
 
-  // Append safety flags
+  // ── Opening ──
+  let opening = 'New call coming in';
+  if (call.call_number) opening += `, number ${shortCallNumber(call.call_number)}`;
+  phrases.push({ text: opening + '.' });
+
+  // ── Type ──
+  if (call.incident_type) {
+    let typeLine = `It's a ${formatIncidentType(call.incident_type)}`;
+    if (call.priority) typeLine += `, ${call.priority}`;
+    phrases.push({ text: typeLine + '.' });
+  }
+
+  // ── Location ──
+  if (call.location) {
+    let locLine = call.location;
+    if (call.apartment) locLine += `, apartment ${call.apartment}`;
+    else if (call.location_room) locLine += `, room ${call.location_room}`;
+    if (call.location_floor) locLine += `, ${ordinal(call.location_floor)} floor`;
+    if (call.business_name || call.property_name || call.client_name) {
+      locLine += `, at the ${call.business_name || call.property_name || call.client_name}`;
+    }
+    phrases.push({ text: locLine + '.' });
+  }
+
+  if (isHighPriority && call.cross_street) {
+    phrases.push({ text: `Cross street is ${call.cross_street}.` });
+  }
+
+  // Zone/Beat
+  const areaParts: string[] = [];
+  if (call.zone_name || call.zone) areaParts.push(`Zone ${call.zone_name || call.zone}`);
+  if (call.beat_name || call.beat) areaParts.push(`Beat ${call.beat_name || call.beat}`);
+  if (areaParts.length > 0) {
+    phrases.push({ text: areaParts.join(', ') + '.' });
+  }
+
+  // ── Narrative (ALL priorities get it now — officers need to know what they're walking into) ──
+  const narr = call.narrative || call.description || call.comments || '';
+  if (narr) {
+    const maxLen = isHighPriority ? 200 : 120;
+    const cleaned = truncateForSpeech(narr, maxLen);
+    const verb = call.source === 'phone' || call.source === '911' ? 'Caller says' :
+                 call.source === 'walk_in' ? 'Walk-in is reporting' :
+                 call.source === 'officer' ? 'Officer on scene reports' :
+                 call.source === 'alarm' ? 'Alarm company reports' : 'We\'re told';
+    phrases.push({ text: `${verb} ${cleaned.charAt(0).toLowerCase()}${cleaned.slice(1)}${cleaned.endsWith('.') ? '' : '.'}` });
+  }
+
+  // ── Caller info ──
+  if (call.caller_name && call.caller_name !== 'Anonymous') {
+    let rpLine = `Your reporting party is ${call.caller_name}`;
+    if (call.caller_relationship) rpLine += `, the ${call.caller_relationship}`;
+    if (call.caller_phone) rpLine += `. You can reach them at ${formatPhone(call.caller_phone)}`;
+    phrases.push({ text: rpLine + '.' });
+  } else if (call.source === 'phone' || call.source === '911') {
+    phrases.push({ text: 'Caller declined to give a name.' });
+  }
+
+  // ── People on scene ──
+  if (call.num_subjects || call.num_victims) {
+    const ppl: string[] = [];
+    if (call.num_subjects) ppl.push(`${call.num_subjects} subject${call.num_subjects > 1 ? 's' : ''}`);
+    if (call.num_victims) ppl.push(`${call.num_victims} victim${call.num_victims > 1 ? 's' : ''}`);
+    phrases.push({ text: `We're looking at ${ppl.join(' and ')} on scene.` });
+  }
+
+  // ── Suspect description (all priorities) ──
+  const suspDesc = call.suspect_description || call.subject_description;
+  if (suspDesc) {
+    let suspLine = `Your suspect's described as ${suspDesc}`;
+    if (call.direction_of_travel) suspLine += `, last seen heading ${call.direction_of_travel}`;
+    phrases.push({ text: suspLine + '.' });
+  }
+
+  // ── Vehicle (all priorities) ──
+  if (call.vehicle_description) {
+    let vLine = `There's a ${call.vehicle_description}`;
+    if (call.vehicle_plate) vLine += `, plate ${spellOutPlate(call.vehicle_plate)}`;
+    if (call.direction_of_travel && !suspDesc) vLine += `, last seen heading ${call.direction_of_travel}`;
+    phrases.push({ text: vLine + '.' });
+  }
+
+  // ── Additional context flags ──
+  if (call.juvenile_involved) {
+    phrases.push({ text: 'Be advised, there\'s a juvenile involved.' });
+  }
+  if (call.alcohol_involved) {
+    phrases.push({ text: 'Alcohol is a factor on this one.' });
+  }
+  if (call.drugs_involved) {
+    phrases.push({ text: 'Drugs are involved.' });
+  }
+
+  // ── Scene conditions (all priorities — officer safety) ──
+  if (call.lighting_conditions || call.weather_conditions) {
+    const conds: string[] = [];
+    if (call.lighting_conditions) conds.push(`it's ${call.lighting_conditions.toLowerCase()} out there`);
+    if (call.weather_conditions) conds.push(call.weather_conditions.toLowerCase());
+    phrases.push({ text: `Just so you know, ${conds.join(', with ')}.` });
+  }
+
+  // ── Call source context ──
+  if (call.source === '911' || call.source === 'emergency') {
+    phrases.push({ text: 'This came in through 9-1-1.' });
+  }
+
+  // ── Safety flags ──
   const safetyPhrases = buildCallPhrases(call);
-  if (safetyPhrases.length > 0) phrases.push(...safetyPhrases);
+  if (safetyPhrases.length > 0) {
+    phrases.push({ text: 'Safety information follows.' });
+    for (const sp of safetyPhrases) {
+      phrases.push(sp);
+    }
+  }
+
+  enqueuePhrases(phrases, call.priority);
+}
+
+// ─── Status / Unit / BOLO / Warrant Announcements ───────────
+
+/**
+ * Announce a call status change (dispatched, enroute, onscene, cleared, etc.).
+ * Plays an info tone then speaks the status label and call number.
+ */
+export async function announceStatusChange(call: any, newStatus: string): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const callNum = call?.call_number || call?.id || '';
+  const dedupKey = `status:${callNum}:${newStatus}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  const statusSentences: Record<string, string> = {
+    dispatched: 'has been dispatched',
+    enroute: 'is now enroute',
+    onscene: 'is on scene',
+    cleared: 'has been cleared',
+    closed: 'is now closed',
+    pending: 'is pending',
+    hold: 'is on hold',
+    cancelled: 'has been cancelled',
+    backup_enroute: 'has backup enroute',
+  };
+  const statusText = statusSentences[newStatus] || `is now ${newStatus}`;
+  const incidentType = call?.incident_type ? `, ${formatIncidentType(call.incident_type)}` : '';
+  const location = call?.location || call?.location_address || '';
+  const locText = location ? ` at ${abbreviateAddress(location)}` : '';
+
+  await playToneAsync('info');
+  await delay(TONE_GAP_MS);
+
+  const phrases: VoicePhrase[] = [
+    { text: `Call ${shortCallNumber(callNum)} ${statusText}${incidentType}${locText}.` }
+  ];
+
+  // On scene — read safety-critical info the officer needs RIGHT NOW
+  if (newStatus === 'onscene' && call) {
+    const suspDesc = call.suspect_description || call.subject_description;
+    if (suspDesc) {
+      phrases.push({ text: `Suspect is described as ${suspDesc}.` });
+    }
+    if (call.weapons_involved && call.weapons_involved !== 'None') {
+      phrases.push({ text: `Be advised, weapons involved: ${call.weapons_involved}.` });
+    }
+    if (call.num_subjects && call.num_subjects > 1) {
+      phrases.push({ text: `${call.num_subjects} subjects on scene.` });
+    }
+    if (call.scene_safety) {
+      phrases.push({ text: `Scene safety: ${call.scene_safety}.` });
+    }
+  }
+
+  // Enroute — remind of location and key details
+  if (newStatus === 'enroute' && call) {
+    if (call.cross_street) {
+      phrases.push({ text: `Cross street is ${call.cross_street}.` });
+    }
+    const narr = call.narrative || call.description;
+    if (narr) {
+      const cleaned = truncateForSpeech(narr, 80);
+      phrases.push({ text: cleaned.endsWith('.') ? cleaned : cleaned + '.' });
+    }
+  }
 
   enqueuePhrases(phrases);
+}
+
+/**
+ * Announce units dispatched to a call.
+ * Speaks each unit call sign and the call number.
+ */
+export async function announceUnitDispatched(call: any, units?: any[]): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const callNum = call?.call_number || call?.id || '';
+  const unitNames = units?.map((u: any) => u.call_sign || u.callSign || u.name).filter(Boolean).join(', ') || '';
+  const dedupKey = `unitdispatch:${callNum}:${unitNames}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('info');
+  await delay(TONE_GAP_MS);
+  const incType = call?.incident_type ? `, ${formatIncidentType(call.incident_type)}` : '';
+  const location = call?.location || call?.location_address || '';
+  const loc = location ? ` at ${abbreviateAddress(location)}` : '';
+  const phrases: VoicePhrase[] = [];
+
+  // Who's going where
+  const msg = unitNames
+    ? `${unitNames} has been dispatched to call ${shortCallNumber(callNum)}${incType}${loc}.`
+    : `Units dispatched to call ${shortCallNumber(callNum)}${incType}${loc}.`;
+  phrases.push({ text: msg });
+
+  // Critical safety info for the responding officer
+  if (call) {
+    if (call.weapons_involved && call.weapons_involved !== 'None') {
+      phrases.push({ text: `Be advised, weapons involved: ${call.weapons_involved}.` });
+    }
+    if (call.officer_safety_caution) {
+      phrases.push({ text: 'Officer safety caution, use caution on approach.' });
+    }
+    const suspDesc = call.suspect_description || call.subject_description;
+    if (suspDesc) {
+      phrases.push({ text: `Suspect is described as ${suspDesc}.` });
+    }
+    if (call.vehicle_description) {
+      let vLine = `Vehicle is a ${call.vehicle_description}`;
+      if (call.vehicle_plate) vLine += `, plate ${spellOutPlate(call.vehicle_plate)}`;
+      phrases.push({ text: vLine + '.' });
+    }
+    if (call.cross_street) {
+      phrases.push({ text: `Cross street is ${call.cross_street}.` });
+    }
+  }
+
+  enqueuePhrases(phrases);
+}
+
+/**
+ * Announce a new BOLO (Be On the Lookout) alert.
+ * Plays a warning tone then speaks the BOLO title/description.
+ */
+export async function announceBolo(data: any): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `bolo:${data.id || data.title || Date.now()}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('warning');
+  await delay(TONE_GAP_MS);
+
+  const description = data.title || data.description || '';
+  const phrases: VoicePhrase[] = [{ text: 'Attention all units. Be on the lookout.' }];
+  if (description) phrases.push({ text: description + '.' });
+  enqueuePhrases(phrases, 'P2');
+}
+
+/**
+ * Announce an active warrant hit from safety screening.
+ * Plays an alarm tone then speaks the subject name and warrant count.
+ */
+export async function announceWarrantHit(data: any): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const personName = data.personName || data.person_name || 'Unknown subject';
+  const dedupKey = `warrant:${personName}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('alarm');
+  await delay(TONE_GAP_MS);
+
+  const count = data.warrantCount || data.warrant_count || 0;
+  const phrases: VoicePhrase[] = [{ text: `Caution. We have an active warrant hit on ${personName}.` }];
+  if (count > 1) {
+    phrases.push({ text: `${count} active warrants on file.` });
+  }
+  enqueuePhrases(phrases, 'P1');
+}
+
+// ─── All-Units / Backup / Pursuit Announcements ─────────────
+
+/**
+ * Announce an all-units broadcast. Plays the distinctive 3-note ascending tone.
+ * Used for BOLOs, APBs, and supervisor-initiated all-channel alerts.
+ */
+export async function announceAllUnits(message: string): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `allunits:${message.slice(0, 50)}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('all_units');
+  await delay(TONE_GAP_MS);
+  enqueuePhrases([{ text: `All units, ${message}.` }], 'P1');
+}
+
+/**
+ * Announce a backup request with location.
+ * Uses code3 tone and P1 priority for immediate attention.
+ */
+export async function announceBackupRequest(data: {
+  officer_name?: string;
+  location?: string;
+  call_number?: string;
+  urgency?: 'routine' | 'urgent' | 'emergency';
+}): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `backup:${data.officer_name || ''}:${data.call_number || Date.now()}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  const tone = data.urgency === 'emergency' ? 'officer_down' : 'code3';
+  await playToneAsync(tone);
+  await delay(TONE_GAP_MS);
+
+  const parts: string[] = ['Backup requested'];
+  if (data.officer_name) parts.push(`by ${data.officer_name}`);
+  if (data.call_number) parts.push(`call ${shortCallNumber(data.call_number)}`);
+  if (data.location) parts.push(abbreviateAddress(data.location));
+
+  const priority = data.urgency === 'emergency' ? 'PANIC' : 'P1';
+  enqueuePhrases([{ text: parts.join(', ') + '.' }], priority);
+}
+
+/**
+ * Announce a pursuit update (vehicle or foot).
+ * Uses the pursuit siren tone.
+ */
+export async function announcePursuit(data: {
+  type: 'vehicle' | 'foot';
+  direction?: string;
+  speed?: string;
+  location?: string;
+  description?: string;
+  call_number?: string;
+}): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `pursuit:${data.call_number || Date.now()}:${data.location || ''}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('pursuit');
+  await delay(TONE_GAP_MS);
+
+  const parts: string[] = [data.type === 'foot' ? 'Foot pursuit' : 'Vehicle pursuit'];
+  if (data.direction) parts.push(data.direction);
+  if (data.location) parts.push(abbreviateAddress(data.location));
+  if (data.speed) parts.push(`${data.speed} miles per hour`);
+  if (data.description) parts.push(data.description);
+
+  enqueuePhrases([{ text: parts.join(', ') + '.' }], 'P1');
 }
 
 // ─── Demo / Test ─────────────────────────────────────────────
@@ -662,4 +1912,168 @@ export async function demoAllVoiceAlerts(): Promise<void> {
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Truncate narrative text to a max character length for speech.
+ * Cuts at sentence boundaries when possible. Strips HTML tags.
+ * Dispatcher reads only the essential first sentence or two.
+ */
+function truncateForSpeech(text: string, maxLen: number): string {
+  // Strip HTML tags if any
+  let clean = text.replace(/<[^>]*>/g, '').trim();
+  if (clean.length <= maxLen) return clean;
+
+  // Try to cut at a sentence boundary
+  const truncated = clean.substring(0, maxLen);
+  const lastPeriod = truncated.lastIndexOf('.');
+  const lastExclaim = truncated.lastIndexOf('!');
+  const cutPoint = Math.max(lastPeriod, lastExclaim);
+
+  if (cutPoint > maxLen * 0.4) {
+    return truncated.substring(0, cutPoint + 1);
+  }
+  // Fall back to word boundary
+  const lastSpace = truncated.lastIndexOf(' ');
+  return lastSpace > 0 ? truncated.substring(0, lastSpace) : truncated;
+}
+
+/**
+ * Spell out a license plate using NATO phonetic alphabet.
+ * "ABC123" → "Alpha Bravo Charlie, one two three"
+ * This is how real dispatchers read plates over radio — letter by letter.
+ */
+function spellOutPlate(plate: string): string {
+  const NATO: Record<string, string> = {
+    A: 'Alpha', B: 'Bravo', C: 'Charlie', D: 'Delta', E: 'Echo',
+    F: 'Foxtrot', G: 'Golf', H: 'Hotel', I: 'India', J: 'Juliet',
+    K: 'Kilo', L: 'Lima', M: 'Mike', N: 'November', O: 'Oscar',
+    P: 'Papa', Q: 'Quebec', R: 'Romeo', S: 'Sierra', T: 'Tango',
+    U: 'Uniform', V: 'Victor', W: 'Whiskey', X: 'X-ray', Y: 'Yankee',
+    Z: 'Zulu',
+  };
+
+  const letters: string[] = [];
+  const numbers: string[] = [];
+  let inNumbers = false;
+
+  for (const ch of plate.toUpperCase().replace(/[^A-Z0-9]/g, '')) {
+    if (/[A-Z]/.test(ch)) {
+      if (inNumbers && numbers.length > 0) {
+        letters.push(numbers.join(' '));
+        numbers.length = 0;
+      }
+      inNumbers = false;
+      letters.push(NATO[ch] || ch);
+    } else {
+      inNumbers = true;
+      numbers.push(ch);
+    }
+  }
+  if (numbers.length > 0) letters.push(numbers.join(' '));
+
+  return letters.join(', ');
+}
+
+/**
+ * Format incident types for natural speech.
+ * "suspicious_activity" → "Suspicious Activity"
+ * "dv_assault" → "DV Assault"
+ * Common dispatch abbreviations are preserved (DV, DUI, etc.)
+ */
+function formatIncidentType(type: string): string {
+  const INCIDENT_SPEECH: Record<string, string> = {
+    'dv_assault': 'Domestic violence assault',
+    'dv_dispute': 'Domestic violence dispute',
+    'dui': 'D.U.I.',
+    'dwi': 'D.W.I.',
+    'agg_assault': 'Aggravated assault',
+    'owi': 'Operating while intoxicated',
+    'hit_and_run': 'Hit and run',
+    'shots_fired': 'Shots fired',
+    'man_with_gun': 'Man with a gun',
+    'man_with_knife': 'Man with a knife',
+    'armed_robbery': 'Armed robbery',
+    'subject_stop': 'Subject stop',
+    'traffic_stop': 'Traffic stop',
+    'welfare_check': 'Welfare check',
+    'missing_person': 'Missing person',
+    'suicidal_subject': 'Suicidal subject',
+    'stolen_vehicle': 'Stolen vehicle',
+    'noise_complaint': 'Noise complaint',
+    'suspicious_vehicle': 'Suspicious vehicle',
+    'suspicious_activity': 'Suspicious activity',
+    'trespass': 'Trespass',
+    'burglary_in_progress': 'Burglary in progress',
+    'alarm_residential': 'Residential alarm',
+    'alarm_commercial': 'Commercial alarm',
+  };
+
+  const lower = type.toLowerCase();
+  if (INCIDENT_SPEECH[lower]) return INCIDENT_SPEECH[lower];
+
+  // Default: replace underscores with spaces, title case
+  return type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+/**
+ * Shorten call numbers for speech: "2024-0042" → "42", "CFS-2024-123" → "123".
+ * Dispatchers say the short number, not the full prefix.
+ */
+function shortCallNumber(num: string): string {
+  // Strip leading prefix (CFS-, year-, etc.) and leading zeros
+  return num.replace(/^[A-Z]+-/i, '').replace(/^\d{4}-?0*/, '') || num;
+}
+
+/**
+ * Convert floor number to ordinal: "1" → "first", "2" → "second", "3" → "third", "12" → "12th".
+ */
+function ordinal(floor: string): string {
+  const n = parseInt(floor, 10);
+  if (isNaN(n)) return floor;
+  const words: Record<number, string> = {
+    1: 'first', 2: 'second', 3: 'third', 4: 'fourth', 5: 'fifth',
+    6: 'sixth', 7: 'seventh', 8: 'eighth', 9: 'ninth', 10: 'tenth',
+  };
+  if (words[n]) return words[n];
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+/**
+ * Format phone number for natural speech.
+ * "8015551234" → "801, 555, 1234"
+ * Dispatchers read phone numbers in groups with pauses.
+ */
+function formatPhone(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length === 10) {
+    return `${digits.slice(0, 3)}, ${digits.slice(3, 6)}, ${digits.slice(6)}`;
+  }
+  if (digits.length === 11 && digits[0] === '1') {
+    return `${digits.slice(1, 4)}, ${digits.slice(4, 7)}, ${digits.slice(7)}`;
+  }
+  return phone; // return as-is if non-standard
+}
+
+/**
+ * Abbreviate addresses for speech brevity:
+ * "500 South State Street, Salt Lake City, UT 84111" → "500 South State"
+ * Strip city/state/zip, shorten common suffixes.
+ */
+function abbreviateAddress(addr: string): string {
+  // Remove city, state, zip after comma
+  let short = addr.split(',')[0].trim();
+  // Shorten common suffixes
+  short = short
+    .replace(/\bStreet\b/i, 'St')
+    .replace(/\bAvenue\b/i, 'Ave')
+    .replace(/\bBoulevard\b/i, 'Blvd')
+    .replace(/\bDrive\b/i, 'Dr')
+    .replace(/\bCourt\b/i, 'Ct')
+    .replace(/\bPlace\b/i, 'Pl')
+    .replace(/\bLane\b/i, 'Ln')
+    .replace(/\bCircle\b/i, 'Cir');
+  return short;
 }

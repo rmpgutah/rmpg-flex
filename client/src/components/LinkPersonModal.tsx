@@ -153,7 +153,15 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
 
   const parseFlags = (flags?: string): string[] => {
     if (!flags) return [];
-    try { return JSON.parse(flags); } catch { return []; }
+    try {
+      const parsed = JSON.parse(flags);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.map((item: unknown) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object' && 'type' in item) return String((item as any).type);
+        return String(item ?? '');
+      }).filter(Boolean);
+    } catch { return []; }
   };
 
   return (

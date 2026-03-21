@@ -540,7 +540,7 @@ function authenticateClient(client: WSClient, token: string): boolean {
     try {
       const db = database.getDb();
       const unit = db.prepare(
-        "SELECT call_sign FROM units WHERE officer_user_id = ? AND status != 'off_duty' LIMIT 1"
+        "SELECT call_sign FROM units WHERE officer_id = ? AND status != 'off_duty' LIMIT 1"
       ).get(decoded.userId) as { call_sign: string } | undefined;
       if (unit?.call_sign) {
         client.unitCallSign = unit.call_sign;
@@ -595,6 +595,10 @@ function handleClientMessage(clientId: string, message: any): void {
       break;
 
     case 'unsubscribe':
+      if (!client.authenticated) {
+        safeSend(client.ws, JSON.stringify({ type: 'error', message: 'Authentication required' }));
+        return;
+      }
       if (message.channel) {
         client.channels.delete(message.channel);
       }
@@ -1638,6 +1642,12 @@ function handlePrivateCallAccept(receiverClientId: string, callId: string): void
 function handlePrivateCallDecline(clientId: string, callId: string, autoDecline = false): void {
   const call = activeCalls.get(callId);
   if (!call || call.status !== 'ringing') return;
+
+  // Authorization: only the intended receiver (or auto-decline timer) can decline
+  if (!autoDecline && clientId !== call.receiverClientId) {
+    console.warn(`[PrivateCall] Unauthorized decline attempt: ${clientId} tried to decline call ${callId} intended for ${call.receiverClientId}`);
+    return;
+  }
 
   // Clear auto-decline timer
   if (call.declineTimer) clearTimeout(call.declineTimer);

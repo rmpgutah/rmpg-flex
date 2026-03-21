@@ -172,6 +172,41 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
 
     const created = db.prepare('SELECT * FROM field_interviews WHERE id = ?').get(result.lastInsertRowid) as any;
     if (!created) { res.status(500).json({ error: 'Failed to retrieve created field interview' }); return; }
+
+    // FI → Person record auto-sync
+    let linkedPersonId = person_id || null;
+    if (linkedPersonId) {
+      // Person ID provided — update their updated_at as a "last contact" marker
+      db.prepare(`UPDATE persons SET updated_at = ? WHERE id = ?`).run(now, linkedPersonId);
+    } else if (subject_first_name && subject_last_name && subject_dob) {
+      // No person_id — try to find or create a matching person record
+      const existingPerson = db.prepare(
+        `SELECT id FROM persons WHERE first_name = ? AND last_name = ? AND dob = ? LIMIT 1`
+      ).get(subject_first_name, subject_last_name, subject_dob) as any;
+
+      if (existingPerson) {
+        linkedPersonId = existingPerson.id;
+        db.prepare(`UPDATE persons SET updated_at = ? WHERE id = ?`).run(now, linkedPersonId);
+      } else {
+        // Auto-create a basic person record from FI data
+        const personResult = db.prepare(`
+          INSERT INTO persons (first_name, last_name, dob, address, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(
+          subject_first_name, subject_last_name, subject_dob,
+          location || null,
+          now, now
+        );
+        linkedPersonId = personResult.lastInsertRowid;
+      }
+
+      // Link the person back to this FI
+      if (linkedPersonId) {
+        db.prepare(`UPDATE field_interviews SET person_id = ? WHERE id = ?`).run(linkedPersonId, created.id);
+        created.person_id = linkedPersonId;
+      }
+    }
+
     // Broadcast minimal payload — no subject PII over WebSocket
     if (created.fi_number) {
       broadcast('alerts', 'fi_created', {

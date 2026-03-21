@@ -50,10 +50,13 @@ export default function ActivityDetailTab({ activity }: Props) {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <h3 className="field-label text-brand-400 flex items-center gap-1.5">
-        <Activity className="w-3 h-3" />
-        Recent Activity
-      </h3>
+      <div className="section-header">
+        <Activity className="w-3.5 h-3.5 section-icon" />
+        <h3>Recent Activity</h3>
+        <span className="badge-pill text-[9px] px-1.5 py-0.5 bg-rmpg-700/50 text-rmpg-300 border border-rmpg-600 font-mono">
+          {activity.length}
+        </span>
+      </div>
 
       {/* Timeline */}
       {activity.length > 0 ? (
@@ -66,7 +69,7 @@ export default function ActivityDetailTab({ activity }: Props) {
               const actionColor = ACTION_COLORS[entry.action] || ACTION_COLORS.default;
 
               return (
-                <div key={entry.id} className="relative pl-8 pb-4">
+                <div key={entry.id} className="cascade-item relative pl-8 pb-4">
                   {/* Timeline dot */}
                   <span
                     className={`absolute left-1.5 top-1.5 ${ledClass(entry.action)}`}
@@ -75,7 +78,7 @@ export default function ActivityDetailTab({ activity }: Props) {
                   {/* Card */}
                   <div className={`panel-beveled p-2 bg-surface-base ${borderColor(entry.action)}`}>
                     <div className="flex items-center justify-between gap-2 mb-0.5">
-                      <span className="panel-inset px-1.5 py-0.5">
+                      <span className="badge-pill panel-inset px-1.5 py-0.5">
                         <span
                           className={`font-mono uppercase text-[10px] font-bold tracking-wider ${actionColor}`}
                         >
@@ -97,9 +100,10 @@ export default function ActivityDetailTab({ activity }: Props) {
           </div>
         </div>
       ) : (
-        <div className="panel-beveled p-8 text-center bg-surface-base">
-          <Activity className="w-8 h-8 text-rmpg-600 mx-auto mb-2" />
+        <div className="empty-state-container panel-beveled p-8 text-center bg-surface-base">
+          <Activity className="w-8 h-8 text-rmpg-600 mx-auto mb-2 empty-state-icon" />
           <p className="text-xs text-rmpg-400">No recent activity</p>
+          <p className="text-[10px] text-rmpg-600 mt-1">Activity will appear here as events are logged.</p>
         </div>
       )}
     </div>

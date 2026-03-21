@@ -8,9 +8,10 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { validateParamId } from '../middleware/sanitize';
-import { auditLog } from '../utils/auditLogger';
+import { auditLog, securityEvent } from '../utils/auditLogger';
 import { broadcast, broadcastDispatchUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
+import { generateCallNumber, generateCaseNumber } from '../utils/caseNumbers';
 import config from '../config';
 
 const router = Router();
@@ -109,6 +110,12 @@ router.post('/routes', requireRole(...WRITE_ROLES), (req: Request, res: Response
 
     if (!officer_id || !route_date) {
       res.status(400).json({ error: 'officer_id and route_date are required' });
+      return;
+    }
+
+    // IDOR protection: only supervisors+ can create/modify routes for other officers
+    if (Number(officer_id) !== req.user!.userId && !['admin', 'manager', 'supervisor', 'dispatcher'].includes(req.user!.role)) {
+      res.status(403).json({ error: 'You can only modify your own routes' });
       return;
     }
 
@@ -275,16 +282,28 @@ router.get('/', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: R
   try {
     const db = getDb();
     const parsedOid = req.query.officer_id ? Number(req.query.officer_id) : null;
-    const officerId = (parsedOid != null && !isNaN(parsedOid)) ? parsedOid : req.user!.userId;
+    let officerId = (parsedOid != null && !isNaN(parsedOid)) ? parsedOid : req.user!.userId;
+
+    // IDOR protection: officers can only list their own queue
+    if (req.user!.role === 'officer' && officerId !== req.user!.userId) {
+      officerId = req.user!.userId;
+    }
+
     const date = req.query.date as string || localToday();
     const status = req.query.status as string | undefined;
 
-    let sql = 'SELECT * FROM serve_queue WHERE officer_id = ? AND serve_date = ?';
+    // Show all pending/in_progress jobs regardless of date (they shouldn't disappear),
+    // plus any jobs matching the selected date. This ensures active PSO calls
+    // always appear even if their serve_date is in the past.
+    let sql = `SELECT * FROM serve_queue WHERE officer_id = ? AND (
+      serve_date = ? OR status IN ('pending', 'in_progress')
+    )`;
     const params: any[] = [officerId, date];
 
-    if (status) {
-      sql += ' AND status = ?';
-      params.push(status);
+    if (status && status !== 'all') {
+      sql = 'SELECT * FROM serve_queue WHERE officer_id = ? AND status = ?';
+      params.length = 0;
+      params.push(officerId, status);
     }
 
     sql += ' ORDER BY sort_order ASC, priority DESC, deadline ASC';
@@ -315,6 +334,20 @@ router.post('/', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
       return res.status(400).json({ error: 'recipient_name is required' });
     }
 
+    // Validate GPS coordinates if provided
+    if (recipient_lat !== undefined && recipient_lat !== null) {
+      const lat = parseFloat(recipient_lat);
+      if (isNaN(lat) || lat < -90 || lat > 90) {
+        return res.status(400).json({ error: 'recipient_lat must be between -90 and 90' });
+      }
+    }
+    if (recipient_lng !== undefined && recipient_lng !== null) {
+      const lng = parseFloat(recipient_lng);
+      if (isNaN(lng) || lng < -180 || lng > 180) {
+        return res.status(400).json({ error: 'recipient_lng must be between -180 and 180' });
+      }
+    }
+
     const info = db.prepare(`
       INSERT INTO serve_queue (
         sm_job_id, officer_id, serve_date, recipient_name,
@@ -336,10 +369,10 @@ router.post('/', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
       service_instructions ?? '', notes ?? '', now, now,
     );
 
-    const id = info.lastInsertRowid;
+    const id = Number(info.lastInsertRowid);
     const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(id);
-    auditLog(req, 'CREATE', 'serve_queue', String(id), `Created serve job for ${recipient_name || 'unknown'}`);
-    broadcast('serve', 'serve_created', job);
+    auditLog(req, 'CREATE', 'serve_queue', id, `Created serve job for ${recipient_name || 'unknown'}`);
+    broadcast('serve', 'serve:created', job);
 
     res.status(201).json(job);
   } catch (err: any) {
@@ -356,6 +389,13 @@ router.get('/:id', validateParamId, requireRole(...WRITE_ROLES, 'dispatcher'), (
 
     if (!job) {
       res.status(404).json({ error: 'Serve job not found' });
+      return;
+    }
+
+    // IDOR protection: officers can only view their own assigned jobs
+    if (req.user!.role === 'officer' && job.officer_id && job.officer_id !== req.user!.userId) {
+      securityEvent('idor_rejected', 'warning', { userId: req.user!.userId, route: 'GET /serve/:id', targetResource: req.params.id, targetOwnerId: job.officer_id, ip: req.ip });
+      res.status(403).json({ error: 'You can only view jobs assigned to you' });
       return;
     }
 
@@ -394,6 +434,36 @@ router.put('/:id', validateParamId, requireRole(...WRITE_ROLES), (req: Request, 
       return;
     }
 
+    // IDOR protection: officers can only modify their own assigned jobs
+    if (req.user!.role === 'officer' && existing.officer_id && existing.officer_id !== req.user!.userId) {
+      securityEvent('idor_rejected', 'warning', { userId: req.user!.userId, route: 'PUT /serve/:id', targetResource: req.params.id, targetOwnerId: existing.officer_id, ip: req.ip });
+      res.status(403).json({ error: 'You can only modify jobs assigned to you' });
+      return;
+    }
+
+    // Validate status enum if provided
+    const VALID_SERVE_STATUSES = ['pending', 'in_progress', 'served', 'failed', 'on_hold', 'cancelled'];
+    if (req.body.status !== undefined && !VALID_SERVE_STATUSES.includes(req.body.status)) {
+      res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_SERVE_STATUSES.join(', ')}` });
+      return;
+    }
+
+    // Validate GPS coordinates if provided
+    if (req.body.recipient_lat !== undefined && req.body.recipient_lat !== null) {
+      const lat = parseFloat(req.body.recipient_lat);
+      if (isNaN(lat) || lat < -90 || lat > 90) {
+        res.status(400).json({ error: 'recipient_lat must be between -90 and 90' });
+        return;
+      }
+    }
+    if (req.body.recipient_lng !== undefined && req.body.recipient_lng !== null) {
+      const lng = parseFloat(req.body.recipient_lng);
+      if (isNaN(lng) || lng < -180 || lng > 180) {
+        res.status(400).json({ error: 'recipient_lng must be between -180 and 180' });
+        return;
+      }
+    }
+
     const updatableFields = [
       'officer_id', 'serve_date', 'recipient_name', 'recipient_address',
       'recipient_city', 'recipient_state', 'recipient_zip', 'recipient_lat', 'recipient_lng',
@@ -425,7 +495,7 @@ router.put('/:id', validateParamId, requireRole(...WRITE_ROLES), (req: Request, 
 
     const updated = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id);
     auditLog(req, 'UPDATE', 'serve_queue', String(req.params.id), `Updated serve job: ${setClauses.map(c => c.split(' =')[0]).join(', ')}`);
-    broadcast('serve', 'serve_updated', updated);
+    broadcast('serve', 'serve:updated', updated);
 
     res.json(updated);
   } catch (err: any) {
@@ -444,10 +514,31 @@ router.post('/:id/attempt', validateParamId, requireRole(...WRITE_ROLES), (req: 
       return;
     }
 
+    // IDOR protection: officers can only record attempts on their own assigned jobs
+    if (req.user!.role === 'officer' && job.officer_id && job.officer_id !== req.user!.userId) {
+      securityEvent('idor_rejected', 'warning', { userId: req.user!.userId, route: 'POST /serve/:id/attempt', targetResource: req.params.id, targetOwnerId: job.officer_id, ip: req.ip });
+      res.status(403).json({ error: 'You can only record attempts on jobs assigned to you' });
+      return;
+    }
+
     const {
       result, gps_lat, gps_lng, notes, method, recipient_response,
       photo_url, signature_url, mileage,
     } = req.body;
+
+    // Validate GPS coordinates for serve attempt location tracking
+    if (gps_lat !== undefined && gps_lat !== null) {
+      const lat = parseFloat(gps_lat);
+      if (isNaN(lat) || lat < -90 || lat > 90) {
+        return res.status(400).json({ error: 'gps_lat must be between -90 and 90' });
+      }
+    }
+    if (gps_lng !== undefined && gps_lng !== null) {
+      const lng = parseFloat(gps_lng);
+      if (isNaN(lng) || lng < -180 || lng > 180) {
+        return res.status(400).json({ error: 'gps_lng must be between -180 and 180' });
+      }
+    }
 
     // Enforce posting requirements: need 2+ prior failed attempts
     if (result === 'posted') {
@@ -474,7 +565,7 @@ router.post('/:id/attempt', validateParamId, requireRole(...WRITE_ROLES), (req: 
     }
 
     // Atomic: insert attempt + update job status in one transaction
-    let attemptId: number | bigint = 0;
+    let attemptId: number = 0;
     db.transaction(() => {
       const attemptInfo = db.prepare(`
         INSERT INTO serve_attempts (
@@ -488,7 +579,7 @@ router.post('/:id/attempt', validateParamId, requireRole(...WRITE_ROLES), (req: 
         notes ?? '', method ?? 'personal',
         photo_url ? JSON.stringify([photo_url]) : '[]', signature_url ?? null, now,
       );
-      attemptId = attemptInfo.lastInsertRowid;
+      attemptId = Number(attemptInfo.lastInsertRowid);
 
       db.prepare(`
         UPDATE serve_queue SET
@@ -505,7 +596,7 @@ router.post('/:id/attempt', validateParamId, requireRole(...WRITE_ROLES), (req: 
     const dueDiligenceComplete = attemptNumber >= 2 && newStatus !== 'served';
 
     auditLog(req, 'CREATE', 'serve_queue', String(req.params.id), `Attempt #${attemptNumber}: ${result}`);
-    broadcast('serve', 'serve_attempt', { job: updatedJob, attempt });
+    broadcast('serve', 'serve:attempt', { job: updatedJob, attempt });
 
     // Sync back to linked dispatch call (atomic to prevent race conditions)
     try {
@@ -570,7 +661,189 @@ router.post('/:id/attempt', validateParamId, requireRole(...WRITE_ROLES), (req: 
       // Sync failure must never prevent the attempt from being recorded
     }
 
-    res.status(201).json({ attempt, job: updatedJob, dueDiligenceComplete });
+    // ── Auto-create new dispatch call for failed PSO serve attempts ──
+    // When a serve attempt fails (not served/posted) and retries remain,
+    // automatically create a new dispatch call and close the old one.
+    let newCallId: number | null = null;
+    let newCallNumber: string | null = null;
+    try {
+      const RETRYABLE_RESULTS = ['no_answer', 'refused', 'wrong_address', 'moved', 'other'];
+      const currentResult = result || 'no_answer';
+      const updatedJobForAutoDispatch = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
+
+      if (
+        RETRYABLE_RESULTS.includes(currentResult) &&
+        attemptNumber < (job.max_attempts || 3) &&
+        updatedJobForAutoDispatch?.call_id
+      ) {
+        const originalCall = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(updatedJobForAutoDispatch.call_id) as any;
+
+        if (originalCall && originalCall.incident_type === 'pso_client_request') {
+          const autoDispatchTx = db.transaction(() => {
+            const newCallNum = generateCallNumber(db);
+            const newCaseNumber = generateCaseNumber(db, 'general');
+            const newAttemptNum = (originalCall.pso_attempt_number || 1) + 1;
+
+            // Create new dispatch call copying all PSO fields from original
+            const insertResult = db.prepare(`
+              INSERT INTO calls_for_service (
+                call_number, case_number, incident_type, priority, status,
+                caller_name, caller_phone, caller_relationship, caller_address,
+                location_address, property_id, latitude, longitude,
+                description, source, dispatcher_id,
+                cross_street, location_building, location_floor, location_room,
+                zone_beat, section_id, zone_id, beat_id, dispatch_code,
+                section_name, zone_name, beat_name, beat_descriptor,
+                contract_id, client_id,
+                pso_service_type, pso_authorization, pso_requestor_name,
+                pso_requestor_phone, pso_requestor_email, pso_billing_code,
+                pso_attempt_number, pso_service_windows,
+                process_service_type, process_served_to, process_served_address,
+                parent_call_id, notes, created_at
+              ) VALUES (
+                ?, ?, ?, ?, 'pending',
+                ?, ?, ?, ?,
+                ?, ?, ?, ?,
+                ?, ?, ?,
+                ?, ?, ?, ?,
+                ?, ?, ?, ?, ?,
+                ?, ?, ?, ?,
+                ?, ?,
+                ?, ?, ?,
+                ?, ?, ?,
+                ?, ?,
+                ?, ?, ?,
+                ?, ?, ?
+              )
+            `).run(
+              newCallNum, newCaseNumber, originalCall.incident_type, originalCall.priority,
+              originalCall.caller_name, originalCall.caller_phone, originalCall.caller_relationship, originalCall.caller_address,
+              originalCall.location_address, originalCall.property_id, originalCall.latitude, originalCall.longitude,
+              originalCall.description, originalCall.source || 'auto_redispatch', req.user!.userId,
+              originalCall.cross_street, originalCall.location_building, originalCall.location_floor, originalCall.location_room,
+              originalCall.zone_beat, originalCall.section_id, originalCall.zone_id, originalCall.beat_id, originalCall.dispatch_code,
+              originalCall.section_name, originalCall.zone_name, originalCall.beat_name, originalCall.beat_descriptor,
+              originalCall.contract_id, originalCall.client_id,
+              originalCall.pso_service_type, originalCall.pso_authorization, originalCall.pso_requestor_name,
+              originalCall.pso_requestor_phone, originalCall.pso_requestor_email, originalCall.pso_billing_code,
+              newAttemptNum, originalCall.pso_service_windows,
+              originalCall.process_service_type, originalCall.process_served_to, originalCall.process_served_address,
+              originalCall.id,
+              JSON.stringify([{
+                id: String(Date.now()),
+                author: 'System',
+                text: `Auto-created from failed serve attempt #${attemptNumber} on call ${originalCall.call_number}. Result: ${currentResult}`,
+                timestamp: now,
+                created_at: now,
+              }]),
+              now,
+            );
+
+            const newId = Number(insertResult.lastInsertRowid);
+
+            // Create a corresponding case record
+            db.prepare(`
+              INSERT INTO cases (case_number, title, case_type, status, priority, summary, linked_calls, created_by, created_at, updated_at, opened_date)
+              VALUES (?, ?, 'general', 'open', 'normal', ?, ?, ?, ?, ?, ?)
+            `).run(
+              newCaseNumber,
+              `PSO RE-DISPATCH — ${originalCall.location_address || 'Unknown location'}`,
+              `Auto re-dispatch from ${originalCall.call_number} after failed attempt #${attemptNumber}`,
+              JSON.stringify([newId]),
+              req.user!.userId, now, now, localToday(),
+            );
+
+            // Back-link case_id
+            const caseRow = db.prepare('SELECT id FROM cases WHERE case_number = ?').get(newCaseNumber) as any;
+            if (caseRow) {
+              db.prepare('UPDATE calls_for_service SET case_id = ? WHERE id = ?').run(caseRow.id, newId);
+            }
+
+            // Close the original dispatch call
+            const oldNotes: any[] = [];
+            try {
+              const parsed = JSON.parse(originalCall.notes || '[]');
+              if (Array.isArray(parsed)) oldNotes.push(...parsed);
+            } catch { /* ignore */ }
+            oldNotes.push({
+              id: String(Date.now() + 1),
+              author: 'System',
+              text: `Closed — new dispatch ${newCallNum} created for next attempt`,
+              timestamp: now,
+              created_at: now,
+            });
+
+            db.prepare(`
+              UPDATE calls_for_service SET
+                status = 'closed',
+                closed_at = ?,
+                disposition = ?,
+                notes = ?,
+                updated_at = ?
+              WHERE id = ?
+            `).run(now, `Re-dispatched - ${currentResult}`, JSON.stringify(oldNotes), now, originalCall.id);
+
+            // Record in call_visit_history for the closed call
+            const currentAttempt = originalCall.pso_attempt_number || 1;
+            let assignedCallSigns: string[] = [];
+            try {
+              const parsedIds = JSON.parse(originalCall.assigned_unit_ids || '[]');
+              const unitIds = (Array.isArray(parsedIds) ? parsedIds : []).filter((uid: any) => typeof uid === 'number' && !isNaN(uid));
+              if (unitIds.length) {
+                const units = db.prepare(`SELECT call_sign FROM units WHERE id IN (${unitIds.map(() => '?').join(',')})`).all(...unitIds) as any[];
+                assignedCallSigns = units.map((u: any) => u.call_sign).filter(Boolean);
+              }
+            } catch { /* ignore */ }
+
+            db.prepare(`
+              INSERT INTO call_visit_history
+                (call_id, visit_number, status, dispatched_at, enroute_at, onscene_at, cleared_at, closed_at,
+                 assigned_units, responding_vehicle_id, starting_mileage, ending_mileage, disposition, note, created_by, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              originalCall.id, currentAttempt, 'closed',
+              originalCall.dispatched_at, originalCall.enroute_at, originalCall.onscene_at, originalCall.cleared_at, now,
+              JSON.stringify(assignedCallSigns), originalCall.responding_vehicle_id || null,
+              originalCall.starting_mileage ?? null, originalCall.ending_mileage ?? null,
+              `Re-dispatched - ${currentResult}`, `Auto-closed: new dispatch ${newCallNum} created`, req.user?.fullName || 'System', now,
+            );
+
+            // Activity logs
+            db.prepare(`
+              INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+              VALUES (?, 'call_created', 'call', ?, ?, ?)
+            `).run(req.user!.userId, newId, `Auto re-dispatch ${newCallNum} from ${originalCall.call_number} (attempt #${attemptNumber} result: ${currentResult})`, req.ip || 'unknown');
+
+            db.prepare(`
+              INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+              VALUES (?, 'call_closed', 'call', ?, ?, ?)
+            `).run(req.user!.userId, originalCall.id, `Auto-closed: re-dispatched as ${newCallNum}`, req.ip || 'unknown');
+
+            // Update serve_queue to point to the new call
+            db.prepare('UPDATE serve_queue SET call_id = ?, updated_at = ? WHERE id = ?').run(newId, now, req.params.id);
+
+            return { newId, newCallNum };
+          });
+
+          const result2 = autoDispatchTx();
+          newCallId = result2.newId;
+          newCallNumber = result2.newCallNum;
+
+          // Broadcast both events (outside transaction)
+          const closedCall = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(originalCall.id);
+          const newCall = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(newCallId);
+          broadcastDispatchUpdate({ action: 'call_updated', call: closedCall });
+          broadcastDispatchUpdate({ action: 'call_created', call: newCall });
+
+          console.log(`[Serve] Auto re-dispatch: ${originalCall.call_number} → ${newCallNumber} (attempt #${attemptNumber} result: ${currentResult})`);
+        }
+      }
+    } catch (autoDispatchErr) {
+      console.error('[Serve] Auto re-dispatch failed:', (autoDispatchErr as Error)?.message);
+      // Auto-dispatch failure must never prevent the attempt from being recorded
+    }
+
+    res.status(201).json({ attempt, job: updatedJob, dueDiligenceComplete, newCallId, newCallNumber });
   } catch (err: any) {
     console.error('[SERVE] Attempt error:', err);
     res.status(500).json({ error: 'Failed to record attempt' });

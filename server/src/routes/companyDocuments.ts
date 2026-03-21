@@ -5,6 +5,7 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 router.use(authenticateToken);
@@ -61,9 +62,15 @@ router.get('/:id', validateParamId, (req: Request, res: Response) => {
       LEFT JOIN users u ON d.created_by = u.id
       LEFT JOIN attachments a ON d.file_id = a.file_id
       WHERE d.id = ?
-    `).get(docId);
+    `).get(docId) as any;
 
     if (!doc) {
+      res.status(404).json({ error: 'Document not found' });
+      return;
+    }
+    // Non-admins cannot access unpublished documents
+    const isAdmin = ['admin', 'manager'].includes(req.user?.role || '');
+    if (!isAdmin && doc.published !== 1) {
       res.status(404).json({ error: 'Document not found' });
       return;
     }
@@ -118,6 +125,8 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
     `).get(result.lastInsertRowid);
     if (!doc) { res.status(500).json({ error: 'Failed to retrieve created document' }); return; }
 
+    auditLog(req, 'CREATE', 'company_documents', Number(result.lastInsertRowid), `Created document: ${title}`);
+
     res.status(201).json(doc || { id: result.lastInsertRowid });
   } catch (error: any) {
     console.error('Create company document error:', error?.message || 'Unknown error');
@@ -169,6 +178,8 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Reque
 
     values.push(id);
     db.prepare(`UPDATE company_documents SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+
+    auditLog(req, 'UPDATE', 'company_documents', id, `Updated document: ${title || 'untitled'}`);
 
     const doc = db.prepare(`
       SELECT d.*, u.full_name as creator_name,
@@ -222,6 +233,9 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
     }
 
     db.prepare('DELETE FROM company_documents WHERE id = ?').run(id);
+
+    auditLog(req, 'DELETE', 'company_documents', id, `Deleted document: ${doc.title}`);
+
     res.json({ message: 'Document deleted' });
   } catch (error: any) {
     console.error('Delete company document error:', error?.message || 'Unknown error');

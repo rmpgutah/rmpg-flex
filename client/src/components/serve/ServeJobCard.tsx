@@ -221,6 +221,38 @@ export default React.memo(function ServeJobCard({
             </div>
           )}
 
+          {/* Dispatch Chain (parent/child re-dispatches) */}
+          {linkedCall && (linkedCall.parentCall || (linkedCall.childCalls && linkedCall.childCalls.length > 0)) && (
+            <div className="p-2 rounded border mb-2" style={{ background: '#d4a01708', borderColor: '#d4a01720' }}>
+              <div className="text-[10px] font-bold text-amber-300 uppercase mb-1">Dispatch Chain</div>
+              <div className="space-y-0.5">
+                {linkedCall.parentCall && (
+                  <button
+                    className="w-full text-left text-[10px] px-1.5 py-0.5 rounded hover:bg-rmpg-700/40 transition-colors flex items-center gap-1.5"
+                    onClick={(e) => { e.stopPropagation(); window.open(`/dispatch?call=${linkedCall.parentCall!.call_number}`, '_blank'); }}
+                  >
+                    <span className="font-bold text-amber-300 text-[8px]">PARENT</span>
+                    <span className="font-mono text-blue-400">{linkedCall.parentCall.call_number}</span>
+                    <span className="text-rmpg-400">#{linkedCall.parentCall.pso_attempt_number || 1}</span>
+                    <span className="text-rmpg-300 font-mono">{(linkedCall.parentCall.status || '').toUpperCase()}</span>
+                  </button>
+                )}
+                {(linkedCall.childCalls || []).map((child: any) => (
+                  <button
+                    key={child.id}
+                    className="w-full text-left text-[10px] px-1.5 py-0.5 rounded hover:bg-rmpg-700/40 transition-colors flex items-center gap-1.5"
+                    onClick={(e) => { e.stopPropagation(); window.open(`/dispatch?call=${child.call_number}`, '_blank'); }}
+                  >
+                    <span className="font-bold text-cyan-300 text-[8px]">FOLLOW-UP</span>
+                    <span className="font-mono text-blue-400">{child.call_number}</span>
+                    <span className="text-rmpg-400">#{child.pso_attempt_number || 1}</span>
+                    <span className="text-rmpg-300 font-mono">{(child.status || '').toUpperCase()}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Case / court / jurisdiction */}
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-rmpg-300">
             {job.case_number && (

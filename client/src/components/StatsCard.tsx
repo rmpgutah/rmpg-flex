@@ -74,13 +74,20 @@ export default function StatsCard({
     <div
       onClick={onClick}
       className={`
-        relative overflow-hidden p-3 border-l-4 panel-beveled
+        relative overflow-hidden p-3 border-l-4 panel-beveled shimmer-on-hover card-glass stat-pod
         ${ACCENT_COLORS[accent] || ACCENT_COLORS.blue}
         bg-surface-base
         ${onClick ? 'cursor-pointer hover:bg-surface-raised transition-all duration-150' : ''}
         ${className}
       `}
     >
+      {/* Ambient glow accent at top */}
+      <div className="absolute top-0 left-0 right-0 h-[1px] opacity-40" style={{
+        background: `linear-gradient(90deg, transparent, ${
+          accent === 'red' ? '#dc2626' : accent === 'green' ? '#22c55e' : accent === 'amber' ? '#f59e0b' : accent === 'purple' ? '#a855f7' : '#1a5a9e'
+        }40, transparent)`
+      }} />
+
       <div className="flex items-start justify-between">
         <div>
           <p className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">
@@ -88,7 +95,11 @@ export default function StatsCard({
           </p>
           <AnimatedValue value={value} className={`text-xl font-bold font-mono ${VALUE_COLORS[accent] || VALUE_COLORS.blue}`} />
         </div>
-        <div className={`p-1.5 panel-inset ${ICON_COLORS[accent] || ICON_COLORS.blue}`}>
+        <div className={`p-1.5 panel-inset ${ICON_COLORS[accent] || ICON_COLORS.blue}`} style={{
+          boxShadow: `0 0 8px ${
+            accent === 'red' ? 'rgba(220,38,38,0.15)' : accent === 'green' ? 'rgba(34,197,94,0.15)' : accent === 'amber' ? 'rgba(245,158,11,0.15)' : accent === 'purple' ? 'rgba(168,85,247,0.15)' : 'rgba(26,90,158,0.15)'
+          }`
+        }}>
           <Icon className="w-4 h-4" />
         </div>
       </div>

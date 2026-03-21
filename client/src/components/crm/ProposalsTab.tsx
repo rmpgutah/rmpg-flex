@@ -163,7 +163,6 @@ export default function ProposalsTab() {
     try {
       await apiFetch(`/api/crm/proposals/${id}/stage`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ stage }),
       });
       addToast(`Proposal ${toDisplayLabel(stage)}`, 'success');
@@ -183,7 +182,6 @@ export default function ProposalsTab() {
     try {
       await apiFetch(`/api/crm/proposals/${selectedProposal.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editForm),
       });
       addToast('Proposal updated', 'success');
@@ -207,7 +205,6 @@ export default function ProposalsTab() {
     try {
       await apiFetch('/api/crm/proposals', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...form,
           lead_id: form.lead_id ? Number(form.lead_id) : undefined,

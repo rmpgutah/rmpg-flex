@@ -22,6 +22,7 @@ import EmptyState from '../components/EmptyState';
 import SplitPanel from '../components/SplitPanel';
 import CollapsibleSection from '../components/CollapsibleSection';
 import CriminalHistorySection from '../components/CriminalHistorySection';
+import { localToday } from '../utils/dateUtils';
 import ArrestFormModal from '../components/ArrestFormModal';
 import type { ArrestFormData } from '../components/ArrestFormModal';
 import { useWebSocket } from '../context/WebSocketContext';
@@ -191,7 +192,7 @@ function exportCsv(records: ArrestRecord[]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `arrest-records-${new Date().toISOString().split('T')[0]}.csv`;
+  a.download = `arrest-records-${localToday()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

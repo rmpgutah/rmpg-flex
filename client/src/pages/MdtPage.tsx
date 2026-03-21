@@ -24,6 +24,7 @@ import {
   Loader2,
   X,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import type { CallForService, Unit, CallStatus } from '../types';
 import { apiFetch } from '../hooks/useApi';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -36,7 +37,7 @@ import { mapDbCall } from './dispatch/utils/dispatchMappers';
 import StatusBadge from '../components/StatusBadge';
 import PremiseHistory from '../components/PremiseHistory';
 import NcicQueryPanel from '../components/NcicQueryPanel';
-import { formatDateTime } from '../utils/dateUtils';
+import { formatDateTime, localToday } from '../utils/dateUtils';
 import WarrantAlertBanner, { type WarrantAlert } from '../components/WarrantAlertBanner';
 
 // ── Quick Status Buttons ────────────────────────────────────
@@ -233,6 +234,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
 // ── Component ──────────────────────────────────────────────
 
 export default function MdtPage() {
+  const navigate = useNavigate();
   const isMobile = useIsMobile();
   const gps = useGpsTracking();
   const [warrantAlerts, setWarrantAlerts] = useState<WarrantAlert[]>([]);
@@ -272,7 +274,7 @@ export default function MdtPage() {
     setGeneratingReport(true);
     try {
       const userId = localStorage.getItem('rmpg_user_id') || '';
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localToday();
       const data = await apiFetch<any>(`/reports/shift-activity/${userId}?date=${today}`);
       // Generate a text-based report and download as PDF-like text file
       const lines: string[] = [
@@ -517,7 +519,7 @@ export default function MdtPage() {
   }
 
   return (
-    <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
+    <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden app-grid-bg">
       {/* ── Error Toast ── */}
       {errorToast && (
         <div className="absolute top-2 right-2 z-50 flex items-center gap-2 px-3 py-2 bg-red-900/90 border border-red-700 text-red-200 text-[10px] font-bold shadow-lg"
@@ -591,6 +593,76 @@ export default function MdtPage() {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* ── Quick-Action Bar: 10-Codes & Shortcuts ─────── */}
+      <div
+        className="flex-shrink-0 flex items-center gap-1.5 px-4 py-1.5 overflow-x-auto"
+        style={{ background: '#111b27', borderBottom: '1px solid #1e3048' }}
+      >
+        {/* 10-code status buttons */}
+        <button
+          onClick={() => handleUnitStatus('available')}
+          disabled={!myUnit}
+          className="px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors border"
+          style={{
+            background: myUnit?.status === 'available' ? '#22c55e' : 'transparent',
+            color: myUnit?.status === 'available' ? '#000' : '#22c55e',
+            borderColor: '#22c55e',
+            opacity: myUnit ? 1 : 0.4,
+          }}
+        >
+          10-8 In Service
+        </button>
+        <button
+          onClick={() => handleUnitStatus('off_duty')}
+          disabled={!myUnit}
+          className="px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors border"
+          style={{
+            background: myUnit?.status === 'off_duty' ? '#f59e0b' : 'transparent',
+            color: myUnit?.status === 'off_duty' ? '#000' : '#f59e0b',
+            borderColor: '#f59e0b',
+            opacity: myUnit ? 1 : 0.4,
+          }}
+        >
+          10-7 Out of Service
+        </button>
+        <button
+          onClick={() => handleUnitStatus('busy')}
+          disabled={!myUnit}
+          className="px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors border"
+          style={{
+            background: myUnit?.status === 'busy' ? '#ef4444' : 'transparent',
+            color: myUnit?.status === 'busy' ? '#000' : '#ef4444',
+            borderColor: '#ef4444',
+            opacity: myUnit ? 1 : 0.4,
+          }}
+        >
+          10-6 Busy
+        </button>
+
+        {/* Separator */}
+        <div className="w-px h-5 mx-1 flex-shrink-0" style={{ background: '#1e3048' }} />
+
+        {/* Navigation shortcuts */}
+        <button
+          onClick={() => navigate('/field-interviews?new=true')}
+          className="px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors border border-[#1e3048] bg-[#1a2636] hover:bg-[#243447] text-white"
+        >
+          New FI
+        </button>
+        <button
+          onClick={() => navigate('/citations?new=true')}
+          className="px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors border border-[#1e3048] bg-[#1a2636] hover:bg-[#243447] text-white"
+        >
+          New Citation
+        </button>
+        <button
+          onClick={() => navigate('/evidence?new=true')}
+          className="px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors border border-[#1e3048] bg-[#1a2636] hover:bg-[#243447] text-white"
+        >
+          Log Evidence
+        </button>
       </div>
 
       {/* ── Quick FI Form ── */}
