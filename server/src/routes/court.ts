@@ -81,7 +81,7 @@ router.get('/events', requireRole('admin', 'manager', 'supervisor', 'officer', '
       FROM court_events e
       LEFT JOIN persons p ON e.defendant_person_id = p.id
       ${where}
-      ORDER BY e.event_date ASC, e.event_time ASC
+      ORDER BY COALESCE(e.event_date, '9999-12-31') ASC, COALESCE(e.event_time, '23:59') ASC
       LIMIT ? OFFSET ?
     `).all(...params, limitNum, offset);
     res.json({ data: rows, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });

@@ -528,7 +528,12 @@ router.post('/:id/timeline', validateParamId, requireRole('admin', 'manager', 's
     const db = getDb();
     const user = req.user!;
     const { action = 'note', description } = req.body;
-    if (!description?.trim()) return res.status(400).json({ error: 'Description is required' });
+    if (!action?.trim()) return res.status(400).json({ error: 'action is required' });
+    if (!description?.trim()) return res.status(400).json({ error: 'description is required' });
+    const VALID_ACTIONS = ['note', 'intake', 'transfer', 'checkout', 'return', 'analysis_start', 'analysis_complete', 'exhibit_added', 'status_change', 'disposal'];
+    if (!VALID_ACTIONS.includes(action)) {
+      return res.status(400).json({ error: `Invalid action. Must be one of: ${VALID_ACTIONS.join(', ')}` });
+    }
 
     const caseIdNum = parseInt(req.params.id as string, 10);
     if (isNaN(caseIdNum)) { res.status(400).json({ error: 'Invalid case ID' }); return; }
@@ -1340,9 +1345,9 @@ router.post('/cases/:id/custody', validateParamId, (req: Request, res: Response)
       SELECT cl.*, fu.full_name as from_name, tu.full_name as to_name
       FROM forensic_custody_log cl LEFT JOIN users fu ON fu.id = cl.from_user_id
       LEFT JOIN users tu ON tu.id = cl.to_user_id WHERE cl.id = ?
-    `).get(result.lastInsertRowid);
+    `).get(Number(result.lastInsertRowid));
 
-    auditLog(req, 'CREATE' as any, 'forensic_custody' as any, result.lastInsertRowid, `Custody: ${action} for case ${caseId}`);
+    auditLog(req, 'CREATE' as any, 'forensic_custody' as any, Number(result.lastInsertRowid), `Custody: ${action} for case ${caseId}`);
     res.json(entry);
   } catch (error: any) {
     console.error('Custody create error:', error?.message);
@@ -1391,8 +1396,8 @@ router.post('/tools', requireRole('admin', 'manager'), (req: Request, res: Respo
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(name, category, serial_number||null, license_key||null, version||null, vendor||null,
       purchase_date||null, license_expiry||null, status||'active', assigned_to||null, notes||null, now, now);
-    const tool = db.prepare('SELECT * FROM forensic_tools WHERE id = ?').get(result.lastInsertRowid);
-    auditLog(req, 'CREATE' as any, 'forensic_tool' as any, result.lastInsertRowid, `Added tool: ${name}`);
+    const tool = db.prepare('SELECT * FROM forensic_tools WHERE id = ?').get(Number(result.lastInsertRowid));
+    auditLog(req, 'CREATE' as any, 'forensic_tool' as any, Number(result.lastInsertRowid), `Added tool: ${name}`);
     res.json(tool);
   } catch (error: any) {
     console.error('Create tool error:', error?.message);

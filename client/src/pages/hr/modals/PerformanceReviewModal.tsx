@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, TrendingUp, Star } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { localToday } from '../../../utils/dateUtils';
 
 interface UserOption {
   id: string;
@@ -43,7 +44,7 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
   const [cycles, setCycles] = useState<ReviewCycle[]>([]);
   const [employeeId, setEmployeeId] = useState(review?.employee_id || '');
   const [cycleId, setCycleId] = useState<number | null>(review?.cycle_id || null);
-  const [reviewDate, setReviewDate] = useState(review?.review_date || new Date().toISOString().split('T')[0]);
+  const [reviewDate, setReviewDate] = useState(review?.review_date || localToday());
   const [overallRating, setOverallRating] = useState(review?.overall_rating || 0);
   const [strengths, setStrengths] = useState(review?.strengths || '');
   const [areasForImprovement, setAreasForImprovement] = useState(review?.areas_for_improvement || '');
@@ -53,8 +54,8 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
   const [error, setError] = useState('');
 
   useEffect(() => {
-    apiFetch<UserOption[]>('/hr/employees').then(setUsers).catch(err => console.warn('[API] Data load failed:', err));
-    apiFetch<ReviewCycle[]>('/hr/review-cycles').then(setCycles).catch(err => console.warn('[API] Data load failed:', err));
+    apiFetch<UserOption[]>('/hr/employees').then(setUsers).catch(err => { console.warn('[HR] Employee load failed:', err); setError('Failed to load employee list'); });
+    apiFetch<ReviewCycle[]>('/hr/review-cycles').then(setCycles).catch(err => { console.warn('[HR] Review cycles load failed:', err); });
   }, []);
 
   const handleSubmit = async () => {

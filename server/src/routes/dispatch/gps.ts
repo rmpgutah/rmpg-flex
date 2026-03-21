@@ -229,6 +229,30 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
   }
 });
 
+// GET /api/dispatch/gps/latest - Get the most recent GPS position for each active unit
+router.get('/gps/latest', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT u.id as unit_id, u.call_sign, u.status, u.latitude, u.longitude,
+        u.gps_source, u.gps_updated_at,
+        usr.full_name as officer_name, usr.badge_number,
+        c.call_number, c.incident_type as current_call_type, c.location_address as current_call_location
+      FROM units u
+      LEFT JOIN users usr ON u.officer_id = usr.id
+      LEFT JOIN calls_for_service c ON u.current_call_id = c.id
+      WHERE u.latitude IS NOT NULL AND u.longitude IS NOT NULL
+        AND u.status NOT IN ('off_duty', 'out_of_service')
+      ORDER BY u.call_sign
+    `).all();
+
+    res.json(rows);
+  } catch (error: any) {
+    console.error('GPS latest error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // GET /api/dispatch/gps/my-unit - Get current user's assigned unit
 router.get('/gps/my-unit', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {

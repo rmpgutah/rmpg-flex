@@ -253,6 +253,7 @@ export default function ForensicLabPage() {
   const [cases, setCases] = useState<ForensicCase[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterType, setFilterType] = useState('');
@@ -303,8 +304,10 @@ export default function ForensicLabPage() {
       ]);
       setCases(casesRes.data || []);
       setStats(statsRes);
-    } catch (err) {
+      setFetchError(null);
+    } catch (err: any) {
       console.error('Fetch forensic cases error:', err);
+      setFetchError(err?.message || 'Failed to load forensic cases');
     } finally {
       setLoading(false);
     }
@@ -1719,6 +1722,14 @@ export default function ForensicLabPage() {
             {loading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 size={20} className="animate-spin text-brand-400" />
+              </div>
+            ) : fetchError ? (
+              <div className="panel-beveled bg-surface-sunken p-8 text-center">
+                <AlertTriangle size={32} className="text-amber-400 mx-auto mb-3" />
+                <p className="text-sm text-rmpg-300">{fetchError}</p>
+                <button onClick={() => fetchCases()} className="mt-3 toolbar-btn text-xs">
+                  <RefreshCw size={12} /> Retry
+                </button>
               </div>
             ) : cases.length === 0 ? (
               <div className="panel-beveled bg-surface-sunken p-8 text-center">

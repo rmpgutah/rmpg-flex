@@ -293,9 +293,12 @@ export default function CustomReportBuilder() {
             </div>
 
             <div className="flex justify-end mt-4">
-              <button onClick={runQuery} disabled={loading} className="toolbar-btn toolbar-btn-primary">
+              <button onClick={runQuery} disabled={loading || selectedCols.length === 0} className="toolbar-btn toolbar-btn-primary">
                 {loading ? 'Running...' : 'Run Query'} <Play className="w-3 h-3" />
               </button>
+              {selectedCols.length === 0 && (
+                <p className="text-amber-400 text-[10px] mt-1">Select at least one column before running the query.</p>
+              )}
             </div>
             {error && <p className="text-red-400 text-[10px]">{error}</p>}
           </div>

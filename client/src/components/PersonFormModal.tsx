@@ -604,12 +604,13 @@ export default function PersonFormModal({
                 <div className="relative mt-1">
                   <input
                     name="ssn_full"
-                    type={showSSN ? 'text' : 'password'}
+                    type="text"
                     className="input-dark pr-9 font-mono tracking-wider"
                     placeholder="XXX-XX-XXXX"
                     maxLength={11}
-                    value={form.ssn_full}
+                    value={showSSN ? form.ssn_full : form.ssn_full.replace(/\d(?=.{4,})/g, 'X')}
                     onChange={handleSSNChange}
+                    onFocus={() => setShowSSN(true)}
                     autoComplete="off"
                   />
                   <button

@@ -46,7 +46,9 @@ function nextDarNumber(): string {
 router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { status, officer_id, property_id, date_from, date_to, search, page = '1', limit = '50' } = req.query;
+    const { status, officer_id, property_id, date_from, date_to, start_date, end_date, search, page = '1', limit = '50' } = req.query;
+    const effectiveDateFrom = date_from || start_date;
+    const effectiveDateTo = date_to || end_date;
     const pageNum = Math.min(1000, Math.max(1, parseInt(page as string, 10) || 1));
     const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
@@ -68,7 +70,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: 
     if (date_to) { where += ' AND d.shift_date <= ?'; params.push(date_to); }
     if (search) {
       where += " AND (d.dar_number LIKE ? ESCAPE '\\' OR d.officer_name LIKE ? ESCAPE '\\' OR d.property_name LIKE ? ESCAPE '\\' OR d.activities_narrative LIKE ? ESCAPE '\\')";
-      const s = `%${escapeLike(String(search))}%`; params.push(s, s, s, s);
+      const s = `%${escapeLike(String(search).trim())}%`; params.push(s, s, s, s);
     }
 
     const total = (db.prepare(`SELECT COUNT(*) as count FROM daily_activity_reports d ${where}`).get(...params) as any)?.count || 0;

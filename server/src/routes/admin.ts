@@ -1,4 +1,7 @@
 import { Router, Request, Response } from 'express';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { validateParamId } from '../middleware/sanitize';
@@ -75,7 +78,7 @@ router.post('/clients', (req: Request, res: Response) => {
       account_manager, priority_client, client_since,
     } = req.body;
 
-    if (!name) {
+    if (!name?.trim()) {
       res.status(400).json({ error: 'name is required' });
       return;
     }
@@ -165,6 +168,12 @@ router.put('/clients/:id', (req: Request, res: Response) => {
       billing_cycle, billing_day, discount_percent, late_fee_percent,
       account_manager, priority_client, client_since,
     } = req.body;
+
+    // Reject blank name on update
+    if ('name' in req.body && !req.body.name?.trim()) {
+      res.status(400).json({ error: 'name cannot be empty' });
+      return;
+    }
 
     // Build dynamic SET clause — only update fields explicitly provided
     const cFields: string[] = [];
@@ -321,7 +330,7 @@ router.post('/call-templates', (req: Request, res: Response) => {
     const db = getDb();
     const { name, incident_type, priority, description_template, default_notes, source } = req.body;
 
-    if (!name || !incident_type) {
+    if (!name?.trim() || !incident_type?.trim()) {
       res.status(400).json({ error: 'name and incident_type are required' });
       return;
     }
@@ -359,6 +368,11 @@ router.put('/call-templates/:id', (req: Request, res: Response) => {
     const existing = db.prepare('SELECT * FROM call_templates WHERE id = ?').get(req.params.id) as any;
     if (!existing) {
       res.status(404).json({ error: 'Call template not found' });
+      return;
+    }
+
+    if ('name' in req.body && !req.body.name?.trim()) {
+      res.status(400).json({ error: 'name cannot be empty' });
       return;
     }
 
@@ -644,7 +658,7 @@ router.post('/radio-channels', (req: Request, res: Response) => {
     const db = getDb();
     const { id, label, freq } = req.body;
 
-    if (!id || !label) {
+    if (!id?.trim() || !label?.trim()) {
       res.status(400).json({ error: 'id and label are required' });
       return;
     }
@@ -697,6 +711,12 @@ router.put('/radio-channels/:key', (req: Request, res: Response) => {
     }
 
     const { label, freq, is_active, sort_order } = req.body;
+
+    if (label !== undefined && !label?.trim()) {
+      res.status(400).json({ error: 'label cannot be empty' });
+      return;
+    }
+
     let meta: any = {};
     try { meta = JSON.parse(existing.config_value); } catch { /* */ }
 
@@ -1139,7 +1159,7 @@ router.put('/users/:id/role', rateLimit({ maxRequests: 5, windowMs: 60000 }), re
     const { role } = req.body;
     const ip = String(req.ip || 'unknown');
 
-    const validRoles = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager', 'human_resources'];
+    const validRoles = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager', 'human_resources', 'client_viewer'];
     if (!role || !validRoles.includes(role)) {
       res.status(400).json({ error: 'Invalid role' });
       return;
@@ -1238,6 +1258,39 @@ router.put('/users/:id/status', requireRole('admin', 'manager'), (req: Request, 
     res.json({ message: `${user.full_name}'s status changed from ${oldStatus} to ${status}.`, oldStatus, newStatus: status });
   } catch (error: any) {
     console.error('Change status error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/admin/system-health — DB health check
+router.get('/system-health', requireRole('admin'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const adminDir = path.dirname(fileURLToPath(import.meta.url));
+    
+    const dbPath = path.resolve(adminDir, '../../data/rmpg-flex.db');
+
+    let dbSizeBytes = 0;
+    try { dbSizeBytes = fs.statSync(dbPath).size; } catch { /* DB might be elsewhere */ }
+
+    const tables = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`).all() as { name: string }[];
+    const tableCounts: Record<string, number> = {};
+    for (const t of tables) {
+      try { tableCounts[t.name] = (db.prepare(`SELECT COUNT(*) as cnt FROM "${t.name}"`).get() as any).cnt; } catch { tableCounts[t.name] = -1; }
+    }
+
+    const lastBackup = db.prepare(`SELECT value FROM system_config WHERE key = 'last_backup_time'`).get() as any;
+
+    res.json({
+      data: {
+        db_size_mb: Math.round(dbSizeBytes / 1024 / 1024 * 100) / 100,
+        table_count: tables.length,
+        table_row_counts: tableCounts,
+        last_backup: lastBackup?.value || null,
+      },
+    });
+  } catch (error: any) {
+    console.error('System health error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

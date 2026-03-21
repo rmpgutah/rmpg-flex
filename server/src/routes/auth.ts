@@ -56,6 +56,42 @@ import {
 } from '../utils/passwordExpiry';
 import { validateEmail, validatePhone } from '../utils/inputValidation';
 
+// ─── Progressive delay tracker for brute-force mitigation ─────
+// Tracks failed login attempts per IP and adds increasing delay (500ms * failCount, max 5s)
+const loginFailCounts = new Map<string, { count: number; windowStart: number }>();
+const LOGIN_FAIL_WINDOW_MS = 15 * 60 * 1000; // 15-minute window
+
+// Cleanup stale entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of loginFailCounts) {
+    if (now - entry.windowStart > LOGIN_FAIL_WINDOW_MS) {
+      loginFailCounts.delete(key);
+    }
+  }
+}, 5 * 60 * 1000);
+
+function recordLoginFailure(ip: string): number {
+  const now = Date.now();
+  const entry = loginFailCounts.get(ip);
+  if (entry && now - entry.windowStart < LOGIN_FAIL_WINDOW_MS) {
+    entry.count++;
+    return entry.count;
+  }
+  loginFailCounts.set(ip, { count: 1, windowStart: now });
+  return 1;
+}
+
+function clearLoginFailures(ip: string): void {
+  loginFailCounts.delete(ip);
+}
+
+function getProgressiveDelay(ip: string): number {
+  const entry = loginFailCounts.get(ip);
+  if (!entry) return 0;
+  return Math.min(entry.count * 500, 5000); // 500ms per fail, max 5 seconds
+}
+
 const router = Router();
 
 // Prevent browsers and proxies from caching auth responses (tokens, user data)
@@ -271,9 +307,10 @@ function issueTokens(user: any, ip: string, userAgent: string, deviceFingerprint
 // ═══════════════════════════════════════════════════════
 router.post('/login', authIpRateLimit, authRateLimit, async (req: Request, res: Response) => {
   try {
-    const { username, password, deviceFingerprint } = req.body;
+    const { username: rawUsername, password, deviceFingerprint } = req.body;
     const ip = req.ip || 'unknown';
     const userAgent = req.headers['user-agent'] || 'unknown';
+    const username = typeof rawUsername === 'string' ? rawUsername.trim() : rawUsername;
 
     if (!username || !password) {
       res.status(400).json({ error: 'Username and password are required' });
@@ -334,6 +371,13 @@ router.post('/login', authIpRateLimit, authRateLimit, async (req: Request, res: 
     const validPassword = bcryptjs.compareSync(password, user.password_hash);
     if (!validPassword) {
       logLoginAttempt(username, ip, false, 'invalid_password', userAgent, deviceFingerprint);
+      recordLoginFailure(ip);
+
+      // Progressive delay — slows down brute-force attempts (500ms * failCount, max 5s)
+      const progressiveDelay = getProgressiveDelay(ip);
+      if (progressiveDelay > 0) {
+        await new Promise(resolve => setTimeout(resolve, progressiveDelay));
+      }
 
       const lockoutWindow = new Date(
         Date.now() - config.security.lockoutDurationMinutes * 60 * 1000
@@ -447,6 +491,7 @@ router.post('/login', authIpRateLimit, authRateLimit, async (req: Request, res: 
     // Check trusted device — if trusted and 2FA is already set up, skip 2FA
     if (has2FA && deviceFingerprint && isDeviceTrusted(user.id, deviceFingerprint)) {
       // Trusted device — skip 2FA, log success
+      clearLoginFailures(ip);
       logLoginAttempt(username, ip, true, undefined, userAgent, deviceFingerprint);
 
       // Detect new device and send notification
@@ -518,6 +563,7 @@ router.post('/login', authIpRateLimit, authRateLimit, async (req: Request, res: 
     }
 
     // ── No 2FA — issue full tokens ──────────────────────
+    clearLoginFailures(ip);
     logLoginAttempt(username, ip, true, undefined, userAgent, deviceFingerprint);
     const tokens = issueTokens(user, ip, userAgent, deviceFingerprint);
     res.json(tokens);

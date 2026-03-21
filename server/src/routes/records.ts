@@ -101,7 +101,7 @@ router.get('/persons', requireRole('admin', 'manager', 'supervisor', 'officer', 
     }
     if (search) {
       whereClause += " AND (first_name LIKE ? ESCAPE '\\' OR last_name LIKE ? ESCAPE '\\' OR (first_name || ' ' || last_name) LIKE ? ESCAPE '\\' OR phone LIKE ? ESCAPE '\\' OR dl_number LIKE ? ESCAPE '\\')";
-      const s = `%${escapeLike(String(search))}%`;
+      const s = `%${escapeLike(String(search).trim())}%`;
       params.push(s, s, s, s, s);
     }
 
@@ -694,7 +694,7 @@ router.get('/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer',
     }
     if (search) {
       whereClause += " AND (v.plate_number LIKE ? ESCAPE '\\' OR v.make LIKE ? ESCAPE '\\' OR v.model LIKE ? ESCAPE '\\' OR v.vin LIKE ? ESCAPE '\\' OR v.color LIKE ? ESCAPE '\\')";
-      const s = `%${escapeLike(String(search))}%`;
+      const s = `%${escapeLike(String(search).trim())}%`;
       params.push(s, s, s, s, s);
     }
 
@@ -1023,7 +1023,7 @@ router.get('/properties', requireRole('admin', 'manager', 'supervisor', 'officer
 
     if (search) {
       conditions.push("(p.name LIKE ? ESCAPE '\\' OR p.address LIKE ? ESCAPE '\\' OR c.name LIKE ? ESCAPE '\\')");
-      const s = `%${escapeLike(String(search))}%`;
+      const s = `%${escapeLike(String(search).trim())}%`;
       params.push(s, s, s);
     }
 

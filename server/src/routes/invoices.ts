@@ -168,6 +168,25 @@ router.get('/stats', requireRole('admin', 'manager', 'contract_manager'), (req: 
   }
 });
 
+// ─── GET /api/invoices/overdue ─────────────────────────────
+router.get('/overdue', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localToday();
+    const rows = db.prepare(`
+      SELECT i.*, c.name as client_name
+      FROM invoices i
+      LEFT JOIN clients c ON i.client_id = c.id
+      WHERE i.status = 'sent' AND i.due_date < ?
+      ORDER BY i.due_date ASC
+    `).all(today);
+    res.json({ data: rows });
+  } catch (error: any) {
+    console.error('Overdue invoices error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── GET /api/invoices ────────────────────────────────────
 // List invoices with pagination and filters
 router.get('/', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {

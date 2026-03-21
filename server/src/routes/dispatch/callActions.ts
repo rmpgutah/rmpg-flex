@@ -1200,7 +1200,7 @@ router.post('/calls/:id/send-to-serve', validateParamId, requireRole('admin', 'm
     const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(id);
 
     auditLog(req, 'CREATE', 'serve_queue', String(id), `Sent dispatch call ${call.call_number} to serve queue for ${recipientName}`);
-    broadcast('serve', 'serve_created', job);
+    broadcast('serve', 'serve:created', job);
 
     // Also update the call's activity log
     try {

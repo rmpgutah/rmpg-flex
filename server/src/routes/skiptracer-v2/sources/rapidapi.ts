@@ -90,7 +90,22 @@ export default class RapidApiSource extends BaseDataSource {
       return [];
     }
 
-    const res = await this.fetchWithRetry(url, { method: 'GET', headers });
+    // Timeout protection: abort if RapidAPI takes >10 seconds
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+
+    let res: Response;
+    try {
+      res = await this.fetchWithRetry(url, { method: 'GET', headers, signal: controller.signal as any });
+    } catch (err: any) {
+      clearTimeout(timeout);
+      if (err?.name === 'AbortError') {
+        console.warn('[RapidApiSource] Request timed out after 10s — returning empty results');
+        return [];
+      }
+      throw err;
+    }
+    clearTimeout(timeout);
 
     if (!res.ok) {
       const text = await res.text().catch(() => '');

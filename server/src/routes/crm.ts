@@ -117,11 +117,17 @@ router.get('/tasks', requireRole('admin', 'manager', 'contract_manager'), (req: 
         params.push(...statuses);
       }
     }
-    if (client_id) { sql += ' AND t.client_id = ?'; params.push(client_id); }
-    if (assigned_to) { sql += ' AND t.assigned_to = ?'; params.push(assigned_to); }
-    if (due_before) { sql += ' AND t.due_date <= ?'; params.push(due_before); }
+    if (client_id) { const cid = parseInt(String(client_id), 10); if (!isNaN(cid)) { sql += ' AND t.client_id = ?'; params.push(cid); } }
+    if (assigned_to) { const aid = parseInt(String(assigned_to), 10); if (!isNaN(aid)) { sql += ' AND t.assigned_to = ?'; params.push(aid); } }
+    if (due_before) { sql += ' AND t.due_date <= ?'; params.push(String(due_before)); }
 
-    sql += ' ORDER BY CASE t.priority WHEN \'urgent\' THEN 0 WHEN \'high\' THEN 1 WHEN \'normal\' THEN 2 ELSE 3 END, t.due_date ASC NULLS LAST, t.created_at DESC';
+    sql += ` ORDER BY CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, COALESCE(t.due_date, '9999-12-31') ASC, t.created_at DESC`;
+
+    // Pagination
+    const limit = Math.min(Math.max(1, parseInt(req.query.limit as string, 10) || 50), 500);
+    const offset = Math.max(0, parseInt(req.query.offset as string, 10) || 0);
+    sql += ' LIMIT ? OFFSET ?';
+    params.push(limit, offset);
 
     res.json(db.prepare(sql).all(...params));
   } catch (err: any) {

@@ -106,7 +106,7 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
       return;
     }
 
-    const searchTerm = `%${escapeLike(q as string)}%`;
+    const searchTerm = `%${escapeLike((q as string).trim())}%`;
 
     const citations = db.prepare(`
       SELECT * FROM citations
@@ -174,7 +174,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     }
 
     if (q) {
-      const searchTerm = `%${escapeLike(q as string)}%`;
+      const searchTerm = `%${escapeLike((q as string).trim())}%`;
       whereClause += " AND (c.citation_number LIKE ? ESCAPE '\\' OR c.person_name LIKE ? ESCAPE '\\' OR c.violation_description LIKE ? ESCAPE '\\')";
       params.push(searchTerm, searchTerm, searchTerm);
     }

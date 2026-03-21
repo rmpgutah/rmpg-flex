@@ -135,7 +135,7 @@ router.post('/calls/:id/archive', validateParamId, requireRole('admin', 'manager
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
     broadcastDispatchUpdate({ action: 'call_archived', call: updated });
-    res.json(updated);
+    res.json({ ...updated as any, archived_count: 1 });
   } catch (error: any) {
     console.error('Archive call error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -228,7 +228,9 @@ router.delete('/calls/:id', validateParamId, requireRole('admin', 'manager'), (r
     console.error('Delete call error:', error?.message || 'Unknown error');
     const msg = error?.code === 'SQLITE_CONSTRAINT_FOREIGNKEY'
       ? 'Cannot delete: this call has linked records. Unlink them first.'
-      : 'Failed to delete call';
+      : req.user!.role === 'admin'
+        ? `Failed to delete call: ${error?.message || 'Unknown error'}`
+        : 'Failed to delete call';
     res.status(500).json({ error: msg });
   }
 });

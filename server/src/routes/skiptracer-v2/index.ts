@@ -51,14 +51,21 @@ function detectQueryType(q: string): 'phone' | 'email' | 'address' | 'name' {
 function buildSearchQuery(params: {
   q?: string;
   name?: string;
+  firstName?: string;
+  lastName?: string;
   phone?: string;
   email?: string;
   address?: string;
   type?: string;
 }): { query: SearchQuery; searchType: string } {
-  const { q, name, phone, email, address, type } = params;
+  const { q, name, firstName, lastName, phone, email, address, type } = params;
 
   // Explicit field params take precedence
+  if (firstName && lastName) {
+    return { query: { name: `${firstName} ${lastName}`, firstName, lastName }, searchType: 'name' };
+  }
+  if (firstName) return { query: { name: firstName, firstName }, searchType: 'name' };
+  if (lastName) return { query: { name: lastName, lastName }, searchType: 'name' };
   if (name) return { query: { name }, searchType: 'name' };
   if (phone) return { query: { phone: phone.replace(/\D/g, '') }, searchType: 'phone' };
   if (email) return { query: { email: email.toLowerCase().trim() }, searchType: 'email' };
@@ -88,14 +95,14 @@ function buildSearchQuery(params: {
 
 router.get('/search', async (req: Request, res: Response) => {
   try {
-    const { q, name, phone, email, address, type, categories } = req.query as Record<string, string | undefined>;
+    const { q, name, firstName, lastName, phone, email, address, type, categories } = req.query as Record<string, string | undefined>;
 
-    if (!q && !name && !phone && !email && !address) {
-      res.status(400).json({ error: 'At least one search parameter is required (q, name, phone, email, or address)' });
+    if (!q && !name && !firstName && !lastName && !phone && !email && !address) {
+      res.status(400).json({ error: 'At least one search parameter is required (q, name, firstName, lastName, phone, email, or address)' });
       return;
     }
 
-    const { query, searchType } = buildSearchQuery({ q, name, phone, email, address, type });
+    const { query, searchType } = buildSearchQuery({ q, name, firstName, lastName, phone, email, address, type });
     let sources = getEnabledSources();
 
     // Filter by category if specified (e.g. ?categories=court,registry)
@@ -362,7 +369,14 @@ router.post('/dossiers', (req: Request, res: Response) => {
 
     auditLog(req, 'CREATE', 'skiptracer', String(id), `Dossier created for "${subjectName}"`);
 
-    res.json({ success: true, id });
+    const dossier = db.prepare(`
+      SELECT d.*, u.full_name AS created_by_name
+      FROM dossiers d
+      LEFT JOIN users u ON u.id = d.created_by
+      WHERE d.id = ?
+    `).get(id);
+
+    res.json(dossier || { success: true, id });
   } catch (err) {
     console.error('[SkipTracer-v2] Dossier create error:', err);
     res.status(500).json({ error: 'Failed to create dossier' });
@@ -477,18 +491,27 @@ router.get('/history', (req: Request, res: Response) => {
     const db = getDb();
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
     const offset = parseInt(req.query.offset as string) || 0;
+    const q = (req.query.q as string) || '';
+
+    let whereSql = '';
+    const whereParams: any[] = [];
+    if (q) {
+      whereSql = ' WHERE s.query_params LIKE ?';
+      whereParams.push(`%${q}%`);
+    }
 
     const rows = db.prepare(`
       SELECT s.*, u.full_name AS searcher_name
       FROM skip_tracer_searches_v2 s
       LEFT JOIN users u ON u.id = s.searched_by
+      ${whereSql}
       ORDER BY s.created_at DESC
       LIMIT ? OFFSET ?
-    `).all(limit, offset);
+    `).all(...whereParams, limit, offset);
 
     const { total } = db.prepare(
-      'SELECT COUNT(*) as total FROM skip_tracer_searches_v2'
-    ).get() as { total: number };
+      `SELECT COUNT(*) as total FROM skip_tracer_searches_v2 s${whereSql}`
+    ).get(...whereParams) as { total: number };
 
     res.json({ searches: rows, total, limit, offset });
   } catch (err) {
@@ -548,6 +571,20 @@ router.get('/stats', (req: Request, res: Response) => {
       .slice(0, 10)
       .map(([name, count]) => ({ name, count }));
 
+    // Searches by day for the last 7 days
+    const searchesByDay: Array<{ date: string; count: number }> = [];
+    for (let i = 6; i >= 0; i--) {
+      const dayRow = db.prepare(
+        `SELECT COUNT(*) as cnt FROM skip_tracer_searches_v2
+         WHERE date(created_at) = date(?, '-${i} days')`
+      ).get(today) as { cnt: number };
+      // Compute the date string
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0];
+      searchesByDay.push({ date: dateStr, count: dayRow.cnt });
+    }
+
     res.json({
       totalSearches: {
         today: total_today,
@@ -556,6 +593,7 @@ router.get('/stats', (req: Request, res: Response) => {
       },
       totalCost: Math.round(total_cost * 100) / 100,
       topSources,
+      searchesByDay,
     });
   } catch (err) {
     console.error('[SkipTracer-v2] Stats error:', err);

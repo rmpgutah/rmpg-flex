@@ -193,6 +193,17 @@ const upload = multer({
   storage,
   limits: { fileSize: MAX_FILE_SIZE },
   fileFilter: (_req, file, cb) => {
+    // Reject filenames with path traversal, null bytes, or executable extensions
+    const name = file.originalname;
+    if (name.includes('\0') || name.includes('../') || name.includes('..\\')) {
+      cb(new Error('Invalid filename: path traversal detected'));
+      return;
+    }
+    const ext = path.extname(name).toLowerCase();
+    if (BLOCKED_EXTENSIONS.has(ext)) {
+      cb(new Error(`File extension ${ext} is not allowed`));
+      return;
+    }
     if (ALLOWED_TYPES.has(file.mimetype)) {
       cb(null, true);
     } else {

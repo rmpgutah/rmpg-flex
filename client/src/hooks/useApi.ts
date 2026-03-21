@@ -32,6 +32,9 @@ function isOfflineCapable(method: string, path: string): boolean {
 // Access window.electron safely (only present in Electron desktop app)
 const electron = typeof window !== 'undefined' ? (window as any).electron : null;
 
+// ─── GET request deduplication (return existing in-flight promise) ────
+const inflightGets = new Map<string, Promise<Response>>();
+
 // ─── Mutation deduplication (prevent rapid double-click) ────
 const inflightMutations = new Map<string, { promise: Promise<Response>; ts: number }>();
 const DEDUP_WINDOW_MS = 500; // 500ms dedup window
@@ -56,8 +59,16 @@ async function fetchWithRetry(
     : 0;
   if (bodySize > 1_000_000) retries = 0; // 1MB threshold
 
-  // Mutation deduplication — return existing in-flight promise for same URL+method
+  // GET deduplication — if the same GET URL is already in-flight, return the existing promise
   const method = init.method || 'GET';
+  if (method.toUpperCase() === 'GET') {
+    const existingGet = inflightGets.get(url);
+    if (existingGet) {
+      return existingGet.then(r => r.clone()); // Clone so each caller gets independent body
+    }
+  }
+
+  // Mutation deduplication — return existing in-flight promise for same URL+method
   if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method.toUpperCase())) {
     const dedupKey = `${method}:${url}`;
     const existing = inflightMutations.get(dedupKey);
@@ -69,6 +80,7 @@ async function fetchWithRetry(
   // Track in-flight mutations for deduplication
   const isMutation = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method.toUpperCase());
   const dedupKey = isMutation ? `${method}:${url}` : '';
+  const isGet = method.toUpperCase() === 'GET';
 
   const doFetch = async (): Promise<Response> => {
     let lastError: Error | null = null;
@@ -100,6 +112,10 @@ async function fetchWithRetry(
   };
 
   const promise = doFetch();
+  if (isGet) {
+    inflightGets.set(url, promise);
+    promise.finally(() => inflightGets.delete(url));
+  }
   if (isMutation) {
     inflightMutations.set(dedupKey, { promise, ts: Date.now() });
     promise.finally(() => inflightMutations.delete(dedupKey));

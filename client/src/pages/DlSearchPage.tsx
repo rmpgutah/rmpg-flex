@@ -8,6 +8,7 @@
 import React, { useState, useCallback } from 'react';
 import { Search, CreditCard, User, MapPin, ChevronRight, Shield, Calendar, Database, Wifi, Plus } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useToast } from '../components/ToastProvider';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { useIsMobile } from '../hooks/useIsMobile';
 import ManualDlEntryModal, { type ManualDlFormData } from '../components/ManualDlEntryModal';
@@ -57,6 +58,7 @@ interface DlSearchResponse {
 
 export default function DlSearchPage() {
   const isMobile = useIsMobile();
+  const { addToast } = useToast();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [dlNumber, setDlNumber] = useState('');
@@ -87,8 +89,9 @@ export default function DlSearchPage() {
       });
       setResults(data.subjects || []);
       setSource(data.source || 'NONE');
-    } catch (err) {
+    } catch (err: any) {
       console.error('DL search error:', err);
+      addToast(err?.message || 'Driver\'s license search failed', 'error');
       setResults([]);
       setSource('ERROR');
     }

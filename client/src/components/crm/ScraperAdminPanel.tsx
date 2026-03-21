@@ -50,14 +50,14 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
 
   const fetchSources = useCallback(async () => {
     try {
-      const data = await apiFetch<LeadScrapeSource[]>('/api/crm/scrape-sources');
+      const data = await apiFetch<LeadScrapeSource[]>('/crm/scrape-sources');
       if (data) setSources(data);
     } catch { /* silent */ }
   }, []);
 
   const fetchLogs = useCallback(async () => {
     try {
-      const data = await apiFetch<ScrapeLog[]>('/api/crm/scrape-log');
+      const data = await apiFetch<ScrapeLog[]>('/crm/scrape-log');
       if (data) setLogs(data.slice(0, 20));
     } catch { /* silent */ }
   }, []);
@@ -69,7 +69,7 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
 
   const handleToggle = async (key: string, enabled: boolean) => {
     try {
-      await apiFetch(`/api/crm/scrape-sources/${key}`, {
+      await apiFetch(`/crm/scrape-sources/${key}`, {
         method: 'PUT',
         body: JSON.stringify({ is_enabled: enabled ? 1 : 0 }),
       });
@@ -83,7 +83,7 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
   const handlePollNow = async (key: string) => {
     setPollingKey(key);
     try {
-      await apiFetch(`/api/crm/scrape-sources/${key}/poll-now`, { method: 'POST' });
+      await apiFetch(`/crm/scrape-sources/${key}/poll-now`, { method: 'POST' });
       addToast('Poll triggered', 'success');
       // Refresh after short delay to let poll complete
       setTimeout(() => {

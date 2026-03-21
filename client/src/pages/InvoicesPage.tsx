@@ -1050,6 +1050,11 @@ export default function InvoicesPage() {
           <DollarSign size={14} className="text-brand-400" />
           <span className="text-xs font-bold text-white tracking-wide">INVOICES</span>
           <span className="text-[10px] text-rmpg-500 font-mono">({totalCount})</span>
+          {stats && stats.overdue_count > 0 && (
+            <span className="text-[9px] font-bold px-1.5 py-0.5 bg-red-900/60 text-red-300 border border-red-700/50 rounded-sm">
+              {stats.overdue_count} OVERDUE
+            </span>
+          )}
         </div>
         <StatsBar />
         <div className="flex items-center gap-2">

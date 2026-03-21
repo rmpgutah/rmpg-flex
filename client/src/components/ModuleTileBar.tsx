@@ -166,12 +166,28 @@ export default function ModuleTileBar({
             {/* Tile */}
             <button
               type="button"
+              tabIndex={0}
+              aria-haspopup={hasChildren && visibleChildren.length > 0 ? 'true' : undefined}
+              aria-expanded={hasChildren && visibleChildren.length > 0 ? isOpen : undefined}
               title={`${item.label}${item.shortcut ? ` (${item.shortcut})` : ''}`}
               onClick={() => {
                 if (hasChildren && visibleChildren.length > 0) {
                   setOpenDropdown(isOpen ? null : item.path);
                 } else {
                   handleNavigate(item.path, item.newWindow, item.externalUrl);
+                  setOpenDropdown(null);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  if (hasChildren && visibleChildren.length > 0) {
+                    setOpenDropdown(isOpen ? null : item.path);
+                  } else {
+                    handleNavigate(item.path, item.newWindow, item.externalUrl);
+                    setOpenDropdown(null);
+                  }
+                } else if (e.key === 'Escape' && isOpen) {
                   setOpenDropdown(null);
                 }
               }}

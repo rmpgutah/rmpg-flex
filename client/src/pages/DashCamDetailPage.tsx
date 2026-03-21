@@ -11,7 +11,7 @@ import {
   Loader2, AlertTriangle, ChevronLeft, ChevronRight,
   ChevronDown, ChevronUp, Info, SkipBack, SkipForward,
   Play, Pause, Volume2, VolumeX, Map, Shield, FileText,
-  Link2, Car, User, Gauge,
+  Link2, Car, User, Gauge, Copy, Check,
 } from 'lucide-react';
 import type { DashCamVideo } from '../types';
 import DashCamVideoEditModal, { type DashCamVideoEditData } from '../components/DashCamVideoEditModal';
@@ -263,6 +263,7 @@ export default function DashCamDetailPage() {
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [classifying, setClassifying] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [mapSectionOpen, setMapSectionOpen] = useState(false);
   const [mapReady, setMapReady] = useState(false);
 
@@ -1098,6 +1099,15 @@ export default function DashCamDetailPage() {
                 <Flame className="w-3.5 h-3.5" /> Burn HUD Overlay
               </button>
             )}
+
+            <button onClick={() => {
+              navigator.clipboard.writeText(window.location.href);
+              setLinkCopied(true);
+              setTimeout(() => setLinkCopied(false), 2000);
+            }}
+              className="toolbar-btn text-[10px] w-full py-1.5 flex items-center justify-center gap-1.5">
+              {linkCopied ? <><Check className="w-3.5 h-3.5 text-green-400" /> Copied!</> : <><Copy className="w-3.5 h-3.5" /> Copy Link</>}
+            </button>
 
             <a href={streamUrl} download
               className="toolbar-btn text-[10px] w-full py-1.5 flex items-center justify-center gap-1.5 no-underline">

@@ -183,6 +183,22 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
   }
 });
 
+// ─── GET /api/fleet/stats ─ Quick fleet summary ─────────────────
+router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const total = (db.prepare(`SELECT COUNT(*) as cnt FROM fleet_vehicles WHERE archived_at IS NULL`).get() as any).cnt;
+    const active = (db.prepare(`SELECT COUNT(*) as cnt FROM fleet_vehicles WHERE status = 'in_service' AND archived_at IS NULL`).get() as any).cnt;
+    const maintenance = (db.prepare(`SELECT COUNT(*) as cnt FROM fleet_vehicles WHERE status = 'maintenance' AND archived_at IS NULL`).get() as any).cnt;
+    const out_of_service = (db.prepare(`SELECT COUNT(*) as cnt FROM fleet_vehicles WHERE status = 'out_of_service' AND archived_at IS NULL`).get() as any).cnt;
+    const avg_mileage = (db.prepare(`SELECT COALESCE(AVG(current_mileage), 0) as avg FROM fleet_vehicles WHERE archived_at IS NULL AND current_mileage > 0`).get() as any).avg;
+    res.json({ data: { total, active, maintenance, out_of_service, avg_mileage: Math.round(avg_mileage) } });
+  } catch (error: any) {
+    console.error('Fleet stats error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── GET /api/fleet/analytics ─ Fleet-wide aggregate analytics ────
 router.get('/analytics', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
@@ -1453,7 +1469,7 @@ router.get('/:id/personnel', validateParamId, requireRole('admin', 'manager', 's
           FROM credentials c
           LEFT JOIN users u ON c.officer_id = u.id
           WHERE c.officer_id = ?
-          ORDER BY c.expiry_date ASC
+          ORDER BY COALESCE(c.expiry_date, '9999-12-31') ASC
         `).all(unit.officer_id);
 
         // Today's schedule

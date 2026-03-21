@@ -46,6 +46,7 @@ export function initDatabase(): Database.Database {
   db.pragma('cell_size_check = ON');      // Detect corrupt/oversized cells before they cause issues
 
   // Performance pragmas — session-level, reset on reconnection
+  db.pragma('synchronous = NORMAL');     // Safe with WAL — fsync on checkpoint only (2-3x faster writes)
   db.pragma('busy_timeout = 5000');       // Wait 5s on lock instead of instant SQLITE_BUSY
   db.pragma('mmap_size = 268435456');     // 256MB memory-mapped I/O for faster reads
   db.pragma('cache_size = -64000');       // 64MB page cache (negative = kilobytes)
@@ -4722,6 +4723,13 @@ function createIndexes(): void {
 
     CREATE INDEX IF NOT EXISTS idx_persons_name ON persons(last_name, first_name);
     CREATE INDEX IF NOT EXISTS idx_persons_dob ON persons(dob);
+    CREATE INDEX IF NOT EXISTS idx_persons_created_at ON persons(created_at);
+    CREATE INDEX IF NOT EXISTS idx_persons_type ON persons(gender);
+
+    CREATE INDEX IF NOT EXISTS idx_vehicles_created_at ON vehicles_records(created_at);
+
+    CREATE INDEX IF NOT EXISTS idx_evidence_created_at ON evidence(created_at);
+    CREATE INDEX IF NOT EXISTS idx_evidence_type ON evidence(evidence_type);
 
     CREATE INDEX IF NOT EXISTS idx_vehicles_plate ON vehicles_records(plate_number);
     CREATE INDEX IF NOT EXISTS idx_vehicles_vin ON vehicles_records(vin);

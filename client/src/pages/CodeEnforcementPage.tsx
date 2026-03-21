@@ -5,7 +5,7 @@
 // tabbed interface, status workflows, and fine tracking.
 // ============================================================
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Construction, Search, Plus, Truck, MapPin, Clock, User,
   X, Save, Loader2, AlertTriangle, DollarSign, FileText,

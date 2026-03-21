@@ -1705,6 +1705,7 @@ export default function WarrantsPage() {
                     <tr>
                       <th className="text-left">Person</th>
                       <th className="text-left">Event</th>
+                      <th className="text-left">Severity</th>
                       <th className="text-left">Warrant ID</th>
                       <th className="text-left">Court</th>
                       <th className="text-left">Charges</th>
@@ -1725,6 +1726,18 @@ export default function WarrantsPage() {
                             }`}>
                               {hit.event === 'warrant_found' ? 'FOUND' : 'CLEARED'}
                             </span>
+                          </td>
+                          <td>
+                            {hit.resolvedSeverity ? (
+                              <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${
+                                hit.resolvedSeverity === 'felony' ? 'bg-red-900/40 text-red-400 border-red-700/50' :
+                                hit.resolvedSeverity === 'misdemeanor' ? 'bg-amber-900/40 text-amber-400 border-amber-700/50' :
+                                hit.resolvedSeverity === 'bench' ? 'bg-orange-900/40 text-orange-400 border-orange-700/50' :
+                                'bg-blue-900/40 text-blue-400 border-blue-700/50'
+                              }`}>
+                                {hit.resolvedSeverity}
+                              </span>
+                            ) : <span className="text-rmpg-500 text-[9px]">—</span>}
                           </td>
                           <td className="font-mono text-[10px]">{hit.utah_warrant_id || '-'}</td>
                           <td className="text-[11px]">{hit.court_name || '-'}</td>

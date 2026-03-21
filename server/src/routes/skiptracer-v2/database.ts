@@ -65,6 +65,9 @@ export function ensureSkipTracerV2Tables(): void {
       created_at          TEXT DEFAULT (datetime('now','localtime')),
       updated_at          TEXT DEFAULT (datetime('now','localtime'))
     );
+
+    CREATE INDEX IF NOT EXISTS idx_dossiers_subject_name
+      ON dossiers (subject_name);
   `);
 
   // ── skip_tracer_searches_v2 — search audit log ──

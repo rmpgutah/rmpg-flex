@@ -102,6 +102,7 @@ export default function LoginPage() {
   const [webauthnError, setWebauthnError] = useState(false);
   const [twoFactorMode, setTwoFactorMode] = useState<TwoFactorMode>('choose');
   const [twoFactorMethods, setTwoFactorMethods] = useState<{ totp?: boolean; webauthn?: boolean }>({});
+  const [capsLockOn, setCapsLockOn] = useState(false);
 
   // 2FA setup state
   const [qrCodeUri, setQrCodeUri] = useState('');
@@ -538,9 +539,15 @@ export default function LoginPage() {
                       placeholder="Enter your password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
+                      onKeyUp={(e) => setCapsLockOn(e.getModifierState('CapsLock'))}
                       autoComplete="current-password"
                       required
                     />
+                    {capsLockOn && (
+                      <div className="absolute -bottom-5 left-0 text-[9px] text-amber-400 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" /> Caps Lock is on
+                      </div>
+                    )}
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}

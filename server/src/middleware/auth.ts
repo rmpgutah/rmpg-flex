@@ -10,6 +10,23 @@ import { localNow } from '../utils/timeUtils';
 const JWT_ISSUER = 'rmpg-flex';
 const JWT_AUDIENCE = 'rmpg-flex-api';
 
+// ─── Per-IP rate limiting for authenticated endpoints ─────
+// 100 requests per 60-second window per IP. Uses a sliding window with
+// automatic cleanup of expired entries every 60 seconds.
+const ipRequestCounts = new Map<string, { count: number; windowStart: number }>();
+const RATE_LIMIT_WINDOW_MS = 60_000; // 60 seconds
+const RATE_LIMIT_MAX = 100;
+
+// Periodic cleanup of expired rate-limit entries to prevent memory leaks
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of ipRequestCounts) {
+    if (now - entry.windowStart > RATE_LIMIT_WINDOW_MS) {
+      ipRequestCounts.delete(key);
+    }
+  }
+}, 60_000);
+
 export interface JwtPayload {
   userId: number;
   username: string;
@@ -44,6 +61,24 @@ const JWT_VERIFY_OPTIONS: VerifyOptions = {
 };
 
 export function authenticateToken(req: Request, res: Response, next: NextFunction): void {
+  // ── Request ID for tracing ──
+  const requestId = crypto.randomUUID();
+  res.setHeader('X-Request-Id', requestId);
+
+  // ── Per-IP rate limiting ──
+  const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+  const rlEntry = ipRequestCounts.get(clientIp);
+  if (rlEntry && now - rlEntry.windowStart < RATE_LIMIT_WINDOW_MS) {
+    rlEntry.count++;
+    if (rlEntry.count > RATE_LIMIT_MAX) {
+      res.status(429).json({ error: 'Too many requests. Please slow down.' });
+      return;
+    }
+  } else {
+    ipRequestCounts.set(clientIp, { count: 1, windowStart: now });
+  }
+
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
 

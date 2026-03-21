@@ -62,7 +62,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     if (subject_name) {
       const nameStr = String(subject_name).slice(0, 200); // Prevent excessively long search terms
       whereClause += " AND (p.first_name || ' ' || p.last_name) LIKE ? ESCAPE '\\'";
-      params.push(`%${escapeLike(nameStr)}%`);
+      params.push(`%${escapeLike(nameStr.trim())}%`);
     }
 
     // Archive filter
@@ -664,7 +664,7 @@ router.get('/unified', requireRole('admin', 'manager', 'supervisor', 'officer', 
     if (severity !== 'all') { whereClauses.push('w.offense_level = ?'); params.push(severity); }
     if (q) {
       whereClauses.push(`(w.warrant_number LIKE ? ESCAPE '\\' OR w.charge_description LIKE ? ESCAPE '\\' OR p.first_name LIKE ? ESCAPE '\\' OR p.last_name LIKE ? ESCAPE '\\')`);
-      const like = `%${escapeLike(q)}%`;
+      const like = `%${escapeLike(String(q).trim())}%`;
       params.push(like, like, like, like);
     }
 

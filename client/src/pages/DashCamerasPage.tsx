@@ -169,7 +169,7 @@ export default function DashCamerasPage() {
         setSelectedVideo(prev => prev ? { ...prev, burn_progress: data.progress, burn_status: data.status || prev.burn_status } : null);
       }
     };
-    const unsub = subscribe('fleet:dashcam_burn_progress' as any, handler);
+    const unsub = subscribe('dashcam_burn_progress' as any, handler);
     return () => unsub();
   }, [selectedVideo?.id, subscribe]);
 
@@ -295,7 +295,8 @@ export default function DashCamerasPage() {
                     className="w-full h-full object-cover" />
                 ) : (
                   <div className="flex items-center justify-center h-full"
-                    style={{ background: 'linear-gradient(135deg, #0d1520 0%, #141e2b 100%)' }}>
+                    style={{ background: 'linear-gradient(135deg, #0d1520 0%, #141e2b 100%)' }}
+                    role="img" aria-label={`No thumbnail available for ${v.title}`}>
                     <Film className="w-8 h-8 text-rmpg-600" />
                   </div>
                 )}

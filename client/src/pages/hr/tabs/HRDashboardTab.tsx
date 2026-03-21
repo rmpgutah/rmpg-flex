@@ -258,7 +258,7 @@ function OfficerDashboard({
 
   useEffect(() => {
     const year = new Date().getFullYear();
-    apiFetch<LeaveBalances>(`/api/hr/leave/balances?year=${year}`)
+    apiFetch<LeaveBalances>(`/hr/leave/balances?year=${year}`)
       .then(setBalances)
       .catch(() => setBalances(null))
       .finally(() => setLoading(false));
@@ -328,7 +328,7 @@ export default function HRDashboardTab({
 
   useEffect(() => {
     if (!isManager) return;
-    apiFetch<DashboardData>('/api/hr/dashboard')
+    apiFetch<DashboardData>('/hr/dashboard')
       .then(setData)
       .catch(() => setData(null))
       .finally(() => setLoading(false));

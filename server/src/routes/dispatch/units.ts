@@ -28,6 +28,25 @@ router.get('/units', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
   }
 });
 
+// GET /api/dispatch/units/available - Get only available units
+router.get('/units/available', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const units = db.prepare(`
+      SELECT u.*, usr.full_name as officer_name, usr.badge_number, usr.phone as officer_phone
+      FROM units u
+      LEFT JOIN users usr ON u.officer_id = usr.id
+      WHERE u.status = 'available'
+      ORDER BY u.call_sign
+    `).all();
+
+    res.json(units);
+  } catch (error: any) {
+    console.error('Get available units error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // POST /api/dispatch/units - Create dispatch unit
 router.post('/units', requireRole('admin', 'manager', 'dispatcher'), (req: Request, res: Response) => {
   try {

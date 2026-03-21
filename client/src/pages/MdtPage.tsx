@@ -31,6 +31,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useWebSocket } from '../context/WebSocketContext';
+import WarrantAlertBanner, { type WarrantAlert } from '../components/WarrantAlertBanner';
 import { formatIncidentType } from '../utils/caseNumbers';
 import { formatTimer, getStatusElapsed, isActiveStatus } from '../utils/dispatchTimers';
 import { mapDbCall } from './dispatch/utils/dispatchMappers';
@@ -38,6 +39,7 @@ import StatusBadge from '../components/StatusBadge';
 import PremiseHistory from '../components/PremiseHistory';
 import NcicQueryPanel from '../components/NcicQueryPanel';
 import { formatDateTime, localToday } from '../utils/dateUtils';
+import { useToast } from '../components/ToastProvider';
 
 // ── Quick Status Buttons ────────────────────────────────────
 
@@ -65,8 +67,10 @@ interface MdtMessage {
 }
 
 function MdtMessagesPanel({ userId }: { userId?: string }) {
+  const { addToast } = useToast();
   const [messages, setMessages] = useState<MdtMessage[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [warrantAlerts, setWarrantAlerts] = useState<WarrantAlert[]>([]);
   const [composeText, setComposeText] = useState('');
   const [composeChannel, setComposeChannel] = useState<'dispatch' | 'broadcast'>('dispatch');
   const [composePriority, setComposePriority] = useState<'routine' | 'urgent' | 'emergency'>('routine');
@@ -96,7 +100,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
       setComposeText('');
       fetchMessages();
     } catch (err) {
-      console.error('Send message failed:', err);
+      console.error('Send message failed:', err); addToast('Failed to send message', 'error');
     }
   };
 
@@ -235,6 +239,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
 export default function MdtPage() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const { addToast } = useToast();
   const gps = useGpsTracking();
   const [myUnit, setMyUnit] = useState<Unit | null>(null);
   const [myCalls, setMyCalls] = useState<CallForService[]>([]);
@@ -330,7 +335,7 @@ export default function MdtPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      console.error('Failed to generate shift report:', err);
+      console.error('Failed to generate shift report:', err); addToast('Failed to generate shift report', 'error');
       showError('Failed to generate shift report');
     }
     setGeneratingReport(false);
@@ -353,7 +358,7 @@ export default function MdtPage() {
       setFiData({ subject_name: '', location: '', reason: '', narrative: '' });
       setShowFiForm(false);
     } catch (err) {
-      console.error('Failed to submit FI:', err);
+      console.error('Failed to submit FI:', err); addToast('Failed to submit field interview', 'error');
       showError('Failed to submit field interview');
     }
     setFiSubmitting(false);
@@ -426,7 +431,22 @@ export default function MdtPage() {
         fetchData();
       }
     });
-    return () => { unsubDispatch(); unsubUnit(); };
+    // Listen for warrant alerts — persistent banner on MDT
+    const unsubWarrant = subscribe('call:warrant_alert', (msg: any) => {
+      const data = msg.data || msg;
+      const alert: WarrantAlert = {
+        id: `wa-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        callId: data.callId || data.call_id,
+        callNumber: data.callNumber || data.call_number,
+        personName: data.personName || 'Unknown',
+        severity: data.severity || null,
+        charge: data.charge || (data.warrantCount ? `${data.warrantCount} active warrant(s)` : undefined),
+        source: data.source,
+        receivedAt: Date.now(),
+      };
+      setWarrantAlerts(prev => [alert, ...prev].slice(0, 5));
+    });
+    return () => { unsubDispatch(); unsubUnit(); unsubWarrant(); };
   }, [subscribe, fetchData, gps.unitId]);
 
   // ── Unit Status Change ──
@@ -439,7 +459,7 @@ export default function MdtPage() {
       });
       fetchData();
     } catch (err) {
-      console.error('Status change failed:', err);
+      console.error('Status change failed:', err); addToast('Failed to change status', 'error');
       showError('Failed to change unit status');
     }
   };
@@ -456,7 +476,7 @@ export default function MdtPage() {
       if (selectedCall?.id === callId) setSelectedCall(updated);
       fetchData();
     } catch (err) {
-      console.error('Call status update failed:', err);
+      console.error('Call status update failed:', err); addToast('Failed to update call status', 'error');
       showError('Failed to update call status');
     }
   };
@@ -472,7 +492,7 @@ export default function MdtPage() {
       });
       fetchData();
     } catch (err) {
-      console.error('Self-dispatch failed:', err);
+      console.error('Self-dispatch failed:', err); addToast('Failed to self-dispatch', 'error');
       showError('Failed to self-dispatch');
     } finally {
       setDispatchingCallId(null);
@@ -502,6 +522,11 @@ export default function MdtPage() {
 
   return (
     <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden app-grid-bg">
+      {/* ── Warrant Alert Banners ── */}
+      <WarrantAlertBanner
+        alerts={warrantAlerts}
+        onDismiss={(id) => setWarrantAlerts(prev => prev.filter(a => a.id !== id))}
+      />
       {/* ── Error Toast ── */}
       {errorToast && (
         <div className="absolute top-2 right-2 z-50 flex items-center gap-2 px-3 py-2 bg-red-900/90 border border-red-700 text-red-200 text-[10px] font-bold shadow-lg"

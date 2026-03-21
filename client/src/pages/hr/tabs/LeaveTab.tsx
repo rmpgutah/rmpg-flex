@@ -142,8 +142,8 @@ export default function LeaveTab() {
 
       const year = new Date().getFullYear();
       const [reqs, bals] = await Promise.all([
-        apiFetch<LeaveRequest[]>(`/api/hr/leave${qs}`),
-        apiFetch<LeaveBalance[]>(`/api/hr/leave/balances?year=${year}`),
+        apiFetch<LeaveRequest[]>(`/hr/leave${qs}`),
+        apiFetch<LeaveBalance[]>(`/hr/leave/balances?year=${year}`),
       ]);
       setRequests(reqs);
       setBalances(Array.isArray(bals) ? bals : [bals].filter(Boolean));
@@ -161,13 +161,13 @@ export default function LeaveTab() {
   const handleSubmitRequest = async (data: LeaveFormData) => {
     try {
       if (editRequest) {
-        await apiFetch(`/api/hr/leave/${editRequest.id}`, {
+        await apiFetch(`/hr/leave/${editRequest.id}`, {
           method: 'PUT',
           body: JSON.stringify(data),
         });
         addToast('Leave request updated', 'success');
       } else {
-        await apiFetch('/api/hr/leave', {
+        await apiFetch('/hr/leave', {
           method: 'POST',
           body: JSON.stringify(data),
         });
@@ -184,7 +184,7 @@ export default function LeaveTab() {
 
   const handleCancel = async (id: number) => {
     try {
-      await apiFetch(`/api/hr/leave/${id}`, { method: 'DELETE' });
+      await apiFetch(`/hr/leave/${id}`, { method: 'DELETE' });
       addToast('Leave request cancelled', 'success');
       loadData();
     } catch (err: any) {
@@ -194,7 +194,7 @@ export default function LeaveTab() {
 
   const handleApprove = async (id: number) => {
     try {
-      await apiFetch(`/api/hr/leave/${id}/approve`, {
+      await apiFetch(`/hr/leave/${id}/approve`, {
         method: 'POST',
         body: JSON.stringify({ review_notes: reviewNotes[id] || '' }),
       });
@@ -208,7 +208,7 @@ export default function LeaveTab() {
 
   const handleDeny = async (id: number) => {
     try {
-      await apiFetch(`/api/hr/leave/${id}/deny`, {
+      await apiFetch(`/hr/leave/${id}/deny`, {
         method: 'POST',
         body: JSON.stringify({ review_notes: reviewNotes[id] || '' }),
       });

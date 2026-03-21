@@ -961,17 +961,18 @@ export default function DispatchPage() {
         return;
       }
 
-      // Escape - close modal
+      // Escape - close modal or deselect call
       if (e.key === 'Escape') {
-        setShowNewCallModal(false);
-        setShowQuickPsoModal(false);
+        if (showNewCallModal) { setShowNewCallModal(false); return; }
+        if (showQuickPsoModal) { setShowQuickPsoModal(false); return; }
+        if (selectedCall) { setSelectedCall(null); return; }
         return;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedCall, filteredCalls, fetchData]);
+  }, [selectedCall, filteredCalls, fetchData, showNewCallModal, showQuickPsoModal]);
 
   const handlePsoExpandToFullForm = (data: Record<string, any>) => {
     setShowQuickPsoModal(false);
@@ -2211,7 +2212,7 @@ export default function DispatchPage() {
                                 const parent = (selectedCall as any).parentCall;
                                 const found = calls.find(c => c.id === parent.id);
                                 if (found) setSelectedCall(found);
-                                else apiFetch(`/api/dispatch/calls/${parent.id}`).then((d: any) => { if (d) setSelectedCall(mapDbCall(d)); }).catch(err => console.warn('[Dispatch] Failed to load parent call:', err));
+                                else apiFetch(`/dispatch/calls/${parent.id}`).then((d: any) => { if (d) setSelectedCall(mapDbCall(d)); }).catch(err => console.warn('[Dispatch] Failed to load parent call:', err));
                               }}
                             >
                               <span className="font-bold text-amber-300">PARENT:</span> <span className="font-mono text-blue-400">{(selectedCall as any).parentCall.call_number}</span> <span className="text-rmpg-300">{((selectedCall as any).parentCall.status || '').toUpperCase()}</span>
@@ -2224,7 +2225,7 @@ export default function DispatchPage() {
                               onClick={() => {
                                 const found = calls.find(c => c.id === child.id);
                                 if (found) setSelectedCall(found);
-                                else apiFetch(`/api/dispatch/calls/${child.id}`).then((d: any) => { if (d) setSelectedCall(mapDbCall(d)); }).catch(err => console.warn('[Dispatch] Failed to load follow-up call:', err));
+                                else apiFetch(`/dispatch/calls/${child.id}`).then((d: any) => { if (d) setSelectedCall(mapDbCall(d)); }).catch(err => console.warn('[Dispatch] Failed to load follow-up call:', err));
                               }}
                             >
                               <span className="font-bold text-cyan-300">FOLLOW-UP:</span> <span className="font-mono text-blue-400">{child.call_number}</span> <span className="text-rmpg-300">{(child.status || '').toUpperCase()}</span>
@@ -3194,6 +3195,7 @@ export default function DispatchPage() {
                                     onClick={() => handleUnassignUnit(unitObj.id)}
                                     className="ml-0.5 hover:text-red-400 transition-colors"
                                     title={`Detach ${displayName}`}
+                                    aria-label={`Detach ${displayName}`}
                                     style={{ lineHeight: 1 }}
                                   >
                                     <X style={{ width: 10, height: 10 }} />
@@ -3377,7 +3379,7 @@ export default function DispatchPage() {
                                   {cp.last_name}, {cp.first_name}
                                   <WarrantBadge flags={cp.flags} size="sm" />
                                   {cp.dob && <span className="text-rmpg-500">DOB:{cp.dob}</span>}
-                                  <button onClick={() => unlinkPersonFromCall(selectedCall.id, cp.id)} className="text-red-500 hover:text-red-300 ml-0.5" title="Remove">&times;</button>
+                                  <button onClick={() => unlinkPersonFromCall(selectedCall.id, cp.id)} className="text-red-500 hover:text-red-300 ml-0.5" title="Remove" aria-label="Remove linked person">&times;</button>
                                 </span>
                               ))}
                             </div>
@@ -3917,7 +3919,7 @@ export default function DispatchPage() {
                               if (found) {
                                 setSelectedCall(found);
                               } else {
-                                apiFetch(`/api/dispatch/calls/${parent.id}`).then((data: any) => {
+                                apiFetch(`/dispatch/calls/${parent.id}`).then((data: any) => {
                                   if (data) setSelectedCall(mapDbCall(data));
                                 }).catch(err => console.warn('[Dispatch] Failed to load parent call:', err));
                               }
@@ -3947,7 +3949,7 @@ export default function DispatchPage() {
                             if (found) {
                               setSelectedCall(found);
                             } else {
-                              apiFetch(`/api/dispatch/calls/${child.id}`).then((data: any) => {
+                              apiFetch(`/dispatch/calls/${child.id}`).then((data: any) => {
                                 if (data) setSelectedCall(mapDbCall(data));
                               }).catch(err => console.warn('[Dispatch] Failed to load follow-up call:', err));
                             }
@@ -4065,10 +4067,10 @@ export default function DispatchPage() {
                                 onKeyDown={(e) => { if (e.key === 'Enter') handleEditTimeline(String(entry.id)); if (e.key === 'Escape') setEditingTimelineId(null); }}
                                 autoFocus
                               />
-                              <button onClick={() => handleEditTimeline(String(entry.id))} className="toolbar-btn" style={{ padding: '1px 4px', fontSize: '9px' }}>
+                              <button onClick={() => handleEditTimeline(String(entry.id))} className="toolbar-btn" style={{ padding: '1px 4px', fontSize: '9px' }} aria-label="Save timeline entry">
                                 <Save style={{ width: 8, height: 8 }} />
                               </button>
-                              <button onClick={() => setEditingTimelineId(null)} className="toolbar-btn" style={{ padding: '1px 4px', fontSize: '9px' }}>
+                              <button onClick={() => setEditingTimelineId(null)} className="toolbar-btn" style={{ padding: '1px 4px', fontSize: '9px' }} aria-label="Cancel editing">
                                 <X style={{ width: 8, height: 8 }} />
                               </button>
                             </div>
@@ -4076,10 +4078,10 @@ export default function DispatchPage() {
                             <>
                               <span className="text-rmpg-200 flex-1">{formatActivityDetails(entry.details || entry.description || '')}</span>
                               <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity">
-                                <button onClick={() => { setEditingTimelineId(String(entry.id)); setEditTimelineText(entry.details || entry.description || ''); }} className="p-0.5 hover:text-brand-400 text-rmpg-500" title="Edit">
+                                <button onClick={() => { setEditingTimelineId(String(entry.id)); setEditTimelineText(entry.details || entry.description || ''); }} className="p-0.5 hover:text-brand-400 text-rmpg-500" title="Edit" aria-label="Edit timeline entry">
                                   <Edit3 style={{ width: 9, height: 9 }} />
                                 </button>
-                                <button onClick={() => handleDeleteTimeline(String(entry.id))} className="p-0.5 hover:text-red-400 text-rmpg-500" title="Delete">
+                                <button onClick={() => handleDeleteTimeline(String(entry.id))} className="p-0.5 hover:text-red-400 text-rmpg-500" title="Delete" aria-label="Delete timeline entry">
                                   <Trash2 style={{ width: 9, height: 9 }} />
                                 </button>
                               </div>
@@ -4387,7 +4389,7 @@ export default function DispatchPage() {
                 <Send className="w-3.5 h-3.5 text-brand-400" />
                 <span className="text-xs font-bold text-white uppercase tracking-wider">Quick Dispatch</span>
               </div>
-              <button type="button" onClick={() => setQuickTemplateData(null)} className="text-rmpg-400 hover:text-white">
+              <button type="button" onClick={() => setQuickTemplateData(null)} className="text-rmpg-400 hover:text-white" aria-label="Close quick dispatch">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -4495,7 +4497,7 @@ export default function DispatchPage() {
                 <Radio className="w-4 h-4 text-brand-400" />
                 <span id={unitModalTitleId} className="text-sm font-bold text-white">{editingUnit ? 'Edit Dispatch Unit' : 'Create Dispatch Unit'}</span>
               </div>
-              <button onClick={() => { setShowCreateUnitModal(false); setEditingUnit(null); setNewUnitCallSign(''); setNewUnitOfficerId(''); setNewUnitStatus('available'); }} className="toolbar-btn ml-auto">
+              <button onClick={() => { setShowCreateUnitModal(false); setEditingUnit(null); setNewUnitCallSign(''); setNewUnitOfficerId(''); setNewUnitStatus('available'); }} className="toolbar-btn ml-auto" aria-label="Close unit modal">
                 <X style={{ width: 12, height: 12 }} />
               </button>
             </div>

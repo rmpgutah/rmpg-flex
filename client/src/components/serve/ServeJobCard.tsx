@@ -97,6 +97,14 @@ export default React.memo(function ServeJobCard({
     return new Date(job.deadline).getTime() <= Date.now();
   }, [job.deadline]);
 
+  const daysSinceLastAttempt = useMemo(() => {
+    if (!job.attempts || job.attempts.length === 0) return null;
+    const lastAttempt = job.attempts.reduce((latest, a) =>
+      new Date(a.attempt_at).getTime() > new Date(latest.attempt_at).getTime() ? a : latest
+    );
+    return Math.floor((Date.now() - new Date(lastAttempt.attempt_at).getTime()) / 86400000);
+  }, [job.attempts]);
+
   const fullAddress = [job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip]
     .filter(Boolean)
     .join(', ');
@@ -170,6 +178,13 @@ export default React.memo(function ServeJobCard({
           {isOverdue && (
             <span className="text-[8px] font-bold font-mono text-red-400 bg-red-900/60 border border-red-500/60 px-1 py-0">
               OVERDUE
+            </span>
+          )}
+
+          {/* Days since last attempt */}
+          {daysSinceLastAttempt !== null && (
+            <span className={`text-[9px] font-mono border px-1 py-0 ${daysSinceLastAttempt > 7 ? 'text-red-400 bg-red-900/40 border-red-700/40' : daysSinceLastAttempt > 3 ? 'text-amber-400 bg-amber-900/40 border-amber-700/40' : 'text-rmpg-400 bg-rmpg-800/40 border-rmpg-700/40'}`}>
+              {daysSinceLastAttempt}d ago
             </span>
           )}
 

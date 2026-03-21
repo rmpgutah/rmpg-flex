@@ -306,7 +306,7 @@ router.get('/', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: R
       params.push(officerId, status);
     }
 
-    sql += ' ORDER BY sort_order ASC, priority DESC, deadline ASC';
+    sql += ` ORDER BY sort_order ASC, priority DESC, COALESCE(deadline, '9999-12-31') ASC`;
 
     const rows = db.prepare(sql).all(...params);
     res.json(rows);

@@ -5,7 +5,7 @@
 // offenses, compliance status, and officer verification.
 // ============================================================
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Search, Loader2, Plus, ChevronLeft, ChevronRight,
   X, AlertTriangle, Shield, ShieldAlert, ShieldCheck, ShieldOff,

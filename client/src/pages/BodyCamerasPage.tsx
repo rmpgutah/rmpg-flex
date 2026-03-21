@@ -247,8 +247,8 @@ export default function BodyCamerasPage() {
 
         {!loading && !error && (
           <BodyCameraTab
-            cameras={cameras}
-            videos={videos}
+            cameras={cameras || []}
+            videos={videos || []}
             onAddCamera={openAdd}
             onEditCamera={openEdit}
             onDeleteCamera={handleDelete}

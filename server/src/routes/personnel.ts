@@ -123,10 +123,30 @@ router.use(authenticateToken);
 
 // ─── USERS / OFFICERS ─────────────────────────────────
 
+// ── Personnel list cache (30-second TTL) ──
+let personnelCacheEtag = '';
+let personnelCacheTime = 0;
+const PERSONNEL_CACHE_TTL_MS = 30_000;
+
+/** Call whenever personnel data is modified to bust the cache */
+export function invalidatePersonnelCache(): void {
+  personnelCacheTime = 0;
+}
+
 // GET /api/personnel - List all personnel
 // Restricted to sworn/dispatch/command roles — contract_manager must NOT see officer PII
 router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
+    // ── Cache: return 304 if personnel data hasn't changed within 30s ──
+    const now = Date.now();
+    if (personnelCacheTime > 0 && now - personnelCacheTime < PERSONNEL_CACHE_TTL_MS) {
+      const ifNoneMatch = req.headers['if-none-match'];
+      if (ifNoneMatch && ifNoneMatch === personnelCacheEtag) {
+        res.status(304).end();
+        return;
+      }
+    }
+
     const db = getDb();
     const { role, status, archived } = req.query;
 
@@ -183,6 +203,10 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       }
     }
 
+    // Update cache metadata
+    personnelCacheEtag = `"personnel-${Date.now()}"`;
+    personnelCacheTime = Date.now();
+    res.setHeader('ETag', personnelCacheEtag);
     res.json(users);
   } catch (error: any) {
     console.error('Get personnel error:', error?.message || 'Unknown error');
@@ -315,7 +339,7 @@ router.post('/', requireRole('admin', 'manager'), personnelCreateRateLimit, (req
     }
 
     // Validate role against allowlist
-    const VALID_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager', 'human_resources'];
+    const VALID_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager', 'human_resources', 'client_viewer'];
     if (!VALID_ROLES.includes(role)) {
       res.status(400).json({ error: 'Invalid role' });
       return;
@@ -424,7 +448,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
     }
 
     // Validate role against allowlist if provided
-    const VALID_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager', 'human_resources'];
+    const VALID_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager', 'human_resources', 'client_viewer'];
     if (req.body.role && !VALID_ROLES.includes(req.body.role)) {
       res.status(400).json({ error: 'Invalid role' });
       return;
@@ -1235,7 +1259,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         SELECT c.*, u.full_name as officer_name, u.badge_number
         FROM credentials c
         LEFT JOIN users u ON c.officer_id = u.id
-        ORDER BY c.expiry_date ASC
+        ORDER BY COALESCE(c.expiry_date, '9999-12-31') ASC
       `).all();
 
       res.json(credentials);

@@ -56,7 +56,7 @@ export default function GrievanceModal({ onClose, onSaved, grievance }: Grievanc
   const [error, setError] = useState('');
 
   useEffect(() => {
-    apiFetch<UserOption[]>('/hr/employees').then(setUsers).catch(err => console.warn('[API] Data load failed:', err));
+    apiFetch<UserOption[]>('/hr/employees').then(setUsers).catch(err => { console.warn('[HR] Employee load failed:', err); setError('Failed to load employee list'); });
   }, []);
 
   const handleSubmit = async () => {

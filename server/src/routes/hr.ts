@@ -129,6 +129,13 @@ router.post('/leave', (req: Request, res: Response) => {
     if (!type || !start_date || !end_date) {
       return res.status(400).json({ error: 'type, start_date, and end_date are required' });
     }
+    const VALID_LEAVE_TYPES = ['vacation', 'sick', 'personal', 'bereavement', 'jury_duty', 'military', 'unpaid', 'other'];
+    if (!VALID_LEAVE_TYPES.includes(type)) {
+      return res.status(400).json({ error: `Invalid leave type. Must be one of: ${VALID_LEAVE_TYPES.join(', ')}` });
+    }
+    if (start_date > end_date) {
+      return res.status(400).json({ error: 'start_date must be on or before end_date' });
+    }
 
     const now = localNow();
     const result = db.prepare(
@@ -495,6 +502,10 @@ router.post('/disciplinary', requireRole('admin', 'manager'), (req: Request, res
     if (!officer_id || !incident_date || !description) {
       return res.status(400).json({ error: 'officer_id, incident_date, and description are required' });
     }
+    const VALID_DISCIPLINARY_TYPES = ['verbal_warning', 'written_warning', 'suspension', 'demotion', 'termination', 'other'];
+    if (type && !VALID_DISCIPLINARY_TYPES.includes(type)) {
+      return res.status(400).json({ error: `Invalid disciplinary type. Must be one of: ${VALID_DISCIPLINARY_TYPES.join(', ')}` });
+    }
 
     const now = localNow();
     const result = db.prepare(
@@ -607,6 +618,9 @@ router.post('/reviews', requireRole('admin', 'manager', 'supervisor'), (req: Req
 
     if (!officer_id || !review_period_start || !review_period_end) {
       return res.status(400).json({ error: 'officer_id, review_period_start, and review_period_end are required' });
+    }
+    if (review_period_start > review_period_end) {
+      return res.status(400).json({ error: 'review_period_start must be on or before review_period_end' });
     }
 
     const now = localNow();

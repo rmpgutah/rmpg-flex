@@ -90,8 +90,7 @@ export default function Sidebar({
       }
 
       if (item.externalUrl) {
-        const token = localStorage.getItem('rmpg_token') || '';
-        window.open(`${item.externalUrl}${item.externalUrl.includes('?') ? '&' : '?'}token=${token}`, '_blank');
+        window.open(item.externalUrl, '_blank', 'noopener,noreferrer');
         return;
       }
 

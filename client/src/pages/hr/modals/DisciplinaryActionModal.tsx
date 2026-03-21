@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, AlertTriangle } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { localToday } from '../../../utils/dateUtils';
 
 interface UserOption {
   id: string;
@@ -52,7 +53,7 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
   const [employeeId, setEmployeeId] = useState(action?.employee_id || '');
   const [actionType, setActionType] = useState(action?.action_type || 'verbal_warning');
   const [severity, setSeverity] = useState(action?.severity || 'minor');
-  const [incidentDate, setIncidentDate] = useState(action?.incident_date || new Date().toISOString().split('T')[0]);
+  const [incidentDate, setIncidentDate] = useState(action?.incident_date || localToday());
   const [description, setDescription] = useState(action?.description || '');
   const [correctiveAction, setCorrectiveAction] = useState(action?.corrective_action || '');
   const [followUpDate, setFollowUpDate] = useState(action?.follow_up_date || '');
@@ -60,7 +61,7 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
   const [error, setError] = useState('');
 
   useEffect(() => {
-    apiFetch<UserOption[]>('/hr/employees').then(setUsers).catch(err => console.warn('[API] Data load failed:', err));
+    apiFetch<UserOption[]>('/hr/employees').then(setUsers).catch(err => { console.warn('[HR] Employee load failed:', err); setError('Failed to load employee list'); });
   }, []);
 
   const handleSubmit = async () => {

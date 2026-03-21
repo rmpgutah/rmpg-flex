@@ -174,8 +174,12 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       disposition: customDisposition,
     } = req.body;
 
-    if (!incident_type || !priority || !location_address) {
-      res.status(400).json({ error: 'incident_type, priority, and location_address are required' });
+    if (!priority || !location_address) {
+      res.status(400).json({ error: 'priority and location_address are required' });
+      return;
+    }
+    if (!incident_type && !description) {
+      res.status(400).json({ error: 'At least one of incident_type or description is required' });
       return;
     }
 
@@ -790,6 +794,12 @@ router.put('/calls/:id', validateParamId, requireRole('admin', 'manager', 'super
     addField('process_served_at', process_served_at);
     addField('process_service_result', process_service_result);
     addField('client_id', resolvedUpdateClientId);
+
+    // Auto-set dispatched_at when status changes to 'dispatched' and dispatched_at is null
+    if (status === 'dispatched' && !call.dispatched_at) {
+      updates.push('dispatched_at = ?');
+      params.push(localNow());
+    }
 
     if (updates.length === 0) {
       res.status(400).json({ error: 'No fields to update' });
