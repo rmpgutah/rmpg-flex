@@ -696,7 +696,7 @@ router.post('/sync', requireRole('admin', 'manager'), async (req: Request, res: 
       ).run(req.user!.userId, 'sm_sync_completed', 'sm_sync', syncId,
         `${type} sync: ${jobsSynced} jobs, ${attemptsSynced} attempts`, req.ip || 'unknown', now);
 
-      auditLog(req, 'UPDATE' as any, 'integration' as any, syncId, `SM ${type} sync completed: ${jobsSynced} jobs, ${attemptsSynced} attempts`);
+      auditLog(req, 'UPDATE' as any, 'integration' as any, Number(syncId), `SM ${type} sync completed: ${jobsSynced} jobs, ${attemptsSynced} attempts`);
 
       res.json({ success: true, sync_id: syncId, type, jobs_synced: jobsSynced, attempts_synced: attemptsSynced });
     } catch (syncErr: any) {

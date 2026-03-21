@@ -88,6 +88,8 @@ router.post('/config', requireRole('admin', 'manager'), (req: Request, res: Resp
     auditLog(req, 'CREATE', 'system_config', result.lastInsertRowid as number,
       `Added config: ${config_key} = ${/secret|password|token|key|smtp_pass/i.test(config_key) ? '[REDACTED]' : config_value}`);
 
+    auditLog(req, 'CREATE' as any, 'system_config' as any, Number(result.lastInsertRowid), `Added config: ${config_key} in category ${category}`);
+
     res.status(201).json(item);
   } catch (error: any) {
     if (error.message?.includes('UNIQUE constraint')) {
@@ -130,6 +132,9 @@ router.put('/config/:id', validateParamId, requireRole('admin', 'manager'), (req
     auditLog(req, 'UPDATE', 'system_config', item.id, `Updated config: ${item.config_key}`);
 
     const updated = db.prepare('SELECT * FROM system_config WHERE id = ?').get(item.id);
+
+    auditLog(req, 'UPDATE' as any, 'system_config' as any, item.id, `Updated config #${item.id}: ${item.config_key}`);
+
     res.json(updated);
   } catch (error: any) {
     console.error('Update config error:', error?.message || 'Unknown error');
@@ -152,6 +157,8 @@ router.delete('/config/:id', validateParamId, requireRole('admin', 'manager'), (
 
     auditLog(req, 'DELETE', 'system_config', item.id,
       `Removed config: ${item.config_key} = ${/secret|password|token|key|smtp_pass/i.test(item.config_key) ? '[REDACTED]' : item.config_value}`);
+
+    auditLog(req, 'DELETE' as any, 'system_config' as any, item.id, `Removed config: ${item.config_key}`);
 
     res.json({ message: 'Config item removed' });
   } catch (error: any) {

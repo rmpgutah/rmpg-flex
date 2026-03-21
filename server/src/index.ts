@@ -548,7 +548,7 @@ app.get('*', (req, res) => {
 // ─── Global Error Handler ────────────────────────────
 // Catches unhandled middleware errors (multer, body-parser, etc.)
 app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  const requestId = req.headers['x-request-id'] || '';
+  const requestId = (req as any).requestId || req.headers['x-request-id'] || '';
   console.error(`[${requestId}] Unhandled Express error:`, err?.message || err, err?.stack || '');
   if (!res.headersSent) {
     res.status(500).json({ error: 'Internal server error' });
@@ -715,6 +715,20 @@ try {
         }
       } catch (e) { console.error('[Audit Cleanup] Failed:', e); }
     }, 60 * 60 * 1000).unref();
+
+    // ─── Periodic Health Monitoring ─────────────────────
+    // Log WebSocket connections, memory usage, and uptime every 5 minutes
+    setInterval(() => {
+      const mem = process.memoryUsage();
+      const wsCount = getConnectedClientCount();
+      const uptimeMin = Math.floor(process.uptime() / 60);
+      console.log(
+        `[Monitor] WS connections: ${wsCount} | ` +
+        `Heap: ${Math.round(mem.heapUsed / 1048576)}/${Math.round(mem.heapTotal / 1048576)} MB | ` +
+        `RSS: ${Math.round(mem.rss / 1048576)} MB | ` +
+        `Uptime: ${uptimeMin}m`
+      );
+    }, 5 * 60 * 1000).unref();
 
     // Start patrol monitor for missed scan alerts
     startPatrolMonitor(5 * 60 * 1000); // Check every 5 minutes
