@@ -1195,11 +1195,46 @@ export async function announceStatusChange(call: any, newStatus: string): Promis
   };
   const statusText = statusSentences[newStatus] || `is now ${newStatus}`;
   const incidentType = call?.incident_type ? `, ${formatIncidentType(call.incident_type)}` : '';
-  const location = call?.location ? ` at ${abbreviateAddress(call.location)}` : '';
+  const location = call?.location || call?.location_address || '';
+  const locText = location ? ` at ${abbreviateAddress(location)}` : '';
 
   await playToneAsync('info');
   await delay(TONE_GAP_MS);
-  enqueuePhrases([{ text: `Call ${shortCallNumber(callNum)} ${statusText}${incidentType}${location}.` }]);
+
+  const phrases: VoicePhrase[] = [
+    { text: `Call ${shortCallNumber(callNum)} ${statusText}${incidentType}${locText}.` }
+  ];
+
+  // On scene — read safety-critical info the officer needs RIGHT NOW
+  if (newStatus === 'onscene' && call) {
+    const suspDesc = call.suspect_description || call.subject_description;
+    if (suspDesc) {
+      phrases.push({ text: `Suspect is described as ${suspDesc}.` });
+    }
+    if (call.weapons_involved && call.weapons_involved !== 'None') {
+      phrases.push({ text: `Be advised, weapons involved: ${call.weapons_involved}.` });
+    }
+    if (call.num_subjects && call.num_subjects > 1) {
+      phrases.push({ text: `${call.num_subjects} subjects on scene.` });
+    }
+    if (call.scene_safety) {
+      phrases.push({ text: `Scene safety: ${call.scene_safety}.` });
+    }
+  }
+
+  // Enroute — remind of location and key details
+  if (newStatus === 'enroute' && call) {
+    if (call.cross_street) {
+      phrases.push({ text: `Cross street is ${call.cross_street}.` });
+    }
+    const narr = call.narrative || call.description;
+    if (narr) {
+      const cleaned = truncateForSpeech(narr, 80);
+      phrases.push({ text: cleaned.endsWith('.') ? cleaned : cleaned + '.' });
+    }
+  }
+
+  enqueuePhrases(phrases);
 }
 
 /**
@@ -1218,11 +1253,39 @@ export async function announceUnitDispatched(call: any, units?: any[]): Promise<
   await playToneAsync('info');
   await delay(TONE_GAP_MS);
   const incType = call?.incident_type ? `, ${formatIncidentType(call.incident_type)}` : '';
-  const loc = call?.location ? ` at ${abbreviateAddress(call.location)}` : '';
+  const location = call?.location || call?.location_address || '';
+  const loc = location ? ` at ${abbreviateAddress(location)}` : '';
+  const phrases: VoicePhrase[] = [];
+
+  // Who's going where
   const msg = unitNames
     ? `${unitNames} has been dispatched to call ${shortCallNumber(callNum)}${incType}${loc}.`
     : `Units dispatched to call ${shortCallNumber(callNum)}${incType}${loc}.`;
-  enqueuePhrases([{ text: msg }]);
+  phrases.push({ text: msg });
+
+  // Critical safety info for the responding officer
+  if (call) {
+    if (call.weapons_involved && call.weapons_involved !== 'None') {
+      phrases.push({ text: `Be advised, weapons involved: ${call.weapons_involved}.` });
+    }
+    if (call.officer_safety_caution) {
+      phrases.push({ text: 'Officer safety caution, use caution on approach.' });
+    }
+    const suspDesc = call.suspect_description || call.subject_description;
+    if (suspDesc) {
+      phrases.push({ text: `Suspect is described as ${suspDesc}.` });
+    }
+    if (call.vehicle_description) {
+      let vLine = `Vehicle is a ${call.vehicle_description}`;
+      if (call.vehicle_plate) vLine += `, plate ${spellOutPlate(call.vehicle_plate)}`;
+      phrases.push({ text: vLine + '.' });
+    }
+    if (call.cross_street) {
+      phrases.push({ text: `Cross street is ${call.cross_street}.` });
+    }
+  }
+
+  enqueuePhrases(phrases);
 }
 
 /**

@@ -26,6 +26,44 @@ import {
 } from '../utils/voiceAlerts';
 
 /**
+ * Normalize DB column names to voice system field names.
+ * The DB uses `location_address`, the voice system expects `location`.
+ * The DB uses `narrative`, voice system also accepts `description`.
+ * This ensures every field the dispatcher reads is populated.
+ */
+function normalizeCallForVoice(raw: any): any {
+  if (!raw) return raw;
+  return {
+    ...raw,
+    // Location mapping
+    location: raw.location || raw.location_address || '',
+    business_name: raw.business_name || raw.property_name || raw.client_name || '',
+    // Zone/beat — DB stores zone_beat as "Z3/B1" or separate fields
+    zone: raw.zone || raw.zone_name || raw.zone_id || (raw.zone_beat ? raw.zone_beat.split('/')[0]?.replace(/^Z/i, '') : '') || '',
+    beat: raw.beat || raw.beat_name || raw.beat_id || (raw.zone_beat ? raw.zone_beat.split('/')[1]?.replace(/^B/i, '') : '') || '',
+    section_name: raw.section_name || '',
+    beat_descriptor: raw.beat_descriptor || '',
+    // Narrative
+    narrative: raw.narrative || raw.description || '',
+    description: raw.description || raw.narrative || '',
+    // Subject
+    suspect_description: raw.suspect_description || raw.subject_description || '',
+    subject_description: raw.subject_description || raw.suspect_description || '',
+    // Assigned units — DB stores as JSON string
+    assigned_units: Array.isArray(raw.assigned_units) ? raw.assigned_units
+      : (typeof raw.assigned_units === 'string' ? tryParseJson(raw.assigned_units) : []),
+    // Source
+    source: raw.source || raw.call_source || '',
+    // Apartment from location_room
+    apartment: raw.apartment || raw.location_room || '',
+  };
+}
+
+function tryParseJson(s: string): any[] {
+  try { const r = JSON.parse(s); return Array.isArray(r) ? r : []; } catch { return []; }
+}
+
+/**
  * App-wide dispatch voice alert hook.
  * Call once in Layout.tsx — subscribes to all dispatch-related
  * WebSocket events and fires the appropriate voice announcements.
@@ -43,23 +81,25 @@ export function useDispatchVoiceAlerts(): void {
         const action = data.action || msg.action;
 
         if (action === 'call_created' && data.call) {
-          announceNewCall(data.call);
-          announceCallAlerts(data.call);
+          const call = normalizeCallForVoice(data.call);
+          announceNewCall(call);
+          announceCallAlerts(call);
         }
 
         if (action === 'call_status_changed' && data.call) {
-          const status = data.status || data.call?.status;
+          const call = normalizeCallForVoice(data.call);
+          const status = data.status || call.status;
           if (status) {
-            announceStatusChange(data.call, status);
+            announceStatusChange(call, status);
           }
-          // Announce dispatch event specifically when status is 'dispatched'
           if (status === 'dispatched') {
-            announceDispatchEvent(data.call);
+            announceDispatchEvent(call);
           }
         }
 
         if (action === 'units_dispatched') {
-          announceUnitDispatched(data.call, data.units);
+          const call = normalizeCallForVoice(data.call);
+          announceUnitDispatched(call, data.units);
         }
       })
     );
