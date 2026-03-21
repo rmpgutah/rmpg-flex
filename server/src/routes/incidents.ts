@@ -789,6 +789,12 @@ router.post('/:id/persons', validateParamId, requireRole('admin', 'manager', 'su
       return;
     }
 
+    // Authorization: officers can only link persons to their own incidents
+    if (req.user!.role === 'officer' && incident.officer_id !== req.user!.userId) {
+      res.status(403).json({ error: 'You can only add persons to your own incidents' });
+      return;
+    }
+
     const { person_id, role, notes } = req.body;
     if (!person_id || !role) {
       res.status(400).json({ error: 'person_id and role are required' });
@@ -841,6 +847,16 @@ router.post('/:id/persons', validateParamId, requireRole('admin', 'manager', 'su
 router.put('/:id/persons/:personId', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+
+    // Authorization: officers can only modify person links on their own incidents
+    if (req.user!.role === 'officer') {
+      const incident = db.prepare('SELECT officer_id FROM incidents WHERE id = ?').get(req.params.id) as any;
+      if (!incident || incident.officer_id !== req.user!.userId) {
+        res.status(403).json({ error: 'You can only modify person links on your own incidents' });
+        return;
+      }
+    }
+
     const link = db.prepare('SELECT * FROM incident_persons WHERE incident_id = ? AND person_id = ?')
       .get(req.params.id, req.params.personId) as any;
     if (!link) {
@@ -915,6 +931,12 @@ router.post('/:id/vehicles', validateParamId, requireRole('admin', 'manager', 's
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id) as any;
     if (!incident) {
       res.status(404).json({ error: 'Incident not found' });
+      return;
+    }
+
+    // Authorization: officers can only link vehicles to their own incidents
+    if (req.user!.role === 'officer' && incident.officer_id !== req.user!.userId) {
+      res.status(403).json({ error: 'You can only add vehicles to your own incidents' });
       return;
     }
 

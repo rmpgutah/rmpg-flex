@@ -142,8 +142,20 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
     }
 
     const { first, middle, last } = splitName(fullName);
-    const charges = Array.isArray(b.charges) ? JSON.stringify(b.charges)
-      : typeof b.charges === 'string' ? b.charges : '[]';
+    // Normalize charges to valid JSON array string
+    let charges = '[]';
+    if (Array.isArray(b.charges)) {
+      charges = JSON.stringify(b.charges);
+    } else if (typeof b.charges === 'string') {
+      // Validate that string charges is valid JSON array
+      try {
+        const parsed = JSON.parse(b.charges);
+        charges = Array.isArray(parsed) ? JSON.stringify(parsed) : JSON.stringify([b.charges]);
+      } catch {
+        // If not valid JSON, wrap as single-element array
+        charges = JSON.stringify([b.charges]);
+      }
+    }
 
     const result = db.prepare(`
       INSERT INTO arrest_records (
@@ -226,7 +238,19 @@ router.put('/manual/:id', validateParamId, requireRole('admin', 'manager', 'offi
 
     if (b.charges !== undefined) {
       updates.push('charges = ?');
-      params.push(Array.isArray(b.charges) ? JSON.stringify(b.charges) : b.charges);
+      // Normalize charges to valid JSON array string (prevent double-encoding)
+      let chargesVal = '[]';
+      if (Array.isArray(b.charges)) {
+        chargesVal = JSON.stringify(b.charges);
+      } else if (typeof b.charges === 'string') {
+        try {
+          const parsed = JSON.parse(b.charges);
+          chargesVal = Array.isArray(parsed) ? JSON.stringify(parsed) : JSON.stringify([b.charges]);
+        } catch {
+          chargesVal = JSON.stringify([b.charges]);
+        }
+      }
+      params.push(chargesVal);
     }
 
     // If full_name changed, re-split first/last/middle
@@ -455,8 +479,8 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
 // EXISTING ROUTES (JailBase API + Search + Status)
 // ============================================================
 
-// ── GET /status — Configuration + roster status ─────────────
-router.get('/status', (_req: Request, res: Response) => {
+// ── GET /status — Configuration + roster status (admin/manager only) ──
+router.get('/status', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
   try {
     const db = getDb();
     const hasApiKey = !!getDecryptedValue(CONFIG_KEYS.apiKey);

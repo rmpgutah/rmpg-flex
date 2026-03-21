@@ -68,6 +68,22 @@ router.post('/checkpoints', requireRole('admin', 'manager', 'supervisor'), (req:
       return;
     }
 
+    // Validate GPS coordinates if provided
+    if (latitude != null) {
+      const lat = parseFloat(latitude);
+      if (isNaN(lat) || lat < -90 || lat > 90) {
+        res.status(400).json({ error: 'latitude must be between -90 and 90' });
+        return;
+      }
+    }
+    if (longitude != null) {
+      const lng = parseFloat(longitude);
+      if (isNaN(lng) || lng < -180 || lng > 180) {
+        res.status(400).json({ error: 'longitude must be between -180 and 180' });
+        return;
+      }
+    }
+
     const db = getDb();
 
     // Verify property exists
@@ -151,6 +167,22 @@ router.put('/checkpoints/:id', validateParamId, requireRole('admin', 'manager', 
     if (!existing) {
       res.status(404).json({ error: 'Checkpoint not found' });
       return;
+    }
+
+    // Validate GPS coordinates if provided
+    if (latitude != null) {
+      const lat = parseFloat(latitude);
+      if (isNaN(lat) || lat < -90 || lat > 90) {
+        res.status(400).json({ error: 'latitude must be between -90 and 90' });
+        return;
+      }
+    }
+    if (longitude != null) {
+      const lng = parseFloat(longitude);
+      if (isNaN(lng) || lng < -180 || lng > 180) {
+        res.status(400).json({ error: 'longitude must be between -180 and 180' });
+        return;
+      }
     }
 
     // Build dynamic SET clause — only update fields explicitly provided
@@ -289,6 +321,22 @@ router.post('/scan', requireRole('admin', 'manager', 'supervisor', 'officer'), (
     if (!qr_code) {
       res.status(400).json({ error: 'Missing required field: qr_code' });
       return;
+    }
+
+    // Validate GPS coordinates if provided (officer's scan location)
+    if (latitude != null) {
+      const lat = parseFloat(latitude);
+      if (isNaN(lat) || lat < -90 || lat > 90) {
+        res.status(400).json({ error: 'latitude must be between -90 and 90' });
+        return;
+      }
+    }
+    if (longitude != null) {
+      const lng = parseFloat(longitude);
+      if (isNaN(lng) || lng < -180 || lng > 180) {
+        res.status(400).json({ error: 'longitude must be between -180 and 180' });
+        return;
+      }
     }
 
     const db = getDb();

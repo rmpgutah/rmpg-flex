@@ -280,6 +280,15 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispa
       return;
     }
 
+    // Validate fine_amount range (match PUT endpoint validation)
+    if (fine_amount !== undefined && fine_amount !== null) {
+      const amount = parseFloat(fine_amount);
+      if (isNaN(amount) || amount < 0 || amount > 999999.99) {
+        res.status(400).json({ error: 'fine_amount must be between 0 and 999999.99' });
+        return;
+      }
+    }
+
     // Validate enums
     try {
       validateEnum(type, VALID_CITATION_TYPES, 'type');

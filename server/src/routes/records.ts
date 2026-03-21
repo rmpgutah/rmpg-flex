@@ -87,7 +87,7 @@ router.get('/persons', requireRole('admin', 'manager', 'supervisor', 'officer', 
   try {
     const db = getDb();
     const { page = '1', limit = '50', flags, search, archived } = req.query;
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.min(1000, Math.max(1, parseInt(page as string, 10) || 1));
     const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
@@ -680,7 +680,7 @@ router.get('/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer',
   try {
     const db = getDb();
     const { page = '1', limit = '50', search, archived } = req.query;
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.min(1000, Math.max(1, parseInt(page as string, 10) || 1));
     const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
@@ -824,6 +824,15 @@ router.post('/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer'
       stolen_status, stolen_date, recovery_date,
       flags, notes,
     } = req.body;
+
+    // Validate VIN format if provided (17 alphanumeric chars, no I/O/Q)
+    if (vin) {
+      const cleanVin = String(vin).toUpperCase().trim();
+      if (cleanVin.length !== 17 || !/^[A-HJ-NPR-Z0-9]{17}$/.test(cleanVin)) {
+        res.status(400).json({ error: 'VIN must be exactly 17 alphanumeric characters (no I, O, or Q)' });
+        return;
+      }
+    }
 
     const result = db.prepare(`
       INSERT INTO vehicles_records (plate_number, state, make, model, year, color, secondary_color,
@@ -1151,6 +1160,22 @@ router.post('/properties', requireRole('admin', 'manager', 'supervisor', 'office
       return;
     }
 
+    // Validate GPS coordinates if provided
+    if (latitude != null) {
+      const lat = parseFloat(latitude);
+      if (isNaN(lat) || lat < -90 || lat > 90) {
+        res.status(400).json({ error: 'latitude must be between -90 and 90' });
+        return;
+      }
+    }
+    if (longitude != null) {
+      const lng = parseFloat(longitude);
+      if (isNaN(lng) || lng < -180 || lng > 180) {
+        res.status(400).json({ error: 'longitude must be between -180 and 180' });
+        return;
+      }
+    }
+
     const result = db.prepare(`
       INSERT INTO properties (client_id, name, address, city, state, zip, latitude, longitude, property_type,
         gate_code, alarm_code, emergency_contact, post_orders, hazard_notes, access_instructions, is_active)
@@ -1241,7 +1266,7 @@ router.get('/evidence', requireRole('admin', 'manager', 'supervisor', 'officer',
   try {
     const db = getDb();
     const { page = '1', limit = '50', per_page, archived, search, status, type, case_id } = req.query;
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.min(1000, Math.max(1, parseInt(page as string, 10) || 1));
     const limitNum = Math.min(200, Math.max(1, parseInt((per_page || limit) as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
