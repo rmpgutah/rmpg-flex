@@ -19,6 +19,7 @@ import { liveBroadcast } from './middleware/liveBroadcast';
 import { startPatrolMonitor } from './utils/patrolMonitor';
 import { startDailyReportScheduler } from './utils/dailyReportGenerator';
 import { scheduleOfacSync, searchOfacLocal } from './utils/ofacScraper';
+import { startHealthChecker } from './utils/integrationHealthChecker';
 import { getDb } from './models/database';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -345,6 +346,9 @@ try {
 
     // Start OFAC SDN data sync (downloads from U.S. Treasury, syncs daily)
     scheduleOfacSync();
+
+    // Start integration health checker (probes every 5 min, alerts on status changes)
+    startHealthChecker();
 
     // Auto-backfill OFAC screening for existing person records (runs 60s after boot
     // to allow OFAC data sync to complete first)
