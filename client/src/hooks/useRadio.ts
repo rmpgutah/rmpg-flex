@@ -355,20 +355,12 @@ export function useRadio() {
       });
       mediaRecorderRef.current = recorder;
 
-      let chunkCount = 0;
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
-          chunkCount++;
-          if (chunkCount === 1) {
-            console.log('[Radio TX] First audio chunk captured:', event.data.size, 'bytes, mimeType:', mimeType);
-          }
           const reader = new FileReader();
           reader.onload = () => {
             const rdParts = (reader.result as string).split(',');
             const base64 = rdParts.length > 1 ? rdParts[1] : rdParts[0];
-            if (chunkCount <= 2) {
-              console.log('[Radio TX] Sending chunk #' + chunkCount + ', base64 length:', base64?.length || 0);
-            }
             send({
               type: 'radio_audio',
               data: {
@@ -738,23 +730,14 @@ export function useRadio() {
     });
 
     // Incoming audio chunks
-    let rxChunkCount = 0;
     const unsubAudio = subscribe('radio_audio', (msg: any) => {
       const data = msg.data || msg;
       if (!data.audio || !data.mimeType) {
-        console.warn('[Radio RX] Received audio message with missing audio/mimeType:', Object.keys(data));
         return;
-      }
-
-      rxChunkCount++;
-      if (rxChunkCount <= 2) {
-        console.log('[Radio RX] Chunk #' + rxChunkCount + ' from', data.fromUser || 'unknown',
-          '| base64 length:', data.audio?.length || 0, '| mimeType:', data.mimeType);
       }
 
       // Lazily create stream player on first chunk
       if (!playerRef.current) {
-        console.log('[Radio RX] Creating StreamPlayer for', data.mimeType);
         playerRef.current = new StreamPlayer();
         playerRef.current.init(data.mimeType);
       }

@@ -9,7 +9,8 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
-import { escapeLike, validateParamId, validateNumericParams } from '../middleware/sanitize';
+import { escapeLike, validateParamId } from '../middleware/sanitize';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 router.use(authenticateToken);
@@ -67,7 +68,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     if (severity) { where += ' AND oa.severity = ?'; params.push(severity); }
     if (search) {
       where += " AND (p.first_name LIKE ? ESCAPE '\\' OR p.last_name LIKE ? ESCAPE '\\' OR oa.description LIKE ? ESCAPE '\\')";
-      const s = `%${escapeLike(String(search).trim())}%`; params.push(s, s, s);
+      const s = `%${escapeLike(String(search))}%`; params.push(s, s, s);
     }
 
     const total = (db.prepare(`
@@ -99,7 +100,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
 
 // ─── GET /check/:personId ────────────────────────────────
 // Quick check: all active alerts for a specific person
-router.get('/check/:personId', validateNumericParams('personId'), requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/check/:personId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const alerts = db.prepare(`
@@ -149,9 +150,10 @@ router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, r
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, 'create', 'offender_alert', ?, ?, ?, ?)`).run(
-      req.user!.userId, Number(result.lastInsertRowid), JSON.stringify({ person_id, alert_type, severity }), req.ip || 'unknown', now);
+      req.user!.userId, result.lastInsertRowid, JSON.stringify({ person_id, alert_type, severity }), req.ip || 'unknown', now);
 
-    res.status(201).json({ data: { id: Number(result.lastInsertRowid) } });
+    auditLog(req, 'CREATE' as any, 'offender_alert' as any, result.lastInsertRowid, `Created ${severity} ${alert_type} alert for person ${person_id}`);
+    res.status(201).json({ data: { id: result.lastInsertRowid } });
   } catch (error: any) {
     console.error('Create offender alert error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -186,6 +188,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
 
     params.push(id);
     db.prepare(`UPDATE offender_alerts SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+    auditLog(req, 'UPDATE' as any, 'offender_alert' as any, id, `Updated offender alert ${id}`);
     res.json({ data: { id } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -206,6 +209,7 @@ router.put('/:id/clear', validateParamId, requireRole('admin', 'manager', 'super
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, 'clear', 'offender_alert', ?, '{}', ?, ?)`).run(req.user!.userId, id, req.ip || 'unknown', now);
 
+    auditLog(req, 'UPDATE' as any, 'offender_alert' as any, id, `Cleared offender alert ${id}`);
     res.json({ data: { id, status: 'cleared' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });

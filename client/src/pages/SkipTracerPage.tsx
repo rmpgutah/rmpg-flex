@@ -13,8 +13,10 @@ import {
   ChevronLeft, ChevronDown,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useLiveSync } from '../hooks/useLiveSync';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useToast } from '../components/ToastProvider';
 
 // Search modes
 type SearchMode = 'name' | 'address' | 'nameaddress' | 'phone' | 'email';
@@ -43,6 +45,7 @@ function useCopyToClipboard() {
 
 export default function SkipTracerPage() {
   const isMobile = useIsMobile();
+  const { addToast } = useToast();
   const { copied, copy } = useCopyToClipboard();
 
   // Search state
@@ -99,11 +102,14 @@ export default function SkipTracerPage() {
       setResults(data);
     } catch (err: any) {
       setError(err?.message || 'Search failed');
+      addToast(err?.message || 'Skip trace search failed', 'error');
       setResults(null);
     } finally {
       setLoading(false);
     }
   }, [mode, nameQuery, addressQuery, phoneQuery, emailQuery, page]);
+
+  useLiveSync('skiptracer', handleSearch);
 
   const handlePageChange = (newPage: number) => {
     setPage(newPage);
@@ -117,6 +123,7 @@ export default function SkipTracerPage() {
       setPersonDetail(data);
     } catch (err: any) {
       setError(err?.message || 'Failed to get person details');
+      addToast('Failed to load person details', 'error');
     } finally {
       setLoadingDetail(false);
     }

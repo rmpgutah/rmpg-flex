@@ -16,6 +16,7 @@ import {
 import { apiFetch } from '../hooks/useApi';
 import SplitPanel from '../components/SplitPanel';
 import type { GraphNode, GraphEdge, ConnectionGraph } from '../types';
+import { useToast } from '../components/ToastProvider';
 
 // ── Constants ────────────────────────────────────────────────
 
@@ -783,6 +784,7 @@ function DetailPanel({ node, edges, allNodes, onExpandNode }: {
 // ── Main Page Component ──────────────────────────────────────
 
 export default function ForensicsPage() {
+  const { addToast } = useToast();
   // Graph data
   const [graph, setGraph] = useState<ConnectionGraph | null>(null);
   const [loading, setLoading] = useState(false);
@@ -812,6 +814,7 @@ export default function ForensicsPage() {
       setSelectedNodeId(`${type}-${id}`);
     } catch (err: any) {
       setError(err?.message || 'Failed to load connections');
+      addToast('Failed to load connection graph', 'error');
     } finally {
       setLoading(false);
     }

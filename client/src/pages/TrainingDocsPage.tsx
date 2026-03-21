@@ -9,7 +9,6 @@ import {
   FileVideo, FileSpreadsheet, FileImage, File,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { useToast } from '../components/ToastProvider';
 import {
   apiFetchCompanyDocuments,
   apiCreateCompanyDocument,
@@ -18,7 +17,9 @@ import {
   apiUploadFiles,
 } from '../hooks/useApi';
 import { authUrl } from '../components/FileAttachments';
+import { useLiveSync } from '../hooks/useLiveSync';
 import type { CompanyDocCategory } from '../types';
+import { useToast } from '../components/ToastProvider';
 
 // ── Category config ─────────────────────────────────────────
 const CATEGORIES: { key: CompanyDocCategory | 'all'; label: string }[] = [
@@ -67,7 +68,6 @@ export default function TrainingDocsPage() {
 
   const [documents, setDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState('');
   const [category, setCategory] = useState<CompanyDocCategory | 'all'>('all');
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -76,19 +76,18 @@ export default function TrainingDocsPage() {
   const loadDocuments = useCallback(async () => {
     try {
       setLoading(true);
-      setFetchError('');
       const data = await apiFetchCompanyDocuments(category !== 'all' ? category : undefined);
       setDocuments(data || []);
-    } catch (err: any) {
-      const msg = err?.message || 'Failed to load documents';
-      setFetchError(msg);
-      console.error('Failed to load documents:', err); addToast('Failed to load documents', 'error');
+    } catch (err) {
+      console.error('Failed to load documents:', err);
+      addToast('Failed to load documents', 'error');
     } finally {
       setLoading(false);
     }
   }, [category]);
 
   useEffect(() => { loadDocuments(); }, [loadDocuments]);
+  useLiveSync('company-documents', loadDocuments);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return documents;
@@ -102,9 +101,11 @@ export default function TrainingDocsPage() {
     if (!confirm(`Delete "${doc.title}"? This cannot be undone.`)) return;
     try {
       await apiDeleteCompanyDocument(doc.id);
+      addToast('Document deleted successfully', 'success');
       loadDocuments();
     } catch (err) {
-      console.error('Delete failed:', err); addToast('Failed to delete document', 'error');
+      console.error('Delete failed:', err);
+      addToast('Failed to delete document', 'error');
     }
   };
 
@@ -164,8 +165,6 @@ export default function TrainingDocsPage() {
           )}
         </div>
       </div>
-
-      {fetchError && <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded text-red-400 text-xs">{fetchError}</div>}
 
       {/* Category Tabs */}
       <div className="panel-inset mx-3 mt-3 p-1.5 flex items-center gap-1 flex-wrap flex-shrink-0">
@@ -310,6 +309,7 @@ interface ModalProps {
 
 function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
   const isEdit = !!doc;
+  const { addToast } = useToast();
   const [title, setTitle] = useState(doc?.title || '');
   const [description, setDescription] = useState(doc?.description || '');
   const [category, setCategory] = useState<CompanyDocCategory>(doc?.category || 'general');
@@ -352,12 +352,15 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
 
       if (isEdit) {
         await apiUpdateCompanyDocument(doc.id, payload);
+        addToast('Document updated successfully', 'success');
       } else {
         await apiCreateCompanyDocument(payload);
+        addToast('Document created successfully', 'success');
       }
       onSaved();
     } catch (err: any) {
       setError(err.message || 'Failed to save document');
+      addToast('Failed to save document', 'error');
     } finally {
       setSaving(false);
     }

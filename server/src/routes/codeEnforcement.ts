@@ -13,6 +13,8 @@ import { validateParamId, escapeLike } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
 import { resolveDistrict } from '../utils/districtResolver';
 import { auditLog } from '../utils/auditLogger';
+import { broadcast } from '../utils/websocket';
+import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 router.use(authenticateToken);
@@ -146,6 +148,7 @@ router.post('/violations', requireRole('admin', 'manager', 'supervisor', 'office
     const { result, violation_number } = createViolation();
 
     auditLog(req, 'CREATE', 'code_violation', Number(result.lastInsertRowid), 'Created code enforcement violation');
+    broadcast('records', 'violation:created', { id: result.lastInsertRowid, violation_number, violation_type, location });
     res.status(201).json({ data: { id: result.lastInsertRowid, violation_number } });
   } catch (error: any) {
     console.error('Create violation error:', error?.message || 'Unknown error');
@@ -171,6 +174,7 @@ router.put('/violations/:id', validateParamId, requireRole('admin', 'manager', '
     params.push(req.params.id);
     db.prepare(`UPDATE code_violations SET ${updates.join(', ')} WHERE id = ?`).run(...params);
     auditLog(req, 'UPDATE', 'code_violation', String(req.params.id), `Updated code enforcement violation #${req.params.id}`);
+    broadcast('records', 'violation:updated', { id: parseInt(req.params.id as string, 10) });
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) { console.error('Code enforcement error:', error?.message || error); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -194,6 +198,7 @@ router.put('/violations/:id/status', validateParamId, requireRole('admin', 'mana
     db.prepare(`UPDATE code_violations SET ${setClauses.join(', ')} WHERE id = ?`).run(...updateParams);
 
     auditLog(req, 'UPDATE', 'code_violation', String(req.params.id), `Changed violation #${req.params.id} status`);
+    broadcast('records', 'violation:updated', { id: parseInt(req.params.id as string, 10), status });
     res.json({ data: { id: parseInt(req.params.id as string, 10), status } });
   } catch (error: any) { console.error('Code enforcement error:', error?.message || error); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -267,6 +272,7 @@ router.post('/tows', requireRole('admin', 'manager', 'supervisor', 'officer'), (
     const { result, tow_number } = createTow();
 
     auditLog(req, 'CREATE', 'vehicle_tow', Number(result.lastInsertRowid), 'Created tow record');
+    broadcast('records', 'tow:created', { id: result.lastInsertRowid, tow_number, tow_from, tow_reason });
     res.status(201).json({ data: { id: result.lastInsertRowid, tow_number } });
   } catch (error: any) {
     console.error('Create tow error:', error?.message || 'Unknown error');
@@ -292,6 +298,7 @@ router.put('/tows/:id', validateParamId, requireRole('admin', 'manager', 'superv
     params.push(req.params.id);
     db.prepare(`UPDATE vehicle_tows SET ${updates.join(', ')} WHERE id = ?`).run(...params);
     auditLog(req, 'UPDATE', 'vehicle_tow', String(req.params.id), `Updated tow record #${req.params.id}`);
+    broadcast('records', 'tow:updated', { id: parseInt(req.params.id as string, 10) });
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) { console.error('Code enforcement error:', error?.message || error); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -315,8 +322,34 @@ router.put('/tows/:id/status', validateParamId, requireRole('admin', 'manager', 
     db.prepare(`UPDATE vehicle_tows SET ${setClauses} WHERE id = ?`).run(...Object.values(updates), req.params.id);
 
     auditLog(req, 'UPDATE', 'vehicle_tow', String(req.params.id), `Changed tow #${req.params.id} status`);
+    broadcast('records', 'tow:updated', { id: parseInt(req.params.id as string, 10), status });
     res.json({ data: { id: parseInt(req.params.id as string, 10), status } });
   } catch (error: any) { console.error('Code enforcement error:', error?.message || error); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ─── GET /violations/export/csv ─────────────────────────
+router.get('/violations/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT violation_number as case_number, violation_type, location as address,
+             created_at as reported_date, status, reporting_officer_name as assigned_to_name
+      FROM code_violations
+      ORDER BY created_at DESC
+    `).all() as any[];
+
+    sendCsv(res, 'code-violations-export.csv', [
+      { key: 'case_number', header: 'Case Number' },
+      { key: 'violation_type', header: 'Violation Type' },
+      { key: 'address', header: 'Address' },
+      { key: 'reported_date', header: 'Reported Date' },
+      { key: 'status', header: 'Status' },
+      { key: 'assigned_to_name', header: 'Assigned To' },
+    ], rows);
+  } catch (error: any) {
+    console.error('Code violations CSV export error:', error?.message);
+    res.status(500).json({ error: 'Export failed' });
+  }
 });
 
 export default router;

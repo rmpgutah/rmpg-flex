@@ -5,12 +5,12 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { escapeHtml } from '../utils/sanitize';
 import {
   Plus, RefreshCw, MapPin, BarChart3, List, Map as MapIcon,
   Briefcase, Calendar, Route, Navigation, Loader2, X,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useWebSocket } from '../context/WebSocketContext';
 import { loadGoogleMaps, DARK_MAP_STYLE } from '../utils/googleMapsLoader';
@@ -19,7 +19,6 @@ import ServeAttemptModal from '../components/serve/ServeAttemptModal';
 import ServeRoutePlanner from '../components/serve/ServeRoutePlanner';
 import ServeSkipTracePanel from '../components/serve/ServeSkipTracePanel';
 import FormModal from '../components/FormModal';
-import { useToast } from '../components/ToastProvider';
 import type { ServeJob, ServeAttemptData, ServeSkipAddress } from '../types';
 
 // ─── Constants ──────────────────────────────────────────────────────────
@@ -75,7 +74,6 @@ interface StatsSummary {
 export default function ServePage() {
   const isMobile = useIsMobile();
   const { subscribe } = useWebSocket();
-  const { addToast } = useToast();
 
   // ── Core state ──────────────────────────────────────────────────────
   const [selectedDate, setSelectedDate] = useState(() => formatDate(new Date()));
@@ -144,7 +142,7 @@ export default function ServePage() {
   const fetchJobs = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiFetch<ServeJob[]>(`/process-server?date=${selectedDate}`);
+      const data = await apiFetch<ServeJob[]>(`/api/process-server?date=${selectedDate}`);
       const fetchedJobs = data || [];
       setJobs(fetchedJobs);
 
@@ -155,7 +153,7 @@ export default function ServePage() {
         await Promise.all(
           jobsWithCalls.map(async (j: any) => {
             try {
-              const call = await apiFetch(`/dispatch/calls/${j.call_id}`);
+              const call = await apiFetch(`/api/dispatch/calls/${j.call_id}`);
               if (call) callMap[j.id] = call;
             } catch {}
           })
@@ -165,15 +163,15 @@ export default function ServePage() {
         setLinkedCalls({});
       }
     } catch {
-      addToast('Failed to load serve jobs', 'error');
+      // silently fail — user can retry
     } finally {
       setLoading(false);
     }
-  }, [selectedDate, addToast]);
+  }, [selectedDate]);
 
   const fetchStats = useCallback(async () => {
     try {
-      const data = await apiFetch<StatsSummary>(`/process-server/stats/summary?date=${selectedDate}`);
+      const data = await apiFetch<StatsSummary>(`/api/process-server/stats/summary?date=${selectedDate}`);
       setStats(data);
     } catch {
       // stats are non-critical
@@ -191,14 +189,7 @@ export default function ServePage() {
   }, [refreshJobs]);
 
   // ── WebSocket live updates ─────────────────────────────────────────
-  useEffect(() => {
-    const unsubs = [
-      subscribe('serve:created', () => refreshJobs()),
-      subscribe('serve:updated', () => refreshJobs()),
-      subscribe('serve:attempt', () => refreshJobs()),
-    ];
-    return () => { unsubs.forEach(u => u()); };
-  }, [subscribe, refreshJobs]);
+  useLiveSync('process-server', refreshJobs);
 
   // ══════════════════════════════════════════════════════════════════════
   // Handlers
@@ -207,14 +198,14 @@ export default function ServePage() {
   const handleSyncFromSM = useCallback(async () => {
     setSyncing(true);
     try {
-      await apiFetch('/process-server/sync-from-sm', { method: 'POST' });
+      await apiFetch('/api/process-server/sync-from-sm', { method: 'POST' });
       refreshJobs();
     } catch {
-      addToast('Failed to sync from ServeManager', 'error');
+      // sync failed
     } finally {
       setSyncing(false);
     }
-  }, [refreshJobs, addToast]);
+  }, [refreshJobs]);
 
   const handleNavigate = useCallback((jobId: number) => {
     const job = jobs.find(j => j.id === jobId);
@@ -235,15 +226,15 @@ export default function ServePage() {
 
   const handleFlagAddress = useCallback(async (jobId: number) => {
     try {
-      await apiFetch(`/process-server/${jobId}`, {
+      await apiFetch(`/api/process-server/${jobId}`, {
         method: 'PUT',
         body: JSON.stringify({ notes: 'BAD ADDRESS \u2014 needs verification', status: 'skipped' }),
       });
       refreshJobs();
     } catch {
-      addToast('Failed to flag address', 'error');
+      // flag failed
     }
-  }, [refreshJobs, addToast]);
+  }, [refreshJobs]);
 
   const handleAttemptSubmit = useCallback(async (data: ServeAttemptData) => {
     if (!attemptJob) return { dueDiligenceComplete: false, attemptNumber: 0, jobStatus: 'pending' };
@@ -266,13 +257,13 @@ export default function ServePage() {
     setRouteData({ orderedIds: orderedJobIds, ...data });
     // Persist sort order to server
     try {
-      await apiFetch('/process-server/reorder', {
+      await apiFetch('/api/process-server/reorder', {
         method: 'PUT',
         body: JSON.stringify({ orderedIds: orderedJobIds }),
       });
       refreshJobs();
-    } catch (err: any) {
-      console.warn('[Serve] Route reorder failed — local state still updated:', err?.message);
+    } catch {
+      // reorder failed — local state still updated
     }
   }, [refreshJobs]);
 
@@ -331,12 +322,12 @@ export default function ServePage() {
     setFormSubmitting(true);
     try {
       if (editJob) {
-        await apiFetch(`/process-server/${editJob.id}`, {
+        await apiFetch(`/api/process-server/${editJob.id}`, {
           method: 'PUT',
           body: JSON.stringify(formData),
         });
       } else {
-        await apiFetch('/process-server', {
+        await apiFetch('/api/process-server', {
           method: 'POST',
           body: JSON.stringify({ ...formData, serve_date: selectedDate }),
         });
@@ -346,11 +337,11 @@ export default function ServePage() {
       setEditJob(null);
       refreshJobs();
     } catch {
-      addToast(editJob ? 'Failed to update job' : 'Failed to create job', 'error');
+      // error
     } finally {
       setFormSubmitting(false);
     }
-  }, [formData, editJob, selectedDate, resetForm, refreshJobs, addToast]);
+  }, [formData, editJob, selectedDate, resetForm, refreshJobs]);
 
   const handleFormChange = useCallback((field: string, value: string | number) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -391,21 +382,22 @@ export default function ServePage() {
     loadGoogleMaps(GMAPS_API_KEY).then(() => {
       if (cancelled || !mapContainerRef.current) return;
 
-      // If map already exists, the separate mapReady effect will handle marker updates
-      if (mapRef.current) return;
+      // If map already exists, just update markers
+      if (mapRef.current) {
+        updateMapMarkers();
+        return;
+      }
 
       const center = { lat: 40.7608, lng: -111.891 }; // SLC default
       const map = new google.maps.Map(mapContainerRef.current, {
         center,
         zoom: 11,
-        renderingType: 'RASTER' as any,
         styles: DARK_MAP_STYLE,
         disableDefaultUI: true,
         zoomControl: true,
         mapTypeControl: false,
         streetViewControl: false,
         fullscreenControl: false,
-        backgroundColor: '#0a1220',
       });
 
       mapRef.current = map;
@@ -461,9 +453,9 @@ export default function ServePage() {
           .filter(Boolean).join(', ');
         infoWindowRef.current?.setContent(`
           <div style="color:#fff;background:#141e2b;padding:8px 12px;border-radius:4px;min-width:180px;font-family:system-ui;">
-            <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${escapeHtml(job.recipient_name)}</div>
-            <div style="font-size:11px;color:#8a9aaa;">${escapeHtml(fullAddr) || 'No address'}</div>
-            <div style="font-size:10px;color:#6b7280;margin-top:4px;text-transform:uppercase;">${escapeHtml(job.status.replace(/_/g, ' '))} &middot; ${escapeHtml(job.document_type)}</div>
+            <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${job.recipient_name}</div>
+            <div style="font-size:11px;color:#8a9aaa;">${fullAddr || 'No address'}</div>
+            <div style="font-size:10px;color:#6b7280;margin-top:4px;text-transform:uppercase;">${job.status.replace('_', ' ')} &middot; ${job.document_type}</div>
           </div>
         `);
         infoWindowRef.current?.open(mapRef.current!, marker);
@@ -505,7 +497,7 @@ export default function ServePage() {
   // ══════════════════════════════════════════════════════════════════════
 
   return (
-    <div className="flex flex-col h-full bg-surface-base app-grid-bg">
+    <div className="flex flex-col h-full bg-surface-base">
       {/* ─── Header Bar ────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1e3048] bg-[#0d1520] flex-wrap">
         <div className="flex items-center gap-1.5">
@@ -614,7 +606,7 @@ export default function ServePage() {
                   <Briefcase size={24} className="text-rmpg-600 mb-2" />
                   <p className="text-sm text-rmpg-400">
                     {statusFilter !== 'all'
-                      ? `No ${statusFilter.replace(/_/g, ' ')} jobs for this date.`
+                      ? `No ${statusFilter.replace('_', ' ')} jobs for this date.`
                       : 'No jobs for today. Sync from ServeManager or add manually.'
                     }
                   </p>

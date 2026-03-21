@@ -11,6 +11,7 @@ import { useToast } from '../components/ToastProvider';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { toDisplayLabel } from '../utils/formatters';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useToast } from '../components/ToastProvider';
 
 interface PersonResult {
   id: string;
@@ -43,6 +44,7 @@ interface HistoryEntry {
 export default function CriminalHistoryPage() {
   const { addToast } = useToast();
   const isMobile = useIsMobile();
+  const { addToast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchType, setSearchType] = useState<'name' | 'dob' | 'dl'>('name');
   const [persons, setPersons] = useState<PersonResult[]>([]);
@@ -62,6 +64,7 @@ export default function CriminalHistoryPage() {
       setHistory([]);
     } catch (err) {
       console.error('Person search error:', err);
+      addToast('Failed to search persons', 'error');
       setPersons([]);
     }
     setLoading(false);
@@ -127,6 +130,7 @@ export default function CriminalHistoryPage() {
       setHistory(entries);
     } catch (err) {
       console.error('History fetch error:', err);
+      addToast('Failed to load criminal history', 'error');
       setHistory([]);
     }
     setHistoryLoading(false);

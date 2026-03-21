@@ -62,15 +62,9 @@ router.get('/:id', validateParamId, (req: Request, res: Response) => {
       LEFT JOIN users u ON d.created_by = u.id
       LEFT JOIN attachments a ON d.file_id = a.file_id
       WHERE d.id = ?
-    `).get(docId) as any;
+    `).get(docId);
 
     if (!doc) {
-      res.status(404).json({ error: 'Document not found' });
-      return;
-    }
-    // Non-admins cannot access unpublished documents
-    const isAdmin = ['admin', 'manager'].includes(req.user?.role || '');
-    if (!isAdmin && doc.published !== 1) {
       res.status(404).json({ error: 'Document not found' });
       return;
     }
@@ -125,8 +119,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
     `).get(result.lastInsertRowid);
     if (!doc) { res.status(500).json({ error: 'Failed to retrieve created document' }); return; }
 
-    auditLog(req, 'CREATE', 'company_documents', Number(result.lastInsertRowid), `Created document: ${title}`);
-
+    auditLog(req, 'CREATE' as any, 'company_document' as any, result.lastInsertRowid, `Created company document: ${title}`);
     res.status(201).json(doc || { id: result.lastInsertRowid });
   } catch (error: any) {
     console.error('Create company document error:', error?.message || 'Unknown error');
@@ -179,8 +172,6 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Reque
     values.push(id);
     db.prepare(`UPDATE company_documents SET ${fields.join(', ')} WHERE id = ?`).run(...values);
 
-    auditLog(req, 'UPDATE', 'company_documents', id, `Updated document: ${title || 'untitled'}`);
-
     const doc = db.prepare(`
       SELECT d.*, u.full_name as creator_name,
              a.original_name as file_name, a.file_size, a.mime_type
@@ -190,6 +181,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Reque
       WHERE d.id = ?
     `).get(id);
 
+    auditLog(req, 'UPDATE' as any, 'company_document' as any, id, `Updated company document ${id}`);
     res.json(doc);
   } catch (error: any) {
     console.error('Update company document error:', error?.message || 'Unknown error');
@@ -217,15 +209,11 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
         // Remove the actual file from disk to prevent orphaned files
         if (att.file_path) {
           const uploadsDir = path.resolve(process.cwd(), 'uploads');
-          const filePath = path.resolve(uploadsDir, path.basename(att.file_path));
-          // Resolve symlinks before checking containment — prevents symlink-based traversal
-          let realPath: string;
-          try { realPath = fs.realpathSync(filePath); } catch { realPath = filePath; }
-          const realUploadsDir = fs.existsSync(uploadsDir) ? fs.realpathSync(uploadsDir) : uploadsDir;
-          if (!realPath.startsWith(realUploadsDir + path.sep) && realPath !== realUploadsDir) {
-            console.warn(`[SECURITY] Path traversal blocked in companyDocuments delete: ${att.file_path}`);
+          const filePath = path.resolve(uploadsDir, att.file_path);
+          if (!filePath.startsWith(uploadsDir)) {
+            // Path traversal guard
           } else {
-            try { fs.unlinkSync(realPath); } catch { /* file may already be deleted */ }
+            try { fs.unlinkSync(filePath); } catch { /* file may already be deleted */ }
           }
         }
         db.prepare('DELETE FROM attachments WHERE file_id = ?').run(doc.file_id);
@@ -233,9 +221,7 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
     }
 
     db.prepare('DELETE FROM company_documents WHERE id = ?').run(id);
-
-    auditLog(req, 'DELETE', 'company_documents', id, `Deleted document: ${doc.title}`);
-
+    auditLog(req, 'DELETE' as any, 'company_document' as any, id, `Deleted company document: ${doc.title}`);
     res.json({ message: 'Document deleted' });
   } catch (error: any) {
     console.error('Delete company document error:', error?.message || 'Unknown error');

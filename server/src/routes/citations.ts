@@ -14,6 +14,7 @@ import { localNow, localToday } from '../utils/timeUtils';
 import { createNotificationForRoles } from './notifications';
 import { resolveDistrict } from '../utils/districtResolver';
 import { auditLog } from '../utils/auditLogger';
+import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 
@@ -519,6 +520,35 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
   } catch (error: any) {
     console.error('Update citation error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── GET /api/citations/export/csv ───────────────────────
+// Export all non-voided citations as a CSV download
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT citation_number, person_name, violation_description,
+             violation_date, location, fine_amount, status, issuing_officer_name
+      FROM citations
+      WHERE status != 'voided'
+      ORDER BY violation_date DESC, id DESC
+    `).all() as any[];
+
+    sendCsv(res, 'citations-export.csv', [
+      { key: 'citation_number', header: 'Citation Number' },
+      { key: 'person_name', header: 'Violator Name' },
+      { key: 'violation_description', header: 'Violation Description' },
+      { key: 'violation_date', header: 'Violation Date' },
+      { key: 'location', header: 'Location' },
+      { key: 'fine_amount', header: 'Fine Amount' },
+      { key: 'status', header: 'Status' },
+      { key: 'issuing_officer_name', header: 'Officer Name' },
+    ], rows);
+  } catch (error: any) {
+    console.error('Citation CSV export error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Export failed' });
   }
 });
 

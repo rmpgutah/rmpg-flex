@@ -9,6 +9,7 @@
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { apiFetch } from './useApi';
+import { useLiveSync } from './useLiveSync';
 import type { GeoFeatureInfo } from './useGeoJsonLayers';
 
 // ── Types ────────────────────────────────────────────────────
@@ -336,6 +337,7 @@ export function useShiftPlanning() {
   }, []);
 
   useEffect(() => { loadPlansFromServer(); }, [loadPlansFromServer]);
+  useLiveSync('admin', loadPlansFromServer);
 
   return {
     // Plans

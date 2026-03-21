@@ -10,6 +10,7 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
 import { validateParamId, escapeLike } from '../middleware/sanitize';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 
@@ -187,6 +188,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
 
     const statute = db.prepare('SELECT * FROM utah_statutes WHERE id = ?').get(result.lastInsertRowid);
     if (!statute) { res.status(500).json({ error: 'Failed to retrieve created statute' }); return; }
+    auditLog(req, 'CREATE' as any, 'statute' as any, result.lastInsertRowid, `Created statute ${citation}: ${short_title}`);
     res.status(201).json(statute);
   } catch (error: any) {
     console.error('Create statute error:', error?.message || 'Unknown error');
@@ -225,6 +227,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Reque
     db.prepare(`UPDATE utah_statutes SET ${fields.join(', ')} WHERE id = ?`).run(...params);
 
     const statute = db.prepare('SELECT * FROM utah_statutes WHERE id = ?').get(req.params.id);
+    auditLog(req, 'UPDATE' as any, 'statute' as any, req.params.id, `Updated statute ${req.params.id}`);
     res.json(statute);
   } catch (error: any) {
     console.error('Update statute error:', error?.message || 'Unknown error');
@@ -237,6 +240,7 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
   try {
     const db = getDb();
     db.prepare('UPDATE utah_statutes SET is_active = 0 WHERE id = ?').run(req.params.id);
+    auditLog(req, 'DELETE' as any, 'statute' as any, req.params.id, `Deactivated statute ${req.params.id}`);
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete statute error:', error?.message || 'Unknown error');
@@ -296,6 +300,7 @@ router.post('/entity', requireRole('admin', 'manager', 'supervisor', 'officer'),
     `).get(result.lastInsertRowid);
     if (!link) { res.status(500).json({ error: 'Failed to retrieve linked statute' }); return; }
 
+    auditLog(req, 'CREATE' as any, 'entity_statute' as any, result.lastInsertRowid, `Linked statute ${statute_id} to ${entity_type} ${entity_id}`);
     res.status(201).json(link);
   } catch (error: any) {
     console.error('Link statute error:', error?.message || 'Unknown error');
@@ -308,6 +313,7 @@ router.delete('/entity/:id', validateParamId, requireRole('admin', 'manager', 's
   try {
     const db = getDb();
     db.prepare('DELETE FROM entity_statutes WHERE id = ?').run(req.params.id);
+    auditLog(req, 'DELETE' as any, 'entity_statute' as any, req.params.id, `Removed statute link ${req.params.id}`);
     res.json({ success: true });
   } catch (error: any) {
     console.error('Unlink statute error:', error?.message || 'Unknown error');

@@ -315,8 +315,6 @@ let autoIncrementCounters: Record<string, number> = {};
 export async function initOfflineDb(): Promise<IDBPDatabase<RmpgOfflineDB>> {
   if (db) return db;
 
-  console.log('[OFFLINE-DB] Initializing IndexedDB:', DB_NAME);
-
   db = await openDB<RmpgOfflineDB>(DB_NAME, DB_VERSION, {
     upgrade(database) {
       // ── Mirror Tables (10) ──────────────────────────────
@@ -396,7 +394,6 @@ export async function initOfflineDb(): Promise<IDBPDatabase<RmpgOfflineDB>> {
     },
   });
 
-  console.log('[OFFLINE-DB] Ready');
   return db;
 }
 

@@ -17,6 +17,7 @@ import {
   Calendar, Building, Scale,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useLiveSync } from '../hooks/useLiveSync';
 import PanelTitleBar from '../components/PanelTitleBar';
 import EmptyState from '../components/EmptyState';
 import SplitPanel from '../components/SplitPanel';
@@ -299,6 +300,7 @@ export default function ArrestRecordsPage() {
 
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useEffect(() => { fetchRecords(recordsPage); }, [fetchRecords, recordsPage]);
+  useLiveSync('arrests', () => { fetchRecords(recordsPage); fetchStats(); });
 
   // ── WebSocket live sync ─────────────────────────────────
 

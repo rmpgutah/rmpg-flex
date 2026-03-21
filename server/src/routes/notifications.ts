@@ -336,6 +336,7 @@ router.put('/:id/read', validateParamId, (req: Request, res: Response) => {
       UPDATE notifications SET is_read = 1 WHERE id = ?
     `).run(req.params.id);
 
+    sendToUser(req.user!.userId, 'notification:read', { id: Number(req.params.id) });
     res.json({ message: 'Marked as read' });
   } catch (error: any) {
     console.error('Mark notification read error:', error?.message || 'Unknown error');
@@ -353,6 +354,7 @@ router.post('/mark-all-read', (req: Request, res: Response) => {
       WHERE user_id = ? AND is_read = 0
     `).run(req.user!.userId);
 
+    sendToUser(req.user!.userId, 'notification:allRead', { count: result.changes });
     res.json({ message: 'All notifications marked as read', count: result.changes });
   } catch (error: any) {
     console.error('Mark all read error:', error?.message || 'Unknown error');
@@ -376,6 +378,7 @@ router.delete('/:id', validateParamId, (req: Request, res: Response) => {
 
     db.prepare('DELETE FROM notifications WHERE id = ?').run(req.params.id);
 
+    sendToUser(req.user!.userId, 'notification:deleted', { id: Number(req.params.id) });
     res.json({ message: 'Notification deleted' });
   } catch (error: any) {
     console.error('Delete notification error:', error?.message || 'Unknown error');

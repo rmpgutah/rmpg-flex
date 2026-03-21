@@ -13,6 +13,7 @@ import { localNow, localToday } from '../utils/timeUtils';
 import { generateCaseNumber } from '../utils/caseNumbers';
 import { validateParamId, escapeLike } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
+import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 router.use(authenticateToken);
@@ -50,7 +51,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
   try {
     const db = getDb();
     const { status, case_type, priority, investigator, search, page = '1', limit = '50' } = req.query;
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
@@ -63,7 +64,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     if (investigator) { where += ' AND c.lead_investigator_id = ?'; params.push(investigator); }
     if (search) {
       where += " AND (c.case_number LIKE ? ESCAPE '\\' OR c.title LIKE ? ESCAPE '\\' OR c.summary LIKE ? ESCAPE '\\')";
-      const s = `%${escapeLike(String(search).trim())}%`;
+      const s = `%${escapeLike(String(search))}%`;
       params.push(s, s, s);
     }
 
@@ -137,6 +138,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
     });
 
     const caseData = createCase();
+    auditLog(req, 'CREATE' as any, 'case' as any, caseData.id, `Created case ${caseData.case_number}`);
     res.status(201).json({ data: caseData });
   } catch (error: any) {
     console.error('Create case error:', error?.message || 'Unknown error');
@@ -172,6 +174,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, 'update', 'case', ?, ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ fields: Object.keys(req.body) }), req.ip || 'unknown', now);
 
+    auditLog(req, 'UPDATE' as any, 'case' as any, req.params.id, `Updated case fields: ${Object.keys(req.body).join(', ')}`);
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) {
     console.error('Update case error:', error?.message || 'Unknown error');
@@ -202,6 +205,7 @@ router.put('/:id/status', validateParamId, requireRole('admin', 'manager', 'supe
       VALUES (?, 'status_change', 'case', ?, ?, ?, ?)`).run(
       req.user!.userId, req.params.id, JSON.stringify({ from: existing.status, to: status }), req.ip || 'unknown', now);
 
+    auditLog(req, 'UPDATE' as any, 'case' as any, req.params.id, `Case status changed from ${existing.status} to ${status}`);
     res.json({ data: { id: parseInt(req.params.id as string, 10), status } });
   } catch (error: any) {
     console.error('Update case status error:', error?.message || 'Unknown error');
@@ -224,6 +228,7 @@ router.post('/:id/notes', validateParamId, requireRole('admin', 'manager', 'supe
     `).run(req.params.id, req.user!.userId, user?.full_name || '', note_type, content, now);
 
     db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(now, req.params.id);
+    auditLog(req, 'CREATE' as any, 'case_note' as any, result.lastInsertRowid, `Added ${note_type} note to case ${req.params.id}`);
     res.status(201).json({ data: { id: result.lastInsertRowid } });
   } catch (error: any) {
     console.error('Create case note error:', error?.message || 'Unknown error');
@@ -265,10 +270,39 @@ router.post('/:id/calculate-solvability', validateParamId, requireRole('admin', 
     db.prepare('UPDATE cases SET solvability_score = ?, solvability_factors = ?, updated_at = ? WHERE id = ?')
       .run(score, JSON.stringify(factors), now, req.params.id);
 
+    auditLog(req, 'UPDATE' as any, 'case' as any, req.params.id, `Calculated solvability score: ${score}`);
     res.json({ data: { score, factors } });
   } catch (error: any) {
     console.error('Calculate solvability error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── GET /export/csv ────────────────────────────────────
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT c.case_number, c.title, c.case_type, c.status,
+             u.full_name as assigned_to_name, c.opened_date, c.closed_date
+      FROM cases c
+      LEFT JOIN users u ON c.lead_investigator_id = u.id
+      WHERE c.archived_at IS NULL
+      ORDER BY c.created_at DESC
+    `).all() as any[];
+
+    sendCsv(res, 'cases-export.csv', [
+      { key: 'case_number', header: 'Case Number' },
+      { key: 'title', header: 'Title' },
+      { key: 'case_type', header: 'Case Type' },
+      { key: 'status', header: 'Status' },
+      { key: 'assigned_to_name', header: 'Assigned To' },
+      { key: 'opened_date', header: 'Opened Date' },
+      { key: 'closed_date', header: 'Closed Date' },
+    ], rows);
+  } catch (error: any) {
+    console.error('Cases CSV export error:', error?.message);
+    res.status(500).json({ error: 'Export failed' });
   }
 });
 

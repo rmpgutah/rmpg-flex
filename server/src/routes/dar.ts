@@ -11,7 +11,7 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { escapeLike, validateParamId } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
-import { securityEvent } from '../utils/auditLogger';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 router.use(authenticateToken);
@@ -34,8 +34,8 @@ function nextDarNumber(): string {
   const prefix = `DAR-${yr}-`;
   return db.transaction(() => {
     const last = db.prepare(
-      "SELECT dar_number FROM daily_activity_reports WHERE dar_number LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 1"
-    ).get(`${escapeLike(prefix)}%`) as { dar_number: string } | undefined;
+      "SELECT dar_number FROM daily_activity_reports WHERE dar_number LIKE ? ORDER BY id DESC LIMIT 1"
+    ).get(`${prefix}%`) as { dar_number: string } | undefined;
     const parsed = last ? parseInt(last.dar_number.replace(prefix, ''), 10) : 0;
     const seq = (isNaN(parsed) ? 0 : parsed) + 1;
     return `${prefix}${String(seq).padStart(4, '0')}`;
@@ -46,31 +46,21 @@ function nextDarNumber(): string {
 router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { status, officer_id, property_id, date_from, date_to, start_date, end_date, search, page = '1', limit = '50' } = req.query;
-    const effectiveDateFrom = date_from || start_date;
-    const effectiveDateTo = date_to || end_date;
-    const pageNum = Math.min(1000, Math.max(1, parseInt(page as string, 10) || 1));
+    const { status, officer_id, property_id, date_from, date_to, search, page = '1', limit = '50' } = req.query;
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
     let where = 'WHERE 1=1';
     const params: any[] = [];
-
-    // Officers can only see their own DARs; supervisors+ see all
-    if (req.user!.role === 'officer') {
-      where += ' AND d.officer_id = ?';
-      params.push(req.user!.userId);
-    } else if (officer_id) {
-      where += ' AND d.officer_id = ?';
-      params.push(officer_id);
-    }
     if (status) { where += ' AND d.status = ?'; params.push(status); }
+    if (officer_id) { where += ' AND d.officer_id = ?'; params.push(officer_id); }
     if (property_id) { where += ' AND d.property_id = ?'; params.push(property_id); }
-    if (effectiveDateFrom) { where += ' AND d.shift_date >= ?'; params.push(effectiveDateFrom); }
-    if (effectiveDateTo) { where += ' AND d.shift_date <= ?'; params.push(effectiveDateTo); }
+    if (date_from) { where += ' AND d.shift_date >= ?'; params.push(date_from); }
+    if (date_to) { where += ' AND d.shift_date <= ?'; params.push(date_to); }
     if (search) {
       where += " AND (d.dar_number LIKE ? ESCAPE '\\' OR d.officer_name LIKE ? ESCAPE '\\' OR d.property_name LIKE ? ESCAPE '\\' OR d.activities_narrative LIKE ? ESCAPE '\\')";
-      const s = `%${escapeLike(String(search).trim())}%`; params.push(s, s, s, s);
+      const s = `%${escapeLike(String(search))}%`; params.push(s, s, s, s);
     }
 
     const total = (db.prepare(`SELECT COUNT(*) as count FROM daily_activity_reports d ${where}`).get(...params) as any)?.count || 0;
@@ -94,13 +84,8 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: 
 router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const row = db.prepare('SELECT * FROM daily_activity_reports WHERE id = ?').get(req.params.id) as any;
+    const row = db.prepare('SELECT * FROM daily_activity_reports WHERE id = ?').get(req.params.id);
     if (!row) return res.status(404).json({ error: 'DAR not found' });
-    // Officers can only view their own DARs
-    if (req.user!.role === 'officer' && row.officer_id !== req.user!.userId) {
-      securityEvent('idor_rejected', 'warning', { userId: req.user!.userId, route: 'GET /dar/:id', targetResource: req.params.id, targetOwnerId: row.officer_id, ip: req.ip });
-      return res.status(403).json({ error: 'You can only view your own reports' });
-    }
     res.json({ data: row });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -179,9 +164,9 @@ router.post('/auto-populate', requireRole('admin', 'manager', 'supervisor', 'off
     }
 
     if (timeEntry?.clock_in) {
-      const clockIn = new Date(timeEntry.clock_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Denver' });
+      const clockIn = new Date(timeEntry.clock_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
       const clockOut = timeEntry.clock_out
-        ? new Date(timeEntry.clock_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Denver' })
+        ? new Date(timeEntry.clock_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
         : 'ongoing';
       narrativeParts.push(`On duty ${clockIn} - ${clockOut}.`);
     }
@@ -276,6 +261,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, 'create', 'dar', ?, ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ dar_number }), req.ip || 'unknown', now);
 
+    auditLog(req, 'CREATE' as any, 'dar' as any, result.lastInsertRowid, `Created DAR ${dar_number} for ${shift_date}`);
     res.status(201).json({ data: { id: result.lastInsertRowid, dar_number } });
   } catch (error: any) {
     console.error('Create DAR error:', error?.message || 'Unknown error');
@@ -291,7 +277,6 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     if (!existing) { res.status(404).json({ error: 'DAR not found' }); return; }
     // Officers can only edit their own DARs
     if (req.user!.role === 'officer' && existing.officer_id !== req.user!.userId) {
-      securityEvent('idor_rejected', 'warning', { userId: req.user!.userId, route: 'PUT /dar/:id', targetResource: req.params.id, targetOwnerId: existing.officer_id, ip: req.ip });
       res.status(403).json({ error: 'You can only edit your own DAR' }); return;
     }
     const now = localNow();
@@ -309,6 +294,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     }
     params.push(req.params.id);
     db.prepare(`UPDATE daily_activity_reports SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+    auditLog(req, 'UPDATE' as any, 'dar' as any, req.params.id, `Updated DAR ${req.params.id}`);
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -317,14 +303,8 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
 router.put('/:id/submit', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const existing = db.prepare('SELECT id, officer_id FROM daily_activity_reports WHERE id = ?').get(req.params.id) as any;
+    const existing = db.prepare('SELECT id FROM daily_activity_reports WHERE id = ?').get(req.params.id);
     if (!existing) { res.status(404).json({ error: 'DAR not found' }); return; }
-    // Officers can only submit their own DARs
-    if (req.user!.role === 'officer' && existing.officer_id !== req.user!.userId) {
-      securityEvent('idor_rejected', 'warning', { userId: req.user!.userId, route: 'PUT /dar/:id/submit', targetResource: req.params.id, targetOwnerId: existing.officer_id, ip: req.ip });
-      res.status(403).json({ error: 'You can only submit your own reports' });
-      return;
-    }
     const now = localNow();
     db.prepare('UPDATE daily_activity_reports SET status = ?, submitted_at = ?, updated_at = ? WHERE id = ?')
       .run('submitted', now, now, req.params.id);
@@ -332,6 +312,7 @@ router.put('/:id/submit', validateParamId, requireRole('admin', 'manager', 'supe
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, 'submit', 'dar', ?, '{}', ?, ?)`).run(req.user!.userId, req.params.id, req.ip || 'unknown', now);
 
+    auditLog(req, 'UPDATE' as any, 'dar' as any, req.params.id, `Submitted DAR ${req.params.id} for review`);
     res.json({ data: { id: parseInt(req.params.id as string, 10), status: 'submitted' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -352,6 +333,7 @@ router.put('/:id/approve', validateParamId, requireRole('admin', 'manager', 'sup
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, 'approve', 'dar', ?, '{}', ?, ?)`).run(req.user!.userId, req.params.id, req.ip || 'unknown', now);
 
+    auditLog(req, 'UPDATE' as any, 'dar' as any, req.params.id, `Approved DAR ${req.params.id}`);
     res.json({ data: { id: parseInt(req.params.id as string, 10), status: 'approved' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -371,6 +353,7 @@ router.put('/:id/return', validateParamId, requireRole('admin', 'manager', 'supe
       reviewed_by_name = ?, reviewed_at = ?, review_notes = ?, updated_at = ? WHERE id = ?`)
       .run(req.user!.userId, user?.full_name || '', now, review_notes, now, req.params.id);
 
+    auditLog(req, 'UPDATE' as any, 'dar' as any, req.params.id, `Returned DAR ${req.params.id} for revision`);
     res.json({ data: { id: parseInt(req.params.id as string, 10), status: 'returned' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });

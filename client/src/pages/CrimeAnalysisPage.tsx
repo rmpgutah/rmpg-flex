@@ -14,13 +14,15 @@ import {
 import PanelTitleBar from '../components/PanelTitleBar';
 import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
+import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useToast } from '../components/ToastProvider';
 
 export default function CrimeAnalysisPage() {
   const isMobile = useIsMobile();
+  const { addToast } = useToast();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState('90');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -30,7 +32,6 @@ export default function CrimeAnalysisPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       let url = '/reports/crime-analysis';
       if (dateRange === 'custom' && startDate && endDate) {
@@ -41,12 +42,13 @@ export default function CrimeAnalysisPage() {
       const res = await apiFetch<{ data: any }>(url);
       if (mountedRef.current) setData(res.data);
     } catch {
-      if (mountedRef.current) setError('Failed to load crime analysis data');
+      if (mountedRef.current) addToast('Failed to load crime analysis data', 'error');
     }
     finally { if (mountedRef.current) setLoading(false); }
   }, [dateRange, startDate, endDate]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+  useLiveSync('incidents', fetchData);
 
   if (loading) {
     return (
@@ -54,18 +56,6 @@ export default function CrimeAnalysisPage() {
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-rmpg-500 mx-auto mb-2" />
           <div className="text-xs text-rmpg-500">Loading crime analysis...</div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-center">
-          <AlertTriangle className="w-6 h-6 text-red-500 mx-auto mb-2" />
-          <div className="text-xs text-red-400">{error}</div>
-          <button onClick={fetchData} className="mt-2 text-xs text-brand-400 hover:text-brand-300">Retry</button>
         </div>
       </div>
     );
@@ -153,7 +143,7 @@ export default function CrimeAnalysisPage() {
             <PanelTitleBar title="Top Offenses" icon={BarChart3} />
             <div className="p-3 space-y-2">
               {(data.topOffenses || []).slice(0, 10).map((offense: any, idx: number) => (
-                <div key={`offense-${offense.offense_type || idx}`} className="flex items-center gap-2">
+                <div key={idx} className="flex items-center gap-2">
                   <span className="text-[10px] text-rmpg-300 w-32 truncate" title={offense.offense_type}>
                     {offense.offense_type || 'Unknown'}
                   </span>
@@ -180,7 +170,7 @@ export default function CrimeAnalysisPage() {
             <PanelTitleBar title="Hotspots (Top Locations)" icon={MapPin} />
             <div className="p-3 space-y-2">
               {(data.hotspots || []).slice(0, 10).map((spot: any, idx: number) => (
-                <div key={`spot-${spot.location || idx}`} className="flex items-center gap-2">
+                <div key={idx} className="flex items-center gap-2">
                   <span className="text-[10px] text-rmpg-300 w-40 truncate" title={spot.location}>
                     {spot.location || 'Unknown'}
                   </span>
@@ -207,9 +197,9 @@ export default function CrimeAnalysisPage() {
             <PanelTitleBar title="Time of Day Distribution" icon={Clock} />
             <div className="p-3">
               <div className="flex items-end gap-[2px] h-24">
-                {(data.timeOfDay || []).map((hour: any) => (
+                {(data.timeOfDay || []).map((hour: any, idx: number) => (
                   <div
-                    key={`hour-${hour.hour}`}
+                    key={idx}
                     className="flex-1 relative group"
                     title={`${String(hour.hour).padStart(2, '0')}:00 — ${hour.count} calls`}
                   >
@@ -247,11 +237,11 @@ export default function CrimeAnalysisPage() {
           <div className="panel-surface">
             <PanelTitleBar title="Day of Week" icon={Calendar} />
             <div className="p-3 space-y-2">
-              {(data.dayOfWeek || []).map((day: any) => {
+              {(data.dayOfWeek || []).map((day: any, idx: number) => {
                 const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
                 const maxDow = Math.max(1, ...(data.dayOfWeek || []).map((d: any) => d.count));
                 return (
-                  <div key={`dow-${day.day_of_week}`} className="flex items-center gap-2">
+                  <div key={idx} className="flex items-center gap-2">
                     <span className="text-[10px] text-rmpg-300 w-8">{dayNames[day.day_of_week] || day.day_of_week}</span>
                     <div className="flex-1 h-4 bg-surface-sunken border border-rmpg-700 relative">
                       <div
@@ -280,7 +270,7 @@ export default function CrimeAnalysisPage() {
               ) : (
                 <div className="space-y-1">
                   {(data.repeatOffenders || []).slice(0, 15).map((person: any, idx: number) => (
-                    <div key={`repeat-${person.name || idx}`} className="flex items-center justify-between px-2 py-1.5 panel-beveled">
+                    <div key={idx} className="flex items-center justify-between px-2 py-1.5 panel-beveled">
                       <span className="text-[10px] text-white">{person.name || 'Unknown'}</span>
                       <span className="text-[10px] font-mono font-bold text-red-400">{person.incident_count} incidents</span>
                     </div>
@@ -298,8 +288,8 @@ export default function CrimeAnalysisPage() {
                 <div className="text-center py-4 text-rmpg-500 text-xs">No response data</div>
               ) : (
                 <div className="space-y-2">
-                  {(data.responseMetrics || []).map((metric: any) => (
-                    <div key={`metric-${metric.priority}`} className="flex items-center justify-between px-2 py-1.5 panel-beveled">
+                  {(data.responseMetrics || []).map((metric: any, idx: number) => (
+                    <div key={idx} className="flex items-center justify-between px-2 py-1.5 panel-beveled">
                       <span className="text-[10px] font-bold uppercase" style={{
                         color: metric.priority === 'critical' ? '#ef4444' : metric.priority === 'high' ? '#f59e0b' : metric.priority === 'normal' ? '#3b82f6' : '#9ca3af',
                       }}>
@@ -325,10 +315,10 @@ export default function CrimeAnalysisPage() {
               ) : (
                 <div>
                   <div className="flex items-end gap-1 h-28">
-                    {(data.trendData || []).map((month: any) => {
+                    {(data.trendData || []).map((month: any, idx: number) => {
                       const maxTrend = Math.max(1, ...(data.trendData || []).map((m: any) => m.count));
                       return (
-                        <div key={`trend-${month.month}`} className="flex-1 flex flex-col items-center">
+                        <div key={idx} className="flex-1 flex flex-col items-center">
                           <div
                             className="w-full"
                             style={{
@@ -342,8 +332,8 @@ export default function CrimeAnalysisPage() {
                     })}
                   </div>
                   <div className="flex justify-between mt-1">
-                    {(data.trendData || []).map((month: any) => (
-                      <span key={`label-${month.month}`} className="text-[7px] font-mono text-rmpg-500 flex-1 text-center">
+                    {(data.trendData || []).map((month: any, idx: number) => (
+                      <span key={idx} className="text-[7px] font-mono text-rmpg-500 flex-1 text-center">
                         {month.month?.slice(5) || ''}
                       </span>
                     ))}

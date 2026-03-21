@@ -32,6 +32,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
+import { useToast } from '../components/ToastProvider';
 import { localToday, dateToLocalYMD } from '../utils/dateUtils';
 import { generatePatrolTrackingPdf } from '../utils/patrolTrackingPdfGenerator';
 import { formatIncidentType } from '../utils/caseNumbers';
@@ -255,6 +256,7 @@ function exportToCSV(
 
 export default function ReportsPage() {
   const isMobile = useIsMobile();
+  const { addToast } = useToast();
   const navigate = useNavigate();
   const [dateRange, setDateRange] = useState('last_14_days');
   const [customStartDate, setCustomStartDate] = useState('');
@@ -306,6 +308,7 @@ export default function ReportsPage() {
       } catch (err) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : 'Failed to load reports data');
+        addToast('Failed to load reports data', 'error');
         console.error('Error fetching reports:', err);
       } finally {
         if (!cancelled) setLoading(false);
@@ -656,7 +659,7 @@ function PatrolTrackingCard() {
           setUnits(res.map((u: any) => ({ id: u.id, call_sign: u.call_sign || `Unit ${u.id}` })));
         }
       })
-      .catch((err) => { console.warn('[ReportsPage] fetch units failed:', err); });
+      .catch((err) => { console.warn('[ReportsPage] fetch units failed:', err); addToast('Failed to load units', 'error'); });
   }, []);
 
   const handleGenerate = async () => {
@@ -696,8 +699,9 @@ function PatrolTrackingCard() {
       });
 
       await generatePatrolTrackingPdf(data);
+      addToast('Patrol tracking report generated successfully', 'success');
     } catch (err: any) {
-      alert(err?.message || 'Failed to generate patrol tracking report');
+      addToast(err?.message || 'Failed to generate patrol tracking report', 'error');
     } finally {
       setGenerating(false);
     }

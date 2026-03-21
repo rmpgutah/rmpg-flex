@@ -28,6 +28,7 @@ import {
 } from '../utils/arrestScraper';
 import { auditLog } from '../utils/auditLogger';
 import { broadcastRecordUpdate } from '../utils/websocket';
+import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 router.use(authenticateToken);
@@ -811,6 +812,45 @@ router.delete('/:id/link-person', validateParamId, requireRole('admin', 'manager
 
     res.json({ success: true });
   } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ─── GET /export/csv ────────────────────────────────────
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT booking_number, full_name as arrestee_name, charges as charge,
+             booking_date as arrest_date, county as location,
+             agency as arresting_officer, status
+      FROM arrest_records
+      ORDER BY booking_date DESC
+    `).all() as any[];
+
+    // Parse charges JSON to a readable string
+    for (const row of rows) {
+      if (row.charge) {
+        try {
+          const parsed = JSON.parse(row.charge);
+          if (Array.isArray(parsed)) {
+            row.charge = parsed.map((c: any) => typeof c === 'string' ? c : c.description || c.charge || c.name || JSON.stringify(c)).join('; ');
+          }
+        } catch { /* keep raw string */ }
+      }
+    }
+
+    sendCsv(res, 'arrests-export.csv', [
+      { key: 'booking_number', header: 'Booking Number' },
+      { key: 'arrestee_name', header: 'Arrestee Name' },
+      { key: 'charge', header: 'Charge' },
+      { key: 'arrest_date', header: 'Arrest Date' },
+      { key: 'location', header: 'Location' },
+      { key: 'arresting_officer', header: 'Arresting Officer' },
+      { key: 'status', header: 'Status' },
+    ], rows);
+  } catch (error: any) {
+    console.error('Arrests CSV export error:', error?.message);
+    res.status(500).json({ error: 'Export failed' });
+  }
 });
 
 export default router;

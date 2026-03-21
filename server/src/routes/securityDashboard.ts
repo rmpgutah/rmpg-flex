@@ -6,6 +6,7 @@ import { parseDeviceName, createSecurityNotification } from '../utils/deviceFing
 import { isPasswordExpired, isPasswordExpiringSoon } from '../utils/passwordExpiry';
 import { getBlockedIps, unblockIp } from '../middleware/rateLimiter';
 import { localNow } from '../utils/timeUtils';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 
@@ -139,6 +140,8 @@ router.delete('/trusted-devices/:id', validateParamId, authenticateToken, (req: 
       req.ip || 'unknown'
     );
 
+    auditLog(req, 'DELETE' as any, 'user' as any, deviceId, `Removed trusted device #${deviceId}`);
+
     res.json({ message: 'Trusted device removed' });
   } catch (error: any) {
     console.error('Remove device error:', error?.message || 'Unknown error');
@@ -185,6 +188,9 @@ router.put('/notifications/:id/read', validateParamId, authenticateToken, (req: 
     ).run(notifId, req.user!.userId);
 
     if (result.changes === 0) { res.status(404).json({ error: 'Notification not found' }); return; }
+
+    auditLog(req, 'UPDATE' as any, 'user' as any, notifId, `Marked security notification #${notifId} as read`);
+
     res.json({ message: 'Marked as read' });
   } catch (error: any) {
     console.error('Mark notification read error:', error?.message || 'Unknown error');
@@ -200,6 +206,8 @@ router.put('/notifications/read-all', authenticateToken, (req: Request, res: Res
     db.prepare(
       'UPDATE security_notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0'
     ).run(req.user!.userId);
+
+    auditLog(req, 'UPDATE' as any, 'user' as any, req.user!.userId, 'Marked all security notifications as read');
 
     res.json({ message: 'All marked as read' });
   } catch (error: any) {
@@ -228,6 +236,9 @@ router.post('/unblock-ip', authenticateToken, requireRole('admin'), (req: Reques
     const count = unblockIp(ip || undefined);
     const msg = ip ? `Unblocked IP ${ip}` : `Unblocked all ${count} IPs`;
     console.log(`[Security] ${msg} — by ${req.user!.username}`);
+
+    auditLog(req, 'UPDATE' as any, 'user' as any, 0, msg);
+
     res.json({ success: true, message: msg, unblocked: count });
   } catch (error: any) {
     console.error('Unblock IP error:', error?.message || 'Unknown error');

@@ -236,9 +236,31 @@ app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'applicati
   child.unref();
 });
 
-app.use(express.json({ limit: '2mb' }));
-app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(sanitizeInput);
+
+// ─── Request ID for Tracing ─────────────────────────
+// Generate a unique ID per request for log correlation and debugging
+app.use((req, res, next) => {
+  const requestId = (req.headers['x-request-id'] as string) || crypto.randomUUID();
+  (req as any).requestId = requestId;
+  res.setHeader('X-Request-Id', requestId);
+  next();
+});
+
+// ─── Slow Request Logging ─────────────────────────────
+// Warn when any request takes longer than 2 seconds to complete
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    if (duration > 2000) {
+      console.warn(`[SLOW] ${req.method} ${req.originalUrl} took ${duration}ms`);
+    }
+  });
+  next();
+});
 
 // ─── CSRF Protection ─────────────────────────────────
 // Require a custom header on all state-changing requests to prevent CSRF.
@@ -307,15 +329,37 @@ app.get('/api/health', (_req, res) => {
 // ─── Detailed Health (Auth Required) ─────────────────
 app.get('/api/health/detailed', authenticateToken, requireRole('admin', 'manager'), (_req, res) => {
   let dbStatus: 'ok' | 'error' = 'ok';
-  try { const db = getDb(); db.prepare('SELECT 1').get(); } catch { dbStatus = 'error'; }
+  let tableCounts: Record<string, number> = {};
+  try {
+    const db = getDb();
+    db.prepare('SELECT 1').get();
+    // Row counts of key tables for operational insight
+    const keyTables = ['users', 'calls', 'incidents', 'citations', 'warrants', 'patrol_logs', 'audit_logs'];
+    for (const table of keyTables) {
+      try {
+        const row = db.prepare(`SELECT COUNT(*) as cnt FROM ${table}`).get() as any;
+        tableCounts[table] = row?.cnt ?? 0;
+      } catch { /* table may not exist */ }
+    }
+  } catch { dbStatus = 'error'; }
+
+  const mem = process.memoryUsage();
+
   res.json({
     status: dbStatus === 'ok' ? 'ok' : 'degraded',
     name: 'RMPG Flex CAD/RMS Server',
     version: SERVER_VERSION,
     environment: config.nodeEnv,
+    node_version: process.version,
     timestamp: localNow(),
     uptime: Math.floor(process.uptime()),
-    database: { status: dbStatus },
+    memory: {
+      rss_mb: Math.round(mem.rss / 1048576),
+      heap_used_mb: Math.round(mem.heapUsed / 1048576),
+      heap_total_mb: Math.round(mem.heapTotal / 1048576),
+      external_mb: Math.round(mem.external / 1048576),
+    },
+    database: { status: dbStatus, table_counts: tableCounts },
     connections: { websocket: getConnectedClientCount() },
   });
 });

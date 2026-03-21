@@ -11,6 +11,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import { localToday } from '../utils/dateUtils';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { toDisplayLabel } from '../utils/formatters';
+import { useToast } from '../components/ToastProvider';
 
 const SOURCES: Record<string, { label: string; columns: string[] }> = {
   calls_for_service: {
@@ -65,6 +66,7 @@ type Step = 'source' | 'columns' | 'filters' | 'preview';
 
 export default function CustomReportBuilder() {
   const isMobile = useIsMobile();
+  const { addToast } = useToast();
   const [step, setStep] = useState<Step>('source');
   const [source, setSource] = useState('');
   const [selectedCols, setSelectedCols] = useState<string[]>([]);
@@ -126,8 +128,10 @@ export default function CustomReportBuilder() {
       setResultColumns(data.columns || selectedCols);
       setRowCount(data.count || 0);
       setStep('preview');
+      addToast(`Query returned ${data.count || 0} rows`, 'success');
     } catch (err: any) {
       setError(err?.message || 'Query failed');
+      addToast('Failed to run report query', 'error');
     }
     setLoading(false);
   }, [source, selectedCols, filters, sortBy, sortDir, limit]);

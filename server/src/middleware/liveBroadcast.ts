@@ -31,32 +31,20 @@ const PATH_TO_CHANNEL: Record<string, string> = {
   '/api/court': 'records',
   '/api/dar': 'admin',
   '/api/offender-registry': 'records',
-  // Extended mappings — modules that were missing broadcast coverage
-  '/api/arrests': 'records',
-  '/api/jail-roster': 'records',
-  '/api/field-interviews': 'records',
-  '/api/trespass-orders': 'records',
-  '/api/dl-records': 'records',
-  '/api/forensic-lab': 'records',
-  '/api/skiptracer': 'records',
-  '/api/colorado-doc': 'records',
-  '/api/sex-offender-registry': 'records',
-  '/api/evidence': 'records',
-  '/api/company-documents': 'admin',
-  '/api/email': 'admin',
-  '/api/crm': 'admin',
-  '/api/process-server': 'admin',
-  '/api/hr': 'admin',
-  '/api/audit': 'admin',
-  '/api/connections': 'admin',
-  '/api/clearpathgps': 'fleet',
+  '/api/arrests': 'arrests',
+  '/api/sex-offender-registry': 'sex_offenders',
+  '/api/process-server': 'serve',
+  '/api/forensic-lab': 'forensic',
+  '/api/reports': 'incidents',
+  '/api/company-documents': 'training',
+  '/api/skiptracer': 'skiptracer',
 };
 
 // Methods that mutate data
 const MUTATION_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 // Paths to exclude from broadcasting (auth, uploads, health, etc.)
-const EXCLUDE_PATHS = ['/api/auth', '/api/health', '/api/uploads', '/api/downloads', '/api/updates', '/api/offline', '/api/user/preferences'];
+const EXCLUDE_PATHS = ['/api/auth', '/api/health', '/api/uploads', '/api/downloads', '/api/updates'];
 
 /**
  * Express middleware that intercepts successful mutation responses

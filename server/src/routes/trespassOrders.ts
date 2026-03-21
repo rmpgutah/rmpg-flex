@@ -7,6 +7,7 @@ import { createNotificationForRoles } from './notifications';
 import { resolveDistrict } from '../utils/districtResolver';
 import { escapeLike, validateParamId } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
+import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 router.use(authenticateToken);
@@ -367,6 +368,35 @@ router.put('/:id/violate', validateParamId, requireRole('admin', 'manager', 'sup
     res.json(updated);
   } catch (err: any) {
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── GET /export/csv ────────────────────────────────────
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT t.order_number,
+             t.subject_first_name || ' ' || t.subject_last_name as subject_name,
+             t.property_name, t.location as property_address,
+             t.effective_date, t.expiration_date, t.status
+      FROM trespass_orders t
+      WHERE t.archived_at IS NULL
+      ORDER BY t.created_at DESC
+    `).all() as any[];
+
+    sendCsv(res, 'trespass-orders-export.csv', [
+      { key: 'order_number', header: 'Order Number' },
+      { key: 'subject_name', header: 'Subject Name' },
+      { key: 'property_name', header: 'Property Name' },
+      { key: 'property_address', header: 'Property Address' },
+      { key: 'effective_date', header: 'Effective Date' },
+      { key: 'expiration_date', header: 'Expiration Date' },
+      { key: 'status', header: 'Status' },
+    ], rows);
+  } catch (error: any) {
+    console.error('Trespass orders CSV export error:', error?.message);
+    res.status(500).json({ error: 'Export failed' });
   }
 });
 

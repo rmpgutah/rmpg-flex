@@ -8,10 +8,10 @@
 import React, { useState, useCallback } from 'react';
 import { Search, CreditCard, User, MapPin, ChevronRight, Shield, Calendar, Database, Wifi, Plus } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
-import { useToast } from '../components/ToastProvider';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { useIsMobile } from '../hooks/useIsMobile';
 import ManualDlEntryModal, { type ManualDlFormData } from '../components/ManualDlEntryModal';
+import { useToast } from '../components/ToastProvider';
 
 const US_STATES = [
   'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY',
@@ -89,9 +89,9 @@ export default function DlSearchPage() {
       });
       setResults(data.subjects || []);
       setSource(data.source || 'NONE');
-    } catch (err: any) {
+    } catch (err) {
       console.error('DL search error:', err);
-      addToast(err?.message || 'Driver\'s license search failed', 'error');
+      addToast('Failed to search driver\'s license records', 'error');
       setResults([]);
       setSource('ERROR');
     }
@@ -102,11 +102,13 @@ export default function DlSearchPage() {
     setIsManualSubmitting(true);
     try {
       await apiFetch('/dl-records', { method: 'POST', body: JSON.stringify(data) });
+      addToast('DL record saved successfully', 'success');
       setShowManualEntry(false);
       // Re-trigger search to show the new record
       if (lastName.trim() || dlNumber.trim()) handleSearch();
     } catch (err) {
       console.error('Manual DL save error:', err);
+      addToast('Failed to save DL record', 'error');
     }
     setIsManualSubmitting(false);
   }, [lastName, dlNumber, handleSearch]);

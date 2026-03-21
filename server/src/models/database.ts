@@ -5513,4 +5513,14 @@ function seedData(): void {
   console.log('Seed data initialized (admin user + system config).');
 }
 
-export default { initDatabase, getDb };
+/** Quick health check — runs SELECT 1 to verify the database connection is alive. */
+export function isDatabaseHealthy(): boolean {
+  try {
+    const row = db.prepare('SELECT 1 AS ok').get() as { ok: number } | undefined;
+    return row?.ok === 1;
+  } catch {
+    return false;
+  }
+}
+
+export default { initDatabase, getDb, isDatabaseHealthy };

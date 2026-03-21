@@ -17,6 +17,7 @@ import {
 import PanelTitleBar from '../components/PanelTitleBar';
 import FormModal from '../components/FormModal';
 import { apiFetch } from '../hooks/useApi';
+import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 
 // ─── Constants ───────────────────────────────────────────
@@ -314,6 +315,7 @@ export default function ForensicLabPage() {
   }, [searchTerm, filterStatus, filterType]);
 
   useEffect(() => { fetchCases(); }, [fetchCases]);
+  useLiveSync('forensic-lab', fetchCases);
 
   const fetchCaseDetail = useCallback(async (id: number) => {
     try {

@@ -500,7 +500,6 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   // Starts the periodic IP fallback poller (Electron desktop only)
   const startIpFallbackPoller = useCallback(() => {
     if (!IS_ELECTRON || ipFallbackIntervalRef.current) return;
-    console.log('[GPS] Browser geolocation unavailable — starting IP fallback poller');
     tryIpFallback(); // Immediate first attempt
     ipFallbackIntervalRef.current = setInterval(tryIpFallback, DEFAULT_BATCH_INTERVAL);
   }, [tryIpFallback]);
@@ -806,7 +805,6 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     const handleNetworkChange = () => {
       const newType = conn.type || conn.effectiveType || 'unknown';
       const newConnType = getConnectionType();
-      console.log(`[GPS] Network changed: ${prevType} → ${newType} (${newConnType})`);
       setState((prev) => ({ ...prev, connectionType: newConnType }));
 
       // Flush any queued points before restarting (fire-and-forget; restart waits 1s anyway)
@@ -841,14 +839,12 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   // Handle browser online/offline events (covers WiFi disconnect/reconnect)
   useEffect(() => {
     const handleOnline = () => {
-      console.log('[GPS] Browser online — restarting tracking');
       setState((prev) => ({ ...prev, connectionType: getConnectionType() }));
       if (!isTracking) {
         startTracking();
       }
     };
     const handleOffline = () => {
-      console.log('[GPS] Browser offline — queueing locally');
       setState((prev) => ({ ...prev, connectionType: 'none' }));
     };
     window.addEventListener('online', handleOnline);
