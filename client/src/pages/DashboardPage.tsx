@@ -21,6 +21,18 @@ import {
   Target,
   CheckCircle,
   XCircle,
+  Sun,
+  Cloud,
+  CloudRain,
+  CloudSnow,
+  CloudLightning,
+  CloudDrizzle,
+  CloudFog,
+  Snowflake,
+  Timer,
+  Navigation,
+  Mail,
+  Zap,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
@@ -202,6 +214,108 @@ const DEFAULT_STATS: DashboardStats = {
   calls_by_hour: Array.from({ length: 24 }, (_, i) => ({ hour: i, count: 0 })),
 };
 
+// ─── Weather Helpers ─────────────────────────────────────
+
+interface WeatherData {
+  temperature: number;
+  weatherCode: number;
+  description: string;
+  icon: React.ComponentType<any>;
+}
+
+function getWeatherInfo(code: number): { description: string; icon: React.ComponentType<any> } {
+  // WMO Weather interpretation codes (WW)
+  if (code === 0) return { description: 'Clear sky', icon: Sun };
+  if (code === 1) return { description: 'Mainly clear', icon: Sun };
+  if (code === 2) return { description: 'Partly cloudy', icon: Cloud };
+  if (code === 3) return { description: 'Overcast', icon: Cloud };
+  if (code >= 45 && code <= 48) return { description: 'Foggy', icon: CloudFog };
+  if (code >= 51 && code <= 55) return { description: 'Drizzle', icon: CloudDrizzle };
+  if (code >= 56 && code <= 57) return { description: 'Freezing drizzle', icon: CloudDrizzle };
+  if (code >= 61 && code <= 65) return { description: 'Rain', icon: CloudRain };
+  if (code >= 66 && code <= 67) return { description: 'Freezing rain', icon: CloudRain };
+  if (code >= 71 && code <= 77) return { description: 'Snow', icon: CloudSnow };
+  if (code >= 80 && code <= 82) return { description: 'Rain showers', icon: CloudRain };
+  if (code >= 85 && code <= 86) return { description: 'Snow showers', icon: CloudSnow };
+  if (code >= 95 && code <= 99) return { description: 'Thunderstorm', icon: CloudLightning };
+  return { description: 'Unknown', icon: Cloud };
+}
+
+// ─── Shift Helpers ───────────────────────────────────────
+
+interface ShiftInfo {
+  name: string;
+  startHour: number;
+  endHour: number;
+  startLabel: string;
+  endLabel: string;
+  elapsed: number; // seconds into shift
+  remaining: number; // seconds left
+  progress: number; // 0-1
+}
+
+function getCurrentShift(): ShiftInfo {
+  // Get current Mountain Time
+  const now = new Date();
+  const mt = new Date(now.toLocaleString('en-US', { timeZone: 'America/Denver' }));
+  const hour = mt.getHours();
+  const min = mt.getMinutes();
+  const sec = mt.getSeconds();
+  const currentSeconds = hour * 3600 + min * 60 + sec;
+
+  // Shifts: Day 0600-1400, Swing 1400-2200, Night 2200-0600
+  let name: string, startHour: number, endHour: number;
+  if (hour >= 6 && hour < 14) {
+    name = 'Day Shift'; startHour = 6; endHour = 14;
+  } else if (hour >= 14 && hour < 22) {
+    name = 'Swing Shift'; startHour = 14; endHour = 22;
+  } else {
+    name = 'Night Shift'; startHour = 22; endHour = 6;
+  }
+
+  const shiftDuration = 8 * 3600; // 8 hours in seconds
+  const startSeconds = startHour * 3600;
+
+  let elapsed: number;
+  if (name === 'Night Shift') {
+    // Night shift wraps past midnight
+    if (hour >= 22) {
+      elapsed = currentSeconds - 22 * 3600;
+    } else {
+      elapsed = currentSeconds + (24 * 3600 - 22 * 3600);
+    }
+  } else {
+    elapsed = currentSeconds - startSeconds;
+  }
+
+  const remaining = Math.max(0, shiftDuration - elapsed);
+  const progress = Math.min(1, elapsed / shiftDuration);
+
+  const fmt = (h: number) => {
+    const suffix = h >= 12 ? 'PM' : 'AM';
+    const display = h === 0 ? 12 : h > 12 ? h - 12 : h;
+    return `${String(display).padStart(2, '0')}:00 ${suffix}`;
+  };
+
+  return {
+    name,
+    startHour,
+    endHour,
+    startLabel: fmt(startHour),
+    endLabel: fmt(endHour),
+    elapsed,
+    remaining,
+    progress,
+  };
+}
+
+function formatCountdown(totalSeconds: number): string {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
 // ─── Component ───────────────────────────────────────────
 
 export default function DashboardPage() {
@@ -214,8 +328,39 @@ export default function DashboardPage() {
   const [activeWarrants, setActiveWarrants] = useState(0);
   const [officerActivity, setOfficerActivity] = useState<{ id: number; full_name: string; badge_number: string; role: string; action_count: number }[]>([]);
   const [psoStats, setPsoStats] = useState<PsoStats | null>(null);
+  const [shiftInfo, setShiftInfo] = useState<ShiftInfo>(getCurrentShift);
+  const [weather, setWeather] = useState<WeatherData | null>(null);
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+
+  // Shift countdown timer — update every second
+  useEffect(() => {
+    const timer = setInterval(() => setShiftInfo(getCurrentShift()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Weather fetch — refresh every 15 minutes
+  const fetchWeather = useCallback(async () => {
+    try {
+      const resp = await fetch(
+        'https://api.open-meteo.com/v1/forecast?latitude=40.7608&longitude=-111.891&current=temperature_2m,weather_code&temperature_unit=fahrenheit&timezone=America/Denver'
+      );
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const temp = data?.current?.temperature_2m;
+      const code = data?.current?.weather_code ?? 0;
+      const info = getWeatherInfo(code);
+      setWeather({ temperature: Math.round(temp), weatherCode: code, description: info.description, icon: info.icon });
+    } catch {
+      // Fail silently — weather is non-critical
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchWeather();
+    const weatherInterval = setInterval(fetchWeather, 15 * 60 * 1000);
+    return () => clearInterval(weatherInterval);
+  }, [fetchWeather]);
 
   const fetchDashboardData = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) { setLoading(true); setError(null); }
@@ -426,6 +571,139 @@ export default function DashboardPage() {
             <ArrowRight className="w-3 h-3 text-rmpg-500 opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
         ))}
+      </div>
+
+      {/* Shift Countdown + Weather + Quick Actions Row */}
+      <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'}`}>
+        {/* Shift Countdown Timer */}
+        <div className="panel-beveled bg-surface-base">
+          <PanelTitleBar title="SHIFT STATUS" icon={Timer} />
+          <div className="p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm font-bold text-rmpg-200">{shiftInfo.name}</div>
+                <div className="text-[10px] text-rmpg-500 font-mono mt-0.5">
+                  {shiftInfo.startLabel} &mdash; {shiftInfo.endLabel}
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-lg font-bold font-mono text-brand-400">{formatCountdown(shiftInfo.remaining)}</div>
+                <div className="text-[9px] text-rmpg-500 uppercase tracking-wider">Remaining</div>
+              </div>
+            </div>
+            {/* Progress Bar */}
+            <div className="space-y-1">
+              <div className="h-2 bg-surface-sunken rounded-sm overflow-hidden border border-[#1e3048]">
+                <div
+                  className="h-full transition-all duration-1000 ease-linear rounded-sm"
+                  style={{
+                    width: `${Math.round(shiftInfo.progress * 100)}%`,
+                    background: `linear-gradient(90deg, #0e3359, #1a5a9e ${Math.round(shiftInfo.progress * 100)}%)`,
+                  }}
+                />
+              </div>
+              <div className="flex justify-between text-[9px] font-mono text-rmpg-500">
+                <span>{shiftInfo.startLabel}</span>
+                <span>{Math.round(shiftInfo.progress * 100)}%</span>
+                <span>{shiftInfo.endLabel}</span>
+              </div>
+            </div>
+            {/* Shift Indicator Dots */}
+            <div className="flex items-center gap-2 pt-1 border-t border-[#1e3048]">
+              {[
+                { label: 'Day', hours: '06-14', active: shiftInfo.name === 'Day Shift' },
+                { label: 'Swing', hours: '14-22', active: shiftInfo.name === 'Swing Shift' },
+                { label: 'Night', hours: '22-06', active: shiftInfo.name === 'Night Shift' },
+              ].map(s => (
+                <div key={s.label} className={`flex-1 text-center p-1.5 rounded-sm ${s.active ? 'bg-brand-500/20 border border-brand-500/30' : 'bg-surface-sunken'}`}>
+                  <div className="flex items-center justify-center gap-1">
+                    <span className={`led-dot ${s.active ? 'led-green animate-led-pulse' : 'led-off'}`} />
+                    <span className={`text-[10px] font-bold ${s.active ? 'text-brand-400' : 'text-rmpg-500'}`}>{s.label}</span>
+                  </div>
+                  <div className="text-[8px] font-mono text-rmpg-600 mt-0.5">{s.hours}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Weather Widget */}
+        <div className="panel-beveled bg-surface-base">
+          <PanelTitleBar title="WEATHER — SALT LAKE CITY" icon={Cloud} />
+          <div className="p-3">
+            {weather ? (() => {
+              const WeatherIcon = weather.icon;
+              const isFreezing = weather.temperature < 32;
+              return (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 rounded-sm bg-surface-sunken border border-[#1e3048]">
+                      <WeatherIcon className="w-10 h-10" style={{ color: isFreezing ? '#60a5fa' : weather.weatherCode === 0 || weather.weatherCode === 1 ? '#fbbf24' : '#94a3b8' }} />
+                    </div>
+                    <div>
+                      <div className="text-3xl font-bold font-mono text-rmpg-100">{weather.temperature}<span className="text-lg text-rmpg-400">&deg;F</span></div>
+                      <div className="text-xs text-rmpg-400 mt-0.5">{weather.description}</div>
+                    </div>
+                  </div>
+                  {/* Road Conditions Warning */}
+                  {isFreezing && (
+                    <div className="flex items-center gap-2 p-2 bg-blue-900/20 border border-blue-700/30 rounded-sm">
+                      <Snowflake className="w-4 h-4 text-blue-400 flex-shrink-0" />
+                      <div>
+                        <div className="text-[10px] font-bold text-blue-300 uppercase tracking-wider">Road Conditions Warning</div>
+                        <div className="text-[10px] text-blue-400/80 mt-0.5">Temperature below freezing — watch for ice</div>
+                      </div>
+                    </div>
+                  )}
+                  {/* Weather Details */}
+                  <div className="flex items-center gap-2 pt-2 border-t border-[#1e3048]">
+                    <span className="text-[9px] text-rmpg-500 font-mono">
+                      Updated {new Date().toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    <span className="text-[9px] text-rmpg-600">|</span>
+                    <span className="text-[9px] text-rmpg-500 font-mono">Open-Meteo</span>
+                  </div>
+                </div>
+              );
+            })() : (
+              <div className="flex items-center justify-center h-[100px]">
+                <Loader2 className="w-5 h-5 text-rmpg-500 animate-spin" />
+                <span className="text-[10px] text-rmpg-500 ml-2">Loading weather...</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Quick Action Buttons */}
+        <div className="panel-beveled bg-surface-base">
+          <PanelTitleBar title="QUICK ACTIONS" icon={Zap} />
+          <div className="p-3">
+            <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-3'} gap-2`}>
+              {[
+                { icon: Phone, label: 'New Dispatch', path: '/dispatch', color: '#ef4444' },
+                { icon: FileText, label: 'Incident Report', path: '/incidents', color: '#f59e0b' },
+                { icon: Navigation, label: 'Start Patrol', path: '/patrol', color: '#22c55e' },
+                { icon: Gavel, label: 'New Citation', path: '/citations', color: '#3b82f6' },
+                { icon: Target, label: 'Process Server', path: '/serve', color: '#a855f7' },
+                { icon: Mail, label: 'Email', path: '/email', color: '#06b6d4' },
+              ].map(({ icon: ActionIcon, label, path, color }) => (
+                <button
+                  key={label}
+                  onClick={() => navigate(path)}
+                  className={`flex flex-col items-center gap-1.5 ${isMobile ? 'p-3 min-h-[64px]' : 'p-2.5'} panel-beveled bg-surface-sunken hover:bg-surface-raised transition-all duration-150 cursor-pointer group border border-transparent hover:border-[#2a3e58]`}
+                >
+                  <ActionIcon
+                    className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} transition-transform group-hover:scale-110`}
+                    style={{ color }}
+                  />
+                  <span className={`${isMobile ? 'text-[10px]' : 'text-[9px]'} font-bold text-rmpg-300 uppercase tracking-wider group-hover:text-rmpg-100 transition-colors text-center leading-tight`}>
+                    {label}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* BOLO Ticker */}

@@ -12,7 +12,7 @@ import {
   Loader2, Eye, ArrowRight, Beaker, Hash, Link2, Activity,
   Fingerprint, Cpu, FlaskConical, Camera, Shield, Network,
   HelpCircle, ChevronLeft, Package, Upload, Trash2, RefreshCw,
-  Info, Edit3, Send, Unlink,
+  Info, Edit3, Send, Unlink, HardDrive, ArrowDownUp,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import FormModal from '../components/FormModal';
@@ -69,6 +69,75 @@ const ANALYSIS_TYPES = [
   { value: 'other', label: 'Other', desc: 'Other specialized examination' },
 ];
 
+const DEVICE_TYPES = [
+  { value: 'phone', label: 'Phone' },
+  { value: 'laptop', label: 'Laptop' },
+  { value: 'desktop', label: 'Desktop' },
+  { value: 'tablet', label: 'Tablet' },
+  { value: 'server', label: 'Server' },
+  { value: 'hard_drive', label: 'Hard Drive' },
+  { value: 'usb', label: 'USB Device' },
+  { value: 'other', label: 'Other' },
+];
+
+const DIGITAL_FORENSIC_STEPS = [
+  'Create forensic image',
+  'Verify hash integrity',
+  'Extract file system',
+  'Recover deleted files',
+  'Analyze browser history',
+  'Extract communications',
+  'Analyze metadata',
+  'Generate timeline',
+];
+
+const IMAGING_TOOLS = [
+  'FTK Imager',
+  'dd',
+  'Cellebrite',
+  'EnCase',
+  'X-Ways',
+  'Autopsy',
+  'Magnet AXIOM',
+  'Other',
+];
+
+const HASH_ALGORITHMS = ['MD5', 'SHA-1', 'SHA-256'];
+
+interface CustodyEvent {
+  id: string;
+  timestamp: string;
+  from_person: string;
+  to_person: string;
+  action: 'received' | 'transferred' | 'stored' | 'analyzed' | 'returned';
+  notes: string;
+}
+
+interface DeviceInfo {
+  device_type: string;
+  make: string;
+  model: string;
+  serial_number: string;
+  os_version: string;
+  storage_capacity: string;
+}
+
+interface ImagingData {
+  imaging_tool: string;
+  hash_algorithm: string;
+  original_hash: string;
+  verification_hash: string;
+  imaging_date: string;
+  imager_name: string;
+}
+
+interface CaseMetadata {
+  device_info?: DeviceInfo;
+  forensic_steps?: Record<string, boolean>;
+  custody_log?: CustodyEvent[];
+  imaging?: ImagingData;
+}
+
 const TABS = ['My Cases', 'All Cases', 'New Case'] as const;
 type Tab = typeof TABS[number];
 
@@ -95,6 +164,7 @@ interface ForensicCase {
   started_date: string | null;
   completed_date: string | null;
   notes: string | null;
+  metadata?: string | null;
   exhibit_count?: number;
   analysis_count?: number;
   exhibits?: ForensicExhibit[];
@@ -212,6 +282,9 @@ export default function ForensicLabPage() {
   // Hashes
   const [hashes, setHashes] = useState<any[]>([]);
   const [hashStats, setHashStats] = useState<{ total: number; flagged: number; matched: number } | null>(null);
+  // Custody log transfer modal
+  const [showCustodyModal, setShowCustodyModal] = useState(false);
+  const [custodyForm, setCustodyForm] = useState({ from_person: '', to_person: '', action: 'received' as CustodyEvent['action'], notes: '' });
 
   // ── Fetch ──────────────────────────────────────────────
 
@@ -490,6 +563,60 @@ export default function ForensicLabPage() {
     } catch { setHashes([]); setHashStats(null); }
   }, []);
 
+  // ── Metadata helpers ─────────────────────────────────────
+
+  const parseMeta = (c: ForensicCase | null): CaseMetadata => {
+    if (!c?.metadata) return {};
+    try { return typeof c.metadata === 'string' ? JSON.parse(c.metadata) : c.metadata; } catch { return {}; }
+  };
+
+  const saveMetadata = async (updates: Partial<CaseMetadata>) => {
+    if (!selectedCase) return;
+    const current = parseMeta(selectedCase);
+    const merged = { ...current, ...updates };
+    try {
+      await apiFetch(`/forensic-lab/${selectedCase.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ metadata: JSON.stringify(merged) }),
+      });
+      fetchCaseDetail(selectedCase.id);
+    } catch (err) {
+      console.error('Save metadata error:', err);
+    }
+  };
+
+  const handleSaveDeviceInfo = async (deviceInfo: DeviceInfo) => {
+    await saveMetadata({ device_info: deviceInfo });
+  };
+
+  const handleToggleForensicStep = async (step: string, checked: boolean) => {
+    const meta = parseMeta(selectedCase);
+    const steps = { ...(meta.forensic_steps || {}), [step]: checked };
+    await saveMetadata({ forensic_steps: steps });
+  };
+
+  const handleAddCustodyEntry = async () => {
+    if (!selectedCase || !custodyForm.from_person.trim() || !custodyForm.to_person.trim()) return;
+    const meta = parseMeta(selectedCase);
+    const log = [...(meta.custody_log || [])];
+    log.push({
+      id: Date.now().toString(),
+      timestamp: new Date().toISOString(),
+      from_person: custodyForm.from_person,
+      to_person: custodyForm.to_person,
+      action: custodyForm.action,
+      notes: custodyForm.notes,
+    });
+    await saveMetadata({ custody_log: log });
+    setShowCustodyModal(false);
+    setCustodyForm({ from_person: '', to_person: '', action: 'received', notes: '' });
+  };
+
+  const handleSaveImaging = async (imaging: ImagingData) => {
+    await saveMetadata({ imaging });
+  };
+
   // ── Helpers ────────────────────────────────────────────
 
   const getStatusConfig = (status: string) => STATUS_CONFIG[status] || { label: status, color: '#5a6e80', bgColor: 'bg-gray-900/20', nextAction: '' };
@@ -678,6 +805,240 @@ export default function ForensicLabPage() {
                   <p className="text-xs text-rmpg-200 whitespace-pre-wrap">{selectedCase.conclusion}</p>
                 </div>
               )}
+
+              {/* ── Device Analysis (digital cases only) ─────────── */}
+              {selectedCase.case_type === 'digital' && (() => {
+                const meta = parseMeta(selectedCase);
+                const device = meta.device_info || { device_type: '', make: '', model: '', serial_number: '', os_version: '', storage_capacity: '' };
+                const steps = meta.forensic_steps || {};
+                return (
+                  <div className="panel-beveled bg-surface-sunken p-3 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Cpu size={14} className="text-cyan-400" />
+                      <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Device Analysis</div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] text-rmpg-500 mb-0.5">Device Type</label>
+                        <select
+                          value={device.device_type}
+                          onChange={e => handleSaveDeviceInfo({ ...device, device_type: e.target.value })}
+                          className="w-full px-2 py-1 text-[11px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                        >
+                          <option value="">Select...</option>
+                          {DEVICE_TYPES.map(dt => <option key={dt.value} value={dt.value}>{dt.label}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-rmpg-500 mb-0.5">Make</label>
+                        <input type="text" value={device.make} onBlur={e => handleSaveDeviceInfo({ ...device, make: e.target.value })} onChange={e => { /* controlled via onBlur */ }}
+                          defaultValue={device.make}
+                          className="w-full px-2 py-1 text-[11px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                          placeholder="e.g. Apple, Samsung"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-rmpg-500 mb-0.5">Model</label>
+                        <input type="text" defaultValue={device.model} onBlur={e => handleSaveDeviceInfo({ ...device, model: e.target.value })}
+                          className="w-full px-2 py-1 text-[11px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                          placeholder="e.g. iPhone 15 Pro"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-rmpg-500 mb-0.5">Serial Number</label>
+                        <input type="text" defaultValue={device.serial_number} onBlur={e => handleSaveDeviceInfo({ ...device, serial_number: e.target.value })}
+                          className="w-full px-2 py-1 text-[11px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none font-mono"
+                          placeholder="S/N"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-rmpg-500 mb-0.5">OS Version</label>
+                        <input type="text" defaultValue={device.os_version} onBlur={e => handleSaveDeviceInfo({ ...device, os_version: e.target.value })}
+                          className="w-full px-2 py-1 text-[11px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                          placeholder="e.g. iOS 18.2, Windows 11"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-rmpg-500 mb-0.5">Storage Capacity</label>
+                        <input type="text" defaultValue={device.storage_capacity} onBlur={e => handleSaveDeviceInfo({ ...device, storage_capacity: e.target.value })}
+                          className="w-full px-2 py-1 text-[11px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                          placeholder="e.g. 256 GB, 1 TB"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="border-t border-[#1e3048] pt-2">
+                      <div className="text-[10px] text-rmpg-400 font-semibold mb-1.5">Digital Forensic Steps</div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+                        {DIGITAL_FORENSIC_STEPS.map(step => (
+                          <label key={step} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-surface-base transition-colors cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={!!steps[step]}
+                              onChange={e => handleToggleForensicStep(step, e.target.checked)}
+                              className="w-3.5 h-3.5 rounded border-rmpg-600 bg-[#0d1520] text-brand-500 focus:ring-brand-500 focus:ring-1"
+                            />
+                            <span className={`text-[11px] ${steps[step] ? 'text-green-400 line-through' : 'text-rmpg-300'}`}>{step}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <div className="mt-1.5 text-[9px] text-rmpg-500">
+                        {Object.values(steps).filter(Boolean).length} / {DIGITAL_FORENSIC_STEPS.length} steps completed
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* ── Chain of Custody Log ──────────────────────────── */}
+              {(() => {
+                const meta = parseMeta(selectedCase);
+                const custodyLog = meta.custody_log || [];
+                const CUSTODY_ACTIONS = ['received', 'transferred', 'stored', 'analyzed', 'returned'] as const;
+                const actionColors: Record<string, string> = {
+                  received: '#60a5fa', transferred: '#f59e0b', stored: '#a78bfa', analyzed: '#34d399', returned: '#6b7280',
+                };
+                return (
+                  <div className="panel-beveled bg-surface-sunken p-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <ArrowDownUp size={14} className="text-amber-400" />
+                        <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Chain of Custody</div>
+                        <span className="text-[9px] text-rmpg-600 font-mono">({custodyLog.length} entries)</span>
+                      </div>
+                      <button
+                        onClick={() => setShowCustodyModal(true)}
+                        className="toolbar-btn toolbar-btn-primary text-[10px]"
+                      >
+                        <Plus size={10} /> Log Transfer
+                      </button>
+                    </div>
+                    {custodyLog.length === 0 ? (
+                      <div className="text-center py-4">
+                        <ArrowDownUp size={20} className="text-rmpg-600 mx-auto mb-1.5" />
+                        <p className="text-[11px] text-rmpg-400">No custody events logged yet.</p>
+                        <p className="text-[9px] text-rmpg-500 mt-0.5 italic">Log every time evidence changes hands to maintain chain of custody.</p>
+                      </div>
+                    ) : (
+                      <div className="relative ml-3">
+                        {/* Vertical line */}
+                        <div className="absolute left-[5px] top-2 bottom-2 w-px bg-rmpg-700/50" />
+                        <div className="space-y-3">
+                          {custodyLog.map((ev, i) => (
+                            <div key={ev.id} className="flex gap-3 relative">
+                              <div className="w-3 h-3 rounded-full border-2 flex-shrink-0 mt-0.5 z-10" style={{
+                                borderColor: actionColors[ev.action] || '#5a6e80',
+                                backgroundColor: i === 0 ? (actionColors[ev.action] || '#5a6e80') : '#0d1520',
+                              }} />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded" style={{
+                                    backgroundColor: (actionColors[ev.action] || '#5a6e80') + '20',
+                                    color: actionColors[ev.action] || '#5a6e80',
+                                  }}>{ev.action}</span>
+                                  <span className="text-[10px] text-rmpg-300">
+                                    <span className="text-rmpg-200 font-semibold">{ev.from_person}</span>
+                                    <span className="text-rmpg-500 mx-1">&rarr;</span>
+                                    <span className="text-rmpg-200 font-semibold">{ev.to_person}</span>
+                                  </span>
+                                </div>
+                                {ev.notes && <p className="text-[10px] text-rmpg-400 mt-0.5">{ev.notes}</p>}
+                                <div className="text-[9px] text-rmpg-500 font-mono mt-0.5">
+                                  {new Date(ev.timestamp).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* ── Forensic Imaging Workflow (digital cases only) ── */}
+              {selectedCase.case_type === 'digital' && (() => {
+                const meta = parseMeta(selectedCase);
+                const imaging = meta.imaging || { imaging_tool: '', hash_algorithm: '', original_hash: '', verification_hash: '', imaging_date: '', imager_name: '' };
+                const hashMatch = imaging.original_hash && imaging.verification_hash
+                  ? imaging.original_hash.trim().toLowerCase() === imaging.verification_hash.trim().toLowerCase()
+                  : null;
+                return (
+                  <div className="panel-beveled bg-surface-sunken p-3 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <HardDrive size={14} className="text-purple-400" />
+                      <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Forensic Imaging</div>
+                      {hashMatch === true && <span className="text-[9px] px-1.5 py-0.5 rounded bg-green-900/20 text-green-400 font-bold flex items-center gap-1"><CheckCircle size={10} /> VERIFIED</span>}
+                      {hashMatch === false && <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-900/20 text-red-400 font-bold flex items-center gap-1"><XCircle size={10} /> MISMATCH</span>}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] text-rmpg-500 mb-0.5">Imaging Tool</label>
+                        <select
+                          value={imaging.imaging_tool}
+                          onChange={e => handleSaveImaging({ ...imaging, imaging_tool: e.target.value })}
+                          className="w-full px-2 py-1 text-[11px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                        >
+                          <option value="">Select tool...</option>
+                          {IMAGING_TOOLS.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-rmpg-500 mb-0.5">Hash Algorithm</label>
+                        <select
+                          value={imaging.hash_algorithm}
+                          onChange={e => handleSaveImaging({ ...imaging, hash_algorithm: e.target.value })}
+                          className="w-full px-2 py-1 text-[11px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                        >
+                          <option value="">Select algorithm...</option>
+                          {HASH_ALGORITHMS.map(h => <option key={h} value={h}>{h}</option>)}
+                        </select>
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="block text-[10px] text-rmpg-500 mb-0.5">Original Hash Value</label>
+                        <input type="text" defaultValue={imaging.original_hash}
+                          onBlur={e => handleSaveImaging({ ...imaging, original_hash: e.target.value })}
+                          className="w-full px-2 py-1 text-[11px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none font-mono"
+                          placeholder="Hash of original source..."
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="block text-[10px] text-rmpg-500 mb-0.5">Verification Hash</label>
+                        <div className="flex items-center gap-2">
+                          <input type="text" defaultValue={imaging.verification_hash}
+                            onBlur={e => handleSaveImaging({ ...imaging, verification_hash: e.target.value })}
+                            className="flex-1 px-2 py-1 text-[11px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none font-mono"
+                            placeholder="Hash of forensic image..."
+                          />
+                          {hashMatch === true && <CheckCircle size={16} className="text-green-400 flex-shrink-0" />}
+                          {hashMatch === false && <XCircle size={16} className="text-red-400 flex-shrink-0" />}
+                        </div>
+                        {hashMatch === false && (
+                          <p className="text-[9px] text-red-400 mt-0.5 font-semibold">WARNING: Hash values do not match. Image integrity cannot be verified.</p>
+                        )}
+                        {hashMatch === true && (
+                          <p className="text-[9px] text-green-400 mt-0.5">Hash values match. Forensic image integrity confirmed.</p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-rmpg-500 mb-0.5">Imaging Date/Time</label>
+                        <input type="datetime-local" defaultValue={imaging.imaging_date}
+                          onBlur={e => handleSaveImaging({ ...imaging, imaging_date: e.target.value })}
+                          className="w-full px-2 py-1 text-[11px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-rmpg-500 mb-0.5">Imager Name</label>
+                        <input type="text" defaultValue={imaging.imager_name}
+                          onBlur={e => handleSaveImaging({ ...imaging, imager_name: e.target.value })}
+                          className="w-full px-2 py-1 text-[11px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                          placeholder="Name of person who created the image"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </>
           )}
 
@@ -1163,6 +1524,72 @@ export default function ForensicLabPage() {
                   onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
                   className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none h-16"
                   placeholder="Internal notes..."
+                />
+              </div>
+            </div>
+          </FormModal>
+        )}
+
+        {/* Custody Transfer Modal */}
+        {showCustodyModal && (
+          <FormModal
+            isOpen={showCustodyModal}
+            onClose={() => setShowCustodyModal(false)}
+            onSubmit={handleAddCustodyEntry}
+            title="Log Chain of Custody Transfer"
+            icon={ArrowDownUp}
+            submitLabel="Log Transfer"
+            maxWidth="max-w-md"
+            isDirty={custodyForm.from_person.trim().length > 0 || custodyForm.to_person.trim().length > 0}
+          >
+            <div className="space-y-3">
+              <div className="p-2 bg-blue-900/10 border border-blue-800/30 rounded text-[10px] text-blue-300">
+                <Info size={10} className="inline mr-1" />
+                Record every transfer of evidence to maintain a complete chain of custody.
+              </div>
+              <div>
+                <label className="block text-[11px] text-rmpg-400 mb-1">Action</label>
+                <select
+                  value={custodyForm.action}
+                  onChange={e => setCustodyForm(f => ({ ...f, action: e.target.value as CustodyEvent['action'] }))}
+                  className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                >
+                  <option value="received">Received</option>
+                  <option value="transferred">Transferred</option>
+                  <option value="stored">Stored</option>
+                  <option value="analyzed">Analyzed</option>
+                  <option value="returned">Returned</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] text-rmpg-400 mb-1">From <span className="text-red-400">*</span></label>
+                  <input
+                    type="text"
+                    value={custodyForm.from_person}
+                    onChange={e => setCustodyForm(f => ({ ...f, from_person: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                    placeholder="Person releasing"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-rmpg-400 mb-1">To <span className="text-red-400">*</span></label>
+                  <input
+                    type="text"
+                    value={custodyForm.to_person}
+                    onChange={e => setCustodyForm(f => ({ ...f, to_person: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                    placeholder="Person receiving"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[11px] text-rmpg-400 mb-1">Notes</label>
+                <textarea
+                  value={custodyForm.notes}
+                  onChange={e => setCustodyForm(f => ({ ...f, notes: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none h-16"
+                  placeholder="Additional details about this transfer..."
                 />
               </div>
             </div>

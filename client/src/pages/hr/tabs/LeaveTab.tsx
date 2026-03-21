@@ -291,7 +291,7 @@ export default function LeaveTab() {
         </div>
 
         {/* Request History Table */}
-        <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm overflow-hidden">
+        <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-[#1e3048] bg-[#0d1520]">
@@ -534,7 +534,7 @@ export default function LeaveTab() {
         </div>
 
         {/* All Requests Table */}
-        <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm overflow-hidden">
+        <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-[#1e3048] bg-[#0d1520]">

@@ -78,6 +78,7 @@ import {
   Mic,
   MicOff,
   Video,
+  ClipboardCheck,
 } from 'lucide-react';
 import { setVoiceAlertsEnabled, getVoiceAlertsEnabled, demoAllVoiceAlerts } from '../utils/voiceAlerts';
 import { apiFetch } from '../hooks/useApi';
@@ -471,6 +472,7 @@ export default function MenuBar({
           { type: 'separator' },
           { type: 'action', label: 'Audit Trail', icon: ScrollText, action: () => navigate('/audit') },
           { type: 'action', label: 'Training Management', icon: GraduationCap, action: () => navigate('/training') },
+          { type: 'action', label: 'HR Console', icon: ClipboardCheck, action: () => navigate('/hr') },
         ],
       },
     ],
