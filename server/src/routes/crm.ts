@@ -5,6 +5,7 @@
 // and contract expiration alerts for the CRM module.
 // Client/Property/Invoice CRUD reuses existing admin routes.
 
+import crypto from 'crypto';
 import { Router, Request, Response } from 'express';
 import { authenticateToken as authenticate, requireRole } from '../middleware/auth';
 import { getDb } from '../models/database';
@@ -344,7 +345,20 @@ router.get('/reports/revenue', requireRole('admin', 'manager', 'contract_manager
       FROM months m
       ORDER BY m.month ASC
     `).all();
-    res.json(rows);
+
+    // Per-client breakdown: top 10 by invoiced amount
+    const byClient = db.prepare(`
+      SELECT i.client_id, c.name as client_name,
+             COALESCE(SUM(i.total), 0) as invoiced,
+             COALESCE(SUM(i.amount_paid), 0) as paid
+      FROM invoices i
+      LEFT JOIN clients c ON c.id = i.client_id
+      GROUP BY i.client_id
+      ORDER BY invoiced DESC
+      LIMIT 10
+    `).all();
+
+    res.json({ months: rows, by_client: byClient });
   } catch (err: any) {
     console.error('CRM error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
@@ -425,6 +439,215 @@ router.get('/reports/lead-source-roi', requireRole('admin', 'manager', 'contract
     }));
 
     res.json(result);
+  } catch (err: any) {
+    console.error('CRM error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Revenue trend: last 6 months invoiced vs paid
+router.get('/reports/revenue-trend', requireRole('admin', 'manager', 'contract_manager'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      WITH months AS (
+        SELECT strftime('%Y-%m', date('now', '-' || n || ' months')) as month
+        FROM (SELECT 0 as n UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5)
+      )
+      SELECT m.month,
+        COALESCE((SELECT SUM(total) FROM invoices WHERE strftime('%Y-%m', issue_date) = m.month), 0) as invoiced,
+        COALESCE((SELECT SUM(amount) FROM crm_payments WHERE strftime('%Y-%m', paid_at) = m.month), 0) as paid
+      FROM months m
+      ORDER BY m.month ASC
+    `).all();
+    res.json(rows);
+  } catch (err: any) {
+    console.error('CRM error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Client incidents: CAD calls linked to client's properties
+router.get('/clients/:id/incidents', validateParamId, requireRole('admin', 'manager', 'contract_manager', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { id } = req.params;
+
+    const client = db.prepare('SELECT id FROM clients WHERE id = ?').get(id);
+    if (!client) { res.status(404).json({ error: 'Client not found' }); return; }
+
+    const rows = db.prepare(`
+      SELECT c.id, c.call_number, c.incident_type, c.location_address,
+             c.created_at as reported_at, c.status
+      FROM calls_for_service c
+      JOIN properties p ON p.id = c.property_id
+      WHERE p.client_id = ?
+      ORDER BY c.created_at DESC
+      LIMIT 20
+    `).all(id);
+
+    res.json(rows);
+  } catch (err: any) {
+    console.error('CRM error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Property incident counts: 30-day count per property
+router.get('/properties/incident-counts', requireRole('admin', 'manager', 'contract_manager', 'officer'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT property_id, COUNT(*) as count_30d
+      FROM calls_for_service
+      WHERE property_id IS NOT NULL
+        AND created_at >= datetime('now', '-30 days')
+      GROUP BY property_id
+      ORDER BY count_30d DESC
+    `).all();
+    res.json(rows);
+  } catch (err: any) {
+    console.error('CRM error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Due recurring invoices
+router.get('/invoices/due-recurring', requireRole('admin', 'manager', 'contract_manager'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const currentMonth = now.slice(0, 7);          // 'YYYY-MM'
+    const currentYear = now.slice(0, 4);           // 'YYYY'
+    const currentQuarter = Math.ceil(parseInt(now.slice(5, 7), 10) / 3);
+
+    const rows = (db.prepare(`
+      SELECT * FROM invoices
+      WHERE is_recurring = 1
+        AND status != 'paid'
+        AND recurrence_anchor IS NOT NULL
+    `).all() as any[]).filter((inv: any) => {
+      const anchor = String(inv.recurrence_anchor || '');
+      const interval = String(inv.recurrence_interval || 'monthly');
+      if (!anchor) return false;
+
+      switch (interval) {
+        case 'monthly':
+          return anchor.slice(0, 7) <= currentMonth;
+        case 'quarterly': {
+          const anchorQ = Math.ceil(parseInt(anchor.slice(5, 7), 10) / 3);
+          const anchorYear = anchor.slice(0, 4);
+          return anchorYear < currentYear ||
+            (anchorYear === currentYear && anchorQ <= currentQuarter);
+        }
+        case 'annually':
+          return anchor.slice(0, 4) <= currentYear;
+        default:
+          return anchor.slice(0, 7) <= currentMonth;
+      }
+    });
+
+    res.json(rows);
+  } catch (err: any) {
+    console.error('CRM error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Record a payment against an invoice
+router.post('/invoices/:id/payments', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { id } = req.params;
+    const { amount, paid_at, method, reference } = req.body;
+
+    if (amount == null || isNaN(Number(amount)) || Number(amount) <= 0) {
+      res.status(400).json({ error: 'amount is required and must be positive' });
+      return;
+    }
+
+    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(id) as any;
+    if (!invoice) { res.status(404).json({ error: 'Invoice not found' }); return; }
+
+    const now = localNow();
+    const paymentId = crypto.randomUUID();
+    const paidAt = paid_at || now;
+
+    db.prepare(`
+      INSERT INTO crm_payments (id, invoice_id, amount, paid_at, method, reference, recorded_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(paymentId, id, Number(amount), paidAt, method || null, reference || null, req.user?.username || null);
+
+    auditLog(req, 'payment_recorded', 'payment', paymentId, `Recorded payment $${amount} for invoice #${invoice.invoice_number}`);
+
+    // Sum all payments and update invoice status if fully paid
+    const totalPaid = (db.prepare('SELECT COALESCE(SUM(amount), 0) as t FROM crm_payments WHERE invoice_id = ?').get(id) as any)?.t || 0;
+
+    let invoiceStatus = invoice.status;
+    if (totalPaid >= invoice.total) {
+      invoiceStatus = 'paid';
+      db.prepare("UPDATE invoices SET status = 'paid', amount_paid = ?, balance_due = 0, paid_date = ?, updated_at = ? WHERE id = ?")
+        .run(totalPaid, paidAt, now, id);
+      auditLog(req, 'invoice_updated', 'invoice', String(id), `Invoice #${invoice.invoice_number} marked paid (total_paid=${totalPaid})`);
+    } else {
+      db.prepare("UPDATE invoices SET amount_paid = ?, balance_due = ?, status = 'partial', updated_at = ? WHERE id = ?")
+        .run(totalPaid, Math.max(0, invoice.total - totalPaid), now, id);
+      invoiceStatus = 'partial';
+    }
+
+    res.json({ success: true, payment_id: paymentId, invoice_status: invoiceStatus });
+  } catch (err: any) {
+    console.error('CRM error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Dashboard renewal tasks: auto-create tasks for contracts expiring in 90 days
+router.get('/dashboard/renewal-tasks', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localNow().slice(0, 10);
+    const futureDate = new Date(today + 'T12:00:00');
+    futureDate.setDate(futureDate.getDate() + 90);
+    const future90 = `${futureDate.getFullYear()}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`;
+
+    const expiringClients = db.prepare(`
+      SELECT id, name, contract_end
+      FROM clients
+      WHERE status = 'active'
+        AND contract_end IS NOT NULL
+        AND contract_end <= ?
+        AND contract_end >= date('now')
+      ORDER BY contract_end ASC
+    `).all(future90) as any[];
+
+    const now = localNow();
+    let created = 0;
+
+    for (const client of expiringClients) {
+      // Check if a pending auto renewal task already exists
+      const existing = db.prepare(`
+        SELECT id FROM crm_tasks
+        WHERE auto_created_by = 'contract_renewal'
+          AND client_id = ?
+          AND status != 'completed'
+        LIMIT 1
+      `).get(client.id);
+
+      if (existing) continue;
+
+      const daysUntil = Math.ceil((new Date(client.contract_end + 'T12:00:00').getTime() - new Date(today + 'T12:00:00').getTime()) / (1000 * 60 * 60 * 24));
+      const priority = daysUntil < 30 ? 'high' : daysUntil < 60 ? 'medium' : 'low';
+
+      db.prepare(`
+        INSERT INTO crm_tasks (client_id, title, task_type, priority, status, due_date, auto_created_by, created_by, created_at, updated_at)
+        VALUES (?, ?, 'renewal', ?, 'pending', ?, 'contract_renewal', 'system', ?, ?)
+      `).run(client.id, `Contract Renewal — ${client.name}`, priority, client.contract_end, now, now);
+
+      created++;
+    }
+
+    res.json({ created });
   } catch (err: any) {
     console.error('CRM error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
