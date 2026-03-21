@@ -460,6 +460,14 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
       db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(req.params.id);
     }
 
+    // Audit log for admin password resets
+    if (passwordChanged) {
+      auditLog(req, 'ADMIN_PASSWORD_RESET', 'users', id, null, {
+        target_user: user.username,
+        reset_by: req.user!.userId,
+      });
+    }
+
     const updated = db.prepare(`
       SELECT id, username, full_name, first_name, last_name, middle_name, email, role,
         badge_number, phone, status, avatar_url, rank, department, address, city, state, zip,

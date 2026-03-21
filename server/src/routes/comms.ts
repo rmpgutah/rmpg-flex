@@ -469,6 +469,17 @@ router.put('/bolos/:id', validateParamId, requireRole('admin', 'manager', 'super
       photo_url, status, priority, expires_at,
     } = req.body;
 
+    // Validate enum fields on update (matching POST validation)
+    const VALID_BOLO_STATUSES = ['active', 'expired', 'cancelled'] as const;
+    try {
+      if (req.body.type) validateEnum(req.body.type, VALID_BOLO_TYPES, 'type');
+      if (status) validateEnum(status, VALID_BOLO_STATUSES, 'status');
+      if (priority) validateEnum(priority, VALID_BOLO_PRIORITIES, 'priority');
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+
     // Build dynamic SET clause — only update fields explicitly provided
     const bFields: string[] = [];
     const bValues: any[] = [];

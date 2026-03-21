@@ -168,6 +168,7 @@ router.put('/signature', (req: Request, res: Response) => {
       db.prepare("INSERT INTO system_config (config_key, config_value, category) VALUES (?, ?, 'email')")
         .run(key, signature.trim());
     }
+    auditLog(req, 'UPDATE', 'system_config', req.user!.userId, null, { action: 'email_signature_updated' });
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);

@@ -970,11 +970,6 @@ router.post('/change-password', passwordRateLimit, authenticateToken, async (req
     const newHash = bcryptjs.hashSync(newPassword, 12);
     const now = localNow();
 
-    // Update password history: prepend old hash, keep last N
-    let oldHistory: string[] = [];
-    try { oldHistory = user.password_history ? JSON.parse(user.password_history) : []; } catch { /* corrupted — start fresh history */ }
-    const newHistory = [user.password_hash, ...oldHistory].slice(0, config.password.historyCount);
-
     db.prepare(`
       UPDATE users SET password_hash = ?, must_change_password = 0, force_password_change = 0,
         password_changed_at = ?, updated_at = ? WHERE id = ?

@@ -3,6 +3,7 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 
@@ -120,6 +121,8 @@ router.put('/config/:id', validateParamId, requireRole('admin', 'manager'), (req
       cfgVals.push(now, item.id);
       db.prepare(`UPDATE system_config SET ${cfgSet.join(', ')} WHERE id = ?`).run(...cfgVals);
     }
+
+    auditLog(req, 'UPDATE', 'system_config', item.id, { config_key: item.config_key, config_value: item.config_value }, req.body);
 
     const updated = db.prepare('SELECT * FROM system_config WHERE id = ?').get(item.id);
     res.json(updated);
