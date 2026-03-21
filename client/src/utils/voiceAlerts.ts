@@ -65,11 +65,11 @@ const VOICE_ALERTS_KEY = 'rmpg-voice-alerts';
 const VOICE_SPEED_KEY = 'rmpg-voice-speed';     // 'slow' | 'normal' | 'fast'
 const VOICE_VOLUME_KEY = 'rmpg-voice-volume';    // 0.0 - 1.0
 
-/** Inter-phrase pause in milliseconds — tight for rapid-fire dispatch cadence */
-const PHRASE_GAP_MS = 200;
+/** Inter-phrase pause — natural breathing gap between sentences */
+const PHRASE_GAP_MS = 350;
 
 /** Post-tone pause before speech begins */
-const TONE_GAP_MS = 250;
+const TONE_GAP_MS = 300;
 
 /** Deduplication cache TTL (60 seconds) */
 const DEDUP_TTL_MS = 60_000;
@@ -79,11 +79,11 @@ const PRIORITY_URGENCY: Record<string, number> = {
   PANIC: 0, P1: 1, P2: 2, P3: 3, P4: 4, INFO: 5,
 };
 
-/** User-configurable speed presets — all faster than conversational for stern delivery */
+/** User-configurable speed presets — natural conversational pace, not rushed */
 const SPEED_PRESETS: Record<string, number> = {
-  slow: 0.92,
-  normal: 1.08,
-  fast: 1.25,
+  slow: 0.88,
+  normal: 0.98,
+  fast: 1.12,
 };
 
 /** Base speech configuration */
@@ -102,13 +102,12 @@ function getSpeechVolume(): number {
 }
 
 /**
- * Female dispatcher pitch — noticeably lower than default for stern authority.
- * Real dispatchers are clipped, direct, no-nonsense. They don't ask — they tell.
- * 0.88 on neural voices produces the mature, stern female voice heard on
- * police scanners. Combined with rate 1.08, this creates the characteristic
- * "reading you facts, not making conversation" delivery.
+ * Female dispatcher pitch — natural female range, not artificially lowered.
+ * 0.88 was too robotic. 0.94 sits in the natural alto register — confident
+ * and direct without sounding synthesized. Real dispatchers don't sound
+ * artificially deep — they sound like calm, practiced professionals.
  */
-const SPEECH_PITCH = 0.88;
+const SPEECH_PITCH = 0.94;
 
 /** Priority-based speech parameters — adjusts rate/pitch/volume for urgency level */
 interface PrioritySpeechParams {
@@ -781,11 +780,16 @@ export async function announcePanicAlert(officerName?: string): Promise<void> {
   await playToneAsync('officer_down');
   await delay(TONE_GAP_MS);
 
-  // Single urgent utterance — no pauses for panic
-  const msg = officerName
-    ? `Panic alert, officer ${officerName} needs immediate assistance.`
-    : 'Panic alert, officer needs immediate assistance.';
-  enqueuePhrases([{ text: msg }], 'PANIC');
+  // Two sentences — the repetition is intentional, mirrors real radio urgency
+  const phrases: VoicePhrase[] = [];
+  if (officerName) {
+    phrases.push({ text: `Panic alert. Officer ${officerName} is requesting immediate assistance.` });
+    phrases.push({ text: `All units respond to officer ${officerName}'s location.` });
+  } else {
+    phrases.push({ text: 'Panic alert. An officer is requesting immediate assistance.' });
+    phrases.push({ text: 'All units respond.' });
+  }
+  enqueuePhrases(phrases, 'PANIC');
 }
 
 /** Extended call data for full dispatch readout */
@@ -809,15 +813,17 @@ interface DispatchCallData extends CallFlags {
 }
 
 /**
- * Announce a dispatch event with FULL call details.
- * Stern, direct delivery — every fact the officer needs.
+ * Announce a dispatch event with full call details in natural speech.
  *
- * Example output:
- * "Dispatch, call 42, Domestic violence, Priority one, Zone 3,
- *  500 South State Street, apartment 204, at the Marriott.
- *  Caller reports male subject striking female. Two subjects on scene.
- *  Suspect described as white male, red shirt, approximately 30 years old.
- *  Caution; prior D.V. at this location, armed subject reported."
+ * Uses complete sentences instead of comma-separated lists.
+ * Sounds like a real person reading information, not a computer parsing fields.
+ *
+ * Example:
+ * "Dispatch on call 42. We have a domestic violence, priority one.
+ *  Location is 500 South State Street, apartment 204, at the Marriott. Zone 3.
+ *  Caller reports a male subject striking a female. Two subjects on scene.
+ *  Suspect is a white male wearing a red shirt, approximately 30 years old.
+ *  Be advised — prior D.V. at this location. Caution, armed subject reported."
  */
 export async function announceDispatchEvent(call: DispatchCallData): Promise<void> {
   if (!isVoiceEnabled() || !isSpeechAvailable()) return;
@@ -826,7 +832,6 @@ export async function announceDispatchEvent(call: DispatchCallData): Promise<voi
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);
 
-  // Select tone based on pursuit/priority
   const isP = call.vehicle_pursuit || call.foot_pursuit;
   const tone = isP ? 'pursuit' : (call.priority === 'P1' ? 'code3' : 'info');
   await playToneAsync(tone as any);
@@ -834,66 +839,87 @@ export async function announceDispatchEvent(call: DispatchCallData): Promise<voi
 
   const phrases: VoicePhrase[] = [];
 
-  // ── Line 1: Core dispatch info (location, type, priority) ──
-  const coreParts: string[] = ['Dispatch'];
-  if (call.call_number) coreParts.push(`call ${shortCallNumber(call.call_number)}`);
-  if (call.incident_type) coreParts.push(formatIncidentType(call.incident_type));
-  if (call.priority) coreParts.push(call.priority);
-  if (call.zone) coreParts.push(`Zone ${call.zone}`);
-  if (call.beat) coreParts.push(`Beat ${call.beat}`);
-  if (call.location) coreParts.push(abbreviateAddress(call.location));
-  if (call.apartment) coreParts.push(`apartment ${call.apartment}`);
-  if (call.cross_street) coreParts.push(`cross ${abbreviateAddress(call.cross_street)}`);
-  if (call.business_name) coreParts.push(`at ${call.business_name}`);
-  phrases.push({ text: coreParts.join(', ') + '.' });
+  // ── Sentence 1: What call ──
+  let opening = 'Dispatch';
+  if (call.call_number) opening += ` on call ${shortCallNumber(call.call_number)}`;
+  phrases.push({ text: opening + '.' });
 
-  // ── Line 2: Narrative / caller information ──
-  const narrativeParts: string[] = [];
+  // ── Sentence 2: What type + priority ──
+  if (call.incident_type) {
+    let typeLine = `We have a ${formatIncidentType(call.incident_type)}`;
+    if (call.priority) typeLine += `, ${call.priority}`;
+    phrases.push({ text: typeLine + '.' });
+  }
+
+  // ── Sentence 3: Where ──
+  if (call.location) {
+    let locLine = `Location is ${call.location}`;
+    if (call.apartment) locLine += `, apartment ${call.apartment}`;
+    if (call.business_name) locLine += `, at ${call.business_name}`;
+    phrases.push({ text: locLine + '.' });
+
+    if (call.cross_street) {
+      phrases.push({ text: `Cross street is ${call.cross_street}.` });
+    }
+  }
+  if (call.zone || call.beat) {
+    const zbParts: string[] = [];
+    if (call.zone) zbParts.push(`Zone ${call.zone}`);
+    if (call.beat) zbParts.push(`Beat ${call.beat}`);
+    phrases.push({ text: zbParts.join(', ') + '.' });
+  }
+
+  // ── Sentence 4: What happened (narrative) ──
   if (call.narrative || call.comments) {
-    const narr = truncateForSpeech(call.narrative || call.comments || '', 120);
-    narrativeParts.push(narr);
+    const narr = truncateForSpeech(call.narrative || call.comments || '', 140);
+    phrases.push({ text: narr.endsWith('.') ? narr : narr + '.' });
   }
+
+  // ── Sentence 5: Who called ──
   if (call.caller_name && call.caller_name !== 'Anonymous') {
-    narrativeParts.push(`Reporting party is ${call.caller_name}`);
+    phrases.push({ text: `Reporting party is ${call.caller_name}.` });
   } else if (call.reporting_party) {
-    narrativeParts.push(`Reporting party is ${call.reporting_party}`);
+    phrases.push({ text: `Reporting party is ${call.reporting_party}.` });
   }
+
+  // ── Sentence 6: How many people ──
   if (call.num_subjects && call.num_subjects > 1) {
-    narrativeParts.push(`${call.num_subjects} subjects on scene`);
-  }
-  if (narrativeParts.length > 0) {
-    phrases.push({ text: narrativeParts.join('. ') + '.' });
+    phrases.push({ text: `${call.num_subjects} subjects reported on scene.` });
   }
 
-  // ── Line 3: Suspect / vehicle description ──
+  // ── Sentence 7: Who to look for ──
   if (call.suspect_description) {
-    phrases.push({ text: `Suspect described as ${call.suspect_description}.` });
+    phrases.push({ text: `Suspect is described as ${call.suspect_description}.` });
   }
+
+  // ── Sentence 8: What vehicle ──
   if (call.vehicle_description || call.vehicle_plate) {
-    const vParts: string[] = [];
-    if (call.vehicle_description) vParts.push(`Vehicle is ${call.vehicle_description}`);
-    if (call.vehicle_plate) vParts.push(`plate ${spellOutPlate(call.vehicle_plate)}`);
-    phrases.push({ text: vParts.join(', ') + '.' });
+    let vLine = call.vehicle_description ? `Vehicle is a ${call.vehicle_description}` : 'Vehicle';
+    if (call.vehicle_plate) vLine += `, plate ${spellOutPlate(call.vehicle_plate)}`;
+    phrases.push({ text: vLine + '.' });
   }
 
-  // ── Line 4: Assigned units ──
+  // ── Sentence 9: Who's responding ──
   if (call.assigned_units && call.assigned_units.length > 0) {
-    phrases.push({ text: `Responding: ${call.assigned_units.join(', ')}.` });
+    const unitList = call.assigned_units.join(' and ');
+    phrases.push({ text: `${unitList} responding.` });
   }
 
-  // ── Line 5: Safety flags (critical last — sticks in memory) ──
+  // ── Sentence 10: Safety warnings (last = remembered) ──
   const safetyPhrases = buildCallPhrases(call);
   if (safetyPhrases.length > 0) {
-    phrases.push({ text: safetyPhrases.map(p => p.text.replace(/\.$/, '')).join('; ') + '.' });
+    // Read each safety flag as its own sentence for weight
+    for (const sp of safetyPhrases) {
+      phrases.push(sp);
+    }
   }
 
   enqueuePhrases(phrases, call.priority);
 }
 
 /**
- * Announce a new call with full detail readout.
- * Stern, direct: "New call, 42, Domestic violence, Priority one, Zone 3,
- * 500 South State. Caller reports male subject striking female."
+ * Announce a new call in natural speech.
+ * P1/P2 get full detail. P3/P4 stay brief.
  */
 export async function announceNewCall(call: DispatchCallData): Promise<void> {
   if (!isVoiceEnabled() || !isSpeechAvailable()) return;
@@ -902,49 +928,61 @@ export async function announceNewCall(call: DispatchCallData): Promise<void> {
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);
 
-  // Priority-based tone selection
   const tone = call.priority === 'P1' ? 'code3' : call.priority === 'P2' ? 'warning' : 'caution';
   await playToneAsync(tone);
   await delay(TONE_GAP_MS);
 
   const phrases: VoicePhrase[] = [];
 
-  // ── Core call info ──
-  const coreParts: string[] = ['New call'];
-  if (call.call_number) coreParts.push(`call ${shortCallNumber(call.call_number)}`);
-  if (call.incident_type) coreParts.push(formatIncidentType(call.incident_type));
-  if (call.priority) coreParts.push(call.priority);
-  if (call.zone) coreParts.push(`Zone ${call.zone}`);
-  if (call.beat) coreParts.push(`Beat ${call.beat}`);
-  if (call.location) coreParts.push(abbreviateAddress(call.location));
-  if (call.apartment) coreParts.push(`apartment ${call.apartment}`);
-  if (call.business_name) coreParts.push(`at ${call.business_name}`);
-  phrases.push({ text: coreParts.join(', ') + '.' });
+  // ── Opening ──
+  let opening = 'New call coming in';
+  if (call.call_number) opening += `, call number ${shortCallNumber(call.call_number)}`;
+  phrases.push({ text: opening + '.' });
 
-  // ── Narrative / details (only for P1/P2 — lower priority calls stay brief) ──
+  // ── Type + priority ──
+  if (call.incident_type) {
+    let typeLine = formatIncidentType(call.incident_type);
+    if (call.priority) typeLine += `, ${call.priority}`;
+    phrases.push({ text: typeLine + '.' });
+  }
+
+  // ── Location ──
+  if (call.location) {
+    let locLine = call.location;
+    if (call.apartment) locLine += `, apartment ${call.apartment}`;
+    if (call.business_name) locLine += `, at ${call.business_name}`;
+    phrases.push({ text: locLine + '.' });
+  }
+  if (call.zone || call.beat) {
+    const zbParts: string[] = [];
+    if (call.zone) zbParts.push(`Zone ${call.zone}`);
+    if (call.beat) zbParts.push(`Beat ${call.beat}`);
+    phrases.push({ text: zbParts.join(', ') + '.' });
+  }
+
+  // ── Detail (P1/P2 only) ──
   if (call.priority === 'P1' || call.priority === 'P2') {
     if (call.narrative || call.comments) {
-      const narr = truncateForSpeech(call.narrative || call.comments || '', 100);
-      phrases.push({ text: narr + '.' });
+      const narr = truncateForSpeech(call.narrative || call.comments || '', 120);
+      phrases.push({ text: narr.endsWith('.') ? narr : narr + '.' });
     }
     if (call.suspect_description) {
-      phrases.push({ text: `Suspect described as ${call.suspect_description}.` });
+      phrases.push({ text: `Suspect is described as ${call.suspect_description}.` });
     }
     if (call.vehicle_description) {
-      const vMsg = call.vehicle_plate
-        ? `Vehicle is ${call.vehicle_description}, plate ${spellOutPlate(call.vehicle_plate)}.`
-        : `Vehicle is ${call.vehicle_description}.`;
-      phrases.push({ text: vMsg });
+      let vLine = `Vehicle is a ${call.vehicle_description}`;
+      if (call.vehicle_plate) vLine += `, plate ${spellOutPlate(call.vehicle_plate)}`;
+      phrases.push({ text: vLine + '.' });
     }
     if (call.num_subjects && call.num_subjects > 1) {
-      phrases.push({ text: `${call.num_subjects} subjects reported on scene.` });
+      phrases.push({ text: `${call.num_subjects} subjects on scene.` });
     }
   }
 
-  // ── Safety flags ──
+  // ── Safety flags (each as own sentence) ──
   const safetyPhrases = buildCallPhrases(call);
-  if (safetyPhrases.length > 0) {
-    phrases.push({ text: safetyPhrases.map(p => p.text.replace(/\.$/, '')).join('; ') + '.' });
+  for (const sp of safetyPhrases) {
+    phrases.push(sp);
   }
 
   enqueuePhrases(phrases, call.priority);
@@ -964,24 +1002,24 @@ export async function announceStatusChange(call: any, newStatus: string): Promis
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);
 
-  const statusLabels: Record<string, string> = {
-    dispatched: 'Dispatched',
-    enroute: 'Enroute',
-    onscene: 'On scene',
-    cleared: 'Cleared',
-    closed: 'Closed',
-    pending: 'Pending',
-    hold: 'On hold',
-    cancelled: 'Cancelled',
-    backup_enroute: 'Backup enroute',
+  const statusSentences: Record<string, string> = {
+    dispatched: 'has been dispatched',
+    enroute: 'is now enroute',
+    onscene: 'is on scene',
+    cleared: 'has been cleared',
+    closed: 'is now closed',
+    pending: 'is pending',
+    hold: 'is on hold',
+    cancelled: 'has been cancelled',
+    backup_enroute: 'has backup enroute',
   };
-  const label = statusLabels[newStatus] || newStatus;
+  const statusText = statusSentences[newStatus] || `is now ${newStatus}`;
   const incidentType = call?.incident_type ? `, ${formatIncidentType(call.incident_type)}` : '';
-  const location = call?.location ? `, ${abbreviateAddress(call.location)}` : '';
+  const location = call?.location ? ` at ${abbreviateAddress(call.location)}` : '';
 
   await playToneAsync('info');
   await delay(TONE_GAP_MS);
-  enqueuePhrases([{ text: `${label}; call ${shortCallNumber(callNum)}${incidentType}${location}.` }]);
+  enqueuePhrases([{ text: `Call ${shortCallNumber(callNum)} ${statusText}${incidentType}${location}.` }]);
 }
 
 /**
@@ -999,13 +1037,12 @@ export async function announceUnitDispatched(call: any, units?: any[]): Promise<
 
   await playToneAsync('info');
   await delay(TONE_GAP_MS);
-  const phrases: VoicePhrase[] = [];
-  if (unitNames) {
-    phrases.push({ text: `Unit ${unitNames} dispatched to call ${callNum}.` });
-  } else {
-    phrases.push({ text: `Units dispatched to call ${callNum}.` });
-  }
-  enqueuePhrases(phrases);
+  const incType = call?.incident_type ? `, ${formatIncidentType(call.incident_type)}` : '';
+  const loc = call?.location ? ` at ${abbreviateAddress(call.location)}` : '';
+  const msg = unitNames
+    ? `${unitNames} has been dispatched to call ${shortCallNumber(callNum)}${incType}${loc}.`
+    : `Units dispatched to call ${shortCallNumber(callNum)}${incType}${loc}.`;
+  enqueuePhrases([{ text: msg }]);
 }
 
 /**
@@ -1023,8 +1060,9 @@ export async function announceBolo(data: any): Promise<void> {
   await delay(TONE_GAP_MS);
 
   const description = data.title || data.description || '';
-  const msg = description ? `BOLO, ${description}.` : 'New BOLO alert.';
-  enqueuePhrases([{ text: msg }]);
+  const phrases: VoicePhrase[] = [{ text: 'Attention all units. Be on the lookout.' }];
+  if (description) phrases.push({ text: description + '.' });
+  enqueuePhrases(phrases, 'P2');
 }
 
 /**
@@ -1043,10 +1081,11 @@ export async function announceWarrantHit(data: any): Promise<void> {
   await delay(TONE_GAP_MS);
 
   const count = data.warrantCount || data.warrant_count || 0;
-  const msg = count > 0
-    ? `Active warrant, ${personName}, ${count} warrant${count > 1 ? 's' : ''}.`
-    : `Active warrant, ${personName}.`;
-  enqueuePhrases([{ text: msg }]);
+  const phrases: VoicePhrase[] = [{ text: `Caution. We have an active warrant hit on ${personName}.` }];
+  if (count > 1) {
+    phrases.push({ text: `${count} active warrants on file.` });
+  }
+  enqueuePhrases(phrases, 'P1');
 }
 
 // ─── All-Units / Backup / Pursuit Announcements ─────────────
