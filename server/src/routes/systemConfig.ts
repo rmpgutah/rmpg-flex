@@ -3,6 +3,7 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 
@@ -82,6 +83,8 @@ router.post('/config', requireRole('admin', 'manager'), (req: Request, res: Resp
       VALUES (?, 'config_created', 'system_config', ?, ?, ?)
     `).run(req.user!.userId, result.lastInsertRowid, `Added config: ${config_key} = ${config_value}`, req.ip || 'unknown');
 
+    auditLog(req, 'CREATE' as any, 'system_config' as any, Number(result.lastInsertRowid), `Added config: ${config_key} in category ${category}`);
+
     res.status(201).json(item);
   } catch (error: any) {
     if (error.message?.includes('UNIQUE constraint')) {
@@ -122,6 +125,9 @@ router.put('/config/:id', validateParamId, requireRole('admin', 'manager'), (req
     }
 
     const updated = db.prepare('SELECT * FROM system_config WHERE id = ?').get(item.id);
+
+    auditLog(req, 'UPDATE' as any, 'system_config' as any, item.id, `Updated config #${item.id}: ${item.config_key}`);
+
     res.json(updated);
   } catch (error: any) {
     console.error('Update config error:', error?.message || 'Unknown error');
@@ -146,6 +152,8 @@ router.delete('/config/:id', validateParamId, requireRole('admin', 'manager'), (
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, 'config_deleted', 'system_config', ?, ?, ?, ?)
     `).run(req.user!.userId, item.id, `Removed config: ${item.config_key} = ${item.config_value}`, req.ip || 'unknown', now);
+
+    auditLog(req, 'DELETE' as any, 'system_config' as any, item.id, `Removed config: ${item.config_key}`);
 
     res.json({ message: 'Config item removed' });
   } catch (error: any) {

@@ -12,7 +12,6 @@ import {
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
-import { useWebSocket } from '../context/WebSocketContext';
 import { loadGoogleMaps, DARK_MAP_STYLE } from '../utils/googleMapsLoader';
 import ServeJobCard from '../components/serve/ServeJobCard';
 import ServeAttemptModal from '../components/serve/ServeAttemptModal';
@@ -73,8 +72,6 @@ interface StatsSummary {
 
 export default function ServePage() {
   const isMobile = useIsMobile();
-  const { subscribe } = useWebSocket();
-
   // ── Core state ──────────────────────────────────────────────────────
   const [selectedDate, setSelectedDate] = useState(() => formatDate(new Date()));
   const [activeTab, setActiveTab] = useState<Tab>('Queue');

@@ -173,6 +173,8 @@ router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, r
       JSON.stringify({ first_name, last_name, tier, registration_status: registration_status || 'compliant' }), now,
     );
 
+    auditLog(req, 'CREATE' as any, 'colorado_doc_offenders' as any, Number(result.lastInsertRowid), `Created SOR entry: ${first_name} ${last_name}`);
+
     res.status(201).json({ data: { id: result.lastInsertRowid } });
   } catch (error: any) {
     console.error('SOR create error:', error?.message || 'Unknown error');
@@ -218,6 +220,8 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
       VALUES (?, 'update', 'sex_offender_registry', ?, '{}', ?)`).run(req.user!.userId, req.params.id, now);
 
+    auditLog(req, 'UPDATE' as any, 'colorado_doc_offenders' as any, req.params.id, `Updated SOR record #${req.params.id}`);
+
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) {
     console.error('SOR update error:', error?.message || 'Unknown error');
@@ -261,6 +265,8 @@ router.put('/:id/verify', validateParamId, requireRole('admin', 'manager', 'supe
       req.user!.userId, req.params.id,
       JSON.stringify({ status: status || 'verified', next_due: nextDueStr }), now,
     );
+
+    auditLog(req, 'UPDATE' as any, 'colorado_doc_offenders' as any, req.params.id, `Verified SOR record #${req.params.id}, next due: ${nextDueStr}`);
 
     res.json({ data: { id: parseInt(req.params.id as string, 10), last_verification: now, next_verification_due: nextDueStr } });
   } catch (error: any) {
@@ -325,6 +331,8 @@ router.post('/import', requireRole('admin'), (req: Request, res: Response) => {
       VALUES (?, 'import', 'sex_offender_registry', 0, ?, ?)`).run(
       req.user!.userId, JSON.stringify({ imported, skipped, total: records.length }), now,
     );
+
+    auditLog(req, 'CREATE' as any, 'colorado_doc_offenders' as any, 0, `Bulk imported SOR records: ${imported} imported, ${skipped} skipped of ${records.length} total`);
 
     res.json({ data: { imported, skipped, total: records.length } });
   } catch (error: any) {

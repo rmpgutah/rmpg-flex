@@ -640,6 +640,7 @@ export default function ReportsPage() {
 
 // ── Patrol Tracking Report Card ──────────────────────────
 function PatrolTrackingCard() {
+  const { addToast } = useToast();
   const [mode, setMode] = useState<'hours' | 'range'>('hours');
   const [hours, setHours] = useState(8);
   const [startDate, setStartDate] = useState('');

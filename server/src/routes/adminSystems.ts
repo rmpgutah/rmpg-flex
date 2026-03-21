@@ -598,7 +598,7 @@ router.post('/announcements', requireRole('admin', 'manager'), (req: Request, re
       VALUES (?, 'announcement_created', 'announcement', ?, ?, ?)
     `).run(req.user!.userId, result.lastInsertRowid, `Created announcement: ${title}`, req.ip || 'unknown');
 
-    auditLog(req, 'CREATE' as any, 'system_config' as any, result.lastInsertRowid, `Created announcement: ${title}`);
+    auditLog(req, 'CREATE' as any, 'system_config' as any, Number(result.lastInsertRowid), `Created announcement: ${title}`);
 
     res.status(201).json(announcement || { id: result.lastInsertRowid });
   } catch (error: any) {
@@ -969,7 +969,7 @@ router.post('/departments', requireRole('admin', 'manager'), (req: Request, res:
       VALUES (?, 'department_created', 'department', ?, ?, ?)
     `).run(req.user!.userId, result.lastInsertRowid, `Created department: ${name}`, req.ip || 'unknown');
 
-    auditLog(req, 'CREATE' as any, 'system_config' as any, result.lastInsertRowid, `Created department: ${name}`);
+    auditLog(req, 'CREATE' as any, 'system_config' as any, Number(result.lastInsertRowid), `Created department: ${name}`);
 
     res.status(201).json(department || { id: result.lastInsertRowid });
   } catch (error: any) {
@@ -1151,7 +1151,7 @@ router.post('/notification-rules', requireRole('admin', 'manager'), (req: Reques
       VALUES (?, 'notification_rule_created', 'notification_rule', ?, ?, ?)
     `).run(req.user!.userId, result.lastInsertRowid, `Created notification rule: ${name}`, req.ip || 'unknown');
 
-    auditLog(req, 'CREATE' as any, 'system_config' as any, result.lastInsertRowid, `Created notification rule: ${name}`);
+    auditLog(req, 'CREATE' as any, 'system_config' as any, Number(result.lastInsertRowid), `Created notification rule: ${name}`);
 
     res.status(201).json(rule);
   } catch (error: any) {

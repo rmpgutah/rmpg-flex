@@ -5,6 +5,7 @@ import { sendToUser } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
 import { sendNotificationEmail } from '../utils/emailSender';
 import { validateParamId } from '../middleware/sanitize';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 
@@ -337,6 +338,9 @@ router.put('/:id/read', validateParamId, (req: Request, res: Response) => {
     `).run(req.params.id);
 
     sendToUser(req.user!.userId, 'notification:read', { id: Number(req.params.id) });
+
+    auditLog(req, 'UPDATE' as any, 'user' as any, req.params.id, `Marked notification #${req.params.id} as read`);
+
     res.json({ message: 'Marked as read' });
   } catch (error: any) {
     console.error('Mark notification read error:', error?.message || 'Unknown error');
@@ -355,6 +359,9 @@ router.post('/mark-all-read', (req: Request, res: Response) => {
     `).run(req.user!.userId);
 
     sendToUser(req.user!.userId, 'notification:allRead', { count: result.changes });
+
+    auditLog(req, 'UPDATE' as any, 'user' as any, req.user!.userId, `Marked all notifications as read (${result.changes} updated)`);
+
     res.json({ message: 'All notifications marked as read', count: result.changes });
   } catch (error: any) {
     console.error('Mark all read error:', error?.message || 'Unknown error');
@@ -379,6 +386,9 @@ router.delete('/:id', validateParamId, (req: Request, res: Response) => {
     db.prepare('DELETE FROM notifications WHERE id = ?').run(req.params.id);
 
     sendToUser(req.user!.userId, 'notification:deleted', { id: Number(req.params.id) });
+
+    auditLog(req, 'DELETE' as any, 'user' as any, req.params.id, `Deleted notification #${req.params.id}`);
+
     res.json({ message: 'Notification deleted' });
   } catch (error: any) {
     console.error('Delete notification error:', error?.message || 'Unknown error');
