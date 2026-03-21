@@ -120,6 +120,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Personnel',
     items: [
       { path: '/personnel', icon: Users, label: 'Personnel' },
+      { path: '/hr', icon: ClipboardCheck, label: 'HR Console' },
       { path: '/fleet', icon: Car, label: 'Fleet' },
     ],
   },

@@ -116,6 +116,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/training': 'Training Management',
   '/training-docs': 'Training Documents',
   '/serve': 'Process Server',
+  '/hr': 'HR Console',
   '/admin': 'Admin',
 };
 
@@ -162,6 +163,7 @@ const TOOLBAR_NAV: NavItem[] = [
   ]},
   { path: '/personnel', icon: Users, label: 'Personnel', group: 'records', shortcut: 'F8', children: [
     { path: '/personnel', icon: Users, label: 'Personnel' },
+    { path: '/hr', icon: ClipboardCheck, label: 'HR Console' },
     { path: '/fleet', icon: Car, label: 'Fleet' },
     { path: '/body-cameras', icon: Video, label: 'Body Cameras' },
     { path: '/dash-cameras', icon: Camera, label: 'Dash Cameras' },
