@@ -103,6 +103,7 @@ import crmLeadsRoutes from './routes/crmLeads';
 import crmProposalsRoutes from './routes/crmProposals';
 import userPreferencesRoutes from './routes/userPreferences';
 import serveRoutes from './routes/serve';
+import hrRoutes from './routes/hr';
 import { scheduleLeadScrapers, stopLeadScrapers } from './utils/leadScraperBase';
 
 const app = express();
@@ -438,6 +439,7 @@ app.use('/api/crm', crmLeadsRoutes);
 app.use('/api/crm', crmProposalsRoutes);
 app.use('/api/user/preferences', authenticateToken, userPreferencesRoutes);
 app.use('/api/process-server', serveRoutes);
+app.use('/api/hr', hrRoutes);
 
 // Mount download page and file serving routes (outside /api)
 // Also mounts /updates/latest.yml, /updates/latest-mac.yml for electron-updater
