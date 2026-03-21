@@ -79,11 +79,11 @@ const PRIORITY_URGENCY: Record<string, number> = {
   PANIC: 0, P1: 1, P2: 2, P3: 3, P4: 4, INFO: 5,
 };
 
-/** User-configurable speed presets */
+/** User-configurable speed presets — all faster than conversational for stern delivery */
 const SPEED_PRESETS: Record<string, number> = {
-  slow: 0.85,
-  normal: 1.05,
-  fast: 1.2,
+  slow: 0.92,
+  normal: 1.08,
+  fast: 1.25,
 };
 
 /** Base speech configuration */
@@ -102,12 +102,13 @@ function getSpeechVolume(): number {
 }
 
 /**
- * Female dispatcher pitch — slightly lower than default for authority.
- * Real dispatchers sound calm, composed, and authoritative — not chirpy.
- * 0.95 on most TTS engines produces a mature female voice vs. the
- * default 1.0 which sounds younger/higher.
+ * Female dispatcher pitch — noticeably lower than default for stern authority.
+ * Real dispatchers are clipped, direct, no-nonsense. They don't ask — they tell.
+ * 0.88 on neural voices produces the mature, stern female voice heard on
+ * police scanners. Combined with rate 1.08, this creates the characteristic
+ * "reading you facts, not making conversation" delivery.
  */
-const SPEECH_PITCH = 0.95;
+const SPEECH_PITCH = 0.88;
 
 /** Priority-based speech parameters — adjusts rate/pitch/volume for urgency level */
 interface PrioritySpeechParams {
@@ -787,16 +788,38 @@ export async function announcePanicAlert(officerName?: string): Promise<void> {
   enqueuePhrases([{ text: msg }], 'PANIC');
 }
 
-/**
- * Announce a dispatch event: "DISPATCH — [CALL NUMBER] — [INCIDENT TYPE] — [LOCATION]"
- * plus any safety flags on the call. Triggered on call_status_changed to 'dispatched'.
- */
-export async function announceDispatchEvent(call: CallFlags & {
+/** Extended call data for full dispatch readout */
+interface DispatchCallData extends CallFlags {
   call_number?: string;
   incident_type?: string;
   location?: string;
   priority?: string;
-}): Promise<void> {
+  caller_name?: string;
+  caller_phone?: string;
+  narrative?: string;
+  comments?: string;
+  suspect_description?: string;
+  vehicle_description?: string;
+  vehicle_plate?: string;
+  num_subjects?: number;
+  reporting_party?: string;
+  apartment?: string;
+  business_name?: string;
+  assigned_units?: string[];
+}
+
+/**
+ * Announce a dispatch event with FULL call details.
+ * Stern, direct delivery — every fact the officer needs.
+ *
+ * Example output:
+ * "Dispatch, call 42, Domestic violence, Priority one, Zone 3,
+ *  500 South State Street, apartment 204, at the Marriott.
+ *  Caller reports male subject striking female. Two subjects on scene.
+ *  Suspect described as white male, red shirt, approximately 30 years old.
+ *  Caution; prior D.V. at this location, armed subject reported."
+ */
+export async function announceDispatchEvent(call: DispatchCallData): Promise<void> {
   if (!isVoiceEnabled() || !isSpeechAvailable()) return;
 
   const dedupKey = `dispatch:${call.id || 'unknown'}:${call.call_number || ''}`;
@@ -809,61 +832,119 @@ export async function announceDispatchEvent(call: CallFlags & {
   await playToneAsync(tone as any);
   await delay(TONE_GAP_MS);
 
-  // Build single condensed utterance: "Dispatch, call 42, Suspicious Activity, P1, Zone 3, 500 South State."
-  const parts: string[] = ['Dispatch'];
-  if (call.call_number) parts.push(shortCallNumber(call.call_number));
-  if (call.incident_type) parts.push(formatIncidentType(call.incident_type));
-  if (call.priority === 'P1' || call.priority === 'P2') parts.push(call.priority);
-  if ((call as any).zone) parts.push(`Zone ${(call as any).zone}`);
-  if ((call as any).beat) parts.push(`Beat ${(call as any).beat}`);
-  if (call.location) parts.push(abbreviateAddress(call.location));
-  if ((call as any).cross_street) parts.push(`cross ${abbreviateAddress((call as any).cross_street)}`);
+  const phrases: VoicePhrase[] = [];
 
-  const phrases: VoicePhrase[] = [{ text: parts.join(', ') + '.' }];
+  // ── Line 1: Core dispatch info (location, type, priority) ──
+  const coreParts: string[] = ['Dispatch'];
+  if (call.call_number) coreParts.push(`call ${shortCallNumber(call.call_number)}`);
+  if (call.incident_type) coreParts.push(formatIncidentType(call.incident_type));
+  if (call.priority) coreParts.push(call.priority);
+  if (call.zone) coreParts.push(`Zone ${call.zone}`);
+  if (call.beat) coreParts.push(`Beat ${call.beat}`);
+  if (call.location) coreParts.push(abbreviateAddress(call.location));
+  if (call.apartment) coreParts.push(`apartment ${call.apartment}`);
+  if (call.cross_street) coreParts.push(`cross ${abbreviateAddress(call.cross_street)}`);
+  if (call.business_name) coreParts.push(`at ${call.business_name}`);
+  phrases.push({ text: coreParts.join(', ') + '.' });
 
-  // Append safety flags as a second condensed utterance
-  const safetyPhrases = buildCallPhrases(call);
-  if (safetyPhrases.length > 0) {
-    phrases.push({ text: safetyPhrases.map(p => p.text.replace(/\.$/, '')).join(', ') + '.' });
+  // ── Line 2: Narrative / caller information ──
+  const narrativeParts: string[] = [];
+  if (call.narrative || call.comments) {
+    const narr = truncateForSpeech(call.narrative || call.comments || '', 120);
+    narrativeParts.push(narr);
+  }
+  if (call.caller_name && call.caller_name !== 'Anonymous') {
+    narrativeParts.push(`Reporting party is ${call.caller_name}`);
+  } else if (call.reporting_party) {
+    narrativeParts.push(`Reporting party is ${call.reporting_party}`);
+  }
+  if (call.num_subjects && call.num_subjects > 1) {
+    narrativeParts.push(`${call.num_subjects} subjects on scene`);
+  }
+  if (narrativeParts.length > 0) {
+    phrases.push({ text: narrativeParts.join('. ') + '.' });
   }
 
-  enqueuePhrases(phrases);
+  // ── Line 3: Suspect / vehicle description ──
+  if (call.suspect_description) {
+    phrases.push({ text: `Suspect described as ${call.suspect_description}.` });
+  }
+  if (call.vehicle_description || call.vehicle_plate) {
+    const vParts: string[] = [];
+    if (call.vehicle_description) vParts.push(`Vehicle is ${call.vehicle_description}`);
+    if (call.vehicle_plate) vParts.push(`plate ${spellOutPlate(call.vehicle_plate)}`);
+    phrases.push({ text: vParts.join(', ') + '.' });
+  }
+
+  // ── Line 4: Assigned units ──
+  if (call.assigned_units && call.assigned_units.length > 0) {
+    phrases.push({ text: `Responding: ${call.assigned_units.join(', ')}.` });
+  }
+
+  // ── Line 5: Safety flags (critical last — sticks in memory) ──
+  const safetyPhrases = buildCallPhrases(call);
+  if (safetyPhrases.length > 0) {
+    phrases.push({ text: safetyPhrases.map(p => p.text.replace(/\.$/, '')).join('; ') + '.' });
+  }
+
+  enqueuePhrases(phrases, call.priority);
 }
 
 /**
- * Announce a new call arrival: "NEW CALL — [CALL NUMBER] — [INCIDENT TYPE]"
- * Plays a tone and announces call details. Used on call_created events.
+ * Announce a new call with full detail readout.
+ * Stern, direct: "New call, 42, Domestic violence, Priority one, Zone 3,
+ * 500 South State. Caller reports male subject striking female."
  */
-export async function announceNewCall(call: CallFlags & {
-  call_number?: string;
-  incident_type?: string;
-  priority?: string;
-}): Promise<void> {
+export async function announceNewCall(call: DispatchCallData): Promise<void> {
   if (!isVoiceEnabled() || !isSpeechAvailable()) return;
 
   const dedupKey = `newcall:${call.id || 'unknown'}:${call.call_number || ''}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);
 
-  // Priority-based tone selection: P1 gets alarm, P2 gets warning, P3/P4 get caution
-  const tone = call.priority === 'P1' ? 'alarm' : call.priority === 'P2' ? 'warning' : 'caution';
+  // Priority-based tone selection
+  const tone = call.priority === 'P1' ? 'code3' : call.priority === 'P2' ? 'warning' : 'caution';
   await playToneAsync(tone);
   await delay(TONE_GAP_MS);
 
-  // Build single condensed utterance: "New call, 42, Burglary, P1, Zone 3."
-  const parts: string[] = ['New call'];
-  if (call.call_number) parts.push(shortCallNumber(call.call_number));
-  if (call.incident_type) parts.push(formatIncidentType(call.incident_type));
-  if (call.priority === 'P1' || call.priority === 'P2') parts.push(call.priority);
-  if ((call as any).zone) parts.push(`Zone ${(call as any).zone}`);
-  if ((call as any).beat) parts.push(`Beat ${(call as any).beat}`);
+  const phrases: VoicePhrase[] = [];
 
-  const phrases: VoicePhrase[] = [{ text: parts.join(', ') + '.' }];
+  // ── Core call info ──
+  const coreParts: string[] = ['New call'];
+  if (call.call_number) coreParts.push(`call ${shortCallNumber(call.call_number)}`);
+  if (call.incident_type) coreParts.push(formatIncidentType(call.incident_type));
+  if (call.priority) coreParts.push(call.priority);
+  if (call.zone) coreParts.push(`Zone ${call.zone}`);
+  if (call.beat) coreParts.push(`Beat ${call.beat}`);
+  if (call.location) coreParts.push(abbreviateAddress(call.location));
+  if (call.apartment) coreParts.push(`apartment ${call.apartment}`);
+  if (call.business_name) coreParts.push(`at ${call.business_name}`);
+  phrases.push({ text: coreParts.join(', ') + '.' });
 
-  // Append safety flags as single condensed utterance
+  // ── Narrative / details (only for P1/P2 — lower priority calls stay brief) ──
+  if (call.priority === 'P1' || call.priority === 'P2') {
+    if (call.narrative || call.comments) {
+      const narr = truncateForSpeech(call.narrative || call.comments || '', 100);
+      phrases.push({ text: narr + '.' });
+    }
+    if (call.suspect_description) {
+      phrases.push({ text: `Suspect described as ${call.suspect_description}.` });
+    }
+    if (call.vehicle_description) {
+      const vMsg = call.vehicle_plate
+        ? `Vehicle is ${call.vehicle_description}, plate ${spellOutPlate(call.vehicle_plate)}.`
+        : `Vehicle is ${call.vehicle_description}.`;
+      phrases.push({ text: vMsg });
+    }
+    if (call.num_subjects && call.num_subjects > 1) {
+      phrases.push({ text: `${call.num_subjects} subjects reported on scene.` });
+    }
+  }
+
+  // ── Safety flags ──
   const safetyPhrases = buildCallPhrases(call);
   if (safetyPhrases.length > 0) {
-    phrases.push({ text: safetyPhrases.map(p => p.text.replace(/\.$/, '')).join(', ') + '.' });
+    phrases.push({ text: safetyPhrases.map(p => p.text.replace(/\.$/, '')).join('; ') + '.' });
   }
 
   enqueuePhrases(phrases, call.priority);
@@ -890,12 +971,17 @@ export async function announceStatusChange(call: any, newStatus: string): Promis
     cleared: 'Cleared',
     closed: 'Closed',
     pending: 'Pending',
+    hold: 'On hold',
+    cancelled: 'Cancelled',
+    backup_enroute: 'Backup enroute',
   };
   const label = statusLabels[newStatus] || newStatus;
+  const incidentType = call?.incident_type ? `, ${formatIncidentType(call.incident_type)}` : '';
+  const location = call?.location ? `, ${abbreviateAddress(call.location)}` : '';
 
   await playToneAsync('info');
   await delay(TONE_GAP_MS);
-  enqueuePhrases([{ text: `${label}, call ${shortCallNumber(callNum)}.` }]);
+  enqueuePhrases([{ text: `${label}; call ${shortCallNumber(callNum)}${incidentType}${location}.` }]);
 }
 
 /**
@@ -1142,6 +1228,67 @@ export async function demoAllVoiceAlerts(): Promise<void> {
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Truncate narrative text to a max character length for speech.
+ * Cuts at sentence boundaries when possible. Strips HTML tags.
+ * Dispatcher reads only the essential first sentence or two.
+ */
+function truncateForSpeech(text: string, maxLen: number): string {
+  // Strip HTML tags if any
+  let clean = text.replace(/<[^>]*>/g, '').trim();
+  if (clean.length <= maxLen) return clean;
+
+  // Try to cut at a sentence boundary
+  const truncated = clean.substring(0, maxLen);
+  const lastPeriod = truncated.lastIndexOf('.');
+  const lastExclaim = truncated.lastIndexOf('!');
+  const cutPoint = Math.max(lastPeriod, lastExclaim);
+
+  if (cutPoint > maxLen * 0.4) {
+    return truncated.substring(0, cutPoint + 1);
+  }
+  // Fall back to word boundary
+  const lastSpace = truncated.lastIndexOf(' ');
+  return lastSpace > 0 ? truncated.substring(0, lastSpace) : truncated;
+}
+
+/**
+ * Spell out a license plate using NATO phonetic alphabet.
+ * "ABC123" → "Alpha Bravo Charlie, one two three"
+ * This is how real dispatchers read plates over radio — letter by letter.
+ */
+function spellOutPlate(plate: string): string {
+  const NATO: Record<string, string> = {
+    A: 'Alpha', B: 'Bravo', C: 'Charlie', D: 'Delta', E: 'Echo',
+    F: 'Foxtrot', G: 'Golf', H: 'Hotel', I: 'India', J: 'Juliet',
+    K: 'Kilo', L: 'Lima', M: 'Mike', N: 'November', O: 'Oscar',
+    P: 'Papa', Q: 'Quebec', R: 'Romeo', S: 'Sierra', T: 'Tango',
+    U: 'Uniform', V: 'Victor', W: 'Whiskey', X: 'X-ray', Y: 'Yankee',
+    Z: 'Zulu',
+  };
+
+  const letters: string[] = [];
+  const numbers: string[] = [];
+  let inNumbers = false;
+
+  for (const ch of plate.toUpperCase().replace(/[^A-Z0-9]/g, '')) {
+    if (/[A-Z]/.test(ch)) {
+      if (inNumbers && numbers.length > 0) {
+        letters.push(numbers.join(' '));
+        numbers.length = 0;
+      }
+      inNumbers = false;
+      letters.push(NATO[ch] || ch);
+    } else {
+      inNumbers = true;
+      numbers.push(ch);
+    }
+  }
+  if (numbers.length > 0) letters.push(numbers.join(' '));
+
+  return letters.join(', ');
 }
 
 /**
