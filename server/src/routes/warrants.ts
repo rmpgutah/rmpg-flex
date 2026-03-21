@@ -252,9 +252,10 @@ router.get('/utah/sync-status', requireRole('admin', 'manager', 'supervisor'), (
       lastError: isUtahApiBlocked() ? 'CloudFront WAF blocked — cooldown active' : status.lastError,
       currentCount: status.warrantCount,
       ipBlocked: isUtahApiBlocked(),
+      apiAvailable: !isUtahApiBlocked(),
     });
   } catch {
-    res.json({ lastSync: null, status: 'ready', currentCount: 0 });
+    res.json({ lastSync: null, status: 'ready', currentCount: 0, apiAvailable: true });
   }
 });
 
