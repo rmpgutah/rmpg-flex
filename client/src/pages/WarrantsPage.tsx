@@ -41,6 +41,7 @@ import { useFormValidation } from '../hooks/useFormValidation';
 import EmptyState from '../components/EmptyState';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
+import PersonIntelPanel from '../components/PersonIntelPanel';
 
 // ============================================================
 // Types
@@ -218,12 +219,21 @@ const SEVERITY_COLORS: Record<string, string> = {
   civil: 'bg-purple-900/50 text-purple-400 border-purple-700/50',
 };
 
-type TabId = 'dashboard' | 'warrants';
+type TabId = 'dashboard' | 'warrants' | 'utah_search' | 'watch_hits';
 
 const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: string }>; roleGated?: boolean }[] = [
   { id: 'dashboard', label: 'DASHBOARD', icon: Activity },
   { id: 'warrants', label: 'WARRANTS', icon: Gavel },
+  { id: 'utah_search', label: 'PERSON INTEL', icon: Search },
+  { id: 'watch_hits', label: 'WATCH HITS', icon: Radar },
 ];
+
+const SEVERITY_BADGE: Record<string, string> = {
+  felony: 'bg-red-900/40 text-red-300 border-red-800/40',
+  misdemeanor: 'bg-amber-900/40 text-amber-300 border-amber-800/40',
+  bench: 'bg-orange-900/40 text-orange-300 border-orange-800/40',
+  civil: 'bg-blue-900/40 text-blue-300 border-blue-800/40',
+};
 
 const FEED_RANGES = ['1H', '8H', '24H', '7D'] as const;
 type FeedRange = typeof FEED_RANGES[number];
@@ -365,6 +375,13 @@ export default function WarrantsPage() {
   const [personProfile, setPersonProfile] = useState<PersonProfile | null>(null);
   const [personProfileLoading, setPersonProfileLoading] = useState(false);
   const [checkingPerson, setCheckingPerson] = useState(false);
+
+  // Watch hits state
+  const [watchHits, setWatchHits] = useState<any[]>([]);
+  const [watchHitsLoading, setWatchHitsLoading] = useState(false);
+  const [linkCallTarget, setLinkCallTarget] = useState<any | null>(null);
+  const [openCalls, setOpenCalls] = useState<any[]>([]);
+  const [linkingId, setLinkingId] = useState<number | null>(null);
 
   // Watch runs state
   const [watchRuns, setWatchRuns] = useState<WatchRun[]>([]);
@@ -527,6 +544,38 @@ export default function WarrantsPage() {
     finally { setCheckingPerson(false); }
   }, []);
 
+  const fetchWatchHits = useCallback(async () => {
+    setWatchHitsLoading(true);
+    try {
+      const res = await apiFetch<{ data: any[] }>('/warrants/watch/log?limit=100');
+      setWatchHits(res.data || []);
+    } catch { /* silent */ }
+    finally { setWatchHitsLoading(false); }
+  }, []);
+
+  const fetchOpenCalls = useCallback(async () => {
+    try {
+      const res = await apiFetch<any>('/dispatch/calls?status=active,dispatched,enroute,onscene&per_page=50');
+      setOpenCalls(res.data || []);
+    } catch {}
+  }, []);
+
+  const linkHitToCall = async (hit: any, callId: number) => {
+    setLinkingId(callId);
+    try {
+      await apiFetch(`/dispatch/calls/${callId}/notes`, {
+        method: 'POST',
+        body: JSON.stringify({
+          content: `⚠ Warrant hit: ${hit.person_name || 'Unknown'} — ${(hit.resolvedSeverity || '').toUpperCase()} (${hit.charge_description || hit.source || 'scanner'}) via ${hit.source || 'Warrant Watch'}`,
+          type: 'warrant_alert',
+        }),
+      });
+      setLinkCallTarget(null);
+    } catch {} finally {
+      setLinkingId(null);
+    }
+  };
+
   const fetchWatchRuns = useCallback(async () => {
     setWatchRunsLoading(true);
     try {
@@ -541,6 +590,10 @@ export default function WarrantsPage() {
   useEffect(() => {
     fetchWatchRuns();
   }, [fetchWatchRuns]);
+
+  useEffect(() => {
+    if (activeTab === 'watch_hits') fetchWatchHits();
+  }, [activeTab, fetchWatchHits]);
 
   const handleTriggerScan = useCallback(async () => {
     if (scanPollRef.current) clearInterval(scanPollRef.current);
@@ -1479,6 +1532,95 @@ export default function WarrantsPage() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================
+          TAB: PERSON INTEL (utah_search)
+         ================================================================ */}
+      {activeTab === 'utah_search' && (
+        <div className="flex-1 overflow-auto">
+          <PersonIntelPanel
+            apiAvailable={(dashStats?.sourcesOnline ?? 1) > 0}
+            onNavigatePerson={personId => {
+              window.location.href = `/records?person=${personId}`;
+            }}
+          />
+        </div>
+      )}
+
+      {/* ================================================================
+          TAB: WATCH HITS
+         ================================================================ */}
+      {activeTab === 'watch_hits' && (
+        <div className="flex-1 overflow-auto">
+          <div className="p-4 space-y-2">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-[11px] font-mono text-rmpg-400 uppercase tracking-wider">
+                Warrant Watch Event Log
+              </div>
+              <button onClick={fetchWatchHits} disabled={watchHitsLoading} className="toolbar-btn text-[10px]">
+                {watchHitsLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Refresh'}
+              </button>
+            </div>
+            {watchHitsLoading && <div className="text-center py-8"><Loader2 className="w-5 h-5 animate-spin mx-auto text-rmpg-400" /></div>}
+            {!watchHitsLoading && watchHits.length === 0 && (
+              <div className="panel-inset p-6 text-center text-rmpg-400 text-sm">No watch hits recorded</div>
+            )}
+            {watchHits.map((hit: any) => (
+              <div key={hit.id} className="panel-raised p-3 rounded-sm border border-rmpg-700/30 flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0 space-y-0.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-sm text-white">{hit.person_name || `Person #${hit.person_id}`}</span>
+                    {hit.resolvedSeverity && (
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded border font-mono ${SEVERITY_BADGE[hit.resolvedSeverity] || ''}`}>
+                        {hit.resolvedSeverity.toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-rmpg-400">
+                    {hit.event} · {formatDate(hit.created_at)}
+                  </div>
+                  {hit.charges && (
+                    <div className="text-[10px] text-rmpg-500 truncate">
+                      {(() => { try { return JSON.parse(hit.charges).join(', '); } catch { return hit.charges; } })()}
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => { setLinkCallTarget(hit); fetchOpenCalls(); }}
+                  className="toolbar-btn text-[10px] shrink-0"
+                >
+                  LINK TO CALL
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Link-to-call picker modal */}
+      {linkCallTarget && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" onClick={() => setLinkCallTarget(null)}>
+          <div className="panel-raised p-4 rounded-sm w-80 max-h-96 overflow-y-auto" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+            <div className="text-sm font-bold text-white mb-3">Link to Open Call</div>
+            <div className="text-[11px] text-rmpg-400 mb-3">
+              Warrant hit: {linkCallTarget.person_name}
+            </div>
+            {openCalls.length === 0 && <div className="text-[11px] text-rmpg-400">No open calls</div>}
+            {openCalls.map((call: any) => (
+              <button
+                key={call.id}
+                onClick={() => linkHitToCall(linkCallTarget, call.id)}
+                disabled={linkingId === call.id}
+                className="w-full text-left toolbar-btn mb-1 text-[11px]"
+              >
+                {linkingId === call.id ? <Loader2 className="w-3 h-3 animate-spin inline mr-1" /> : null}
+                {call.call_number} — {call.incident_type} — {call.location_address}
+              </button>
+            ))}
+            <button onClick={() => setLinkCallTarget(null)} className="toolbar-btn w-full mt-2 text-[11px]">Cancel</button>
           </div>
         </div>
       )}
