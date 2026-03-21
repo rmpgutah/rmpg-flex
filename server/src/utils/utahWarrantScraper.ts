@@ -126,7 +126,7 @@ async function sleep(ms: number): Promise<void> {
 // Track if our IP is blocked by CloudFront WAF
 let _ipBlocked = false;
 let _ipBlockedUntil = 0;
-const IP_BLOCK_COOLDOWN_MS = 30 * 60 * 1000; // Wait 30 min before retrying after IP block
+const IP_BLOCK_COOLDOWN_MS = 4 * 60 * 60 * 1000; // Wait 4h before retrying after IP block (CloudFront blocks typically last this long)
 
 /** Check if we're currently IP-blocked */
 export function isUtahApiBlocked(): boolean {
@@ -137,6 +137,14 @@ export function isUtahApiBlocked(): boolean {
     return false;
   }
   return true;
+}
+
+/** Manually clear the in-memory IP block — call from admin endpoint when VPS is unblocked */
+export function clearUtahApiBlock(): void {
+  _ipBlocked = false;
+  _ipBlockedUntil = 0;
+  _consecutiveRateLimits = 0;
+  console.log('[Utah Warrants] IP block manually cleared by admin');
 }
 
 /** Make an HTTPS request, routing through proxy if WARRANT_PROXY_URL is set */
@@ -196,10 +204,11 @@ async function fetchJson<T>(targetUrl: string, options: RequestInit, retries = M
     'sec-fetch-dest': 'empty',
     'sec-fetch-mode': 'cors',
     'sec-fetch-site': 'same-origin',
+    // NOTE: Do NOT send CF-Connecting-IP, True-Client-IP, or X-Real-IP to CloudFront.
+    // Those are headers that CloudFront *sets* on requests it forwards to the origin —
+    // sending them in an outgoing request to CloudFront triggers managed WAF injection
+    // rules and causes a persistent IP block. X-Forwarded-For is safe to include.
     'X-Forwarded-For': forwardedIp,
-    'X-Real-IP': forwardedIp,
-    'CF-Connecting-IP': forwardedIp,
-    'True-Client-IP': forwardedIp,
     ...((options.headers as Record<string, string>) || {}),
   };
 

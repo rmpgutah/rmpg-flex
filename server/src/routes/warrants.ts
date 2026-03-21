@@ -3,7 +3,7 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { broadcast } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
-import { searchUtahWarrants, searchUtahWarrantsCache, getUtahWarrantSyncStatus, runWarrantWatchScan, isUtahApiBlocked } from '../utils/utahWarrantScraper';
+import { searchUtahWarrants, searchUtahWarrantsCache, getUtahWarrantSyncStatus, runWarrantWatchScan, isUtahApiBlocked, clearUtahApiBlock } from '../utils/utahWarrantScraper';
 import {
   searchCourtRecords, getCachedCourtRecords, getCourtRecordsByPersonId,
   getCourtRecordStats,
@@ -255,6 +255,17 @@ router.get('/utah/sync-status', requireRole('admin', 'manager', 'supervisor'), (
     });
   } catch {
     res.json({ lastSync: null, status: 'ready', currentCount: 0 });
+  }
+});
+
+// POST /api/warrants/utah/unblock — Clear in-memory IP block so live search resumes
+router.post('/utah/unblock', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    clearUtahApiBlock();
+    auditLog(req, 'warrant_updated', 'warrant', 0, 'Admin manually cleared Utah Warrant API IP block');
+    res.json({ success: true, message: 'Utah Warrant API IP block cleared — live search re-enabled' });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
