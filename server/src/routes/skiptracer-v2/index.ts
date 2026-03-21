@@ -88,7 +88,7 @@ function buildSearchQuery(params: {
 
 router.get('/search', async (req: Request, res: Response) => {
   try {
-    const { q, name, phone, email, address, type } = req.query as Record<string, string | undefined>;
+    const { q, name, phone, email, address, type, categories } = req.query as Record<string, string | undefined>;
 
     if (!q && !name && !phone && !email && !address) {
       res.status(400).json({ error: 'At least one search parameter is required (q, name, phone, email, or address)' });
@@ -96,7 +96,13 @@ router.get('/search', async (req: Request, res: Response) => {
     }
 
     const { query, searchType } = buildSearchQuery({ q, name, phone, email, address, type });
-    const sources = getEnabledSources();
+    let sources = getEnabledSources();
+
+    // Filter by category if specified (e.g. ?categories=court,registry)
+    if (categories) {
+      const allowed = categories.split(',').map(c => c.trim().toLowerCase());
+      sources = sources.filter(s => allowed.includes(s.category));
+    }
     const searchId = randomUUID();
     const startTime = Date.now();
 
@@ -388,6 +394,50 @@ router.get('/dossiers/:id', (req: Request, res: Response) => {
   } catch (err) {
     console.error('[SkipTracer-v2] Dossier get error:', err);
     res.status(500).json({ error: 'Failed to get dossier' });
+  }
+});
+
+// ============================================================
+// PUT /dossiers/:id — Update a dossier (notes, tags, links)
+// ============================================================
+
+router.put('/dossiers/:id', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { id } = req.params;
+    const { notes, tags, linkedIncidentId, linkedCaseId, linkedCallId } = req.body;
+
+    const existing = db.prepare('SELECT id FROM dossiers WHERE id = ? AND is_archived = 0').get(id);
+    if (!existing) {
+      res.status(404).json({ error: 'Dossier not found' });
+      return;
+    }
+
+    const updates: string[] = [];
+    const params: any[] = [];
+
+    if (notes !== undefined) { updates.push('notes = ?'); params.push(notes); }
+    if (tags !== undefined) { updates.push('tags = ?'); params.push(JSON.stringify(tags)); }
+    if (linkedIncidentId !== undefined) { updates.push('linked_incident_id = ?'); params.push(linkedIncidentId || null); }
+    if (linkedCaseId !== undefined) { updates.push('linked_case_id = ?'); params.push(linkedCaseId || null); }
+    if (linkedCallId !== undefined) { updates.push('linked_call_id = ?'); params.push(linkedCallId || null); }
+
+    if (updates.length === 0) {
+      res.status(400).json({ error: 'No fields to update' });
+      return;
+    }
+
+    updates.push('updated_at = ?');
+    params.push(localNow());
+    params.push(id);
+
+    db.prepare(`UPDATE dossiers SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+
+    const updated = db.prepare('SELECT * FROM dossiers WHERE id = ?').get(id);
+    res.json(updated);
+  } catch (err) {
+    console.error('[SkipTracer-v2] Dossier update error:', err);
+    res.status(500).json({ error: 'Failed to update dossier' });
   }
 });
 

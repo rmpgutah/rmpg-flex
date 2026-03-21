@@ -181,10 +181,10 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
     // Footer on ALL pages (edge-to-edge for cover-style report)
     doc.setFillColor(...COLOR.BG_FORM_CELL_LABEL);
-    doc.rect(0, pageH - 8, pageW, 8, 'F');
+    doc.rect(0, pageH - LAYOUT.PATROL_FOOTER_H, pageW, LAYOUT.PATROL_FOOTER_H, 'F');
     doc.setDrawColor(...COLOR.BORDER_TABLE);
     doc.setLineWidth(BORDER.TABLE_ROW);
-    doc.line(0, pageH - 8, pageW, pageH - 8);
+    doc.line(0, pageH - LAYOUT.PATROL_FOOTER_H, pageW, pageH - LAYOUT.PATROL_FOOTER_H);
     doc.setTextColor(...COLOR.TEXT_MUTED);
     doc.setFontSize(FONT.SIZE_FOOTER_SECONDARY);
     doc.text(`Generated: ${reportDate}  |  ${formNum}  |  CONFIDENTIAL — INTERNAL USE ONLY`, margin, pageH - 3.5);
@@ -200,7 +200,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     doc.setTextColor(...COLOR.TEXT_INVERTED);
     doc.setFontSize(FONT.SIZE_CASE_NUMBER);
     doc.setFont('helvetica', 'bold');
-    doc.text(title.toUpperCase(), margin + SPACING.CONTENT_INSET, yPos + barH / 2 + 1.2);
+    doc.text(title.toUpperCase(), margin + SPACING.CONTENT_INSET, yPos + (barH + getCapHeight(FONT.SIZE_SECTION_TITLE)) / 2);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     yPos += barH + 3;
@@ -218,7 +218,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     doc.setFont('helvetica', 'bold');
     let xOff = margin;
     for (const col of cols) {
-      doc.text(col.label, xOff + 1, yPos + 3.5);
+      doc.text(col.label, xOff + 1, yPos + (5 + getCapHeight(FONT.SIZE_TABLE_HEADER)) / 2);
       xOff += col.w;
     }
     doc.setFont('helvetica', 'normal');
@@ -229,7 +229,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   // ── Utility: new page with proper yPos ──────────────
   function newPage() {
     doc.addPage();
-    yPos = margin + 18; // after header + accent strip
+    yPos = margin + LAYOUT.PATROL_HEADER_H + SPACING.SECTION_CONTENT_PAD;
   }
 
   // ── Utility: check space and maybe new page ────────
@@ -426,7 +426,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
       const pt = trail.points[i];
 
       ensureSpace(5);
-      if (yPos === margin + 18) {
+      if (yPos === margin + LAYOUT.PATROL_HEADER_H + SPACING.SECTION_CONTENT_PAD) {
         // After page break, redraw headers
         drawBreadcrumbHeaders();
       }
@@ -465,7 +465,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
       ];
 
       for (let ci = 0; ci < cols.length; ci++) {
-        doc.text(rowData[ci], xOff + 0.8, yPos + 3, { maxWidth: cols[ci].w - 1.5 });
+        doc.text(rowData[ci], xOff + 0.8, yPos + (4.5 + getCapHeight(FONT.SIZE_TABLE_BODY)) / 2, { maxWidth: cols[ci].w - 1.5 });
         xOff += cols[ci].w;
       }
 
@@ -527,7 +527,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
         ];
 
         for (let ci = 0; ci < rCols.length; ci++) {
-          doc.text(rRowData[ci], rxOff + 1, yPos + 3, { maxWidth: rCols[ci].w - 1.5 });
+          doc.text(rRowData[ci], rxOff + 1, yPos + (4.5 + getCapHeight(FONT.SIZE_TABLE_BODY)) / 2, { maxWidth: rCols[ci].w - 1.5 });
           rxOff += rCols[ci].w;
         }
         yPos += 4.5;
@@ -580,7 +580,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
         ];
 
         for (let ci = 0; ci < zCols.length; ci++) {
-          doc.text(zRowData[ci], zxOff + 1, yPos + 3, { maxWidth: zCols[ci].w - 1.5 });
+          doc.text(zRowData[ci], zxOff + 1, yPos + (4.5 + getCapHeight(FONT.SIZE_TABLE_BODY)) / 2, { maxWidth: zCols[ci].w - 1.5 });
           zxOff += zCols[ci].w;
         }
         yPos += 4.5;

@@ -1061,7 +1061,7 @@ router.get('/links/:emailGraphId', (req: Request, res: Response) => {
     const db = getDb();
     const links = db.prepare(`
       SELECT el.*,
-        i.case_number as incident_case_number,
+        i.incident_number as incident_case_number,
         c.call_number as call_number,
         p.first_name || ' ' || p.last_name as person_name,
         u.full_name as linked_by_name
