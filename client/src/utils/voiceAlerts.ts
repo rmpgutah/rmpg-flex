@@ -663,6 +663,30 @@ function improvePronounciation(text: string): string {
     // ── Numbers — pause around street numbers ──
     .replace(/(\d{3,5})\s+(South|North|East|West)/g, '$1, $2');
 
+  // ── Auto-spell any remaining ALL-CAPS acronyms (2+ letters) ──
+  // "PSO" → "P.S.O.", "RMPG" → "R.M.P.G.", etc.
+  // Skip words already dotted, common English words, and known expansions.
+  const SKIP_WORDS = new Set([
+    // Already handled above or common words that happen to be caps in dispatch
+    'THE', 'AND', 'FOR', 'NOT', 'BUT', 'ALL', 'ARE', 'WAS', 'HAS', 'HAD',
+    'HIS', 'HER', 'SHE', 'HIM', 'WHO', 'HOW', 'OUT', 'OFF', 'GET', 'GOT',
+    'LET', 'SET', 'RUN', 'PUT', 'SAY', 'USE', 'NEW', 'OLD', 'TWO', 'ONE',
+    'MAN', 'CAR', 'GUN', 'RED', 'TAN', 'VAN',
+    // Directions / status words
+    'NORTH', 'SOUTH', 'EAST', 'WEST',
+    'ZONE', 'BEAT', 'CALL', 'UNIT',
+    // Already expanded by rules above
+    'INTERSTATE', 'HIGHWAY', 'STREET', 'AVENUE', 'BOULEVARD', 'ROAD',
+    'PRIORITY', 'CAUTION',
+  ]);
+
+  result = result.replace(/\b([A-Z]{2,})\b/g, (match) => {
+    if (SKIP_WORDS.has(match)) return match;
+    if (match.includes('.')) return match; // Already dotted
+    // Spell it out: "PSO" → "P.S.O."
+    return match.split('').join('.') + '.';
+  });
+
   return result;
 }
 
