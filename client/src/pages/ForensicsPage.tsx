@@ -12,7 +12,7 @@ import {
   ArrowRight, CheckCircle, AlertTriangle, Shield, Fingerprint,
   Trash2, Edit3, ChevronRight, Link2, Beaker, Eye, Lock,
   HardDrive, Download, Globe, Database, Wifi, WifiOff, RefreshCw,
-  FileSearch, Tag, BookMarked, Calendar, Server,
+  FileSearch, Tag, BookMarked, Calendar, Server, BookOpen, ChevronUp, Copy,
 } from 'lucide-react';
 import type {
   ForensicCase, ForensicExhibit, ForensicAnalysis, ForensicActivityLog,
@@ -20,6 +20,7 @@ import type {
   ExhibitType, AnalysisType, AnalysisStatus, ExhibitDisposition,
   IpedCase, IpedItem, IpedFinding, IpedImport, IpedConnectionStatus,
   IpedBookmark, IpedTimelineEvent,
+  ForensicHashSet, HashSetType,
 } from '../types';
 import SplitPanel from '../components/SplitPanel';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -193,7 +194,7 @@ export default function ForensicsPage() {
   const [analysisSubmitting, setAnalysisSubmitting] = useState(false);
 
   // ── Detail tab ─────────────────────────────────────────
-  const [detailTab, setDetailTab] = useState<'exhibits' | 'analyses' | 'timeline' | 'iped'>('exhibits');
+  const [detailTab, setDetailTab] = useState<'exhibits' | 'analyses' | 'timeline' | 'iped' | 'hashsets'>('exhibits');
 
   // ── IPED Integration state ────────────────────────────
   const [ipedStatus, setIpedStatus] = useState<IpedConnectionStatus | null>(null);
@@ -212,6 +213,25 @@ export default function ForensicsPage() {
   const [ipedSetupOpen, setIpedSetupOpen] = useState(false);
   const [ipedSetupForm, setIpedSetupForm] = useState({ baseUrl: '', apiKey: '' });
   const [ipedSetupSubmitting, setIpedSetupSubmitting] = useState(false);
+  const [ipedGuideOpen, setIpedGuideOpen] = useState(false);
+
+  // ── Hash Sets state ─────────────────────────────────────
+  const [hashSets, setHashSets] = useState<ForensicHashSet[]>([]);
+  const [hashSetsLoading, setHashSetsLoading] = useState(false);
+  const [hashImportOpen, setHashImportOpen] = useState(false);
+  const [hashImportForm, setHashImportForm] = useState({ name: '', set_type: 'custom' as HashSetType, description: '', version: '' });
+  const [hashImportFile, setHashImportFile] = useState<File | null>(null);
+  const [hashImporting, setHashImporting] = useState(false);
+  const [hashCheckInput, setHashCheckInput] = useState('');
+  const [hashCheckResults, setHashCheckResults] = useState<Record<string, any[]> | null>(null);
+  const [hashChecking, setHashChecking] = useState(false);
+  // Quick-check overlay (accessible from any tab via status bar)
+  const [quickCheckOpen, setQuickCheckOpen] = useState(false);
+  // Drag-and-drop state
+  const [hashDropActive, setHashDropActive] = useState(false);
+  const [hashFilePreviewCount, setHashFilePreviewCount] = useState<number | null>(null);
+  // Auto-check exhibit hashes against loaded sets
+  const [exhibitHashMatches, setExhibitHashMatches] = useState<Record<number, { status: 'known_good' | 'known_bad' | 'unknown' | 'unchecked'; matches: any[] }>>({});
 
   // ── Form dirty tracking ────────────────────────────────
   const { isDirty: caseDirty, snapshot: caseSnapshot } = useFormDirty(caseForm, caseFormOpen);
@@ -466,6 +486,179 @@ export default function ForensicsPage() {
       fetchActivity(selected.id);
     } catch (err: any) { addToast(err?.message || 'Failed to attach report', 'error'); }
     finally { setIpedImporting(false); }
+  };
+
+  // ── Hash Set handlers ─────────────────────────────────
+
+  const fetchHashSets = useCallback(async () => {
+    setHashSetsLoading(true);
+    try {
+      const res = await apiFetch<{ data: ForensicHashSet[] }>('/forensics/hash-sets');
+      setHashSets(res.data || []);
+    } catch { /* silent */ }
+    finally { setHashSetsLoading(false); }
+  }, []);
+
+  // Fetch hash sets eagerly on page mount (enables status bar + auto-checking)
+  useEffect(() => { fetchHashSets(); }, [fetchHashSets]);
+
+  const handleHashImport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!hashImportForm.name.trim()) { addToast('Name is required', 'error'); return; }
+    setHashImporting(true);
+    try {
+      let entries: any[] = [];
+      if (hashImportFile) {
+        const text = await hashImportFile.text();
+        const lines = text.split('\n').filter(l => l.trim());
+        if (lines.length < 2) { addToast('CSV must have a header row and at least one data row', 'error'); setHashImporting(false); return; }
+        const headers = lines[0].toLowerCase().split(',').map(h => h.trim());
+        for (let i = 1; i < lines.length; i++) {
+          const vals = lines[i].split(',').map(v => v.trim());
+          const row: Record<string, string> = {};
+          headers.forEach((h, idx) => { if (vals[idx]) row[h] = vals[idx]; });
+          entries.push({
+            md5: row['md5'] || row['md5hash'] || undefined,
+            sha1: row['sha1'] || row['sha1hash'] || undefined,
+            sha256: row['sha256'] || row['sha256hash'] || undefined,
+            file_name: row['filename'] || row['file_name'] || row['name'] || undefined,
+            file_size: row['filesize'] || row['file_size'] || row['size'] ? parseInt(row['filesize'] || row['file_size'] || row['size']) : undefined,
+            category: row['category'] || row['type'] || undefined,
+          });
+        }
+      }
+      await apiFetch('/forensics/hash-sets', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: hashImportForm.name,
+          set_type: hashImportForm.set_type,
+          description: hashImportForm.description || undefined,
+          version: hashImportForm.version || undefined,
+          entries,
+        }),
+      });
+      addToast(`Hash set "${hashImportForm.name}" imported (${entries.length} entries)`, 'success');
+      setHashImportOpen(false);
+      setHashImportForm({ name: '', set_type: 'custom', description: '', version: '' });
+      setHashImportFile(null);
+      fetchHashSets();
+    } catch (err: any) { addToast(err?.message || 'Import failed', 'error'); }
+    finally { setHashImporting(false); }
+  };
+
+  const handleDeleteHashSet = async (id: number, name: string) => {
+    if (!window.confirm(`Delete hash set "${name}" and all its entries?`)) return;
+    try {
+      await apiFetch(`/forensics/hash-sets/${id}`, { method: 'DELETE' });
+      addToast(`Hash set "${name}" deleted`, 'success');
+      fetchHashSets();
+    } catch (err: any) { addToast(err?.message || 'Delete failed', 'error'); }
+  };
+
+  const handleHashCheck = async () => {
+    const hashes = hashCheckInput.split(/[\n,\s]+/).map(h => h.trim()).filter(Boolean);
+    if (hashes.length === 0) { addToast('Enter at least one hash value', 'error'); return; }
+    setHashChecking(true);
+    try {
+      const res = await apiFetch<{ data: Record<string, any[]>; total_matches: number }>('/forensics/hash-sets/check', {
+        method: 'POST',
+        body: JSON.stringify({ hashes }),
+      });
+      setHashCheckResults(res.data);
+      if (res.total_matches === 0) addToast('No matches found', 'info');
+      else addToast(`${res.total_matches} match(es) found`, 'success');
+    } catch (err: any) { addToast(err?.message || 'Hash check failed', 'error'); }
+    finally { setHashChecking(false); }
+  };
+
+  // ── Auto-check exhibit hashes against loaded sets ──────
+  useEffect(() => {
+    if (hashSets.length === 0 || exhibits.length === 0) {
+      // Mark all exhibits with hashes as unchecked when no sets loaded
+      if (hashSets.length === 0 && exhibits.length > 0) {
+        const m: typeof exhibitHashMatches = {};
+        exhibits.forEach(ex => {
+          if (ex.hash_md5 || ex.hash_sha256) m[ex.id] = { status: 'unchecked', matches: [] };
+        });
+        setExhibitHashMatches(m);
+      }
+      return;
+    }
+    // Gather all hashes from exhibits
+    const allHashes: string[] = [];
+    const exhibitHashMap: Record<string, number[]> = {}; // hash → exhibit ids
+    exhibits.forEach(ex => {
+      [ex.hash_md5, ex.hash_sha256].filter(Boolean).forEach(h => {
+        const lower = h!.toLowerCase();
+        allHashes.push(lower);
+        if (!exhibitHashMap[lower]) exhibitHashMap[lower] = [];
+        exhibitHashMap[lower].push(ex.id);
+      });
+    });
+    if (allHashes.length === 0) return;
+    (async () => {
+      try {
+        const res = await apiFetch<{ data: Record<string, any[]> }>('/forensics/hash-sets/check', {
+          method: 'POST',
+          body: JSON.stringify({ hashes: [...new Set(allHashes)] }),
+        });
+        const matches = res.data || {};
+        const result: typeof exhibitHashMatches = {};
+        exhibits.forEach(ex => {
+          if (!ex.hash_md5 && !ex.hash_sha256) return;
+          const exHashes = [ex.hash_md5, ex.hash_sha256].filter(Boolean).map(h => h!.toLowerCase());
+          const allMatches: any[] = [];
+          let hasGood = false, hasBad = false;
+          exHashes.forEach(h => {
+            const m = matches[h] || [];
+            allMatches.push(...m);
+            m.forEach((match: any) => {
+              if (match.set_type === 'projectvic' || match.set_type === 'known_bad') hasBad = true;
+              if (match.set_type === 'nsrl' || match.set_type === 'known_good') hasGood = true;
+            });
+          });
+          result[ex.id] = {
+            status: hasBad ? 'known_bad' : hasGood ? 'known_good' : 'unknown',
+            matches: allMatches,
+          };
+        });
+        setExhibitHashMatches(result);
+      } catch { /* silent */ }
+    })();
+  }, [exhibits, hashSets]);
+
+  // ── Smart file detection helpers ───────────────────────
+  const detectHashSetType = (filename: string): HashSetType => {
+    const lower = filename.toLowerCase();
+    if (lower.includes('nsrl')) return 'nsrl';
+    if (lower.includes('projectvic') || lower.includes('project_vic') || lower.includes('vic')) return 'projectvic';
+    if (lower.includes('known_bad') || lower.includes('knownbad') || lower.includes('bad')) return 'known_bad';
+    if (lower.includes('known_good') || lower.includes('knowngood') || lower.includes('good')) return 'known_good';
+    return 'custom';
+  };
+
+  const cleanFileName = (filename: string): string => {
+    return filename.replace(/\.(csv|txt|tsv)$/i, '').replace(/[_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  };
+
+  const previewCsvRowCount = async (file: File) => {
+    try {
+      const text = await file.text();
+      const lines = text.split('\n').filter(l => l.trim());
+      setHashFilePreviewCount(Math.max(0, lines.length - 1)); // subtract header
+    } catch { setHashFilePreviewCount(null); }
+  };
+
+  // ── Drag-and-drop handler for hash CSV import ──────────
+  const handleHashFileDrop = (file: File) => {
+    const detected = detectHashSetType(file.name);
+    const name = cleanFileName(file.name);
+    setHashImportForm(f => ({ ...f, name, set_type: detected }));
+    setHashImportFile(file);
+    setHashImportOpen(true);
+    previewCsvRowCount(file);
+    // Switch to hash sets tab so user sees the import form
+    setDetailTab('hashsets');
   };
 
   // ── CRUD handlers ──────────────────────────────────────
@@ -790,9 +983,148 @@ export default function ForensicsPage() {
           </div>
         )}
 
+        {/* ── Hash Status Bar (always visible) ───────────── */}
+        {(() => {
+          const totalHashes = hashSets.reduce((sum, hs) => sum + hs.hash_count, 0);
+          const nsrlSets = hashSets.filter(h => h.set_type === 'nsrl' || h.set_type === 'known_good');
+          const badSets = hashSets.filter(h => h.set_type === 'projectvic' || h.set_type === 'known_bad');
+          const customSets = hashSets.filter(h => h.set_type === 'custom');
+          const nsrlCount = nsrlSets.reduce((s, h) => s + h.hash_count, 0);
+          const badCount = badSets.reduce((s, h) => s + h.hash_count, 0);
+          return (
+            <div
+              className="border-t border-rmpg-700/30 px-3 py-1.5 flex items-center gap-2 text-[9px]"
+              style={{ background: hashSets.length === 0 ? 'rgba(217, 119, 6, 0.08)' : 'rgba(10, 14, 20, 0.5)' }}
+              onDragOver={e => { e.preventDefault(); setHashDropActive(true); }}
+              onDragLeave={() => setHashDropActive(false)}
+              onDrop={e => {
+                e.preventDefault();
+                setHashDropActive(false);
+                const file = e.dataTransfer.files?.[0];
+                if (file && (file.name.endsWith('.csv') || file.name.endsWith('.txt'))) handleHashFileDrop(file);
+              }}
+            >
+              <Database className="w-3.5 h-3.5 flex-shrink-0" style={{ color: hashSets.length > 0 ? '#22c55e' : '#d97706' }} />
+              {hashSets.length === 0 ? (
+                <>
+                  <span className="text-amber-400 font-bold uppercase">No hash sets loaded</span>
+                  <span className="text-rmpg-500">— Drag CSV here or</span>
+                  <button
+                    onClick={() => { setDetailTab('hashsets'); setHashImportOpen(true); }}
+                    className="text-brand-400 hover:text-brand-300 font-bold uppercase underline underline-offset-2"
+                  >
+                    Import Now
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className="text-rmpg-300 font-bold">{hashSets.length} set{hashSets.length !== 1 ? 's' : ''}</span>
+                  <span className="text-rmpg-600">|</span>
+                  <span className="text-rmpg-400 font-mono">{totalHashes.toLocaleString()} hashes</span>
+                  {nsrlSets.length > 0 && (
+                    <span className="px-1.5 py-0.5 bg-green-900/20 text-green-400 font-bold rounded-sm">
+                      {nsrlCount.toLocaleString()} KNOWN GOOD
+                    </span>
+                  )}
+                  {badSets.length > 0 && (
+                    <span className="px-1.5 py-0.5 bg-red-900/20 text-red-400 font-bold rounded-sm">
+                      {badCount.toLocaleString()} KNOWN BAD
+                    </span>
+                  )}
+                  {customSets.length > 0 && (
+                    <span className="px-1.5 py-0.5 bg-rmpg-700/40 text-rmpg-400 font-bold rounded-sm">
+                      {customSets.length} CUSTOM
+                    </span>
+                  )}
+                  <div className="flex-1" />
+                  <button
+                    onClick={() => setQuickCheckOpen(!quickCheckOpen)}
+                    className="toolbar-btn text-[9px] px-2 py-0.5"
+                    title="Quick hash check"
+                  >
+                    <Search className="w-3 h-3" /> Check Hash
+                  </button>
+                </>
+              )}
+              {hashDropActive && (
+                <div className="absolute inset-0 bg-brand-900/40 border-2 border-dashed border-brand-400 flex items-center justify-center z-10 rounded">
+                  <span className="text-brand-300 font-bold text-sm">Drop CSV to import hash set</span>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* Quick-check overlay (opens from status bar) */}
+        {quickCheckOpen && (
+          <div className="border-t border-rmpg-700/30 px-3 py-2" style={{ background: 'rgba(10, 14, 20, 0.6)' }}>
+            <div className="flex items-center gap-2 mb-1.5">
+              <Search className="w-3 h-3 text-rmpg-400" />
+              <span className="text-[9px] text-rmpg-400 font-bold uppercase">Quick Hash Check</span>
+              <div className="flex-1" />
+              <button onClick={() => setQuickCheckOpen(false)} className="text-rmpg-500 hover:text-rmpg-300">
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+            <div className="flex gap-1.5">
+              <textarea
+                className="input-dark flex-1 text-xs font-mono resize-none"
+                rows={2}
+                placeholder="Paste MD5, SHA1, or SHA256 hash(es) — one per line or comma-separated"
+                value={hashCheckInput}
+                onChange={e => setHashCheckInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) handleHashCheck(); }}
+              />
+              <div className="flex flex-col gap-1">
+                <button
+                  onClick={handleHashCheck}
+                  className="toolbar-btn toolbar-btn-primary text-[9px] px-3 py-1"
+                  disabled={hashChecking || !hashCheckInput.trim()}
+                >
+                  {hashChecking ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />} Check
+                </button>
+                {hashCheckInput.trim() && (
+                  <span className="text-[8px] text-rmpg-500 text-center">
+                    {hashCheckInput.split(/[\n,\s]+/).filter(Boolean).length} hash(es)
+                  </span>
+                )}
+              </div>
+            </div>
+            {hashCheckResults && (
+              <div className="mt-2 space-y-1 max-h-32 overflow-y-auto">
+                {Object.keys(hashCheckResults).length === 0 ? (
+                  <div className="panel-inset p-2 text-center">
+                    <span className="text-[10px] text-green-400 font-semibold flex items-center justify-center gap-1">
+                      <CheckCircle className="w-3 h-3" /> No matches — hash is not in any loaded set
+                    </span>
+                  </div>
+                ) : (
+                  Object.entries(hashCheckResults).map(([hash, matches]) => (
+                    <div key={hash} className="panel-inset p-2">
+                      <p className="text-[9px] font-mono text-white mb-1 truncate">{hash}</p>
+                      {matches.map((m: any, i: number) => (
+                        <div key={i} className="flex items-center gap-2 text-[9px]">
+                          <span className="font-bold uppercase px-1 py-0.5 rounded-sm" style={{
+                            background: m.set_type === 'nsrl' || m.set_type === 'known_good' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
+                            color: m.set_type === 'nsrl' || m.set_type === 'known_good' ? '#22c55e' : '#ef4444',
+                          }}>
+                            {m.set_type === 'nsrl' || m.set_type === 'known_good' ? 'KNOWN GOOD' : 'KNOWN BAD'}
+                          </span>
+                          <span className="text-rmpg-300">{m.set_name}</span>
+                          {m.file_name && <span className="text-rmpg-500 truncate">{m.file_name}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Tab bar */}
         <div className="flex border-t border-rmpg-700/30">
-          {(['exhibits', 'analyses', 'timeline', 'iped'] as const).map(tab => (
+          {(['exhibits', 'analyses', 'timeline', 'iped', 'hashsets'] as const).map(tab => (
             <button
               key={tab}
               onClick={() => setDetailTab(tab)}
@@ -807,10 +1139,12 @@ export default function ForensicsPage() {
               {tab === 'analyses' && <FlaskConical className="w-3 h-3 inline mr-1 -mt-0.5" />}
               {tab === 'timeline' && <Activity className="w-3 h-3 inline mr-1 -mt-0.5" />}
               {tab === 'iped' && <HardDrive className="w-3 h-3 inline mr-1 -mt-0.5" />}
+              {tab === 'hashsets' && <Database className="w-3 h-3 inline mr-1 -mt-0.5" />}
               {tab === 'exhibits' ? `Exhibits (${exhibits.length})` :
                tab === 'analyses' ? `Analyses (${analyses.length})` :
                tab === 'timeline' ? `Timeline (${activity.length})` :
-               `IPED${ipedImports.length ? ` (${ipedImports.length})` : ''}`}
+               tab === 'iped' ? `IPED${ipedImports.length ? ` (${ipedImports.length})` : ''}` :
+               `Hash Sets (${hashSets.length})`}
             </button>
           ))}
         </div>
@@ -866,13 +1200,53 @@ export default function ForensicsPage() {
                       {ex.collected_date && <span>Date: <strong className="text-rmpg-200">{fmtDate(ex.collected_date)}</strong></span>}
                     </div>
 
-                    {/* Hash integrity */}
-                    {(ex.hash_md5 || ex.hash_sha256) && (
-                      <div className="text-[9px] font-mono text-rmpg-500 bg-black/20 px-2 py-1 rounded space-y-0.5">
-                        {ex.hash_md5 && <div><Lock className="w-3 h-3 inline text-green-600 mr-1" />MD5: {ex.hash_md5}</div>}
-                        {ex.hash_sha256 && <div><Lock className="w-3 h-3 inline text-green-600 mr-1" />SHA-256: {ex.hash_sha256}</div>}
-                      </div>
-                    )}
+                    {/* Hash integrity + match status */}
+                    {(ex.hash_md5 || ex.hash_sha256) && (() => {
+                      const match = exhibitHashMatches[ex.id];
+                      const status = match?.status || 'unchecked';
+                      return (
+                        <div className={`text-[9px] font-mono px-2 py-1.5 rounded space-y-1 border ${
+                          status === 'known_bad' ? 'bg-red-900/20 border-red-700/40' :
+                          status === 'known_good' ? 'bg-green-900/15 border-green-700/30' :
+                          status === 'unknown' ? 'bg-black/20 border-rmpg-700/30' :
+                          'bg-amber-900/10 border-amber-700/20'
+                        }`}>
+                          {/* Match badge */}
+                          <div className="flex items-center gap-2 mb-1">
+                            {status === 'known_bad' && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-red-900/40 text-red-400 font-bold uppercase text-[8px] rounded-sm animate-pulse">
+                                <AlertTriangle className="w-3 h-3" /> KNOWN BAD
+                              </span>
+                            )}
+                            {status === 'known_good' && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-green-900/30 text-green-400 font-bold uppercase text-[8px] rounded-sm">
+                                <CheckCircle className="w-3 h-3" /> KNOWN GOOD
+                              </span>
+                            )}
+                            {status === 'unknown' && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-rmpg-700/40 text-rmpg-400 font-bold uppercase text-[8px] rounded-sm">
+                                <Shield className="w-3 h-3" /> NO MATCH
+                              </span>
+                            )}
+                            {status === 'unchecked' && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-900/20 text-amber-500 font-bold uppercase text-[8px] rounded-sm">
+                                <AlertTriangle className="w-3 h-3" /> UNCHECKED
+                              </span>
+                            )}
+                            {match?.matches?.length > 0 && (
+                              <span className="text-[8px] text-rmpg-500">
+                                Matched: {match.matches.map((m: any) => m.set_name).filter((v: string, i: number, a: string[]) => a.indexOf(v) === i).join(', ')}
+                              </span>
+                            )}
+                          </div>
+                          {/* Hash values */}
+                          <div className="text-rmpg-500 space-y-0.5">
+                            {ex.hash_md5 && <div><Lock className="w-3 h-3 inline text-green-600 mr-1" />MD5: {ex.hash_md5}</div>}
+                            {ex.hash_sha256 && <div><Lock className="w-3 h-3 inline text-green-600 mr-1" />SHA-256: {ex.hash_sha256}</div>}
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {/* Chain of Custody */}
                     {custody.length > 0 && (
@@ -1044,6 +1418,9 @@ export default function ForensicsPage() {
                 )}
               </div>
               <div className="flex items-center gap-1">
+                <button onClick={() => setIpedGuideOpen(v => !v)} className={`toolbar-btn text-[9px] ${ipedGuideOpen ? 'toolbar-btn-primary' : ''}`} style={{ padding: '2px 6px' }} title="IPED Usage Guide">
+                  <BookOpen className="w-3 h-3" /> Guide
+                </button>
                 {ipedStatus?.configured && (
                   <button onClick={handleIpedTestConnection} className="toolbar-btn text-[9px]" style={{ padding: '2px 6px' }} disabled={ipedLoading}>
                     <RefreshCw className={`w-3 h-3 ${ipedLoading ? 'animate-spin' : ''}`} /> Test
@@ -1076,6 +1453,143 @@ export default function ForensicsPage() {
                   <button type="button" onClick={() => setIpedSetupOpen(false)} className="toolbar-btn text-[9px]" style={{ padding: '3px 10px' }}>Cancel</button>
                 </div>
               </form>
+            )}
+
+            {/* ── IPED Usage Guide ───────────────────────── */}
+            {ipedGuideOpen && (
+              <div className="panel-beveled bg-surface-base p-3 space-y-3 max-h-[60vh] overflow-y-auto" style={{ border: '1px solid #2a3a5a' }}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <BookOpen className="w-4 h-4 text-blue-400" />
+                    <span className="text-xs font-bold text-blue-300 uppercase tracking-wider">IPED Usage Guide</span>
+                  </div>
+                  <button onClick={() => setIpedGuideOpen(false)} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-white transition-colors">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                <p className="text-[10px] text-rmpg-300">
+                  IPED (Internet Protocol Evidence Decoder) is a digital forensics tool for processing and analyzing seized devices.
+                  This integration allows you to connect to a running IPED server, browse processed cases, search evidence,
+                  and import findings directly into your forensic case files.
+                </p>
+
+                {/* Section 1: Getting Started */}
+                <div className="space-y-1">
+                  <div className="text-[10px] font-bold text-blue-400 uppercase tracking-wider border-b border-rmpg-700 pb-0.5">
+                    1. Getting Started
+                  </div>
+                  <div className="text-[10px] text-rmpg-300 space-y-1 pl-2">
+                    <p><strong className="text-rmpg-200">Prerequisites:</strong> An IPED server must be running and accessible from this machine. IPED processes disk images, mobile dumps, and other digital evidence into searchable indexes.</p>
+                    <p><strong className="text-rmpg-200">Setup:</strong> Click the <span className="text-blue-400 font-bold">Setup</span> button above. Enter your IPED server&apos;s Base URL (e.g., <code className="text-[9px] bg-rmpg-800 px-1 py-0.5 text-brand-400">http://192.168.1.100:11111</code>) and optional API Key if authentication is configured.</p>
+                    <p><strong className="text-rmpg-200">Testing:</strong> After saving credentials, click <span className="text-blue-400 font-bold">Test</span> to verify the connection. A green &quot;Connected&quot; badge indicates success.</p>
+                  </div>
+                </div>
+
+                {/* Section 2: Case Browser */}
+                <div className="space-y-1">
+                  <div className="text-[10px] font-bold text-blue-400 uppercase tracking-wider border-b border-rmpg-700 pb-0.5">
+                    2. Case Browser
+                  </div>
+                  <div className="text-[10px] text-rmpg-300 space-y-1 pl-2">
+                    <p>Navigate to the <strong className="text-rmpg-200">Case Browser</strong> sub-tab and click <span className="text-blue-400 font-bold">Load IPED Cases</span> to fetch all processed cases from the server.</p>
+                    <p>Each case shows its name, total items, and processing date. Click a case to select it — this enables searching, viewing findings, and importing data.</p>
+                    <p><strong className="text-rmpg-200">Link to Forensic Case:</strong> Once an IPED case is selected, click <span className="text-blue-400 font-bold">Link Case</span> to associate it with the current forensic case file. This creates an import record for audit tracking.</p>
+                  </div>
+                </div>
+
+                {/* Section 3: Search */}
+                <div className="space-y-1">
+                  <div className="text-[10px] font-bold text-blue-400 uppercase tracking-wider border-b border-rmpg-700 pb-0.5">
+                    3. Searching Evidence
+                  </div>
+                  <div className="text-[10px] text-rmpg-300 space-y-1 pl-2">
+                    <p>With an IPED case selected, use the search bar to query indexed evidence using <strong className="text-rmpg-200">Lucene syntax</strong>:</p>
+                    <div className="bg-rmpg-800/80 p-2 text-[9px] font-mono text-rmpg-200 space-y-0.5" style={{ border: '1px solid #303030' }}>
+                      <div><span className="text-amber-400">Simple:</span> <span className="text-brand-400">drug evidence photos</span></div>
+                      <div><span className="text-amber-400">Exact Phrase:</span> <span className="text-brand-400">&quot;bank statement&quot;</span></div>
+                      <div><span className="text-amber-400">Field Search:</span> <span className="text-brand-400">category:&quot;Images&quot; AND name:*.jpg</span></div>
+                      <div><span className="text-amber-400">Wildcards:</span> <span className="text-brand-400">receipt_2024*</span></div>
+                      <div><span className="text-amber-400">Boolean:</span> <span className="text-brand-400">(chat OR message) AND NOT spam</span></div>
+                    </div>
+                    <p>Results show items with relevance scores, file names, categories, and sizes. Click items to see metadata details.</p>
+                  </div>
+                </div>
+
+                {/* Section 4: Findings */}
+                <div className="space-y-1">
+                  <div className="text-[10px] font-bold text-blue-400 uppercase tracking-wider border-b border-rmpg-700 pb-0.5">
+                    4. Findings
+                  </div>
+                  <div className="text-[10px] text-rmpg-300 space-y-1 pl-2">
+                    <p>The <strong className="text-rmpg-200">Findings</strong> sub-tab displays forensic findings from the selected IPED case — flagged items, notable artifacts, and examiner annotations.</p>
+                    <p>Click <span className="text-blue-400 font-bold">Import Findings</span> to pull these into your forensic case as analysis records with full metadata preserved.</p>
+                  </div>
+                </div>
+
+                {/* Section 5: Bookmarks */}
+                <div className="space-y-1">
+                  <div className="text-[10px] font-bold text-blue-400 uppercase tracking-wider border-b border-rmpg-700 pb-0.5">
+                    5. Bookmarks
+                  </div>
+                  <div className="text-[10px] text-rmpg-300 space-y-1 pl-2">
+                    <p>IPED bookmarks are examiner-created groupings of related items (e.g., &quot;Relevant Photos&quot;, &quot;Chat Conversations&quot;, &quot;Financial Documents&quot;).</p>
+                    <p>The <strong className="text-rmpg-200">Bookmarks</strong> sub-tab lists all bookmark groups with item counts. Import bookmark groups to associate them with your forensic case.</p>
+                  </div>
+                </div>
+
+                {/* Section 6: Timeline */}
+                <div className="space-y-1">
+                  <div className="text-[10px] font-bold text-blue-400 uppercase tracking-wider border-b border-rmpg-700 pb-0.5">
+                    6. Timeline Import
+                  </div>
+                  <div className="text-[10px] text-rmpg-300 space-y-1 pl-2">
+                    <p>IPED builds a chronological timeline of file system activity, browser history, messages, and other timestamped artifacts.</p>
+                    <p>Use the <span className="text-blue-400 font-bold">Import Timeline</span> action from the Case Browser to pull timeline events into your forensic case&apos;s activity log, enabling cross-reference with physical evidence timestamps.</p>
+                  </div>
+                </div>
+
+                {/* Section 7: Import Types */}
+                <div className="space-y-1">
+                  <div className="text-[10px] font-bold text-blue-400 uppercase tracking-wider border-b border-rmpg-700 pb-0.5">
+                    7. Import Types Reference
+                  </div>
+                  <div className="text-[10px] text-rmpg-300 pl-2">
+                    <div className="grid grid-cols-2 gap-1 mt-1">
+                      {[
+                        ['case_link', 'Links an IPED case to this forensic case'],
+                        ['findings', 'Imports flagged items and examiner notes'],
+                        ['timeline', 'Imports chronological activity events'],
+                        ['report', 'Imports IPED processing report summary'],
+                        ['bookmarks', 'Imports bookmark groups and their items'],
+                        ['items', 'Imports individual evidence items with metadata'],
+                      ].map(([type, desc]) => (
+                        <div key={type as string} className="flex gap-1.5 items-start">
+                          <span className="text-[8px] font-bold uppercase px-1 py-0.5 bg-blue-900/30 text-blue-400 border border-blue-700/40 whitespace-nowrap">{(type as string).replace(/_/g, ' ')}</span>
+                          <span className="text-[9px] text-rmpg-400">{desc}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 8: Troubleshooting */}
+                <div className="space-y-1">
+                  <div className="text-[10px] font-bold text-blue-400 uppercase tracking-wider border-b border-rmpg-700 pb-0.5">
+                    8. Troubleshooting
+                  </div>
+                  <div className="text-[10px] text-rmpg-300 space-y-1 pl-2">
+                    <p><strong className="text-rmpg-200">Connection Failed:</strong> Verify the IPED server is running and the Base URL is correct. Check firewall rules allow access on the IPED port.</p>
+                    <p><strong className="text-rmpg-200">Authentication Error:</strong> If your IPED server uses API keys, click <span className="text-blue-400 font-bold">Reconfigure</span> and update the API Key. Credentials are stored with AES-256-GCM encryption.</p>
+                    <p><strong className="text-rmpg-200">No Cases Found:</strong> Ensure at least one case has been processed by IPED. Cases must complete processing before they appear in the browser.</p>
+                    <p><strong className="text-rmpg-200">Import Errors:</strong> Check the <strong className="text-rmpg-200">Import Log</strong> sub-tab for error details. Common issues include network timeouts on large datasets — try importing smaller subsets.</p>
+                  </div>
+                </div>
+
+                <div className="text-[9px] text-rmpg-600 text-center pt-1 border-t border-rmpg-700">
+                  All IPED imports are logged with timestamps, user attribution, and item counts for audit compliance.
+                </div>
+              </div>
             )}
 
             {/* If not configured, show setup prompt */}
@@ -1394,6 +1908,291 @@ export default function ForensicsPage() {
                 )}
               </>
             )}
+          </div>
+        )}
+
+        {/* ── Hash Sets Tab ────────────────────────────────── */}
+        {detailTab === 'hashsets' && (
+          <div
+            className={`space-y-3 relative ${hashDropActive ? 'ring-2 ring-brand-400 ring-inset' : ''}`}
+            onDragOver={e => { e.preventDefault(); e.stopPropagation(); setHashDropActive(true); }}
+            onDragLeave={e => { e.stopPropagation(); setHashDropActive(false); }}
+            onDrop={e => {
+              e.preventDefault(); e.stopPropagation();
+              setHashDropActive(false);
+              const file = e.dataTransfer.files?.[0];
+              if (file && (file.name.endsWith('.csv') || file.name.endsWith('.txt'))) handleHashFileDrop(file);
+            }}
+          >
+            {/* Drop overlay */}
+            {hashDropActive && (
+              <div className="absolute inset-0 bg-brand-900/50 border-2 border-dashed border-brand-400 flex flex-col items-center justify-center z-10 rounded">
+                <Download className="w-8 h-8 text-brand-300 mb-2" />
+                <span className="text-brand-200 font-bold text-sm">Drop CSV to import hash set</span>
+                <span className="text-brand-400 text-[10px] mt-1">Supports NSRL, ProjectVIC, or custom CSV formats</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Database className="w-3.5 h-3.5 text-rmpg-400" />
+                <span className="text-[10px] text-rmpg-400 font-bold uppercase">
+                  Hash Sets ({hashSets.length} loaded)
+                </span>
+              </div>
+              <div className="flex items-center gap-1">
+                <button onClick={fetchHashSets} className="toolbar-btn text-[9px]" style={{ padding: '2px 6px' }} disabled={hashSetsLoading}>
+                  <RefreshCw className={`w-3 h-3 ${hashSetsLoading ? 'animate-spin' : ''}`} /> Refresh
+                </button>
+                <button onClick={() => setHashImportOpen(!hashImportOpen)} className="toolbar-btn toolbar-btn-primary text-[9px]" style={{ padding: '2px 6px' }}>
+                  <Plus className="w-3 h-3" /> Import Hash Set
+                </button>
+              </div>
+            </div>
+
+            {/* Import Form */}
+            {hashImportOpen && (
+              <form onSubmit={handleHashImport} className="panel-beveled bg-surface-base p-3 space-y-2">
+                <p className="text-[10px] text-rmpg-300 font-bold uppercase">Import Hash Set</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[9px] text-rmpg-400 uppercase font-semibold block mb-0.5">Name *</label>
+                    <input className="input-dark w-full text-xs" placeholder="e.g., NSRL v3.82" value={hashImportForm.name}
+                      onChange={e => setHashImportForm(f => ({ ...f, name: e.target.value }))} required />
+                  </div>
+                  <div>
+                    <label className="text-[9px] text-rmpg-400 uppercase font-semibold block mb-0.5">Type *</label>
+                    <select className="select-dark w-full text-xs" value={hashImportForm.set_type}
+                      onChange={e => setHashImportForm(f => ({ ...f, set_type: e.target.value as HashSetType }))}>
+                      <option value="nsrl">NSRL (Known Good)</option>
+                      <option value="projectvic">ProjectVIC (Known Bad)</option>
+                      <option value="known_good">Custom Known Good</option>
+                      <option value="known_bad">Custom Known Bad</option>
+                      <option value="custom">Custom</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[9px] text-rmpg-400 uppercase font-semibold block mb-0.5">Description</label>
+                    <input className="input-dark w-full text-xs" placeholder="Optional description" value={hashImportForm.description}
+                      onChange={e => setHashImportForm(f => ({ ...f, description: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="text-[9px] text-rmpg-400 uppercase font-semibold block mb-0.5">Version</label>
+                    <input className="input-dark w-full text-xs" placeholder="e.g., 3.82" value={hashImportForm.version}
+                      onChange={e => setHashImportForm(f => ({ ...f, version: e.target.value }))} />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[9px] text-rmpg-400 uppercase font-semibold block mb-0.5">
+                    CSV File (md5, sha1, sha256, filename, filesize, category columns)
+                  </label>
+                  <input type="file" accept=".csv,.txt" className="text-[10px] text-rmpg-400"
+                    onChange={e => {
+                      const f = e.target.files?.[0] || null;
+                      setHashImportFile(f);
+                      if (f) {
+                        if (!hashImportForm.name) setHashImportForm(prev => ({ ...prev, name: cleanFileName(f.name) }));
+                        if (hashImportForm.set_type === 'custom') setHashImportForm(prev => ({ ...prev, set_type: detectHashSetType(f.name) }));
+                        previewCsvRowCount(f);
+                      } else { setHashFilePreviewCount(null); }
+                    }} />
+                </div>
+                <div className="flex items-center gap-2 pt-1">
+                  <button type="submit" className="toolbar-btn toolbar-btn-primary text-[9px]" style={{ padding: '3px 10px' }} disabled={hashImporting}>
+                    {hashImporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                    {hashFilePreviewCount !== null ? `Import ${hashFilePreviewCount.toLocaleString()} Entries` : 'Import'}
+                  </button>
+                  <button type="button" onClick={() => { setHashImportOpen(false); setHashFilePreviewCount(null); }} className="toolbar-btn text-[9px]" style={{ padding: '3px 10px' }}>Cancel</button>
+                  {hashFilePreviewCount !== null && (
+                    <span className="text-[9px] text-green-400 font-mono flex items-center gap-1">
+                      <CheckCircle className="w-3 h-3" /> {hashFilePreviewCount.toLocaleString()} rows detected
+                    </span>
+                  )}
+                </div>
+              </form>
+            )}
+
+            {/* Hash Set List */}
+            {hashSetsLoading ? (
+              <div className="text-center py-8"><Loader2 className="w-6 h-6 text-rmpg-500 mx-auto animate-spin" /></div>
+            ) : hashSets.length === 0 ? (
+              <div className="text-center py-8">
+                <Database className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
+                <p className="text-xs text-rmpg-400 font-semibold">No hash sets loaded</p>
+                <p className="text-[10px] text-rmpg-500 mt-1 max-w-xs mx-auto">
+                  Import NSRL, ProjectVIC, or CSV hash sets to enable known-file matching.
+                  Supported formats: CSV with md5/sha1/sha256 columns.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {hashSets.map(hs => (
+                  <div key={hs.id} className="panel-beveled bg-surface-base p-2.5 flex items-center justify-between">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Hash className="w-3.5 h-3.5 flex-shrink-0" style={{
+                        color: hs.set_type === 'nsrl' ? '#22c55e' :
+                               hs.set_type === 'projectvic' || hs.set_type === 'known_bad' ? '#ef4444' :
+                               hs.set_type === 'known_good' ? '#3b82f6' : '#808080'
+                      }} />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-white font-semibold truncate">{hs.name}</span>
+                          <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 rounded-sm flex-shrink-0" style={{
+                            background: hs.set_type === 'nsrl' ? 'rgba(34,197,94,0.15)' :
+                                        hs.set_type === 'projectvic' || hs.set_type === 'known_bad' ? 'rgba(239,68,68,0.15)' :
+                                        hs.set_type === 'known_good' ? 'rgba(59,130,246,0.15)' : 'rgba(128,128,128,0.15)',
+                            color: hs.set_type === 'nsrl' ? '#22c55e' :
+                                   hs.set_type === 'projectvic' || hs.set_type === 'known_bad' ? '#ef4444' :
+                                   hs.set_type === 'known_good' ? '#3b82f6' : '#808080',
+                          }}>
+                            {hs.set_type.replace(/_/g, ' ')}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 text-[9px] text-rmpg-500 mt-0.5">
+                          <span className="font-mono">{hs.hash_count.toLocaleString()} hashes</span>
+                          {hs.version && <span>v{hs.version}</span>}
+                          {hs.imported_by_name && <span>by {hs.imported_by_name}</span>}
+                          <span>{new Date(hs.created_at).toLocaleDateString()}</span>
+                        </div>
+                        {hs.description && <p className="text-[9px] text-rmpg-500 mt-0.5 truncate">{hs.description}</p>}
+                      </div>
+                    </div>
+                    <button onClick={() => handleDeleteHashSet(hs.id, hs.name)}
+                      className="toolbar-btn toolbar-btn-danger p-1 flex-shrink-0" title="Delete hash set">
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Hash Check Tool — Enhanced */}
+            <div className="border-t border-rmpg-700/30 pt-3 mt-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Search className="w-3.5 h-3.5 text-rmpg-400" />
+                  <span className="text-[10px] text-rmpg-400 font-bold uppercase">Check Hashes</span>
+                  {hashCheckInput.trim() && (() => {
+                    const count = hashCheckInput.split(/[\n,]+/).map(h => h.trim()).filter(Boolean).length;
+                    return <span className="text-[9px] text-brand-400 font-mono">{count} hash{count !== 1 ? 'es' : ''} to check</span>;
+                  })()}
+                </div>
+                {hashCheckResults && Object.keys(hashCheckResults).length > 0 && (
+                  <button
+                    className="toolbar-btn text-[9px]"
+                    style={{ padding: '2px 8px' }}
+                    onClick={() => {
+                      const lines: string[] = [];
+                      Object.entries(hashCheckResults).forEach(([hash, matches]) => {
+                        if ((matches as any[]).length > 0) {
+                          (matches as any[]).forEach((m: any) => {
+                            lines.push(`${hash}\t${m.set_type.replace(/_/g, ' ').toUpperCase()}\t${m.set_name}${m.file_name ? '\t' + m.file_name : ''}${m.category ? '\t[' + m.category + ']' : ''}`);
+                          });
+                        } else {
+                          lines.push(`${hash}\tNO MATCH`);
+                        }
+                      });
+                      // Also include hashes with no results at all
+                      const checked = hashCheckInput.split(/[\n,]+/).map(h => h.trim()).filter(Boolean);
+                      checked.forEach(h => {
+                        if (!hashCheckResults[h]) lines.push(`${h}\tNO MATCH`);
+                      });
+                      navigator.clipboard.writeText(lines.join('\n'));
+                    }}
+                    title="Copy results to clipboard (tab-separated)"
+                  >
+                    <Copy className="w-3 h-3" /> Copy Results
+                  </button>
+                )}
+              </div>
+              <textarea
+                className="input-dark w-full text-xs font-mono resize-y"
+                rows={4}
+                placeholder={"Paste one or more hashes (MD5, SHA1, or SHA256)\nOne per line, or comma-separated\n\nExample:\nd41d8cd98f00b204e9800998ecf8427e\ne3b0c44298fc1c149afbf4c8996fb924..."}
+                value={hashCheckInput}
+                onChange={e => setHashCheckInput(e.target.value)}
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => {
+                  e.preventDefault();
+                  const file = e.dataTransfer.files?.[0];
+                  if (file && (file.name.endsWith('.txt') || file.name.endsWith('.csv'))) {
+                    file.text().then(text => setHashCheckInput(prev => prev ? prev + '\n' + text : text));
+                  }
+                }}
+              />
+              <div className="flex items-center gap-2 mt-1.5">
+                <button onClick={handleHashCheck} className="toolbar-btn toolbar-btn-primary text-[9px]" style={{ padding: '3px 10px' }} disabled={hashChecking || hashSets.length === 0 || !hashCheckInput.trim()}>
+                  {hashChecking ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+                  Check Against {hashSets.length} Set{hashSets.length !== 1 ? 's' : ''}
+                </button>
+                {hashCheckInput.trim() && (
+                  <button onClick={() => { setHashCheckInput(''); setHashCheckResults(null); }} className="toolbar-btn text-[9px]" style={{ padding: '3px 8px' }}>
+                    <X className="w-3 h-3" /> Clear
+                  </button>
+                )}
+                <span className="text-[8px] text-rmpg-600 ml-auto">Drag & drop a .txt file or paste hashes</span>
+              </div>
+              {hashCheckResults && (
+                <div className="mt-3 space-y-1">
+                  {/* Summary bar */}
+                  {(() => {
+                    const checked = hashCheckInput.split(/[\n,]+/).map(h => h.trim()).filter(Boolean);
+                    const matched = Object.keys(hashCheckResults).filter(h => (hashCheckResults[h] as any[]).length > 0).length;
+                    const noMatch = checked.length - matched;
+                    return (
+                      <div className="flex items-center gap-3 text-[9px] font-bold mb-2">
+                        <span className="text-rmpg-400">{checked.length} checked</span>
+                        {matched > 0 && <span className="text-red-400">{matched} MATCHED</span>}
+                        {noMatch > 0 && <span className="text-green-400">{noMatch} clean</span>}
+                      </div>
+                    );
+                  })()}
+                  {Object.keys(hashCheckResults).length === 0 ? (
+                    <div className="panel-beveled bg-green-900/20 border border-green-700/30 p-3 text-center">
+                      <CheckCircle className="w-4 h-4 text-green-400 mx-auto mb-1" />
+                      <span className="text-[11px] text-green-400 font-semibold">All clean — no hashes matched any loaded set</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-1 max-h-64 overflow-y-auto">
+                      {Object.entries(hashCheckResults).map(([hash, matches]) => (
+                        <div key={hash} className={`panel-beveled p-2 border-l-2 ${
+                          (matches as any[]).some((m: any) => m.set_type === 'projectvic' || m.set_type === 'known_bad')
+                            ? 'bg-red-900/15 border-l-red-500'
+                            : (matches as any[]).some((m: any) => m.set_type === 'nsrl' || m.set_type === 'known_good')
+                              ? 'bg-green-900/15 border-l-green-500'
+                              : 'bg-surface-base border-l-rmpg-600'
+                        }`}>
+                          <div className="flex items-center gap-2">
+                            <p className="text-[10px] font-mono text-white truncate flex-1">{hash}</p>
+                            {(matches as any[]).length === 0 ? (
+                              <span className="text-[8px] font-bold uppercase text-rmpg-500 bg-rmpg-800 px-1.5 py-0.5 flex-shrink-0">no match</span>
+                            ) : (matches as any[]).some((m: any) => m.set_type === 'projectvic' || m.set_type === 'known_bad') ? (
+                              <span className="text-[8px] font-bold uppercase text-red-400 bg-red-900/40 px-1.5 py-0.5 flex-shrink-0 animate-pulse">KNOWN BAD</span>
+                            ) : (
+                              <span className="text-[8px] font-bold uppercase text-green-400 bg-green-900/40 px-1.5 py-0.5 flex-shrink-0">KNOWN GOOD</span>
+                            )}
+                          </div>
+                          {(matches as any[]).map((m: any, i: number) => (
+                            <div key={i} className="flex items-center gap-2 text-[9px] mt-0.5">
+                              <span className="font-bold uppercase px-1 py-0.5 rounded-sm" style={{
+                                background: m.set_type === 'nsrl' || m.set_type === 'known_good' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
+                                color: m.set_type === 'nsrl' || m.set_type === 'known_good' ? '#22c55e' : '#ef4444',
+                              }}>
+                                {m.set_type.replace(/_/g, ' ')}
+                              </span>
+                              <span className="text-rmpg-300">{m.set_name}</span>
+                              {m.file_name && <span className="text-rmpg-500 truncate">{m.file_name}</span>}
+                              {m.category && <span className="text-rmpg-600">[{m.category}]</span>}
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

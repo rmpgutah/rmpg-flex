@@ -49,6 +49,7 @@ interface Props {
   onSelectOfficer?: (officerId: string) => void;
   onPlayVideo?: (video: BodyCamVideo) => void;
   onDeleteVideo?: (videoId: number) => void;
+  onEditVideo?: (video: BodyCamVideo) => void;
   onUploadVideo?: () => void;
   /** Role-gating: only admin/manager can add/edit/delete */
   canManage?: boolean;
@@ -64,7 +65,7 @@ interface Props {
 export default function BodyCameraTab({
   cameras, videos,
   onAddCamera, onEditCamera, onDeleteCamera,
-  onSelectOfficer, onPlayVideo, onDeleteVideo,
+  onSelectOfficer, onPlayVideo, onDeleteVideo, onEditVideo,
   onUploadVideo, canManage = true,
   onBulkDeleteVideos, onBulkClassifyVideos, onBulkDeleteCameras,
   bulkLoading = false,
@@ -640,6 +641,15 @@ export default function BodyCameraTab({
                               title="Play video"
                             >
                               <Play className="w-3 h-3" />
+                            </button>
+                          )}
+                          {canManage && onEditVideo && (
+                            <button
+                              onClick={() => onEditVideo(vid)}
+                              className="toolbar-btn p-1"
+                              title="Edit video metadata"
+                            >
+                              <Edit3 className="w-3 h-3" />
                             </button>
                           )}
                           {canManage && onDeleteVideo && (

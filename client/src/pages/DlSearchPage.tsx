@@ -6,10 +6,11 @@
 // ============================================================
 
 import React, { useState, useCallback } from 'react';
-import { Search, CreditCard, User, MapPin, ChevronRight, Shield, Calendar, Database, Wifi, Plus } from 'lucide-react';
+import { Search, CreditCard, User, MapPin, ChevronRight, Shield, Calendar, Database, Wifi, Plus, Scale } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { openUtahCourtsXChange } from '../utils/xchange';
 import ManualDlEntryModal, { type ManualDlFormData } from '../components/ManualDlEntryModal';
 
 const US_STATES = [
@@ -259,6 +260,13 @@ export default function DlSearchPage() {
                     <div className="flex items-center gap-2 mt-1">
                       {statusBadge(selected.dl_status || '')}
                       {sourceBadge(selected.source || source)}
+                      <button
+                        onClick={() => openUtahCourtsXChange({ lastName: selected.last_name, firstName: selected.first_name })}
+                        className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold text-rmpg-400 hover:text-brand-400 hover:bg-rmpg-700/50 transition-colors border border-rmpg-600/50 hover:border-rmpg-500"
+                        title="Search Utah Courts XChange"
+                      >
+                        <Scale className="w-3 h-3" /> Court Records
+                      </button>
                     </div>
                   </div>
                   <div className="text-right">

@@ -42,6 +42,7 @@ import OffenderRegistryPage from './pages/OffenderRegistryPage';
 import NcicPage from './pages/NcicPage';
 import DlSearchPage from './pages/DlSearchPage';
 import BodyCamerasPage from './pages/BodyCamerasPage';
+import DashCamerasPage from './pages/DashCamerasPage';
 import TrainingDocsPage from './pages/TrainingDocsPage';
 import ForensicsPage from './pages/ForensicsPage';
 import IncidentDetailWindow from './pages/detached/IncidentDetailWindow';
@@ -117,6 +118,7 @@ function AppRoutes() {
           <Route path="/patrol" element={<PatrolPage />} />
           <Route path="/fleet" element={<FleetPage />} />
           <Route path="/body-cameras" element={<BodyCamerasPage />} />
+          <Route path="/dash-cameras" element={<DashCamerasPage />} />
           <Route path="/warrants" element={<WarrantsPage />} />
           <Route path="/citations" element={<CitationsPage />} />
           <Route path="/field-interviews" element={<FieldInterviewsPage />} />

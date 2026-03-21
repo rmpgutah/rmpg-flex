@@ -5,7 +5,7 @@
 // Supports automatic updates with client notification.
 // ============================================================
 
-const CACHE_NAME = 'rmpg-flex-v45';
+const CACHE_NAME = 'rmpg-flex-v46';
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',

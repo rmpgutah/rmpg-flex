@@ -4,18 +4,22 @@
 
 import React from 'react';
 import { X, Video, Shield, FileText } from 'lucide-react';
-import type { BodyCamVideo } from '../types';
+import type { BodyCamVideo, DashCamVideo } from '../types';
 import { VIDEO_CLASSIFICATION_COLORS } from '../pages/personnel/utils/personnelConstants';
+
+type PlayableVideo = BodyCamVideo | DashCamVideo;
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  video: BodyCamVideo | null;
+  video: PlayableVideo | null;
   apiBase: string;
   getAuthHeaders: () => Record<string, string>;
+  /** Override the stream endpoint (default: /personnel/bodycam-videos) */
+  streamEndpoint?: string;
 }
 
-export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHeaders }: Props) {
+export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHeaders, streamEndpoint = '/personnel/bodycam-videos' }: Props) {
   if (!isOpen || !video) return null;
 
   const formatDate = (d?: string) => {
@@ -43,7 +47,7 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
   // Build a stream URL with auth token in query param for <video> element
   const headers = getAuthHeaders();
   const token = headers['Authorization']?.replace('Bearer ', '') || '';
-  const streamUrl = `${apiBase}/personnel/bodycam-videos/${video.id}/stream?token=${encodeURIComponent(token)}`;
+  const streamUrl = `${apiBase}${streamEndpoint}/${video.id}/stream?token=${encodeURIComponent(token)}`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={onClose}>
@@ -80,8 +84,8 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
         <div className="p-4 space-y-3">
           <div className="grid grid-cols-4 gap-4">
             <div>
-              <p className="field-label flex items-center gap-1"><Shield className="w-2.5 h-2.5" /> Officer</p>
-              <p className="text-xs text-rmpg-100">{video.officer_name || '-'}</p>
+              <p className="field-label flex items-center gap-1"><Shield className="w-2.5 h-2.5" /> {'officer_id' in video ? 'Officer' : 'Vehicle'}</p>
+              <p className="text-xs text-rmpg-100">{'officer_name' in video ? (video as BodyCamVideo).officer_name || '-' : ('vehicle_number' in video ? (video as DashCamVideo).vehicle_number || '-' : '-')}</p>
             </div>
             <div>
               <p className="field-label">Camera</p>

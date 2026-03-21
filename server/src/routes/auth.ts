@@ -29,6 +29,21 @@ import { createNotification } from './notifications';
 
 const router = Router();
 
+/** Read totp_required_roles from system_config (admin-editable), fall back to static config. */
+function getTotpRequiredRoles(): string[] {
+  try {
+    const db = getDb();
+    const row = db.prepare(
+      "SELECT config_value FROM system_config WHERE config_key = 'totp_required_roles' AND category = 'system_settings' AND is_active = 1 LIMIT 1"
+    ).get() as { config_value: string } | undefined;
+    if (row !== undefined) {
+      // Admin explicitly set the value — empty string means "no roles required"
+      return row.config_value.split(',').map(s => s.trim()).filter(Boolean);
+    }
+  } catch { /* DB not ready yet — fall through */ }
+  return config.totp?.requiredRoles || [];
+}
+
 // ─── Helper: Check if account is locked out ──────────
 function isLockedOut(username: string): { locked: boolean; minutesRemaining: number } {
   const db = getDb();
@@ -179,7 +194,7 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
     logLoginAttempt(username, ip, true);
 
     // Check password expiry — set must_change_password if expired
-    const userFull = db.prepare('SELECT password_changed_at, totp_enabled FROM users WHERE id = ?')
+    const userFull = db.prepare('SELECT password_changed_at, totp_enabled, totp_exempt FROM users WHERE id = ?')
       .get(user.id) as any;
     if (isPasswordExpired(userFull?.password_changed_at)) {
       db.prepare('UPDATE users SET must_change_password = 1 WHERE id = ?').run(user.id);
@@ -206,8 +221,8 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
     }
 
     // ── Check if 2FA setup is required for this role ────
-    const requiredRoles = config.totp?.requiredRoles || [];
-    const must_setup_2fa = requiredRoles.length > 0 && requiredRoles.includes(user.role) && !userFull?.totp_enabled;
+    const requiredRoles = getTotpRequiredRoles();
+    const must_setup_2fa = requiredRoles.length > 0 && requiredRoles.includes(user.role) && !userFull?.totp_enabled && !userFull?.totp_exempt;
 
     // ── No 2FA — issue full tokens ──────────────────────
     const accessToken = generateAccessToken(payload);
@@ -392,7 +407,7 @@ router.get('/me', authenticateToken, (req: Request, res: Response) => {
     const db = getDb();
     const user = db.prepare(`
       SELECT id, username, first_name, last_name, full_name, email, role,
-             badge_number, phone, status, avatar_url, created_at, must_change_password, totp_enabled
+             badge_number, phone, status, avatar_url, created_at, must_change_password, totp_enabled, totp_exempt
       FROM users WHERE id = ?
     `).get(req.user!.userId) as any;
 
@@ -402,8 +417,8 @@ router.get('/me', authenticateToken, (req: Request, res: Response) => {
     }
 
     // Check if 2FA setup is required for this role
-    const requiredRoles = config.totp?.requiredRoles || [];
-    const requires2faSetup = requiredRoles.length > 0 && requiredRoles.includes(user.role) && !user.totp_enabled;
+    const requiredRoles = getTotpRequiredRoles();
+    const requires2faSetup = requiredRoles.length > 0 && requiredRoles.includes(user.role) && !user.totp_enabled && !user.totp_exempt;
 
     // Return snake_case keys to match the client User interface
     res.json({
@@ -815,7 +830,7 @@ router.get('/totp/status', authenticateToken, (req: Request, res: Response) => {
     const user = db.prepare('SELECT totp_enabled FROM users WHERE id = ?')
       .get(req.user!.userId) as any;
 
-    const requiredRoles = config.totp?.requiredRoles || [];
+    const requiredRoles = getTotpRequiredRoles();
     const required = requiredRoles.includes(req.user!.role);
 
     res.json({

@@ -1,7 +1,68 @@
 import { Router, Request, Response } from 'express';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import crypto from 'crypto';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import { fileURLToPath } from 'url';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
+
+const execAsync = promisify(exec);
+
+/** Extract video duration using ffprobe. */
+async function extractVideoDuration(filePath: string): Promise<number | null> {
+  try {
+    const { stdout } = await execAsync(
+      `ffprobe -v error -show_entries format=duration -of csv=p=0 "${filePath}"`,
+      { timeout: 30000 }
+    );
+    const seconds = parseFloat(stdout.trim());
+    return isFinite(seconds) ? Math.round(seconds) : null;
+  } catch {
+    return null;
+  }
+}
+
+const __filename_f = fileURLToPath(import.meta.url);
+const __dirname_f = path.dirname(__filename_f);
+const DASHCAM_DIR = process.env.RMPG_UPLOADS_DIR
+  ? path.join(process.env.RMPG_UPLOADS_DIR, 'dashcam')
+  : path.resolve(__dirname_f, '../../uploads/dashcam');
+
+if (!fs.existsSync(DASHCAM_DIR)) {
+  fs.mkdirSync(DASHCAM_DIR, { recursive: true });
+}
+
+const VIDEO_MIME_TYPES = new Set([
+  'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm', 'video/x-matroska',
+]);
+
+const dashcamStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    const now = new Date();
+    const subDir = path.join(DASHCAM_DIR, `${now.getFullYear()}`, String(now.getMonth() + 1).padStart(2, '0'));
+    if (!fs.existsSync(subDir)) fs.mkdirSync(subDir, { recursive: true });
+    cb(null, subDir);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, `${crypto.randomUUID()}${ext}`);
+  },
+});
+
+const dashcamUpload = multer({
+  storage: dashcamStorage,
+  fileFilter: (_req, file, cb) => {
+    if (VIDEO_MIME_TYPES.has(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`File type ${file.mimetype} is not allowed. Accepted: MP4, MOV, AVI, WebM`));
+    }
+  },
+});
 
 const router = Router();
 
@@ -1585,6 +1646,321 @@ router.post('/import/simply-fleet', requireRole('admin', 'manager'), (req: Reque
   } catch (error: any) {
     console.error('Simply Fleet import error:', error);
     res.status(500).json({ error: 'Failed to import Simply Fleet data' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// DASH CAMERAS
+// ═══════════════════════════════════════════════════════════════════
+
+// GET /api/fleet/dash-cameras — List all dash cameras
+router.get('/dash-cameras', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const cameras = db.prepare(`
+      SELECT dc.*,
+        fv.vehicle_number, fv.make AS vehicle_make, fv.model AS vehicle_model,
+        fv.year AS vehicle_year
+      FROM dash_cameras dc
+      LEFT JOIN fleet_vehicles fv ON dc.vehicle_id = fv.id
+      ORDER BY dc.created_at DESC
+    `).all();
+    res.json(cameras);
+  } catch (error: any) {
+    console.error('List dash cameras error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/fleet/dash-cameras — Create
+router.post('/dash-cameras', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { vehicle_id, camera_id, make, model, firmware_version, storage_capacity_gb, channel_count, status, condition, installed_at, removed_at, notes } = req.body;
+    if (!vehicle_id || !camera_id) {
+      res.status(400).json({ error: 'vehicle_id and camera_id are required' });
+      return;
+    }
+    const result = db.prepare(`
+      INSERT INTO dash_cameras (vehicle_id, camera_id, make, model, firmware_version, storage_capacity_gb, channel_count, status, condition, installed_at, removed_at, notes, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      vehicle_id, camera_id, make || null, model || null, firmware_version || null,
+      storage_capacity_gb || 32, channel_count || 2,
+      status || 'available', condition || 'good',
+      installed_at || null, removed_at || null, notes || null, String(req.user!.userId)
+    );
+    const cam = db.prepare(`
+      SELECT dc.*, fv.vehicle_number, fv.make AS vehicle_make, fv.model AS vehicle_model, fv.year AS vehicle_year
+      FROM dash_cameras dc LEFT JOIN fleet_vehicles fv ON dc.vehicle_id = fv.id WHERE dc.id = ?
+    `).get(result.lastInsertRowid);
+    res.status(201).json(cam);
+  } catch (error: any) {
+    if (error?.message?.includes('UNIQUE')) {
+      res.status(409).json({ error: 'Camera ID already exists' });
+      return;
+    }
+    console.error('Create dash camera error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/fleet/dash-cameras/:id — Update
+router.put('/dash-cameras/:id', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM dash_cameras WHERE id = ?').get(req.params.id) as any;
+    if (!existing) { res.status(404).json({ error: 'Dash camera not found' }); return; }
+    const fields = ['vehicle_id', 'camera_id', 'make', 'model', 'firmware_version', 'storage_capacity_gb', 'channel_count', 'status', 'condition', 'installed_at', 'removed_at', 'notes'];
+    const setClauses: string[] = [];
+    const vals: any[] = [];
+    for (const f of fields) {
+      if (req.body[f] !== undefined) {
+        setClauses.push(`${f} = ?`);
+        vals.push(req.body[f] === '' ? null : req.body[f]);
+      }
+    }
+    if (setClauses.length > 0) {
+      setClauses.push('updated_at = ?');
+      vals.push(localNow());
+      vals.push(req.params.id);
+      db.prepare(`UPDATE dash_cameras SET ${setClauses.join(', ')} WHERE id = ?`).run(...vals);
+    }
+    const cam = db.prepare(`
+      SELECT dc.*, fv.vehicle_number, fv.make AS vehicle_make, fv.model AS vehicle_model, fv.year AS vehicle_year
+      FROM dash_cameras dc LEFT JOIN fleet_vehicles fv ON dc.vehicle_id = fv.id WHERE dc.id = ?
+    `).get(req.params.id);
+    res.json(cam);
+  } catch (error: any) {
+    console.error('Update dash camera error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/fleet/dash-cameras/:id — Delete
+router.delete('/dash-cameras/:id', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM dash_cameras WHERE id = ?').get(req.params.id) as any;
+    if (!existing) { res.status(404).json({ error: 'Dash camera not found' }); return; }
+    db.prepare('DELETE FROM dashcam_videos WHERE camera_id = ?').run(req.params.id);
+    db.prepare('DELETE FROM dash_cameras WHERE id = ?').run(req.params.id);
+    res.json({ message: 'Dash camera deleted' });
+  } catch (error: any) {
+    console.error('Delete dash camera error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/fleet/dash-cameras/bulk — Bulk delete
+router.delete('/dash-cameras/bulk', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { cameraIds } = req.body;
+    if (!Array.isArray(cameraIds) || cameraIds.length === 0) {
+      res.status(400).json({ error: 'cameraIds array required' });
+      return;
+    }
+    const placeholders = cameraIds.map(() => '?').join(',');
+    db.prepare(`DELETE FROM dashcam_videos WHERE camera_id IN (${placeholders})`).run(...cameraIds);
+    const result = db.prepare(`DELETE FROM dash_cameras WHERE id IN (${placeholders})`).run(...cameraIds);
+    res.json({ deleted: result.changes });
+  } catch (error: any) {
+    console.error('Bulk delete dash cameras error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── Dash Camera Videos ────────────────────────────────────────────
+
+// GET /api/fleet/dashcam-videos — List all videos
+router.get('/dashcam-videos', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const videos = db.prepare(`
+      SELECT v.*, dc.camera_id AS camera_serial, fv.vehicle_number
+      FROM dashcam_videos v
+      LEFT JOIN dash_cameras dc ON v.camera_id = dc.id
+      LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
+      ORDER BY v.created_at DESC
+    `).all();
+    res.json(videos);
+  } catch (error: any) {
+    console.error('List dashcam videos error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/fleet/dashcam-videos — Upload video
+router.post('/dashcam-videos', requireRole('admin'), (req: Request, res: Response) => {
+  req.setTimeout(600000);
+  res.setTimeout(600000);
+  try {
+    if (!fs.existsSync(DASHCAM_DIR)) fs.mkdirSync(DASHCAM_DIR, { recursive: true });
+    fs.accessSync(DASHCAM_DIR, fs.constants.W_OK);
+  } catch (dirErr: any) {
+    res.status(503).json({ error: `Upload storage is unavailable: ${dirErr.message}` });
+    return;
+  }
+  try {
+    dashcamUpload.single('video')(req, res, (multerErr: any) => {
+      if (multerErr) {
+        res.status(400).json({ error: multerErr.message || 'Upload failed' });
+        return;
+      }
+      try {
+        const db = getDb();
+        const file = req.file;
+        if (!file) { res.status(400).json({ error: 'No video file provided' }); return; }
+        const { camera_id, vehicle_id, title, duration_seconds, recorded_at, case_number, classification, gps_lat, gps_lon, notes } = req.body;
+        if (!camera_id || !vehicle_id || !title) {
+          if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
+          res.status(400).json({ error: 'camera_id, vehicle_id, and title are required' });
+          return;
+        }
+        const diskStat = fs.statSync(file.path);
+        const verifiedSize = diskStat.size;
+        const relativePath = path.relative(DASHCAM_DIR, file.path);
+        const result = db.prepare(`
+          INSERT INTO dashcam_videos (camera_id, vehicle_id, title, file_path, file_size, duration_seconds, mime_type, recorded_at, case_number, classification, gps_lat, gps_lon, notes, uploaded_by)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          camera_id, vehicle_id, title, relativePath, verifiedSize,
+          duration_seconds || null, file.mimetype,
+          recorded_at || localNow(), case_number || null,
+          classification || 'routine', gps_lat || null, gps_lon || null,
+          notes || null, String(req.user!.userId)
+        );
+        const video = db.prepare(`
+          SELECT v.*, dc.camera_id AS camera_serial, fv.vehicle_number
+          FROM dashcam_videos v
+          LEFT JOIN dash_cameras dc ON v.camera_id = dc.id
+          LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
+          WHERE v.id = ?
+        `).get(result.lastInsertRowid);
+        // Fire-and-forget: extract duration with ffprobe
+        const fullFilePath = path.resolve(DASHCAM_DIR, relativePath);
+        extractVideoDuration(fullFilePath).then((probedDuration) => {
+          if (probedDuration != null) {
+            try {
+              getDb().prepare('UPDATE dashcam_videos SET duration_seconds = ?, updated_at = ? WHERE id = ?')
+                .run(probedDuration, localNow(), result.lastInsertRowid);
+            } catch { /* ffprobe update failed */ }
+          }
+        }).catch(() => {});
+        res.status(201).json(video);
+      } catch (error: any) {
+        console.error('Upload dashcam video DB error:', error);
+        res.status(500).json({ error: `Upload processing failed: ${error?.message || 'Internal server error'}` });
+      }
+    });
+  } catch (outerErr: any) {
+    if (!res.headersSent) res.status(500).json({ error: `Upload failed: ${outerErr?.message || 'Internal server error'}` });
+  }
+});
+
+// GET /api/fleet/dashcam-videos/:id/stream — Stream with Range support
+router.get('/dashcam-videos/:id/stream', (req: Request, res: Response, next) => {
+  if (!req.headers['authorization'] && req.query.token) {
+    req.headers['authorization'] = `Bearer ${req.query.token}`;
+  }
+  next();
+}, authenticateToken, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const video = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
+    if (!video) { res.status(404).json({ error: 'Video not found' }); return; }
+    const filePath = path.resolve(DASHCAM_DIR, video.file_path);
+    if (!filePath.startsWith(DASHCAM_DIR) || !fs.existsSync(filePath)) {
+      res.status(404).json({ error: 'Video file not found on disk' });
+      return;
+    }
+    const stat = fs.statSync(filePath);
+    const fileSize = stat.size;
+    const range = req.headers.range;
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const chunkSize = end - start + 1;
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunkSize,
+        'Content-Type': video.mime_type || 'video/mp4',
+      });
+      fs.createReadStream(filePath, { start, end }).pipe(res);
+    } else {
+      res.writeHead(200, {
+        'Content-Length': fileSize,
+        'Content-Type': video.mime_type || 'video/mp4',
+      });
+      fs.createReadStream(filePath).pipe(res);
+    }
+  } catch (error: any) {
+    console.error('Stream dashcam video error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/fleet/dashcam-videos/:id — Delete video + file
+router.delete('/dashcam-videos/:id', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
+    if (!existing) { res.status(404).json({ error: 'Video not found' }); return; }
+    const filePath = path.resolve(DASHCAM_DIR, existing.file_path);
+    if (filePath.startsWith(DASHCAM_DIR) && fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+    db.prepare('DELETE FROM dashcam_videos WHERE id = ?').run(req.params.id);
+    res.json({ message: 'Video deleted' });
+  } catch (error: any) {
+    console.error('Delete dashcam video error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/fleet/dashcam-videos/bulk — Bulk classify
+router.put('/dashcam-videos/bulk', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { videoIds, classification } = req.body;
+    if (!Array.isArray(videoIds) || videoIds.length === 0 || !classification) {
+      res.status(400).json({ error: 'videoIds array and classification required' });
+      return;
+    }
+    const placeholders = videoIds.map(() => '?').join(',');
+    db.prepare(`UPDATE dashcam_videos SET classification = ?, updated_at = ? WHERE id IN (${placeholders})`)
+      .run(classification, localNow(), ...videoIds);
+    res.json({ updated: videoIds.length });
+  } catch (error: any) {
+    console.error('Bulk classify dashcam videos error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/fleet/dashcam-videos/bulk — Bulk delete
+router.delete('/dashcam-videos/bulk', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { videoIds } = req.body;
+    if (!Array.isArray(videoIds) || videoIds.length === 0) {
+      res.status(400).json({ error: 'videoIds array required' });
+      return;
+    }
+    // Delete files from disk
+    const placeholders = videoIds.map(() => '?').join(',');
+    const videos = db.prepare(`SELECT * FROM dashcam_videos WHERE id IN (${placeholders})`).all(...videoIds) as any[];
+    for (const v of videos) {
+      const fp = path.resolve(DASHCAM_DIR, v.file_path);
+      if (fp.startsWith(DASHCAM_DIR) && fs.existsSync(fp)) fs.unlinkSync(fp);
+    }
+    const result = db.prepare(`DELETE FROM dashcam_videos WHERE id IN (${placeholders})`).run(...videoIds);
+    res.json({ deleted: result.changes });
+  } catch (error: any) {
+    console.error('Bulk delete dashcam videos error:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

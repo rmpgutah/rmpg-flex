@@ -14,8 +14,10 @@ import {
   Warehouse,
   DollarSign,
   X,
+  Scale,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { openUtahCourtsXChange } from '../utils/xchange';
 import { usePersistedTab } from '../hooks/usePersistedState';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -345,6 +347,9 @@ export default function RecordsPage() {
         {activeTab === 'persons' && (
           <>
             <ExportButton exportUrl={`/records/persons/export?format=csv&archived=${showArchived}`} exportFilename="persons_export.csv" />
+            <button className="toolbar-btn" onClick={() => openUtahCourtsXChange()} title="Search Utah Courts XChange">
+              <Scale className="w-3.5 h-3.5" /> Utah Courts
+            </button>
             {!showArchived && (
               <button className="toolbar-btn toolbar-btn-primary" onClick={() => setNewPersonTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />

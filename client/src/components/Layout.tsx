@@ -19,6 +19,7 @@ import {
   AlertTriangle,
   FileWarning,
   Video,
+  Camera,
   ClipboardList,
   ShieldBan,
   Monitor,
@@ -140,6 +141,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/personnel', icon: Users, label: 'Personnel' },
     { path: '/fleet', icon: Car, label: 'Fleet' },
     { path: '/body-cameras', icon: Video, label: 'Body Cameras' },
+    { path: '/dash-cameras', icon: Camera, label: 'Dash Cameras' },
   ]},
   { path: '/communications', icon: MessageSquare, label: 'Comms', group: 'comms', children: [
     { path: '/communications', icon: MessageSquare, label: 'Comms' },

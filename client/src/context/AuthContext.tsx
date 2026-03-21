@@ -18,6 +18,8 @@ interface AuthContextType {
   cancel2FA: () => void;
   logout: () => void;
   refreshUser: () => Promise<void>;
+  /** Dismiss the Force-2FA modal for this session only. */
+  dismiss2FASetup: () => void;
   error: string | null;
   clearError: () => void;
 }
@@ -432,6 +434,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch { /* silent — stale data is acceptable */ }
   }, []);
 
+  // Dismiss Force-2FA modal for this session (client-only, next login re-prompts)
+  const dismiss2FASetup = useCallback(() => {
+    setUser(prev => prev ? { ...prev, requires_2fa_setup: false } : prev);
+  }, []);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -454,9 +461,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     cancel2FA,
     logout,
     refreshUser,
+    dismiss2FASetup,
     error,
     clearError,
-  }), [user, token, isLoading, loginBusy, login, verify2FA, pending2FA, cancel2FA, logout, refreshUser, error, clearError]);
+  }), [user, token, isLoading, loginBusy, login, verify2FA, pending2FA, cancel2FA, logout, refreshUser, dismiss2FASetup, error, clearError]);
 
   return (
     <AuthContext.Provider value={contextValue}>

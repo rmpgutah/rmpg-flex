@@ -169,6 +169,7 @@ interface Props {
   onDeleteBodyCamera: (camId: number) => void;
   onUploadVideo: () => void;
   onDeleteVideo: (videoId: number) => void;
+  onEditVideo: (video: BodyCamVideo) => void;
   onPlayVideo: (video: BodyCamVideo) => void;
   onAddDeployment: (officerId: string) => void;
   onEditOfficer: () => void;
@@ -195,7 +196,7 @@ export default function PersonnelDetailPanel({
   equipment, equipmentLoading, onAddEquipment, onEditEquipment, onDeleteEquipment,
   bodyCameras, bodyCamVideos, bodyCamerasLoading,
   onAddBodyCamera, onEditBodyCamera, onDeleteBodyCamera,
-  onUploadVideo, onDeleteVideo, onPlayVideo,
+  onUploadVideo, onDeleteVideo, onEditVideo, onPlayVideo,
   onAddDeployment,
   onEditOfficer, onDeleteOfficer,
   onArchiveOfficer, onUnarchiveOfficer, isArchived,
@@ -439,6 +440,7 @@ export default function PersonnelDetailPanel({
             onDeleteCamera={onDeleteBodyCamera}
             onUploadVideo={onUploadVideo}
             onDeleteVideo={onDeleteVideo}
+            onEditVideo={onEditVideo}
             onPlayVideo={onPlayVideo}
             loading={bodyCamerasLoading}
           />

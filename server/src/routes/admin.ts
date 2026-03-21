@@ -845,4 +845,39 @@ router.delete('/users/:id/totp', authenticateToken, requireRole('admin'), (req: 
   }
 });
 
+// ─── PUT /api/admin/users/:id/totp-exempt ────────────
+// Admin can toggle a user's 2FA exemption
+router.put('/users/:id/totp-exempt', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const targetId = parseInt(req.params.id, 10);
+    if (isNaN(targetId)) {
+      res.status(400).json({ error: 'Invalid user ID' });
+      return;
+    }
+
+    const { exempt } = req.body;
+    const value = exempt ? 1 : 0;
+
+    const target = db.prepare('SELECT id, username FROM users WHERE id = ?').get(targetId) as any;
+    if (!target) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    db.prepare("UPDATE users SET totp_exempt = ?, updated_at = datetime('now','localtime') WHERE id = ?")
+      .run(value, targetId);
+
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'admin_toggle_totp_exempt', 'user', ?, ?, ?)
+    `).run(req.user!.userId, targetId, `Admin ${value ? 'exempted' : 'un-exempted'} ${target.username} from 2FA`, req.ip || 'unknown');
+
+    res.json({ message: `${target.username} is now ${value ? 'exempt from' : 'subject to'} mandatory 2FA`, totp_exempt: value });
+  } catch (error: any) {
+    console.error('Admin TOTP exempt toggle error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

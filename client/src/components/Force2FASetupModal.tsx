@@ -12,7 +12,7 @@ import { useAuth } from '../context/AuthContext';
 import TotpCodeInput from './TotpCodeInput';
 
 export default function Force2FASetupModal() {
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, dismiss2FASetup } = useAuth();
 
   const [step, setStep] = useState<'intro' | 'qr' | 'backups'>('intro');
   const [qrDataUrl, setQrDataUrl] = useState('');
@@ -126,6 +126,14 @@ export default function Force2FASetupModal() {
             >
               <ShieldCheck style={{ width: 14, height: 14 }} />
               {busy ? 'Setting up...' : 'Begin 2FA Setup'}
+            </button>
+
+            <button
+              onClick={dismiss2FASetup}
+              className="w-full text-center text-[10px] py-1 hover:underline"
+              style={{ color: '#606060' }}
+            >
+              Skip for now
             </button>
           </div>
         )}

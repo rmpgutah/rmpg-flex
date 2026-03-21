@@ -18,9 +18,11 @@ import {
   CreditCard,
   Archive,
   RotateCcw,
+  Scale,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { openRecordWindow } from '../../utils/windowManager';
+import { openUtahCourtsXChange } from '../../utils/xchange';
 import PersonFormModal from '../../components/PersonFormModal';
 import FileAttachments from '../../components/FileAttachments';
 import AlertBanner from '../../components/AlertBanner';
@@ -530,6 +532,13 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
           {selectedPerson.date_of_birth && <span>DOB: {selectedPerson.date_of_birth}</span>}
           {selectedPerson.gender && <span>{selectedPerson.gender}</span>}
           {selectedPerson.race && <span>{selectedPerson.race}</span>}
+          <button
+            onClick={() => openUtahCourtsXChange({ lastName: selectedPerson.last_name, firstName: selectedPerson.first_name })}
+            className="ml-auto flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold text-rmpg-400 hover:text-brand-400 hover:bg-rmpg-700/50 transition-colors border border-transparent hover:border-rmpg-600"
+            title="Search Utah Courts XChange"
+          >
+            <Scale className="w-3 h-3" /> Utah Courts
+          </button>
         </div>
       </div>
 

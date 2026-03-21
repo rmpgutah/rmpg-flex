@@ -7,6 +7,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { X, Terminal, Loader2 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { openUtahCourtsXChange } from '../utils/xchange';
 import {
   formatPersonResponse,
   formatVehicleResponse,
@@ -405,17 +406,15 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
 
         case 'QC': {
           // Utah Courts Xchange — opens browser tab with pre-filled search
-          const courtBase = 'https://www.utcourts.gov/xchange/CaseSearch';
-          const courtParams = new URLSearchParams();
+          let courtLast = queryText.trim();
+          let courtFirst: string | undefined;
           if (queryText.includes(',')) {
-            const [last, first] = queryText.split(',').map(s => s.trim());
-            courtParams.set('lastName', last);
-            if (first) courtParams.set('firstName', first);
-          } else {
-            courtParams.set('lastName', queryText.trim());
+            const [l, f] = queryText.split(',').map(s => s.trim());
+            courtLast = l;
+            courtFirst = f || undefined;
           }
-          const courtUrl = courtParams.toString() ? `${courtBase}?${courtParams}` : courtBase;
-          window.open(courtUrl, '_blank', 'noopener,noreferrer');
+          openUtahCourtsXChange({ lastName: courtLast, firstName: courtFirst });
+          const courtUrl = `https://www.utcourts.gov/xchange/CaseSearch?lastName=${encodeURIComponent(courtLast)}${courtFirst ? `&firstName=${encodeURIComponent(courtFirst)}` : ''}`;
 
           response = [
             '*** UTAH COURTS XCHANGE ***',

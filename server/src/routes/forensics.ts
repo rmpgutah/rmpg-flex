@@ -592,4 +592,141 @@ router.get('/:caseId/activity', (req: Request, res: Response) => {
   }
 });
 
+// ============================================================
+// ── Hash Set Management ─────────────────────────────────────
+// ============================================================
+
+// GET /api/forensics/hash-sets — List all hash sets
+router.get('/hash-sets', (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const sets = db.prepare(`
+      SELECT * FROM forensic_hash_sets ORDER BY created_at DESC
+    `).all();
+    res.json({ data: sets });
+  } catch (error: any) {
+    console.error('Get hash sets error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/forensics/hash-sets — Create hash set with optional CSV entries
+router.post('/hash-sets', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { name, set_type, description, version, entries } = req.body;
+
+    if (!name || !set_type) {
+      res.status(400).json({ error: 'Name and set_type are required' });
+      return;
+    }
+
+    const now = localNow();
+    const userName = (req as any).user?.username || 'unknown';
+    const userId = (req as any).user?.userId || null;
+
+    const insertSet = db.prepare(`
+      INSERT INTO forensic_hash_sets (name, set_type, description, version, imported_by, imported_by_name, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const result = insertSet.run(name, set_type, description || null, version || null, userId, userName, now, now);
+    const setId = result.lastInsertRowid;
+
+    // Bulk insert entries if provided
+    let hashCount = 0;
+    if (Array.isArray(entries) && entries.length > 0) {
+      const insertEntry = db.prepare(`
+        INSERT OR IGNORE INTO forensic_hash_entries (hash_set_id, hash_value, hash_type, file_name, file_size, category)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+
+      const bulkInsert = db.transaction((items: any[]) => {
+        for (const entry of items) {
+          // Support multiple hash columns per row
+          if (entry.md5) { insertEntry.run(setId, entry.md5.toLowerCase(), 'md5', entry.file_name || null, entry.file_size || null, entry.category || null); hashCount++; }
+          if (entry.sha1) { insertEntry.run(setId, entry.sha1.toLowerCase(), 'sha1', entry.file_name || null, entry.file_size || null, entry.category || null); hashCount++; }
+          if (entry.sha256) { insertEntry.run(setId, entry.sha256.toLowerCase(), 'sha256', entry.file_name || null, entry.file_size || null, entry.category || null); hashCount++; }
+          // Fallback: single hash_value + hash_type
+          if (!entry.md5 && !entry.sha1 && !entry.sha256 && entry.hash_value && entry.hash_type) {
+            insertEntry.run(setId, entry.hash_value.toLowerCase(), entry.hash_type, entry.file_name || null, entry.file_size || null, entry.category || null);
+            hashCount++;
+          }
+        }
+      });
+      bulkInsert(entries);
+
+      // Update hash count on the set
+      db.prepare('UPDATE forensic_hash_sets SET hash_count = ?, updated_at = ? WHERE id = ?').run(hashCount, now, setId);
+    }
+
+    const created = db.prepare('SELECT * FROM forensic_hash_sets WHERE id = ?').get(setId);
+    res.status(201).json({ data: created, hash_count: hashCount });
+  } catch (error: any) {
+    console.error('Create hash set error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/forensics/hash-sets/:id — Delete hash set and all entries
+router.delete('/hash-sets/:id', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID' }); return; }
+
+    const existing = db.prepare('SELECT id, name FROM forensic_hash_sets WHERE id = ?').get(id) as any;
+    if (!existing) { res.status(404).json({ error: 'Hash set not found' }); return; }
+
+    // CASCADE will remove entries
+    db.prepare('DELETE FROM forensic_hash_sets WHERE id = ?').run(id);
+    res.json({ message: `Hash set "${existing.name}" deleted` });
+  } catch (error: any) {
+    console.error('Delete hash set error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/forensics/hash-sets/check — Check hashes against loaded sets
+router.post('/hash-sets/check', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { hashes } = req.body; // string[] of hash values
+
+    if (!Array.isArray(hashes) || hashes.length === 0) {
+      res.status(400).json({ error: 'Provide an array of hashes' });
+      return;
+    }
+
+    const placeholders = hashes.map(() => '?').join(',');
+    const lowerHashes = hashes.map((h: string) => h.toLowerCase());
+
+    const matches = db.prepare(`
+      SELECT e.hash_value, e.hash_type, e.file_name, e.category,
+             s.id as set_id, s.name as set_name, s.set_type
+      FROM forensic_hash_entries e
+      JOIN forensic_hash_sets s ON s.id = e.hash_set_id
+      WHERE LOWER(e.hash_value) IN (${placeholders})
+    `).all(...lowerHashes) as any[];
+
+    // Group by hash value
+    const results: Record<string, any[]> = {};
+    for (const m of matches) {
+      if (!results[m.hash_value]) results[m.hash_value] = [];
+      results[m.hash_value].push({
+        set_id: m.set_id,
+        set_name: m.set_name,
+        set_type: m.set_type,
+        hash_type: m.hash_type,
+        file_name: m.file_name,
+        category: m.category,
+      });
+    }
+
+    res.json({ data: results, total_matches: matches.length });
+  } catch (error: any) {
+    console.error('Hash check error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

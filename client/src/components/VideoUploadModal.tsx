@@ -4,16 +4,26 @@
 
 import React, { useState, useRef } from 'react';
 import { Upload, X, Video, Loader2 } from 'lucide-react';
-import type { BodyCamera, VideoClassification } from '../types';
+import type { VideoClassification } from '../types';
+
+interface UploadCamera {
+  id: number;
+  camera_id: string;
+  officer_id: number;
+  make: string;
+  model: string;
+}
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   onUploaded: () => void;
-  cameras: BodyCamera[];
+  cameras: UploadCamera[];
   officerId: number;
   apiBase: string;
   getAuthHeaders: () => Record<string, string>;
+  /** Override the upload endpoint (default: /personnel/bodycam-videos) */
+  uploadEndpoint?: string;
 }
 
 const CLASSIFICATIONS: { value: VideoClassification; label: string }[] = [
@@ -25,6 +35,7 @@ const CLASSIFICATIONS: { value: VideoClassification; label: string }[] = [
 
 export default function VideoUploadModal({
   isOpen, onClose, onUploaded, cameras, officerId, apiBase, getAuthHeaders,
+  uploadEndpoint = '/personnel/bodycam-videos',
 }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
@@ -102,10 +113,12 @@ export default function VideoUploadModal({
     formData.append('video', file);
     formData.append('title', title);
     formData.append('camera_id', cameraId);
-    // Resolve officer_id from the selected camera (each camera is assigned to an officer)
+    // Resolve officer_id (or vehicle_id for dash cams) from the selected camera
     const selectedCamera = cameras.find(c => String(c.id) === cameraId);
     const resolvedOfficerId = selectedCamera?.officer_id || officerId;
     formData.append('officer_id', String(resolvedOfficerId));
+    // For dash cam uploads, also send vehicle_id
+    formData.append('vehicle_id', String(resolvedOfficerId));
     formData.append('classification', classification);
     if (duration != null) formData.append('duration_seconds', String(duration));
     if (recordedAt) formData.append('recorded_at', recordedAt);
@@ -113,7 +126,7 @@ export default function VideoUploadModal({
     if (notes) formData.append('notes', notes);
 
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', `${apiBase}/personnel/bodycam-videos`);
+    xhr.open('POST', `${apiBase}${uploadEndpoint}`);
     xhr.timeout = 600000; // 10 minute timeout for large uploads
 
     const headers = getAuthHeaders();

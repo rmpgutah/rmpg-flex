@@ -29,7 +29,8 @@ export type ModalMode =
   | 'edit_time_entry'
   | 'new_body_camera'
   | 'edit_body_camera'
-  | 'upload_video';
+  | 'upload_video'
+  | 'edit_video';
 
 export const MAIN_TABS: { id: MainTab; label: string; icon: React.ElementType }[] = [
   { id: 'roster', label: 'Roster', icon: Users },

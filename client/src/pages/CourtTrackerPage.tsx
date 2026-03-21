@@ -8,7 +8,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Gavel, Search, Plus, Calendar, Clock, User, MapPin,
-  X, Save, Loader2, AlertTriangle, CheckCircle, FileText,
+  X, Save, Loader2, AlertTriangle, CheckCircle, FileText, Scale,
 } from 'lucide-react';
 import type { CourtEvent, CourtEventType, CourtEventStatus, CourtOutcome } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -17,6 +17,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
+import { openUtahCourtsXChange } from '../utils/xchange';
 
 const EVENT_TYPES: { value: CourtEventType; label: string }[] = [
   { value: 'arraignment', label: 'Arraignment' }, { value: 'hearing', label: 'Hearing' },
@@ -240,6 +241,17 @@ export default function CourtTrackerPage() {
         {selected ? (
           <>
             <PanelTitleBar title={`${selected.event_number} — ${EVENT_TYPES.find(t => t.value === selected.event_type)?.label}`} icon={Gavel}>
+              <button
+                onClick={() => openUtahCourtsXChange({
+                  lastName: selected.defendant_name?.split(',')[0]?.trim() || selected.defendant_name?.split(' ').pop() || undefined,
+                  firstName: selected.defendant_name?.includes(',') ? selected.defendant_name.split(',')[1]?.trim() : selected.defendant_name?.split(' ')[0] || undefined,
+                  caseNumber: selected.court_case_number || undefined,
+                })}
+                className="toolbar-btn"
+                title="Search Utah Courts XChange"
+              >
+                <Scale style={{ width: 11, height: 11 }} /> Utah Courts
+              </button>
               {selected.status !== 'completed' && (
                 <button onClick={() => { setOutcomeData({ outcome: '', sentence: '', fine_amount: '' }); setOutcomeOpen(true); }} className="toolbar-btn toolbar-btn-primary">
                   <CheckCircle style={{ width: 11, height: 11 }} /> Record Outcome

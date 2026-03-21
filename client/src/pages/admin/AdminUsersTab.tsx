@@ -11,6 +11,7 @@ import {
   Ban,
   UserCheck,
   ShieldOff,
+  ShieldCheck,
 } from 'lucide-react';
 import type { User, UserRole } from '../../types';
 import type { UserFormData } from '../../components/UserFormModal';
@@ -262,6 +263,22 @@ export default function AdminUsersTab({
                     <ShieldOff className="w-3.5 h-3.5" /> Reset 2FA
                   </button>
                 ) : null}
+                <button
+                  onClick={() => {
+                    const current = !!(selectedUser as any).totp_exempt;
+                    apiFetch(`/admin/users/${selectedUser.id}/totp-exempt`, {
+                      method: 'PUT',
+                      body: JSON.stringify({ exempt: !current }),
+                    }).then(() => {
+                      (selectedUser as any).totp_exempt = !current;
+                      setSelectedUser({ ...selectedUser });
+                    }).catch(() => {});
+                  }}
+                  className={`toolbar-btn ${(selectedUser as any).totp_exempt ? 'text-green-400 hover:text-green-300 hover:bg-green-900/30' : 'text-rmpg-400 hover:text-rmpg-200 hover:bg-rmpg-700'}`}
+                  title={(selectedUser as any).totp_exempt ? 'User is exempt from mandatory 2FA — click to require' : 'Exempt user from mandatory 2FA'}
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" /> {(selectedUser as any).totp_exempt ? '2FA Exempt' : 'Exempt 2FA'}
+                </button>
                 <button
                   onClick={() => openDeleteUser(selectedUser)}
                   className="toolbar-btn text-red-400 hover:text-red-300 hover:bg-red-900/30"
