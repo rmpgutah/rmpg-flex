@@ -11,6 +11,16 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
 import { escapeLike, validateParamId } from '../middleware/sanitize';
+import type { NextFunction } from 'express';
+
+/** Validate Graph API string IDs (alphanumeric, hyphens, underscores, equals, plus). Blocks path traversal. */
+function validateGraphId(req: Request, res: Response, next: NextFunction) {
+  const id = req.params.id || req.params.aid;
+  if (!id || !/^[A-Za-z0-9_=+\-]{10,250}$/.test(id)) {
+    return res.status(400).json({ error: 'Invalid message ID' });
+  }
+  next();
+}
 import { localNow } from '../utils/timeUtils';
 import config from '../config';
 import {
@@ -222,7 +232,7 @@ router.get('/folders', async (req: Request, res: Response) => {
 });
 
 // GET /api/email/folders/:id/children — List child folders
-router.get('/folders/:id/children', async (req: Request, res: Response) => {
+router.get('/folders/:id/children', validateGraphId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.json([]); return; }
     const client = await getGraphClient();
@@ -260,7 +270,7 @@ router.post('/folders', async (req: Request, res: Response) => {
 });
 
 // PATCH /api/email/folders/:id — Rename a folder
-router.patch('/folders/:id', async (req: Request, res: Response) => {
+router.patch('/folders/:id', validateGraphId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
     const { displayName } = req.body;
@@ -277,7 +287,7 @@ router.patch('/folders/:id', async (req: Request, res: Response) => {
 });
 
 // DELETE /api/email/folders/:id — Delete a folder
-router.delete('/folders/:id', async (req: Request, res: Response) => {
+router.delete('/folders/:id', validateGraphId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
     const client = await getGraphClient();
@@ -490,7 +500,7 @@ router.post('/messages/mark-all-read', async (req: Request, res: Response) => {
 });
 
 // GET /api/email/messages/:id — Full message with body
-router.get('/messages/:id', async (req: Request, res: Response) => {
+router.get('/messages/:id', validateGraphId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) {
       res.status(503).json({ error: 'Email not authorized' });
@@ -541,7 +551,7 @@ router.get('/messages/:id', async (req: Request, res: Response) => {
 });
 
 // GET /api/email/messages/:id/attachments — List attachments
-router.get('/messages/:id/attachments', async (req: Request, res: Response) => {
+router.get('/messages/:id/attachments', validateGraphId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
 
@@ -566,7 +576,7 @@ router.get('/messages/:id/attachments', async (req: Request, res: Response) => {
 });
 
 // GET /api/email/messages/:id/attachments/:aid — Download attachment
-router.get('/messages/:id/attachments/:aid', async (req: Request, res: Response) => {
+router.get('/messages/:id/attachments/:aid', validateGraphId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
 
@@ -631,7 +641,7 @@ router.post('/send', async (req: Request, res: Response) => {
 });
 
 // POST /api/email/messages/:id/reply — Reply to message
-router.post('/messages/:id/reply', async (req: Request, res: Response) => {
+router.post('/messages/:id/reply', validateGraphId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
 
@@ -652,7 +662,7 @@ router.post('/messages/:id/reply', async (req: Request, res: Response) => {
 });
 
 // POST /api/email/messages/:id/reply-all — Reply all
-router.post('/messages/:id/reply-all', async (req: Request, res: Response) => {
+router.post('/messages/:id/reply-all', validateGraphId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
 
@@ -673,7 +683,7 @@ router.post('/messages/:id/reply-all', async (req: Request, res: Response) => {
 });
 
 // POST /api/email/messages/:id/forward — Forward message
-router.post('/messages/:id/forward', async (req: Request, res: Response) => {
+router.post('/messages/:id/forward', validateGraphId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
 
@@ -700,7 +710,7 @@ router.post('/messages/:id/forward', async (req: Request, res: Response) => {
 });
 
 // PATCH /api/email/messages/:id — Update message (read/unread, flag)
-router.patch('/messages/:id', async (req: Request, res: Response) => {
+router.patch('/messages/:id', validateGraphId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
 
@@ -732,7 +742,7 @@ router.patch('/messages/:id', async (req: Request, res: Response) => {
 });
 
 // DELETE /api/email/messages/:id — Move to trash
-router.delete('/messages/:id', async (req: Request, res: Response) => {
+router.delete('/messages/:id', validateGraphId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
 
@@ -756,7 +766,7 @@ router.delete('/messages/:id', async (req: Request, res: Response) => {
 });
 
 // POST /api/email/messages/:id/move — Move to folder
-router.post('/messages/:id/move', async (req: Request, res: Response) => {
+router.post('/messages/:id/move', validateGraphId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
 

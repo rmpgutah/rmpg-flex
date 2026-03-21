@@ -242,6 +242,46 @@ router.post('/leave/:id/deny', validateParamId, requireRole('admin', 'manager', 
   }
 });
 
+// Bulk approve multiple leave requests
+router.post('/leave/bulk-approve', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    const { ids, review_notes } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids array is required' });
+
+    const now = localNow();
+    let approved = 0;
+    const stmt = db.prepare(
+      `UPDATE leave_requests SET status = 'approved', reviewed_by = ?, reviewed_at = ?,
+       review_notes = ?, updated_at = ? WHERE id = ? AND status = 'pending'`
+    );
+
+    for (const id of ids) {
+      const result = stmt.run(user.id, now, review_notes || 'Bulk approved', now, Number(id));
+      if (result.changes > 0) {
+        approved++;
+        // Update balance
+        const req_row = db.prepare('SELECT * FROM leave_requests WHERE id = ?').get(Number(id)) as any;
+        if (req_row) {
+          const typeCol = `${req_row.type}_used`;
+          const validCols = ['vacation_used', 'sick_used', 'personal_used'];
+          if (validCols.includes(typeCol)) {
+            db.prepare(`UPDATE leave_balances SET ${typeCol} = ${typeCol} + ?, updated_at = ? WHERE officer_id = ? AND year = ?`)
+              .run(req_row.hours_requested, now, req_row.officer_id, new Date(req_row.start_date).getFullYear());
+          }
+        }
+        auditLog(req, 'UPDATE' as any, 'leave_request' as any, Number(id), `Leave request bulk approved`);
+      }
+    }
+
+    res.json({ success: true, approved, total: ids.length });
+  } catch (error: any) {
+    console.error('[HR] Bulk approve error:', error?.message);
+    res.status(500).json({ error: 'Failed to bulk approve' });
+  }
+});
+
 router.delete('/leave/:id', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();

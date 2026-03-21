@@ -222,7 +222,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
       evidence_ids, requesting_officer_id, requesting_officer_name,
       assigned_examiner_id, assigned_examiner_name, lab_location,
       synopsis, findings, conclusion, methodology, due_date,
-      started_date, completed_date, report_date, notes,
+      started_date, completed_date, report_date, notes, metadata,
     } = req.body;
 
     const now = localNow();
@@ -258,6 +258,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
         report_date = ?,
         turnaround_days = ?,
         notes = ?,
+        metadata = ?,
         updated_at = ?
       WHERE id = ?
     `).run(
@@ -279,6 +280,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
       report_date ?? existing.report_date,
       turnaround_days,
       notes ?? existing.notes,
+      metadata != null ? (typeof metadata === 'string' ? metadata : JSON.stringify(metadata)) : (existing.metadata || '{}'),
       now, req.params.id,
     );
 
@@ -1277,6 +1279,156 @@ router.get('/:id/links/summary', validateParamId, (req: Request, res: Response) 
     });
   } catch (error: any) {
     console.error('Link summary error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Chain of Custody
+// ═══════════════════════════════════════════════════════════════════════════════
+
+router.get('/cases/:id/custody', validateParamId, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const caseId = Number(req.params.id);
+
+    // Ensure table
+    const tbl = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='forensic_custody_log'`).get();
+    if (!tbl) {
+      db.prepare(`CREATE TABLE forensic_custody_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, case_id INTEGER NOT NULL,
+        action TEXT NOT NULL, from_user_id INTEGER, to_user_id INTEGER,
+        location TEXT, notes TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+      )`).run();
+      return res.json([]);
+    }
+
+    const entries = db.prepare(`
+      SELECT cl.*, fu.full_name as from_name, tu.full_name as to_name
+      FROM forensic_custody_log cl
+      LEFT JOIN users fu ON fu.id = cl.from_user_id
+      LEFT JOIN users tu ON tu.id = cl.to_user_id
+      WHERE cl.case_id = ? ORDER BY cl.created_at ASC
+    `).all(caseId);
+    res.json(entries);
+  } catch (error: any) {
+    console.error('Custody log error:', error?.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/cases/:id/custody', validateParamId, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const caseId = Number(req.params.id);
+    const user = (req as any).user;
+    const { action, to_user_id, notes, location } = req.body;
+    if (!action) return res.status(400).json({ error: 'action is required' });
+
+    const now = localNow();
+    const result = db.prepare(`
+      INSERT INTO forensic_custody_log (case_id, action, from_user_id, to_user_id, location, notes, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(caseId, action, user.id, to_user_id || null, location || null, notes || null, now);
+
+    const entry = db.prepare(`
+      SELECT cl.*, fu.full_name as from_name, tu.full_name as to_name
+      FROM forensic_custody_log cl LEFT JOIN users fu ON fu.id = cl.from_user_id
+      LEFT JOIN users tu ON tu.id = cl.to_user_id WHERE cl.id = ?
+    `).get(result.lastInsertRowid);
+
+    auditLog(req, 'CREATE' as any, 'forensic_custody' as any, result.lastInsertRowid, `Custody: ${action} for case ${caseId}`);
+    res.json(entry);
+  } catch (error: any) {
+    console.error('Custody create error:', error?.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Forensic Tool Inventory
+// ═══════════════════════════════════════════════════════════════════════════════
+
+router.get('/tools', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const tbl = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='forensic_tools'`).get();
+    if (!tbl) {
+      db.prepare(`CREATE TABLE forensic_tools (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, category TEXT NOT NULL,
+        serial_number TEXT, license_key TEXT, version TEXT, vendor TEXT,
+        purchase_date TEXT, license_expiry TEXT, status TEXT NOT NULL DEFAULT 'active',
+        assigned_to INTEGER, notes TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+      )`).run();
+      return res.json([]);
+    }
+    const tools = db.prepare(`
+      SELECT ft.*, u.full_name as assigned_to_name FROM forensic_tools ft
+      LEFT JOIN users u ON u.id = ft.assigned_to ORDER BY ft.category, ft.name
+    `).all();
+    res.json(tools);
+  } catch (error: any) {
+    console.error('Forensic tools error:', error?.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/tools', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { name, category, serial_number, license_key, version, vendor, purchase_date, license_expiry, status, assigned_to, notes } = req.body;
+    if (!name || !category) return res.status(400).json({ error: 'name and category required' });
+    const now = localNow();
+    const result = db.prepare(`
+      INSERT INTO forensic_tools (name, category, serial_number, license_key, version, vendor, purchase_date, license_expiry, status, assigned_to, notes, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(name, category, serial_number||null, license_key||null, version||null, vendor||null,
+      purchase_date||null, license_expiry||null, status||'active', assigned_to||null, notes||null, now, now);
+    const tool = db.prepare('SELECT * FROM forensic_tools WHERE id = ?').get(result.lastInsertRowid);
+    auditLog(req, 'CREATE' as any, 'forensic_tool' as any, result.lastInsertRowid, `Added tool: ${name}`);
+    res.json(tool);
+  } catch (error: any) {
+    console.error('Create tool error:', error?.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.put('/tools/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = Number(req.params.id);
+    const existing = db.prepare('SELECT * FROM forensic_tools WHERE id = ?').get(id) as any;
+    if (!existing) return res.status(404).json({ error: 'Tool not found' });
+    const fields: Record<string, any> = req.body;
+    const updates: string[] = []; const params: any[] = [];
+    for (const [k, v] of Object.entries(fields)) {
+      if (['name','category','serial_number','license_key','version','vendor','purchase_date','license_expiry','status','assigned_to','notes'].includes(k)) {
+        updates.push(`${k} = ?`); params.push(v);
+      }
+    }
+    if (!updates.length) return res.status(400).json({ error: 'No fields' });
+    updates.push('updated_at = ?'); params.push(localNow()); params.push(id);
+    db.prepare(`UPDATE forensic_tools SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+    res.json(db.prepare('SELECT * FROM forensic_tools WHERE id = ?').get(id));
+  } catch (error: any) {
+    console.error('Update tool error:', error?.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.delete('/tools/:id', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = Number(req.params.id);
+    const existing = db.prepare('SELECT * FROM forensic_tools WHERE id = ?').get(id) as any;
+    if (!existing) return res.status(404).json({ error: 'Tool not found' });
+    db.prepare('DELETE FROM forensic_tools WHERE id = ?').run(id);
+    auditLog(req, 'DELETE' as any, 'forensic_tool' as any, id, `Deleted tool: ${existing.name}`);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Delete tool error:', error?.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
