@@ -116,7 +116,7 @@ function formatDuration(seconds: number): string {
 }
 
 function hexToRgb(hex: string): [number, number, number] {
-  const clean = (hex || '#303030').replace('#', '');
+  const clean = (hex || '#1e3048').replace('#', '');
   return [
     parseInt(clean.substring(0, 2), 16) || 48,
     parseInt(clean.substring(2, 4), 16) || 48,

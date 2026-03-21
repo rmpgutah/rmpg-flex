@@ -65,10 +65,10 @@ const stepStatus: Record<LoginStep, { text: string; color: string }> = {
   username:           { text: 'AWAITING CREDENTIALS', color: '#d4a017' },
   password:           { text: 'AUTHENTICATING',       color: '#d4a017' },
   verify_2fa:         { text: '2FA VERIFICATION',     color: '#a855f7' },
-  setup_2fa:          { text: '2FA SETUP REQUIRED',   color: '#bc1010' },
-  confirm_setup_2fa:  { text: '2FA SETUP — VERIFY',   color: '#bc1010' },
+  setup_2fa:          { text: '2FA SETUP REQUIRED',   color: '#d4a017' },
+  confirm_setup_2fa:  { text: '2FA SETUP — VERIFY',   color: '#d4a017' },
   show_backup_codes:  { text: 'SAVE BACKUP CODES',    color: '#d4a017' },
-  password_change:    { text: 'PASSWORD CHANGE REQ.',  color: '#bc1010' },
+  password_change:    { text: 'PASSWORD CHANGE REQ.',  color: '#d4a017' },
   complete:           { text: 'AUTHENTICATED',         color: '#22c55e' },
 };
 

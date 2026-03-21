@@ -79,6 +79,7 @@ export type AuditAction =
   | 'warrant_updated'
   | 'warrant_served'
   | 'warrant_deleted'
+  | 'person_intel_search'
   | 'citation_created'
   | 'citation_updated'
   | 'citation_voided'

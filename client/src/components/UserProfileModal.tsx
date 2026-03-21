@@ -1297,7 +1297,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   <SecurityStatusCard />
 
                   {/* 2FA actions */}
-                  <div className="panel-beveled p-3" style={{ background: '#1a1a1a' }}>
+                  <div className="panel-beveled p-3" style={{ background: '#141e2b' }}>
                     <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">
                       Two-Factor Authentication
                     </h3>

@@ -40,6 +40,7 @@ import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../
 import CallCard from '../../components/CallCard';
 import UnitStatusBoard from '../../components/UnitStatusBoard';
 import DispositionPrompt from '../../components/DispositionPrompt';
+import WarrantAlertBanner, { type WarrantAlert } from '../../components/WarrantAlertBanner';
 import MileagePromptModal from '../../components/MileagePromptModal';
 import DispatchMiniMap from '../../components/DispatchMiniMap';
 import BoloAlertBanner from '../../components/BoloAlertBanner';
@@ -107,6 +108,7 @@ export default function DispatchPage() {
   const [filterTab, setFilterTab] = usePersistedTab('rmpg_dispatch_tab', 'all' as FilterTab, ['all', 'pending', 'active', 'cleared', 'archived', 'serve'] as const);
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showQuickPsoModal, setShowQuickPsoModal] = useState(false);
+  const [warrantAlerts, setWarrantAlerts] = useState<WarrantAlert[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [newNote, setNewNote] = useState('');
   const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -632,11 +634,20 @@ export default function DispatchPage() {
       announcePanicAlert(data.user_name || data.userName);
     });
 
-    // Listen for warrant alerts on linked persons
+    // Listen for warrant alerts on linked persons — persistent banner
     const unsubWarrant = subscribe('call:warrant_alert', (msg: any) => {
       const data = msg.data || msg;
-      addToast(`⚠️ WARRANT ALERT: ${data.personName} — ${data.warrantCount} active warrant(s) on call`, 'error');
-      // Refresh data so warrant badges appear immediately
+      const alert: WarrantAlert = {
+        id: `wa-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        callId: data.callId || data.call_id,
+        callNumber: data.callNumber || data.call_number,
+        personName: data.personName || 'Unknown',
+        severity: data.severity || null,
+        charge: data.charge || (data.warrantCount ? `${data.warrantCount} active warrant(s)` : undefined),
+        source: data.source,
+        receivedAt: Date.now(),
+      };
+      setWarrantAlerts(prev => [alert, ...prev].slice(0, 5)); // Keep max 5
       fetchData({ silent: true });
     });
 
@@ -2372,6 +2383,15 @@ export default function DispatchPage() {
   // ================================================================
   return (
     <div className="flex h-full relative">
+      {/* Warrant alert banners (floating overlay) */}
+      <WarrantAlertBanner
+        alerts={warrantAlerts}
+        onDismiss={(id) => setWarrantAlerts(prev => prev.filter(a => a.id !== id))}
+        onViewCall={(callId) => {
+          const call = calls.find((c: any) => c.id === callId || c.call_id === callId);
+          if (call) setSelectedCall(call);
+        }}
+      />
       {/* ============================================================ */}
       {/* LEFT PANEL - Call Queue (40%) */}
       {/* ============================================================ */}
