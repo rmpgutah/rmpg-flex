@@ -10,6 +10,7 @@ import {
   Briefcase, Calendar, Route, Navigation, Loader2, X,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useWebSocket } from '../context/WebSocketContext';
 import { loadGoogleMaps, DARK_MAP_STYLE } from '../utils/googleMapsLoader';

@@ -7,6 +7,7 @@ import { localNow } from '../utils/timeUtils';
 import { getConnectedClientCount } from '../utils/websocket';
 import { createNotification } from './notifications';
 import { sendNotificationEmail } from '../utils/emailSender';
+import { auditLog } from '../utils/auditLogger';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -597,6 +598,8 @@ router.post('/announcements', requireRole('admin', 'manager'), (req: Request, re
       VALUES (?, 'announcement_created', 'announcement', ?, ?, ?)
     `).run(req.user!.userId, result.lastInsertRowid, `Created announcement: ${title}`, req.ip || 'unknown');
 
+    auditLog(req, 'CREATE' as any, 'system_config' as any, result.lastInsertRowid, `Created announcement: ${title}`);
+
     res.status(201).json(announcement || { id: result.lastInsertRowid });
   } catch (error: any) {
     console.error('Create announcement error:', error?.message || 'Unknown error');
@@ -645,6 +648,9 @@ router.put('/announcements/:id', validateParamId, requireRole('admin', 'manager'
     db.prepare(`UPDATE system_announcements SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
 
     const updated = db.prepare('SELECT * FROM system_announcements WHERE id = ?').get(req.params.id);
+
+    auditLog(req, 'UPDATE' as any, 'system_config' as any, req.params.id, `Updated announcement #${req.params.id}`);
+
     res.json(updated);
   } catch (error: any) {
     console.error('Update announcement error:', error?.message || 'Unknown error');
@@ -668,6 +674,8 @@ router.delete('/announcements/:id', validateParamId, requireRole('admin'), (req:
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'announcement_deleted', 'announcement', ?, ?, ?)
     `).run(req.user!.userId, existing.id, `Deleted announcement: ${existing.title}`, req.ip || 'unknown');
+
+    auditLog(req, 'DELETE' as any, 'system_config' as any, existing.id, `Deleted announcement: ${existing.title}`);
 
     res.json({ message: 'Announcement deleted' });
   } catch (error: any) {
@@ -730,6 +738,9 @@ router.put('/retention/:id', validateParamId, requireRole('admin', 'manager'), (
     db.prepare(`UPDATE retention_policies SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
 
     const updated = db.prepare('SELECT * FROM retention_policies WHERE id = ?').get(req.params.id);
+
+    auditLog(req, 'UPDATE' as any, 'system_config' as any, req.params.id, `Updated retention policy #${req.params.id} for ${existing.entity_type}`);
+
     res.json(updated);
   } catch (error: any) {
     console.error('Update retention policy error:', error?.message || 'Unknown error');
@@ -820,6 +831,8 @@ router.post('/retention/run', requireRole('admin'), (req: Request, res: Response
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'retention_run', 'system', 0, ?, ?)
     `).run(req.user!.userId, `Retention policies executed: ${results.length} actions`, req.ip || 'unknown');
+
+    auditLog(req, 'UPDATE' as any, 'system_config' as any, 0, `Executed retention policies: ${results.length} actions`);
 
     res.json({ executed_at: now, results });
   } catch (error: any) {
@@ -956,6 +969,8 @@ router.post('/departments', requireRole('admin', 'manager'), (req: Request, res:
       VALUES (?, 'department_created', 'department', ?, ?, ?)
     `).run(req.user!.userId, result.lastInsertRowid, `Created department: ${name}`, req.ip || 'unknown');
 
+    auditLog(req, 'CREATE' as any, 'system_config' as any, result.lastInsertRowid, `Created department: ${name}`);
+
     res.status(201).json(department || { id: result.lastInsertRowid });
   } catch (error: any) {
     if (error.message?.includes('UNIQUE constraint')) {
@@ -1009,6 +1024,8 @@ router.put('/departments/:id', validateParamId, requireRole('admin', 'manager'),
       WHERE d.id = ?
     `).get(req.params.id);
 
+    auditLog(req, 'UPDATE' as any, 'system_config' as any, req.params.id, `Updated department #${req.params.id}`);
+
     res.json(updated);
   } catch (error: any) {
     if (error.message?.includes('UNIQUE constraint')) {
@@ -1052,6 +1069,8 @@ router.delete('/departments/:id', validateParamId, requireRole('admin'), (req: R
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'department_deleted', 'department', ?, ?, ?)
     `).run(req.user!.userId, existing.id, `Deleted department: ${existing.name}`, req.ip || 'unknown');
+
+    auditLog(req, 'DELETE' as any, 'system_config' as any, existing.id, `Deleted department: ${existing.name}`);
 
     res.json({ message: 'Department deleted' });
   } catch (error: any) {
@@ -1132,6 +1151,8 @@ router.post('/notification-rules', requireRole('admin', 'manager'), (req: Reques
       VALUES (?, 'notification_rule_created', 'notification_rule', ?, ?, ?)
     `).run(req.user!.userId, result.lastInsertRowid, `Created notification rule: ${name}`, req.ip || 'unknown');
 
+    auditLog(req, 'CREATE' as any, 'system_config' as any, result.lastInsertRowid, `Created notification rule: ${name}`);
+
     res.status(201).json(rule);
   } catch (error: any) {
     console.error('Create notification rule error:', error?.message || 'Unknown error');
@@ -1184,6 +1205,8 @@ router.put('/notification-rules/:id', validateParamId, requireRole('admin', 'man
       WHERE nr.id = ?
     `).get(req.params.id);
 
+    auditLog(req, 'UPDATE' as any, 'system_config' as any, req.params.id, `Updated notification rule #${req.params.id}`);
+
     res.json(updated);
   } catch (error: any) {
     console.error('Update notification rule error:', error?.message || 'Unknown error');
@@ -1207,6 +1230,8 @@ router.delete('/notification-rules/:id', validateParamId, requireRole('admin', '
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'notification_rule_deleted', 'notification_rule', ?, ?, ?)
     `).run(req.user!.userId, existing.id, `Deleted notification rule: ${existing.name}`, req.ip || 'unknown');
+
+    auditLog(req, 'DELETE' as any, 'system_config' as any, existing.id, `Deleted notification rule: ${existing.name}`);
 
     res.json({ message: 'Notification rule deleted' });
   } catch (error: any) {
@@ -1293,6 +1318,8 @@ router.post('/notification-rules/:id/test', validateParamId, requireRole('admin'
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'notification_rule_tested', 'notification_rule', ?, ?, ?)
     `).run(req.user!.userId, rule.id, `Test notification sent to ${sentCount} user(s) for rule: ${rule.name}`, req.ip || 'unknown');
+
+    auditLog(req, 'CREATE' as any, 'system_config' as any, rule.id, `Tested notification rule: ${rule.name} — sent to ${sentCount} user(s)`);
 
     res.json({ message: `Test notification sent to ${sentCount} user(s)`, sent_to: targetUserIds });
   } catch (error: any) {

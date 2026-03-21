@@ -11,6 +11,7 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { escapeLike, validateParamId } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 router.use(authenticateToken);
@@ -260,6 +261,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, 'create', 'dar', ?, ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ dar_number }), req.ip || 'unknown', now);
 
+    auditLog(req, 'CREATE' as any, 'dar' as any, result.lastInsertRowid, `Created DAR ${dar_number} for ${shift_date}`);
     res.status(201).json({ data: { id: result.lastInsertRowid, dar_number } });
   } catch (error: any) {
     console.error('Create DAR error:', error?.message || 'Unknown error');
@@ -292,6 +294,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     }
     params.push(req.params.id);
     db.prepare(`UPDATE daily_activity_reports SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+    auditLog(req, 'UPDATE' as any, 'dar' as any, req.params.id, `Updated DAR ${req.params.id}`);
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -309,6 +312,7 @@ router.put('/:id/submit', validateParamId, requireRole('admin', 'manager', 'supe
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, 'submit', 'dar', ?, '{}', ?, ?)`).run(req.user!.userId, req.params.id, req.ip || 'unknown', now);
 
+    auditLog(req, 'UPDATE' as any, 'dar' as any, req.params.id, `Submitted DAR ${req.params.id} for review`);
     res.json({ data: { id: parseInt(req.params.id as string, 10), status: 'submitted' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -329,6 +333,7 @@ router.put('/:id/approve', validateParamId, requireRole('admin', 'manager', 'sup
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, 'approve', 'dar', ?, '{}', ?, ?)`).run(req.user!.userId, req.params.id, req.ip || 'unknown', now);
 
+    auditLog(req, 'UPDATE' as any, 'dar' as any, req.params.id, `Approved DAR ${req.params.id}`);
     res.json({ data: { id: parseInt(req.params.id as string, 10), status: 'approved' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -348,6 +353,7 @@ router.put('/:id/return', validateParamId, requireRole('admin', 'manager', 'supe
       reviewed_by_name = ?, reviewed_at = ?, review_notes = ?, updated_at = ? WHERE id = ?`)
       .run(req.user!.userId, user?.full_name || '', now, review_notes, now, req.params.id);
 
+    auditLog(req, 'UPDATE' as any, 'dar' as any, req.params.id, `Returned DAR ${req.params.id} for revision`);
     res.json({ data: { id: parseInt(req.params.id as string, 10), status: 'returned' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });

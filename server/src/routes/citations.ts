@@ -461,6 +461,55 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
   }
 });
 
+// ─── GET /api/citations/export/csv ───────────────────────
+// Export all non-voided citations as a CSV download
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT citation_number, issuing_officer_name, person_name,
+             violation_description, violation_date, location, fine_amount, status
+      FROM citations
+      WHERE status != 'voided'
+      ORDER BY violation_date DESC, id DESC
+    `).all() as any[];
+
+    const headers = ['citation_number', 'officer_name', 'violator_name', 'violation', 'date', 'location', 'fine_amount', 'status'];
+
+    // Escape CSV field: wrap in quotes if it contains comma, quote, or newline
+    const escapeField = (val: any): string => {
+      if (val == null) return '';
+      const str = String(val);
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return '"' + str.replace(/"/g, '""') + '"';
+      }
+      return str;
+    };
+
+    const csvLines = [headers.join(',')];
+    for (const row of rows) {
+      csvLines.push([
+        escapeField(row.citation_number),
+        escapeField(row.issuing_officer_name),
+        escapeField(row.person_name),
+        escapeField(row.violation_description),
+        escapeField(row.violation_date),
+        escapeField(row.location),
+        escapeField(row.fine_amount),
+        escapeField(row.status),
+      ].join(','));
+    }
+
+    const csv = csvLines.join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename=citations-export.csv');
+    res.send(csv);
+  } catch (error: any) {
+    console.error('Citation CSV export error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── DELETE /api/citations/:id ────────────────────────────
 // Soft-delete: sets status to 'voided'
 router.delete('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {

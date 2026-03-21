@@ -3,6 +3,7 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
+import { broadcast } from '../utils/websocket';
 
 const router = Router();
 
@@ -238,7 +239,9 @@ router.post('/shift-plans', requireRole('admin', 'manager', 'supervisor'), (req:
       WHERE sp.id = ?
     `).get(id) as any;
 
-    res.status(existing ? 200 : 201).json(parseAssignments(plan));
+    const parsed = parseAssignments(plan);
+    broadcast('admin', existing ? 'shiftPlan:updated' : 'shiftPlan:created', parsed);
+    res.status(existing ? 200 : 201).json(parsed);
   } catch (error: any) {
     console.error('Create/upsert shift plan error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -297,7 +300,9 @@ router.put('/shift-plans/:id', validateParamId, requireRole('admin', 'manager', 
     `).get(req.params.id) as any;
 
     if (!updated) return res.status(404).json({ error: 'Shift plan not found after update' });
-    res.json(parseAssignments(updated));
+    const parsed = parseAssignments(updated);
+    broadcast('admin', 'shiftPlan:updated', parsed);
+    res.json(parsed);
   } catch (error: any) {
     console.error('Update shift plan error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -323,6 +328,7 @@ router.delete('/shift-plans/:id', validateParamId, requireRole('admin', 'manager
       VALUES (?, 'shift_plan_deleted', 'shift_plan', ?, ?, ?)
     `).run(req.user!.userId, existing.id, `Deleted shift plan: ${existing.name}`, req.ip || 'unknown');
 
+    broadcast('admin', 'shiftPlan:deleted', { id: req.params.id });
     res.json({ message: 'Shift plan deleted' });
   } catch (error: any) {
     console.error('Delete shift plan error:', error?.message || 'Unknown error');
@@ -368,7 +374,9 @@ router.post('/shift-plans/:id/activate', validateParamId, requireRole('admin', '
       WHERE sp.id = ?
     `).get(req.params.id) as any;
 
-    res.json(parseAssignments(updated));
+    const parsed = parseAssignments(updated);
+    broadcast('admin', 'shiftPlan:activated', parsed);
+    res.json(parsed);
   } catch (error: any) {
     console.error('Activate shift plan error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });

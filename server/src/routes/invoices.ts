@@ -11,6 +11,7 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { escapeLike, validateParamId } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 router.use(authenticateToken);
@@ -322,6 +323,7 @@ router.post('/', requireRole('admin', 'manager', 'contract_manager'), (req: Requ
       'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
     ).run(user.userId, 'invoice_created', 'invoice', result.lastInsertRowid, `Created invoice ${invoice_number} for client ${client.name}`, req.ip || 'unknown', now);
 
+    auditLog(req, 'CREATE' as any, 'invoice' as any, result.lastInsertRowid, `Created invoice ${invoice_number} for client ${client.name}`);
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(result.lastInsertRowid);
     if (!invoice) { res.status(500).json({ error: 'Failed to retrieve created invoice' }); return; }
     res.status(201).json({ data: invoice });
@@ -544,6 +546,7 @@ router.post('/:id/generate', validateParamId, requireRole('admin', 'manager', 'c
       'SELECT * FROM invoice_line_items WHERE invoice_id = ? ORDER BY sort_order, id'
     ).all(invoice.id);
 
+    auditLog(req, 'UPDATE' as any, 'invoice' as any, req.params.id, `Auto-generated ${count} line items for invoice ${invoice.invoice_number}`);
     res.json({ data: { ...updated, line_items }, generated: count });
   } catch (error: any) {
     console.error('Invoice generate error:', error?.message || 'Unknown error');
@@ -598,6 +601,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'contract_ma
       'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
     ).run(user.userId, 'invoice_updated', 'invoice', req.params.id, `Updated invoice ${invoice.invoice_number}`, req.ip || 'unknown', now);
 
+    auditLog(req, 'UPDATE' as any, 'invoice' as any, req.params.id, `Updated invoice ${invoice.invoice_number}`);
     const updated = db.prepare(`
       SELECT i.*, c.name as client_name FROM invoices i
       LEFT JOIN clients c ON i.client_id = c.id WHERE i.id = ?
@@ -662,6 +666,7 @@ router.put('/:id/status', validateParamId, requireRole('admin', 'manager'), (req
       'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
     ).run(user.userId, 'invoice_status_changed', 'invoice', req.params.id, `Status: ${invoice.status} → ${status}`, req.ip || 'unknown', now);
 
+    auditLog(req, 'UPDATE' as any, 'invoice' as any, req.params.id, `Invoice status changed from ${invoice.status} to ${status}`);
     const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
     res.json({ data: updated });
   } catch (error: any) {
@@ -700,6 +705,7 @@ router.post('/:id/line-items', validateParamId, requireRole('admin', 'manager', 
 
     recalculateInvoiceTotals(req.params.id);
 
+    auditLog(req, 'CREATE' as any, 'invoice_line_item' as any, result.lastInsertRowid, `Added line item to invoice ${req.params.id}: ${description}`);
     const item = db.prepare('SELECT * FROM invoice_line_items WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json({ data: item || { id: result.lastInsertRowid } });
   } catch (error: any) {
@@ -740,6 +746,7 @@ router.put('/:id/line-items/:itemId', validateParamId, requireRole('admin', 'man
 
     recalculateInvoiceTotals(req.params.id);
 
+    auditLog(req, 'UPDATE' as any, 'invoice_line_item' as any, req.params.itemId, `Updated line item ${req.params.itemId} on invoice ${req.params.id}`);
     const updated = db.prepare('SELECT * FROM invoice_line_items WHERE id = ?').get(req.params.itemId);
     res.json({ data: updated });
   } catch (error: any) {
@@ -759,6 +766,7 @@ router.delete('/:id/line-items/:itemId', validateParamId, requireRole('admin', '
 
     db.prepare('DELETE FROM invoice_line_items WHERE id = ?').run(req.params.itemId);
     recalculateInvoiceTotals(req.params.id);
+    auditLog(req, 'DELETE' as any, 'invoice_line_item' as any, req.params.itemId, `Deleted line item ${req.params.itemId} from invoice ${req.params.id}`);
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete line item error:', error?.message || 'Unknown error');
@@ -804,6 +812,7 @@ router.post('/:id/payments', validateParamId, requireRole('admin', 'manager'), (
       'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
     ).run(user.userId, 'payment_recorded', 'invoice', req.params.id, `Payment of $${amount} recorded on invoice ${invoice.invoice_number}`, req.ip || 'unknown', now);
 
+    auditLog(req, 'CREATE' as any, 'payment' as any, result.lastInsertRowid, `Recorded payment of $${amount} on invoice ${invoice.invoice_number}`);
     const payment = db.prepare(`
       SELECT p.*, u.full_name as recorded_by_name
       FROM payments p LEFT JOIN users u ON p.recorded_by = u.id
@@ -846,6 +855,7 @@ router.delete('/:id/payments/:paymentId', validateParamId, requireRole('admin', 
       'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
     ).run(user.userId, 'payment_reversed', 'invoice', req.params.id, `Payment of $${payment.amount} reversed on invoice ${updated.invoice_number}`, req.ip || 'unknown', now);
 
+    auditLog(req, 'DELETE' as any, 'payment' as any, req.params.paymentId, `Reversed payment of $${payment.amount} on invoice ${updated.invoice_number}`);
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete payment error:', error?.message || 'Unknown error');

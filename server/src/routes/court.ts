@@ -11,6 +11,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 import { escapeLike, validateParamId } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
+import { broadcast } from '../utils/websocket';
 
 const router = Router();
 router.use(authenticateToken);
@@ -146,6 +147,13 @@ router.post('/events', requireRole('admin', 'manager', 'supervisor', 'officer'),
       defendant_person_id, defendant_name, prosecutor, defense_attorney,
       officers_required, notes } = req.body;
     if (!event_type || !event_date) return res.status(400).json({ error: 'Event type and date required' });
+    if (court_case_number !== undefined && court_case_number !== null && typeof court_case_number !== 'string') {
+      return res.status(400).json({ error: 'court_case_number must be a string' });
+    }
+    const validEventTypes = ['arraignment', 'pretrial', 'trial', 'sentencing', 'hearing', 'motion', 'deposition', 'other'];
+    if (!validEventTypes.includes(event_type)) {
+      return res.status(400).json({ error: `event_type must be one of: ${validEventTypes.join(', ')}` });
+    }
 
     // Wrap sequence generation + INSERT in a transaction to prevent duplicate event numbers
     const createEvent = db.transaction(() => {
@@ -169,6 +177,7 @@ router.post('/events', requireRole('admin', 'manager', 'supervisor', 'officer'),
     const { result, event_number } = createEvent();
 
     auditLog(req, 'CREATE', 'court_event', Number(result.lastInsertRowid), 'Created court event');
+    broadcast('records', 'courtEvent:created', { id: result.lastInsertRowid, event_number, event_type, event_date });
     res.status(201).json({ data: { id: result.lastInsertRowid, event_number } });
   } catch (error: any) {
     console.error('Create court event error:', error?.message || 'Unknown error');
@@ -199,6 +208,7 @@ router.put('/events/:id', validateParamId, requireRole('admin', 'manager', 'supe
     params.push(req.params.id);
     db.prepare(`UPDATE court_events SET ${updates.join(', ')} WHERE id = ?`).run(...params);
     auditLog(req, 'UPDATE', 'court_event', String(req.params.id), `Updated court event #${req.params.id}`);
+    broadcast('records', 'courtEvent:updated', { id: parseInt(req.params.id as string, 10) });
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -217,6 +227,7 @@ router.put('/events/:id/outcome', validateParamId, requireRole('admin', 'manager
     `).run(outcome, sentence || null, fine_amount ?? null, notes || null, now, req.params.id);
 
     auditLog(req, 'UPDATE', 'court_event', String(req.params.id), `Recorded court event outcome #${req.params.id}`);
+    broadcast('records', 'courtEvent:updated', { id: parseInt(req.params.id as string, 10), outcome, status: 'completed' });
     res.json({ data: { id: parseInt(req.params.id as string, 10), outcome } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });

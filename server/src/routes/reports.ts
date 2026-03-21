@@ -6,6 +6,7 @@ import { identifyBeat } from '../utils/geofence';
 import { listDailyReports, getReportPath, generateAndSaveDailyReport } from '../utils/dailyReportGenerator';
 import { localToday } from '../utils/timeUtils';
 import { escapeLike, quoteIdent } from '../middleware/sanitize';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 
@@ -883,6 +884,7 @@ router.post('/custom', requireRole('admin', 'manager'), (req: Request, res: Resp
     params.push(safeLimit);
 
     const rows = db.prepare(sql).all(...params);
+    auditLog(req, 'CREATE' as any, 'report' as any, 0, `Ran custom report on ${source} (${rows.length} rows)`);
     res.json({ data: rows, columns: selectedCols, count: rows.length, sql: sql.replace(/\?/g, '…') });
   } catch (error: any) {
     console.error('Custom report error:', error?.message || 'Unknown error');
@@ -1449,6 +1451,7 @@ router.post('/daily-reports/generate', requireRole('admin'), async (req: Request
       res.json({ ok: false, message: 'No breadcrumb data for specified date' });
       return;
     }
+    auditLog(req, 'CREATE' as any, 'report' as any, 0, `Generated daily report: ${filename}`);
     res.json({ ok: true, filename });
   } catch (error: any) {
     console.error('Generate daily report error:', error?.message || 'Unknown error');

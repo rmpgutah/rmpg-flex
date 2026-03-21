@@ -5,6 +5,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { validateParamId } from '../middleware/sanitize';
 import { sendCsv } from '../utils/csvExport';
 import { localNow } from '../utils/timeUtils';
+import { broadcast } from '../utils/websocket';
 
 const router = Router();
 
@@ -61,6 +62,15 @@ router.post('/checkpoints', requireRole('admin', 'manager', 'supervisor'), (req:
       return;
     }
 
+    if (latitude !== undefined && latitude !== null && (typeof latitude !== 'number' || isNaN(latitude))) {
+      res.status(400).json({ error: 'latitude must be a valid number' });
+      return;
+    }
+    if (longitude !== undefined && longitude !== null && (typeof longitude !== 'number' || isNaN(longitude))) {
+      res.status(400).json({ error: 'longitude must be a valid number' });
+      return;
+    }
+
     const db = getDb();
     const qr_code = crypto.randomUUID();
 
@@ -100,6 +110,7 @@ router.post('/checkpoints', requireRole('admin', 'manager', 'supervisor'), (req:
       localNow()
     );
 
+    broadcast('patrol', 'checkpoint:created', checkpoint);
     res.status(201).json(checkpoint);
   } catch (error: any) {
     console.error('Error creating checkpoint:', error?.message || 'Unknown error');
@@ -158,6 +169,7 @@ router.put('/checkpoints/:id', validateParamId, requireRole('admin', 'manager', 
       WHERE pc.id = ?
     `).get(id);
 
+    broadcast('patrol', 'checkpoint:updated', updated);
     res.json(updated);
   } catch (error: any) {
     console.error('Error updating checkpoint:', error?.message || 'Unknown error');
@@ -190,6 +202,7 @@ router.delete('/checkpoints/:id', validateParamId, requireRole('admin', 'manager
       localNow()
     );
 
+    broadcast('patrol', 'checkpoint:deleted', { id: Number(id) });
     res.json({ message: 'Checkpoint deleted successfully' });
   } catch (error: any) {
     console.error('Error deleting checkpoint:', error?.message || 'Unknown error');
@@ -213,6 +226,7 @@ router.post('/checkpoints/:id/archive', validateParamId, requireRole('admin', 'm
       req.user!.userId, checkpoint.id, `Archived checkpoint: ${checkpoint.name}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT pc.*, p.name as property_name FROM patrol_checkpoints pc LEFT JOIN properties p ON pc.property_id = p.id WHERE pc.id = ?').get(checkpoint.id);
+    broadcast('patrol', 'checkpoint:updated', updated);
     res.json(updated);
   } catch (error: any) {
     console.error('Archive checkpoint error:', error?.message || 'Unknown error');
@@ -235,6 +249,7 @@ router.post('/checkpoints/:id/unarchive', validateParamId, requireRole('admin', 
       req.user!.userId, checkpoint.id, `Unarchived checkpoint: ${checkpoint.name}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT pc.*, p.name as property_name FROM patrol_checkpoints pc LEFT JOIN properties p ON pc.property_id = p.id WHERE pc.id = ?').get(checkpoint.id);
+    broadcast('patrol', 'checkpoint:updated', updated);
     res.json(updated);
   } catch (error: any) {
     console.error('Unarchive checkpoint error:', error?.message || 'Unknown error');
@@ -312,7 +327,9 @@ router.post('/scan', requireRole('admin', 'manager', 'supervisor', 'officer'), (
       localNow()
     );
 
-    res.status(201).json({ ...(scan as any), checkpoint_name: checkpoint.name, status });
+    const scanData = { ...(scan as any), checkpoint_name: checkpoint.name, status };
+    broadcast('patrol', 'patrol:scanned', scanData);
+    res.status(201).json(scanData);
   } catch (error: any) {
     console.error('Error recording scan:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to record scan' });

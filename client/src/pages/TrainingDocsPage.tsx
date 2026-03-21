@@ -18,6 +18,7 @@ import {
 } from '../hooks/useApi';
 import { authUrl } from '../components/FileAttachments';
 import type { CompanyDocCategory } from '../types';
+import { useToast } from '../components/ToastProvider';
 
 // ── Category config ─────────────────────────────────────────
 const CATEGORIES: { key: CompanyDocCategory | 'all'; label: string }[] = [

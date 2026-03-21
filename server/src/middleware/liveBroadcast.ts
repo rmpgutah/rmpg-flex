@@ -31,6 +31,13 @@ const PATH_TO_CHANNEL: Record<string, string> = {
   '/api/court': 'records',
   '/api/dar': 'admin',
   '/api/offender-registry': 'records',
+  '/api/arrests': 'arrests',
+  '/api/sex-offender-registry': 'sex_offenders',
+  '/api/process-server': 'serve',
+  '/api/forensic-lab': 'forensic',
+  '/api/reports': 'incidents',
+  '/api/company-documents': 'training',
+  '/api/skiptracer': 'skiptracer',
 };
 
 // Methods that mutate data

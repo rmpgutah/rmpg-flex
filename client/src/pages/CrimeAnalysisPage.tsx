@@ -15,6 +15,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useToast } from '../components/ToastProvider';
 
 export default function CrimeAnalysisPage() {
   const isMobile = useIsMobile();

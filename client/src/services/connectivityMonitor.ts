@@ -73,7 +73,6 @@ class BrowserConnectivityMonitor {
     // so we can increase the interval during extended outages to save bandwidth)
     this.scheduleNextPoll();
 
-    console.log(`[CONNECTIVITY] Monitoring started (base poll every ${this.pollInterval / 1000}s)`);
   }
 
   private scheduleNextPoll(): void {
@@ -107,7 +106,6 @@ class BrowserConnectivityMonitor {
     window.removeEventListener('offline', this.handleOffline);
     document.removeEventListener('visibilitychange', this.handleVisibility);
 
-    console.log('[CONNECTIVITY] Monitoring stopped');
   }
 
   /** Subscribe to connectivity changes */
@@ -124,7 +122,6 @@ class BrowserConnectivityMonitor {
   // ─── Internal ────────────────────────────────────────────
 
   private onBrowserOnline(): void {
-    console.log('[CONNECTIVITY] Browser online event');
     // Trigger rapid sequential checks to confirm connectivity quickly.
     // Officers returning from dead zones need fast online transition
     // rather than waiting for stableCount * pollInterval (30s default).
@@ -145,13 +142,11 @@ class BrowserConnectivityMonitor {
   }
 
   private onBrowserOffline(): void {
-    console.log('[CONNECTIVITY] Browser offline event');
     // Immediately transition — navigator.onLine is reliable for offline
     if (this.isOnline) {
       this.isOnline = false;
       this.consecutiveState = 0;
       this.pendingState = false;
-      console.log('[CONNECTIVITY] State changed: ONLINE -> OFFLINE');
       this.notifyListeners(false);
     }
   }
@@ -187,10 +182,6 @@ class BrowserConnectivityMonitor {
     if (this.consecutiveState >= this.stableCount && reachable !== this.isOnline) {
       const wasOnline = this.isOnline;
       this.isOnline = reachable;
-
-      console.log(
-        `[CONNECTIVITY] State changed: ${wasOnline ? 'ONLINE' : 'OFFLINE'} -> ${reachable ? 'ONLINE' : 'OFFLINE'}`
-      );
 
       this.notifyListeners(reachable);
     }

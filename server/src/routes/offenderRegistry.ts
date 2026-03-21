@@ -10,6 +10,7 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
 import { escapeLike, validateParamId } from '../middleware/sanitize';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 router.use(authenticateToken);
@@ -151,6 +152,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, r
       VALUES (?, 'create', 'offender_alert', ?, ?, ?, ?)`).run(
       req.user!.userId, result.lastInsertRowid, JSON.stringify({ person_id, alert_type, severity }), req.ip || 'unknown', now);
 
+    auditLog(req, 'CREATE' as any, 'offender_alert' as any, result.lastInsertRowid, `Created ${severity} ${alert_type} alert for person ${person_id}`);
     res.status(201).json({ data: { id: result.lastInsertRowid } });
   } catch (error: any) {
     console.error('Create offender alert error:', error?.message || 'Unknown error');
@@ -186,6 +188,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
 
     params.push(id);
     db.prepare(`UPDATE offender_alerts SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+    auditLog(req, 'UPDATE' as any, 'offender_alert' as any, id, `Updated offender alert ${id}`);
     res.json({ data: { id } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -206,6 +209,7 @@ router.put('/:id/clear', validateParamId, requireRole('admin', 'manager', 'super
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, 'clear', 'offender_alert', ?, '{}', ?, ?)`).run(req.user!.userId, id, req.ip || 'unknown', now);
 
+    auditLog(req, 'UPDATE' as any, 'offender_alert' as any, id, `Cleared offender alert ${id}`);
     res.json({ data: { id, status: 'cleared' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });

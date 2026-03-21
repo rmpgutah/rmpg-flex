@@ -118,7 +118,6 @@ function selectFemaleVoice(): SpeechSynthesisVoice | null {
     const match = voices.find(test);
     if (match) {
       cachedVoice = match;
-      console.log(`[VoiceAlerts] Selected voice: "${match.name}" (${match.lang})`);
       return cachedVoice;
     }
   }
@@ -126,7 +125,6 @@ function selectFemaleVoice(): SpeechSynthesisVoice | null {
   // Ultimate fallback — guard against empty voices array
   if (voices.length > 0) {
     cachedVoice = voices[0];
-    console.log(`[VoiceAlerts] Fallback voice: "${voices[0].name}" (${voices[0].lang})`);
   }
   return cachedVoice;
 }
@@ -640,7 +638,6 @@ export async function demoAllVoiceAlerts(): Promise<void> {
   ];
 
   for (const group of groups) {
-    console.log(`[VoiceAlerts Demo] ── ${group.label} ──`);
     await playToneAsync(group.tone);
     await delay(TONE_GAP_MS);
 
@@ -653,7 +650,6 @@ export async function demoAllVoiceAlerts(): Promise<void> {
     await delay(800);
   }
 
-  console.log('[VoiceAlerts Demo] ── Complete ──');
 }
 
 // ─── Helpers ────────────────────────────────────────────────

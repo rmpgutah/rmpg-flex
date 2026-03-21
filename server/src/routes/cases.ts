@@ -12,6 +12,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 import { generateCaseNumber } from '../utils/caseNumbers';
 import { validateParamId, escapeLike } from '../middleware/sanitize';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 router.use(authenticateToken);
@@ -136,6 +137,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
     });
 
     const caseData = createCase();
+    auditLog(req, 'CREATE' as any, 'case' as any, caseData.id, `Created case ${caseData.case_number}`);
     res.status(201).json({ data: caseData });
   } catch (error: any) {
     console.error('Create case error:', error?.message || 'Unknown error');
@@ -171,6 +173,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, 'update', 'case', ?, ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ fields: Object.keys(req.body) }), req.ip || 'unknown', now);
 
+    auditLog(req, 'UPDATE' as any, 'case' as any, req.params.id, `Updated case fields: ${Object.keys(req.body).join(', ')}`);
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) {
     console.error('Update case error:', error?.message || 'Unknown error');
@@ -201,6 +204,7 @@ router.put('/:id/status', validateParamId, requireRole('admin', 'manager', 'supe
       VALUES (?, 'status_change', 'case', ?, ?, ?, ?)`).run(
       req.user!.userId, req.params.id, JSON.stringify({ from: existing.status, to: status }), req.ip || 'unknown', now);
 
+    auditLog(req, 'UPDATE' as any, 'case' as any, req.params.id, `Case status changed from ${existing.status} to ${status}`);
     res.json({ data: { id: parseInt(req.params.id as string, 10), status } });
   } catch (error: any) {
     console.error('Update case status error:', error?.message || 'Unknown error');
@@ -223,6 +227,7 @@ router.post('/:id/notes', validateParamId, requireRole('admin', 'manager', 'supe
     `).run(req.params.id, req.user!.userId, user?.full_name || '', note_type, content, now);
 
     db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(now, req.params.id);
+    auditLog(req, 'CREATE' as any, 'case_note' as any, result.lastInsertRowid, `Added ${note_type} note to case ${req.params.id}`);
     res.status(201).json({ data: { id: result.lastInsertRowid } });
   } catch (error: any) {
     console.error('Create case note error:', error?.message || 'Unknown error');
@@ -264,6 +269,7 @@ router.post('/:id/calculate-solvability', validateParamId, requireRole('admin', 
     db.prepare('UPDATE cases SET solvability_score = ?, solvability_factors = ?, updated_at = ? WHERE id = ?')
       .run(score, JSON.stringify(factors), now, req.params.id);
 
+    auditLog(req, 'UPDATE' as any, 'case' as any, req.params.id, `Calculated solvability score: ${score}`);
     res.json({ data: { score, factors } });
   } catch (error: any) {
     console.error('Calculate solvability error:', error?.message || 'Unknown error');

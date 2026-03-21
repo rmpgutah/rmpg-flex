@@ -18,6 +18,7 @@ import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import ExportButton from '../components/ExportButton';
 import { localToday } from '../utils/dateUtils';
+import { useToast } from '../components/ToastProvider';
 
 interface AuditLogEntry {
   id: number;

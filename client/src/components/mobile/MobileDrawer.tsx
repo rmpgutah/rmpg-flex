@@ -42,6 +42,16 @@ import {
   Calendar,
   ShieldBan,
   UserCog,
+  Video,
+  Camera,
+  IdCard,
+  Crosshair,
+  UserSearch,
+  Microscope,
+  BookOpen,
+  Scale,
+  Contact,
+  Siren,
 } from 'lucide-react';
 import RmpgLogo from '../RmpgLogo';
 import { toDisplayLabel } from '../../utils/formatters';
@@ -91,6 +101,8 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/map', icon: Map, label: 'Map' },
       { path: '/mdt', icon: Monitor, label: 'MDT' },
       { path: '/ncic', icon: Terminal, label: 'NCIC' },
+      { path: '/body-cameras', icon: Video, label: 'Body Cameras' },
+      { path: '/dash-cameras', icon: Camera, label: 'Dash Cameras' },
     ],
   },
   {
@@ -100,9 +112,10 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/records', icon: Database, label: 'Records' },
       { path: '/field-interviews', icon: ClipboardList, label: 'Field Interviews' },
       { path: '/criminal-history', icon: Search, label: 'Criminal History' },
+      { path: '/arrest-records', icon: Siren, label: 'Arrest Records' },
       { path: '/evidence', icon: Package, label: 'Evidence / Property' },
       { path: '/cases', icon: Briefcase, label: 'Cases' },
-      { path: '/forensic-lab', icon: Search, label: 'Forensic Lab' },
+      { path: '/dl-search', icon: IdCard, label: 'DL Search' },
     ],
   },
   {
@@ -115,6 +128,8 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
       { path: '/court', icon: Gavel, label: 'Court Tracker' },
       { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
+      { path: '/sex-offender-registry', icon: ShieldAlert, label: 'Sex Offender Registry' },
+      { path: '/skip-tracer', icon: Crosshair, label: 'Skip Tracer' },
     ],
   },
   {
@@ -141,8 +156,12 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/shift-plans', icon: Calendar, label: 'Shift Plans' },
       { path: '/crime-analysis', icon: TrendingUp, label: 'Crime Analysis' },
       { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
-      { path: '/forensic-lab', icon: Shield, label: 'Forensic Lab' },
+      { path: '/forensic-lab', icon: Microscope, label: 'Forensic Lab' },
+      { path: '/forensics', icon: Search, label: 'Forensics' },
       { path: '/training', icon: ClipboardCheck, label: 'Training' },
+      { path: '/training-docs', icon: BookOpen, label: 'Training Docs' },
+      { path: '/statute-analytics', icon: Scale, label: 'Statute Analytics' },
+      { path: '/crm', icon: Contact, label: 'CRM' },
     ],
   },
   {
@@ -158,7 +177,9 @@ const NAV_GROUPS: NavGroup[] = [
 const CLIENT_VIEWER_BLOCKED_PATHS = new Set([
   '/admin', '/audit', '/personnel', '/fleet', '/ncic',
   '/radio', '/patrol', '/shift-plans', '/statute-analytics',
-  '/reports/custom', '/crime-analysis', '/dar',
+  '/reports/custom', '/crime-analysis', '/dar', '/hr',
+  '/body-cameras', '/dash-cameras', '/dl-search', '/skip-tracer',
+  '/arrest-records', '/forensic-lab', '/forensics', '/training-docs',
 ]);
 
 // ─── Component ───────────────────────────────────────────────

@@ -17,6 +17,7 @@ import {
   Calendar, Building, Scale,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useLiveSync } from '../hooks/useLiveSync';
 import PanelTitleBar from '../components/PanelTitleBar';
 import EmptyState from '../components/EmptyState';
 import SplitPanel from '../components/SplitPanel';

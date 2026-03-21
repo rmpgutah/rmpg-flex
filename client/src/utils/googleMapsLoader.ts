@@ -61,7 +61,6 @@ export function loadGoogleMaps(apiKey: string): Promise<void> {
       console.warn('[GoogleMapsLoader] Device offline — waiting for connectivity...');
       const onOnline = () => {
         window.removeEventListener('online', onOnline);
-        console.log('[GoogleMapsLoader] Back online — loading Google Maps');
         doScriptLoad(apiKey, resolve, reject);
       };
       window.addEventListener('online', onOnline);
@@ -159,7 +158,6 @@ export function onOnlineRetryMaps(apiKey: string, callback: () => void): () => v
   const handler = () => {
     // Only retry if maps aren't already loaded
     if (gmapsReady()) return;
-    console.log('[GoogleMapsLoader] Device back online — auto-retrying maps load');
     _gmapsLoadPromise = null; // reset so loadGoogleMaps will try again
     loadGoogleMaps(apiKey)
       .then(callback)

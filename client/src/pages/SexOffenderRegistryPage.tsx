@@ -17,6 +17,7 @@ import type { SexOffenderRecord, SORAddress, SOROffense, SORVehicle, SORTier, SO
 import PanelTitleBar from '../components/PanelTitleBar';
 import SplitPanel from '../components/SplitPanel';
 import { apiFetch } from '../hooks/useApi';
+import { useLiveSync } from '../hooks/useLiveSync';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 

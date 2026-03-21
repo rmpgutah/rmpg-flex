@@ -16,6 +16,7 @@ import {
 import { apiFetch } from '../hooks/useApi';
 import SplitPanel from '../components/SplitPanel';
 import type { GraphNode, GraphEdge, ConnectionGraph } from '../types';
+import { useToast } from '../components/ToastProvider';
 
 // ── Constants ────────────────────────────────────────────────
 
