@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import type { IntegrationStatus } from '../types';
 import PanelTitleBar from './PanelTitleBar';
+import IntegrationWizardModal from './IntegrationWizardModal';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 
@@ -74,6 +75,8 @@ export default function IntegrationHub({ onSetupClick }: IntegrationHubProps) {
   const [integrations, setIntegrations] = useState<IntegrationStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardIntegrationId, setWizardIntegrationId] = useState<string | null>(null);
 
   const fetchStatus = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -203,7 +206,7 @@ export default function IntegrationHub({ onSetupClick }: IntegrationHubProps) {
                       <button
                         className="toolbar-btn text-[8px] w-full flex items-center justify-center gap-1"
                         style={{ padding: '2px 6px' }}
-                        onClick={() => onSetupClick?.(intg.id)}
+                        onClick={() => { setWizardIntegrationId(intg.id); setWizardOpen(true); }}
                       >
                         <Settings className="w-3 h-3" /> Configure
                       </button>
@@ -214,7 +217,7 @@ export default function IntegrationHub({ onSetupClick }: IntegrationHubProps) {
                       <button
                         className="toolbar-btn toolbar-btn-primary text-[8px] w-full flex items-center justify-center gap-1"
                         style={{ padding: '3px 8px' }}
-                        onClick={() => onSetupClick?.(intg.id)}
+                        onClick={() => { setWizardIntegrationId(intg.id); setWizardOpen(true); }}
                       >
                         <ArrowRight className="w-3 h-3" /> Setup Integration
                       </button>
@@ -226,6 +229,12 @@ export default function IntegrationHub({ onSetupClick }: IntegrationHubProps) {
           </div>
         )}
       </div>
+      <IntegrationWizardModal
+        isOpen={wizardOpen}
+        integrationId={wizardIntegrationId}
+        onClose={() => setWizardOpen(false)}
+        onComplete={() => { setWizardOpen(false); fetchStatus(); }}
+      />
     </div>
   );
 }
