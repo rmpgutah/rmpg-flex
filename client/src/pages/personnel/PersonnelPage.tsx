@@ -12,6 +12,7 @@ import CredentialFormModal from '../../components/CredentialFormModal';
 import type { CredentialFormData } from '../../components/CredentialFormModal';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { apiFetch } from '../../hooks/useApi';
+import { useAuth } from '../../context/AuthContext';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useToast } from '../../components/ToastProvider';
@@ -68,6 +69,7 @@ interface ActivityEntry {
 
 export default function PersonnelPage() {
   const { addToast } = useToast();
+  const { user } = useAuth();
   const isMobile = useIsMobile();
 
   // Tab state
@@ -142,6 +144,12 @@ export default function PersonnelPage() {
   // Archive state
   const [showArchived, setShowArchived] = useState(false);
 
+  // Timesheet date range
+  const [timeSheetDateRange, setTimeSheetDateRange] = useState(() => {
+    const t = new Date().toISOString().split('T')[0];
+    return { start: t, end: t };
+  });
+
   // ----------------------------------------------------------
   // Data Fetching
   // ----------------------------------------------------------
@@ -156,7 +164,7 @@ export default function PersonnelPage() {
       const [usersRes, schedulesRes, timeRes, credentialsRes, propsRes] = await Promise.allSettled([
         apiFetch<any[]>(`/personnel?archived=${showArchived}`),
         apiFetch<any[]>('/personnel/schedules'),
-        apiFetch<any[]>('/personnel/time'),
+        apiFetch<any[]>(`/personnel/time?start_date=${timeSheetDateRange.start}&end_date=${timeSheetDateRange.end}`),
         apiFetch<any[]>('/personnel/credentials'),
         apiFetch<any[]>('/records/properties'),
       ]);
@@ -186,7 +194,7 @@ export default function PersonnelPage() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [showArchived]);
+  }, [showArchived, timeSheetDateRange]);
 
   useEffect(() => { fetchCoreData(); }, [fetchCoreData]);
 
@@ -719,7 +727,7 @@ export default function PersonnelPage() {
   const handleClockIn = async (officerId: string) => {
     try {
       await apiFetch('/personnel/time/clock-in', { method: 'POST', body: JSON.stringify({ officer_id: officerId }) });
-      const raw = await apiFetch<any[]>('/personnel/time');
+      const raw = await apiFetch<any[]>(`/personnel/time?start_date=${timeSheetDateRange.start}&end_date=${timeSheetDateRange.end}`);
       setTimeEntries((Array.isArray(raw) ? raw : []).map(mapTimeEntry));
       addToast('Clocked in', 'success');
     } catch (err: any) {
@@ -730,7 +738,7 @@ export default function PersonnelPage() {
   const handleClockOut = async (officerId: string) => {
     try {
       await apiFetch('/personnel/time/clock-out', { method: 'POST', body: JSON.stringify({ officer_id: officerId }) });
-      const raw = await apiFetch<any[]>('/personnel/time');
+      const raw = await apiFetch<any[]>(`/personnel/time?start_date=${timeSheetDateRange.start}&end_date=${timeSheetDateRange.end}`);
       setTimeEntries((Array.isArray(raw) ? raw : []).map(mapTimeEntry));
       addToast('Clocked out', 'success');
     } catch (err: any) {
@@ -741,7 +749,7 @@ export default function PersonnelPage() {
   const handleStartBreak = async (officerId: string) => {
     try {
       await apiFetch('/personnel/time/start-break', { method: 'POST', body: JSON.stringify({ officer_id: officerId }) });
-      const raw = await apiFetch<any[]>('/personnel/time');
+      const raw = await apiFetch<any[]>(`/personnel/time?start_date=${timeSheetDateRange.start}&end_date=${timeSheetDateRange.end}`);
       setTimeEntries((Array.isArray(raw) ? raw : []).map(mapTimeEntry));
       addToast('Break started', 'success');
     } catch (err: any) {
@@ -752,7 +760,7 @@ export default function PersonnelPage() {
   const handleEndBreak = async (officerId: string) => {
     try {
       await apiFetch('/personnel/time/end-break', { method: 'POST', body: JSON.stringify({ officer_id: officerId }) });
-      const raw = await apiFetch<any[]>('/personnel/time');
+      const raw = await apiFetch<any[]>(`/personnel/time?start_date=${timeSheetDateRange.start}&end_date=${timeSheetDateRange.end}`);
       setTimeEntries((Array.isArray(raw) ? raw : []).map(mapTimeEntry));
       addToast('Break ended', 'success');
     } catch (err: any) {
@@ -763,7 +771,7 @@ export default function PersonnelPage() {
   const handleDeleteTimeEntry = async (entryId: string) => {
     try {
       await apiFetch(`/personnel/time/${entryId}`, { method: 'DELETE' });
-      const raw = await apiFetch<any[]>('/personnel/time');
+      const raw = await apiFetch<any[]>(`/personnel/time?start_date=${timeSheetDateRange.start}&end_date=${timeSheetDateRange.end}`);
       setTimeEntries((Array.isArray(raw) ? raw : []).map(mapTimeEntry));
       addToast('Time entry deleted', 'success');
     } catch (err: any) {
@@ -784,7 +792,7 @@ export default function PersonnelPage() {
       });
       setModal('none');
       setEditingTimeEntry(null);
-      const raw = await apiFetch<any[]>('/personnel/time');
+      const raw = await apiFetch<any[]>(`/personnel/time?start_date=${timeSheetDateRange.start}&end_date=${timeSheetDateRange.end}`);
       setTimeEntries((Array.isArray(raw) ? raw : []).map(mapTimeEntry));
       addToast('Time entry updated', 'success');
     } catch (err: any) {
@@ -797,6 +805,40 @@ export default function PersonnelPage() {
   const openEditTimeEntry = (entry: TimeEntry) => {
     setEditingTimeEntry(entry);
     setModal('edit_time_entry');
+  };
+
+  const handleBatchClockIn = async (officerIds: string[]) => {
+    try {
+      const res = await apiFetch<any>('/personnel/time/batch-clock-in', {
+        method: 'POST',
+        body: JSON.stringify({ officer_ids: officerIds }),
+      });
+      const raw = await apiFetch<any[]>(`/personnel/time?start_date=${timeSheetDateRange.start}&end_date=${timeSheetDateRange.end}`);
+      setTimeEntries((Array.isArray(raw) ? raw : []).map(mapTimeEntry));
+      addToast(`Clocked in ${res.clocked_in} officer${res.clocked_in !== 1 ? 's' : ''}${res.skipped > 0 ? ` (${res.skipped} already active)` : ''}`, 'success');
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to batch clock in', 'error');
+    }
+  };
+
+  const handleInlineTimeEdit = async (entryId: string, field: string, value: string, reason: string) => {
+    try {
+      const entry = timeEntries.find(te => te.id === entryId);
+      if (!entry) return;
+      await apiFetch(`/personnel/time/${entryId}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          clock_in: field === 'clock_in' ? value : entry.clock_in,
+          clock_out: field === 'clock_out' ? value : (entry.clock_out || null),
+          reason,
+        }),
+      });
+      const raw = await apiFetch<any[]>(`/personnel/time?start_date=${timeSheetDateRange.start}&end_date=${timeSheetDateRange.end}`);
+      setTimeEntries((Array.isArray(raw) ? raw : []).map(mapTimeEntry));
+      addToast('Time entry updated', 'success');
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to update', 'error');
+    }
   };
 
   // ----------------------------------------------------------
@@ -1094,7 +1136,17 @@ export default function PersonnelPage() {
         )}
 
         {!loading && !error && activeTab === 'time' && (
-          <TimeAttendanceTab timeEntries={timeEntries} officers={officers} onEditTimeEntry={openEditTimeEntry} onDeleteTimeEntry={handleDeleteTimeEntry} />
+          <TimeAttendanceTab
+            timeEntries={timeEntries}
+            officers={officers}
+            onEditTimeEntry={openEditTimeEntry}
+            onDeleteTimeEntry={handleDeleteTimeEntry}
+            onBatchClockIn={handleBatchClockIn}
+            onInlineEdit={handleInlineTimeEdit}
+            userRole={user?.role}
+            dateRange={timeSheetDateRange}
+            onDateRangeChange={setTimeSheetDateRange}
+          />
         )}
 
         {!loading && !error && activeTab === 'credentials' && (
