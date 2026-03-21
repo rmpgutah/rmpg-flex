@@ -2,9 +2,10 @@
 // RMPG Flex — Officer Time Log Detail Tab
 // ============================================================
 
-import React, { useState } from 'react';
-import { Clock, LogIn, LogOut, Pencil, Coffee, Zap, Trash2 } from 'lucide-react';
-import type { TimeEntry } from '../../../types';
+import React, { useState, useMemo, useCallback } from 'react';
+import { Clock, LogIn, LogOut, Pencil, Coffee, Zap, Trash2, History, Calendar } from 'lucide-react';
+import type { TimeEntry, TimeEntryEdit } from '../../../types';
+import { apiFetch } from '../../../hooks/useApi';
 import ConfirmDialog from '../../../components/ConfirmDialog';
 
 interface Props {
@@ -53,10 +54,35 @@ export default function TimeLogDetailTab({
   onEditTimeEntry, onDeleteTimeEntry,
 }: Props) {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [filterStart, setFilterStart] = useState('');
+  const [filterEnd, setFilterEnd] = useState('');
+  const [expandedHistory, setExpandedHistory] = useState<string | null>(null);
+  const [editHistory, setEditHistory] = useState<TimeEntryEdit[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const filteredEntries = useMemo(() => {
+    return timeEntries.filter(te => {
+      const d = te.clock_in?.split('T')[0] || te.clock_in?.split(' ')[0] || '';
+      if (filterStart && d < filterStart) return false;
+      if (filterEnd && d > filterEnd) return false;
+      return true;
+    });
+  }, [timeEntries, filterStart, filterEnd]);
+
+  const toggleHistory = useCallback(async (entryId: string) => {
+    if (expandedHistory === entryId) { setExpandedHistory(null); return; }
+    setHistoryLoading(true);
+    try {
+      const edits = await apiFetch<TimeEntryEdit[]>(`/personnel/time/${entryId}/history`);
+      setEditHistory(Array.isArray(edits) ? edits : []);
+      setExpandedHistory(entryId);
+    } catch { setEditHistory([]); }
+    finally { setHistoryLoading(false); }
+  }, [expandedHistory]);
 
   const isActive = isClockedIn || isOnBreak;
-  const totalEntries = timeEntries.length;
-  const totalHours = timeEntries.reduce((sum, e) => {
+  const totalEntries = filteredEntries.length;
+  const totalHours = filteredEntries.reduce((sum, e) => {
     const h = e.total_hours ?? (
       e.clock_in
         ? (((e.clock_out ? new Date(e.clock_out).getTime() : Date.now()) - new Date(e.clock_in).getTime()) / (1000 * 60 * 60))
@@ -65,7 +91,7 @@ export default function TimeLogDetailTab({
     return sum + h;
   }, 0);
   const avgPerEntry = totalEntries > 0 ? totalHours / totalEntries : 0;
-  const totalBreakMins = timeEntries.reduce((sum, e) => sum + (e.break_minutes || 0), 0);
+  const totalBreakMins = filteredEntries.reduce((sum, e) => sum + (e.break_minutes || 0), 0);
 
   return (
     <div className="space-y-4">
@@ -109,6 +135,20 @@ export default function TimeLogDetailTab({
         </div>
       </div>
 
+      {/* Date Range Filter */}
+      <div className="flex items-center gap-2 mb-2">
+        <Calendar className="w-3 h-3 text-rmpg-400" />
+        <span className="text-[8px] text-rmpg-500 uppercase font-bold">Filter</span>
+        <input type="date" className="input-dark text-[10px]" style={{ padding: '1px 4px' }}
+          value={filterStart} onChange={e => setFilterStart(e.target.value)} />
+        <span className="text-rmpg-600 text-[9px]">to</span>
+        <input type="date" className="input-dark text-[10px]" style={{ padding: '1px 4px' }}
+          value={filterEnd} onChange={e => setFilterEnd(e.target.value)} />
+        {(filterStart || filterEnd) && (
+          <button onClick={() => { setFilterStart(''); setFilterEnd(''); }} className="toolbar-btn text-[8px]" style={{ padding: '1px 4px' }}>Clear</button>
+        )}
+      </div>
+
       {/* Summary Stats */}
       <div className="grid grid-cols-5 gap-2">
         <div className="panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-rmpg-500">
@@ -136,16 +176,20 @@ export default function TimeLogDetailTab({
       </div>
 
       {/* Time Entry List */}
-      {timeEntries.length > 0 ? (
+      {filteredEntries.length > 0 ? (
         <div className="space-y-2">
-          {timeEntries.map((entry) => {
+          {filteredEntries.map((entry) => {
             const hours = calcHours(entry);
             const isActiveEntry = (entry.status === 'clocked_in' || entry.status === 'on_break') && !entry.clock_out;
 
             return (
               <div
                 key={entry.id}
-                className={`panel-beveled p-3 border-l-2 bg-surface-base ${leftBarColor(entry.status)}`}
+                className={`panel-beveled p-3 border-l-2 bg-surface-base ${
+                  (entry.edit_count != null && entry.edit_count > 0)
+                    ? 'border-l-amber-500'
+                    : leftBarColor(entry.status)
+                }`}
               >
                 <div className="flex items-center justify-between">
                   <div className="space-y-1">
@@ -219,6 +263,39 @@ export default function TimeLogDetailTab({
                     </button>
                   </div>
                 </div>
+
+                {/* Edit history indicator */}
+                {(entry.status === 'edited' || (entry.edit_count != null && entry.edit_count > 0)) && (
+                  <div className="mt-1 pt-1 border-t border-rmpg-700/30">
+                    <div className="flex items-center gap-1.5 text-[9px]">
+                      <History className="w-2.5 h-2.5 text-amber-400" />
+                      <span className="text-amber-400">
+                        Edited{entry.edited_by_name ? ` by ${entry.edited_by_name}` : ''}
+                        {entry.edit_reason ? ` — ${entry.edit_reason}` : ''}
+                      </span>
+                      {entry.edit_count != null && entry.edit_count > 0 && (
+                        <button onClick={() => toggleHistory(entry.id)} className="text-[8px] text-brand-400 hover:underline ml-auto">
+                          {expandedHistory === entry.id ? 'Hide' : `${entry.edit_count} change${entry.edit_count > 1 ? 's' : ''}`}
+                        </button>
+                      )}
+                    </div>
+                    {expandedHistory === entry.id && (
+                      <div className="mt-1 space-y-0.5 pl-4">
+                        {historyLoading ? (
+                          <span className="text-[8px] text-rmpg-500">Loading...</span>
+                        ) : editHistory.map(edit => (
+                          <div key={edit.id} className="flex items-center gap-2 text-[8px] text-rmpg-500">
+                            <span className="text-rmpg-400">{edit.edited_by_name}</span>
+                            <span>{edit.edit_type.replace(/_/g, ' ')}</span>
+                            {edit.old_value && !edit.old_value.startsWith('{') && <span className="line-through text-red-400/60 font-mono">{edit.old_value}</span>}
+                            {edit.new_value && <span className="text-green-400 font-mono">{edit.new_value}</span>}
+                            {edit.reason && <span className="italic text-rmpg-600">— {edit.reason}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
