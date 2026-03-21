@@ -101,7 +101,13 @@ function getSpeechVolume(): number {
   } catch { return 0.95; }
 }
 
-const SPEECH_PITCH = 1.02;
+/**
+ * Female dispatcher pitch — slightly lower than default for authority.
+ * Real dispatchers sound calm, composed, and authoritative — not chirpy.
+ * 0.95 on most TTS engines produces a mature female voice vs. the
+ * default 1.0 which sounds younger/higher.
+ */
+const SPEECH_PITCH = 0.95;
 
 /** Priority-based speech parameters — adjusts rate/pitch/volume for urgency level */
 interface PrioritySpeechParams {
@@ -110,12 +116,19 @@ interface PrioritySpeechParams {
   volumeMultiplier: number;
 }
 
+/**
+ * Priority tuning: dispatchers get slightly MORE clipped (faster) and
+ * MORE authoritative (lower pitch) as urgency increases — the opposite
+ * of panic. Real dispatchers lower their voice and tighten delivery
+ * when things get serious. Only PANIC breaks this pattern (higher pitch
+ * signals extreme urgency).
+ */
 const PRIORITY_PARAMS: Record<string, PrioritySpeechParams> = {
-  PANIC: { rateMultiplier: 1.15, pitchOffset: 0.15, volumeMultiplier: 1.0 },
-  P1:    { rateMultiplier: 1.1,  pitchOffset: 0.12, volumeMultiplier: 1.0 },
-  P2:    { rateMultiplier: 1.0,  pitchOffset: 0.05, volumeMultiplier: 0.95 },
-  P3:    { rateMultiplier: 0.95, pitchOffset: 0,    volumeMultiplier: 0.9 },
-  P4:    { rateMultiplier: 0.9,  pitchOffset: -0.02, volumeMultiplier: 0.85 },
+  PANIC: { rateMultiplier: 1.15, pitchOffset: 0.08, volumeMultiplier: 1.0 },
+  P1:    { rateMultiplier: 1.08, pitchOffset: -0.03, volumeMultiplier: 1.0 },
+  P2:    { rateMultiplier: 1.0,  pitchOffset: 0,     volumeMultiplier: 0.95 },
+  P3:    { rateMultiplier: 0.95, pitchOffset: 0.02,  volumeMultiplier: 0.9 },
+  P4:    { rateMultiplier: 0.9,  pitchOffset: 0.03,  volumeMultiplier: 0.85 },
 };
 
 // ─── Voice Selection ────────────────────────────────────────
@@ -124,10 +137,20 @@ let cachedVoice: SpeechSynthesisVoice | null = null;
 let voicesLoaded = false;
 
 /**
- * Select the best available female voice.
- * Priority: Premium enhanced voices first (Google WaveNet, Apple Enhanced),
- * then standard female voices, then any English voice.
- * Higher-quality voices produce dramatically more natural-sounding alerts.
+ * Select the best available female voice for dispatcher-quality speech.
+ *
+ * Voice quality tiers (from most to least natural):
+ *   1. Neural/Premium voices (macOS Sequoia "Premium", Windows 11 Neural, Chrome Neural)
+ *   2. Enhanced voices (macOS "Enhanced" variants)
+ *   3. Standard named female voices
+ *   4. Any English female voice
+ *   5. Any English voice (fallback)
+ *
+ * For dispatcher use, we prefer voices that are:
+ *   - Female (industry standard for dispatch)
+ *   - US English (correct pronunciation of street names, codes)
+ *   - Lower/mature register (not chirpy or childlike)
+ *   - Neural/premium quality (natural prosody, not robotic)
  */
 function selectFemaleVoice(): SpeechSynthesisVoice | null {
   if (cachedVoice && voicesLoaded) return cachedVoice;
@@ -138,22 +161,90 @@ function selectFemaleVoice(): SpeechSynthesisVoice | null {
 
   voicesLoaded = true;
 
-  // Priority candidates — premium/enhanced voices first for natural sound
+  // Score each voice — higher score = better choice
+  const scored = voices
+    .filter(v => v.lang.startsWith('en'))
+    .map(v => {
+      let score = 0;
+      const name = v.name.toLowerCase();
+
+      // ── Quality tier (most important) ──
+      if (name.includes('premium'))      score += 1000;  // macOS Sequoia neural voices
+      if (name.includes('enhanced'))     score += 800;   // macOS Enhanced voices
+      if (name.includes('neural'))       score += 900;   // Windows 11 Neural voices
+      if (name.includes('online'))       score += 700;   // Edge Online (cloud neural)
+      if (name.includes('natural'))      score += 850;   // Natural variant voices
+
+      // ── Female voice names (dispatch standard) ──
+      // macOS voices
+      if (name.includes('ava'))          score += 200;   // Ava — mature, authoritative
+      if (name.includes('zoe'))          score += 190;   // Zoe — clear, professional
+      if (name.includes('samantha'))     score += 180;   // Samantha — classic macOS
+      if (name.includes('allison'))      score += 170;   // Allison — neutral US
+      if (name.includes('susan'))        score += 160;   // Susan — UK but clear
+      if (name.includes('karen'))        score += 150;   // Karen — AU English
+      if (name.includes('kate'))         score += 140;   // Kate — UK English
+      if (name.includes('victoria'))     score += 130;   // Victoria — formal
+      if (name.includes('tessa'))        score += 120;   // Tessa — SA English
+      // Windows voices
+      if (name.includes('jenny'))        score += 195;   // Jenny — Windows 11 neural (excellent)
+      if (name.includes('aria'))         score += 185;   // Aria — Windows neural
+      if (name.includes('zira'))         score += 160;   // Zira — classic Windows
+      if (name.includes('hazel'))        score += 155;   // Hazel — UK
+      // Chrome/Google voices
+      if (name.includes('google') && name.includes('female')) score += 170;
+
+      // ── US English preference ──
+      if (v.lang === 'en-US')            score += 50;
+      if (v.lang.startsWith('en-US'))    score += 40;
+      if (v.lang.startsWith('en-GB'))    score += 20;
+      if (v.lang.startsWith('en-AU'))    score += 15;
+
+      // ── Penalize male voices ──
+      if (name.includes('daniel'))       score -= 500;
+      if (name.includes('alex'))         score -= 500;
+      if (name.includes('david'))        score -= 500;
+      if (name.includes('tom'))          score -= 500;
+      if (name.includes('fred'))         score -= 500;
+      if (name.includes('ralph'))        score -= 500;
+      if (name.includes('guy'))          score -= 500;
+      if (name.includes('rishi'))        score -= 500;
+      if (name.includes('lee'))          score -= 500;
+      if (name.includes('male') && !name.includes('female')) score -= 500;
+
+      // ── Penalize non-human / novelty voices ──
+      if (name.includes('whisper'))      score -= 300;
+      if (name.includes('grandm'))       score -= 300;
+      if (name.includes('junior'))       score -= 300;
+      if (name.includes('bells'))        score -= 300;
+      if (name.includes('organ'))        score -= 300;
+      if (name.includes('cellos'))       score -= 300;
+      if (name.includes('trinoids'))     score -= 300;
+      if (name.includes('bad news'))     score -= 300;
+      if (name.includes('good news'))    score -= 300;
+      if (name.includes('bubbles'))      score -= 300;
+      if (name.includes('pipe'))         score -= 300;
+      if (name.includes('boing'))        score -= 300;
+      if (name.includes('bahh'))         score -= 300;
+      if (name.includes('deranged'))     score -= 300;
+      if (name.includes('hysterical'))   score -= 300;
+
+      return { voice: v, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  if (scored.length > 0 && scored[0].score > -100) {
+    cachedVoice = scored[0].voice;
+    console.log(`[VoiceAlerts] Selected voice: "${cachedVoice.name}" (${cachedVoice.lang}) score=${scored[0].score}`);
+    // Log top 3 for debugging
+    scored.slice(0, 3).forEach((s, i) => {
+      console.log(`  [${i + 1}] "${s.voice.name}" (${s.voice.lang}) score=${s.score}`);
+    });
+    return cachedVoice;
+  }
+
+  // Fallback candidates in priority order (legacy path)
   const candidates: Array<(v: SpeechSynthesisVoice) => boolean> = [
-    // Tier 1: Premium enhanced voices (dramatically more natural)
-    (v) => /samantha.*enhanced/i.test(v.name),                          // macOS Enhanced Samantha
-    (v) => /karen.*enhanced/i.test(v.name),                             // macOS Enhanced Karen
-    (v) => /google.*us.*english.*female/i.test(v.name),                 // Chrome Google HD Female
-    (v) => /microsoft.*zira.*online/i.test(v.name),                     // Edge Online Zira (neural)
-    (v) => /microsoft.*jenny/i.test(v.name),                            // Windows 11 Jenny (neural)
-    // Tier 2: Standard quality named voices
-    (v) => /zira/i.test(v.name),                                        // Windows Zira
-    (v) => /samantha/i.test(v.name),                                    // macOS Samantha (standard)
-    (v) => /karen/i.test(v.name) && v.lang.startsWith('en'),            // macOS Karen (AU English)
-    (v) => /google.*english/i.test(v.name) && /female/i.test(v.name),   // Any Google Female
-    // Tier 3: Any female English voice
-    (v) => /female/i.test(v.name) && v.lang.startsWith('en'),
-    // Tier 4: Any English voice
     (v) => v.lang.startsWith('en-US'),
     (v) => v.lang.startsWith('en'),
   ];
@@ -274,7 +365,9 @@ function speakPhrase(phrase: VoicePhrase): Promise<void> {
   return new Promise((resolve) => {
     if (!isSpeechAvailable()) { resolve(); return; }
 
-    const utterance = new SpeechSynthesisUtterance(phrase.text);
+    // Run pronunciation improvements on the text before speaking
+    const spokenText = improvePronounciation(phrase.text);
+    const utterance = new SpeechSynthesisUtterance(spokenText);
     const voice = selectFemaleVoice();
     if (voice) utterance.voice = voice;
 
@@ -396,48 +489,67 @@ export function getLastAnnouncement(): { text: string; timestamp: number } | nul
 
 /**
  * Convert robotic ALL-CAPS dispatch text into natural spoken English.
- * TTS engines handle sentence-case text far better — proper intonation,
- * natural pacing, and no letter-by-letter spelling of acronyms.
- * Punctuation pauses (commas, periods) add breathing room.
+ *
+ * TTS engines handle sentence-case text with proper punctuation far better:
+ * - Commas produce ~200ms pauses (breathing room)
+ * - Periods produce ~400ms pauses (sentence finality)
+ * - Semicolons produce ~300ms pauses (list separation)
+ *
+ * Phrasing follows real dispatcher cadence:
+ * - Lead with "Caution" or "Be advised" for safety alerts
+ * - Short, declarative sentences
+ * - No filler words ("um", "uh", "basically")
+ * - Professional monotone authority, not conversational
  */
 function naturalPhrase(text: string): string {
-  // Map of dispatch shorthand → natural spoken form
   const NATURAL_MAP: Record<string, string> = {
-    'ACTIVE WARRANTS': 'Active warrants on file.',
-    'ARMED SUSPECT': 'Caution, armed suspect.',
-    'VIOLENT SUSPECT': 'Caution, violent suspect.',
-    'MENTAL SUSPECT': 'Mental health concern noted.',
-    'KNOWN DRUG USER': 'Known drug user.',
-    'ESCAPE RISK': 'Caution, escape risk.',
-    'SUICIDE RISK': 'Caution, suicide risk.',
-    'REGISTERED SEX OFFENDER': 'Registered sex offender.',
-    'GANG AFFILIATED': 'Gang affiliation noted.',
-    'WATCHLIST MATCH': 'Watchlist match detected.',
-    'FEDERAL WATCHLIST HIT': 'Federal watchlist hit.',
-    'UTAH STATE WARRANT': 'Utah state warrant on file.',
-    'CRIMINAL HISTORY': 'Prior criminal history.',
-    'WARRANT HIT': 'Warrant hit.',
-    'ARMED SUBJECT': 'Caution, armed subject reported.',
+    // Safety alerts — lead with "Caution" for officer attention
+    'ACTIVE WARRANTS': 'Caution; active warrants on file.',
+    'ARMED SUSPECT': 'Caution; armed suspect.',
+    'VIOLENT SUSPECT': 'Caution; violent suspect.',
+    'MENTAL SUSPECT': 'Be advised; mental health concern.',
+    'KNOWN DRUG USER': 'Be advised; known drug user.',
+    'ESCAPE RISK': 'Caution; escape risk.',
+    'SUICIDE RISK': 'Caution; suicide risk.',
+    'REGISTERED SEX OFFENDER': 'Be advised; registered sex offender.',
+    'GANG AFFILIATED': 'Be advised; gang affiliation.',
+    'WATCHLIST MATCH': 'Caution; watchlist match.',
+    'FEDERAL WATCHLIST HIT': 'Caution; federal watchlist hit.',
+    'UTAH STATE WARRANT': 'Caution; Utah state warrant on file.',
+    'CRIMINAL HISTORY': 'Be advised; prior criminal history.',
+    'WARRANT HIT': 'Caution; warrant hit.',
+
+    // Call flags — clipped dispatcher style
+    'ARMED SUBJECT': 'Caution; armed subject reported.',
     'FELONY IN PROGRESS': 'Felony in progress.',
-    'OFFICER SAFETY CAUTION': 'Officer safety caution.',
-    'VEHICLE PURSUIT': 'Vehicle pursuit in progress.',
-    'FOOT PURSUIT': 'Foot pursuit in progress.',
+    'OFFICER SAFETY CAUTION': 'Officer safety; use caution on approach.',
+    'VEHICLE PURSUIT': 'Vehicle pursuit; in progress.',
+    'FOOT PURSUIT': 'Foot pursuit; in progress.',
     'DOMESTIC VIOLENCE': 'Domestic violence call.',
-    'GANG RELATED': 'Gang related incident.',
-    'HAZMAT': 'Hazmat situation.',
+    'GANG RELATED': 'Gang related.',
+    'HAZMAT': 'Hazmat situation; stage and hold.',
     'MENTAL HEALTH CRISIS': 'Mental health crisis.',
     'INJURIES REPORTED': 'Injuries reported.',
     'E M S REQUESTED': 'E.M.S. requested.',
     'K 9 REQUESTED': 'K-9 requested.',
     'DRUGS INVOLVED': 'Drugs involved.',
-    'PRIOR ARMED CALLS AT LOCATION': 'Prior armed calls at location.',
-    'PRIOR DOMESTIC VIOLENCE AT LOCATION': 'Prior DV at location.',
-    'PRIOR DRUG ACTIVITY AT LOCATION': 'Prior drug activity at location.',
+    'ALCOHOL INVOLVED': 'Alcohol involved.',
+
+    // Premise history
+    'PRIOR ARMED CALLS AT LOCATION': 'Be advised; prior armed calls at this location.',
+    'PRIOR DOMESTIC VIOLENCE AT LOCATION': 'Be advised; prior D.V. at this location.',
+    'PRIOR DRUG ACTIVITY AT LOCATION': 'Be advised; prior drug activity at this location.',
+
+    // Emergency
     'PANIC ALERT': 'Panic alert.',
     'OFFICER NEEDS ASSISTANCE': 'Officer needs immediate assistance.',
+
+    // Vehicle
     'STOLEN VEHICLE': 'Stolen vehicle.',
-    'BOLO HIT': 'Be on the lookout, hit confirmed.',
+    'BOLO HIT': 'B.O.L.O. hit confirmed.',
     'HIT AND RUN': 'Hit and run.',
+
+    // Status
     'DISPATCH': 'Dispatch.',
     'NEW CALL': 'New call.',
     'PRIORITY ONE': 'Priority one.',
@@ -445,6 +557,48 @@ function naturalPhrase(text: string): string {
   };
 
   return NATURAL_MAP[text] || text;
+}
+
+/**
+ * Post-process text for TTS pronunciation improvements.
+ * Handles common dispatch abbreviations, numbers, and codes
+ * that TTS engines mispronounce.
+ */
+function improvePronounciation(text: string): string {
+  return text
+    // Spell out abbreviations TTS often botches
+    .replace(/\bSt\b(?!\.)/g, 'Street')    // "500 South St" → "500 South Street" (for speech only)
+    .replace(/\bAve\b(?!\.)/g, 'Avenue')
+    .replace(/\bBlvd\b(?!\.)/g, 'Boulevard')
+    .replace(/\bDr\b(?!\.)/g, 'Drive')
+    .replace(/\bCt\b(?!\.)/g, 'Court')
+    .replace(/\bLn\b(?!\.)/g, 'Lane')
+    .replace(/\bPl\b(?!\.)/g, 'Place')
+    .replace(/\bCir\b(?!\.)/g, 'Circle')
+    // Highway/Interstate
+    .replace(/\bI-(\d+)\b/g, 'Interstate $1')
+    .replace(/\bSR-(\d+)\b/g, 'State Route $1')
+    .replace(/\bUS-(\d+)\b/g, 'U.S. $1')
+    .replace(/\bHwy\b/gi, 'Highway')
+    // Directions — TTS needs full words for natural delivery
+    .replace(/\bNB\b/g, 'northbound')
+    .replace(/\bSB\b/g, 'southbound')
+    .replace(/\bEB\b/g, 'eastbound')
+    .replace(/\bWB\b/g, 'westbound')
+    // Common dispatch codes
+    .replace(/\bP1\b/g, 'Priority one')
+    .replace(/\bP2\b/g, 'Priority two')
+    .replace(/\bP3\b/g, 'Priority three')
+    .replace(/\bP4\b/g, 'Priority four')
+    .replace(/\b10-4\b/g, 'ten four')
+    .replace(/\bDV\b/g, 'D.V.')
+    .replace(/\bDUI\b/g, 'D.U.I.')
+    .replace(/\bEMS\b/g, 'E.M.S.')
+    .replace(/\bBOLO\b/g, 'B.O.L.O.')
+    .replace(/\bAPB\b/g, 'A.P.B.')
+    .replace(/\bVIN\b/g, 'V.I.N.')
+    // Numbers — add slight pauses around street numbers for clarity
+    .replace(/(\d{3,5})\s+(South|North|East|West)/g, '$1, $2');
 }
 
 // ─── Phrase Builders ────────────────────────────────────────
