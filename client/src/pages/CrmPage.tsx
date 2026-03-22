@@ -161,6 +161,19 @@ export default function CrmPage() {
   // Invoices
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [invoiceFilter, setInvoiceFilter] = useState('');
+  const [invoiceAgingBucket, setInvoiceAgingBucket] = useState<string | null>(null);
+  // Recurring invoice banner
+  const [recurringDue, setRecurringDue] = useState<any[]>([]);
+  const [recurringBannerDismissed, setRecurringBannerDismissed] = useState(false);
+  // Payment recording modal
+  const [paymentInvoice, setPaymentInvoice] = useState<Invoice | null>(null);
+  const [paymentForm, setPaymentForm] = useState({ amount: '', paid_at: new Date().toISOString().slice(0, 10), method: 'check', reference: '' });
+  const [paymentSaving, setPaymentSaving] = useState(false);
+  // Invoice create/edit form
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [invoiceFormData, setInvoiceFormData] = useState<any>({
+    is_recurring: false, recurrence_interval: 'monthly', recurrence_anchor: '',
+  });
 
   // Tasks
   const [tasks, setTasks] = useState<CrmTask[]>([]);
@@ -252,8 +265,12 @@ export default function CrmPage() {
 
   const fetchInvoices = useCallback(async () => {
     try {
-      const res = await apiFetch<any[]>('/invoices');
+      const [res, recurring] = await Promise.all([
+        apiFetch<any[]>('/invoices'),
+        apiFetch<any[]>('/crm/invoices/due-recurring').catch(() => []),
+      ]);
       setInvoices(Array.isArray(res) ? res : []);
+      setRecurringDue(Array.isArray(recurring) ? recurring : []);
     } catch { setInvoices([]); }
   }, []);
 
@@ -430,6 +447,75 @@ export default function CrmPage() {
     }
   };
 
+  // ── Invoice Payment Recording ────────────────────────
+  const openPaymentModal = (inv: Invoice) => {
+    setPaymentInvoice(inv);
+    setPaymentForm({ amount: String(inv.balance_due || ''), paid_at: new Date().toISOString().slice(0, 10), method: 'check', reference: '' });
+  };
+
+  const submitPayment = async () => {
+    if (!paymentInvoice) return;
+    setPaymentSaving(true);
+    try {
+      await apiFetch(`/invoices/${paymentInvoice.id}/payments`, {
+        method: 'POST',
+        body: JSON.stringify({
+          amount: parseFloat(paymentForm.amount),
+          paid_at: paymentForm.paid_at,
+          method: paymentForm.method,
+          reference: paymentForm.reference || undefined,
+        }),
+      });
+      addToast('Payment recorded', 'success');
+      setPaymentInvoice(null);
+      fetchInvoices();
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to record payment', 'error');
+    } finally {
+      setPaymentSaving(false);
+    }
+  };
+
+  // ── Invoice Overdue Escalation ───────────────────────
+  const escalateInvoice = async (inv: Invoice) => {
+    try {
+      const days = Math.floor((Date.now() - new Date(inv.due_date!).getTime()) / 86400000);
+      await Promise.all([
+        apiFetch('/crm/activities', {
+          method: 'POST',
+          body: JSON.stringify({
+            client_id: inv.client_id,
+            activity_type: 'note',
+            subject: `Invoice Escalation: ${inv.invoice_number}`,
+            details: `Invoice ${inv.invoice_number} is ${days} days overdue. Balance due: ${formatCurrency(inv.balance_due)}. Escalated for follow-up.`,
+          }),
+        }).catch(() => apiFetch('/crm/activity', {
+          method: 'POST',
+          body: JSON.stringify({
+            client_id: inv.client_id,
+            activity_type: 'note',
+            subject: `Invoice Escalation: ${inv.invoice_number}`,
+            details: `Invoice ${inv.invoice_number} is ${days} days overdue. Balance due: ${formatCurrency(inv.balance_due)}. Escalated for follow-up.`,
+          }),
+        })),
+        apiFetch('/crm/tasks', {
+          method: 'POST',
+          body: JSON.stringify({
+            title: `ESCALATE: Follow up on invoice ${inv.invoice_number} (${days}d overdue)`,
+            related_client_id: Number(inv.client_id),
+            due_date: new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10),
+            priority: 'urgent',
+            task_type: 'billing',
+            description: `Invoice ${inv.invoice_number} balance: ${formatCurrency(inv.balance_due)}. ${days} days overdue.`,
+          }),
+        }),
+      ]);
+      addToast('Escalation logged — activity + task created', 'success');
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to escalate', 'error');
+    }
+  };
+
   // ── Incidents Fetch ───────────────────────────────────
   const fetchClientIncidents = useCallback(async (clientId: string) => {
     if (incidentsFetched === clientId) return;
@@ -468,10 +554,32 @@ export default function CrmPage() {
     );
   }, [properties, propertySearch]);
 
+  // Compute days overdue helper
+  function daysOverdue(inv: Invoice): number {
+    if (!inv.due_date || inv.status === 'paid' || inv.status === 'void' || inv.status === 'cancelled') return 0;
+    const diff = Math.floor((Date.now() - new Date(inv.due_date).getTime()) / 86400000);
+    return Math.max(0, diff);
+  }
+
+  // Aging bucket for an invoice
+  function agingBucket(inv: Invoice): string {
+    const days = daysOverdue(inv);
+    if (days === 0) return 'current';
+    if (days <= 30) return '1-30';
+    if (days <= 60) return '31-60';
+    if (days <= 90) return '61-90';
+    return '90+';
+  }
+
   const filteredInvoices = useMemo(() => {
-    if (!invoiceFilter) return invoices;
-    return invoices.filter(i => i.status === invoiceFilter);
-  }, [invoices, invoiceFilter]);
+    let result = invoices;
+    if (invoiceFilter) result = result.filter(i => i.status === invoiceFilter);
+    if (invoiceAgingBucket) {
+      result = result.filter(i => agingBucket(i) === invoiceAgingBucket);
+    }
+    return result;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoices, invoiceFilter, invoiceAgingBucket]);
 
   const selectedClient = useMemo(() => {
     if (!selectedClientId) return null;
@@ -775,6 +883,27 @@ export default function CrmPage() {
             <Plus className="w-3 h-3" /> Log Activity
           </button>
         </PanelTitleBar>
+
+        {/* Recurring invoice banner on dashboard */}
+        {recurringDue.length > 0 && !recurringBannerDismissed && (
+          <div className="mx-4 mt-3 flex items-center justify-between p-2 border border-amber-700/60 bg-amber-900/20 text-xs">
+            <span className="text-amber-300">
+              <AlertTriangle className="inline w-3.5 h-3.5 mr-1 text-amber-400" />
+              {recurringDue.length} recurring invoice{recurringDue.length > 1 ? 's' : ''} ready to generate
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { setActiveSection('invoices'); setRecurringBannerDismissed(true); }}
+                className="toolbar-btn toolbar-btn-primary text-[10px]"
+              >
+                View Invoices
+              </button>
+              <button onClick={() => setRecurringBannerDismissed(true)} className="p-0.5 text-rmpg-400 hover:text-rmpg-200">
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+        )}
 
         {stats && (
           <div className="p-4 space-y-4">
@@ -1483,10 +1612,31 @@ export default function CrmPage() {
   }
 
   function renderInvoices() {
+    // ── Aging buckets ──────────────────────────────────
+    const agingBuckets = [
+      { key: 'current', label: 'Current', color: 'text-green-400', borderColor: 'border-green-700/50', bg: 'bg-green-900/20', activeBg: 'bg-green-900/40' },
+      { key: '1-30',    label: '1–30 Days', color: 'text-yellow-400', borderColor: 'border-yellow-700/50', bg: 'bg-yellow-900/20', activeBg: 'bg-yellow-900/40' },
+      { key: '31-60',   label: '31–60 Days', color: 'text-amber-400', borderColor: 'border-amber-700/50', bg: 'bg-amber-900/20', activeBg: 'bg-amber-900/40' },
+      { key: '61-90',   label: '61–90 Days', color: 'text-orange-400', borderColor: 'border-orange-700/50', bg: 'bg-orange-900/20', activeBg: 'bg-orange-900/40' },
+      { key: '90+',     label: '90+ Days', color: 'text-red-400', borderColor: 'border-red-700/50', bg: 'bg-red-900/20', activeBg: 'bg-red-900/40' },
+    ];
+    const agingTotals: Record<string, { amount: number; count: number }> = {
+      'current': { amount: 0, count: 0 },
+      '1-30':    { amount: 0, count: 0 },
+      '31-60':   { amount: 0, count: 0 },
+      '61-90':   { amount: 0, count: 0 },
+      '90+':     { amount: 0, count: 0 },
+    };
+    for (const inv of invoices) {
+      const b = agingBucket(inv);
+      agingTotals[b].amount += inv.balance_due || 0;
+      agingTotals[b].count += 1;
+    }
+
     return (
       <div className="flex-1 overflow-y-auto">
         <PanelTitleBar title="INVOICES" icon={FileText}>
-          <select className="input-dark text-xs" style={{ maxWidth: 140 }} value={invoiceFilter} onChange={e => setInvoiceFilter(e.target.value)}>
+          <select className="input-dark text-xs" style={{ maxWidth: 140 }} value={invoiceFilter} onChange={e => { setInvoiceFilter(e.target.value); setInvoiceAgingBucket(null); }}>
             <option value="">All Statuses</option>
             <option value="draft">Draft</option>
             <option value="sent">Sent</option>
@@ -1494,8 +1644,55 @@ export default function CrmPage() {
             <option value="partial">Partial</option>
             <option value="overdue">Overdue</option>
           </select>
+          {invoiceAgingBucket && (
+            <button className="toolbar-btn text-amber-400" onClick={() => setInvoiceAgingBucket(null)}>
+              <X className="w-3 h-3" /> Clear Filter
+            </button>
+          )}
+          <button onClick={() => fetchInvoices()} className="toolbar-btn"><RefreshCw className="w-3 h-3" /></button>
         </PanelTitleBar>
-        <div className="p-4">
+
+        <div className="p-4 space-y-4">
+          {/* ── Recurring invoice banner ───────────────── */}
+          {recurringDue.length > 0 && !recurringBannerDismissed && (
+            <div className="flex items-center justify-between p-2 border border-amber-700/60 bg-amber-900/20 text-xs">
+              <span className="text-amber-300">
+                <AlertTriangle className="inline w-3.5 h-3.5 mr-1 text-amber-400" />
+                {recurringDue.length} recurring invoice{recurringDue.length > 1 ? 's' : ''} ready to generate
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { setActiveSection('invoices'); }}
+                  className="toolbar-btn toolbar-btn-primary text-[10px]"
+                >
+                  Generate
+                </button>
+                <button onClick={() => setRecurringBannerDismissed(true)} className="p-0.5 text-rmpg-400 hover:text-rmpg-200">
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Aging dashboard bar ─────────────────────── */}
+          <div className="grid grid-cols-5 gap-2">
+            {agingBuckets.map(b => {
+              const isActive = invoiceAgingBucket === b.key;
+              return (
+                <button
+                  key={b.key}
+                  onClick={() => setInvoiceAgingBucket(isActive ? null : b.key)}
+                  className={`panel-inset p-2 text-left border ${b.borderColor} transition-colors ${isActive ? b.activeBg : b.bg} hover:opacity-90`}
+                >
+                  <div className={`text-[9px] font-bold uppercase tracking-wider ${b.color}`}>{b.label}</div>
+                  <div className={`text-sm font-bold font-mono mt-0.5 ${b.color}`}>{formatCurrency(agingTotals[b.key].amount)}</div>
+                  <div className="text-[10px] text-rmpg-400">{agingTotals[b.key].count} invoice{agingTotals[b.key].count !== 1 ? 's' : ''}</div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* ── Invoice table ──────────────────────────── */}
           {filteredInvoices.length === 0 ? (
             <div className="text-center py-12 text-rmpg-400 text-sm">No invoices found</div>
           ) : (
@@ -1510,31 +1707,136 @@ export default function CrmPage() {
                     <th className="p-2 font-medium text-right">Total</th>
                     <th className="p-2 font-medium text-right">Balance</th>
                     <th className="p-2 font-medium">Due Date</th>
+                    <th className="p-2 font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredInvoices.map((inv: any) => (
-                    <tr key={inv.id} className="border-b border-rmpg-700/30 hover:bg-rmpg-700/10">
-                      <td className="p-2 text-green-400 font-mono">{inv.invoice_number}</td>
-                      <td className="p-2 text-rmpg-200">{inv.client_name || '—'}</td>
-                      <td className="p-2">
-                        <span className={`px-1.5 py-0.5 text-[9px] font-bold border ${invoiceStatusColor(inv.status)}`}>
-                          {toDisplayLabel(inv.status)}
-                        </span>
-                      </td>
-                      <td className="p-2 text-rmpg-400 font-mono">{formatDate(inv.period_start)} — {formatDate(inv.period_end)}</td>
-                      <td className="p-2 text-rmpg-200 text-right font-mono">{formatCurrency(inv.total || 0)}</td>
-                      <td className="p-2 text-right font-mono">
-                        <span className={(inv.balance_due || 0) > 0 ? 'text-amber-400' : 'text-green-400'}>{formatCurrency(inv.balance_due || 0)}</span>
-                      </td>
-                      <td className="p-2 text-rmpg-400 font-mono">{formatDate(inv.due_date)}</td>
-                    </tr>
-                  ))}
+                  {filteredInvoices.map((inv: any) => {
+                    const overduedays = daysOverdue(inv);
+                    const isPaid = inv.status === 'paid' || inv.status === 'void' || inv.status === 'cancelled';
+                    return (
+                      <tr key={inv.id} className="border-b border-rmpg-700/30 hover:bg-rmpg-700/10">
+                        <td className="p-2 text-green-400 font-mono">
+                          {inv.invoice_number}
+                          {inv.is_recurring && (
+                            <span className="ml-1 px-1 py-0.5 text-[8px] font-bold border border-purple-700/50 text-purple-400 bg-purple-900/20">REC</span>
+                          )}
+                        </td>
+                        <td className="p-2 text-rmpg-200">{inv.client_name || '—'}</td>
+                        <td className="p-2">
+                          <span className={`px-1.5 py-0.5 text-[9px] font-bold border ${invoiceStatusColor(inv.status)}`}>
+                            {toDisplayLabel(inv.status)}
+                          </span>
+                          {overduedays > 0 && (
+                            <span className="ml-1 text-[9px] font-bold text-red-400">OVERDUE {overduedays}d</span>
+                          )}
+                        </td>
+                        <td className="p-2 text-rmpg-400 font-mono">{formatDate(inv.period_start)} — {formatDate(inv.period_end)}</td>
+                        <td className="p-2 text-rmpg-200 text-right font-mono">{formatCurrency(inv.total || 0)}</td>
+                        <td className="p-2 text-right font-mono">
+                          <span className={(inv.balance_due || 0) > 0 ? 'text-amber-400' : 'text-green-400'}>{formatCurrency(inv.balance_due || 0)}</span>
+                        </td>
+                        <td className="p-2 text-rmpg-400 font-mono">{formatDate(inv.due_date)}</td>
+                        <td className="p-2">
+                          <div className="flex items-center gap-1">
+                            {!isPaid && (
+                              <button
+                                onClick={() => openPaymentModal(inv)}
+                                className="toolbar-btn text-[9px] text-green-400 border-green-700/50"
+                              >
+                                <DollarSign className="w-2.5 h-2.5" /> Pay
+                              </button>
+                            )}
+                            {overduedays >= 60 && (
+                              <button
+                                onClick={() => escalateInvoice(inv)}
+                                className="toolbar-btn text-[9px] text-orange-400 border-orange-700/50"
+                                title="Log escalation activity and create follow-up task"
+                              >
+                                <AlertTriangle className="w-2.5 h-2.5" /> ESCALATE
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           )}
         </div>
+
+        {/* ── Payment Recording Modal ─────────────────── */}
+        {paymentInvoice && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+            <div className="panel-raised border border-rmpg-600 w-full max-w-md">
+              <div className="flex items-center justify-between p-3 border-b border-rmpg-600">
+                <span className="text-sm font-bold text-white">Record Payment — {paymentInvoice.invoice_number}</span>
+                <button onClick={() => setPaymentInvoice(null)} className="p-1 text-rmpg-400 hover:text-rmpg-200"><X className="w-4 h-4" /></button>
+              </div>
+              <div className="p-4 space-y-3">
+                <div className="text-xs text-rmpg-400">
+                  Balance due: <span className="text-amber-400 font-mono font-bold">{formatCurrency(paymentInvoice.balance_due || 0)}</span>
+                  {(paymentInvoice.amount_paid || 0) > 0 && (
+                    <span className="ml-3">Total payments received: <span className="text-green-400 font-mono">{formatCurrency(paymentInvoice.amount_paid)}</span></span>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-[10px] text-rmpg-400 mb-1">Amount *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input-dark w-full text-xs"
+                    value={paymentForm.amount}
+                    onChange={e => setPaymentForm(p => ({ ...p, amount: e.target.value }))}
+                    placeholder="0.00"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-rmpg-400 mb-1">Date *</label>
+                  <input
+                    type="date"
+                    className="input-dark w-full text-xs"
+                    value={paymentForm.paid_at}
+                    onChange={e => setPaymentForm(p => ({ ...p, paid_at: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-rmpg-400 mb-1">Method</label>
+                  <select className="input-dark w-full text-xs" value={paymentForm.method} onChange={e => setPaymentForm(p => ({ ...p, method: e.target.value }))}>
+                    <option value="cash">Cash</option>
+                    <option value="check">Check</option>
+                    <option value="credit_card">Credit Card</option>
+                    <option value="ach">ACH</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] text-rmpg-400 mb-1">Reference # (optional)</label>
+                  <input
+                    type="text"
+                    className="input-dark w-full text-xs"
+                    value={paymentForm.reference}
+                    onChange={e => setPaymentForm(p => ({ ...p, reference: e.target.value }))}
+                    placeholder="Check #, transaction ID, etc."
+                  />
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button onClick={() => setPaymentInvoice(null)} className="toolbar-btn">Cancel</button>
+                  <button
+                    onClick={submitPayment}
+                    disabled={paymentSaving || !paymentForm.amount || parseFloat(paymentForm.amount) <= 0}
+                    className="toolbar-btn toolbar-btn-primary disabled:opacity-50"
+                  >
+                    {paymentSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                    Record Payment
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
