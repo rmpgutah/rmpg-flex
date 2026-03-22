@@ -25,10 +25,10 @@ import CollapsibleSection from '../components/CollapsibleSection';
 import CriminalHistorySection from '../components/CriminalHistorySection';
 import ArrestFormModal from '../components/ArrestFormModal';
 import type { ArrestFormData } from '../components/ArrestFormModal';
+import { localToday } from '../utils/dateUtils';
 import { useWebSocket } from '../context/WebSocketContext';
 import { useToast } from '../components/ToastProvider';
 import ExportButton from '../components/ExportButton';
-
 // ── Types ─────────────────────────────────────────────────
 
 interface CountyStat {
