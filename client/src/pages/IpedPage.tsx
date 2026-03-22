@@ -316,19 +316,19 @@ export default function IpedPage() {
         <div className="flex items-center gap-2">
           <HardDrive size={16} className="text-brand-blue" />
           <h1 className="text-sm font-bold text-white tracking-wide uppercase">Digital Forensics</h1>
-          <span className="text-[10px] text-slate-500 ml-1">IPED</span>
+          <span className="text-[10px] text-rmpg-500 ml-1">IPED</span>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => { fetchStatus(); fetchJobs(); fetchHashSets(); }}
-            className="p-1.5 rounded hover:bg-[#1a2636] text-slate-400 hover:text-white transition-colors"
+            className="p-1.5 rounded-sm hover:bg-[#1a2636] text-rmpg-400 hover:text-white transition-colors"
             title="Refresh all"
           >
             <RefreshCw size={14} />
           </button>
           <button
             onClick={() => setShowNewJob(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-brand-blue/20 text-brand-blue border border-brand-blue/30 hover:bg-brand-blue/30 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-sm bg-brand-blue/20 text-brand-blue border border-brand-blue/30 hover:bg-brand-blue/30 transition-colors"
           >
             <Plus size={13} />
             New Job
@@ -337,7 +337,7 @@ export default function IpedPage() {
       </div>
 
       {fetchError && (
-        <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded text-red-400 text-xs flex items-center gap-2">
+        <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
           <span>⚠ {fetchError}</span>
           <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
         </div>
@@ -348,7 +348,7 @@ export default function IpedPage() {
 
         {/* ── Stats Cards ────────────────────────────────── */}
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-          <StatCard label="Total Jobs" value={stats.totalJobs} icon={Database} color="text-slate-300" />
+          <StatCard label="Total Jobs" value={stats.totalJobs} icon={Database} color="text-rmpg-300" />
           <StatCard label="Running" value={stats.runningJobs} icon={Activity} color="text-amber-400" pulse={stats.runningJobs > 0} />
           <StatCard label="Completed" value={stats.completedJobs} icon={CheckCircle} color="text-green-400" />
           <StatCard label="Failed" value={stats.failedJobs} icon={AlertTriangle} color="text-red-400" />
@@ -357,16 +357,16 @@ export default function IpedPage() {
         </div>
 
         {/* ── Hash Sets Panel ────────────────────────────── */}
-        <div className="card-glass rounded">
+        <div className="card-glass rounded-sm">
           <div className="flex items-center justify-between px-3 py-2 border-b border-[#1e3048]">
             <div className="flex items-center gap-2">
               <Database size={13} className="text-brand-blue" />
               <span className="text-xs font-bold text-white uppercase tracking-wide">Hash Sets</span>
-              <span className="text-[10px] text-slate-500">({hashSets.length})</span>
+              <span className="text-[10px] text-rmpg-500">({hashSets.length})</span>
             </div>
             <button
               onClick={() => setShowImportHashSet(true)}
-              className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded bg-brand-blue/10 text-brand-blue border border-brand-blue/20 hover:bg-brand-blue/20 transition-colors"
+              className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded-sm bg-brand-blue/10 text-brand-blue border border-brand-blue/20 hover:bg-brand-blue/20 transition-colors"
             >
               <Upload size={10} />
               Import
@@ -375,27 +375,27 @@ export default function IpedPage() {
           <div className="p-3">
             {hashSetsLoading ? (
               <div className="flex items-center justify-center py-4">
-                <Loader2 size={16} className="animate-spin text-slate-500" />
+                <Loader2 size={16} className="animate-spin text-rmpg-500" />
               </div>
             ) : hashSets.length === 0 ? (
-              <p className="text-xs text-slate-500 text-center py-3">No hash sets loaded. Import one to begin.</p>
+              <p className="text-xs text-rmpg-500 text-center py-3">No hash sets loaded. Import one to begin.</p>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                 {hashSets.map((hs) => (
-                  <div key={hs.name} className="flex items-center justify-between px-3 py-2 rounded bg-[#0d1520] border border-[#1e3048] group">
+                  <div key={hs.name} className="flex items-center justify-between px-3 py-2 rounded-sm bg-[#0d1520] border border-[#1e3048] group">
                     <div className="flex-1 min-w-0">
                       <div className="text-xs font-semibold text-white truncate">{hs.name}</div>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${hs.category === 'known_bad' ? 'bg-red-900/40 text-red-400' : 'bg-green-900/40 text-green-400'}`}>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-sm ${hs.category === 'known_bad' ? 'bg-red-900/40 text-red-400' : 'bg-green-900/40 text-green-400'}`}>
                           {hs.category === 'known_bad' ? 'Known Bad' : hs.category}
                         </span>
-                        <span className="text-[10px] text-slate-500">{hs.count.toLocaleString()} hashes</span>
-                        <span className="text-[10px] text-slate-600">{(hs.hashType || 'MD5').toUpperCase()}</span>
+                        <span className="text-[10px] text-rmpg-500">{hs.count.toLocaleString()} hashes</span>
+                        <span className="text-[10px] text-rmpg-600">{(hs.hashType || 'MD5').toUpperCase()}</span>
                       </div>
                     </div>
                     <button
                       onClick={() => handleRemoveHashSet(hs.name)}
-                      className="p-1 rounded text-slate-600 hover:text-red-400 hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-all"
+                      className="p-1 rounded-sm text-rmpg-600 hover:text-red-400 hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-all"
                       title="Remove hash set"
                     >
                       <Trash2 size={12} />
@@ -408,19 +408,19 @@ export default function IpedPage() {
         </div>
 
         {/* ── Job Queue ──────────────────────────────────── */}
-        <div className="card-glass rounded flex-1 flex flex-col min-h-0">
+        <div className="card-glass rounded-sm flex-1 flex flex-col min-h-0">
           <div className="flex items-center justify-between px-3 py-2 border-b border-[#1e3048]">
             <div className="flex items-center gap-2">
               <Server size={13} className="text-brand-blue" />
               <span className="text-xs font-bold text-white uppercase tracking-wide">Job Queue</span>
-              <span className="text-[10px] text-slate-500">({jobsTotal})</span>
+              <span className="text-[10px] text-rmpg-500">({jobsTotal})</span>
             </div>
             <div className="flex items-center gap-2">
               {/* Status filter */}
               <select
                 value={jobsFilter}
                 onChange={(e) => { setJobsFilter(e.target.value); setJobsPage(1); }}
-                className="text-[10px] bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-2 py-1 focus:outline-none focus:border-brand-blue/50"
+                className="text-[10px] bg-[#0d1520] border border-[#1e3048] text-rmpg-300 rounded-sm px-2 py-1 focus:outline-none focus:border-brand-blue/50"
               >
                 <option value="">All Status</option>
                 <option value="queued">Queued</option>
@@ -435,14 +435,14 @@ export default function IpedPage() {
           <div className="flex-1 overflow-auto">
             {jobsLoading ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 size={18} className="animate-spin text-slate-500" />
+                <Loader2 size={18} className="animate-spin text-rmpg-500" />
               </div>
             ) : jobs.length === 0 ? (
-              <p className="text-xs text-slate-500 text-center py-8">No jobs found.</p>
+              <p className="text-xs text-rmpg-500 text-center py-8">No jobs found.</p>
             ) : (
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-[10px] text-slate-500 uppercase tracking-wider border-b border-[#1e3048]">
+                  <tr className="text-[10px] text-rmpg-500 uppercase tracking-wider border-b border-[#1e3048]">
                     <th className="text-left px-3 py-2 font-semibold">ID</th>
                     <th className="text-left px-3 py-2 font-semibold">Type</th>
                     <th className="text-left px-3 py-2 font-semibold">Status</th>
@@ -463,20 +463,20 @@ export default function IpedPage() {
                         onClick={() => fetchJobDetail(job.id)}
                         className={`border-b border-[#1e3048]/50 cursor-pointer transition-colors hover:bg-[#1a2636]/60 ${selectedJob?.id === job.id ? 'bg-brand-blue/10' : ''}`}
                       >
-                        <td className="px-3 py-2 font-mono text-slate-400">#{job.id}</td>
-                        <td className="px-3 py-2 text-slate-300">{JOB_TYPE_LABELS[job.job_type] || job.job_type}</td>
+                        <td className="px-3 py-2 font-mono text-rmpg-400">#{job.id}</td>
+                        <td className="px-3 py-2 text-rmpg-300">{JOB_TYPE_LABELS[job.job_type] || job.job_type}</td>
                         <td className="px-3 py-2">
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${STATUS_STYLES[job.status] || 'bg-slate-800 text-slate-400'}`}>
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[10px] font-semibold ${STATUS_STYLES[job.status] || 'bg-rmpg-800 text-rmpg-400'}`}>
                             <Icon size={10} />
                             {job.status}
                           </span>
                         </td>
-                        <td className="px-3 py-2 text-slate-500 truncate max-w-[200px] hidden md:table-cell" title={job.input_path}>
+                        <td className="px-3 py-2 text-rmpg-500 truncate max-w-[200px] hidden md:table-cell" title={job.input_path}>
                           {job.input_path}
                         </td>
-                        <td className="px-3 py-2 text-slate-400 hidden lg:table-cell">{job.created_by_name || '--'}</td>
-                        <td className="px-3 py-2 text-slate-400">{formatDate(job.started_at)}</td>
-                        <td className="px-3 py-2 text-slate-400 font-mono hidden md:table-cell">
+                        <td className="px-3 py-2 text-rmpg-400 hidden lg:table-cell">{job.created_by_name || '--'}</td>
+                        <td className="px-3 py-2 text-rmpg-400">{formatDate(job.started_at)}</td>
+                        <td className="px-3 py-2 text-rmpg-400 font-mono hidden md:table-cell">
                           {formatDuration(job.started_at, job.completed_at)}
                         </td>
                         <td className="px-3 py-2 hidden lg:table-cell">
@@ -493,7 +493,7 @@ export default function IpedPage() {
                           ) : job.status === 'completed' ? (
                             <span className="text-[10px] text-green-500">100%</span>
                           ) : (
-                            <span className="text-[10px] text-slate-600">--</span>
+                            <span className="text-[10px] text-rmpg-600">--</span>
                           )}
                         </td>
                         <td className="px-3 py-2 text-right">
@@ -501,7 +501,7 @@ export default function IpedPage() {
                             {job.status === 'running' && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); handleCancelJob(job.id); }}
-                                className="p-1 rounded text-red-400 hover:bg-red-900/20 transition-colors"
+                                className="p-1 rounded-sm text-red-400 hover:bg-red-900/20 transition-colors"
                                 title="Cancel job"
                               >
                                 <Square size={12} />
@@ -509,7 +509,7 @@ export default function IpedPage() {
                             )}
                             <button
                               onClick={(e) => { e.stopPropagation(); fetchJobDetail(job.id); }}
-                              className="p-1 rounded text-slate-400 hover:text-white hover:bg-[#1a2636] transition-colors"
+                              className="p-1 rounded-sm text-rmpg-400 hover:text-white hover:bg-[#1a2636] transition-colors"
                               title="View details"
                             >
                               <Eye size={12} />
@@ -527,21 +527,21 @@ export default function IpedPage() {
           {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex items-center justify-between px-3 py-2 border-t border-[#1e3048]">
-              <span className="text-[10px] text-slate-500">
+              <span className="text-[10px] text-rmpg-500">
                 Page {jobsPage} of {totalPages} ({jobsTotal} total)
               </span>
               <div className="flex items-center gap-1">
                 <button
                   disabled={jobsPage <= 1}
                   onClick={() => setJobsPage(p => p - 1)}
-                  className="px-2 py-1 text-[10px] rounded bg-[#0d1520] border border-[#1e3048] text-slate-400 hover:text-white disabled:opacity-40 transition-colors"
+                  className="px-2 py-1 text-[10px] rounded-sm bg-[#0d1520] border border-[#1e3048] text-rmpg-400 hover:text-white disabled:opacity-40 transition-colors"
                 >
                   Prev
                 </button>
                 <button
                   disabled={jobsPage >= totalPages}
                   onClick={() => setJobsPage(p => p + 1)}
-                  className="px-2 py-1 text-[10px] rounded bg-[#0d1520] border border-[#1e3048] text-slate-400 hover:text-white disabled:opacity-40 transition-colors"
+                  className="px-2 py-1 text-[10px] rounded-sm bg-[#0d1520] border border-[#1e3048] text-rmpg-400 hover:text-white disabled:opacity-40 transition-colors"
                 >
                   Next
                 </button>
@@ -552,18 +552,18 @@ export default function IpedPage() {
 
         {/* ── Job Detail Panel ───────────────────────────── */}
         {selectedJob && (
-          <div className="card-glass rounded">
+          <div className="card-glass rounded-sm">
             <div className="flex items-center justify-between px-3 py-2 border-b border-[#1e3048]">
               <div className="flex items-center gap-2">
                 <FileText size={13} className="text-brand-blue" />
                 <span className="text-xs font-bold text-white">Job #{selectedJob.id} Detail</span>
-                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${STATUS_STYLES[selectedJob.status] || ''}`}>
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[10px] font-semibold ${STATUS_STYLES[selectedJob.status] || ''}`}>
                   {selectedJob.status}
                 </span>
               </div>
               <button
                 onClick={() => { setSelectedJob(null); setJobHashes([]); setJobProgress(null); }}
-                className="p-1 rounded text-slate-500 hover:text-white hover:bg-[#1a2636] transition-colors"
+                className="p-1 rounded-sm text-rmpg-500 hover:text-white hover:bg-[#1a2636] transition-colors"
               >
                 <X size={14} />
               </button>
@@ -571,27 +571,27 @@ export default function IpedPage() {
             <div className="p-3 space-y-3">
               {detailLoading ? (
                 <div className="flex items-center justify-center py-4">
-                  <Loader2 size={16} className="animate-spin text-slate-500" />
+                  <Loader2 size={16} className="animate-spin text-rmpg-500" />
                 </div>
               ) : (
                 <>
                   {/* Job metadata */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                     <div>
-                      <span className="text-[10px] text-slate-500 uppercase">Type</span>
-                      <p className="text-slate-300 font-semibold">{JOB_TYPE_LABELS[selectedJob.job_type] || selectedJob.job_type}</p>
+                      <span className="text-[10px] text-rmpg-500 uppercase">Type</span>
+                      <p className="text-rmpg-300 font-semibold">{JOB_TYPE_LABELS[selectedJob.job_type] || selectedJob.job_type}</p>
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-500 uppercase">Profile</span>
-                      <p className="text-slate-300 font-semibold">{selectedJob.profile || '--'}</p>
+                      <span className="text-[10px] text-rmpg-500 uppercase">Profile</span>
+                      <p className="text-rmpg-300 font-semibold">{selectedJob.profile || '--'}</p>
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-500 uppercase">Created By</span>
-                      <p className="text-slate-300 font-semibold">{selectedJob.created_by_name || '--'}</p>
+                      <span className="text-[10px] text-rmpg-500 uppercase">Created By</span>
+                      <p className="text-rmpg-300 font-semibold">{selectedJob.created_by_name || '--'}</p>
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-500 uppercase">Duration</span>
-                      <p className="text-slate-300 font-mono font-semibold">
+                      <span className="text-[10px] text-rmpg-500 uppercase">Duration</span>
+                      <p className="text-rmpg-300 font-mono font-semibold">
                         {formatDuration(selectedJob.started_at, selectedJob.completed_at)}
                       </p>
                     </div>
@@ -600,15 +600,15 @@ export default function IpedPage() {
                   {/* Input / Output paths */}
                   <div className="text-xs space-y-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-slate-500 uppercase w-14 shrink-0">Input</span>
-                      <code className="text-slate-400 bg-[#0d1520] px-2 py-0.5 rounded text-[10px] font-mono truncate flex-1">
+                      <span className="text-[10px] text-rmpg-500 uppercase w-14 shrink-0">Input</span>
+                      <code className="text-rmpg-400 bg-[#0d1520] px-2 py-0.5 rounded-sm text-[10px] font-mono truncate flex-1">
                         {selectedJob.input_path}
                       </code>
                     </div>
                     {selectedJob.output_path && (
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-slate-500 uppercase w-14 shrink-0">Output</span>
-                        <code className="text-slate-400 bg-[#0d1520] px-2 py-0.5 rounded text-[10px] font-mono truncate flex-1">
+                        <span className="text-[10px] text-rmpg-500 uppercase w-14 shrink-0">Output</span>
+                        <code className="text-rmpg-400 bg-[#0d1520] px-2 py-0.5 rounded-sm text-[10px] font-mono truncate flex-1">
                           {selectedJob.output_path}
                         </code>
                       </div>
@@ -619,7 +619,7 @@ export default function IpedPage() {
                   {selectedJob.status === 'running' && selectedJob.progress_percent != null && (
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-[10px]">
-                        <span className="text-slate-500">Progress</span>
+                        <span className="text-rmpg-500">Progress</span>
                         <span className="text-amber-400 font-semibold">{selectedJob.progress_percent}%</span>
                       </div>
                       <div className="w-full h-2 bg-[#0d1520] rounded-full overflow-hidden">
@@ -633,15 +633,15 @@ export default function IpedPage() {
 
                   {/* Result summary */}
                   {selectedJob.result_summary && (
-                    <div className="bg-[#0d1520] border border-[#1e3048] rounded px-3 py-2">
-                      <span className="text-[10px] text-slate-500 uppercase block mb-1">Result Summary</span>
-                      <p className="text-xs text-slate-300">{selectedJob.result_summary}</p>
+                    <div className="bg-[#0d1520] border border-[#1e3048] rounded-sm px-3 py-2">
+                      <span className="text-[10px] text-rmpg-500 uppercase block mb-1">Result Summary</span>
+                      <p className="text-xs text-rmpg-300">{selectedJob.result_summary}</p>
                     </div>
                   )}
 
                   {/* Error message */}
                   {selectedJob.error_message && (
-                    <div className="bg-red-950/30 border border-red-900/50 rounded px-3 py-2">
+                    <div className="bg-red-950/30 border border-red-900/50 rounded-sm px-3 py-2">
                       <span className="text-[10px] text-red-400 uppercase block mb-1">Error</span>
                       <p className="text-xs text-red-300 font-mono">{selectedJob.error_message}</p>
                     </div>
@@ -652,14 +652,14 @@ export default function IpedPage() {
                     <div className="flex items-center gap-4 text-xs">
                       {selectedJob.items_found != null && (
                         <div className="flex items-center gap-1">
-                          <Search size={11} className="text-slate-500" />
-                          <span className="text-slate-400">Found: <strong className="text-white">{selectedJob.items_found}</strong></span>
+                          <Search size={11} className="text-rmpg-500" />
+                          <span className="text-rmpg-400">Found: <strong className="text-white">{selectedJob.items_found}</strong></span>
                         </div>
                       )}
                       {selectedJob.items_processed != null && (
                         <div className="flex items-center gap-1">
-                          <CheckCircle size={11} className="text-slate-500" />
-                          <span className="text-slate-400">Processed: <strong className="text-white">{selectedJob.items_processed}</strong></span>
+                          <CheckCircle size={11} className="text-rmpg-500" />
+                          <span className="text-rmpg-400">Processed: <strong className="text-white">{selectedJob.items_processed}</strong></span>
                         </div>
                       )}
                     </div>
@@ -668,11 +668,11 @@ export default function IpedPage() {
                   {/* Hash results table */}
                   {jobHashes.length > 0 && (
                     <div>
-                      <span className="text-[10px] text-slate-500 uppercase block mb-2">Hash Results ({jobHashes.length})</span>
-                      <div className="overflow-auto max-h-48 border border-[#1e3048] rounded">
+                      <span className="text-[10px] text-rmpg-500 uppercase block mb-2">Hash Results ({jobHashes.length})</span>
+                      <div className="overflow-auto max-h-48 border border-[#1e3048] rounded-sm">
                         <table className="w-full text-[10px]">
                           <thead>
-                            <tr className="text-slate-500 uppercase border-b border-[#1e3048] bg-[#0d1520]">
+                            <tr className="text-rmpg-500 uppercase border-b border-[#1e3048] bg-[#0d1520]">
                               <th className="text-left px-2 py-1">File</th>
                               <th className="text-left px-2 py-1">MD5</th>
                               <th className="text-left px-2 py-1 hidden lg:table-cell">SHA-256</th>
@@ -682,9 +682,9 @@ export default function IpedPage() {
                           <tbody>
                             {jobHashes.map((h) => (
                               <tr key={h.id} className="border-b border-[#1e3048]/30">
-                                <td className="px-2 py-1 text-slate-300 truncate max-w-[140px]">{h.attachment_name || `Att #${h.attachment_id}`}</td>
-                                <td className="px-2 py-1 text-slate-500 font-mono truncate max-w-[120px]" title={h.md5}>{h.md5}</td>
-                                <td className="px-2 py-1 text-slate-500 font-mono truncate max-w-[160px] hidden lg:table-cell" title={h.sha256}>{h.sha256}</td>
+                                <td className="px-2 py-1 text-rmpg-300 truncate max-w-[140px]">{h.attachment_name || `Att #${h.attachment_id}`}</td>
+                                <td className="px-2 py-1 text-rmpg-500 font-mono truncate max-w-[120px]" title={h.md5}>{h.md5}</td>
+                                <td className="px-2 py-1 text-rmpg-500 font-mono truncate max-w-[160px] hidden lg:table-cell" title={h.sha256}>{h.sha256}</td>
                                 <td className="px-2 py-1 text-center">
                                   {h.flagged ? (
                                     <span className="inline-flex items-center gap-0.5 text-red-400">
@@ -712,24 +712,24 @@ export default function IpedPage() {
       {/* ── New Job Modal ────────────────────────────────── */}
       {showNewJob && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowNewJob(false)}>
-          <div className="card-glass rounded-lg w-full max-w-md mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="card-glass rounded-sm w-full max-w-md mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e3048]">
               <div className="flex items-center gap-2">
                 <Plus size={14} className="text-brand-blue" />
                 <span className="text-sm font-bold text-white">Create Processing Job</span>
               </div>
-              <button onClick={() => setShowNewJob(false)} className="p-1 rounded text-slate-500 hover:text-white hover:bg-[#1a2636] transition-colors">
+              <button onClick={() => setShowNewJob(false)} className="p-1 rounded-sm text-rmpg-500 hover:text-white hover:bg-[#1a2636] transition-colors">
                 <X size={14} />
               </button>
             </div>
             <div className="p-4 space-y-3">
               {/* Job type */}
               <div>
-                <label className="text-[10px] text-slate-500 uppercase block mb-1">Job Type</label>
+                <label className="text-[10px] text-rmpg-500 uppercase block mb-1">Job Type</label>
                 <select
                   value={newJob.jobType}
                   onChange={(e) => setNewJob(j => ({ ...j, jobType: e.target.value }))}
-                  className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-2 focus:outline-none focus:border-brand-blue/50"
+                  className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-rmpg-300 rounded-sm px-3 py-2 focus:outline-none focus:border-brand-blue/50"
                 >
                   <option value="hash">Hash Computation</option>
                   <option value="process">Full Processing</option>
@@ -740,63 +740,63 @@ export default function IpedPage() {
 
               {/* Input path */}
               <div>
-                <label className="text-[10px] text-slate-500 uppercase block mb-1">Input Path *</label>
+                <label className="text-[10px] text-rmpg-500 uppercase block mb-1">Input Path *</label>
                 <input
                   type="text"
                   value={newJob.inputPath}
                   onChange={(e) => setNewJob(j => ({ ...j, inputPath: e.target.value }))}
                   placeholder="/path/to/evidence"
-                  className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-2 focus:outline-none focus:border-brand-blue/50 font-mono placeholder-slate-600"
+                  className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-rmpg-300 rounded-sm px-3 py-2 focus:outline-none focus:border-brand-blue/50 font-mono placeholder-slate-600"
                 />
               </div>
 
               {/* Output path */}
               <div>
-                <label className="text-[10px] text-slate-500 uppercase block mb-1">Output Path (optional)</label>
+                <label className="text-[10px] text-rmpg-500 uppercase block mb-1">Output Path (optional)</label>
                 <input
                   type="text"
                   value={newJob.outputPath}
                   onChange={(e) => setNewJob(j => ({ ...j, outputPath: e.target.value }))}
                   placeholder="/path/to/output"
-                  className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-2 focus:outline-none focus:border-brand-blue/50 font-mono placeholder-slate-600"
+                  className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-rmpg-300 rounded-sm px-3 py-2 focus:outline-none focus:border-brand-blue/50 font-mono placeholder-slate-600"
                 />
               </div>
 
               {/* Evidence ID */}
               <div>
-                <label className="text-[10px] text-slate-500 uppercase block mb-1">Evidence ID (optional)</label>
+                <label className="text-[10px] text-rmpg-500 uppercase block mb-1">Evidence ID (optional)</label>
                 <input
                   type="text"
                   value={newJob.evidenceId}
                   onChange={(e) => setNewJob(j => ({ ...j, evidenceId: e.target.value }))}
                   placeholder="e.g. 42"
-                  className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-2 focus:outline-none focus:border-brand-blue/50 placeholder-slate-600"
+                  className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-rmpg-300 rounded-sm px-3 py-2 focus:outline-none focus:border-brand-blue/50 placeholder-slate-600"
                 />
               </div>
 
               {/* Profile */}
               <div>
-                <label className="text-[10px] text-slate-500 uppercase block mb-1">IPED Profile</label>
+                <label className="text-[10px] text-rmpg-500 uppercase block mb-1">IPED Profile</label>
                 <input
                   type="text"
                   value={newJob.profile}
                   onChange={(e) => setNewJob(j => ({ ...j, profile: e.target.value }))}
                   placeholder="forensic"
-                  className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-2 focus:outline-none focus:border-brand-blue/50 placeholder-slate-600"
+                  className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-rmpg-300 rounded-sm px-3 py-2 focus:outline-none focus:border-brand-blue/50 placeholder-slate-600"
                 />
               </div>
             </div>
             <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-[#1e3048]">
               <button
                 onClick={() => setShowNewJob(false)}
-                className="px-3 py-1.5 text-xs rounded bg-[#1a2636] text-slate-400 hover:text-white border border-[#1e3048] transition-colors"
+                className="px-3 py-1.5 text-xs rounded-sm bg-[#1a2636] text-rmpg-400 hover:text-white border border-[#1e3048] transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleCreateJob}
                 disabled={newJobSubmitting}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-brand-blue text-white hover:bg-brand-blue/80 disabled:opacity-50 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-sm bg-brand-blue text-white hover:bg-brand-blue/80 disabled:opacity-50 transition-colors"
               >
                 {newJobSubmitting ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
                 Create Job
@@ -809,44 +809,44 @@ export default function IpedPage() {
       {/* ── Import Hash Set Modal ────────────────────────── */}
       {showImportHashSet && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowImportHashSet(false)}>
-          <div className="card-glass rounded-lg w-full max-w-md mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="card-glass rounded-sm w-full max-w-md mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e3048]">
               <div className="flex items-center gap-2">
                 <Upload size={14} className="text-brand-blue" />
                 <span className="text-sm font-bold text-white">Import Hash Set</span>
               </div>
-              <button onClick={() => setShowImportHashSet(false)} className="p-1 rounded text-slate-500 hover:text-white hover:bg-[#1a2636] transition-colors">
+              <button onClick={() => setShowImportHashSet(false)} className="p-1 rounded-sm text-rmpg-500 hover:text-white hover:bg-[#1a2636] transition-colors">
                 <X size={14} />
               </button>
             </div>
             <div className="p-4 space-y-3">
               <div>
-                <label className="text-[10px] text-slate-500 uppercase block mb-1">File Path *</label>
+                <label className="text-[10px] text-rmpg-500 uppercase block mb-1">File Path *</label>
                 <input
                   type="text"
                   value={importData.filePath}
                   onChange={(e) => setImportData(d => ({ ...d, filePath: e.target.value }))}
                   placeholder="/path/to/hashset.txt"
-                  className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-2 focus:outline-none focus:border-brand-blue/50 font-mono placeholder-slate-600"
+                  className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-rmpg-300 rounded-sm px-3 py-2 focus:outline-none focus:border-brand-blue/50 font-mono placeholder-slate-600"
                 />
               </div>
               <div>
-                <label className="text-[10px] text-slate-500 uppercase block mb-1">Set Name *</label>
+                <label className="text-[10px] text-rmpg-500 uppercase block mb-1">Set Name *</label>
                 <input
                   type="text"
                   value={importData.setName}
                   onChange={(e) => setImportData(d => ({ ...d, setName: e.target.value }))}
                   placeholder="NSRL Known Bad"
-                  className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-2 focus:outline-none focus:border-brand-blue/50 placeholder-slate-600"
+                  className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-rmpg-300 rounded-sm px-3 py-2 focus:outline-none focus:border-brand-blue/50 placeholder-slate-600"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] text-slate-500 uppercase block mb-1">Category</label>
+                  <label className="text-[10px] text-rmpg-500 uppercase block mb-1">Category</label>
                   <select
                     value={importData.category}
                     onChange={(e) => setImportData(d => ({ ...d, category: e.target.value }))}
-                    className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-2 focus:outline-none focus:border-brand-blue/50"
+                    className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-rmpg-300 rounded-sm px-3 py-2 focus:outline-none focus:border-brand-blue/50"
                   >
                     <option value="known_bad">Known Bad</option>
                     <option value="known_good">Known Good</option>
@@ -854,11 +854,11 @@ export default function IpedPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] text-slate-500 uppercase block mb-1">Hash Type</label>
+                  <label className="text-[10px] text-rmpg-500 uppercase block mb-1">Hash Type</label>
                   <select
                     value={importData.hashType}
                     onChange={(e) => setImportData(d => ({ ...d, hashType: e.target.value }))}
-                    className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-2 focus:outline-none focus:border-brand-blue/50"
+                    className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-rmpg-300 rounded-sm px-3 py-2 focus:outline-none focus:border-brand-blue/50"
                   >
                     <option value="md5">MD5</option>
                     <option value="sha1">SHA-1</option>
@@ -870,14 +870,14 @@ export default function IpedPage() {
             <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-[#1e3048]">
               <button
                 onClick={() => setShowImportHashSet(false)}
-                className="px-3 py-1.5 text-xs rounded bg-[#1a2636] text-slate-400 hover:text-white border border-[#1e3048] transition-colors"
+                className="px-3 py-1.5 text-xs rounded-sm bg-[#1a2636] text-rmpg-400 hover:text-white border border-[#1e3048] transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleImportHashSet}
                 disabled={importSubmitting}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-brand-blue text-white hover:bg-brand-blue/80 disabled:opacity-50 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-sm bg-brand-blue text-white hover:bg-brand-blue/80 disabled:opacity-50 transition-colors"
               >
                 {importSubmitting ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
                 Import
@@ -900,13 +900,13 @@ function StatCard({ label, value, icon: Icon, color, pulse }: {
   pulse?: boolean;
 }) {
   return (
-    <div className="card-glass rounded px-3 py-2.5 flex items-center gap-3">
-      <div className={`p-1.5 rounded bg-[#0d1520] ${color}`}>
+    <div className="card-glass rounded-sm px-3 py-2.5 flex items-center gap-3">
+      <div className={`p-1.5 rounded-sm bg-[#0d1520] ${color}`}>
         <Icon size={14} className={pulse ? 'animate-pulse' : ''} />
       </div>
       <div>
         <p className="text-lg font-bold text-white leading-none">{value.toLocaleString()}</p>
-        <p className="text-[10px] text-slate-500 uppercase tracking-wide mt-0.5">{label}</p>
+        <p className="text-[10px] text-rmpg-500 uppercase tracking-wide mt-0.5">{label}</p>
       </div>
     </div>
   );

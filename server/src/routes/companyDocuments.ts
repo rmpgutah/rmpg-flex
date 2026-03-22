@@ -33,6 +33,10 @@ router.get('/', (req: Request, res: Response) => {
       conditions.push('d.published = 1');
     }
     if (category && category !== 'all') {
+      if (typeof category !== 'string' || category.length > 100) {
+        res.status(400).json({ error: 'Invalid category filter' });
+        return;
+      }
       conditions.push('d.category = ?');
       params.push(category);
     }
@@ -87,6 +91,37 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
 
     if (!title) {
       res.status(400).json({ error: 'Title is required' });
+      return;
+    }
+
+    // Validate field types and lengths
+    if (typeof title !== 'string' || title.length > 500) {
+      res.status(400).json({ error: 'Title must be a string of 500 characters or less' });
+      return;
+    }
+    if (description && (typeof description !== 'string' || description.length > 5000)) {
+      res.status(400).json({ error: 'Description must be 5000 characters or less' });
+      return;
+    }
+    if (category && (typeof category !== 'string' || category.length > 100)) {
+      res.status(400).json({ error: 'Category must be 100 characters or less' });
+      return;
+    }
+    const validContentTypes = ['file', 'link', 'text'];
+    if (content_type && !validContentTypes.includes(content_type)) {
+      res.status(400).json({ error: `content_type must be one of: ${validContentTypes.join(', ')}` });
+      return;
+    }
+    if (external_url && (typeof external_url !== 'string' || external_url.length > 2000)) {
+      res.status(400).json({ error: 'external_url must be 2000 characters or less' });
+      return;
+    }
+    if (external_url && !/^https?:\/\/.+/.test(external_url)) {
+      res.status(400).json({ error: 'external_url must be a valid HTTP(S) URL' });
+      return;
+    }
+    if (file_id && (typeof file_id !== 'string' || file_id.length > 200)) {
+      res.status(400).json({ error: 'Invalid file_id' });
       return;
     }
 

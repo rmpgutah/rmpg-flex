@@ -494,7 +494,7 @@ export default function RadioPage() {
                   {entry.audio_file && (
                     <button
                       onClick={() => togglePlayback(entry.id)}
-                      className="flex-shrink-0 mt-px p-0.5 rounded hover:bg-rmpg-800 transition-colors"
+                      className="flex-shrink-0 mt-px p-0.5 rounded-sm hover:bg-rmpg-800 transition-colors"
                       title={playingId === entry.id ? 'Stop playback' : 'Play recording'}
                     >
                       {playingId === entry.id ? (

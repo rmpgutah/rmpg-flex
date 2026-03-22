@@ -883,7 +883,7 @@ export default function WarrantsPage() {
               <Icon className="w-3 h-3" />
               <span className="whitespace-nowrap">{tab.label}</span>
               {tab.id === 'dashboard' && dashStats && dashStats.activeWarrants > 0 && (
-                <span className="ml-1 px-1 rounded bg-red-600 text-white text-[8px] font-bold leading-tight">
+                <span className="ml-1 px-1 rounded-sm bg-red-600 text-white text-[8px] font-bold leading-tight">
                   {dashStats.activeWarrants}
                 </span>
               )}
@@ -1041,7 +1041,7 @@ export default function WarrantsPage() {
                           >
                             {entry.person_name}
                           </button>
-                          <span className={`inline-flex px-1.5 py-0.5 text-[8px] font-bold rounded border shrink-0 ${
+                          <span className={`inline-flex px-1.5 py-0.5 text-[8px] font-bold rounded-sm border shrink-0 ${
                             entry.event === 'warrant_found' || entry.event === 'FOUND'
                               ? 'bg-red-900/50 text-red-400 border-red-700/50'
                               : 'bg-green-900/50 text-green-400 border-green-700/50'
@@ -1093,7 +1093,7 @@ export default function WarrantsPage() {
                               <span className="text-xs font-bold text-white truncate">
                                 {[pw.subject_first_name, pw.subject_last_name].filter(Boolean).join(' ') || 'Unknown'}
                               </span>
-                              <span className={`inline-flex px-1 py-0.5 text-[8px] font-bold rounded border ${
+                              <span className={`inline-flex px-1 py-0.5 text-[8px] font-bold rounded-sm border ${
                                 pw.offense_level === 'felony' ? SEVERITY_COLORS.felony
                                   : pw.offense_level === 'misdemeanor' ? SEVERITY_COLORS.misdemeanor
                                   : 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50'
@@ -1107,7 +1107,7 @@ export default function WarrantsPage() {
                                 <span className="text-green-400 font-mono font-bold">{formatCurrency(pw.bail_amount)}</span>
                               )}
                               {pw.source && (
-                                <span className="inline-flex px-1 py-0.5 text-[8px] rounded bg-blue-900/30 text-blue-300 border border-blue-700/30">
+                                <span className="inline-flex px-1 py-0.5 text-[8px] rounded-sm bg-blue-900/30 text-blue-300 border border-blue-700/30">
                                   {pw.source}
                                 </span>
                               )}
@@ -1214,10 +1214,10 @@ export default function WarrantsPage() {
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-xs font-mono font-bold text-white">{w.warrant_number || '-'}</span>
                         <div className="flex items-center gap-1">
-                          <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded border ${TYPE_COLORS[w.type] || TYPE_COLORS.other}`}>
+                          <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded-sm border ${TYPE_COLORS[w.type] || TYPE_COLORS.other}`}>
                             {w.type.toUpperCase()}
                           </span>
-                          <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded border ${STATUS_COLORS[w.status] || ''}`}>
+                          <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded-sm border ${STATUS_COLORS[w.status] || ''}`}>
                             {w.status.toUpperCase()}
                           </span>
                         </div>
@@ -1254,7 +1254,7 @@ export default function WarrantsPage() {
                         className={`cursor-pointer ${selectedWarrant?.id === w.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''}`}
                       >
                         <td>
-                          <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-bold rounded border ${STATUS_COLORS[w.status] || ''}`}>
+                          <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-bold rounded-sm border ${STATUS_COLORS[w.status] || ''}`}>
                             {w.status.toUpperCase()}
                           </span>
                         </td>
@@ -1276,14 +1276,14 @@ export default function WarrantsPage() {
                           </div>
                         </td>
                         <td>
-                          <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-bold rounded border ${TYPE_COLORS[w.type] || TYPE_COLORS.other}`}>
+                          <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-bold rounded-sm border ${TYPE_COLORS[w.type] || TYPE_COLORS.other}`}>
                             {w.type.toUpperCase()}
                           </span>
                         </td>
                         <td className="text-xs text-rmpg-300 truncate max-w-[200px]">{w.charge_description}</td>
                         <td>
                           {w.offense_level ? (
-                            <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded border ${SEVERITY_COLORS[w.offense_level] || 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50'}`}>
+                            <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded-sm border ${SEVERITY_COLORS[w.offense_level] || 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50'}`}>
                               {w.offense_level.toUpperCase()}
                             </span>
                           ) : <span className="text-rmpg-500">-</span>}
@@ -1364,19 +1364,19 @@ export default function WarrantsPage() {
                     <div>
                       <h2 className="text-lg font-bold text-white font-mono">{selectedWarrant.warrant_number}</h2>
                       <div className="flex items-center gap-2 mt-1">
-                        <span className={`inline-flex px-2 py-0.5 text-[10px] font-bold rounded border ${TYPE_COLORS[selectedWarrant.type] || TYPE_COLORS.other}`}>
+                        <span className={`inline-flex px-2 py-0.5 text-[10px] font-bold rounded-sm border ${TYPE_COLORS[selectedWarrant.type] || TYPE_COLORS.other}`}>
                           {selectedWarrant.type.toUpperCase()} WARRANT
                         </span>
-                        <span className={`inline-flex px-2 py-0.5 text-[10px] font-bold rounded border ${STATUS_COLORS[selectedWarrant.status] || ''}`}>
+                        <span className={`inline-flex px-2 py-0.5 text-[10px] font-bold rounded-sm border ${STATUS_COLORS[selectedWarrant.status] || ''}`}>
                           {selectedWarrant.status.toUpperCase()}
                         </span>
                         {selectedWarrant.offense_level && (
-                          <span className={`inline-flex px-2 py-0.5 text-[10px] font-bold rounded border ${SEVERITY_COLORS[selectedWarrant.offense_level] || 'bg-rmpg-700/40 text-rmpg-200 border-rmpg-600/50'}`}>
+                          <span className={`inline-flex px-2 py-0.5 text-[10px] font-bold rounded-sm border ${SEVERITY_COLORS[selectedWarrant.offense_level] || 'bg-rmpg-700/40 text-rmpg-200 border-rmpg-600/50'}`}>
                             {selectedWarrant.offense_level.toUpperCase()}
                           </span>
                         )}
                         {selectedWarrant.archived_at && (
-                          <span className="inline-flex px-2 py-0.5 text-[10px] font-bold rounded border bg-amber-900/40 text-amber-300 border-amber-700/50">
+                          <span className="inline-flex px-2 py-0.5 text-[10px] font-bold rounded-sm border bg-amber-900/40 text-amber-300 border-amber-700/50">
                             ARCHIVED
                           </span>
                         )}
@@ -1659,7 +1659,7 @@ export default function WarrantsPage() {
                             <div className="text-sm font-bold font-mono text-white">{state}</div>
                             <div className="text-[10px] text-rmpg-300 mt-1">{sources.length} source{sources.length !== 1 ? 's' : ''}</div>
                             {active > 0 && <div className="text-[9px] text-red-400 font-bold mt-0.5">{active} active</div>}
-                            <div className={`mt-1 inline-flex items-center gap-1 text-[8px] px-1.5 py-0.5 rounded ${
+                            <div className={`mt-1 inline-flex items-center gap-1 text-[8px] px-1.5 py-0.5 rounded-sm ${
                               enabled === 0
                                 ? 'bg-rmpg-700/50 text-rmpg-500'
                                 : isRecent
@@ -1756,7 +1756,7 @@ export default function WarrantsPage() {
                     <div key={run.id} className="panel-beveled p-3 rounded-sm">
                       <div className="flex items-center gap-2 mb-2">
                         <span className="font-mono text-xs text-rmpg-200 font-bold">{run.run_id}</span>
-                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold rounded border ${
+                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold rounded-sm border ${
                           run.status === 'completed' ? 'bg-green-900/50 text-green-400 border-green-700/50'
                             : run.status === 'running' ? 'bg-blue-900/50 text-blue-400 border-blue-700/50'
                             : 'bg-red-900/50 text-red-400 border-red-700/50'
@@ -1916,10 +1916,10 @@ export default function WarrantsPage() {
                         <div key={w.id} className="panel-inset bg-surface-sunken p-3 rounded-sm">
                           <div className="flex items-center gap-2 mb-1">
                             <span className="font-mono text-xs text-white font-bold">{w.warrant_number}</span>
-                            <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded border ${STATUS_COLORS[w.status] || ''}`}>
+                            <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded-sm border ${STATUS_COLORS[w.status] || ''}`}>
                               {w.status.toUpperCase()}
                             </span>
-                            <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded border ${TYPE_COLORS[w.type] || TYPE_COLORS.other}`}>
+                            <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded-sm border ${TYPE_COLORS[w.type] || TYPE_COLORS.other}`}>
                               {w.type.toUpperCase()}
                             </span>
                           </div>
@@ -2002,7 +2002,7 @@ export default function WarrantsPage() {
               <div className="relative">
                 <label className="field-label">Subject Person</label>
                 {selectedPersonName && formData.subject_person_id ? (
-                  <div className="flex items-center gap-2 p-2 bg-rmpg-800 border border-rmpg-600 rounded text-xs">
+                  <div className="flex items-center gap-2 p-2 bg-rmpg-800 border border-rmpg-600 rounded-sm text-xs">
                     <User className="w-3 h-3 text-brand-400" />
                     <span className="text-white font-bold">{selectedPersonName}</span>
                     <button
@@ -2027,7 +2027,7 @@ export default function WarrantsPage() {
                       onFocus={() => setShowPersonDropdown(true)}
                     />
                     {showPersonDropdown && personResults.length > 0 && (
-                      <div className="absolute z-10 w-full mt-1 max-h-40 overflow-auto bg-rmpg-800 border border-rmpg-600 rounded shadow-lg">
+                      <div className="absolute z-10 w-full mt-1 max-h-40 overflow-auto bg-rmpg-800 border border-rmpg-600 rounded-sm shadow-lg">
                         {personResults.map((p) => (
                           <button
                             key={p.id}

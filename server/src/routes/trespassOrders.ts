@@ -172,6 +172,25 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
     if (!subject_first_name || !subject_last_name) return res.status(400).json({ error: 'Subject name is required' });
     if (!location) return res.status(400).json({ error: 'Location is required' });
 
+    // Validate order_type against allowlist
+    const VALID_ORDER_TYPES = ['trespass_warning', 'trespass_notice', 'trespass_arrest', 'ban_order', 'exclusion_order'];
+    if (!VALID_ORDER_TYPES.includes(order_type)) {
+      return res.status(400).json({ error: `Invalid order_type. Must be one of: ${VALID_ORDER_TYPES.join(', ')}` });
+    }
+
+    // Validate string lengths
+    if (subject_first_name.length > 200) return res.status(400).json({ error: 'Subject first name too long (max 200)' });
+    if (subject_last_name.length > 200) return res.status(400).json({ error: 'Subject last name too long (max 200)' });
+    if (location.length > 1000) return res.status(400).json({ error: 'Location too long (max 1000)' });
+
+    // Validate duration_days bounds
+    if (duration_days !== undefined && duration_days !== null) {
+      const dd = parseInt(duration_days, 10);
+      if (isNaN(dd) || dd < 1 || dd > 3650) {
+        return res.status(400).json({ error: 'duration_days must be between 1 and 3650' });
+      }
+    }
+
     // Auto-fill Section/Zone/Beat from linked call, incident, or property
     let { section_id, zone_id, beat_id, zone_beat } = req.body;
     if (!section_id && !zone_id && !beat_id) {
@@ -264,6 +283,21 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     const now = localNow();
     const existing = db.prepare('SELECT id FROM trespass_orders WHERE id = ?').get(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Trespass order not found' });
+
+    // Validate status enum if provided
+    if (req.body.status !== undefined) {
+      const VALID_STATUSES = ['active', 'served', 'expired', 'lifted', 'violated', 'revoked'];
+      if (!VALID_STATUSES.includes(req.body.status)) {
+        return res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` });
+      }
+    }
+    // Validate order_type enum if provided
+    if (req.body.order_type !== undefined) {
+      const VALID_TYPES = ['trespass_warning', 'trespass_notice', 'trespass_arrest', 'ban_order', 'exclusion_order'];
+      if (!VALID_TYPES.includes(req.body.order_type)) {
+        return res.status(400).json({ error: `Invalid order_type. Must be one of: ${VALID_TYPES.join(', ')}` });
+      }
+    }
 
     const fields = [
       'person_id', 'subject_first_name', 'subject_last_name', 'subject_dob', 'subject_description',

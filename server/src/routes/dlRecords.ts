@@ -85,6 +85,30 @@ router.post('/', requireRole('admin', 'manager', 'officer'), (req: Request, res:
       return;
     }
 
+    // Validate DL number format (alphanumeric, dashes, spaces, 2-30 chars)
+    if (typeof body.dl_number !== 'string' || !/^[A-Za-z0-9\-\s]{2,30}$/.test(body.dl_number.trim())) {
+      res.status(400).json({ error: 'Invalid DL number format (2-30 alphanumeric characters)' });
+      return;
+    }
+
+    // Validate state code (2-letter US state or territory code)
+    if (typeof body.dl_state !== 'string' || !/^[A-Z]{2}$/.test(body.dl_state.trim().toUpperCase())) {
+      res.status(400).json({ error: 'State must be a 2-letter state code (e.g., UT, CA)' });
+      return;
+    }
+
+    // Validate name lengths
+    if (body.first_name.length > 200 || body.last_name.length > 200) {
+      res.status(400).json({ error: 'Name fields must be 200 characters or less' });
+      return;
+    }
+
+    // Validate DL expiration date format if provided
+    if (body.dl_expiration && !/^\d{4}-\d{2}-\d{2}$/.test(body.dl_expiration) && !/^\d{2}\/\d{2}\/\d{4}$/.test(body.dl_expiration)) {
+      res.status(400).json({ error: 'DL expiration must be a valid date format' });
+      return;
+    }
+
     const subject: DlRecordSubject = {
       source: 'MANUAL_ENTRY',
       first_name: body.first_name || '',

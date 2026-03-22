@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
-import { validateParamId } from '../middleware/sanitize';
+import { validateParamId, validateStr, validateEnum, requireInt, requireFloat, validateDateStr } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 import { broadcast } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
@@ -108,10 +108,24 @@ router.get('/leave', (req: Request, res: Response) => {
       params.push(Number(officer_id));
     }
 
-    if (status) { sql += ' AND lr.status = ?'; params.push(status); }
-    if (type) { sql += ' AND lr.type = ?'; params.push(type); }
-    if (start_date) { sql += ' AND lr.start_date >= ?'; params.push(start_date); }
-    if (end_date) { sql += ' AND lr.end_date <= ?'; params.push(end_date); }
+    if (status) {
+      const validStatuses = ['pending', 'approved', 'denied', 'cancelled'];
+      if (!validStatuses.includes(status as string)) { res.status(400).json({ error: 'Invalid status filter' }); return; }
+      sql += ' AND lr.status = ?'; params.push(status);
+    }
+    if (type) {
+      const validTypes = ['vacation', 'sick', 'personal', 'bereavement', 'military', 'jury_duty', 'unpaid', 'other'];
+      if (!validTypes.includes(type as string)) { res.status(400).json({ error: 'Invalid type filter' }); return; }
+      sql += ' AND lr.type = ?'; params.push(type);
+    }
+    if (start_date) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(start_date))) { res.status(400).json({ error: 'start_date must be YYYY-MM-DD' }); return; }
+      sql += ' AND lr.start_date >= ?'; params.push(start_date);
+    }
+    if (end_date) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(end_date))) { res.status(400).json({ error: 'end_date must be YYYY-MM-DD' }); return; }
+      sql += ' AND lr.end_date <= ?'; params.push(end_date);
+    }
 
     sql += ' ORDER BY lr.created_at DESC';
     const rows = db.prepare(sql).all(...params);
@@ -128,21 +142,31 @@ router.post('/leave', (req: Request, res: Response) => {
     const user = (req as any).user;
     const { type, start_date, end_date, hours_requested, reason } = req.body;
 
-    if (!type || !start_date || !end_date) {
-      return res.status(400).json({ error: 'type, start_date, and end_date are required' });
-    }
+    // ── Validate leave request ──
+    const LEAVE_TYPES = ['vacation', 'sick', 'personal', 'bereavement', 'military', 'jury_duty', 'unpaid', 'other'] as const;
+    const validType = validateEnum(type, LEAVE_TYPES, 'type');
+    if (!validType) return res.status(400).json({ error: 'type is required' });
+    const validStart = validateDateStr(start_date, 'start_date');
+    if (!validStart) return res.status(400).json({ error: 'start_date is required (YYYY-MM-DD)' });
+    const validEnd = validateDateStr(end_date, 'end_date');
+    if (!validEnd) return res.status(400).json({ error: 'end_date is required (YYYY-MM-DD)' });
+    const validHours = requireFloat(hours_requested, 'hours_requested', 0, 2000) || 0;
+    const validReason = validateStr(reason, 'reason', 2000);
 
     const now = localNow();
     const result = db.prepare(
       `INSERT INTO leave_requests (officer_id, type, start_date, end_date, hours_requested, reason, status, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
-    ).run(user.id, type, start_date, end_date, hours_requested || 0, reason || null, now, now);
+    ).run(user.id, validType, validStart, validEnd, validHours, validReason, now, now);
 
     auditLog(req, 'CREATE' as any, 'leave_request' as any, Number(result.lastInsertRowid),
       `Leave request created: ${type} ${start_date} to ${end_date}`);
     broadcast('admin', 'hr:updated', { entity: 'leave', action: 'created', id: Number(result.lastInsertRowid) });
     res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
+    if (error.message?.startsWith('Invalid ') || error.message?.includes('must be')) {
+      res.status(400).json({ error: error.message }); return;
+    }
     console.error('[HR] Leave create error:', error?.message);
     res.status(500).json({ error: 'Failed to create leave request' });
   }
@@ -253,6 +277,8 @@ router.post('/leave/bulk-approve', requireRole('admin', 'manager', 'supervisor')
     const user = (req as any).user;
     const { ids, review_notes } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids array is required' });
+    if (ids.length > 100) return res.status(400).json({ error: 'Maximum 100 IDs per bulk action' });
+    for (const id of ids) { if (isNaN(parseInt(String(id), 10)) || parseInt(String(id), 10) < 1) return res.status(400).json({ error: 'All IDs must be positive integers' }); }
 
     const now = localNow();
     let approved = 0;
@@ -496,24 +522,42 @@ router.post('/disciplinary', requireRole('admin', 'manager'), (req: Request, res
     const { officer_id, type, severity, incident_date, description, action_taken,
             follow_up_date, follow_up_notes, status, witness, attachments } = req.body;
 
-    if (!officer_id || !incident_date || !description) {
-      return res.status(400).json({ error: 'officer_id, incident_date, and description are required' });
-    }
+    // ── Validate disciplinary inputs ──
+    const DISC_TYPES = ['verbal_warning', 'written_warning', 'suspension', 'probation', 'termination', 'counseling', 'other'] as const;
+    const DISC_SEVERITIES = ['minor', 'moderate', 'major', 'critical'] as const;
+    const DISC_STATUSES = ['open', 'pending_review', 'closed', 'appealed'] as const;
+
+    const validOfficerId = requireInt(officer_id, 'officer_id');
+    if (!validOfficerId) return res.status(400).json({ error: 'officer_id is required' });
+    const validIncDate = validateDateStr(incident_date, 'incident_date');
+    if (!validIncDate) return res.status(400).json({ error: 'incident_date is required (YYYY-MM-DD)' });
+    const validDesc = validateStr(description, 'description', 5000);
+    if (!validDesc) return res.status(400).json({ error: 'description is required' });
+    const validDiscType = validateEnum(type, DISC_TYPES, 'type') || 'verbal_warning';
+    const validSeverity = validateEnum(severity, DISC_SEVERITIES, 'severity') || 'minor';
+    const validDiscStatus = validateEnum(status, DISC_STATUSES, 'status') || 'open';
+    if (follow_up_date) validateDateStr(follow_up_date, 'follow_up_date');
+    validateStr(action_taken, 'action_taken', 2000);
+    validateStr(follow_up_notes, 'follow_up_notes', 5000);
+    validateStr(witness, 'witness', 200);
 
     const now = localNow();
     const result = db.prepare(
       `INSERT INTO disciplinary_records (officer_id, type, severity, incident_date, description, action_taken,
        follow_up_date, follow_up_notes, status, issued_by, witness, attachments, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(officer_id, type || 'verbal_warning', severity || 'minor', incident_date, description,
+    ).run(validOfficerId, validDiscType, validSeverity, validIncDate, validDesc,
       action_taken || null, follow_up_date || null, follow_up_notes || null,
-      status || 'open', user.id, witness || null, attachments || '[]', now, now);
+      validDiscStatus, user.id, witness || null, attachments || '[]', now, now);
 
     auditLog(req, 'CREATE' as any, 'disciplinary_record' as any, Number(result.lastInsertRowid),
       `Disciplinary record created for officer ${officer_id}: ${type || 'verbal_warning'}`);
     broadcast('admin', 'hr:updated', { entity: 'disciplinary', action: 'created', id: Number(result.lastInsertRowid) });
     res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
+    if (error.message?.startsWith('Invalid ') || error.message?.includes('must be')) {
+      res.status(400).json({ error: error.message }); return;
+    }
     console.error('[HR] Disciplinary create error:', error?.message);
     res.status(500).json({ error: 'Failed to create disciplinary record' });
   }
@@ -610,9 +654,21 @@ router.post('/reviews', requireRole('admin', 'manager', 'supervisor'), (req: Req
     const { officer_id, reviewer_id, review_period_start, review_period_end, review_date,
             type, overall_rating, categories, strengths, areas_for_improvement, goals, status } = req.body;
 
-    if (!officer_id || !review_period_start || !review_period_end) {
-      return res.status(400).json({ error: 'officer_id, review_period_start, and review_period_end are required' });
-    }
+    // ── Validate review inputs ──
+    const REVIEW_TYPES = ['annual', 'semi_annual', 'quarterly', 'probationary', 'special'] as const;
+    const REVIEW_STATUSES = ['draft', 'submitted', 'completed', 'acknowledged'] as const;
+
+    const validOid = requireInt(officer_id, 'officer_id');
+    if (!validOid) return res.status(400).json({ error: 'officer_id is required' });
+    const validStart = validateDateStr(review_period_start, 'review_period_start');
+    if (!validStart) return res.status(400).json({ error: 'review_period_start is required (YYYY-MM-DD)' });
+    const validEnd = validateDateStr(review_period_end, 'review_period_end');
+    if (!validEnd) return res.status(400).json({ error: 'review_period_end is required (YYYY-MM-DD)' });
+    if (reviewer_id) requireInt(reviewer_id, 'reviewer_id');
+    if (review_date) validateDateStr(review_date, 'review_date');
+    const validRevType = validateEnum(type, REVIEW_TYPES, 'type') || 'annual';
+    const validRevStatus = validateEnum(status, REVIEW_STATUSES, 'status') || 'draft';
+    if (overall_rating != null) requireFloat(overall_rating, 'overall_rating', 0, 10);
 
     const now = localNow();
     const user = (req as any).user;
@@ -621,17 +677,20 @@ router.post('/reviews', requireRole('admin', 'manager', 'supervisor'), (req: Req
        review_date, type, overall_rating, categories, strengths, areas_for_improvement, goals, status,
        created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(officer_id, reviewer_id || user.id, review_period_start, review_period_end,
-      review_date || null, type || 'annual', overall_rating || null,
+    ).run(validOid, reviewer_id || user.id, validStart, validEnd,
+      review_date || null, validRevType, overall_rating || null,
       typeof categories === 'object' ? JSON.stringify(categories) : (categories || '{}'),
       strengths || null, areas_for_improvement || null, goals || null,
-      status || 'draft', now, now);
+      validRevStatus, now, now);
 
     auditLog(req, 'CREATE' as any, 'performance_review' as any, Number(result.lastInsertRowid),
       `Performance review created for officer ${officer_id}`);
     broadcast('admin', 'hr:updated', { entity: 'review', action: 'created', id: Number(result.lastInsertRowid) });
     res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
+    if (error.message?.startsWith('Invalid ') || error.message?.includes('must be')) {
+      res.status(400).json({ error: error.message }); return;
+    }
     console.error('[HR] Review create error:', error?.message);
     res.status(500).json({ error: 'Failed to create review' });
   }

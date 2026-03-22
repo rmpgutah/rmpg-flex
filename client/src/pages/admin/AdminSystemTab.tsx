@@ -1718,7 +1718,7 @@ export default function AdminSystemTab({
                                   <td><span className="font-bold text-white font-mono text-xs">{unit.call_sign}</span></td>
                                   <td className="text-rmpg-200 text-xs">{unit.officer_name || <span className="text-rmpg-500">Unassigned</span>}</td>
                                   <td>
-                                    <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold rounded border ${
+                                    <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold rounded-sm border ${
                                       unit.status === 'available' ? 'bg-green-900/40 text-green-400 border-green-700/50' :
                                       unit.status === 'dispatched' ? 'bg-amber-900/40 text-amber-400 border-amber-700/50' :
                                       unit.status === 'enroute' ? 'bg-blue-900/40 text-blue-400 border-blue-700/50' :

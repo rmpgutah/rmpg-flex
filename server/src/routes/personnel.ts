@@ -260,6 +260,28 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       return;
     }
 
+    // Validate username format (3-50 chars, alphanumeric + underscores + dots)
+    if (typeof username !== 'string' || !/^[a-zA-Z0-9_.]{3,50}$/.test(username)) {
+      res.status(400).json({ error: 'Username must be 3-50 alphanumeric characters (underscores and dots allowed)' });
+      return;
+    }
+
+    // Validate password strength
+    if (typeof password !== 'string' || password.length < 8) {
+      res.status(400).json({ error: 'Password must be at least 8 characters' });
+      return;
+    }
+    if (password.length > 128) {
+      res.status(400).json({ error: 'Password must be 128 characters or less' });
+      return;
+    }
+
+    // Validate full_name length
+    if (full_name.length > 200) {
+      res.status(400).json({ error: 'Full name must be 200 characters or less' });
+      return;
+    }
+
     // Validate field formats
     const validationError = validateAll(
       validateEmail(email),

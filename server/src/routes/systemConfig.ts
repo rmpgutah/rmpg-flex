@@ -10,15 +10,27 @@ const router = Router();
 
 router.use(authenticateToken);
 
+// Allowed config categories — prevents arbitrary table scanning
+const ALLOWED_CATEGORIES = new Set([
+  'incident_types', 'priorities', 'dispositions', 'unit_statuses', 'call_sources',
+  'integrations', 'settings', 'email', 'patrol', 'radio', 'fleet', 'tones',
+  'bolo_types', 'warrant_types', 'property_types', 'shift_plans', 'notifications',
+]);
+
 // GET /api/admin/config/:category - Get config items by category
 router.get('/config/:category', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const category = String(req.params.category);
+    if (category.length > 100) {
+      res.status(400).json({ error: 'Category name too long' });
+      return;
+    }
     const items = db.prepare(`
       SELECT * FROM system_config
       WHERE category = ? AND is_active = 1
       ORDER BY sort_order ASC
-    `).all(String(req.params.category));
+    `).all(category);
 
     res.json(items);
   } catch (error: any) {
@@ -59,6 +71,25 @@ router.post('/config', requireRole('admin', 'manager'), (req: Request, res: Resp
 
     if (!config_key || !config_value || !category) {
       res.status(400).json({ error: 'config_key, config_value, and category are required' });
+      return;
+    }
+
+    // Validate types and lengths
+    if (typeof config_key !== 'string' || config_key.length > 200) {
+      res.status(400).json({ error: 'config_key must be a string of 200 characters or less' });
+      return;
+    }
+    if (typeof config_value !== 'string' || config_value.length > 10000) {
+      res.status(400).json({ error: 'config_value must be a string of 10000 characters or less' });
+      return;
+    }
+    if (typeof category !== 'string' || category.length > 100) {
+      res.status(400).json({ error: 'category must be a string of 100 characters or less' });
+      return;
+    }
+    // Reject config_key containing SQL-risky characters
+    if (!/^[\w\-.]+$/.test(config_key)) {
+      res.status(400).json({ error: 'config_key contains invalid characters' });
       return;
     }
 

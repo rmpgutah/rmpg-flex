@@ -467,7 +467,7 @@ export default function DashCamUploadWizard({
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onClick={() => files.length < MAX_FILES && fileRef.current?.click()}
-        className={`border-2 border-dashed rounded-lg py-10 flex flex-col items-center gap-3 cursor-pointer transition-colors ${
+        className={`border-2 border-dashed rounded-sm py-10 flex flex-col items-center gap-3 cursor-pointer transition-colors ${
           files.length >= MAX_FILES
             ? 'border-rmpg-700 opacity-50 cursor-not-allowed'
             : 'border-rmpg-600 hover:border-brand-500'
@@ -514,7 +514,7 @@ export default function DashCamUploadWizard({
               className="panel-inset p-2 flex items-center gap-3"
             >
               {/* Thumbnail */}
-              <div className="w-16 h-10 flex-shrink-0 bg-surface-sunken overflow-hidden rounded">
+              <div className="w-16 h-10 flex-shrink-0 bg-surface-sunken overflow-hidden rounded-sm">
                 {entry.thumbnailUrl ? (
                   <img
                     src={entry.thumbnailUrl}
@@ -597,7 +597,7 @@ export default function DashCamUploadWizard({
                 ) : (
                   <ChevronRight className="w-3.5 h-3.5 text-rmpg-400 flex-shrink-0" />
                 )}
-                <div className="w-10 h-6 flex-shrink-0 bg-surface-sunken overflow-hidden rounded">
+                <div className="w-10 h-6 flex-shrink-0 bg-surface-sunken overflow-hidden rounded-sm">
                   {entry.thumbnailUrl ? (
                     <img src={entry.thumbnailUrl} alt="" className="w-full h-full object-cover" />
                   ) : (
@@ -831,7 +831,7 @@ export default function DashCamUploadWizard({
             return (
               <div key={entry.id} className="panel-inset p-2 flex items-center gap-3">
                 {/* Thumbnail */}
-                <div className="w-14 h-9 flex-shrink-0 bg-surface-sunken overflow-hidden rounded">
+                <div className="w-14 h-9 flex-shrink-0 bg-surface-sunken overflow-hidden rounded-sm">
                   {entry.thumbnailUrl ? (
                     <img src={entry.thumbnailUrl} alt="" className="w-full h-full object-cover" />
                   ) : (

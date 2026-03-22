@@ -55,6 +55,22 @@ router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       limit = '50',
     } = req.query;
 
+    // Validate enum query filters
+    const VALID_CALL_STATUSES = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived'];
+    if (status && !VALID_CALL_STATUSES.includes(status as string)) {
+      res.status(400).json({ error: `Invalid status filter` });
+      return;
+    }
+    const VALID_CALL_PRIORITIES = ['P1', 'P2', 'P3', 'P4'];
+    if (priority && !VALID_CALL_PRIORITIES.includes((priority as string).toUpperCase())) {
+      res.status(400).json({ error: `Invalid priority filter` });
+      return;
+    }
+    if (propertyId) {
+      const pid = parseInt(String(propertyId), 10);
+      if (isNaN(pid) || pid < 1) { res.status(400).json({ error: 'Invalid propertyId' }); return; }
+    }
+
     let whereClause = 'WHERE 1=1';
     const params: any[] = [];
 

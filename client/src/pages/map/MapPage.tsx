@@ -1529,12 +1529,16 @@ export default function MapPage() {
         // Create search result marker
         const el = document.createElement('div');
         el.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;';
-        el.innerHTML = `
-          <div style="background:#3b82f6;color:#fff;font-size:9px;font-weight:900;padding:3px 8px;border:2px solid #fff;white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;max-width:200px;overflow:hidden;text-overflow:ellipsis;border-radius:2px;">
-            ${escapeHtml(description.split(',')[0])}
-          </div>
-          <div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid #3b82f6;"></div>
-        `;
+        // Use safe DOM methods instead of innerHTML to prevent XSS
+        const label = document.createElement('div');
+        label.style.cssText = 'background:#3b82f6;color:#fff;font-size:9px;font-weight:900;padding:3px 8px;border:2px solid #fff;white-space:nowrap;font-family:\'JetBrains Mono\',monospace;letter-spacing:0.05em;max-width:200px;overflow:hidden;text-overflow:ellipsis;border-radius:2px;';
+        label.textContent = description.split(',')[0];
+
+        const arrow = document.createElement('div');
+        arrow.style.cssText = 'width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid #3b82f6;';
+
+        el.appendChild(label);
+        el.appendChild(arrow);
 
         addressMarkerRef.current = createMarker({
           map,
@@ -1593,7 +1597,7 @@ export default function MapPage() {
               <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider font-mono leading-none">
                 CACHED MAP
               </span>
-              <span className="text-[8px] text-gray-500 font-mono leading-none mt-0.5">
+              <span className="text-[8px] text-rmpg-500 font-mono leading-none mt-0.5">
                 Using offline tiles · Map fully interactive
               </span>
             </div>
@@ -1799,7 +1803,7 @@ export default function MapPage() {
                   placeholder="Search address..."
                   className={`text-[11px] pl-8 pr-8 py-1.5 w-[240px] focus:outline-none backdrop-blur-md shadow-lg font-mono transition-colors ${
                     isLightMapStyle(mapStyle)
-                      ? 'bg-white/80 border border-gray-300 text-gray-900 placeholder:text-gray-400 focus:border-blue-400 focus:bg-white/90'
+                      ? 'bg-white/80 border border-gray-300 text-gray-900 placeholder:text-rmpg-400 focus:border-blue-400 focus:bg-white/90'
                       : 'bg-black/30 border border-white/15 text-white placeholder:text-white/40 focus:border-white/40 focus:bg-black/50'
                   }`}
                   style={{ borderRadius: 2 }}
@@ -1938,7 +1942,7 @@ export default function MapPage() {
                       <button
                         key={days}
                         onClick={() => setHeatmapDays(days)}
-                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded transition-colors ${
+                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
                           heatmapDays === days
                             ? 'bg-red-900/50 text-red-400 border border-red-700/50'
                             : 'text-rmpg-500 hover:text-rmpg-300'
@@ -1954,7 +1958,7 @@ export default function MapPage() {
                       <button
                         key={mode}
                         onClick={() => { setHeatmapMode(mode); if (mode !== 'type') setHeatmapTypeFilter(''); }}
-                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded transition-colors ${
+                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
                           heatmapMode === mode
                             ? mode === 'risk' ? 'bg-orange-900/50 text-orange-400 border border-orange-700/50'
                             : 'bg-red-900/50 text-red-400 border border-red-700/50'
@@ -2015,7 +2019,7 @@ export default function MapPage() {
                       <button
                         key={h}
                         onClick={() => setBreadcrumbHours(h)}
-                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded transition-colors ${
+                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
                           breadcrumbHours === h
                             ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
                             : 'text-rmpg-500 hover:text-rmpg-300'
@@ -2036,7 +2040,7 @@ export default function MapPage() {
                         } finally { setExportingPdf(false); }
                       }}
                       disabled={exportingPdf}
-                      className="px-1.5 py-0.5 text-[8px] font-mono font-bold rounded transition-colors text-brand-400 hover:bg-brand-900/30 ml-1 flex items-center gap-0.5"
+                      className="px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors text-brand-400 hover:bg-brand-900/30 ml-1 flex items-center gap-0.5"
                       title="Export patrol tracking PDF"
                     >
                       {exportingPdf ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <FileText className="w-2.5 h-2.5" />}
@@ -2050,7 +2054,7 @@ export default function MapPage() {
                       <button
                         key={mode}
                         onClick={() => setBreadcrumbColorMode(mode)}
-                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded transition-colors ${
+                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
                           breadcrumbColorMode === mode
                             ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
                             : 'text-rmpg-500 hover:text-rmpg-300'
@@ -2113,7 +2117,7 @@ export default function MapPage() {
                                     setIsPlaying(true);
                                   }
                                 }}
-                                className="p-0.5 rounded hover:bg-cyan-900/40 transition-colors"
+                                className="p-0.5 rounded-sm hover:bg-cyan-900/40 transition-colors"
                                 title={isPlaying ? 'Pause' : 'Play'}
                               >
                                 {isPlaying ? <Pause className="w-3 h-3 text-amber-400" /> : <Play className="w-3 h-3 text-green-400" />}
@@ -2145,7 +2149,7 @@ export default function MapPage() {
                                 <button
                                   key={spd}
                                   onClick={() => setPlaybackSpeed(spd)}
-                                  className={`px-1 py-0 text-[7px] font-mono font-bold rounded transition-colors ${
+                                  className={`px-1 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
                                     playbackSpeed === spd
                                       ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
                                       : 'text-rmpg-500 hover:text-rmpg-300'
@@ -2188,7 +2192,7 @@ export default function MapPage() {
                       <button
                         key={key}
                         onClick={() => { setMapStyle(key); setShowMapStyles(false); }}
-                        className={`text-left px-2 py-1.5 rounded transition-all ${
+                        className={`text-left px-2 py-1.5 rounded-sm transition-all ${
                           isActive
                             ? 'bg-brand-900/30 border border-brand-500/50 ring-1 ring-brand-500/20'
                             : 'bg-rmpg-800/30 border border-rmpg-700/50 hover:bg-rmpg-700/40 hover:border-rmpg-600/50'
@@ -2250,7 +2254,7 @@ export default function MapPage() {
               <div className="border-t border-rmpg-700 p-1.5">
                 <button
                   onClick={() => setShowDistrictLegend(!showDistrictLegend)}
-                  className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors rounded hover:bg-rmpg-700/30"
+                  className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors rounded-sm hover:bg-rmpg-700/30"
                 >
                   <Shield className="w-3 h-3 text-brand-400" />
                   <span className="text-[10px] text-rmpg-300 flex-1">District Legend</span>
@@ -2905,8 +2909,8 @@ export default function MapPage() {
               <div className="flex items-center gap-1 px-2 py-0.5" style={{ borderRight: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.1)' : '1px solid #1e3048' }}>
                 <Siren className={`w-3 h-3 shrink-0 ${isLightMapStyle(mapStyle) ? 'text-red-600' : 'text-red-400'}`} />
                 <span className={`text-[13px] font-mono font-black ${isLightMapStyle(mapStyle) ? 'text-gray-900' : 'text-white'}`}>{callsWithCoords.length}</span>
-                {callsByPriority['P1'] ? <span className="text-[8px] font-mono font-bold text-red-500 bg-red-500/15 px-1 rounded">P1:{callsByPriority['P1']}</span> : null}
-                {callsByPriority['P2'] ? <span className="text-[8px] font-mono font-bold text-amber-500 bg-amber-500/15 px-1 rounded">P2:{callsByPriority['P2']}</span> : null}
+                {callsByPriority['P1'] ? <span className="text-[8px] font-mono font-bold text-red-500 bg-red-500/15 px-1 rounded-sm">P1:{callsByPriority['P1']}</span> : null}
+                {callsByPriority['P2'] ? <span className="text-[8px] font-mono font-bold text-amber-500 bg-amber-500/15 px-1 rounded-sm">P2:{callsByPriority['P2']}</span> : null}
               </div>
 
               {/* Units */}
@@ -2920,7 +2924,7 @@ export default function MapPage() {
                     { key: 'enroute', label: 'ENR', color: '#3b82f6' },
                     { key: 'onscene', label: 'ONS', color: '#a855f7' },
                   ] as const).filter(s => (unitsByStatus[s.key] || 0) > 0).map(({ key, label, color }) => (
-                    <span key={key} className="text-[8px] font-mono font-bold px-1 rounded" style={{ color, background: color + '15' }}>
+                    <span key={key} className="text-[8px] font-mono font-bold px-1 rounded-sm" style={{ color, background: color + '15' }}>
                       {label}:{unitsByStatus[key] || 0}
                     </span>
                   ))}
@@ -3082,7 +3086,7 @@ export default function MapPage() {
         {sidebarOpen && (
           <>
             {/* Compact status counters */}
-            <div className="flex items-center justify-center gap-2 px-2 py-1.5 panel-inset" style={{ background: '#0a0a0a' }}>
+            <div className="flex items-center justify-center gap-2 px-2 py-1.5 panel-inset" style={{ background: '#0d1520' }}>
               {([
                 { label: 'AVL', count: unitsByStatus['available'] || 0, color: '#22c55e' },
                 { label: 'DSP', count: unitsByStatus['dispatched'] || 0, color: '#f59e0b' },
@@ -3365,7 +3369,7 @@ export default function MapPage() {
                         <button
                           key={h}
                           onClick={() => setBreadcrumbHours(h)}
-                          className={`flex-1 py-2 text-xs font-bold rounded ${
+                          className={`flex-1 py-2 text-xs font-bold rounded-sm ${
                             breadcrumbHours === h
                               ? 'bg-cyan-600 text-white'
                               : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
@@ -3380,7 +3384,7 @@ export default function MapPage() {
                         <button
                           key={mode}
                           onClick={() => setBreadcrumbColorMode(mode)}
-                          className={`flex-1 py-1.5 text-[10px] font-bold rounded ${
+                          className={`flex-1 py-1.5 text-[10px] font-bold rounded-sm ${
                             breadcrumbColorMode === mode
                               ? 'bg-cyan-600 text-white'
                               : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
@@ -3403,7 +3407,7 @@ export default function MapPage() {
                         <button
                           key={key}
                           onClick={() => setMapStyle(key)}
-                          className={`py-2 text-[10px] font-bold rounded transition-all ${
+                          className={`py-2 text-[10px] font-bold rounded-sm transition-all ${
                             isActive
                               ? 'bg-brand-600 text-white'
                               : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
@@ -3486,12 +3490,12 @@ export default function MapPage() {
                       style={{ minHeight: 44 }}
                     >
                       <div className="flex items-center gap-2">
-                        <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded" style={{ background: pColor + '25', color: pColor, border: `1px solid ${pColor}40` }}>{call.priority}</span>
+                        <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-sm" style={{ background: pColor + '25', color: pColor, border: `1px solid ${pColor}40` }}>{call.priority}</span>
                         <span className="text-[11px] font-mono font-bold text-rmpg-100 flex-1">{call.call_number}</span>
                         <span className="text-[9px] font-mono text-rmpg-400 uppercase font-bold">{call.status.replace(/_/g, ' ')}</span>
                       </div>
                       <div className="flex items-center gap-1.5 mt-1 ml-8">
-                        <span className="text-[8px] font-bold px-1 py-0.5 rounded" style={{ background: pColor + '15', color: pColor }}>{category}</span>
+                        <span className="text-[8px] font-bold px-1 py-0.5 rounded-sm" style={{ background: pColor + '15', color: pColor }}>{category}</span>
                         <span className="text-[10px]" style={{ color: pColor }}>{formatIncidentType(call.incident_type)}</span>
                       </div>
                       <div className="ml-8 text-[9px] text-rmpg-500 truncate mt-0.5">{call.location_address}</div>

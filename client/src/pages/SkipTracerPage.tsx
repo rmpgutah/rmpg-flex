@@ -369,7 +369,7 @@ export default function SkipTracerPage() {
               {/* Person Header */}
               <div className="panel-beveled bg-surface-base p-4">
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded" style={{ background: 'rgba(59, 130, 246, 0.15)' }}>
+                  <div className="p-2.5 rounded-sm" style={{ background: 'rgba(59, 130, 246, 0.15)' }}>
                     <User className="w-5 h-5 text-blue-400" />
                   </div>
                   <div className="flex-1 min-w-0">

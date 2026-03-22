@@ -487,10 +487,21 @@ router.put('/:fileId/link', requireRole('admin', 'manager', 'supervisor'), (req:
       res.status(400).json({ error: 'entity_type and entity_id are required' });
       return;
     }
+    // Validate entity_type against known types
+    const VALID_ENTITY_TYPES = ['incident', 'call', 'citation', 'warrant', 'arrest', 'case', 'field_interview', 'court_event', 'person', 'vehicle', 'evidence', 'fleet_vehicle', 'dar', 'hr_document', 'invoice'];
+    if (typeof entity_type !== 'string' || !VALID_ENTITY_TYPES.includes(entity_type)) {
+      res.status(400).json({ error: 'Invalid entity_type' });
+      return;
+    }
+    const parsedEntityId = parseInt(String(entity_id), 10);
+    if (isNaN(parsedEntityId) || parsedEntityId < 1) {
+      res.status(400).json({ error: 'entity_id must be a positive integer' });
+      return;
+    }
 
     const result = db.prepare(`
       UPDATE attachments SET entity_type = ?, entity_id = ? WHERE file_id = ?
-    `).run(entity_type, parseInt(entity_id, 10), req.params.fileId);
+    `).run(entity_type, parsedEntityId, req.params.fileId);
 
     if (result.changes === 0) {
       res.status(404).json({ error: 'File not found' });

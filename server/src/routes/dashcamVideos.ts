@@ -181,6 +181,39 @@ router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor'
       return;
     }
 
+    // Validate title length
+    if (typeof title !== 'string' || title.length > 500) {
+      fs.unlinkSync(req.file.path);
+      res.status(400).json({ error: 'Title must be 500 characters or less' });
+      return;
+    }
+
+    // Validate classification whitelist
+    const validClassifications = ['routine', 'evidence', 'incident', 'training', 'other'];
+    if (classification && !validClassifications.includes(classification)) {
+      fs.unlinkSync(req.file.path);
+      res.status(400).json({ error: `Classification must be one of: ${validClassifications.join(', ')}` });
+      return;
+    }
+
+    // Validate GPS coordinates if provided
+    if (latitude != null) {
+      const lat = parseFloat(String(latitude));
+      if (isNaN(lat) || lat < -90 || lat > 90) {
+        fs.unlinkSync(req.file.path);
+        res.status(400).json({ error: 'latitude must be between -90 and 90' });
+        return;
+      }
+    }
+    if (longitude != null) {
+      const lng = parseFloat(String(longitude));
+      if (isNaN(lng) || lng < -180 || lng > 180) {
+        fs.unlinkSync(req.file.path);
+        res.status(400).json({ error: 'longitude must be between -180 and 180' });
+        return;
+      }
+    }
+
     // Auto-resolve vehicle_id from unit's assigned fleet vehicle if not provided
     let resolvedVehicleId = vehicle_id || null;
     if (!resolvedVehicleId && unit_id) {
@@ -249,6 +282,21 @@ router.put('/:id', validateParamId, authenticateToken, requireRole('admin', 'man
       title, vehicle_id, unit_id, recorded_at, case_number,
       classification, speed_mph, latitude, longitude, address, notes,
     } = req.body;
+
+    // Validate fields if provided
+    if (title !== undefined && (typeof title !== 'string' || title.length > 500)) {
+      res.status(400).json({ error: 'Title must be 500 characters or less' });
+      return;
+    }
+    const validClassifications = ['routine', 'evidence', 'incident', 'training', 'other'];
+    if (classification && !validClassifications.includes(classification)) {
+      res.status(400).json({ error: `Classification must be one of: ${validClassifications.join(', ')}` });
+      return;
+    }
+    if (notes !== undefined && notes !== null && typeof notes === 'string' && notes.length > 10000) {
+      res.status(400).json({ error: 'Notes must be 10000 characters or less' });
+      return;
+    }
 
     db.prepare(`
       UPDATE dashcam_videos SET
@@ -428,6 +476,19 @@ router.post('/:id/links', validateParamId, authenticateToken, requireRole('admin
 
     if (!entity_type || !entity_id) {
       res.status(400).json({ error: 'entity_type and entity_id are required' });
+      return;
+    }
+
+    // Validate entity_id is a positive integer
+    const parsedEntityId = parseInt(String(entity_id), 10);
+    if (isNaN(parsedEntityId) || parsedEntityId <= 0) {
+      res.status(400).json({ error: 'entity_id must be a positive integer' });
+      return;
+    }
+
+    // Validate notes length
+    if (notes !== undefined && notes !== null && (typeof notes !== 'string' || notes.length > 2000)) {
+      res.status(400).json({ error: 'notes must be 2000 characters or less' });
       return;
     }
 

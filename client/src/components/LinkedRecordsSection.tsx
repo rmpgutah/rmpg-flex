@@ -180,7 +180,7 @@ export default function LinkedRecordsSection({ entityType, entityId, onOpenLinkM
             return (
               <div
                 key={link.id}
-                className="flex items-center gap-2 py-1.5 px-2 hover:bg-rmpg-700/50 rounded text-xs"
+                className="flex items-center gap-2 py-1.5 px-2 hover:bg-rmpg-700/50 rounded-sm text-xs"
               >
                 {/* Type icon */}
                 <Icon size={14} className={color.text} />
@@ -190,13 +190,13 @@ export default function LinkedRecordsSection({ entityType, entityId, onOpenLinkM
 
                 {/* Type badge */}
                 <span
-                  className={`text-[9px] px-1.5 py-0.5 font-bold uppercase rounded border ${color.text} ${color.bg} ${color.border}`}
+                  className={`text-[9px] px-1.5 py-0.5 font-bold uppercase rounded-sm border ${color.text} ${color.bg} ${color.border}`}
                 >
                   {link.linked_type}
                 </span>
 
                 {/* Relationship badge */}
-                <span className="text-[9px] px-1.5 py-0.5 bg-rmpg-700 text-rmpg-300 border border-rmpg-600 rounded">
+                <span className="text-[9px] px-1.5 py-0.5 bg-rmpg-700 text-rmpg-300 border border-rmpg-600 rounded-sm">
                   {link.relationship}
                 </span>
 

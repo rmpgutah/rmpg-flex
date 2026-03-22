@@ -74,9 +74,27 @@ router.post('/clients', (req: Request, res: Response) => {
       account_manager, priority_client, client_since,
     } = req.body;
 
-    if (!name) {
+    if (!name || typeof name !== 'string' || !name.trim()) {
       res.status(400).json({ error: 'name is required' });
       return;
+    }
+    if (contact_email && typeof contact_email === 'string' && contact_email.length > 320) {
+      res.status(400).json({ error: 'contact_email exceeds maximum length' });
+      return;
+    }
+    if (sla_response_minutes !== undefined && sla_response_minutes !== null) {
+      const sla = parseInt(String(sla_response_minutes), 10);
+      if (isNaN(sla) || sla < 0 || sla > 10080) {
+        res.status(400).json({ error: 'sla_response_minutes must be 0-10080' });
+        return;
+      }
+    }
+    if (contract_value !== undefined && contract_value !== null) {
+      const cv = parseFloat(String(contract_value));
+      if (isNaN(cv) || cv < 0) {
+        res.status(400).json({ error: 'contract_value must be a non-negative number' });
+        return;
+      }
     }
 
     const result = db.prepare(`
@@ -392,9 +410,25 @@ router.put('/system-settings', (req: Request, res: Response) => {
     const db = getDb();
     const settings = req.body as Record<string, string>;
 
-    if (!settings || typeof settings !== 'object') {
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
       res.status(400).json({ error: 'Request body must be an object of key-value pairs' });
       return;
+    }
+    const settingsKeys = Object.keys(settings);
+    if (settingsKeys.length > 100) {
+      res.status(400).json({ error: 'Too many settings (max 100)' });
+      return;
+    }
+    // Validate all keys are safe identifiers and values are strings
+    for (const [key, value] of Object.entries(settings)) {
+      if (typeof key !== 'string' || key.length > 200 || !/^[a-zA-Z0-9_.\-]+$/.test(key)) {
+        res.status(400).json({ error: `Invalid settings key: ${String(key).slice(0, 50)}` });
+        return;
+      }
+      if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
+        res.status(400).json({ error: `Invalid value type for key: ${key}` });
+        return;
+      }
     }
 
     const now = localNow();
@@ -621,6 +655,15 @@ router.post('/radio-channels', (req: Request, res: Response) => {
       res.status(400).json({ error: 'id and label are required' });
       return;
     }
+    // Validate radio channel ID format (alphanumeric + hyphens, max 50 chars)
+    if (typeof id !== 'string' || id.length > 50 || !/^[a-zA-Z0-9_\-]+$/.test(id)) {
+      res.status(400).json({ error: 'id must be alphanumeric with hyphens/underscores, max 50 characters' });
+      return;
+    }
+    if (typeof label !== 'string' || label.length > 100) {
+      res.status(400).json({ error: 'label must be a string, max 100 characters' });
+      return;
+    }
 
     // Check for duplicate
     const existing = db.prepare(
@@ -686,8 +729,13 @@ router.put('/radio-channels/:key', (req: Request, res: Response) => {
       vals.push(is_active ? 1 : 0);
     }
     if (sort_order !== undefined) {
+      const so = parseInt(String(sort_order), 10);
+      if (isNaN(so) || so < 0 || so > 10000) {
+        res.status(400).json({ error: 'sort_order must be an integer 0-10000' });
+        return;
+      }
       sets.push('sort_order = ?');
-      vals.push(sort_order);
+      vals.push(so);
     }
 
     vals.push(key);

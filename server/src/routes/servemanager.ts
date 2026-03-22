@@ -418,7 +418,19 @@ router.post('/jobs', requireRole('admin', 'manager'), async (req: Request, res: 
   try {
     if (!requireApiKey(req, res)) return;
     const now = localNow();
-    const result = await smPost('/jobs', { type: 'job', ...req.body });
+
+    // Whitelist allowed fields for SM job creation — prevent forwarding arbitrary data
+    const SM_JOB_FIELDS = [
+      'client_company_id', 'client_job_number', 'court_case_id', 'court_case_number',
+      'due_date', 'employee_process_server_id', 'job_status', 'rush',
+      'service_instructions', 'recipient', 'addresses', 'documents_to_be_served',
+    ];
+    const sanitizedBody: Record<string, any> = { type: 'job' };
+    for (const key of SM_JOB_FIELDS) {
+      if (req.body[key] !== undefined) sanitizedBody[key] = req.body[key];
+    }
+
+    const result = await smPost('/jobs', sanitizedBody);
     upsertJobFromApi(result.data);
 
     const db = getDb();
@@ -442,7 +454,19 @@ router.put('/jobs/:id', validateParamId, requireRole('admin', 'manager'), async 
   try {
     if (!requireApiKey(req, res)) return;
     const now = localNow();
-    const result = await smPut(`/jobs/${req.params.id}`, { type: 'job', ...req.body });
+
+    // Whitelist allowed fields for SM job update
+    const SM_JOB_UPDATE_FIELDS = [
+      'client_company_id', 'client_job_number', 'court_case_id', 'court_case_number',
+      'due_date', 'employee_process_server_id', 'job_status', 'rush',
+      'service_instructions', 'recipient', 'addresses', 'documents_to_be_served',
+    ];
+    const sanitizedUpdate: Record<string, any> = { type: 'job' };
+    for (const key of SM_JOB_UPDATE_FIELDS) {
+      if (req.body[key] !== undefined) sanitizedUpdate[key] = req.body[key];
+    }
+
+    const result = await smPut(`/jobs/${req.params.id}`, sanitizedUpdate);
     upsertJobFromApi(result.data);
 
     const db = getDb();
@@ -502,6 +526,11 @@ router.post('/jobs/:id/cancel', validateParamId, requireRole('admin', 'manager')
 router.get('/jobs/:jobId/attempts', requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
   try {
     if (!requireApiKey(req, res)) return;
+    // Validate jobId param
+    const parsedJobId = parseInt(req.params.jobId, 10);
+    if (isNaN(parsedJobId) || parsedJobId < 1 || String(parsedJobId) !== req.params.jobId) {
+      res.status(400).json({ error: 'Invalid job ID' }); return;
+    }
     ensureTables();
     const db = getDb();
 
@@ -531,7 +560,18 @@ router.post('/attempts', requireRole('admin', 'manager'), async (req: Request, r
   try {
     if (!requireApiKey(req, res)) return;
     const now = localNow();
-    const result = await smPost('/attempts', { type: 'attempt', ...req.body });
+
+    // Whitelist allowed fields for SM attempt creation
+    const SM_ATTEMPT_FIELDS = [
+      'job_id', 'description', 'success', 'service_status', 'serve_type',
+      'served_at', 'lat', 'lng', 'gps_timestamp', 'server_name', 'recipient',
+    ];
+    const sanitizedAttempt: Record<string, any> = { type: 'attempt' };
+    for (const key of SM_ATTEMPT_FIELDS) {
+      if (req.body[key] !== undefined) sanitizedAttempt[key] = req.body[key];
+    }
+
+    const result = await smPost('/attempts', sanitizedAttempt);
     upsertAttemptFromApi(result.data);
 
     const db = getDb();
@@ -558,7 +598,18 @@ router.post('/attempts', requireRole('admin', 'manager'), async (req: Request, r
 router.post('/jobs/:jobId/notes', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
   try {
     if (!requireApiKey(req, res)) return;
-    const result = await smPost(`/jobs/${req.params.jobId}/notes`, { type: 'note', ...req.body });
+    // Validate jobId param
+    const jobIdNum = parseInt(req.params.jobId, 10);
+    if (isNaN(jobIdNum) || jobIdNum < 1 || String(jobIdNum) !== req.params.jobId) {
+      res.status(400).json({ error: 'Invalid job ID' }); return;
+    }
+    // Whitelist note fields
+    const SM_NOTE_FIELDS = ['label', 'body'];
+    const sanitizedNote: Record<string, any> = { type: 'note' };
+    for (const key of SM_NOTE_FIELDS) {
+      if (req.body[key] !== undefined) sanitizedNote[key] = req.body[key];
+    }
+    const result = await smPost(`/jobs/${req.params.jobId}/notes`, sanitizedNote);
 
     auditLog(req, 'CREATE' as any, 'serve_queue' as any, req.params.jobId, `Added note to SM job #${req.params.jobId}`);
 

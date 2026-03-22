@@ -40,7 +40,7 @@ const PRIORITY_STYLES: Record<string, string> = {
   rush: 'bg-red-900/60 text-red-300 border-red-700/50',
   high: 'bg-amber-900/60 text-amber-300 border-amber-700/50',
   normal: 'bg-blue-900/60 text-blue-300 border-blue-700/50',
-  low: 'bg-gray-800/60 text-gray-400 border-gray-600/50',
+  low: 'bg-rmpg-800/60 text-rmpg-400 border-rmpg-600/50',
 };
 
 const TIME_WINDOW_CONFIG: Record<string, { icon: typeof Sun; label: string }> = {
@@ -185,7 +185,7 @@ export default React.memo(function ServeJobCard({
         <div className="px-2 pb-2 border-t border-rmpg-700/40 pt-2 space-y-2 text-xs">
           {/* Linked Dispatch Call */}
           {linkedCall && (
-            <div className="p-2 rounded border mb-2" style={{ background: '#1a5a9e10', borderColor: '#1a5a9e30' }}>
+            <div className="p-2 rounded-sm border mb-2" style={{ background: '#1a5a9e10', borderColor: '#1a5a9e30' }}>
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[10px] font-bold text-blue-300 uppercase">Dispatch Link</span>
                 <button

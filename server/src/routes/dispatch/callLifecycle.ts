@@ -24,6 +24,14 @@ router.post('/calls/archive-bulk', requireRole('admin', 'manager', 'dispatcher')
         res.status(400).json({ error: 'Cannot archive more than 500 calls at once' });
         return;
       }
+      // Validate all IDs are positive integers
+      for (const id of call_ids) {
+        const n = parseInt(String(id), 10);
+        if (isNaN(n) || n < 1) {
+          res.status(400).json({ error: 'All call_ids must be positive integers' });
+          return;
+        }
+      }
       // Archive specific calls by ID
       const placeholders = call_ids.map(() => '?').join(',');
       callsToArchive = db.prepare(
@@ -31,8 +39,9 @@ router.post('/calls/archive-bulk', requireRole('admin', 'manager', 'dispatcher')
       ).all(...call_ids);
     } else {
       // Archive all calls matching the given statuses (default: cleared, closed, cancelled)
+      const validArchiveStatuses = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled'];
       const targetStatuses = Array.isArray(statuses) && statuses.length > 0
-        ? statuses
+        ? statuses.filter((s: any) => typeof s === 'string' && validArchiveStatuses.includes(s))
         : ['cleared', 'closed', 'cancelled'];
       const placeholders = targetStatuses.map(() => '?').join(',');
       callsToArchive = db.prepare(

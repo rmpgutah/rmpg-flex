@@ -123,9 +123,18 @@ router.post('/sync/pull', syncRateLimit, (req: Request, res: Response) => {
       return;
     }
 
+    // Validate reqLimit if provided
+    if (reqLimit !== undefined && reqLimit !== null) {
+      const parsedLimit = parseInt(String(reqLimit), 10);
+      if (isNaN(parsedLimit) || parsedLimit < 1) {
+        res.status(400).json({ error: 'limit must be a positive integer' });
+        return;
+      }
+    }
+
     const config = SYNC_TABLES[table];
     const isReference = REFERENCE_TABLES.includes(table);
-    const maxRows = Math.min(reqLimit || config.limit || 1000, 5000);
+    const maxRows = Math.min(parseInt(String(reqLimit), 10) || config.limit || 1000, 5000);
 
     let sql: string;
     let params: any[];
@@ -187,6 +196,28 @@ router.post('/sync/push', syncRateLimit, (req: Request, res: Response) => {
 
     for (const item of items) {
       try {
+        // Validate item structure
+        if (!item || typeof item !== 'object') {
+          results.push({ local_id: 'unknown', success: false, error: 'Item must be an object' });
+          continue;
+        }
+        if (typeof item.method !== 'string' || !['POST', 'PUT'].includes(item.method)) {
+          results.push({ local_id: item.local_id || 'unknown', success: false, error: 'Invalid method' });
+          continue;
+        }
+        if (typeof item.local_id !== 'string' || item.local_id.length > 200) {
+          results.push({ local_id: 'unknown', success: false, error: 'Invalid local_id' });
+          continue;
+        }
+        if (item.table_name && (typeof item.table_name !== 'string' || item.table_name.length > 50)) {
+          results.push({ local_id: item.local_id, success: false, error: 'Invalid table_name' });
+          continue;
+        }
+        if (item.endpoint && (typeof item.endpoint !== 'string' || item.endpoint.length > 500)) {
+          results.push({ local_id: item.local_id, success: false, error: 'Invalid endpoint' });
+          continue;
+        }
+
         // Parse and re-sanitize decoded bodies — the global middleware only sanitized
         // the outer JSON string, not the inner fields after JSON.parse()
         const parsedBody = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
@@ -436,6 +467,13 @@ router.post('/secrets/generate', requireRole('admin'), (req: Request, res: Respo
 
     if (!userId) {
       res.status(400).json({ error: 'userId is required' });
+      return;
+    }
+
+    // Validate userId is a positive integer
+    const parsedUserId = parseInt(String(userId), 10);
+    if (isNaN(parsedUserId) || parsedUserId <= 0 || String(parsedUserId) !== String(userId)) {
+      res.status(400).json({ error: 'userId must be a positive integer' });
       return;
     }
 

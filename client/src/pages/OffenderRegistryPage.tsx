@@ -306,7 +306,7 @@ export default function OffenderRegistryPage() {
   return (
     <div className={`h-full flex ${isMobile ? 'flex-col' : ''} relative`}>
       {fetchError && (
-        <div className="absolute left-0 right-0 z-10 mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded text-red-400 text-xs flex items-center gap-2">
+        <div className="absolute left-0 right-0 z-10 mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
           <span>⚠ {fetchError}</span>
           <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
         </div>

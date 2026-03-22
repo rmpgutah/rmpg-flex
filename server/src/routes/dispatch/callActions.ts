@@ -81,6 +81,18 @@ router.post('/calls/:id/dispatch', validateParamId, requireRole('admin', 'manage
       res.status(400).json({ error: 'unit_ids array is required' });
       return;
     }
+    // Validate all unit_ids are positive integers and limit count
+    if (unit_ids.length > 50) {
+      res.status(400).json({ error: 'Cannot dispatch more than 50 units at once' });
+      return;
+    }
+    for (const uid of unit_ids) {
+      const n = parseInt(String(uid), 10);
+      if (isNaN(n) || n < 1) {
+        res.status(400).json({ error: 'All unit_ids must be positive integers' });
+        return;
+      }
+    }
 
     const now = localNow();
 

@@ -32,7 +32,7 @@ export default function MileagePromptModal({
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70">
       <div
-        className="w-[340px] border rounded"
+        className="w-[340px] border rounded-sm"
         style={{
           background: 'var(--color-rmpg-800, #141e2b)',
           borderColor: 'var(--color-rmpg-600, #2a3a4e)',
@@ -82,7 +82,7 @@ export default function MileagePromptModal({
           <div>
             <label className="text-[10px] text-brand-gold-500 block mb-1">Vehicle ID</label>
             {vehicleId ? (
-              <div className="text-xs text-rmpg-200 font-mono bg-rmpg-700/50 border border-rmpg-600 rounded px-2 py-1">
+              <div className="text-xs text-rmpg-200 font-mono bg-rmpg-700/50 border border-rmpg-600 rounded-sm px-2 py-1">
                 {vehicleId}
               </div>
             ) : (

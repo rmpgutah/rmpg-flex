@@ -346,7 +346,7 @@ export default function FleetPersonnelTab({
           {officer.dl_number && (
             <div className="px-3 py-2 border-b border-rmpg-700">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded flex items-center justify-center bg-cyan-900/20 border border-cyan-700/40">
+                <div className="w-8 h-8 rounded-sm flex items-center justify-center bg-cyan-900/20 border border-cyan-700/40">
                   <FileText className="w-4 h-4 text-cyan-400" />
                 </div>
                 <div className="flex-1">

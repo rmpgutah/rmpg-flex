@@ -235,6 +235,20 @@ router.get('/blocked-ips', authenticateToken, requireRole('admin'), (_req: Reque
 router.post('/unblock-ip', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
   try {
     const { ip } = req.body || {};
+
+    // Validate IP format if provided
+    if (ip !== undefined && ip !== null) {
+      if (typeof ip !== 'string' || ip.length > 45) {
+        res.status(400).json({ error: 'Invalid IP address format' });
+        return;
+      }
+      // Basic IP format check (IPv4 or IPv6)
+      if (!/^[\d.:a-fA-F]+$/.test(ip)) {
+        res.status(400).json({ error: 'IP address contains invalid characters' });
+        return;
+      }
+    }
+
     const count = unblockIp(ip || undefined);
     const msg = ip ? `Unblocked IP ${ip}` : `Unblocked all ${count} IPs`;
     console.log(`[Security] ${msg} — by ${req.user!.username}`);

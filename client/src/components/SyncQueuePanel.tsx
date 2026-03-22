@@ -103,7 +103,7 @@ export default function SyncQueuePanel({ onClose }: SyncQueuePanelProps) {
 
       {/* Panel */}
       <div
-        className="absolute bottom-full mb-1 z-[9999] bg-[#141e2b] border border-[#1e3048] rounded shadow-lg"
+        className="absolute bottom-full mb-1 z-[9999] bg-[#141e2b] border border-[#1e3048] rounded-sm shadow-lg"
         style={{ width: 340, maxHeight: 300, left: 0 }}
       >
         {/* Header */}
@@ -115,7 +115,7 @@ export default function SyncQueuePanel({ onClose }: SyncQueuePanelProps) {
             {failedItems.length > 0 && (
               <button
                 onClick={handleClearFailed}
-                className="px-2 py-0.5 text-[10px] font-medium bg-[#3b1111] text-[#ef4444] border border-[#5c1a1a] rounded hover:bg-[#4a1515] transition-colors"
+                className="px-2 py-0.5 text-[10px] font-medium bg-[#3b1111] text-[#ef4444] border border-[#5c1a1a] rounded-sm hover:bg-[#4a1515] transition-colors"
               >
                 CLEAR FAILED ({failedItems.length})
               </button>
@@ -123,7 +123,7 @@ export default function SyncQueuePanel({ onClose }: SyncQueuePanelProps) {
             <button
               onClick={handleSyncNow}
               disabled={syncing || items.length === 0}
-              className="px-2 py-0.5 text-[10px] font-medium bg-[#0d2847] text-[#4a9eed] border border-[#1a5a9e] rounded hover:bg-[#133660] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="px-2 py-0.5 text-[10px] font-medium bg-[#0d2847] text-[#4a9eed] border border-[#1a5a9e] rounded-sm hover:bg-[#133660] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {syncing ? 'SYNCING...' : 'SYNC NOW'}
             </button>
@@ -149,7 +149,7 @@ export default function SyncQueuePanel({ onClose }: SyncQueuePanelProps) {
                   >
                     {/* Type badge */}
                     <span
-                      className="inline-block px-1.5 py-0.5 text-[9px] font-bold rounded tracking-wider flex-shrink-0"
+                      className="inline-block px-1.5 py-0.5 text-[9px] font-bold rounded-sm tracking-wider flex-shrink-0"
                       style={{
                         color: typeInfo.color,
                         background: `${typeInfo.color}15`,

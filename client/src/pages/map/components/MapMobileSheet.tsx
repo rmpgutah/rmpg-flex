@@ -151,7 +151,7 @@ export default function MapMobileSheet({
                     <button
                       key={h}
                       onClick={() => setBreadcrumbHours(h)}
-                      className={`flex-1 py-2 text-xs font-bold rounded ${
+                      className={`flex-1 py-2 text-xs font-bold rounded-sm ${
                         breadcrumbHours === h
                           ? 'bg-cyan-600 text-white'
                           : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
@@ -166,7 +166,7 @@ export default function MapMobileSheet({
                     <button
                       key={mode}
                       onClick={() => setBreadcrumbColorMode(mode)}
-                      className={`flex-1 py-1.5 text-[10px] font-bold rounded ${
+                      className={`flex-1 py-1.5 text-[10px] font-bold rounded-sm ${
                         breadcrumbColorMode === mode
                           ? 'bg-cyan-600 text-white'
                           : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
@@ -189,7 +189,7 @@ export default function MapMobileSheet({
                     <button
                       key={key}
                       onClick={() => setMapStyle(key)}
-                      className={`py-2 text-[10px] font-bold rounded transition-all ${
+                      className={`py-2 text-[10px] font-bold rounded-sm transition-all ${
                         isActive
                           ? 'bg-brand-600 text-white'
                           : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
@@ -272,12 +272,12 @@ export default function MapMobileSheet({
                   style={{ minHeight: 44 }}
                 >
                   <div className="flex items-center gap-2">
-                    <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded" style={{ background: pColor + '25', color: pColor, border: `1px solid ${pColor}40` }}>{call.priority}</span>
+                    <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-sm" style={{ background: pColor + '25', color: pColor, border: `1px solid ${pColor}40` }}>{call.priority}</span>
                     <span className="text-[11px] font-mono font-bold text-rmpg-100 flex-1">{call.call_number}</span>
                     <span className="text-[9px] font-mono text-rmpg-400 uppercase font-bold">{call.status.replace(/_/g, ' ')}</span>
                   </div>
                   <div className="flex items-center gap-1.5 mt-1 ml-8">
-                    <span className="text-[8px] font-bold px-1 py-0.5 rounded" style={{ background: pColor + '15', color: pColor }}>{category}</span>
+                    <span className="text-[8px] font-bold px-1 py-0.5 rounded-sm" style={{ background: pColor + '15', color: pColor }}>{category}</span>
                     <span className="text-[10px]" style={{ color: pColor }}>{formatIncidentType(call.incident_type)}</span>
                   </div>
                   <div className="ml-8 text-[9px] text-rmpg-500 truncate mt-0.5">{call.location_address}</div>

@@ -286,6 +286,18 @@ router.put('/products', requireRole('admin'), (req: Request, res: Response) => {
       return;
     }
 
+    // Validate all items are strings with reasonable length
+    if (products.length > 50) {
+      res.status(400).json({ error: 'Too many products (max 50)' });
+      return;
+    }
+    for (const p of products) {
+      if (typeof p !== 'string' || p.length > 100) {
+        res.status(400).json({ error: 'Each product must be a string of 100 characters or less' });
+        return;
+      }
+    }
+
     setConfigValue(CONFIG_KEYS.enabledProducts, JSON.stringify(products), false);
 
     auditLog(req, 'microbilt_products_updated', 'integration', 0,
@@ -316,6 +328,20 @@ router.post('/ofac/search', requireRole('admin', 'manager', 'supervisor', 'offic
     const db = getDb();
     const { fullName, firstName, lastName } = req.body;
 
+    // Validate input types
+    if (fullName !== undefined && (typeof fullName !== 'string' || fullName.length > 200)) {
+      res.status(400).json({ error: 'fullName must be a string of 200 characters or less' });
+      return;
+    }
+    if (firstName !== undefined && (typeof firstName !== 'string' || firstName.length > 100)) {
+      res.status(400).json({ error: 'firstName must be a string of 100 characters or less' });
+      return;
+    }
+    if (lastName !== undefined && (typeof lastName !== 'string' || lastName.length > 100)) {
+      res.status(400).json({ error: 'lastName must be a string of 100 characters or less' });
+      return;
+    }
+
     let searchName = '';
     if (fullName) {
       searchName = fullName.trim();
@@ -325,6 +351,11 @@ router.post('/ofac/search', requireRole('admin', 'manager', 'supervisor', 'offic
 
     if (!searchName || searchName.length < 2) {
       res.status(400).json({ error: 'Name required (min 2 chars)' });
+      return;
+    }
+
+    if (searchName.length > 200) {
+      res.status(400).json({ error: 'Name must be 200 characters or less' });
       return;
     }
 

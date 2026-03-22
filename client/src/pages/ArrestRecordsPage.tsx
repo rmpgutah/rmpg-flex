@@ -649,7 +649,7 @@ export default function ArrestRecordsPage() {
                   </div>
 
                   {/* Status badge */}
-                  <span className={`text-[7px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0 ${stBadge.bg}`}>
+                  <span className={`text-[7px] font-bold uppercase px-1.5 py-0.5 rounded-sm shrink-0 ${stBadge.bg}`}>
                     {stBadge.label}
                   </span>
                 </div>
@@ -706,8 +706,8 @@ export default function ArrestRecordsPage() {
               )}
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
-              <span className={`text-[8px] font-bold uppercase px-2 py-0.5 rounded ${stBadge.bg}`}>{stBadge.label}</span>
-              <span className={`text-[8px] font-bold uppercase px-2 py-0.5 rounded ${srcBadge.bg}`}>{srcBadge.label}</span>
+              <span className={`text-[8px] font-bold uppercase px-2 py-0.5 rounded-sm ${stBadge.bg}`}>{stBadge.label}</span>
+              <span className={`text-[8px] font-bold uppercase px-2 py-0.5 rounded-sm ${srcBadge.bg}`}>{srcBadge.label}</span>
             </div>
           </div>
 

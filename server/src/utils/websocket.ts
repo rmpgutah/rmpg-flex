@@ -56,7 +56,41 @@ function safeSend(ws: WebSocket, data: string): boolean {
 const AUTH_TIMEOUT_MS = 3_000;
 
 // All channels every authenticated client auto-subscribes to
-const DEFAULT_CHANNELS = ['dispatch', 'alerts', 'records', 'personnel', 'fleet', 'incidents', 'citations', 'patrol', 'admin', 'presence', 'messages', 'email'];
+// ─── Role-based channel authorization ──────────────────────
+// Maps each WebSocket channel to the roles allowed to subscribe.
+// Roles: admin, manager, supervisor, officer, dispatcher, contract_manager
+const CHANNEL_ROLES: Record<string, string[]> = {
+  dispatch:   ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'],
+  alerts:     ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'],
+  records:    ['admin', 'manager', 'supervisor', 'officer'],
+  personnel:  ['admin', 'manager'],
+  fleet:      ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'],
+  incidents:  ['admin', 'manager', 'supervisor', 'officer'],
+  citations:  ['admin', 'manager', 'supervisor', 'officer'],
+  patrol:     ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'],
+  admin:      ['admin'],
+  presence:   ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'],
+  messages:   ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'],
+  email:      ['admin', 'manager'],
+};
+
+/** All known channel names */
+const ALL_CHANNELS = Object.keys(CHANNEL_ROLES);
+
+/** Get the default channels for a given role */
+function getDefaultChannelsForRole(role: string): string[] {
+  return ALL_CHANNELS.filter(ch => CHANNEL_ROLES[ch]?.includes(role));
+}
+
+/** Check if a role is authorized for a channel */
+function isChannelAuthorized(channel: string, role: string): boolean {
+  // Admin always has access to everything
+  if (role === 'admin') return true;
+  const allowed = CHANNEL_ROLES[channel];
+  // Unknown channels: deny by default
+  if (!allowed) return false;
+  return allowed.includes(role);
+}
 
 // ─── Radio State ────────────────────────────────────────────
 // Tracks which radio channel each client is on, and who is
@@ -237,7 +271,7 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
     const client: WSClient = {
       ws,
       authenticated: false,
-      channels: new Set(DEFAULT_CHANNELS),
+      channels: new Set<string>(),
       radioChannel: null,
       privateCallId: null,
       privateCallPartner: null,
@@ -420,16 +454,7 @@ function authenticateClient(client: WSClient, token: string): boolean {
     // Verify with iss/aud claims for consistency with main authenticateToken
     const JWT_VERIFY_OPTIONS = { issuer: 'rmpg-flex', audience: 'rmpg-flex-api' };
     let decoded: JwtPayload;
-    try {
-      decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
-    } catch (strictErr: any) {
-      // Legacy token backward compat — enforce strict validation after 2026-04-15
-      if (strictErr.message?.includes('jwt issuer invalid') || strictErr.message?.includes('jwt audience invalid')) {
-        decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
-      } else {
-        throw strictErr;
-      }
-    }
+    decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
 
     // Only accept access tokens — reject refresh and mfa_pending tokens
     if (decoded.type !== 'access') {
@@ -457,6 +482,8 @@ function authenticateClient(client: WSClient, token: string): boolean {
     client.fullName = decoded.fullName;
     client.role = decoded.role;
     client.authenticated = true;
+    // Set channels based on authenticated user's role
+    client.channels = new Set(getDefaultChannelsForRole(decoded.role));
 
     // Auto-populate unitCallSign from units table (for selcall addressing)
     try {
@@ -512,11 +539,16 @@ function handleClientMessage(clientId: string, message: any): void {
         return;
       }
       if (message.channel) {
+        if (!isChannelAuthorized(message.channel, client.role || '')) {
+          safeSend(client.ws, JSON.stringify({ type: 'error', message: 'Not authorized for this channel' }));
+          return;
+        }
         client.channels.add(message.channel);
       }
       break;
 
     case 'unsubscribe':
+      if (!client.authenticated) return;
       if (message.channel) {
         client.channels.delete(message.channel);
       }
@@ -711,7 +743,8 @@ export function broadcastNewMessage(data: any): void {
 }
 
 export function broadcastPanic(data: any): void {
-  // Panic alerts bypass channel filtering — send to ALL authenticated clients
+  // Panic alerts go to operational roles only (not contract_manager)
+  const panicRoles = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'];
   const payload = JSON.stringify({
     type: 'panic_alert',
     data,
@@ -719,7 +752,7 @@ export function broadcastPanic(data: any): void {
   });
 
   clients.forEach((client) => {
-    if (client.authenticated) {
+    if (client.authenticated && panicRoles.includes(client.role || '')) {
       safeSend(client.ws, payload);
     }
   });
@@ -749,7 +782,7 @@ export function broadcastPanicAudio(senderClientId: string, data: any): void {
     // Skip the exact sender connection AND any other connections from the same user
     if (id === senderClientId) return;
     if (senderUserId && client.userId === senderUserId) return;
-    if (client.authenticated) {
+    if (client.authenticated && ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'].includes(client.role || '')) {
       safeSend(client.ws, payload);
     }
   });
@@ -794,13 +827,14 @@ export function broadcastAdminUpdate(data: any): void {
 // ─── Presence system ──────────────────────────────────────────
 
 export function broadcastPresence(): void {
-  const users: { userId: number; username: string; role: string }[] = [];
+  // Build full user list
+  const allUsers: { userId: number; username: string; role: string }[] = [];
   const seen = new Set<number>();
 
   clients.forEach((client) => {
     if (client.authenticated && client.userId && !seen.has(client.userId)) {
       seen.add(client.userId);
-      users.push({
+      allUsers.push({
         userId: client.userId,
         username: client.username || 'Unknown',
         role: client.role || 'unknown',
@@ -808,7 +842,45 @@ export function broadcastPresence(): void {
     }
   });
 
-  broadcast('presence', 'presence_update', { users, count: users.length });
+  // Role-filtered presence: supervisors+ see all users with roles;
+  // officers/dispatchers see users but not roles; contract_manager sees count only
+  const supervisorRoles = ['admin', 'manager', 'supervisor'];
+  const operationalRoles = ['officer', 'dispatcher'];
+
+  const fullPayload = JSON.stringify({
+    channel: 'presence',
+    type: 'presence_update',
+    data: { users: allUsers, count: allUsers.length },
+    timestamp: new Date().toISOString(),
+  });
+
+  const noRolesPayload = JSON.stringify({
+    channel: 'presence',
+    type: 'presence_update',
+    data: {
+      users: allUsers.map(u => ({ userId: u.userId, username: u.username })),
+      count: allUsers.length,
+    },
+    timestamp: new Date().toISOString(),
+  });
+
+  const countOnlyPayload = JSON.stringify({
+    channel: 'presence',
+    type: 'presence_update',
+    data: { count: allUsers.length },
+    timestamp: new Date().toISOString(),
+  });
+
+  clients.forEach((client) => {
+    if (!client.authenticated || !client.channels.has('presence')) return;
+    if (supervisorRoles.includes(client.role || '')) {
+      safeSend(client.ws, fullPayload);
+    } else if (operationalRoles.includes(client.role || '')) {
+      safeSend(client.ws, noRolesPayload);
+    } else {
+      safeSend(client.ws, countOnlyPayload);
+    }
+  });
 }
 
 export function getConnectedUsers(): { userId: number; username: string; role: string }[] {
@@ -1231,7 +1303,7 @@ function handleSelcallPage(senderClientId: string, data: any): void {
 
   const targetUserId = data?.target_user_id;
   const targetCallSign = data?.target_call_sign;
-  const message = data?.message || '';
+  const message = typeof data?.message === 'string' ? data.message.slice(0, 500).trim() : '';
   const channel = data?.channel || sender.radioChannel;
 
   if (!targetUserId && !targetCallSign) return;
@@ -1289,6 +1361,15 @@ function handleEmergencyOverride(clientId: string, data: any): void {
       type: 'emergency_override_denied',
       data: { reason: 'Insufficient role for emergency override' },
       timestamp: new Date().toISOString(),
+    }));
+    return;
+  }
+
+  // Validate the user is authorized for this radio channel
+  if (!isChannelAuthorized('dispatch', client.role || '')) {
+    safeSend(client.ws, JSON.stringify({
+      type: 'emergency_override_denied',
+      data: { error: 'Not authorized for dispatch operations' },
     }));
     return;
   }
@@ -1411,6 +1492,16 @@ function findClientByUserId(userId: number): { clientId: string; client: WSClien
 function handlePrivateCallRequest(callerClientId: string, targetUserId: number): void {
   const caller = clients.get(callerClientId);
   if (!caller) return;
+
+  // Only operational roles can initiate private calls
+  const callRoles = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'];
+  if (!callRoles.includes(caller.role || '')) {
+    safeSend(caller.ws, JSON.stringify({
+      type: 'private_call_error',
+      data: { error: 'Your role does not have permission to make calls' },
+    }));
+    return;
+  }
 
   // Check if caller is already in a call
   if (caller.privateCallId) {

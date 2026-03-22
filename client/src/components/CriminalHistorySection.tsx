@@ -91,7 +91,7 @@ const RECORD_TYPE_CLASSES: Record<string, string> = {
 const OFFENSE_LEVEL_CLASSES: Record<string, string> = {
   felony: 'bg-red-900/60 text-red-300 border-red-700/50',
   misdemeanor: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
-  infraction: 'bg-gray-700/50 text-rmpg-300 border-rmpg-600/50',
+  infraction: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
   civil: 'bg-brand-900/50 text-brand-400 border-brand-700/50',
   unknown: 'bg-rmpg-700/40 text-rmpg-400 border-rmpg-600/50',
 };

@@ -220,7 +220,11 @@ router.put('/events/:id/outcome', validateParamId, requireRole('admin', 'manager
     const db = getDb();
     const now = localNow();
     const { outcome, sentence, fine_amount, notes } = req.body;
-    if (!outcome) return res.status(400).json({ error: 'Outcome is required' });
+    if (!outcome || typeof outcome !== 'string') return res.status(400).json({ error: 'Outcome is required and must be a string' });
+    if (fine_amount !== undefined && fine_amount !== null) {
+      const fa = parseFloat(String(fine_amount));
+      if (isNaN(fa) || fa < 0) return res.status(400).json({ error: 'fine_amount must be a non-negative number' });
+    }
 
     db.prepare(`
       UPDATE court_events SET outcome = ?, sentence = ?, fine_amount = ?, notes = ?,

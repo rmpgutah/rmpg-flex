@@ -237,7 +237,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
       <div className="p-4 space-y-4">
         {/* Trend indicator */}
         {trendIndicator && (
-          <div className="flex items-center gap-2 px-3 py-2 bg-[#141e2b] border border-[#1e3048] rounded">
+          <div className="flex items-center gap-2 px-3 py-2 bg-[#141e2b] border border-[#1e3048] rounded-sm">
             <trendIndicator.icon size={16} className={trendIndicator.color} />
             <span className="text-xs text-rmpg-300">
               Performance trend: <span className={trendIndicator.color}>{trendIndicator.label}</span>
@@ -254,7 +254,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
             {reviews.map((review) => (
               <div
                 key={review.id}
-                className="bg-[#141e2b] border border-[#1e3048] rounded p-4 space-y-3"
+                className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-4 space-y-3"
               >
                 {/* Header */}
                 <div className="flex items-center justify-between flex-wrap gap-2">
@@ -264,7 +264,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
                       {formatDate(review.review_period_end)}
                     </span>
                     <span
-                      className={`px-1.5 py-0.5 text-[10px] font-medium rounded border ${TYPE_COLORS[review.type]}`}
+                      className={`px-1.5 py-0.5 text-[10px] font-medium rounded-sm border ${TYPE_COLORS[review.type]}`}
                     >
                       {TYPE_LABELS[review.type]}
                     </span>
@@ -321,12 +321,12 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
                       }
                       rows={2}
                       placeholder="Optional comments before acknowledging..."
-                      className="w-full bg-[#0d1520] border border-[#1e3048] rounded px-2.5 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none resize-y"
+                      className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm px-2.5 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none resize-y"
                     />
                     <button
                       onClick={() => handleAcknowledge(review.id)}
                       disabled={ackLoading === review.id}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-600/80 hover:bg-green-600 text-white rounded transition-colors disabled:opacity-50"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-600/80 hover:bg-green-600 text-white rounded-sm transition-colors disabled:opacity-50"
                     >
                       {ackLoading === review.id ? (
                         <Loader2 size={12} className="animate-spin" />
@@ -363,21 +363,21 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
       {/* Stats bar */}
       {stats && (
         <div className="grid grid-cols-3 gap-3">
-          <div className="bg-[#141e2b] border border-[#1e3048] rounded p-3 flex items-center gap-3">
+          <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-3 flex items-center gap-3">
             <Clock size={18} className="text-blue-400 shrink-0" />
             <div>
               <div className="text-lg font-bold text-white">{stats.upcoming}</div>
               <div className="text-[10px] text-rmpg-400">Upcoming Reviews</div>
             </div>
           </div>
-          <div className="bg-[#141e2b] border border-[#1e3048] rounded p-3 flex items-center gap-3">
+          <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-3 flex items-center gap-3">
             <AlertTriangle size={18} className="text-amber-400 shrink-0" />
             <div>
               <div className="text-lg font-bold text-white">{stats.overdue}</div>
               <div className="text-[10px] text-rmpg-400">Overdue</div>
             </div>
           </div>
-          <div className="bg-[#141e2b] border border-[#1e3048] rounded p-3 flex items-center gap-3">
+          <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-3 flex items-center gap-3">
             <BarChart3 size={18} className="text-yellow-400 shrink-0" />
             <div>
               <div className="text-lg font-bold text-white">{stats.avgRating || '--'}</div>
@@ -395,7 +395,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
         <select
           value={filterOfficer}
           onChange={(e) => setFilterOfficer(e.target.value)}
-          className="bg-[#0d1520] border border-[#1e3048] rounded px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
+          className="bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Officers</option>
           {officers.map((o) => (
@@ -407,7 +407,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
         <select
           value={filterType}
           onChange={(e) => setFilterType(e.target.value)}
-          className="bg-[#0d1520] border border-[#1e3048] rounded px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
+          className="bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Types</option>
           {Object.entries(TYPE_LABELS).map(([v, l]) => (
@@ -419,7 +419,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
         <select
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
-          className="bg-[#0d1520] border border-[#1e3048] rounded px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
+          className="bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Statuses</option>
           {Object.entries(STATUS_LABELS).map(([v, l]) => (
@@ -437,7 +437,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
             setEditReview(null);
             setModalOpen(true);
           }}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm transition-colors"
         >
           <Plus size={14} />
           Create Review
@@ -454,10 +454,10 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
           {reviews.map((review) => (
             <div
               key={review.id}
-              className="bg-[#141e2b] border border-[#1e3048] rounded p-3 flex items-start gap-3"
+              className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-3 flex items-start gap-3"
             >
               {/* Avatar initial */}
-              <div className="w-8 h-8 rounded bg-brand-600/30 border border-brand-500/30 flex items-center justify-center text-xs font-bold text-brand-400 shrink-0">
+              <div className="w-8 h-8 rounded-sm bg-brand-600/30 border border-brand-500/30 flex items-center justify-center text-xs font-bold text-brand-400 shrink-0">
                 {(review.officer_name ?? '?')[0].toUpperCase()}
               </div>
 
@@ -468,12 +468,12 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
                     {review.officer_name ?? `Officer #${review.officer_id}`}
                   </span>
                   <span
-                    className={`px-1.5 py-0.5 text-[10px] font-medium rounded border ${TYPE_COLORS[review.type]}`}
+                    className={`px-1.5 py-0.5 text-[10px] font-medium rounded-sm border ${TYPE_COLORS[review.type]}`}
                   >
                     {TYPE_LABELS[review.type]}
                   </span>
                   <span
-                    className={`px-1.5 py-0.5 text-[10px] font-medium rounded border ${STATUS_COLORS[review.status]}`}
+                    className={`px-1.5 py-0.5 text-[10px] font-medium rounded-sm border ${STATUS_COLORS[review.status]}`}
                   >
                     {STATUS_LABELS[review.status]}
                   </span>

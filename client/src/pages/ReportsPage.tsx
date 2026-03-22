@@ -660,7 +660,7 @@ function PatrolTrackingCard() {
         }
       })
       .catch((err) => { console.warn('[ReportsPage] fetch units failed:', err); addToast('Failed to load units', 'error'); });
-  }, []);
+  }, [addToast]);
 
   const handleGenerate = async () => {
     setGenerating(true);
@@ -723,16 +723,16 @@ function PatrolTrackingCard() {
       {/* Row 1: Mode toggle + Unit selector */}
       <div className="flex items-center gap-3 flex-wrap mb-2">
         {/* Mode toggle */}
-        <div className="flex items-center gap-1 bg-rmpg-800 rounded p-0.5">
+        <div className="flex items-center gap-1 bg-rmpg-800 rounded-sm p-0.5">
           <button
             onClick={() => setMode('hours')}
-            className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase ${mode === 'hours' ? 'bg-brand-500/20 text-brand-400' : 'text-rmpg-500 hover:text-rmpg-300'}`}
+            className={`text-[9px] px-2 py-0.5 rounded-sm font-bold uppercase ${mode === 'hours' ? 'bg-brand-500/20 text-brand-400' : 'text-rmpg-500 hover:text-rmpg-300'}`}
           >
             Quick
           </button>
           <button
             onClick={() => setMode('range')}
-            className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase ${mode === 'range' ? 'bg-brand-500/20 text-brand-400' : 'text-rmpg-500 hover:text-rmpg-300'}`}
+            className={`text-[9px] px-2 py-0.5 rounded-sm font-bold uppercase ${mode === 'range' ? 'bg-brand-500/20 text-brand-400' : 'text-rmpg-500 hover:text-rmpg-300'}`}
           >
             Date Range
           </button>

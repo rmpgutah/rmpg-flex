@@ -168,6 +168,14 @@ router.get('/signature', (req: Request, res: Response) => {
 router.put('/signature', (req: Request, res: Response) => {
   try {
     const { signature } = req.body;
+    if (signature !== undefined && typeof signature !== 'string') {
+      res.status(400).json({ error: 'Signature must be a string' });
+      return;
+    }
+    if (signature && signature.length > 5000) {
+      res.status(400).json({ error: 'Signature must be 5000 characters or less' });
+      return;
+    }
     const db = getDb();
     const key = `email_signature_${req.user!.userId}`;
     // Delete existing signature first, then insert if non-empty
@@ -255,6 +263,10 @@ router.post('/folders', async (req: Request, res: Response) => {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
     const { displayName, parentFolderId } = req.body;
     if (!displayName?.trim()) { res.status(400).json({ error: 'Folder name required' }); return; }
+    if (displayName.length > 256) { res.status(400).json({ error: 'Folder name must be 256 characters or less' }); return; }
+    if (parentFolderId && !/^[A-Za-z0-9_=+\-]{10,250}$/.test(parentFolderId)) {
+      res.status(400).json({ error: 'Invalid parent folder ID' }); return;
+    }
 
     const client = await getGraphClient();
     const apiPath = parentFolderId
@@ -434,6 +446,18 @@ router.post('/messages/batch', async (req: Request, res: Response) => {
       res.status(400).json({ error: 'Action and ids[] required' });
       return;
     }
+    const VALID_BATCH_ACTIONS = ['delete', 'archive', 'markRead', 'markUnread'];
+    if (!VALID_BATCH_ACTIONS.includes(action)) {
+      res.status(400).json({ error: `Invalid action. Must be one of: ${VALID_BATCH_ACTIONS.join(', ')}` });
+      return;
+    }
+    // Validate all IDs are valid Graph IDs
+    for (const id of ids) {
+      if (typeof id !== 'string' || !/^[A-Za-z0-9_=+\-]{10,250}$/.test(id)) {
+        res.status(400).json({ error: 'Invalid message ID in batch' });
+        return;
+      }
+    }
 
     const client = await getGraphClient();
     const db = getDb();
@@ -475,6 +499,10 @@ router.post('/messages/mark-all-read', async (req: Request, res: Response) => {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
 
     const { folder = 'inbox' } = req.body;
+    // Validate folder ID to prevent injection
+    if (typeof folder !== 'string' || folder.length > 250) {
+      res.status(400).json({ error: 'Invalid folder' }); return;
+    }
     const client = await getGraphClient();
     const db = getDb();
 
@@ -606,10 +634,42 @@ router.post('/send', async (req: Request, res: Response) => {
       res.status(400).json({ error: 'To and subject are required' });
       return;
     }
+    if (typeof subject !== 'string' || subject.length > 998) {
+      res.status(400).json({ error: 'Subject must be a string of 998 characters or less' });
+      return;
+    }
+    if (body && typeof body !== 'string') {
+      res.status(400).json({ error: 'Body must be a string' });
+      return;
+    }
+    if (body && body.length > 500000) {
+      res.status(400).json({ error: 'Body too large (max 500KB)' });
+      return;
+    }
 
     const toList = Array.isArray(to) ? to : [to];
     const ccList = cc ? (Array.isArray(cc) ? cc : [cc]) : undefined;
     const bccList = bcc ? (Array.isArray(bcc) ? bcc : [bcc]) : undefined;
+
+    // Validate email addresses
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const allRecipients = [...toList, ...(ccList || []), ...(bccList || [])];
+    if (allRecipients.length > 100) {
+      res.status(400).json({ error: 'Too many recipients (max 100)' });
+      return;
+    }
+    for (const addr of allRecipients) {
+      if (typeof addr !== 'string' || !emailRegex.test(addr.trim())) {
+        res.status(400).json({ error: `Invalid email address: ${String(addr).slice(0, 50)}` });
+        return;
+      }
+    }
+
+    // Validate attachments
+    if (attachments && (!Array.isArray(attachments) || attachments.length > 25)) {
+      res.status(400).json({ error: 'Attachments must be an array of 25 or fewer items' });
+      return;
+    }
 
     const signature = getUserSignature(req.user!.userId);
 
@@ -693,6 +753,13 @@ router.post('/messages/:id/forward', validateGraphId, async (req: Request, res: 
     if (!to) { res.status(400).json({ error: 'Recipient required' }); return; }
 
     const toList = Array.isArray(to) ? to : [to];
+    const emailRegexFwd = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    for (const addr of toList) {
+      if (typeof addr !== 'string' || !emailRegexFwd.test(addr.trim())) {
+        res.status(400).json({ error: `Invalid email address: ${String(addr).slice(0, 50)}` }); return;
+      }
+    }
+    if (toList.length > 50) { res.status(400).json({ error: 'Too many recipients (max 50)' }); return; }
     const client = await getGraphClient();
 
     const signature = getUserSignature(req.user!.userId);

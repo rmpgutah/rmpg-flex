@@ -82,7 +82,7 @@ export default function FleetFuelTab({ fuelLogs, summary, onAddFuel, onEditFuel,
             const badge = FUEL_TYPE_BADGE[log.fuel_type] || FUEL_TYPE_BADGE.regular;
             return (
               <div key={log.id} className="panel-beveled p-2.5 flex items-center gap-3 bg-surface-base">
-                <div className="flex-shrink-0 w-8 h-8 rounded flex items-center justify-center bg-cyan-900/20 border border-cyan-700/40">
+                <div className="flex-shrink-0 w-8 h-8 rounded-sm flex items-center justify-center bg-cyan-900/20 border border-cyan-700/40">
                   <Fuel className="w-4 h-4 text-cyan-400" />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -133,7 +133,7 @@ export default function FleetFuelTab({ fuelLogs, summary, onAddFuel, onEditFuel,
                   <div className="flex-shrink-0 flex items-center gap-1">
                     {onEditFuel && (
                       <button
-                        className="p-1 text-rmpg-500 hover:text-brand-400 hover:bg-rmpg-700 rounded transition-colors"
+                        className="p-1 text-rmpg-500 hover:text-brand-400 hover:bg-rmpg-700 rounded-sm transition-colors"
                         onClick={(e) => { e.stopPropagation(); onEditFuel(log); }}
                         title="Edit fuel log"
                       >
@@ -142,7 +142,7 @@ export default function FleetFuelTab({ fuelLogs, summary, onAddFuel, onEditFuel,
                     )}
                     {onDeleteFuel && (
                       <button
-                        className="p-1 text-rmpg-500 hover:text-red-400 hover:bg-red-900/20 rounded transition-colors"
+                        className="p-1 text-rmpg-500 hover:text-red-400 hover:bg-red-900/20 rounded-sm transition-colors"
                         onClick={(e) => { e.stopPropagation(); onDeleteFuel(log); }}
                         title="Delete fuel log"
                       >

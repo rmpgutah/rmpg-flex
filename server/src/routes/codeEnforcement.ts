@@ -113,6 +113,34 @@ router.post('/violations', requireRole('admin', 'manager', 'supervisor', 'office
       latitude, longitude } = req.body;
     if (!location || !description || !violation_type) return res.status(400).json({ error: 'Location, description, and type required' });
 
+    // Validate severity
+    const VALID_SEVERITIES = ['minor', 'moderate', 'major', 'critical'];
+    if (severity && !VALID_SEVERITIES.includes(severity)) {
+      return res.status(400).json({ error: `Invalid severity. Must be one of: ${VALID_SEVERITIES.join(', ')}` });
+    }
+
+    // Validate fine_amount
+    if (fine_amount !== undefined && fine_amount !== null) {
+      const fa = Number(fine_amount);
+      if (isNaN(fa) || fa < 0 || fa > 1000000) {
+        return res.status(400).json({ error: 'fine_amount must be between 0 and 1,000,000' });
+      }
+    }
+
+    // Validate coordinates
+    if (latitude !== undefined && latitude !== null) {
+      const lat = Number(latitude);
+      if (isNaN(lat) || lat < -90 || lat > 90) return res.status(400).json({ error: 'latitude must be between -90 and 90' });
+    }
+    if (longitude !== undefined && longitude !== null) {
+      const lng = Number(longitude);
+      if (isNaN(lng) || lng < -180 || lng > 180) return res.status(400).json({ error: 'longitude must be between -180 and 180' });
+    }
+
+    // Validate string lengths
+    if (location.length > 1000) return res.status(400).json({ error: 'Location too long (max 1000)' });
+    if (description.length > 10000) return res.status(400).json({ error: 'Description too long (max 10000)' });
+
     // Auto-fill Section/Zone/Beat from coordinates
     let { section_id, zone_id, beat_id, zone_beat } = req.body;
     if (latitude != null && longitude != null && !section_id && !zone_id && !beat_id) {
@@ -247,6 +275,25 @@ router.post('/tows', requireRole('admin', 'manager', 'supervisor', 'officer'), (
       tow_company, tow_driver, tow_company_phone, authorization,
       call_id, citation_id, incident_id, tow_fee, storage_fee_daily, notes } = req.body;
     if (!tow_from || !tow_reason) return res.status(400).json({ error: 'Location and reason required' });
+
+    // Validate string lengths
+    if (tow_from.length > 1000) return res.status(400).json({ error: 'Location too long (max 1000)' });
+    if (tow_reason.length > 2000) return res.status(400).json({ error: 'Reason too long (max 2000)' });
+
+    // Validate fees
+    if (tow_fee !== undefined && tow_fee !== null) {
+      const tf = Number(tow_fee);
+      if (isNaN(tf) || tf < 0 || tf > 100000) return res.status(400).json({ error: 'tow_fee must be 0-100000' });
+    }
+    if (storage_fee_daily !== undefined && storage_fee_daily !== null) {
+      const sf = Number(storage_fee_daily);
+      if (isNaN(sf) || sf < 0 || sf > 10000) return res.status(400).json({ error: 'storage_fee_daily must be 0-10000' });
+    }
+
+    // Validate VIN format if provided
+    if (vehicle_vin && !/^[A-HJ-NPR-Z0-9]{5,17}$/i.test(vehicle_vin)) {
+      return res.status(400).json({ error: 'Invalid VIN format' });
+    }
 
     const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
 

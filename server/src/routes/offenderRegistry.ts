@@ -104,11 +104,16 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
 // Quick check: all active alerts for a specific person
 router.get('/check/:personId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
+    // Validate personId as positive integer
+    const personId = parseInt(req.params.personId, 10);
+    if (isNaN(personId) || personId < 1 || String(personId) !== req.params.personId) {
+      res.status(400).json({ error: 'Invalid person ID' }); return;
+    }
     const db = getDb();
     const alerts = db.prepare(`
       SELECT * FROM offender_alerts WHERE person_id = ? AND status = 'active'
       ORDER BY CASE severity WHEN 'danger' THEN 0 WHEN 'warning' THEN 1 WHEN 'caution' THEN 2 ELSE 3 END
-    `).all(req.params.personId);
+    `).all(personId);
     res.json({ data: alerts });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -137,6 +142,28 @@ router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, r
       restricted_properties, restricted_zones, restriction_radius_ft,
       expiration_date, source_incident_id, source_citation_id, source_case_id, notes } = req.body;
     if (!person_id || !alert_type || !description) return res.status(400).json({ error: 'Person, alert type, and description required' });
+
+    // Validate person_id is a positive integer
+    if (isNaN(Number(person_id)) || Number(person_id) < 1) {
+      return res.status(400).json({ error: 'person_id must be a positive integer' });
+    }
+
+    // Validate alert_type against allowlist
+    const VALID_ALERT_TYPES = ['trespass', 'banned', 'watchlist', 'armed_dangerous', 'mental_health', 'gang', 'warrant', 'other'];
+    if (!VALID_ALERT_TYPES.includes(alert_type)) {
+      return res.status(400).json({ error: `Invalid alert_type. Must be one of: ${VALID_ALERT_TYPES.join(', ')}` });
+    }
+
+    // Validate severity against allowlist
+    const VALID_SEVERITIES = ['caution', 'warning', 'danger'];
+    if (!VALID_SEVERITIES.includes(severity)) {
+      return res.status(400).json({ error: `Invalid severity. Must be one of: ${VALID_SEVERITIES.join(', ')}` });
+    }
+
+    // Validate description length
+    if (typeof description !== 'string' || description.length > 5000) {
+      return res.status(400).json({ error: 'Description must be 5000 characters or less' });
+    }
 
     const result = db.prepare(`
       INSERT INTO offender_alerts (person_id, alert_type, status, description, severity,
@@ -168,6 +195,20 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
   try {
     const db = getDb();
     const now = localNow();
+    // Validate enums on update
+    if (req.body.alert_type !== undefined) {
+      const VALID_AT = ['trespass', 'banned', 'watchlist', 'armed_dangerous', 'mental_health', 'gang', 'warrant', 'other'];
+      if (!VALID_AT.includes(req.body.alert_type)) return res.status(400).json({ error: 'Invalid alert_type' });
+    }
+    if (req.body.severity !== undefined) {
+      const VALID_SV = ['caution', 'warning', 'danger'];
+      if (!VALID_SV.includes(req.body.severity)) return res.status(400).json({ error: 'Invalid severity' });
+    }
+    if (req.body.restriction_radius_ft !== undefined && req.body.restriction_radius_ft !== null) {
+      const radius = Number(req.body.restriction_radius_ft);
+      if (isNaN(radius) || radius < 0 || radius > 100000) return res.status(400).json({ error: 'restriction_radius_ft must be 0-100000' });
+    }
+
     const fields = ['alert_type', 'description', 'severity', 'restriction_radius_ft',
       'expiration_date', 'notes'];
     const updates: string[] = ['updated_at = ?'];

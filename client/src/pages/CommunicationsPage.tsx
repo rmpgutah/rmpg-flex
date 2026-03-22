@@ -14,9 +14,6 @@ import {
   Trash2,
   Search,
   Reply,
-  Mail,
-  MailOpen,
-  ChevronDown,
   Inbox,
   ArrowLeft,
 } from 'lucide-react';

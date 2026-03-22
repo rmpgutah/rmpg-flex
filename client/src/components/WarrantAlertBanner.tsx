@@ -39,7 +39,7 @@ export default function WarrantAlertBanner({ alerts, onDismiss, onViewCall }: Pr
       {alerts.map(alert => (
         <div
           key={alert.id}
-          className={`flex items-start gap-3 p-3 rounded border text-sm shadow-xl animate-in slide-in-from-right ${SEVERITY_STYLES[alert.severity || ''] || 'bg-red-950 border-red-700 text-red-200'}`}
+          className={`flex items-start gap-3 p-3 rounded-sm border text-sm shadow-xl animate-in slide-in-from-right ${SEVERITY_STYLES[alert.severity || ''] || 'bg-red-950 border-red-700 text-red-200'}`}
         >
           <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 animate-pulse" />
           <div className="flex-1 min-w-0">

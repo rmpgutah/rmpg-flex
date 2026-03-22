@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { sendCsv } from '../utils/csvExport';
-import { escapeLike, validateParamId } from '../middleware/sanitize';
+import { escapeLike, validateParamId, validateStr, validateEnum, requireInt, validateDateStr } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
 import { searchUtahWarrants } from '../utils/utahWarrantScraper';
 import { searchOfacLocal } from '../utils/ofacScraper';
@@ -413,10 +413,30 @@ router.post('/persons', requireRole('admin', 'manager', 'supervisor', 'officer',
       photo_url, flags, notes,
     } = req.body;
 
-    if (!first_name || !last_name) {
+    // ── Validate person inputs ──
+    const validFirst = validateStr(first_name, 'first_name', 100);
+    const validLast = validateStr(last_name, 'last_name', 100);
+    if (!validFirst || !validLast) {
       res.status(400).json({ error: 'first_name and last_name are required' });
       return;
     }
+    if (dob) validateDateStr(dob, 'dob');
+    if (dl_expiry) validateDateStr(dl_expiry, 'dl_expiry');
+    if (id_expiry) validateDateStr(id_expiry, 'id_expiry');
+    validateStr(middle_name, 'middle_name', 100);
+    validateStr(alias_nickname, 'alias_nickname', 200);
+    validateStr(address, 'address', 500);
+    validateStr(city, 'city', 100);
+    validateStr(state, 'state', 50);
+    validateStr(zip, 'zip', 20);
+    validateStr(phone, 'phone', 30);
+    validateStr(email, 'email', 200);
+    validateStr(dl_number, 'dl_number', 50);
+    validateStr(dl_state, 'dl_state', 10);
+    validateStr(employer, 'employer', 200);
+    validateStr(occupation, 'occupation', 200);
+    if (ssn_last4 && String(ssn_last4).length > 4) { res.status(400).json({ error: 'ssn_last4 must be at most 4 characters' }); return; }
+    if (flags && !Array.isArray(flags)) { res.status(400).json({ error: 'flags must be an array' }); return; }
 
     const result = db.prepare(`
       INSERT INTO persons (first_name, last_name, middle_name, alias_nickname, dob, gender, race,
@@ -469,6 +489,9 @@ router.post('/persons', requireRole('admin', 'manager', 'supervisor', 'officer',
     broadcast('records', 'person:created', person);
     res.status(201).json(person);
   } catch (error: any) {
+    if (error.message?.startsWith('Invalid ') || error.message?.includes('must be')) {
+      res.status(400).json({ error: error.message }); return;
+    }
     console.error('Create person error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -817,6 +840,22 @@ router.post('/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer'
       flags, notes,
     } = req.body;
 
+    // ── Validate vehicle inputs ──
+    validateStr(plate_number, 'plate_number', 20);
+    validateStr(state, 'state', 10);
+    validateStr(make, 'make', 100);
+    validateStr(model, 'model', 100);
+    if (year != null) { const y = requireInt(year, 'year'); if (y != null && (y < 1900 || y > 2100)) { res.status(400).json({ error: 'year must be 1900-2100' }); return; } }
+    validateStr(color, 'color', 50);
+    if (vin) { if (String(vin).trim().length > 17) { res.status(400).json({ error: 'VIN must be at most 17 characters' }); return; } }
+    if (owner_person_id) requireInt(owner_person_id, 'owner_person_id');
+    if (registration_expiry) validateDateStr(registration_expiry, 'registration_expiry');
+    if (tow_date) validateDateStr(tow_date, 'tow_date');
+    if (stolen_date) validateDateStr(stolen_date, 'stolen_date');
+    if (recovery_date) validateDateStr(recovery_date, 'recovery_date');
+    if (odometer != null) requireInt(odometer, 'odometer');
+    if (flags && !Array.isArray(flags)) { res.status(400).json({ error: 'flags must be an array' }); return; }
+
     const result = db.prepare(`
       INSERT INTO vehicles_records (plate_number, state, make, model, year, color, secondary_color,
         body_style, doors, vin, owner_person_id,
@@ -850,6 +889,9 @@ router.post('/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer'
 
     res.status(201).json(vehicle);
   } catch (error: any) {
+    if (error.message?.startsWith('Invalid ') || error.message?.includes('must be')) {
+      res.status(400).json({ error: error.message }); return;
+    }
     console.error('Create vehicle error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }

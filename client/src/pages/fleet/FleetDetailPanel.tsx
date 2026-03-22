@@ -146,7 +146,7 @@ function FleetPrintMenu({ detail, fuelLogs, maintenance }: {
         <Printer className="w-3 h-3" /> Print <ChevronDown className="w-2.5 h-2.5" />
       </button>
       {open && (
-        <div className="absolute right-0 mt-1 z-50 bg-rmpg-700 border border-rmpg-500 rounded shadow-lg min-w-[180px]">
+        <div className="absolute right-0 mt-1 z-50 bg-rmpg-700 border border-rmpg-500 rounded-sm shadow-lg min-w-[180px]">
           {reportOptions.map((opt) => (
             <PrintRecordButton
               key={opt.key}
@@ -181,7 +181,7 @@ export default function FleetDetailPanel({
       <div className="flex-shrink-0 px-4 py-3 border-b border-rmpg-700 flex items-start justify-between bg-surface-sunken">
         <div>
           <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded flex items-center justify-center border ${
+            <div className={`w-10 h-10 rounded-sm flex items-center justify-center border ${
               detail.status === 'in_service' ? 'bg-green-900/30 border-green-700/50' :
               detail.status === 'maintenance' ? 'bg-amber-900/30 border-amber-700/50' :
               detail.status === 'out_of_service' ? 'bg-red-900/30 border-red-700/50' :

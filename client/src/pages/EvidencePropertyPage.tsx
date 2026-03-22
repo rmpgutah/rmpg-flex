@@ -270,7 +270,7 @@ export default function EvidencePropertyPage() {
         </PanelTitleBar>
 
         {fetchError && (
-          <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded text-red-400 text-xs flex items-center gap-2">
+          <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
             <span>⚠ {fetchError}</span>
             <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
           </div>
@@ -535,7 +535,7 @@ export default function EvidencePropertyPage() {
                       const ActionIcon = actionDef?.icon || ArrowRightLeft;
                       return (
                         <div key={idx} className="panel-beveled p-3 flex gap-3">
-                          <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center bg-surface-sunken border border-rmpg-700 rounded">
+                          <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center bg-surface-sunken border border-rmpg-700 rounded-sm">
                             <ActionIcon style={{ width: 14, height: 14 }} className="text-brand-400" />
                           </div>
                           <div className="flex-1 min-w-0">
@@ -590,7 +590,7 @@ export default function EvidencePropertyPage() {
                       </div>
                       {bwcVideos.map(vid => (
                         <div key={vid.id} className="panel-beveled p-3 flex items-center gap-3">
-                          <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-surface-sunken border border-rmpg-700 rounded">
+                          <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-surface-sunken border border-rmpg-700 rounded-sm">
                             <Video style={{ width: 16, height: 16 }} className="text-brand-400" />
                           </div>
                           <div className="flex-1 min-w-0">
@@ -647,7 +647,7 @@ export default function EvidencePropertyPage() {
       {/* ── Chain of Custody Action Modal ── */}
       {chainModalOpen && selected && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setChainModalOpen(false)}>
-          <div className="bg-surface-base border border-rmpg-700 rounded-lg shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+          <div className="bg-surface-base border border-rmpg-700 rounded-sm shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700 bg-surface-raised">
               <div className="flex items-center gap-2">
                 <ArrowRightLeft className="w-4 h-4 text-brand-400" />
@@ -709,7 +709,7 @@ export default function EvidencePropertyPage() {
       {/* ── New Evidence Modal ── */}
       {newEvidenceOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setNewEvidenceOpen(false)}>
-          <div className="bg-surface-base border border-rmpg-700 rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+          <div className="bg-surface-base border border-rmpg-700 rounded-sm shadow-xl w-full max-w-lg mx-4 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700 bg-surface-raised">
               <div className="flex items-center gap-2">
                 <Plus className="w-4 h-4 text-brand-400" />

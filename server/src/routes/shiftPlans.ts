@@ -184,6 +184,32 @@ router.post('/shift-plans', requireRole('admin', 'manager', 'supervisor'), (req:
       res.status(400).json({ error: 'id, name, and date are required' });
       return;
     }
+    // Validate id format (prevent SQL injection via non-parameterized usage elsewhere)
+    if (typeof id !== 'string' || id.length > 100) {
+      res.status(400).json({ error: 'id must be a string, max 100 characters' });
+      return;
+    }
+    if (typeof name !== 'string' || name.length > 200) {
+      res.status(400).json({ error: 'name must be a string, max 200 characters' });
+      return;
+    }
+    // Validate date format
+    if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      res.status(400).json({ error: 'date must be in YYYY-MM-DD format' });
+      return;
+    }
+    // Validate shift type
+    const validShiftTypes = ['day', 'swing', 'night', 'graveyard'];
+    if (shiftType && !validShiftTypes.includes(shiftType)) {
+      res.status(400).json({ error: `shiftType must be one of: ${validShiftTypes.join(', ')}` });
+      return;
+    }
+    // Validate status
+    const validPlanStatuses = ['draft', 'active', 'archived'];
+    if (status && !validPlanStatuses.includes(status)) {
+      res.status(400).json({ error: `status must be one of: ${validPlanStatuses.join(', ')}` });
+      return;
+    }
 
     const now = localNow();
     const assignmentsJson = assignments ? JSON.stringify(assignments) : '[]';

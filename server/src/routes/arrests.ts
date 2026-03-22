@@ -13,7 +13,7 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { validateParamId } from '../middleware/sanitize';
+import { validateParamId, validateStr, validateDateStr, requireInt, requireFloat, validateEnum } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
 import config from '../config';
 import {
@@ -136,14 +136,36 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
     const user = req.user!;
     const b = req.body;
 
-    // Require at minimum a name
-    const fullName = (b.full_name || '').trim();
+    // ── Input validation ──
+    const ARREST_STATUSES = ['active', 'released', 'transferred', 'bonded', 'closed'] as const;
+    const GENDERS = ['male', 'female', 'non_binary', 'unknown'] as const;
+
+    const fullName = validateStr(b.full_name, 'full_name', 200);
     if (!fullName || fullName.length < 2) {
       return res.status(400).json({ error: 'Full name is required (min 2 characters)' });
     }
 
+    const validDob = validateDateStr(b.date_of_birth, 'date_of_birth');
+    const validBookingDate = validateDateStr(b.booking_date, 'booking_date');
+    const validReleaseDate = validateDateStr(b.release_date, 'release_date');
+    const validStatus = validateEnum(b.status, ARREST_STATUSES, 'status') || 'active';
+    const validBail = requireFloat(b.bail_amount, 'bail_amount', 0, 100_000_000);
+    const validCounty = validateStr(b.county, 'county', 100) || '';
+    const validState = validateStr(b.state, 'state', 2) || 'UT';
+    const validBookingNum = validateStr(b.booking_number, 'booking_number', 100);
+    const validAgency = validateStr(b.agency, 'agency', 200);
+    const validGender = validateStr(b.gender, 'gender', 50);
+    const validRace = validateStr(b.race, 'race', 50);
+    const validHeight = validateStr(b.height, 'height', 20);
+    const validWeight = validateStr(b.weight, 'weight', 20);
+    const validHairColor = validateStr(b.hair_color, 'hair_color', 50);
+    const validEyeColor = validateStr(b.eye_color, 'eye_color', 50);
+    const validAddress = validateStr(b.address, 'address', 500);
+    const validHoldReason = validateStr(b.hold_reason, 'hold_reason', 1000);
+    const validNotes = validateStr(b.notes, 'notes', 5000);
+
     const { first, middle, last } = splitName(fullName);
-    const charges = Array.isArray(b.charges) ? JSON.stringify(b.charges)
+    const charges = Array.isArray(b.charges) ? JSON.stringify(b.charges.slice(0, 100))
       : typeof b.charges === 'string' ? b.charges : '[]';
 
     const result = db.prepare(`
@@ -167,10 +189,10 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
     `).run(
       `manual-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
       fullName, first || b.first_name || '', last || b.last_name || '', middle || b.middle_name || '',
-      b.date_of_birth || null, b.booking_date || now, b.release_date || null,
-      charges, b.county || '', b.state || 'UT', b.status || 'active', b.booking_number || null, b.agency || null,
-      b.gender || null, b.race || null, b.height || null, b.weight || null, b.hair_color || null, b.eye_color || null,
-      b.address || null, b.bail_amount != null && !isNaN(parseFloat(b.bail_amount)) && isFinite(parseFloat(b.bail_amount)) ? parseFloat(b.bail_amount) : null, b.hold_reason || null, b.notes || null,
+      validDob, validBookingDate || now, validReleaseDate,
+      charges, validCounty, validState, validStatus, validBookingNum, validAgency,
+      validGender, validRace, validHeight, validWeight, validHairColor, validEyeColor,
+      validAddress, validBail, validHoldReason, validNotes,
       user?.userId || null, now, now,
     );
 
@@ -185,6 +207,9 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
 
     res.json({ success: true, id: newId, message: 'Booking record created' });
   } catch (err: any) {
+    if (err.message?.startsWith('Invalid ') || err.message?.includes('must be')) {
+      res.status(400).json({ error: err.message }); return;
+    }
     console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });

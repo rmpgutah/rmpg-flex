@@ -330,7 +330,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                     {inv.period_start?.substring(0, 10)} – {inv.period_end?.substring(0, 10)}
                   </td>
                   <td className="p-1.5">
-                    <span className={`px-1.5 py-0.5 text-[9px] uppercase font-bold border rounded ${STATUS_BADGE[inv.status] || STATUS_BADGE.draft}`}>
+                    <span className={`px-1.5 py-0.5 text-[9px] uppercase font-bold border rounded-sm ${STATUS_BADGE[inv.status] || STATUS_BADGE.draft}`}>
                       {inv.status}
                     </span>
                   </td>
@@ -355,7 +355,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         <span className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold">Create New Invoice</span>
       </div>
 
-      <div className="bg-surface-raised border border-rmpg-700 rounded p-3 space-y-3">
+      <div className="bg-surface-raised border border-rmpg-700 rounded-sm p-3 space-y-3">
         <div className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2">Billing Period</div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
@@ -423,7 +423,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
           <div className="flex items-center gap-2">
             <button onClick={() => { setView('list'); setSelectedInvoice(null); }} className="toolbar-btn"><ArrowLeft className="w-3.5 h-3.5" /></button>
             <span className="font-mono text-brand-400 font-bold text-sm">{inv.invoice_number}</span>
-            <span className={`px-1.5 py-0.5 text-[9px] uppercase font-bold border rounded ${STATUS_BADGE[inv.status] || STATUS_BADGE.draft}`}>
+            <span className={`px-1.5 py-0.5 text-[9px] uppercase font-bold border rounded-sm ${STATUS_BADGE[inv.status] || STATUS_BADGE.draft}`}>
               {toDisplayLabel(inv.status)}
             </span>
           </div>
@@ -460,7 +460,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         </div>
 
         {/* Invoice Info */}
-        <div className="bg-surface-raised border border-rmpg-700 rounded p-3 mb-3">
+        <div className="bg-surface-raised border border-rmpg-700 rounded-sm p-3 mb-3">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[10px]">
             <div>
               <span className="text-rmpg-500 uppercase block">Client</span>
@@ -492,7 +492,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         </div>
 
         {/* Line Items */}
-        <div className="bg-surface-raised border border-rmpg-700 rounded p-3 mb-3">
+        <div className="bg-surface-raised border border-rmpg-700 rounded-sm p-3 mb-3">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold">Line Items</span>
             {inv.status === 'draft' && (
@@ -503,7 +503,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
           </div>
 
           {showAddItem && inv.status === 'draft' && (
-            <div className="bg-surface-base border border-rmpg-700 rounded p-2 mb-2">
+            <div className="bg-surface-base border border-rmpg-700 rounded-sm p-2 mb-2">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]">
                 <div>
                   <label className="text-rmpg-500 uppercase block mb-0.5">Type</label>
@@ -578,7 +578,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         </div>
 
         {/* Totals */}
-        <div className="bg-surface-raised border border-rmpg-700 rounded p-3 mb-3">
+        <div className="bg-surface-raised border border-rmpg-700 rounded-sm p-3 mb-3">
           <div className="flex flex-col items-end gap-1 text-[10px]">
             <div className="flex gap-8"><span className="text-rmpg-400 uppercase w-32 text-right">Subtotal:</span><span className="text-white font-mono w-24 text-right">{formatCurrency(inv.subtotal)}</span></div>
             {inv.discount_amount > 0 && (
@@ -603,7 +603,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
 
         {/* Payment Recording Form */}
         {showPayment && (
-          <div className="bg-surface-raised border border-green-700/50 rounded p-3 mb-3">
+          <div className="bg-surface-raised border border-green-700/50 rounded-sm p-3 mb-3">
             <div className="text-[10px] uppercase tracking-wider text-green-400 font-bold mb-2">Record Payment</div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[10px]">
               <div>
@@ -645,7 +645,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
 
         {/* Payments Table */}
         {(inv.payments || []).length > 0 && (
-          <div className="bg-surface-raised border border-rmpg-700 rounded p-3 mb-3">
+          <div className="bg-surface-raised border border-rmpg-700 rounded-sm p-3 mb-3">
             <span className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2 block">Payments</span>
             <table className="w-full text-[10px]">
               <thead>
@@ -677,7 +677,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         )}
 
         {/* Internal Notes */}
-        <div className="bg-surface-raised border border-rmpg-700 rounded p-3 mb-3">
+        <div className="bg-surface-raised border border-rmpg-700 rounded-sm p-3 mb-3">
           <span className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2 block">Internal Notes</span>
           <textarea
             className="input-dark w-full text-xs"
@@ -767,7 +767,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
   return (
     <div className="flex flex-col h-full p-3 overflow-auto">
       {error && (
-        <div className="flex items-center gap-2 bg-red-900/30 border border-red-700/50 text-red-300 text-[10px] px-3 py-2 rounded mb-2">
+        <div className="flex items-center gap-2 bg-red-900/30 border border-red-700/50 text-red-300 text-[10px] px-3 py-2 rounded-sm mb-2">
           <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
           <span>{error}</span>
           <button onClick={() => setError(null)} className="ml-auto"><XCircle className="w-3 h-3" /></button>

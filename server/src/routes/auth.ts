@@ -505,6 +505,12 @@ router.post('/refresh', refreshRateLimit, (req: Request, res: Response) => {
       return;
     }
 
+    // Validate refreshToken type and length
+    if (typeof refreshToken !== 'string' || refreshToken.length > 2048) {
+      res.status(400).json({ error: 'Invalid refresh token format' });
+      return;
+    }
+
     let decoded: JwtPayload;
     try {
       decoded = verifyRefreshToken(refreshToken);
@@ -613,10 +619,18 @@ router.post('/logout', authenticateToken, (req: Request, res: Response) => {
     const { refreshToken, sessionId } = req.body;
 
     if (refreshToken) {
+      if (typeof refreshToken !== 'string' || refreshToken.length > 2048) {
+        res.status(400).json({ error: 'Invalid refresh token' });
+        return;
+      }
       const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
       db.prepare('UPDATE sessions SET is_active = 0 WHERE refresh_token_hash = ? AND user_id = ?')
         .run(tokenHash, req.user!.userId);
     } else if (sessionId) {
+      if (typeof sessionId !== 'string' || sessionId.length > 50 || !/^[a-f0-9\-]+$/i.test(sessionId)) {
+        res.status(400).json({ error: 'Invalid session ID format' });
+        return;
+      }
       db.prepare('UPDATE sessions SET is_active = 0 WHERE session_id = ? AND user_id = ?')
         .run(sessionId, req.user!.userId);
     } else {
@@ -716,9 +730,16 @@ router.get('/sessions', authenticateToken, (req: Request, res: Response) => {
 router.delete('/sessions/:sessionId', authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
+    // Validate sessionId format (UUID)
+    const sessionId = req.params.sessionId;
+    if (typeof sessionId !== 'string' || sessionId.length > 50 ||
+        !/^[a-f0-9\-]+$/i.test(sessionId)) {
+      res.status(400).json({ error: 'Invalid session ID format' });
+      return;
+    }
     const result = db.prepare(
       'UPDATE sessions SET is_active = 0 WHERE session_id = ? AND user_id = ?'
-    ).run(req.params.sessionId, req.user!.userId);
+    ).run(sessionId, req.user!.userId);
 
     if (result.changes === 0) {
       res.status(404).json({ error: 'Session not found' });
@@ -953,6 +974,10 @@ router.put('/profile', authenticateToken, (req: Request, res: Response) => {
       const ln = String(last_name).trim();
       if (!fn || !ln) {
         res.status(400).json({ error: 'First and last name are required and cannot be empty.' });
+        return;
+      }
+      if (fn.length > 100 || ln.length > 100) {
+        res.status(400).json({ error: 'Names must be 100 characters or less' });
         return;
       }
       updates.push('first_name = ?', 'last_name = ?', 'full_name = ?');

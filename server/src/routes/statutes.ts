@@ -51,8 +51,12 @@ router.get('/', (req: Request, res: Response) => {
     const params: any[] = [];
 
     if (state) {
+      if (typeof state !== 'string' || state.length > 5) {
+        res.status(400).json({ error: 'state must be a 2-5 character code' });
+        return;
+      }
       where += ' AND state = ?';
-      params.push((state as string).toUpperCase());
+      params.push(state.toUpperCase());
     }
 
     if (q) {
@@ -183,6 +187,24 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       return;
     }
 
+    // Validate field types and lengths
+    if (typeof citation !== 'string' || citation.length > 100) {
+      res.status(400).json({ error: 'citation must be a string of 100 characters or less' });
+      return;
+    }
+    if (typeof short_title !== 'string' || short_title.length > 500) {
+      res.status(400).json({ error: 'short_title must be a string of 500 characters or less' });
+      return;
+    }
+    if (typeof category !== 'string' || category.length > 100) {
+      res.status(400).json({ error: 'category must be a string of 100 characters or less' });
+      return;
+    }
+    if (stateCode && (typeof stateCode !== 'string' || stateCode.length > 5)) {
+      res.status(400).json({ error: 'state must be a 2-5 character code' });
+      return;
+    }
+
     const result = db.prepare(`
       INSERT INTO utah_statutes (state, state_name, title, chapter, section, subsection, citation, short_title, description, definition, offense_level, category, subcategory)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -261,6 +283,13 @@ router.get('/entity/:type/:id', validateParamId, (req: Request, res: Response) =
     const db = getDb();
     const { type, id } = req.params;
 
+    // Validate entity type
+    const validEntityTypes = ['call', 'incident', 'citation', 'warrant', 'person', 'case'];
+    if (!validEntityTypes.includes(type)) {
+      res.status(400).json({ error: `entity type must be one of: ${validEntityTypes.join(', ')}` });
+      return;
+    }
+
     const links = db.prepare(`
       SELECT es.*, s.state, s.state_name, s.citation, s.short_title, s.offense_level, s.category, s.subcategory, s.description, s.definition
       FROM entity_statutes es
@@ -284,6 +313,27 @@ router.post('/entity', requireRole('admin', 'manager', 'supervisor', 'officer'),
 
     if (!entity_type || !entity_id || !statute_id) {
       res.status(400).json({ error: 'entity_type, entity_id, and statute_id are required' });
+      return;
+    }
+
+    // Validate entity_type whitelist
+    const validEntityTypes = ['call', 'incident', 'citation', 'warrant', 'person', 'case'];
+    if (typeof entity_type !== 'string' || !validEntityTypes.includes(entity_type)) {
+      res.status(400).json({ error: `entity_type must be one of: ${validEntityTypes.join(', ')}` });
+      return;
+    }
+
+    // Validate entity_id and statute_id are positive integers
+    const eid = parseInt(String(entity_id), 10);
+    const sid = parseInt(String(statute_id), 10);
+    if (isNaN(eid) || eid <= 0 || isNaN(sid) || sid <= 0) {
+      res.status(400).json({ error: 'entity_id and statute_id must be positive integers' });
+      return;
+    }
+
+    // Validate notes length
+    if (notes !== undefined && notes !== null && (typeof notes !== 'string' || notes.length > 2000)) {
+      res.status(400).json({ error: 'notes must be 2000 characters or less' });
       return;
     }
 

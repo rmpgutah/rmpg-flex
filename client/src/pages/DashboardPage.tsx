@@ -552,11 +552,11 @@ export default function DashboardPage() {
       {/* Priority Breakdown — Clickable beveled panels with LED dots */}
       <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2'}`}>
         {[
-          { key: 'P1', label: 'P1 Emergency', led: 'led-red', border: 'border-l-red-500', count: stats.calls_by_priority.P1 },
-          { key: 'P2', label: 'P2 Urgent', led: 'led-amber', border: 'border-l-amber-500', count: stats.calls_by_priority.P2 },
-          { key: 'P3', label: 'P3 Routine', led: 'led-blue', border: 'border-l-brand-500', count: stats.calls_by_priority.P3 },
-          { key: 'P4', label: 'P4 Scheduled', led: 'led-off', border: 'border-l-gray-500', count: stats.calls_by_priority.P4 },
-        ].map(({ key, label, led, border, count }) => (
+          { key: 'P1', label: 'P1 Emergency', led: 'led-red', border: 'border-l-red-500', count: stats.calls_by_priority.P1, valueColor: '#dc2626' },
+          { key: 'P2', label: 'P2 Urgent', led: 'led-amber', border: 'border-l-amber-500', count: stats.calls_by_priority.P2, valueColor: '#f59e0b' },
+          { key: 'P3', label: 'P3 Routine', led: 'led-blue', border: 'border-l-brand-500', count: stats.calls_by_priority.P3, valueColor: '#1a5a9e' },
+          { key: 'P4', label: 'P4 Scheduled', led: 'led-off', border: 'border-l-gray-500', count: stats.calls_by_priority.P4, valueColor: '#4b5563' },
+        ].map(({ key, label, led, border, count, valueColor }) => (
           <div
             key={key}
             onClick={() => navigate('/dispatch')}
@@ -565,7 +565,7 @@ export default function DashboardPage() {
           >
             <span className={`led-dot ${led}`} />
             <div className="flex-1">
-              <div className={`${isMobile ? 'text-2xl' : 'text-lg'} font-bold text-green-400 font-mono`}>{count}</div>
+              <div className={`${isMobile ? 'text-2xl' : 'text-lg'} font-bold font-mono`} style={{ color: valueColor }}>{count}</div>
               <div className={`${isMobile ? 'text-[10px]' : 'text-[9px]'} text-rmpg-400 uppercase font-bold tracking-wide`}>{label}</div>
             </div>
             <ArrowRight className="w-3 h-3 text-rmpg-500 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -860,7 +860,7 @@ export default function DashboardPage() {
               <button className={`toolbar-btn justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/map')}>
                 <MapPin style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Map
               </button>
-              <button className={`toolbar-btn justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => window.open('/warrants', '_blank', 'noopener,noreferrer')}>
+              <button className={`toolbar-btn justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/warrants')}>
                 <Gavel style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Warrants
               </button>
             </div>
@@ -1054,7 +1054,7 @@ export default function DashboardPage() {
             {/* Active Warrant Alerts */}
             <div
               className={`flex items-center gap-3 p-2.5 panel-beveled cursor-pointer hover:bg-amber-900/10 transition-colors bg-surface-sunken border-l-[3px] ${activeWarrants > 0 ? 'border-l-amber-500' : 'border-l-rmpg-600'}`}
-              onClick={() => window.open('/warrants', '_blank', 'noopener,noreferrer')}
+              onClick={() => navigate('/warrants')}
             >
               <Gavel className={`w-4 h-4 ${activeWarrants > 0 ? 'text-amber-400' : 'text-rmpg-500'}`} />
               <div className="flex-1">
@@ -1082,7 +1082,7 @@ export default function DashboardPage() {
               className="flex items-center gap-3 p-2.5 panel-beveled cursor-pointer hover:bg-green-900/10 transition-colors bg-surface-sunken border-l-[3px] border-l-green-500"
               onClick={() => navigate('/personnel')}
             >
-              <Users className={`w-4 h-4 text-green-400`} />
+              <Users className="w-4 h-4 text-green-400" />
               <div className="flex-1">
                 <div className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wide">Officers on Duty</div>
                 <div className="text-lg font-bold font-mono text-green-400">{stats.officers_on_duty}</div>

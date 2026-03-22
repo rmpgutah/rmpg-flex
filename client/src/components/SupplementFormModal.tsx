@@ -73,7 +73,7 @@ export default function SupplementFormModal({
     >
       <div className="space-y-3">
         <div>
-          <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-1">Report Type</label>
+          <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-1">Report Type</label>
           <select
             className="select-dark w-full text-[11px]"
             value={form.report_type}
@@ -85,7 +85,7 @@ export default function SupplementFormModal({
           </select>
         </div>
         <div>
-          <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-1">Subject *</label>
+          <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-1">Subject *</label>
           <input
             className="input-dark w-full text-[11px]"
             value={form.subject}
@@ -95,7 +95,7 @@ export default function SupplementFormModal({
           />
         </div>
         <div>
-          <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-1">Narrative *</label>
+          <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-1">Narrative *</label>
           <textarea
             className="textarea-dark w-full text-[11px]"
             rows={10}

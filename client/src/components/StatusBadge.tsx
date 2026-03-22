@@ -44,7 +44,7 @@ export default React.memo(function StatusBadge({ status, type, size = 'md', clas
 
   if (!config) {
     return (
-      <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold bg-gray-700 text-rmpg-300 border border-rmpg-600 ${className}`}>
+      <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold bg-rmpg-700 text-rmpg-300 border border-rmpg-600 ${className}`}>
         {status}
       </span>
     );

@@ -17,7 +17,6 @@ import {
   Send,
   RefreshCw,
   AlertTriangle,
-  ChevronRight,
   MessageSquare,
   Shield,
   FileText,

@@ -120,7 +120,7 @@ function PersonnelPrintMenu({ officer, credentials, training, equipment, bodyCam
         <Printer className="w-3 h-3" /> Print <ChevronDown className="w-2.5 h-2.5" />
       </button>
       {open && (
-        <div className="absolute right-0 mt-1 z-50 bg-rmpg-700 border border-rmpg-500 rounded shadow-lg min-w-[200px]">
+        <div className="absolute right-0 mt-1 z-50 bg-rmpg-700 border border-rmpg-500 rounded-sm shadow-lg min-w-[200px]">
           {reportOptions.map((opt) => (
             <PrintRecordButton
               key={opt.key}

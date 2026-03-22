@@ -5,7 +5,7 @@ import { broadcast } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
 import { createNotificationForRoles } from './notifications';
 import { resolveDistrict } from '../utils/districtResolver';
-import { escapeLike, validateParamId } from '../middleware/sanitize';
+import { escapeLike, validateParamId, validateStr, validateEnum, requireInt, validateDateStr, validateCoords } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 import { universalWarrantCheck } from '../utils/universalWarrantScanner';
 import { sendCsv } from '../utils/csvExport';
@@ -53,8 +53,16 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     let where = 'WHERE 1=1';
     const params: any[] = [];
 
-    if (status) { where += ' AND fi.status = ?'; params.push(status); }
-    if (officer_id) { where += ' AND fi.officer_id = ?'; params.push(officer_id); }
+    if (status) {
+      const validStatuses = ['active', 'archived'];
+      if (!validStatuses.includes(status as string)) { res.status(400).json({ error: 'Invalid status filter' }); return; }
+      where += ' AND fi.status = ?'; params.push(status);
+    }
+    if (officer_id) {
+      const oid = parseInt(String(officer_id), 10);
+      if (isNaN(oid) || oid < 1) { res.status(400).json({ error: 'Invalid officer_id' }); return; }
+      where += ' AND fi.officer_id = ?'; params.push(oid);
+    }
     if (search) {
       where += ` AND ((fi.subject_first_name || ' ' || fi.subject_last_name) LIKE ? ESCAPE '\\' OR fi.fi_number LIKE ? ESCAPE '\\' OR fi.location LIKE ? ESCAPE '\\' OR fi.narrative LIKE ? ESCAPE '\\')`;
       const s = `%${escapeLike(String(search))}%`;
@@ -133,7 +141,37 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       associated_call_id, associated_incident_id,
     } = req.body;
 
-    if (!location) return res.status(400).json({ error: 'Location is required' });
+    // ── Input validation ──
+    const FI_CONTACT_REASONS = ['suspicious', 'traffic_stop', 'complaint', 'welfare_check', 'trespass', 'patrol', 'other'] as const;
+    const FI_CONTACT_TYPES = ['field', 'pedestrian', 'vehicle', 'residence', 'business', 'other'] as const;
+    const FI_ACTIONS = ['none', 'warning', 'citation', 'arrest', 'field_release', 'referred', 'other'] as const;
+    const FI_GENDERS = ['male', 'female', 'non_binary', 'unknown'] as const;
+
+    const validLocation = validateStr(location, 'location', 500);
+    if (!validLocation) return res.status(400).json({ error: 'Location is required' });
+
+    validateEnum(contact_reason, FI_CONTACT_REASONS, 'contact_reason');
+    validateEnum(contact_type, FI_CONTACT_TYPES, 'contact_type');
+    validateEnum(action_taken, FI_ACTIONS, 'action_taken');
+    if (subject_gender) validateEnum(subject_gender, FI_GENDERS, 'subject_gender');
+    if (subject_dob) validateDateStr(subject_dob, 'subject_dob');
+    if (person_id) requireInt(person_id, 'person_id');
+    if (property_id) requireInt(property_id, 'property_id');
+    if (vehicle_id) requireInt(vehicle_id, 'vehicle_id');
+    if (associated_call_id) requireInt(associated_call_id, 'associated_call_id');
+    if (associated_incident_id) requireInt(associated_incident_id, 'associated_incident_id');
+    validateStr(subject_first_name, 'subject_first_name', 100);
+    validateStr(subject_last_name, 'subject_last_name', 100);
+    validateStr(subject_race, 'subject_race', 50);
+    validateStr(subject_height, 'subject_height', 20);
+    validateStr(subject_weight, 'subject_weight', 20);
+    validateStr(subject_hair, 'subject_hair', 50);
+    validateStr(subject_eye, 'subject_eye', 50);
+    validateStr(subject_clothing, 'subject_clothing', 500);
+    validateStr(subject_description, 'subject_description', 2000);
+    validateStr(vehicle_plate, 'vehicle_plate', 20);
+    validateStr(vehicle_description, 'vehicle_description', 500);
+    if (latitude != null || longitude != null) validateCoords(latitude, longitude);
 
     // Auto-fill Section/Zone/Beat from coordinates
     let { section_id, zone_id, beat_id, zone_beat } = req.body;
@@ -205,6 +243,9 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
 
     res.status(201).json(created);
   } catch (err: any) {
+    if (err.message?.startsWith('Invalid ') || err.message?.includes('must be')) {
+      res.status(400).json({ error: err.message }); return;
+    }
     console.error('[FieldInterviews] create error:', err?.message);
     res.status(500).json({ error: 'Failed to create field interview' });
   }
@@ -265,6 +306,9 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
 
     res.json(updated);
   } catch (err: any) {
+    if (err.message?.startsWith('Invalid ') || err.message?.includes('must be')) {
+      res.status(400).json({ error: err.message }); return;
+    }
     console.error('[FieldInterviews] update error:', err?.message);
     res.status(500).json({ error: 'Failed to update field interview' });
   }

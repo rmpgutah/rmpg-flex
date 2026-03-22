@@ -9,7 +9,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { escapeLike, validateParamId } from '../middleware/sanitize';
+import { escapeLike, validateParamId, validateStr, validateDateStr, requireInt, validateEnum, validateQueryInt } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
 import { broadcast } from '../utils/websocket';
@@ -55,11 +55,29 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: 
 
     let where = 'WHERE 1=1';
     const params: any[] = [];
-    if (status) { where += ' AND d.status = ?'; params.push(status); }
-    if (officer_id) { where += ' AND d.officer_id = ?'; params.push(officer_id); }
-    if (property_id) { where += ' AND d.property_id = ?'; params.push(property_id); }
-    if (date_from) { where += ' AND d.shift_date >= ?'; params.push(date_from); }
-    if (date_to) { where += ' AND d.shift_date <= ?'; params.push(date_to); }
+    if (status) {
+      const DAR_STATUSES = ['draft', 'submitted', 'approved', 'returned'];
+      if (!DAR_STATUSES.includes(status as string)) { res.status(400).json({ error: 'Invalid status filter' }); return; }
+      where += ' AND d.status = ?'; params.push(status);
+    }
+    if (officer_id) {
+      const oid = parseInt(String(officer_id), 10);
+      if (isNaN(oid) || oid < 1) { res.status(400).json({ error: 'Invalid officer_id' }); return; }
+      where += ' AND d.officer_id = ?'; params.push(oid);
+    }
+    if (property_id) {
+      const pid = parseInt(String(property_id), 10);
+      if (isNaN(pid) || pid < 1) { res.status(400).json({ error: 'Invalid property_id' }); return; }
+      where += ' AND d.property_id = ?'; params.push(pid);
+    }
+    if (date_from) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date_from))) { res.status(400).json({ error: 'date_from must be YYYY-MM-DD' }); return; }
+      where += ' AND d.shift_date >= ?'; params.push(date_from);
+    }
+    if (date_to) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date_to))) { res.status(400).json({ error: 'date_to must be YYYY-MM-DD' }); return; }
+      where += ' AND d.shift_date <= ?'; params.push(date_to);
+    }
     if (search) {
       where += " AND (d.dar_number LIKE ? ESCAPE '\\' OR d.officer_name LIKE ? ESCAPE '\\' OR d.property_name LIKE ? ESCAPE '\\' OR d.activities_narrative LIKE ? ESCAPE '\\')";
       const s = `%${escapeLike(String(search))}%`; params.push(s, s, s, s);
@@ -98,8 +116,9 @@ router.post('/auto-populate', requireRole('admin', 'manager', 'supervisor', 'off
   try {
     const db = getDb();
     const officer_id = parseInt(String(req.body.officer_id), 10);
+    if (!officer_id || isNaN(officer_id) || officer_id < 1) return res.status(400).json({ error: 'Valid officer_id is required' });
     const shift_date = req.body.shift_date;
-    if (!officer_id || isNaN(officer_id) || !shift_date) return res.status(400).json({ error: 'Officer ID and shift date required' });
+    if (!shift_date || !/^\d{4}-\d{2}-\d{2}$/.test(String(shift_date))) return res.status(400).json({ error: 'shift_date must be in YYYY-MM-DD format' });
 
     // Get officer info
     const officer = db.prepare('SELECT full_name FROM users WHERE id = ?').get(officer_id) as any;
@@ -239,7 +258,23 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       property_id, property_name, post_assignment,
       calls_handled, incidents_created, citations_issued, patrols_completed,
       activities_narrative, notable_events, equipment_issues, safety_concerns, recommendations } = req.body;
-    if (!shift_date) return res.status(400).json({ error: 'Shift date is required' });
+    // ── Validate DAR inputs ──
+    const validShiftDate = validateDateStr(shift_date, 'shift_date');
+    if (!validShiftDate) return res.status(400).json({ error: 'Shift date is required (YYYY-MM-DD)' });
+    if (officer_id) requireInt(officer_id, 'officer_id');
+    if (property_id) requireInt(property_id, 'property_id');
+    validateStr(activities_narrative, 'activities_narrative', 10000);
+    validateStr(notable_events, 'notable_events', 5000);
+    validateStr(equipment_issues, 'equipment_issues', 5000);
+    validateStr(safety_concerns, 'safety_concerns', 5000);
+    validateStr(recommendations, 'recommendations', 5000);
+    validateStr(post_assignment, 'post_assignment', 500);
+    validateStr(officer_name, 'officer_name', 200);
+    validateStr(property_name, 'property_name', 200);
+    if (calls_handled && !Array.isArray(calls_handled)) return res.status(400).json({ error: 'calls_handled must be an array' });
+    if (incidents_created && !Array.isArray(incidents_created)) return res.status(400).json({ error: 'incidents_created must be an array' });
+    if (citations_issued && !Array.isArray(citations_issued)) return res.status(400).json({ error: 'citations_issued must be an array' });
+    if (patrols_completed && !Array.isArray(patrols_completed)) return res.status(400).json({ error: 'patrols_completed must be an array' });
 
     const effectiveOfficerId = officer_id || req.user!.userId;
     const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(effectiveOfficerId) as any;
@@ -267,6 +302,9 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
     broadcast('records', 'dar:created', { id: Number(result.lastInsertRowid), dar_number });
     res.status(201).json({ data: { id: Number(result.lastInsertRowid), dar_number } });
   } catch (error: any) {
+    if (error.message?.startsWith('Invalid ') || error.message?.includes('must be')) {
+      res.status(400).json({ error: error.message }); return;
+    }
     console.error('Create DAR error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -352,7 +390,7 @@ router.put('/:id/return', validateParamId, requireRole('admin', 'manager', 'supe
     if (!existing) { res.status(404).json({ error: 'DAR not found' }); return; }
     const now = localNow();
     const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
-    const { review_notes } = req.body;
+    const review_notes = validateStr(req.body.review_notes, 'review_notes', 5000);
     if (!review_notes) return res.status(400).json({ error: 'Review notes required when returning' });
 
     db.prepare(`UPDATE daily_activity_reports SET status = 'returned', reviewed_by = ?,

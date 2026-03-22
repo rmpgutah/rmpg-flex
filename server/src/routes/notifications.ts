@@ -241,6 +241,11 @@ router.get('/', (req: Request, res: Response) => {
     const params: any[] = [req.user!.userId];
 
     if (type) {
+      const VALID_NOTIF_TYPES = ['dispatch', 'bolo', 'warrant', 'system', 'message', 'credential_expiry', 'patrol_missed', 'login_alert', 'security', 'trespass'];
+      if (!VALID_NOTIF_TYPES.includes(String(type))) {
+        res.status(400).json({ error: `Invalid notification type. Must be one of: ${VALID_NOTIF_TYPES.join(', ')}` });
+        return;
+      }
       conditions.push('n.type = ?');
       params.push(type);
     }

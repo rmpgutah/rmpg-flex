@@ -99,7 +99,7 @@ export default function Force2FASetupModal() {
             <ShieldCheck style={{ width: 20, height: 20, color: '#1a5a9e' }} />
             <div className="text-lg font-bold text-white">Two-Factor Authentication Required</div>
           </div>
-          <div className="text-xs text-gray-400 max-w-sm mx-auto">
+          <div className="text-xs text-rmpg-400 max-w-sm mx-auto">
             Your role requires two-factor authentication via Google Authenticator (or compatible app).
             You must enable 2FA before you can use the system.
           </div>

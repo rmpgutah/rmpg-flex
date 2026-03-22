@@ -201,7 +201,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                 <button
                   key={days}
                   onClick={() => setHeatmapDays(days)}
-                  className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded transition-colors ${
+                  className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
                     heatmapDays === days
                       ? 'bg-red-900/50 text-red-400 border border-red-700/50'
                       : 'text-rmpg-500 hover:text-rmpg-300'
@@ -216,7 +216,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                 <button
                   key={mode}
                   onClick={() => { setHeatmapMode(mode); if (mode !== 'type') setHeatmapTypeFilter(''); }}
-                  className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded transition-colors ${
+                  className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
                     heatmapMode === mode
                       ? mode === 'risk' ? 'bg-orange-900/50 text-orange-400 border border-orange-700/50'
                       : 'bg-red-900/50 text-red-400 border border-red-700/50'
@@ -287,7 +287,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                 <button
                   key={h}
                   onClick={() => setBreadcrumbHours(h)}
-                  className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded transition-colors ${
+                  className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
                     breadcrumbHours === h
                       ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
                       : 'text-rmpg-500 hover:text-rmpg-300'
@@ -308,7 +308,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                   } finally { setExportingPdf(false); }
                 }}
                 disabled={exportingPdf}
-                className="px-1.5 py-0.5 text-[8px] font-mono font-bold rounded transition-colors text-brand-400 hover:bg-brand-900/30 ml-1 flex items-center gap-0.5"
+                className="px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors text-brand-400 hover:bg-brand-900/30 ml-1 flex items-center gap-0.5"
                 title="Export patrol tracking PDF"
               >
                 {exportingPdf ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <FileText className="w-2.5 h-2.5" />}
@@ -321,7 +321,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                 <button
                   key={mode}
                   onClick={() => setBreadcrumbColorMode(mode)}
-                  className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded transition-colors ${
+                  className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
                     breadcrumbColorMode === mode
                       ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
                       : 'text-rmpg-500 hover:text-rmpg-300'
@@ -382,7 +382,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                               setIsPlaying(true);
                             }
                           }}
-                          className="p-0.5 rounded hover:bg-cyan-900/40 transition-colors"
+                          className="p-0.5 rounded-sm hover:bg-cyan-900/40 transition-colors"
                           title={isPlaying ? 'Pause' : 'Play'}
                         >
                           {isPlaying ? <Pause className="w-3 h-3 text-amber-400" /> : <Play className="w-3 h-3 text-green-400" />}
@@ -414,7 +414,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                           <button
                             key={spd}
                             onClick={() => setPlaybackSpeed(spd)}
-                            className={`px-1 py-0 text-[7px] font-mono font-bold rounded transition-colors ${
+                            className={`px-1 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
                               playbackSpeed === spd
                                 ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
                                 : 'text-rmpg-500 hover:text-rmpg-300'
@@ -503,7 +503,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                 <button
                   key={key}
                   onClick={() => { setMapStyle(key); setShowMapStyles(false); }}
-                  className={`text-left px-2 py-1.5 rounded transition-all ${
+                  className={`text-left px-2 py-1.5 rounded-sm transition-all ${
                     isActive
                       ? 'bg-brand-900/30 border border-brand-500/50 ring-1 ring-brand-500/20'
                       : 'bg-rmpg-800/30 border border-rmpg-700/50 hover:bg-rmpg-700/40 hover:border-rmpg-600/50'
@@ -565,7 +565,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
         <div className="border-t border-rmpg-700 p-1.5">
           <button
             onClick={() => setShowDistrictLegend(!showDistrictLegend)}
-            className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors rounded hover:bg-rmpg-700/30"
+            className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors rounded-sm hover:bg-rmpg-700/30"
           >
             <Shield className="w-3 h-3 text-brand-400" />
             <span className="text-[10px] text-rmpg-300 flex-1">District Legend</span>

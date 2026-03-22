@@ -4167,6 +4167,9 @@ function migrateSchema(): void {
     console.warn('[Migration] dispatch_code backfill warning:', err?.message);
   }
 
+  // ── LEAD SCRAPE SOURCES — Firecrawl migration ──────
+  addCol('lead_scrape_sources', 'scraper_type', "TEXT DEFAULT 'legacy'");
+
   console.log('Schema migration completed.');
 }
 
@@ -4911,6 +4914,23 @@ function createIndexes(): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
     );
     CREATE INDEX IF NOT EXISTS idx_serve_skip_queue ON serve_skip_traces(serve_queue_id);
+  `);
+
+  // ─── Integration API Keys ─────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS integration_api_keys (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      key_prefix TEXT NOT NULL,
+      key_hash TEXT NOT NULL UNIQUE,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      scopes TEXT NOT NULL DEFAULT '["service_request"]',
+      created_by INTEGER,
+      last_used_at TEXT,
+      request_count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    );
   `);
 }
 

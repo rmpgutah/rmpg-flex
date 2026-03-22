@@ -580,7 +580,7 @@ export default function LoginPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => { setUseBackupCode(true); clearError(); }}
+                      onClick={() => { setTwoFactorMode('backup'); setUseBackupCode(true); clearError(); }}
                       className="text-[10px] uppercase tracking-wide font-bold transition-colors"
                       style={{ color: '#5a6e80' }}
                       onMouseEnter={(e) => { e.currentTarget.style.color = '#1a5a9e'; }}
@@ -627,9 +627,9 @@ export default function LoginPage() {
                     type="button"
                     onClick={handleBackWebAuthn}
                     className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors"
-                    style={{ color: '#666' }}
+                    style={{ color: '#5a6e80' }}
                     onMouseEnter={(e) => { e.currentTarget.style.color = '#e0e0e0'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = '#666'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#5a6e80'; }}
                   >
                     <ArrowLeft className="w-3 h-3" />
                     Back
@@ -642,7 +642,7 @@ export default function LoginPage() {
             {pending2FA && effectiveMode === 'backup' && (
               <form onSubmit={handleBackupSubmit} className="space-y-3">
                 <div className="text-center mb-2">
-                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#a0a0a0' }}>Recovery Code</p>
+                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#8a9aaa' }}>Recovery Code</p>
                   <p className="text-[9px]" style={{ color: '#5a6e80' }}>Enter one of your single-use backup codes</p>
                 </div>
 

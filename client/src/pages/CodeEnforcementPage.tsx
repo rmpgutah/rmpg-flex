@@ -136,7 +136,7 @@ export default function CodeEnforcementPage() {
       setTows(res.data || []);
       setTTotalPages(res.pagination?.totalPages || 1);
       setTTotalCount(res.pagination?.total || 0);
-    } catch { /* silent */ } finally { setTLoading(false); }
+    } catch { addToast('Failed to load tow records', 'error'); } finally { setTLoading(false); }
   }, [tPage, tSearch, tFilterStatus]);
 
   const fetchStats = useCallback(async () => {
@@ -224,7 +224,7 @@ export default function CodeEnforcementPage() {
         </PanelTitleBar>
 
         {fetchError && (
-          <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded text-red-400 text-xs flex items-center gap-2">
+          <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
             <span>⚠ {fetchError}</span>
             <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
           </div>

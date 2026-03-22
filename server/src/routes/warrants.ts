@@ -14,7 +14,7 @@ import {
   getCourtRecordStats,
 } from '../utils/courtRecordsScraper';
 import { createNotificationForRoles } from './notifications';
-import { escapeLike, validateParamId, validateNumericParams } from '../middleware/sanitize';
+import { escapeLike, validateParamId, validateNumericParams, validateEnum, requireInt, requireFloat, validateDateStr, validateStr, validateQueryInt } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 import { universalWarrantCheck } from '../utils/universalWarrantScanner';
 
@@ -51,10 +51,14 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     const params: any[] = [];
 
     if (status) {
+      const validStatuses = ['active', 'served', 'recalled', 'expired', 'quashed'];
+      if (!validStatuses.includes(status as string)) { res.status(400).json({ error: `Invalid status filter. Must be one of: ${validStatuses.join(', ')}` }); return; }
       whereClause += ' AND w.status = ?';
       params.push(status);
     }
     if (type) {
+      const validTypes = ['arrest', 'bench', 'search', 'civil', 'fugitive', 'other'];
+      if (!validTypes.includes(String(type).toLowerCase())) { res.status(400).json({ error: 'Invalid type filter' }); return; }
       whereClause += ' AND w.type = ?';
       params.push(type);
     }
@@ -639,21 +643,29 @@ router.post('/', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (r
       statute_citation,
     } = req.body;
 
-    if (!type || !String(type).trim()) {
-      res.status(400).json({ error: 'type is required' });
-      return;
-    }
-    if (!charge_description || !String(charge_description).trim()) {
-      res.status(400).json({ error: 'charge_description is required' });
-      return;
-    }
+    // ── Input validation ──
+    const WARRANT_TYPES = ['arrest', 'bench', 'search', 'civil', 'fugitive', 'other'] as const;
+    const OFFENSE_LEVELS = ['felony', 'misdemeanor', 'infraction', 'other'] as const;
 
-    // Normalize type to lowercase to match CHECK constraint
-    const normalizedType = String(type).toLowerCase();
+    const validType = validateEnum(type, WARRANT_TYPES, 'type');
+    if (!validType) { res.status(400).json({ error: 'type is required' }); return; }
+
+    const validCharge = validateStr(charge_description, 'charge_description', 2000);
+    if (!validCharge) { res.status(400).json({ error: 'charge_description is required' }); return; }
+
+    const validPersonId = requireInt(subject_person_id, 'subject_person_id');
+    const validBail = requireFloat(bail_amount, 'bail_amount', 0, 100_000_000);
+    const validOffense = validateEnum(offense_level, OFFENSE_LEVELS, 'offense_level');
+    const validExpires = validateDateStr(expires_at, 'expires_at');
+    const validCourt = validateStr(issuing_court, 'issuing_court', 500);
+    const validJudge = validateStr(issuing_judge, 'issuing_judge', 200);
+    const validNotes = validateStr(notes, 'notes', 5000);
+    const validStatuteId = requireInt(statute_id, 'statute_id');
+    const validStatuteCitation = validateStr(statute_citation, 'statute_citation', 200);
 
     // Validate subject person exists if provided
-    if (subject_person_id) {
-      const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(subject_person_id) as any;
+    if (validPersonId) {
+      const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(validPersonId) as any;
       if (!person) {
         res.status(404).json({ error: 'Subject person not found' });
         return;
@@ -668,18 +680,18 @@ router.post('/', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (r
         expires_at, notes, statute_id, statute_citation
       ) VALUES (?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      normalizedType,
-      subject_person_id || null,
-      issuing_court || null,
-      issuing_judge || null,
-      charge_description,
-      bail_amount ?? null,
-      offense_level || null,
+      validType,
+      validPersonId,
+      validCourt,
+      validJudge,
+      validCharge,
+      validBail,
+      validOffense,
       req.user!.userId,
-      expires_at || null,
-      notes || null,
-      statute_id || null,
-      statute_citation || null,
+      validExpires,
+      validNotes,
+      validStatuteId,
+      validStatuteCitation,
     );
 
     const warrantId = Number(result.lastInsertRowid);
@@ -723,6 +735,9 @@ router.post('/', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (r
 
     res.status(201).json(warrant);
   } catch (error: any) {
+    if (error.message?.startsWith('Invalid ') || error.message?.includes('must be')) {
+      res.status(400).json({ error: error.message }); return;
+    }
     console.error('Create warrant error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -745,9 +760,27 @@ router.put('/:id', validateParamId, requireRole('dispatcher', 'supervisor', 'adm
       return;
     }
 
+    // ── Validate update fields ──
+    const WARRANT_TYPES_U = ['arrest', 'bench', 'search', 'civil', 'fugitive', 'other'] as const;
+    const OFFENSE_LEVELS_U = ['felony', 'misdemeanor', 'infraction', 'other'] as const;
+    const WARRANT_STATUSES = ['active', 'served', 'recalled', 'expired', 'quashed'] as const;
+    const bodyKeys = Object.keys(req.body);
+
+    if (bodyKeys.includes('type')) validateEnum(req.body.type, WARRANT_TYPES_U, 'type');
+    if (bodyKeys.includes('offense_level') && req.body.offense_level) validateEnum(req.body.offense_level, OFFENSE_LEVELS_U, 'offense_level');
+    if (bodyKeys.includes('status') && req.body.status) validateEnum(req.body.status, WARRANT_STATUSES, 'status');
+    if (bodyKeys.includes('bail_amount') && req.body.bail_amount != null) requireFloat(req.body.bail_amount, 'bail_amount', 0, 100_000_000);
+    if (bodyKeys.includes('expires_at') && req.body.expires_at) validateDateStr(req.body.expires_at, 'expires_at');
+    if (bodyKeys.includes('subject_person_id') && req.body.subject_person_id) requireInt(req.body.subject_person_id, 'subject_person_id');
+    if (bodyKeys.includes('charge_description')) validateStr(req.body.charge_description, 'charge_description', 2000);
+    if (bodyKeys.includes('issuing_court')) validateStr(req.body.issuing_court, 'issuing_court', 500);
+    if (bodyKeys.includes('issuing_judge')) validateStr(req.body.issuing_judge, 'issuing_judge', 200);
+    if (bodyKeys.includes('notes')) validateStr(req.body.notes, 'notes', 5000);
+    if (bodyKeys.includes('statute_citation')) validateStr(req.body.statute_citation, 'statute_citation', 200);
+
     // Validate subject person exists if provided
     if (req.body.subject_person_id) {
-      const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.body.subject_person_id) as any;
+      const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(Number(req.body.subject_person_id)) as any;
       if (!person) {
         res.status(404).json({ error: 'Subject person not found' });
         return;
@@ -755,19 +788,18 @@ router.put('/:id', validateParamId, requireRole('dispatcher', 'supervisor', 'adm
     }
 
     // Build dynamic SET clause — only update fields explicitly provided
-    const bodyKeys = Object.keys(req.body);
     const warrantFields: Record<string, (v: any) => any> = {
       type: v => v || null,
-      subject_person_id: v => v || null,
+      subject_person_id: v => v ? Number(v) : null,
       issuing_court: v => v ?? null,
       issuing_judge: v => v ?? null,
       charge_description: v => v || null,
-      bail_amount: v => v ?? null,
+      bail_amount: v => v != null ? Number(v) : null,
       offense_level: v => v ?? null,
       status: v => v || null,
       expires_at: v => v ?? null,
       notes: v => v ?? null,
-      statute_id: v => v || null,
+      statute_id: v => v ? Number(v) : null,
       statute_citation: v => v ?? null,
     };
 
@@ -803,6 +835,9 @@ router.put('/:id', validateParamId, requireRole('dispatcher', 'supervisor', 'adm
 
     res.json(updated);
   } catch (error: any) {
+    if (error.message?.startsWith('Invalid ') || error.message?.includes('must be')) {
+      res.status(400).json({ error: error.message }); return;
+    }
     console.error('Update warrant error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -824,7 +859,7 @@ router.put('/:id/serve', validateParamId, requireRole('admin', 'manager', 'super
       return;
     }
 
-    const { served_location } = req.body;
+    const served_location = validateStr(req.body.served_location, 'served_location', 500);
 
     const now = localNow();
 
@@ -839,7 +874,7 @@ router.put('/:id/serve', validateParamId, requireRole('admin', 'manager', 'super
     `).run(
       req.user!.userId,
       now,
-      served_location || null,
+      served_location,
       localNow(),
       req.params.id,
     );

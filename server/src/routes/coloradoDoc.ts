@@ -56,7 +56,15 @@ router.get('/offender/:docNumber', requireRole('admin', 'manager', 'supervisor',
       res.status(400).json({ error: 'docNumber is required' });
       return;
     }
-    const offender = getCdocOffender(req.params.docNumber as string);
+
+    // Validate docNumber format — alphanumeric, reasonable length
+    const docNumber = req.params.docNumber.trim();
+    if (docNumber.length > 20 || !/^[A-Za-z0-9\-]+$/.test(docNumber)) {
+      res.status(400).json({ error: 'docNumber must be alphanumeric (max 20 characters)' });
+      return;
+    }
+
+    const offender = getCdocOffender(docNumber);
     if (!offender) {
       res.status(404).json({ error: 'Offender not found' });
       return;

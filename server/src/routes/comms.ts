@@ -47,6 +47,13 @@ router.post('/messages', requireRole('admin', 'manager', 'dispatcher', 'supervis
       res.status(400).json({ error: 'to_user_id is required for direct messages' });
       return;
     }
+    if (to_user_id) {
+      const uid = parseInt(String(to_user_id), 10);
+      if (isNaN(uid) || uid < 1) {
+        res.status(400).json({ error: 'to_user_id must be a positive integer' });
+        return;
+      }
+    }
 
     // Broadcast/dispatch require dispatcher+ role
     if (['broadcast', 'dispatch'].includes(msgChannel) && !['admin', 'manager', 'dispatcher', 'supervisor'].includes(req.user!.role)) {

@@ -786,7 +786,7 @@ export default function MenuBar({
               </div>
             </div>
             <div className="p-2 border-t border-rmpg-700 text-center" style={{ background: '#0d1520' }}>
-              <span className="text-[9px] text-rmpg-500">Press <kbd className="px-1 py-0.5 bg-rmpg-800 border border-rmpg-600 text-rmpg-300 rounded text-[8px]">ESC</kbd> to close</span>
+              <span className="text-[9px] text-rmpg-500">Press <kbd className="px-1 py-0.5 bg-rmpg-800 border border-rmpg-600 text-rmpg-300 rounded-sm text-[8px]">ESC</kbd> to close</span>
             </div>
           </div>
         </div>
@@ -1008,7 +1008,7 @@ function LawBooksModal({ onClose }: { onClose: () => void }) {
             {activeState !== 'ALL' && `${LAW_STATE_LABELS[activeState]} — `}
             {statutes.length} of {total} statutes shown
           </span>
-          <span className="text-[9px] text-rmpg-500">Press <kbd className="px-1 py-0.5 bg-rmpg-800 border border-rmpg-600 text-rmpg-300 rounded text-[8px]">ESC</kbd> to close</span>
+          <span className="text-[9px] text-rmpg-500">Press <kbd className="px-1 py-0.5 bg-rmpg-800 border border-rmpg-600 text-rmpg-300 rounded-sm text-[8px]">ESC</kbd> to close</span>
         </div>
       </div>
     </div>

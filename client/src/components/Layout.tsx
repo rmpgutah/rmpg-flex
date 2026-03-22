@@ -571,7 +571,7 @@ export default function Layout() {
           >
             <div className="text-center space-y-1">
               <div className="text-lg font-bold text-white">Operator Identification Required</div>
-              <div className="text-xs text-gray-400">
+              <div className="text-xs text-rmpg-400">
                 Enter your name to continue. This will appear in the OPR system and all reports.
               </div>
             </div>

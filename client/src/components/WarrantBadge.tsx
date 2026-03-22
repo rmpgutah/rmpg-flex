@@ -27,7 +27,7 @@ export default function WarrantBadge({ flags, size = 'sm', onClick }: WarrantBad
 
   return (
     <span
-      className={`inline-flex items-center gap-1 font-bold rounded ${severityColors[severity] || severityColors.unknown} ${sizeClasses} ${onClick ? 'cursor-pointer hover:brightness-110' : ''}`}
+      className={`inline-flex items-center gap-1 font-bold rounded-sm ${severityColors[severity] || severityColors.unknown} ${sizeClasses} ${onClick ? 'cursor-pointer hover:brightness-110' : ''}`}
       onClick={onClick}
       title={`${count} active warrant${count > 1 ? 's' : ''} — ${severity}`}
     >

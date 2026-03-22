@@ -155,7 +155,7 @@ export default function FleetInspectionsTab({ inspections, onNewInspection, onEd
                     <div className="flex items-center gap-1 mr-1">
                       {onEditInspection && (
                         <button
-                          className="p-1 text-rmpg-500 hover:text-brand-400 hover:bg-rmpg-700 rounded transition-colors"
+                          className="p-1 text-rmpg-500 hover:text-brand-400 hover:bg-rmpg-700 rounded-sm transition-colors"
                           onClick={(e) => { e.stopPropagation(); onEditInspection(insp); }}
                           title="Edit inspection"
                         >
@@ -164,7 +164,7 @@ export default function FleetInspectionsTab({ inspections, onNewInspection, onEd
                       )}
                       {onDeleteInspection && (
                         <button
-                          className="p-1 text-rmpg-500 hover:text-red-400 hover:bg-red-900/20 rounded transition-colors"
+                          className="p-1 text-rmpg-500 hover:text-red-400 hover:bg-red-900/20 rounded-sm transition-colors"
                           onClick={(e) => { e.stopPropagation(); onDeleteInspection(insp); }}
                           title="Delete inspection"
                         >

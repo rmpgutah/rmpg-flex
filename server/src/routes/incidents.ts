@@ -10,6 +10,11 @@ import { auditLog } from '../utils/auditLogger';
 import { validateParamId, escapeLike } from '../middleware/sanitize';
 import { broadcast } from '../utils/websocket';
 import { universalWarrantCheck } from '../utils/universalWarrantScanner';
+import { validateCoords, validateQueryInt, validateDateStr, validateStr } from '../middleware/sanitize';
+
+const VALID_INCIDENT_STATUSES = ['draft', 'submitted', 'under_review', 'approved', 'returned', 'closed'] as const;
+const VALID_PRIORITIES = ['P1', 'P2', 'P3', 'P4', 'P5'] as const;
+const VALID_PERSON_ROLES = ['suspect', 'victim', 'witness', 'reporting_party', 'involved_party', 'other'] as const;
 
 const router = Router();
 
@@ -20,6 +25,16 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
   try {
     const db = getDb();
     const { status, priority, officerId, startDate, endDate, archived, search, page = '1', limit = '50' } = req.query;
+
+    // Validate enum query params
+    if (status && !VALID_INCIDENT_STATUSES.includes(status as any)) {
+      res.status(400).json({ error: `Invalid status filter. Must be one of: ${VALID_INCIDENT_STATUSES.join(', ')}` });
+      return;
+    }
+    if (priority && !VALID_PRIORITIES.includes(priority as any)) {
+      res.status(400).json({ error: `Invalid priority filter. Must be one of: ${VALID_PRIORITIES.join(', ')}` });
+      return;
+    }
 
     let whereClause = 'WHERE 1=1';
     const params: any[] = [];
@@ -33,8 +48,10 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       params.push(priority);
     }
     if (officerId) {
+      const oid = parseInt(String(officerId), 10);
+      if (isNaN(oid) || oid < 1) { res.status(400).json({ error: 'Invalid officerId' }); return; }
       whereClause += ' AND i.officer_id = ?';
-      params.push(officerId);
+      params.push(oid);
     }
     if (startDate) {
       whereClause += ' AND i.created_at >= ?';
@@ -333,9 +350,34 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       force_type, force_justification, subject_injuries, officer_injuries, de_escalation_attempts,
     } = req.body;
 
-    if (!incident_type) {
+    if (!incident_type || typeof incident_type !== 'string') {
       res.status(400).json({ error: 'incident_type is required' });
       return;
+    }
+    if (priority && !VALID_PRIORITIES.includes(priority as any)) {
+      res.status(400).json({ error: `Invalid priority. Must be one of: ${VALID_PRIORITIES.join(', ')}` });
+      return;
+    }
+    if (latitude !== undefined && latitude !== null) {
+      const lat = parseFloat(String(latitude));
+      if (isNaN(lat) || lat < -90 || lat > 90) {
+        res.status(400).json({ error: 'latitude must be between -90 and 90' });
+        return;
+      }
+    }
+    if (longitude !== undefined && longitude !== null) {
+      const lng = parseFloat(String(longitude));
+      if (isNaN(lng) || lng < -180 || lng > 180) {
+        res.status(400).json({ error: 'longitude must be between -180 and 180' });
+        return;
+      }
+    }
+    if (property_id) {
+      const pid = parseInt(String(property_id), 10);
+      if (isNaN(pid) || pid < 1) {
+        res.status(400).json({ error: 'property_id must be a positive integer' });
+        return;
+      }
     }
 
     // Auto-resolve client_id from property if not provided
@@ -767,8 +809,17 @@ router.post('/:id/persons', validateParamId, requireRole('admin', 'manager', 'su
       res.status(400).json({ error: 'person_id and role are required' });
       return;
     }
+    const personIdInt = parseInt(String(person_id), 10);
+    if (isNaN(personIdInt) || personIdInt < 1) {
+      res.status(400).json({ error: 'person_id must be a positive integer' });
+      return;
+    }
+    if (!VALID_PERSON_ROLES.includes(role as any)) {
+      res.status(400).json({ error: `Invalid role. Must be one of: ${VALID_PERSON_ROLES.join(', ')}` });
+      return;
+    }
 
-    const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(person_id) as any;
+    const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(personIdInt) as any;
     if (!person) {
       res.status(404).json({ error: 'Person not found' });
       return;

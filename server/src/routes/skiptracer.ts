@@ -305,9 +305,14 @@ router.get('/search/byname', skipSearchRateLimit, async (req: Request, res: Resp
   try {
     const { name, page } = req.query;
     if (!name) return res.status(400).json({ error: 'name parameter required' });
+    if (String(name).length > 200) return res.status(400).json({ error: 'name too long (max 200 chars)' });
 
     const params: Record<string, string> = { name: String(name) };
-    if (page) params.page = String(page);
+    if (page) {
+      const p = parseInt(String(page), 10);
+      if (isNaN(p) || p < 1 || p > 1000) return res.status(400).json({ error: 'page must be between 1 and 1000' });
+      params.page = String(p);
+    }
 
     const data = await rapidApiFetch('/search/byname', params);
     persistSearch('byname', params, data, req.user!.userId);
@@ -324,9 +329,14 @@ router.get('/search/byaddress', skipSearchRateLimit, async (req: Request, res: R
   try {
     const { address, page } = req.query;
     if (!address) return res.status(400).json({ error: 'address parameter required' });
+    if (String(address).length > 500) return res.status(400).json({ error: 'address too long (max 500 chars)' });
 
     const params: Record<string, string> = { address: String(address) };
-    if (page) params.page = String(page);
+    if (page) {
+      const p = parseInt(String(page), 10);
+      if (isNaN(p) || p < 1 || p > 1000) return res.status(400).json({ error: 'page must be between 1 and 1000' });
+      params.page = String(p);
+    }
 
     const data = await rapidApiFetch('/search/byaddress', params);
     persistSearch('byaddress', params, data, req.user!.userId);
@@ -343,9 +353,15 @@ router.get('/search/bynameaddress', skipSearchRateLimit, async (req: Request, re
   try {
     const { name, address, page } = req.query;
     if (!name || !address) return res.status(400).json({ error: 'name and address parameters required' });
+    if (String(name).length > 200) return res.status(400).json({ error: 'name too long (max 200 chars)' });
+    if (String(address).length > 500) return res.status(400).json({ error: 'address too long (max 500 chars)' });
 
     const params: Record<string, string> = { name: String(name), address: String(address) };
-    if (page) params.page = String(page);
+    if (page) {
+      const p = parseInt(String(page), 10);
+      if (isNaN(p) || p < 1 || p > 1000) return res.status(400).json({ error: 'page must be between 1 and 1000' });
+      params.page = String(p);
+    }
 
     const data = await rapidApiFetch('/search/bynameaddress', params);
     persistSearch('bynameaddress', params, data, req.user!.userId);
@@ -362,9 +378,18 @@ router.get('/search/byphone', skipSearchRateLimit, async (req: Request, res: Res
   try {
     const { phone, page } = req.query;
     if (!phone) return res.status(400).json({ error: 'phone parameter required' });
+    // Validate phone format (digits, spaces, dashes, parens, plus)
+    const phoneStr = String(phone);
+    if (phoneStr.length > 30 || !/^[0-9()\-+\s.]+$/.test(phoneStr)) {
+      return res.status(400).json({ error: 'Invalid phone format' });
+    }
 
-    const params: Record<string, string> = { phone: String(phone) };
-    if (page) params.page = String(page);
+    const params: Record<string, string> = { phone: phoneStr };
+    if (page) {
+      const p = parseInt(String(page), 10);
+      if (isNaN(p) || p < 1 || p > 1000) return res.status(400).json({ error: 'page must be between 1 and 1000' });
+      params.page = String(p);
+    }
 
     const data = await rapidApiFetch('/search/byphone', params);
     persistSearch('byphone', params, data, req.user!.userId);
@@ -381,9 +406,18 @@ router.get('/search/byemail', skipSearchRateLimit, async (req: Request, res: Res
   try {
     const { email, page } = req.query;
     if (!email) return res.status(400).json({ error: 'email parameter required' });
+    // Basic email format validation
+    const emailStr = String(email);
+    if (emailStr.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailStr)) {
+      return res.status(400).json({ error: 'Invalid email format' });
+    }
 
-    const params: Record<string, string> = { email: String(email) };
-    if (page) params.page = String(page);
+    const params: Record<string, string> = { email: emailStr };
+    if (page) {
+      const p = parseInt(String(page), 10);
+      if (isNaN(p) || p < 1 || p > 1000) return res.status(400).json({ error: 'page must be between 1 and 1000' });
+      params.page = String(p);
+    }
 
     const data = await rapidApiFetch('/search/byemail', params);
     persistSearch('byemail', params, data, req.user!.userId);
@@ -415,8 +449,9 @@ router.get('/history', async (req: Request, res: Response) => {
   try {
     ensureTable();
     const db = getDb();
-    const limit = Math.min(Number(req.query.limit) || 50, 200);
-    const offset = Number(req.query.offset) || 0;
+    const limit = Math.min(Math.max(1, Number(req.query.limit) || 50), 200);
+    const rawOffset = Number(req.query.offset) || 0;
+    const offset = Math.max(0, Math.min(rawOffset, 100000));
 
     const rows = db.prepare(`
       SELECT s.*, u.full_name AS searched_by_name

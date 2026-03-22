@@ -174,7 +174,7 @@ export default function ReportTypeSelector({ incidentType, onSelect, onPreview, 
                       onPreview(type);
                       setIsOpen(false);
                     }}
-                    className="ml-2 p-1 hover:bg-rmpg-600 rounded text-rmpg-400 hover:text-rmpg-200"
+                    className="ml-2 p-1 hover:bg-rmpg-600 rounded-sm text-rmpg-400 hover:text-rmpg-200"
                     title={`Preview ${label}`}
                   >
                     <Eye className="w-3 h-3" />

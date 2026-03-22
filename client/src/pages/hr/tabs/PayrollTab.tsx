@@ -338,7 +338,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
     <div className="flex flex-col h-full overflow-hidden">
       {/* Toast */}
       {toast && (
-        <div className={`fixed top-4 right-4 z-50 px-4 py-2 rounded-lg text-xs font-medium shadow-lg ${
+        <div className={`fixed top-4 right-4 z-50 px-4 py-2 rounded-sm text-xs font-medium shadow-lg ${
           toast.type === 'success' ? 'bg-green-600 text-white' : toast.type === 'error' ? 'bg-red-600 text-white' : 'bg-brand-600 text-white'
         }`}>{toast.msg}</div>
       )}
@@ -349,7 +349,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
           const Icon = t.icon;
           return (
             <button key={t.key} onClick={() => setSubTab(t.key)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded transition-colors ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-sm transition-colors ${
                 subTab === t.key
                   ? 'text-white bg-brand-500/20 border border-brand-500/40'
                   : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/30'
@@ -375,46 +375,46 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
             <div className="flex-1" />
             {isManager && (
               <button onClick={() => setShowPeriodForm(!showPeriodForm)}
-                className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-green-400 bg-green-900/20 hover:bg-green-900/40 border border-green-700/40 rounded transition-colors">
+                className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-green-400 bg-green-900/20 hover:bg-green-900/40 border border-green-700/40 rounded-sm transition-colors">
                 <Plus size={12} /> New Period
               </button>
             )}
             <button onClick={fetchPeriods}
-              className="flex items-center gap-1 px-2.5 py-1 text-[11px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/30 rounded transition-colors">
+              className="flex items-center gap-1 px-2.5 py-1 text-[11px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/30 rounded-sm transition-colors">
               <RefreshCw size={12} /> Refresh
             </button>
           </div>
 
           {/* Create form */}
           {showPeriodForm && (
-            <div className="bg-[#0d1520] border border-[#1e3048] rounded-lg p-4 space-y-3">
+            <div className="bg-[#0d1520] border border-[#1e3048] rounded-sm p-4 space-y-3">
               <h4 className="text-xs font-semibold text-white">Create Pay Period</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Name (optional)</label>
                   <input value={periodForm.name} onChange={e => setPeriodForm(p => ({ ...p, name: e.target.value }))}
-                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded px-2 py-1.5 text-xs text-white" placeholder="e.g. March 1-15" />
+                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded-sm px-2 py-1.5 text-xs text-white" placeholder="e.g. March 1-15" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Start Date *</label>
                   <input type="date" value={periodForm.start_date} onChange={e => setPeriodForm(p => ({ ...p, start_date: e.target.value }))}
-                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded px-2 py-1.5 text-xs text-white" />
+                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded-sm px-2 py-1.5 text-xs text-white" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">End Date *</label>
                   <input type="date" value={periodForm.end_date} onChange={e => setPeriodForm(p => ({ ...p, end_date: e.target.value }))}
-                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded px-2 py-1.5 text-xs text-white" />
+                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded-sm px-2 py-1.5 text-xs text-white" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Pay Date *</label>
                   <input type="date" value={periodForm.pay_date} onChange={e => setPeriodForm(p => ({ ...p, pay_date: e.target.value }))}
-                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded px-2 py-1.5 text-xs text-white" />
+                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded-sm px-2 py-1.5 text-xs text-white" />
                 </div>
               </div>
               <div className="flex justify-end gap-2">
                 <button onClick={() => setShowPeriodForm(false)} className="px-3 py-1 text-[11px] text-rmpg-400 hover:text-white">Cancel</button>
                 <button onClick={handleCreatePeriod}
-                  className="px-4 py-1 text-[11px] font-medium bg-brand-500 hover:bg-brand-600 text-white rounded transition-colors">Create</button>
+                  className="px-4 py-1 text-[11px] font-medium bg-brand-500 hover:bg-brand-600 text-white rounded-sm transition-colors">Create</button>
               </div>
             </div>
           )}
@@ -430,7 +430,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
             <div className="space-y-2">
               {periods.map(period => (
                 <div key={period.id}
-                  className={`border rounded-lg transition-all cursor-pointer ${
+                  className={`border rounded-sm transition-all cursor-pointer ${
                     selectedPeriod?.id === period.id
                       ? 'border-brand-500/60 bg-brand-500/5'
                       : 'border-[#1e3048] bg-[#141e2b] hover:border-rmpg-600'
@@ -492,7 +492,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
             <div className="flex-1" />
             {isManager && (
               <button onClick={() => setShowRateForm(!showRateForm)}
-                className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-green-400 bg-green-900/20 hover:bg-green-900/40 border border-green-700/40 rounded transition-colors">
+                className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-green-400 bg-green-900/20 hover:bg-green-900/40 border border-green-700/40 rounded-sm transition-colors">
                 <Plus size={12} /> Set Rate
               </button>
             )}
@@ -500,13 +500,13 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
 
           {/* Create rate form */}
           {showRateForm && (
-            <div className="bg-[#0d1520] border border-[#1e3048] rounded-lg p-4 space-y-3">
+            <div className="bg-[#0d1520] border border-[#1e3048] rounded-sm p-4 space-y-3">
               <h4 className="text-xs font-semibold text-white">Set Pay Rate</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Employee *</label>
                   <select value={rateForm.user_id} onChange={e => setRateForm(r => ({ ...r, user_id: e.target.value }))}
-                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded px-2 py-1.5 text-xs text-white">
+                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded-sm px-2 py-1.5 text-xs text-white">
                     <option value="">Select employee...</option>
                     {officers.map(o => <option key={o.id} value={o.id}>{o.full_name}</option>)}
                   </select>
@@ -514,7 +514,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Pay Type</label>
                   <select value={rateForm.pay_type} onChange={e => setRateForm(r => ({ ...r, pay_type: e.target.value }))}
-                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded px-2 py-1.5 text-xs text-white">
+                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded-sm px-2 py-1.5 text-xs text-white">
                     <option value="hourly">Hourly</option>
                     <option value="salary">Salary</option>
                     <option value="contract">Contract</option>
@@ -523,28 +523,28 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Rate ($/hr) *</label>
                   <input type="number" step="0.01" value={rateForm.rate} onChange={e => setRateForm(r => ({ ...r, rate: e.target.value }))}
-                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded px-2 py-1.5 text-xs text-white" placeholder="25.00" />
+                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded-sm px-2 py-1.5 text-xs text-white" placeholder="25.00" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">OT Multiplier</label>
                   <input type="number" step="0.1" value={rateForm.overtime_rate} onChange={e => setRateForm(r => ({ ...r, overtime_rate: e.target.value }))}
-                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded px-2 py-1.5 text-xs text-white" />
+                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded-sm px-2 py-1.5 text-xs text-white" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Holiday Multiplier</label>
                   <input type="number" step="0.1" value={rateForm.holiday_rate} onChange={e => setRateForm(r => ({ ...r, holiday_rate: e.target.value }))}
-                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded px-2 py-1.5 text-xs text-white" />
+                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded-sm px-2 py-1.5 text-xs text-white" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Effective Date *</label>
                   <input type="date" value={rateForm.effective_date} onChange={e => setRateForm(r => ({ ...r, effective_date: e.target.value }))}
-                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded px-2 py-1.5 text-xs text-white" />
+                    className="w-full bg-[#141e2b] border border-[#1e3048] rounded-sm px-2 py-1.5 text-xs text-white" />
                 </div>
               </div>
               <div className="flex justify-end gap-2">
                 <button onClick={() => setShowRateForm(false)} className="px-3 py-1 text-[11px] text-rmpg-400 hover:text-white">Cancel</button>
                 <button onClick={handleCreateRate}
-                  className="px-4 py-1 text-[11px] font-medium bg-brand-500 hover:bg-brand-600 text-white rounded transition-colors">Save Rate</button>
+                  className="px-4 py-1 text-[11px] font-medium bg-brand-500 hover:bg-brand-600 text-white rounded-sm transition-colors">Save Rate</button>
               </div>
             </div>
           )}
@@ -574,7 +574,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                     <tr key={rate.id} className="border-b border-[#1e3048]/50 hover:bg-brand-500/5">
                       <td className="px-3 py-2 text-white font-medium">{rate.officer_name}</td>
                       <td className="px-3 py-2">
-                        <span className="px-1.5 py-0.5 text-[9px] rounded bg-brand-500/15 text-brand-400 uppercase font-bold">{rate.pay_type}</span>
+                        <span className="px-1.5 py-0.5 text-[9px] rounded-sm bg-brand-500/15 text-brand-400 uppercase font-bold">{rate.pay_type}</span>
                       </td>
                       <td className="px-3 py-2 text-right text-green-400 font-mono">{formatCurrency(rate.rate)}</td>
                       <td className="px-3 py-2 text-right text-rmpg-300 font-mono">{rate.overtime_rate}x</td>
@@ -602,14 +602,14 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
             <select value={selectedPeriod?.id ?? ''} onChange={e => {
               const p = periods.find(pp => pp.id === Number(e.target.value));
               setSelectedPeriod(p || null);
-            }} className="bg-[#141e2b] border border-[#1e3048] rounded px-2 py-1 text-xs text-white">
+            }} className="bg-[#141e2b] border border-[#1e3048] rounded-sm px-2 py-1 text-xs text-white">
               <option value="">Select pay period...</option>
               {periods.map(p => <option key={p.id} value={p.id}>{p.name} ({p.status})</option>)}
             </select>
             {selectedPeriod && entries.length > 0 && (
               <button
                 onClick={handleExportCSV}
-                className="flex items-center gap-1 px-2 py-1 text-[11px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/30 rounded transition-colors"
+                className="flex items-center gap-1 px-2 py-1 text-[11px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/30 rounded-sm transition-colors"
               >
                 <Download size={12} /> Export CSV
               </button>
@@ -665,7 +665,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                                 <input type="number" step="0.5" min="0"
                                   value={editValues[field] ?? 0}
                                   onChange={e => setEditValues(v => ({ ...v, [field]: Number(e.target.value) }))}
-                                  className="w-16 bg-[#0d1520] border border-brand-500/40 rounded px-1.5 py-0.5 text-xs text-white text-right font-mono" />
+                                  className="w-16 bg-[#0d1520] border border-brand-500/40 rounded-sm px-1.5 py-0.5 text-xs text-white text-right font-mono" />
                               </td>
                             ))}
                           </>

@@ -156,17 +156,31 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     const existing = db.prepare('SELECT * FROM cases WHERE id = ?').get(req.params.id) as any;
     if (!existing) return res.status(404).json({ error: 'Case not found' });
 
-    const fields = ['title', 'case_type', 'priority', 'summary', 'narrative', 'disposition',
+    // Whitelist of allowed update fields — prevents arbitrary column injection
+    const ALLOWED_CASE_FIELDS = ['title', 'case_type', 'priority', 'summary', 'narrative', 'disposition',
       'disposition_date', 'due_date', 'lead_investigator_id', 'assigned_officers',
       'solvability_score', 'solvability_factors', 'linked_incidents', 'linked_citations',
-      'linked_evidence', 'linked_persons', 'linked_field_interviews', 'linked_calls'];
+      'linked_evidence', 'linked_persons', 'linked_field_interviews', 'linked_calls'] as const;
     const updates: string[] = ['updated_at = ?'];
     const params: any[] = [now];
 
-    for (const f of fields) {
+    // Only process keys that are in the whitelist
+    for (const f of ALLOWED_CASE_FIELDS) {
       if (req.body[f] !== undefined) {
         updates.push(`${f} = ?`);
-        params.push(typeof req.body[f] === 'object' ? JSON.stringify(req.body[f]) : req.body[f]);
+        const val = req.body[f];
+        // Validate numeric fields
+        if (f === 'lead_investigator_id' && val !== null) {
+          const id = parseInt(String(val), 10);
+          if (isNaN(id) || id < 1) { res.status(400).json({ error: 'lead_investigator_id must be a positive integer' }); return; }
+          params.push(id);
+        } else if (f === 'solvability_score' && val !== null) {
+          const score = parseFloat(String(val));
+          if (isNaN(score) || score < 0 || score > 100) { res.status(400).json({ error: 'solvability_score must be 0-100' }); return; }
+          params.push(score);
+        } else {
+          params.push(typeof val === 'object' ? JSON.stringify(val) : val);
+        }
       }
     }
 

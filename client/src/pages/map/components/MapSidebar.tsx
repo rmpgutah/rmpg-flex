@@ -45,7 +45,7 @@ export default function MapSidebar({
       {sidebarOpen && (
         <>
           {/* Compact status counters */}
-          <div className="flex items-center justify-center gap-2 px-2 py-1.5 panel-inset" style={{ background: '#0a0a0a' }}>
+          <div className="flex items-center justify-center gap-2 px-2 py-1.5 panel-inset" style={{ background: '#0d1520' }}>
             {([
               { label: 'AVL', count: unitsByStatus['available'] || 0, color: '#22c55e' },
               { label: 'DSP', count: unitsByStatus['dispatched'] || 0, color: '#f59e0b' },

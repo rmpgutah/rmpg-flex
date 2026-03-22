@@ -308,7 +308,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
                             <div className="flex items-center gap-1 ml-1">
                               {onEditMaintenance && (
                                 <button
-                                  className="p-1 text-rmpg-500 hover:text-brand-400 hover:bg-rmpg-700 rounded transition-colors"
+                                  className="p-1 text-rmpg-500 hover:text-brand-400 hover:bg-rmpg-700 rounded-sm transition-colors"
                                   onClick={() => onEditMaintenance(m)}
                                   title="Edit maintenance record"
                                 >
@@ -317,7 +317,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
                               )}
                               {onDeleteMaintenance && (
                                 <button
-                                  className="p-1 text-rmpg-500 hover:text-red-400 hover:bg-red-900/20 rounded transition-colors"
+                                  className="p-1 text-rmpg-500 hover:text-red-400 hover:bg-red-900/20 rounded-sm transition-colors"
                                   onClick={() => onDeleteMaintenance(m)}
                                   title="Delete maintenance record"
                                 >

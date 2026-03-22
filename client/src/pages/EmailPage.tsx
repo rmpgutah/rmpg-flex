@@ -207,7 +207,7 @@ function ContactAutocompleteInput({
         className="input-dark w-full text-xs"
       />
       {showSuggestions && suggestions.length > 0 && (
-        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-surface-base border border-border-strong rounded shadow-lg max-h-48 overflow-y-auto py-1">
+        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-surface-base border border-border-strong rounded-sm shadow-lg max-h-48 overflow-y-auto py-1">
           {suggestions.map((contact, idx) => (
             <button
               key={`${contact.email}-${idx}`}
@@ -270,7 +270,7 @@ function TemplatePicker({ onSelect, onClose }: { onSelect: (template: EmailTempl
   const filtered = filter ? templates.filter(t => t.category === filter) : templates;
 
   return (
-    <div ref={ref} className="absolute left-0 top-full mt-1 z-50 w-72 bg-surface-base border border-border-strong rounded shadow-xl">
+    <div ref={ref} className="absolute left-0 top-full mt-1 z-50 w-72 bg-surface-base border border-border-strong rounded-sm shadow-xl">
       <div className="px-3 py-2 border-b border-border-subtle flex items-center justify-between">
         <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider">Email Templates</span>
         <button onClick={onClose} className="text-rmpg-500 hover:text-white"><X className="w-3 h-3" /></button>
@@ -278,10 +278,10 @@ function TemplatePicker({ onSelect, onClose }: { onSelect: (template: EmailTempl
       {/* Category filter */}
       <div className="px-2 py-1.5 border-b border-border-subtle flex items-center gap-1 flex-wrap">
         <button onClick={() => setFilter('')}
-          className={`text-[9px] px-1.5 py-0.5 rounded ${!filter ? 'bg-brand-500/20 text-brand-400' : 'text-rmpg-500 hover:text-white'}`}>All</button>
+          className={`text-[9px] px-1.5 py-0.5 rounded-sm ${!filter ? 'bg-brand-500/20 text-brand-400' : 'text-rmpg-500 hover:text-white'}`}>All</button>
         {categories.map(cat => (
           <button key={cat} onClick={() => setFilter(cat)}
-            className={`text-[9px] px-1.5 py-0.5 rounded capitalize ${filter === cat ? 'bg-brand-500/20 text-brand-400' : 'text-rmpg-500 hover:text-white'}`}>{cat}</button>
+            className={`text-[9px] px-1.5 py-0.5 rounded-sm capitalize ${filter === cat ? 'bg-brand-500/20 text-brand-400' : 'text-rmpg-500 hover:text-white'}`}>{cat}</button>
         ))}
       </div>
       <div className="max-h-60 overflow-y-auto py-1">
@@ -296,7 +296,7 @@ function TemplatePicker({ onSelect, onClose }: { onSelect: (template: EmailTempl
               <div className="text-[11px] text-white font-medium truncate">{t.name}</div>
               <div className="text-[9px] text-rmpg-500 truncate">{t.subject}</div>
               <div className="flex items-center gap-1 mt-0.5">
-                <span className="text-[8px] text-rmpg-600 capitalize bg-surface-sunken px-1 rounded">{t.category}</span>
+                <span className="text-[8px] text-rmpg-600 capitalize bg-surface-sunken px-1 rounded-sm">{t.category}</span>
                 {t.is_system ? <span className="text-[8px] text-amber-600">system</span> : null}
               </div>
             </button>
@@ -337,7 +337,7 @@ function ScheduleSendModal({ onSchedule, onClose }: { onSchedule: (dateTime: str
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
-      <div className="bg-surface-base border border-border-subtle rounded w-80 mx-4">
+      <div className="bg-surface-base border border-border-subtle rounded-sm w-80 mx-4">
         <div className="px-4 py-2 border-b border-border-subtle flex items-center justify-between">
           <h3 className="text-sm font-semibold text-white flex items-center gap-2"><Clock className="w-4 h-4 text-brand-400" /> Schedule Send</h3>
           <button onClick={onClose} className="text-rmpg-500 hover:text-white"><X className="w-4 h-4" /></button>
@@ -351,7 +351,7 @@ function ScheduleSendModal({ onSchedule, onClose }: { onSchedule: (dateTime: str
                 const d = preset.getDate();
                 return (
                   <button key={preset.label} onClick={() => { setDate(dateToLocalYMD(d)); setTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`); }}
-                    className="text-left px-2 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/10 hover:text-white rounded transition-colors">
+                    className="text-left px-2 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/10 hover:text-white rounded-sm transition-colors">
                     {preset.label}
                   </button>
                 );
@@ -515,7 +515,7 @@ function EmailIncidentLinks({ emailId, onSnackbar }: { emailId: string; onSnackb
           {links.map(link => {
             const Icon = getLinkIcon(link);
             return (
-              <div key={link.id} className="flex items-center gap-1 px-2 py-0.5 bg-surface-sunken border border-border-subtle rounded text-[10px] text-rmpg-300 group">
+              <div key={link.id} className="flex items-center gap-1 px-2 py-0.5 bg-surface-sunken border border-border-subtle rounded-sm text-[10px] text-rmpg-300 group">
                 <Icon className="w-3 h-3 text-brand-400" />
                 <span>{getLinkLabel(link)}</span>
                 {link.link_type && <span className="text-[8px] text-rmpg-600 capitalize">{link.link_type}</span>}
@@ -760,7 +760,7 @@ function SearchFilterPanel({
   const handleReset = () => { onChange(EMPTY_FILTERS); onClose(); };
 
   return (
-    <div ref={ref} className="absolute left-0 right-0 top-full mt-1 z-50 bg-surface-base border border-border-strong rounded shadow-xl p-3 space-y-2">
+    <div ref={ref} className="absolute left-0 right-0 top-full mt-1 z-50 bg-surface-base border border-border-strong rounded-sm shadow-xl p-3 space-y-2">
       <div className="flex items-center justify-between mb-1">
         <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider">Search Filters</span>
         <button onClick={onClose} className="text-rmpg-500 hover:text-white"><X className="w-3 h-3" /></button>
@@ -775,17 +775,17 @@ function SearchFilterPanel({
       <div className="flex items-center gap-3">
         <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
           <input type="checkbox" checked={local.hasAttachments} onChange={e => setLocal(prev => ({ ...prev, hasAttachments: e.target.checked }))}
-            className="w-3 h-3 rounded border-border-subtle bg-surface-sunken accent-brand-500" />
+            className="w-3 h-3 rounded-sm border-border-subtle bg-surface-sunken accent-brand-500" />
           <Paperclip className="w-3 h-3 text-rmpg-500" /> Has attachments
         </label>
         <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
           <input type="checkbox" checked={local.isFlagged} onChange={e => setLocal(prev => ({ ...prev, isFlagged: e.target.checked }))}
-            className="w-3 h-3 rounded border-border-subtle bg-surface-sunken accent-brand-500" />
+            className="w-3 h-3 rounded-sm border-border-subtle bg-surface-sunken accent-brand-500" />
           <Flag className="w-3 h-3 text-rmpg-500" /> Flagged
         </label>
         <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
           <input type="checkbox" checked={local.unreadOnly} onChange={e => setLocal(prev => ({ ...prev, unreadOnly: e.target.checked }))}
-            className="w-3 h-3 rounded border-border-subtle bg-surface-sunken accent-brand-500" />
+            className="w-3 h-3 rounded-sm border-border-subtle bg-surface-sunken accent-brand-500" />
           <Mail className="w-3 h-3 text-rmpg-500" /> Unread only
         </label>
       </div>
@@ -1056,7 +1056,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm" onKeyDown={handleKeyDown}>
       <div
-        className={`bg-[#141e2b] border border-[#1e3048] rounded-t-lg sm:rounded-lg w-full max-w-2xl sm:mx-4 flex flex-col max-h-[95vh] sm:max-h-[85vh] shadow-2xl shadow-black/50 transition-all ${isDragOver ? 'ring-2 ring-brand-500 ring-offset-2 ring-offset-[#141e2b]' : ''}`}
+        className={`bg-[#141e2b] border border-[#1e3048] rounded-t-lg sm:rounded-sm w-full max-w-2xl sm:mx-4 flex flex-col max-h-[95vh] sm:max-h-[85vh] shadow-2xl shadow-black/50 transition-all ${isDragOver ? 'ring-2 ring-brand-500 ring-offset-2 ring-offset-[#141e2b]' : ''}`}
         onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
         onDragLeave={() => setIsDragOver(false)}
         onDrop={handleDrop}
@@ -1072,13 +1072,13 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
           </h3>
           <div className="flex items-center gap-1">
             {draftStatus && <span className="text-[9px] text-green-500 italic mr-2">{draftStatus}</span>}
-            <button onClick={onClose} className="p-1 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors"><X className="w-4 h-4" /></button>
+            <button onClick={onClose} className="p-1 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors"><X className="w-4 h-4" /></button>
           </div>
         </div>
 
         {/* Drag overlay */}
         {isDragOver && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-brand-500/10 border-2 border-dashed border-brand-500 rounded-lg pointer-events-none">
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-brand-500/10 border-2 border-dashed border-brand-500 rounded-sm pointer-events-none">
             <div className="text-center">
               <Upload className="w-8 h-8 text-brand-400 mx-auto mb-2" />
               <p className="text-sm text-brand-400 font-semibold">Drop files to attach</p>
@@ -1089,7 +1089,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
         {/* Recipients */}
         <div className="px-4 pt-3 space-y-1.5">
           {error && (
-            <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded px-3 py-1.5 flex items-center gap-2">
+            <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-sm px-3 py-1.5 flex items-center gap-2">
               <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" /> {error}
               <button onClick={() => setError('')} className="ml-auto text-red-500 hover:text-red-300"><X className="w-3 h-3" /></button>
             </div>
@@ -1099,8 +1099,8 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
             <span className="text-[10px] text-rmpg-500 w-6 text-right flex-shrink-0">To</span>
             <div className="flex-1"><ContactAutocompleteInput value={to} onChange={setTo} placeholder="Recipients..." /></div>
             <div className="flex items-center gap-1 text-[9px] flex-shrink-0">
-              <button onClick={() => setCc(cc || ' ')} className={`px-1.5 py-0.5 rounded transition-colors ${cc ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-white'}`}>Cc</button>
-              <button onClick={() => { setShowBcc(!showBcc); if (!showBcc) setBcc(bcc || ' '); }} className={`px-1.5 py-0.5 rounded transition-colors ${showBcc ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-white'}`}>Bcc</button>
+              <button onClick={() => setCc(cc || ' ')} className={`px-1.5 py-0.5 rounded-sm transition-colors ${cc ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-white'}`}>Cc</button>
+              <button onClick={() => { setShowBcc(!showBcc); if (!showBcc) setBcc(bcc || ' '); }} className={`px-1.5 py-0.5 rounded-sm transition-colors ${showBcc ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-white'}`}>Bcc</button>
             </div>
           </div>
 
@@ -1130,27 +1130,27 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
         {/* Formatting toolbar */}
         <div className="flex items-center gap-0.5 px-4 py-1">
           <button type="button" onClick={() => textareaRef.current && insertFormat(textareaRef.current, '**', '**', 'bold text')}
-            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Bold (Ctrl+B)"><Bold className="w-3.5 h-3.5" /></button>
+            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Bold (Ctrl+B)"><Bold className="w-3.5 h-3.5" /></button>
           <button type="button" onClick={() => textareaRef.current && insertFormat(textareaRef.current, '*', '*', 'italic text')}
-            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Italic (Ctrl+I)"><Italic className="w-3.5 h-3.5" /></button>
+            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Italic (Ctrl+I)"><Italic className="w-3.5 h-3.5" /></button>
           <button type="button" onClick={() => textareaRef.current && insertFormat(textareaRef.current, '[', '](https://)', 'link text')}
-            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Insert link"><Link className="w-3.5 h-3.5" /></button>
+            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Insert link"><Link className="w-3.5 h-3.5" /></button>
           <div className="w-px h-4 bg-rmpg-700 mx-1" />
           <button type="button" onClick={() => fileInputRef.current?.click()}
-            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Attach file"><Paperclip className="w-3.5 h-3.5" /></button>
+            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Attach file"><Paperclip className="w-3.5 h-3.5" /></button>
           <button type="button" onClick={handleInlineImage}
-            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Insert inline image"><Image className="w-3.5 h-3.5" /></button>
+            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Insert inline image"><Image className="w-3.5 h-3.5" /></button>
           <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileSelect} />
           <div className="flex-1" />
           <div className="relative">
             <button type="button" onClick={() => setShowTemplatePicker(!showTemplatePicker)}
-              className="flex items-center gap-1 px-2 py-1 text-[9px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Use template">
+              className="flex items-center gap-1 px-2 py-1 text-[9px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Use template">
               <FileStack className="w-3 h-3" /> Templates
             </button>
             {showTemplatePicker && <TemplatePicker onSelect={handleTemplateSelect} onClose={() => setShowTemplatePicker(false)} />}
           </div>
           <button type="button" onClick={() => setShowSignatureEditor(!showSignatureEditor)}
-            className="flex items-center gap-1 px-2 py-1 text-[9px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Edit signature">
+            className="flex items-center gap-1 px-2 py-1 text-[9px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Edit signature">
             <Settings2 className="w-3 h-3" /> Sig
           </button>
         </div>
@@ -1169,7 +1169,7 @@ Drag & drop files to attach • Ctrl+Enter to send" />
 
         {/* Reply context */}
         {replyMessage && (mode === 'reply' || mode === 'reply-all') && (
-          <div className="mx-4 mb-2 text-[10px] text-rmpg-500 bg-[#0d1520] border-l-2 border-l-brand-500/30 rounded p-2.5">
+          <div className="mx-4 mb-2 text-[10px] text-rmpg-500 bg-[#0d1520] border-l-2 border-l-brand-500/30 rounded-sm p-2.5">
             <div className="flex items-center gap-1.5 mb-1">
               <Reply className="w-3 h-3 text-brand-400" />
               <span className="text-rmpg-400 font-medium">{replyMessage.fromName || replyMessage.fromAddress}</span>
@@ -1196,8 +1196,8 @@ Drag & drop files to attach • Ctrl+Enter to send" />
                 const isPdf = ext === 'pdf';
                 const fileColor = isImage ? '#06b6d4' : isPdf ? '#ef4444' : '#8b5cf6';
                 return (
-                  <div key={idx} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#0d1520] border border-[#1e3048] rounded-lg text-[10px] text-rmpg-300 group">
-                    <div className="w-5 h-5 rounded flex items-center justify-center text-[7px] font-bold uppercase"
+                  <div key={idx} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#0d1520] border border-[#1e3048] rounded-sm text-[10px] text-rmpg-300 group">
+                    <div className="w-5 h-5 rounded-sm flex items-center justify-center text-[7px] font-bold uppercase"
                       style={{ backgroundColor: fileColor + '15', color: fileColor }}>{ext.slice(0, 3)}</div>
                     <span className="truncate max-w-[100px]">{att.name}</span>
                     <span className="text-rmpg-600 text-[9px]">{formatSize(att.size)}</span>
@@ -1216,17 +1216,17 @@ Drag & drop files to attach • Ctrl+Enter to send" />
             <span className="sm:hidden">Ctrl+Enter to send</span>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={onClose} className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors">
+            <button onClick={onClose} className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors">
               Discard
             </button>
             {mode === 'new' && (
               <button onClick={() => setShowScheduleModal(true)} disabled={sending}
-                className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors flex items-center gap-1.5 disabled:opacity-40">
+                className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors flex items-center gap-1.5 disabled:opacity-40">
                 <Clock className="w-3.5 h-3.5" /> Later
               </button>
             )}
             <button onClick={handleSend} disabled={sending}
-              className="px-5 py-1.5 text-xs font-semibold bg-brand-500 hover:bg-brand-600 text-white rounded transition-colors flex items-center gap-1.5 shadow-sm shadow-brand-500/30 disabled:opacity-40">
+              className="px-5 py-1.5 text-xs font-semibold bg-brand-500 hover:bg-brand-600 text-white rounded-sm transition-colors flex items-center gap-1.5 shadow-sm shadow-brand-500/30 disabled:opacity-40">
               {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
               {sending ? 'Sending...' : 'Send'}
             </button>
@@ -1269,7 +1269,7 @@ function MoveToFolderDropdown({ folders, currentFolder, onMove }: { folders: Ema
     <div className="relative" ref={ref}>
       <button onClick={() => setOpen(!open)} className="p-1 text-rmpg-500 hover:text-white" title="Move to folder"><FolderInput className="w-3.5 h-3.5" /></button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 min-w-[160px] bg-surface-base border border-border-strong rounded shadow-lg py-1 max-h-60 overflow-y-auto">
+        <div className="absolute right-0 top-full mt-1 z-50 min-w-[160px] bg-surface-base border border-border-strong rounded-sm shadow-lg py-1 max-h-60 overflow-y-auto">
           {folders.filter(f => getFolderKey(f) !== currentFolder).map(f => {
             const Icon = FOLDER_ICONS[f.displayName] || Folder;
             return (
@@ -1335,7 +1335,7 @@ function ContextMenu({
   };
 
   return (
-    <div ref={ref} style={style} className="min-w-[180px] bg-surface-base border border-border-strong rounded shadow-xl py-1">
+    <div ref={ref} style={style} className="min-w-[180px] bg-surface-base border border-border-strong rounded-sm shadow-xl py-1">
       <MenuItem icon={Reply} label="Reply" onClick={onReply} />
       <MenuItem icon={ReplyAll} label="Reply All" onClick={onReplyAll} />
       <MenuItem icon={Forward} label="Forward" onClick={onForward} />
@@ -1353,7 +1353,7 @@ function ContextMenu({
           <FolderInput className="w-3 h-3" /> Move to <ChevronRightIcon className="w-3 h-3 ml-auto" />
         </div>
         {showMoveMenu && (
-          <div className="absolute left-full top-0 min-w-[150px] bg-surface-base border border-border-strong rounded shadow-xl py-1 max-h-60 overflow-y-auto">
+          <div className="absolute left-full top-0 min-w-[150px] bg-surface-base border border-border-strong rounded-sm shadow-xl py-1 max-h-60 overflow-y-auto">
             {folders.filter(f => getFolderKey(f) !== currentFolder).map(f => {
               const Icon = FOLDER_ICONS[f.displayName] || Folder;
               return (
@@ -1377,7 +1377,7 @@ function ContextMenu({
 // Inline Quick Reply
 // ============================================================
 
-function InlineReply({ messageId, onSent }: { messageId: string; onSent: () => void }) {
+function InlineReply({ messageId, onSent, onError }: { messageId: string; onSent: () => void; onError?: (msg: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
@@ -1389,14 +1389,14 @@ function InlineReply({ messageId, onSent }: { messageId: string; onSent: () => v
     try {
       await apiFetch(`/email/messages/${messageId}/reply`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body }) });
       setBody(''); setExpanded(false); onSent();
-    } catch { /* ignore */ } finally { setSending(false); }
+    } catch (err: any) { onError?.(err?.message || 'Failed to send reply'); } finally { setSending(false); }
   };
 
   if (!expanded) {
     return (
       <div className="border-t border-[#1e3048] bg-[#0d1520]">
         <div onClick={() => { setExpanded(true); setTimeout(() => inputRef.current?.focus(), 50); }}
-          className="mx-4 my-3 flex items-center gap-2 px-4 py-2.5 border border-[#1e3048] rounded-lg cursor-text text-xs text-rmpg-500 hover:border-brand-500/40 hover:text-rmpg-300 transition-all hover:shadow-lg hover:shadow-brand-500/5">
+          className="mx-4 my-3 flex items-center gap-2 px-4 py-2.5 border border-[#1e3048] rounded-sm cursor-text text-xs text-rmpg-500 hover:border-brand-500/40 hover:text-rmpg-300 transition-all hover:shadow-lg hover:shadow-brand-500/5">
           <Reply className="w-3.5 h-3.5 text-rmpg-600" />
           <span>Click here to reply...</span>
         </div>
@@ -1406,7 +1406,7 @@ function InlineReply({ messageId, onSent }: { messageId: string; onSent: () => v
 
   return (
     <div className="border-t border-[#1e3048] bg-[#0d1520]">
-      <div className="mx-4 my-3 border border-[#1e3048] rounded-lg bg-[#141e2b] overflow-hidden focus-within:border-brand-500/40 transition-colors">
+      <div className="mx-4 my-3 border border-[#1e3048] rounded-sm bg-[#141e2b] overflow-hidden focus-within:border-brand-500/40 transition-colors">
         <textarea ref={inputRef} value={body} onChange={e => setBody(e.target.value)}
           onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); handleSend(); } if (e.key === 'Escape') { setExpanded(false); setBody(''); } }}
           rows={4} className="w-full bg-transparent text-xs text-rmpg-200 p-3 resize-none focus:outline-none placeholder:text-rmpg-600 leading-relaxed"
@@ -1414,9 +1414,9 @@ function InlineReply({ messageId, onSent }: { messageId: string; onSent: () => v
         <div className="flex items-center justify-between px-3 py-2 bg-[#0d1520]/50">
           <span className="text-[9px] text-rmpg-600">Ctrl+Enter to send • Esc to cancel</span>
           <div className="flex items-center gap-1.5">
-            <button onClick={() => { setExpanded(false); setBody(''); }} className="px-2.5 py-1 text-[10px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors">Cancel</button>
+            <button onClick={() => { setExpanded(false); setBody(''); }} className="px-2.5 py-1 text-[10px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors">Cancel</button>
             <button onClick={handleSend} disabled={sending || !body.trim()}
-              className="px-4 py-1 text-[10px] font-semibold bg-brand-500 hover:bg-brand-600 text-white rounded transition-colors flex items-center gap-1 disabled:opacity-40 shadow-sm shadow-brand-500/20">
+              className="px-4 py-1 text-[10px] font-semibold bg-brand-500 hover:bg-brand-600 text-white rounded-sm transition-colors flex items-center gap-1 disabled:opacity-40 shadow-sm shadow-brand-500/20">
               {sending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />} Reply
             </button>
           </div>
@@ -1973,7 +1973,7 @@ export default function EmailPage() {
             {folderCollapsed ? <PanelLeftOpen className="w-3.5 h-3.5" /> : <PanelLeftClose className="w-3.5 h-3.5" />}
           </button>
           {!folderCollapsed && (
-            <button onClick={() => setComposing('new')} className="flex-1 text-xs py-1.5 flex items-center justify-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded transition-colors shadow-sm shadow-brand-500/20">
+            <button onClick={() => setComposing('new')} className="flex-1 text-xs py-1.5 flex items-center justify-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-sm transition-colors shadow-sm shadow-brand-500/20">
               <Plus className="w-3.5 h-3.5" /> Compose
             </button>
           )}
@@ -2055,7 +2055,7 @@ export default function EmailPage() {
       {/* ─── Folder context menu ─── */}
       {folderContextMenu && (
         <div className="fixed z-[100]" style={{ left: folderContextMenu.x, top: folderContextMenu.y }}>
-          <div className="min-w-[140px] bg-surface-base border border-border-strong rounded shadow-xl py-1"
+          <div className="min-w-[140px] bg-surface-base border border-border-strong rounded-sm shadow-xl py-1"
             ref={el => {
               if (el) {
                 const handler = (e: MouseEvent) => { if (!el.contains(e.target as Node)) setFolderContextMenu(null); };
@@ -2082,14 +2082,14 @@ export default function EmailPage() {
           <select
             value={selectedFolder}
             onChange={e => handleSelectFolder(e.target.value)}
-            className="flex-1 text-xs bg-[#0d1520] border border-[#1e3048] rounded px-2 py-1.5 text-white focus:border-brand-500 focus:outline-none"
+            className="flex-1 text-xs bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1.5 text-white focus:border-brand-500 focus:outline-none"
           >
             {sortedFolders.map(f => {
               const key = getFolderKey(f);
               return <option key={f.id} value={key}>{f.displayName}{f.unreadItemCount > 0 ? ` (${f.unreadItemCount})` : ''}</option>;
             })}
           </select>
-          <button onClick={() => setComposing('new')} className="p-2 bg-brand-500 rounded text-white" title="Compose">
+          <button onClick={() => setComposing('new')} className="p-2 bg-brand-500 rounded-sm text-white" title="Compose">
             <Plus className="w-4 h-4" />
           </button>
         </div>
@@ -2134,28 +2134,28 @@ export default function EmailPage() {
                 )}
               </div>
               <button onClick={() => setShowSearchFilters(!showSearchFilters)}
-                className={`p-1 rounded transition-colors ${hasActiveFilters(searchFilters) ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-white'}`}
+                className={`p-1 rounded-sm transition-colors ${hasActiveFilters(searchFilters) ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-white'}`}
                 title="Search filters">
                 <SlidersHorizontal className="w-3.5 h-3.5" />
               </button>
               {unreadCount > 0 && (
-                <button onClick={handleMarkAllRead} className="p-1 text-rmpg-500 hover:text-white rounded" title="Mark all as read"><Eye className="w-3.5 h-3.5" /></button>
+                <button onClick={handleMarkAllRead} className="p-1 text-rmpg-500 hover:text-white rounded-sm" title="Mark all as read"><Eye className="w-3.5 h-3.5" /></button>
               )}
-              <button onClick={handleRefresh} className="p-1 text-rmpg-500 hover:text-white rounded" title="Refresh">
+              <button onClick={handleRefresh} className="p-1 text-rmpg-500 hover:text-white rounded-sm" title="Refresh">
                 <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
               </button>
-              <button onClick={() => setComposing('new')} className="p-1 text-brand-400 hover:text-brand-300 rounded md:hidden" title="Compose"><Plus className="w-3.5 h-3.5" /></button>
+              <button onClick={() => setComposing('new')} className="p-1 text-brand-400 hover:text-brand-300 rounded-sm md:hidden" title="Compose"><Plus className="w-3.5 h-3.5" /></button>
             </div>
             {/* Active filter indicators */}
             {hasActiveFilters(searchFilters) && (
               <div className="flex items-center gap-1 flex-wrap">
                 <span className="text-[8px] text-rmpg-500 uppercase">Filters:</span>
-                {searchFilters.sender && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded">from: {searchFilters.sender}</span>}
-                {searchFilters.hasAttachments && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded flex items-center gap-0.5"><Paperclip className="w-2.5 h-2.5" /> attachments</span>}
-                {searchFilters.isFlagged && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded flex items-center gap-0.5"><Flag className="w-2.5 h-2.5" /> flagged</span>}
-                {searchFilters.unreadOnly && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded">unread</span>}
-                {searchFilters.dateFrom && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded">from: {searchFilters.dateFrom}</span>}
-                {searchFilters.dateTo && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded">to: {searchFilters.dateTo}</span>}
+                {searchFilters.sender && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded-sm">from: {searchFilters.sender}</span>}
+                {searchFilters.hasAttachments && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded-sm flex items-center gap-0.5"><Paperclip className="w-2.5 h-2.5" /> attachments</span>}
+                {searchFilters.isFlagged && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded-sm flex items-center gap-0.5"><Flag className="w-2.5 h-2.5" /> flagged</span>}
+                {searchFilters.unreadOnly && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded-sm">unread</span>}
+                {searchFilters.dateFrom && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded-sm">from: {searchFilters.dateFrom}</span>}
+                {searchFilters.dateTo && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded-sm">to: {searchFilters.dateTo}</span>}
                 <button onClick={() => setSearchFilters(EMPTY_FILTERS)} className="text-[8px] text-rmpg-500 hover:text-white ml-1">clear</button>
               </div>
             )}
@@ -2243,17 +2243,17 @@ export default function EmailPage() {
                             {(msg.hasAttachments || msg.isFlagged || msg.importance === 'high') && (
                               <div className="flex items-center gap-1.5 mt-1">
                                 {msg.hasAttachments && (
-                                  <span className="inline-flex items-center gap-0.5 text-[8px] text-rmpg-400 bg-rmpg-700/50 px-1.5 py-0.5 rounded">
+                                  <span className="inline-flex items-center gap-0.5 text-[8px] text-rmpg-400 bg-rmpg-700/50 px-1.5 py-0.5 rounded-sm">
                                     <Paperclip className="w-2.5 h-2.5" /> Attachment
                                   </span>
                                 )}
                                 {msg.isFlagged && (
-                                  <span className="inline-flex items-center gap-0.5 text-[8px] text-yellow-400 bg-yellow-900/20 px-1.5 py-0.5 rounded">
+                                  <span className="inline-flex items-center gap-0.5 text-[8px] text-yellow-400 bg-yellow-900/20 px-1.5 py-0.5 rounded-sm">
                                     <Flag className="w-2.5 h-2.5" /> Flagged
                                   </span>
                                 )}
                                 {msg.importance === 'high' && (
-                                  <span className="inline-flex items-center gap-0.5 text-[8px] text-red-400 bg-red-900/20 px-1.5 py-0.5 rounded">
+                                  <span className="inline-flex items-center gap-0.5 text-[8px] text-red-400 bg-red-900/20 px-1.5 py-0.5 rounded-sm">
                                     <AlertTriangle className="w-2.5 h-2.5" /> Important
                                   </span>
                                 )}
@@ -2263,11 +2263,11 @@ export default function EmailPage() {
 
                           {/* Hover quick actions */}
                           <div className="flex-shrink-0 flex flex-col items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={e => { e.stopPropagation(); handleArchive(msg); }} className="p-1 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded" title="Archive"><Archive className="w-3.5 h-3.5" /></button>
-                            <button onClick={e => { e.stopPropagation(); handleToggleRead(msg); }} className="p-1 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded" title={msg.isRead ? 'Mark unread' : 'Mark read'}>
+                            <button onClick={e => { e.stopPropagation(); handleArchive(msg); }} className="p-1 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm" title="Archive"><Archive className="w-3.5 h-3.5" /></button>
+                            <button onClick={e => { e.stopPropagation(); handleToggleRead(msg); }} className="p-1 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm" title={msg.isRead ? 'Mark unread' : 'Mark read'}>
                               {msg.isRead ? <MailOpen className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                             </button>
-                            <button onClick={e => { e.stopPropagation(); handleDelete(msg); }} className="p-1 text-rmpg-500 hover:text-red-400 hover:bg-red-900/20 rounded" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                            <button onClick={e => { e.stopPropagation(); handleDelete(msg); }} className="p-1 text-rmpg-500 hover:text-red-400 hover:bg-red-900/20 rounded-sm" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
                           </div>
                         </div>
                       </div>
@@ -2299,7 +2299,7 @@ export default function EmailPage() {
                 <button onClick={() => { setSelectedMessage(null); setFullMessage(null); setMobileView('list'); }} className="md:hidden p-1 text-rmpg-400 hover:text-white flex-shrink-0"><ChevronLeft className="w-4 h-4" /></button>
                 <h2 className="text-sm font-semibold text-white flex-1 truncate">{fullMessage.subject || '(no subject)'}</h2>
                 {fullMessage.importance === 'high' && (
-                  <span className="text-[8px] px-1.5 py-0.5 bg-red-900/20 text-red-400 rounded font-bold uppercase flex-shrink-0">Important</span>
+                  <span className="text-[8px] px-1.5 py-0.5 bg-red-900/20 text-red-400 rounded-sm font-bold uppercase flex-shrink-0">Important</span>
                 )}
               </div>
 
@@ -2339,27 +2339,27 @@ export default function EmailPage() {
 
               {/* Action Bar */}
               <div className="flex items-center gap-1 px-4 py-1.5 border-t border-border-subtle/50 bg-surface-sunken/30">
-                <button onClick={() => setComposing('reply')} className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium text-brand-400 bg-brand-500/10 hover:bg-brand-500/20 border border-brand-500/30 rounded transition-colors">
+                <button onClick={() => setComposing('reply')} className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium text-brand-400 bg-brand-500/10 hover:bg-brand-500/20 border border-brand-500/30 rounded-sm transition-colors">
                   <Reply className="w-3 h-3" /> Reply
                 </button>
-                <button onClick={() => setComposing('reply-all')} className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors">
+                <button onClick={() => setComposing('reply-all')} className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors">
                   <ReplyAll className="w-3 h-3" /> Reply All
                 </button>
-                <button onClick={() => setComposing('forward')} className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors">
+                <button onClick={() => setComposing('forward')} className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors">
                   <Forward className="w-3 h-3" /> Forward
                 </button>
                 <div className="w-px h-4 bg-rmpg-700 mx-1" />
-                <button onClick={() => selectedMessage && handleArchive(selectedMessage)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Archive"><Archive className="w-3.5 h-3.5" /></button>
+                <button onClick={() => selectedMessage && handleArchive(selectedMessage)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Archive"><Archive className="w-3.5 h-3.5" /></button>
                 <MoveToFolderDropdown folders={folders} currentFolder={selectedFolder} onMove={handleMoveToFolder} />
                 <div className="flex-1" />
-                <button onClick={() => selectedMessage && handleToggleRead(selectedMessage)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Toggle read">
+                <button onClick={() => selectedMessage && handleToggleRead(selectedMessage)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Toggle read">
                   {selectedMessage?.isRead ? <MailOpen className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 </button>
-                <button onClick={() => selectedMessage && handleToggleFlag(selectedMessage)} className="p-1.5 hover:bg-rmpg-700/50 rounded transition-colors" title="Toggle flag">
+                <button onClick={() => selectedMessage && handleToggleFlag(selectedMessage)} className="p-1.5 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Toggle flag">
                   <Flag className={`w-3.5 h-3.5 ${selectedMessage?.isFlagged ? 'text-yellow-400 fill-yellow-400' : 'text-rmpg-400 hover:text-yellow-400'}`} />
                 </button>
-                <button onClick={() => fullMessage && printEmail(fullMessage, fullMessage.bodyHtml)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Print"><Printer className="w-3.5 h-3.5" /></button>
-                <button onClick={() => selectedMessage && handleDelete(selectedMessage)} className="p-1.5 text-rmpg-400 hover:text-red-400 hover:bg-red-900/20 rounded transition-colors" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                <button onClick={() => fullMessage && printEmail(fullMessage, fullMessage.bodyHtml)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Print"><Printer className="w-3.5 h-3.5" /></button>
+                <button onClick={() => selectedMessage && handleDelete(selectedMessage)} className="p-1.5 text-rmpg-400 hover:text-red-400 hover:bg-red-900/20 rounded-sm transition-colors" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
               </div>
 
               {/* Attachments */}
@@ -2378,8 +2378,8 @@ export default function EmailPage() {
                       const fileColor = isImage ? '#06b6d4' : isPdf ? '#ef4444' : isDoc ? '#3b82f6' : isSheet ? '#10b981' : '#8b5cf6';
                       return (
                         <a key={att.id} href={`/api/email/messages/${selectedMessage!.id}/attachments/${att.id}`} target="_blank" rel="noopener"
-                          className="flex items-center gap-2 px-3 py-2 bg-surface-sunken border border-border-subtle rounded-lg text-[10px] text-rmpg-300 hover:text-white hover:border-brand-500/40 transition-all hover:shadow-lg group min-w-[140px]">
-                          <div className="w-8 h-8 rounded flex items-center justify-center text-[8px] font-bold uppercase flex-shrink-0"
+                          className="flex items-center gap-2 px-3 py-2 bg-surface-sunken border border-border-subtle rounded-sm text-[10px] text-rmpg-300 hover:text-white hover:border-brand-500/40 transition-all hover:shadow-lg group min-w-[140px]">
+                          <div className="w-8 h-8 rounded-sm flex items-center justify-center text-[8px] font-bold uppercase flex-shrink-0"
                             style={{ backgroundColor: fileColor + '15', color: fileColor }}>
                             {ext.slice(0, 4)}
                           </div>

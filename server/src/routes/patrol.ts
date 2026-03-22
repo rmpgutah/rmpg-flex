@@ -34,6 +34,12 @@ router.get('/checkpoints', requireRole('admin', 'manager', 'supervisor', 'office
 // GET /api/patrol/checkpoints/property/:propertyId - Checkpoints for a specific property
 router.get('/checkpoints/property/:propertyId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
+    // Validate propertyId as positive integer
+    const propId = parseInt(String(req.params.propertyId), 10);
+    if (isNaN(propId) || propId < 1) {
+      res.status(400).json({ error: 'Invalid propertyId parameter' });
+      return;
+    }
     const db = getDb();
     const checkpoints = db.prepare(`
       SELECT

@@ -705,7 +705,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                       <span className="text-brand-400 font-mono font-medium">{m.call_sign || `Unit #${m.unit_id}`}</span>
                       {m.officer_name && <span className="text-rmpg-500 text-[10px]">({m.officer_name})</span>}
                       {m.ignition_state && (
-                        <span className={`text-[9px] px-1 py-0.5 rounded ${
+                        <span className={`text-[9px] px-1 py-0.5 rounded-sm ${
                           m.ignition_state === 'on' ? 'text-green-400 bg-green-950/30' : 'text-rmpg-500 bg-surface-sunken'
                         }`}>
                           IGN {m.ignition_state.toUpperCase()}
@@ -840,7 +840,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                     className="flex items-center gap-2 px-2 py-1.5 bg-surface-sunken rounded-sm text-[11px]"
                   >
                     <Camera className="w-3 h-3 text-rmpg-400 shrink-0" />
-                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono uppercase border ${typeColor}`}>
+                    <span className={`px-1.5 py-0.5 rounded-sm text-[9px] font-mono uppercase border ${typeColor}`}>
                       {evt.event_type.replace(/_/g, ' ')}
                     </span>
                     {evt.call_sign && (

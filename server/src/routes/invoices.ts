@@ -9,7 +9,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { escapeLike, validateParamId } from '../middleware/sanitize';
+import { escapeLike, validateParamId, validateStr, validateEnum, requireInt, requireFloat, validateDateStr } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
 import { broadcast } from '../utils/websocket';
@@ -288,12 +288,16 @@ router.post('/', requireRole('admin', 'manager', 'contract_manager'), (req: Requ
     const now = localNow();
     const { client_id, period_start, period_end, issue_date, notes, internal_notes } = req.body;
 
-    if (!client_id || !period_start || !period_end) {
-      return res.status(400).json({ error: 'client_id, period_start, and period_end are required' });
-    }
-    if (isNaN(new Date(period_start).getTime()) || isNaN(new Date(period_end).getTime())) {
-      return res.status(400).json({ error: 'period_start and period_end must be valid dates' });
-    }
+    // ── Validate invoice inputs ──
+    const validClientId = requireInt(client_id, 'client_id');
+    if (!validClientId) return res.status(400).json({ error: 'client_id is required' });
+    const validPeriodStart = validateDateStr(period_start, 'period_start');
+    if (!validPeriodStart) return res.status(400).json({ error: 'period_start is required (YYYY-MM-DD)' });
+    const validPeriodEnd = validateDateStr(period_end, 'period_end');
+    if (!validPeriodEnd) return res.status(400).json({ error: 'period_end is required (YYYY-MM-DD)' });
+    if (issue_date) validateDateStr(issue_date, 'issue_date');
+    validateStr(notes, 'notes', 5000);
+    validateStr(internal_notes, 'internal_notes', 5000);
 
     // Get client for billing snapshot
     const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(client_id) as any;
@@ -331,6 +335,9 @@ router.post('/', requireRole('admin', 'manager', 'contract_manager'), (req: Requ
     broadcast('admin', 'invoice:created', invoice);
     res.status(201).json({ data: invoice });
   } catch (error: any) {
+    if (error.message?.startsWith('Invalid ') || error.message?.includes('must be')) {
+      res.status(400).json({ error: error.message }); return;
+    }
     console.error('Invoice create error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -625,6 +632,8 @@ router.put('/:id/status', validateParamId, requireRole('admin', 'manager'), (req
     const user = (req as any).user;
     const now = localNow();
     const { status } = req.body;
+    const INVOICE_STATUSES = ['draft', 'sent', 'paid', 'partial', 'overdue', 'void', 'cancelled'] as const;
+    try { validateEnum(status, INVOICE_STATUSES, 'status'); } catch (e: any) { res.status(400).json({ error: e.message }); return; }
 
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
@@ -690,12 +699,20 @@ router.post('/:id/line-items', validateParamId, requireRole('admin', 'manager', 
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
 
     const { line_type, description, quantity, unit_price, linked_entity_type, linked_entity_id } = req.body;
-    if (!line_type || !description) {
-      return res.status(400).json({ error: 'line_type and description are required' });
-    }
 
-    const qty = quantity ?? 1;
-    const price = unit_price ?? 0;
+    // ── Validate line item inputs ──
+    const LINE_TYPES = ['contract_base', 'service_hours', 'dispatch_call', 'incident_response', 'citation', 'discount', 'late_fee', 'custom', 'adjustment'] as const;
+    const validLineType = validateEnum(line_type, LINE_TYPES, 'line_type');
+    if (!validLineType) return res.status(400).json({ error: 'line_type is required' });
+    const validDesc = validateStr(description, 'description', 1000);
+    if (!validDesc) return res.status(400).json({ error: 'description is required' });
+    const validQty = requireFloat(quantity, 'quantity', -99999, 99999) ?? 1;
+    const validPrice = requireFloat(unit_price, 'unit_price', -100_000_000, 100_000_000) ?? 0;
+    if (linked_entity_id) requireInt(linked_entity_id, 'linked_entity_id');
+    if (linked_entity_type) validateStr(linked_entity_type, 'linked_entity_type', 50);
+
+    const qty = validQty;
+    const price = validPrice;
     const amount = Math.round(qty * price * 100) / 100;
 
     // Get max sort order
@@ -714,6 +731,9 @@ router.post('/:id/line-items', validateParamId, requireRole('admin', 'manager', 
     const item = db.prepare('SELECT * FROM invoice_line_items WHERE id = ?').get(Number(result.lastInsertRowid));
     res.status(201).json({ data: item || { id: Number(result.lastInsertRowid) } });
   } catch (error: any) {
+    if (error.message?.startsWith('Invalid ') || error.message?.includes('must be')) {
+      res.status(400).json({ error: error.message }); return;
+    }
     console.error('Add line item error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -791,14 +811,21 @@ router.post('/:id/payments', validateParamId, requireRole('admin', 'manager'), (
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
 
     const { amount, payment_date, payment_method, reference_number, notes } = req.body;
-    if (amount == null || amount === '' || !payment_date) {
-      return res.status(400).json({ error: 'amount and payment_date are required' });
-    }
+
+    // ── Validate payment inputs ──
+    const PAYMENT_METHODS = ['check', 'ach', 'wire', 'credit_card', 'cash', 'other'] as const;
+    const validAmount = requireFloat(amount, 'amount', 0.01, 100_000_000);
+    if (validAmount == null) return res.status(400).json({ error: 'amount is required (positive number)' });
+    const validPayDate = validateDateStr(payment_date, 'payment_date');
+    if (!validPayDate) return res.status(400).json({ error: 'payment_date is required (YYYY-MM-DD)' });
+    if (payment_method) validateEnum(payment_method, PAYMENT_METHODS, 'payment_method');
+    validateStr(reference_number, 'reference_number', 100);
+    validateStr(notes, 'notes', 2000);
 
     const result = db.prepare(`
       INSERT INTO payments (invoice_id, amount, payment_date, payment_method, reference_number, notes, recorded_by, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(req.params.id, amount, payment_date, payment_method || null, reference_number || null, notes || null, user.userId, now);
+    `).run(req.params.id, validAmount, validPayDate, payment_method || null, reference_number || null, notes || null, user.userId, now);
 
     // Recalculate totals
     recalculateInvoiceTotals(req.params.id);
@@ -825,6 +852,9 @@ router.post('/:id/payments', validateParamId, requireRole('admin', 'manager'), (
     `).get(Number(result.lastInsertRowid));
     res.status(201).json({ data: payment || { id: Number(result.lastInsertRowid) } });
   } catch (error: any) {
+    if (error.message?.startsWith('Invalid ') || error.message?.includes('must be')) {
+      res.status(400).json({ error: error.message }); return;
+    }
     console.error('Record payment error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }

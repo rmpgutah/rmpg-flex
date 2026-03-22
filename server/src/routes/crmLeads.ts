@@ -12,7 +12,7 @@ import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
 import { calculateLeadScore, runScraper, getRegisteredScraper } from '../utils/leadScraperBase';
-import { escapeLike, validateParamId } from '../middleware/sanitize';
+import { escapeLike, validateParamId, validateStr, validateEnum, requireInt, requireFloat, validateDateStr } from '../middleware/sanitize';
 import { broadcast } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
 
@@ -143,10 +143,28 @@ router.post('/leads', requireRole('admin', 'manager', 'contract_manager'), (req:
       project_type, property_size, notes, assigned_to, pipeline_stage,
     } = req.body;
 
-    if (!business_name?.trim()) {
+    // ── Validate lead inputs ──
+    const PIPELINE_STAGES = ['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost', 'dismissed'] as const;
+    const validBizName = validateStr(business_name, 'business_name', 300);
+    if (!validBizName) {
       res.status(400).json({ error: 'business_name is required' });
       return;
     }
+    validateStr(contact_name, 'contact_name', 200);
+    validateStr(contact_email, 'contact_email', 200);
+    validateStr(contact_phone, 'contact_phone', 30);
+    validateStr(contact_title, 'contact_title', 100);
+    validateStr(address, 'address', 500);
+    validateStr(city, 'city', 100);
+    validateStr(state, 'state', 10);
+    validateStr(zip, 'zip', 20);
+    validateStr(industry, 'industry', 200);
+    validateStr(source, 'source', 100);
+    if (estimated_value != null) requireFloat(estimated_value, 'estimated_value', 0, 100_000_000);
+    if (pipeline_stage) validateEnum(pipeline_stage, PIPELINE_STAGES, 'pipeline_stage');
+    if (assigned_to) requireInt(assigned_to, 'assigned_to');
+    if (latitude != null) requireFloat(latitude, 'latitude', -90, 90);
+    if (longitude != null) requireFloat(longitude, 'longitude', -180, 180);
 
     const now = localNow();
     const leadData = {
@@ -194,6 +212,9 @@ router.post('/leads', requireRole('admin', 'manager', 'contract_manager'), (req:
     broadcast('admin', 'lead:created', lead);
     res.json(lead);
   } catch (err: any) {
+    if (err.message?.startsWith('Invalid ') || err.message?.includes('must be')) {
+      res.status(400).json({ error: err.message }); return;
+    }
     console.error('CRM leads error:', err?.message || err);
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -464,6 +485,10 @@ router.post('/leads/bulk-action', requireRole('admin', 'manager', 'contract_mana
       res.status(400).json({ error: 'action and lead_ids[] are required' });
       return;
     }
+    if (lead_ids.length > 200) { res.status(400).json({ error: 'Maximum 200 IDs per bulk action' }); return; }
+    const BULK_ACTIONS = ['mark_contacted', 'assign', 'dismiss'] as const;
+    try { validateEnum(action, BULK_ACTIONS, 'action'); } catch (e: any) { res.status(400).json({ error: e.message }); return; }
+    for (const lid of lead_ids) { if (isNaN(parseInt(String(lid), 10)) || parseInt(String(lid), 10) < 1) { res.status(400).json({ error: 'All lead_ids must be positive integers' }); return; } }
 
     const now = localNow();
     const placeholders = lead_ids.map(() => '?').join(',');

@@ -45,24 +45,33 @@ router.get('/logs', (req: Request, res: Response) => {
     }
 
     if (userId) {
+      const uid = parseInt(String(userId), 10);
+      if (isNaN(uid) || uid < 1) { res.status(400).json({ error: 'Invalid userId' }); return; }
       conditions.push('al.user_id = ?');
-      params.push(userId);
+      params.push(uid);
     }
 
     if (startDate) {
+      if (typeof startDate !== 'string' || startDate.length > 30) { res.status(400).json({ error: 'Invalid startDate' }); return; }
       conditions.push('al.created_at >= ?');
       params.push(startDate);
     }
 
     if (endDate) {
+      if (typeof endDate !== 'string' || endDate.length > 30) { res.status(400).json({ error: 'Invalid endDate' }); return; }
       conditions.push('al.created_at <= ?');
       params.push(endDate);
     }
 
     if (search) {
+      if (typeof search !== 'string' || search.length > 200) { res.status(400).json({ error: 'Search query too long' }); return; }
       conditions.push("al.details LIKE ? ESCAPE '\\'");
       params.push(`%${escapeLike(search as string)}%`);
     }
+
+    // Validate action and entityType are safe strings (no SQL injection via parameterized queries, but prevents junk data)
+    if (action && (typeof action !== 'string' || action.length > 100)) { res.status(400).json({ error: 'Invalid action filter' }); return; }
+    if (entityType && (typeof entityType !== 'string' || entityType.length > 100)) { res.status(400).json({ error: 'Invalid entityType filter' }); return; }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 

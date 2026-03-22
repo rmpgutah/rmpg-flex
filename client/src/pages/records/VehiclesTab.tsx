@@ -341,7 +341,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
             `}
           >
             <div className="flex items-center gap-3">
-              <div className={`flex-shrink-0 w-9 h-9 rounded flex items-center justify-center text-[10px] font-bold font-mono border ${
+              <div className={`flex-shrink-0 w-9 h-9 rounded-sm flex items-center justify-center text-[10px] font-bold font-mono border ${
                 v.stolen_status && v.stolen_status !== 'None' && v.stolen_status !== 'Recovered'
                   ? 'bg-red-900/40 text-red-400 border-red-700/50'
                   : 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'

@@ -68,7 +68,7 @@ const STATUS_COLORS: Record<InspectionItemStatus, string> = {
   pass: 'text-green-400',
   fail: 'text-red-400',
   needs_attention: 'text-amber-400',
-  na: 'text-gray-500',
+  na: 'text-rmpg-500',
 };
 
 function computeOverallResult(items: InspectionItem[]): InspectionResult {
@@ -128,24 +128,24 @@ export default function InspectionFormModal({ isOpen, mode = 'create', form, onC
           {/* Top form fields */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Type *</label>
+              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Type *</label>
               <select className="select-dark w-full text-[11px]" value={form.inspection_type}
                 onChange={(e) => setField('inspection_type', e.target.value)}>
                 {INSPECTION_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Inspector *</label>
+              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Inspector *</label>
               <input className="input-dark w-full text-[11px]" value={form.inspector_name}
                 onChange={(e) => setField('inspector_name', e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Date / Time *</label>
+              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Date / Time *</label>
               <input className="input-dark w-full text-[11px] font-mono" type="datetime-local" step="1" value={form.inspection_date}
                 onChange={(e) => setField('inspection_date', e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Mileage</label>
+              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Mileage</label>
               <input className="input-dark w-full text-[11px] font-mono" type="number" value={form.mileage}
                 onChange={(e) => setField('mileage', e.target.value)} />
             </div>
@@ -162,7 +162,7 @@ export default function InspectionFormModal({ isOpen, mode = 'create', form, onC
                   if (item.category !== category) return null;
                   return (
                     <div key={index} className="flex items-center gap-2 px-3 py-1.5">
-                      <span className="text-[10px] text-gray-300 flex-1 min-w-0">{item.item}</span>
+                      <span className="text-[10px] text-rmpg-300 flex-1 min-w-0">{item.item}</span>
                       <select
                         className={`select-dark text-[10px] py-0.5 px-1.5 w-24 ${STATUS_COLORS[item.status]}`}
                         value={item.status}
@@ -185,7 +185,7 @@ export default function InspectionFormModal({ isOpen, mode = 'create', form, onC
 
           {/* Overall notes */}
           <div>
-            <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Additional Notes</label>
+            <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Additional Notes</label>
             <textarea className="input-dark w-full text-[10px] h-16 resize-none" value={form.notes}
               onChange={(e) => setField('notes', e.target.value)} />
           </div>

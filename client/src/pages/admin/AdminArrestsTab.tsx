@@ -570,7 +570,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] font-bold text-rmpg-100 truncate">{rec.full_name}</span>
                     {rec.booking_number && <span className="text-[9px] font-mono text-rmpg-500">#{rec.booking_number}</span>}
-                    <span className={`text-[8px] font-bold uppercase px-1 rounded ${
+                    <span className={`text-[8px] font-bold uppercase px-1 rounded-sm ${
                       rec.status === 'active' ? 'bg-red-900/40 text-red-400' :
                       rec.status === 'released' ? 'bg-green-900/40 text-green-400' :
                       'bg-rmpg-700 text-rmpg-400'
@@ -743,7 +743,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                           <span className="text-[11px] font-bold text-rmpg-100 flex-1">{county.display_name}</span>
 
                           {/* Type badge */}
-                          <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                          <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 rounded-sm ${
                             county.roster_type === 'pdf' ? 'bg-amber-900/40 text-amber-400' : 'bg-blue-900/40 text-blue-400'
                           }`}>{county.roster_type}</span>
 

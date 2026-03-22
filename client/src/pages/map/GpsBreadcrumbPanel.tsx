@@ -405,7 +405,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
           <History className="w-3.5 h-3.5 text-amber-400" />
           <span className="text-[11px] font-mono font-bold text-white tracking-wide">GPS HISTORY</span>
         </div>
-        <button onClick={onToggle} className="p-0.5 hover:bg-white/10 rounded transition-colors">
+        <button onClick={onToggle} className="p-0.5 hover:bg-white/10 rounded-sm transition-colors">
           <X className="w-3.5 h-3.5 text-rmpg-400" />
         </button>
       </div>
@@ -610,7 +610,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                       playbackMarkerRef.current.setPosition({ lat: trail.points[0].lat, lng: trail.points[0].lng });
                     }
                   }}
-                  className="p-1 rounded hover:bg-rmpg-700/50 transition-colors"
+                  className="p-1 rounded-sm hover:bg-rmpg-700/50 transition-colors"
                   title="Go to start"
                 >
                   <SkipBack className="w-3 h-3 text-rmpg-300" />
@@ -626,7 +626,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                       setIsPlaying(true);
                     }
                   }}
-                  className="p-1 rounded hover:bg-rmpg-700/50 transition-colors"
+                  className="p-1 rounded-sm hover:bg-rmpg-700/50 transition-colors"
                   title={isPlaying ? 'Pause' : 'Play'}
                 >
                   {isPlaying ? (
@@ -645,7 +645,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                       playbackMarkerRef.current.setPosition({ lat: trail.points[lastIdx].lat, lng: trail.points[lastIdx].lng });
                     }
                   }}
-                  className="p-1 rounded hover:bg-rmpg-700/50 transition-colors"
+                  className="p-1 rounded-sm hover:bg-rmpg-700/50 transition-colors"
                   title="Go to end"
                 >
                   <SkipForward className="w-3 h-3 text-rmpg-300" />
@@ -657,7 +657,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                     <button
                       key={s}
                       onClick={() => setPlaybackSpeed(s)}
-                      className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded transition-colors ${
+                      className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
                         playbackSpeed === s
                           ? 'bg-amber-900/50 text-amber-400 border border-amber-700/50'
                           : 'text-rmpg-500 hover:text-rmpg-300'

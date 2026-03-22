@@ -10,7 +10,7 @@ import { authenticateToken as authenticate, requireRole } from '../middleware/au
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
-import { escapeLike, validateParamId } from '../middleware/sanitize';
+import { escapeLike, validateParamId, validateStr, validateEnum, requireInt, validateDateStr } from '../middleware/sanitize';
 import { broadcast } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
 
@@ -136,15 +136,29 @@ router.post('/tasks', requireRole('admin', 'manager', 'contract_manager'), (req:
   try {
     const db = getDb();
     const { client_id, property_id, title, description, task_type, priority, due_date, assigned_to, notes } = req.body;
-    if (!title?.trim()) { res.status(400).json({ error: 'Title is required' }); return; }
+
+    // ── Validate task inputs ──
+    const TASK_TYPES = ['follow_up', 'call', 'meeting', 'proposal', 'contract_review', 'billing', 'inspection', 'other'] as const;
+    const PRIORITIES = ['low', 'normal', 'high', 'urgent'] as const;
+
+    const validTitle = validateStr(title, 'title', 200);
+    if (!validTitle) { res.status(400).json({ error: 'Title is required' }); return; }
+    const validTaskType = validateEnum(task_type, TASK_TYPES, 'task_type') || 'follow_up';
+    const validPriority = validateEnum(priority, PRIORITIES, 'priority') || 'normal';
+    if (client_id) requireInt(client_id, 'client_id');
+    if (property_id) requireInt(property_id, 'property_id');
+    if (assigned_to) requireInt(assigned_to, 'assigned_to');
+    if (due_date) validateDateStr(due_date, 'due_date');
+    validateStr(description, 'description', 5000);
+    validateStr(notes, 'notes', 5000);
 
     const now = localNow();
     const result = db.prepare(`
       INSERT INTO crm_tasks (client_id, property_id, title, description, task_type, priority, status, due_date, assigned_to, notes, created_by, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
     `).run(
-      client_id || null, property_id || null, title.trim(), description || null,
-      task_type || 'follow_up', priority || 'normal', due_date || null,
+      client_id || null, property_id || null, validTitle, description || null,
+      validTaskType, validPriority, due_date || null,
       assigned_to || null, notes || null, req.user?.userId || null, now, now,
     );
 
@@ -168,12 +182,25 @@ router.put('/tasks/:id', validateParamId, requireRole('admin', 'manager', 'contr
     if (!existing) { res.status(404).json({ error: 'Task not found' }); return; }
 
     const { title, description, task_type, priority, status, due_date, assigned_to, notes } = req.body;
+
+    // ── Validate update fields ──
+    const TASK_UPDATE_TYPES = ['follow_up', 'call', 'meeting', 'proposal', 'contract_review', 'billing', 'inspection', 'other'] as const;
+    const TASK_PRIORITIES = ['low', 'normal', 'high', 'urgent'] as const;
+    const TASK_STATUSES = ['pending', 'in_progress', 'completed', 'cancelled'] as const;
+
+    if (task_type !== undefined) validateEnum(task_type, TASK_UPDATE_TYPES, 'task_type');
+    if (priority !== undefined) validateEnum(priority, TASK_PRIORITIES, 'priority');
+    if (status !== undefined) validateEnum(status, TASK_STATUSES, 'status');
+    if (due_date !== undefined && due_date) validateDateStr(due_date, 'due_date');
+    if (title !== undefined) validateStr(title, 'title', 200);
+    if (assigned_to !== undefined && assigned_to) requireInt(assigned_to, 'assigned_to');
+
     const now = localNow();
 
     const updates: string[] = [];
     const params: any[] = [];
 
-    if (title !== undefined) { updates.push('title = ?'); params.push(title.trim()); }
+    if (title !== undefined) { updates.push('title = ?'); params.push(String(title).trim()); }
     if (description !== undefined) { updates.push('description = ?'); params.push(description); }
     if (task_type !== undefined) { updates.push('task_type = ?'); params.push(task_type); }
     if (priority !== undefined) { updates.push('priority = ?'); params.push(priority); }
@@ -247,7 +274,14 @@ router.post('/activity', requireRole('admin', 'manager', 'contract_manager'), (r
   try {
     const db = getDb();
     const { client_id, activity_type, subject, details } = req.body;
-    if (!client_id || !activity_type) { res.status(400).json({ error: 'client_id and activity_type required' }); return; }
+    // ── Validate activity inputs ──
+    const validClientId = requireInt(client_id, 'client_id');
+    if (!validClientId) { res.status(400).json({ error: 'client_id is required' }); return; }
+    const ACTIVITY_TYPES = ['call', 'email', 'meeting', 'note', 'follow_up', 'task', 'proposal', 'contract', 'billing', 'other'] as const;
+    const validActType = validateEnum(activity_type, ACTIVITY_TYPES, 'activity_type');
+    if (!validActType) { res.status(400).json({ error: 'activity_type is required' }); return; }
+    validateStr(subject, 'subject', 500);
+    validateStr(details, 'details', 5000);
 
     const now = localNow();
     const result = db.prepare(`

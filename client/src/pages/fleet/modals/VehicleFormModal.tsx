@@ -59,76 +59,76 @@ export default function VehicleFormModal({ isOpen, mode, form, onChange, onSave,
         <div className="flex-1 overflow-y-auto p-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Vehicle Number *</label>
+              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Vehicle Number *</label>
               <input className="input-dark w-full text-[11px] font-mono" value={form.vehicle_number}
                 onChange={(e) => setField('vehicle_number', e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Status</label>
+              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Status</label>
               <select className="select-dark w-full text-[11px]" value={form.status}
                 onChange={(e) => setField('status', e.target.value)}>
                 {VEHICLE_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Make</label>
+              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Make</label>
               <input className="input-dark w-full text-[11px]" value={form.make}
                 onChange={(e) => setField('make', e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Model</label>
+              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Model</label>
               <input className="input-dark w-full text-[11px]" value={form.model}
                 onChange={(e) => setField('model', e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Year</label>
+              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Year</label>
               <input className="input-dark w-full text-[11px] font-mono" type="number" value={form.year}
                 onChange={(e) => setField('year', e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Color</label>
+              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Color</label>
               <input className="input-dark w-full text-[11px]" value={form.color}
                 onChange={(e) => setField('color', e.target.value)} />
             </div>
             <div className="col-span-2">
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">VIN</label>
+              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">VIN</label>
               <input className="input-dark w-full text-[11px] font-mono" value={form.vin}
                 onChange={(e) => setField('vin', e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Plate Number</label>
+              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Plate Number</label>
               <input className="input-dark w-full text-[11px] font-mono" value={form.plate_number}
                 onChange={(e) => setField('plate_number', e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Plate State</label>
+              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Plate State</label>
               <input className="input-dark w-full text-[11px]" maxLength={2} value={form.plate_state}
                 onChange={(e) => setField('plate_state', e.target.value.toUpperCase())} />
             </div>
             <div>
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Current Mileage</label>
+              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Current Mileage</label>
               <input className="input-dark w-full text-[11px] font-mono" type="number" value={form.current_mileage}
                 onChange={(e) => setField('current_mileage', e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Registration Expiry (Date/Time)</label>
+              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Registration Expiry (Date/Time)</label>
               <input className="input-dark w-full text-[11px] font-mono" type="datetime-local" step="1" value={form.registration_expiry}
                 onChange={(e) => setField('registration_expiry', e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Insurance Expiry (Date/Time)</label>
+              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Insurance Expiry (Date/Time)</label>
               <input className="input-dark w-full text-[11px] font-mono" type="datetime-local" step="1" value={form.insurance_expiry}
                 onChange={(e) => setField('insurance_expiry', e.target.value)} />
             </div>
             <div />
             <div className="col-span-2">
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Equipment (comma-separated)</label>
+              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Equipment (comma-separated)</label>
               <input className="input-dark w-full text-[10px]" value={form.equipment_str}
                 onChange={(e) => setField('equipment_str', e.target.value)}
                 placeholder="e.g. Lightbar, MDT, Radar, Body Camera, Shotgun Rack" />
             </div>
             <div className="col-span-2">
-              <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Notes</label>
+              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Notes</label>
               <textarea className="input-dark w-full text-[10px] h-16 resize-none" value={form.notes}
                 onChange={(e) => setField('notes', e.target.value)} />
             </div>

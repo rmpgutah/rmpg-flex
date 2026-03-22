@@ -124,7 +124,7 @@ export default function PersonIntelPanel() {
   return (
     <div className="space-y-4">
       {/* Search form */}
-      <div className="bg-surface-raised border border-rmpg-600 rounded p-4">
+      <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-4">
         <div className="flex items-center gap-2 mb-3">
           <Shield className="w-4 h-4 text-brand-400" />
           <span className="text-xs font-bold uppercase tracking-wider text-brand-400">Person Intelligence Search</span>
@@ -196,7 +196,7 @@ export default function PersonIntelPanel() {
                 const expanded = expandedCards.has(result.utahPersonId);
                 const totalWarrants = result.utahWarrants.length + result.localWarrants.length;
                 return (
-                  <div key={result.utahPersonId} className="bg-surface-raised border border-rmpg-600 rounded overflow-hidden">
+                  <div key={result.utahPersonId} className="bg-surface-raised border border-rmpg-600 rounded-sm overflow-hidden">
                     {/* Card header */}
                     <button
                       onClick={() => toggleCard(result.utahPersonId)}
@@ -211,17 +211,17 @@ export default function PersonIntelPanel() {
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         {/* Confidence badge */}
-                        <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded border ${CONFIDENCE_STYLES[result.identityConfidence]}`}>
+                        <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-sm border ${CONFIDENCE_STYLES[result.identityConfidence]}`}>
                           {result.identityConfidence} conf
                         </span>
                         {/* Warrant count */}
                         {totalWarrants > 0 && (
-                          <span className="text-[9px] font-bold uppercase px-2 py-0.5 rounded border bg-red-900/40 text-red-400 border-red-700/50">
+                          <span className="text-[9px] font-bold uppercase px-2 py-0.5 rounded-sm border bg-red-900/40 text-red-400 border-red-700/50">
                             {totalWarrants} warrant{totalWarrants !== 1 ? 's' : ''}
                           </span>
                         )}
                         {result.courtRecords.length > 0 && (
-                          <span className="text-[9px] font-bold uppercase px-2 py-0.5 rounded border bg-blue-900/40 text-blue-400 border-blue-700/50">
+                          <span className="text-[9px] font-bold uppercase px-2 py-0.5 rounded-sm border bg-blue-900/40 text-blue-400 border-blue-700/50">
                             {result.courtRecords.length} court
                           </span>
                         )}
@@ -235,7 +235,7 @@ export default function PersonIntelPanel() {
                         <div className="flex items-center gap-2 mt-3 text-xs text-rmpg-400">
                           <span className="font-bold">Match factors:</span>
                           {result.confidenceFactors.map(f => (
-                            <span key={f} className="px-1.5 py-0.5 bg-rmpg-700 rounded text-[9px]">{f}</span>
+                            <span key={f} className="px-1.5 py-0.5 bg-rmpg-700 rounded-sm text-[9px]">{f}</span>
                           ))}
                           {result.localPersonMatch && (
                             <span className="text-green-400 flex items-center gap-1">
@@ -257,7 +257,7 @@ export default function PersonIntelPanel() {
                                 const isIngested = ingested.has(wKey);
                                 const isIngesting = ingesting.has(wKey);
                                 return (
-                                  <div key={wKey} className="bg-rmpg-800/60 border border-rmpg-600/50 rounded px-3 py-2 text-xs">
+                                  <div key={wKey} className="bg-rmpg-800/60 border border-rmpg-600/50 rounded-sm px-3 py-2 text-xs">
                                     <div className="flex items-center justify-between">
                                       <div>
                                         <span className="font-bold text-white">{w.court_name || 'Unknown Court'}</span>
@@ -302,7 +302,7 @@ export default function PersonIntelPanel() {
                             </div>
                             <div className="space-y-1">
                               {result.courtRecords.slice(0, 10).map((cr: any, i: number) => (
-                                <div key={`court-${cr.case_number || i}`} className="bg-rmpg-800/60 border border-rmpg-600/50 rounded px-3 py-1.5 text-xs flex items-center justify-between">
+                                <div key={`court-${cr.case_number || i}`} className="bg-rmpg-800/60 border border-rmpg-600/50 rounded-sm px-3 py-1.5 text-xs flex items-center justify-between">
                                   <div>
                                     <span className="font-bold text-white">{cr.case_number || 'N/A'}</span>
                                     <span className="text-rmpg-400 ml-2">{cr.court_name || ''}</span>
@@ -324,12 +324,12 @@ export default function PersonIntelPanel() {
                             </div>
                             <div className="space-y-1">
                               {result.localWarrants.map((lw: any, i: number) => (
-                                <div key={lw.id || i} className="bg-rmpg-800/60 border border-rmpg-600/50 rounded px-3 py-1.5 text-xs flex items-center justify-between">
+                                <div key={lw.id || i} className="bg-rmpg-800/60 border border-rmpg-600/50 rounded-sm px-3 py-1.5 text-xs flex items-center justify-between">
                                   <div>
                                     <span className="font-bold text-white">{lw.warrant_number}</span>
                                     <span className="text-rmpg-400 ml-2">{lw.charge_description || ''}</span>
                                   </div>
-                                  <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${SEVERITY_STYLES[lw.offense_level || ''] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
+                                  <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm border ${SEVERITY_STYLES[lw.offense_level || ''] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
                                     {lw.offense_level || lw.status || 'active'}
                                   </span>
                                 </div>

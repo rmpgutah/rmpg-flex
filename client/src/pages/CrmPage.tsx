@@ -10,29 +10,26 @@ import {
   Search,
   Loader2,
   AlertTriangle,
-  Clock,
   DollarSign,
   TrendingUp,
   Calendar,
-  ChevronRight,
   Edit3,
   Trash2,
   Phone,
   Mail,
-  ExternalLink,
   RefreshCw,
-  Filter,
   X,
   Save,
-  AlertCircle,
   BarChart3,
   Activity,
   Target,
   FileSignature,
+  Globe,
 } from 'lucide-react';
 import LeadsTab from '../components/crm/LeadsTab';
 import ProposalsTab from '../components/crm/ProposalsTab';
 import ReportsTab from '../components/crm/ReportsTab';
+import WebIntelPanel from '../components/crm/WebIntelPanel';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useToast } from '../components/ToastProvider';
@@ -50,7 +47,7 @@ import type {
   CrmDashboardStats,
 } from '../types';
 
-type CrmSection = 'dashboard' | 'clients' | 'properties' | 'contacts' | 'invoices' | 'tasks' | 'leads' | 'proposals' | 'reports';
+type CrmSection = 'dashboard' | 'clients' | 'properties' | 'contacts' | 'invoices' | 'tasks' | 'leads' | 'proposals' | 'reports' | 'webintel';
 
 const SIDEBAR_ITEMS: { id: CrmSection; label: string; icon: React.ElementType }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -62,6 +59,7 @@ const SIDEBAR_ITEMS: { id: CrmSection; label: string; icon: React.ElementType }[
   { id: 'invoices', label: 'Invoices', icon: FileText },
   { id: 'tasks', label: 'Tasks', icon: CheckSquare },
   { id: 'reports', label: 'Reports', icon: BarChart3 },
+  { id: 'webintel', label: 'Web Intel', icon: Globe },
 ];
 
 const TASK_TYPES = ['follow_up', 'site_visit', 'contract_renewal', 'billing', 'other'] as const;
@@ -419,7 +417,7 @@ export default function CrmPage() {
       {/* ── Main Content ──────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {fetchError && (
-          <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded text-red-400 text-xs flex items-center gap-2">
+          <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
             <span>⚠ {fetchError}</span>
             <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
           </div>
@@ -433,6 +431,7 @@ export default function CrmPage() {
         {activeSection === 'invoices' && renderInvoices()}
         {activeSection === 'tasks' && renderTasks()}
         {activeSection === 'reports' && <ReportsTab />}
+        {activeSection === 'webintel' && <WebIntelPanel />}
       </div>
 
       {/* ── Task Modal ────────────────────────────────── */}

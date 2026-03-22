@@ -161,6 +161,19 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
     } = req.body;
 
     if (!title?.trim()) return res.status(400).json({ error: 'Title is required' });
+    if (title.length > 500) return res.status(400).json({ error: 'Title must be 500 characters or less' });
+
+    // Validate case_type
+    const VALID_CASE_TYPES = ['digital', 'physical', 'biological', 'chemical', 'fingerprint', 'ballistics', 'documents', 'audio_video', 'other'];
+    if (case_type && !VALID_CASE_TYPES.includes(case_type)) {
+      return res.status(400).json({ error: `Invalid case_type. Must be one of: ${VALID_CASE_TYPES.join(', ')}` });
+    }
+
+    // Validate priority
+    const VALID_PRIORITIES = ['routine', 'expedited', 'urgent', 'rush'];
+    if (priority && !VALID_PRIORITIES.includes(priority)) {
+      return res.status(400).json({ error: `Invalid priority. Must be one of: ${VALID_PRIORITIES.join(', ')}` });
+    }
 
     // Validate numeric foreign key IDs to prevent type confusion
     if (incident_id != null && (isNaN(Number(incident_id)) || Number(incident_id) <= 0)) {
@@ -219,6 +232,22 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     const user = (req as any).user;
     const existing = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id) as any;
     if (!existing) return res.status(404).json({ error: 'Case not found' });
+
+    // Validate enums on update
+    if (req.body.status) {
+      const VALID_STATUSES = ['submitted', 'received', 'in_progress', 'analysis', 'report_draft', 'report_final', 'closed', 'cancelled'];
+      if (!VALID_STATUSES.includes(req.body.status)) {
+        return res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` });
+      }
+    }
+    if (req.body.case_type) {
+      const VALID_CT = ['digital', 'physical', 'biological', 'chemical', 'fingerprint', 'ballistics', 'documents', 'audio_video', 'other'];
+      if (!VALID_CT.includes(req.body.case_type)) return res.status(400).json({ error: 'Invalid case_type' });
+    }
+    if (req.body.priority) {
+      const VALID_PRI = ['routine', 'expedited', 'urgent', 'rush'];
+      if (!VALID_PRI.includes(req.body.priority)) return res.status(400).json({ error: 'Invalid priority' });
+    }
 
     const {
       title, case_type, status, priority, incident_id,
@@ -385,6 +414,15 @@ router.post('/:id/exhibits', validateParamId, requireRole('admin', 'manager', 's
 
 router.put('/:caseId/exhibits/:exhibitId', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
+    // Validate caseId and exhibitId as positive integers
+    const caseIdNum = parseInt(req.params.caseId, 10);
+    const exhibitIdNum = parseInt(req.params.exhibitId, 10);
+    if (isNaN(caseIdNum) || caseIdNum < 1 || String(caseIdNum) !== req.params.caseId) {
+      return res.status(400).json({ error: 'Invalid case ID' });
+    }
+    if (isNaN(exhibitIdNum) || exhibitIdNum < 1 || String(exhibitIdNum) !== req.params.exhibitId) {
+      return res.status(400).json({ error: 'Invalid exhibit ID' });
+    }
     const db = getDb();
     const { description, item_type, condition_received, examination_requested, examination_performed, results, status, notes, returned_date } = req.body;
     const now = localNow();
@@ -463,6 +501,22 @@ router.post('/:id/analyses', validateParamId, requireRole('admin', 'manager', 's
 
 router.put('/:caseId/analyses/:analysisId', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
+    // Validate caseId and analysisId as positive integers
+    const caseIdA = parseInt(req.params.caseId, 10);
+    const analysisIdA = parseInt(req.params.analysisId, 10);
+    if (isNaN(caseIdA) || caseIdA < 1 || String(caseIdA) !== req.params.caseId) {
+      return res.status(400).json({ error: 'Invalid case ID' });
+    }
+    if (isNaN(analysisIdA) || analysisIdA < 1 || String(analysisIdA) !== req.params.analysisId) {
+      return res.status(400).json({ error: 'Invalid analysis ID' });
+    }
+    // Validate analysis status if provided
+    if (req.body.status) {
+      const VALID_ANALYSIS_STATUSES = ['pending', 'in_progress', 'completed', 'inconclusive', 'cancelled'];
+      if (!VALID_ANALYSIS_STATUSES.includes(req.body.status)) {
+        return res.status(400).json({ error: `Invalid analysis status. Must be one of: ${VALID_ANALYSIS_STATUSES.join(', ')}` });
+      }
+    }
     const db = getDb();
     const user = (req as any).user;
     const { analysis_type, examiner_id, examiner_name, status, methodology, instruments_used, results, conclusion, started_at, completed_at, notes } = req.body;

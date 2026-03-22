@@ -97,7 +97,7 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90" onClick={onClose}>
       <div
         ref={containerRef}
-        className={`bg-black border border-rmpg-800 rounded-lg shadow-2xl overflow-hidden ${
+        className={`bg-black border border-rmpg-800 rounded-sm shadow-2xl overflow-hidden ${
           isFullscreen ? 'w-full h-full' : 'w-[900px] max-h-[90vh]'
         }`}
         onClick={e => e.stopPropagation()}
@@ -113,7 +113,7 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
               {classLabel(video.classification)}
             </span>
             {overlayInfo && (
-              <span className={`text-[9px] px-1.5 py-0.5 font-semibold flex items-center gap-1 border rounded flex-shrink-0 ${overlayInfo.cls}`}>
+              <span className={`text-[9px] px-1.5 py-0.5 font-semibold flex items-center gap-1 border rounded-sm flex-shrink-0 ${overlayInfo.cls}`}>
                 <Shield className={`w-2.5 h-2.5 ${video.overlay_status === 'processing' || video.overlay_status === 'pending' ? 'animate-spin' : ''}`} />
                 {overlayInfo.label}
               </span>

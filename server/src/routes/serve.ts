@@ -255,6 +255,18 @@ router.put('/reorder', requireRole(...WRITE_ROLES), (req: Request, res: Response
       return;
     }
 
+    // Validate each reorder item has integer id and sort_order
+    for (const item of order) {
+      if (!item || typeof item.id !== 'number' || !Number.isInteger(item.id) || item.id < 1) {
+        res.status(400).json({ error: 'Each order item must have a positive integer id' });
+        return;
+      }
+      if (typeof item.sort_order !== 'number' || !Number.isInteger(item.sort_order) || item.sort_order < 0) {
+        res.status(400).json({ error: 'Each order item must have a non-negative integer sort_order' });
+        return;
+      }
+    }
+
     const stmt = db.prepare('UPDATE serve_queue SET sort_order = ?, updated_at = ? WHERE id = ?');
     const now = localNow();
 
@@ -331,6 +343,28 @@ router.post('/', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
 
     if (!recipient_name || !recipient_name.trim()) {
       return res.status(400).json({ error: 'recipient_name is required' });
+    }
+    if (recipient_name.length > 500) {
+      return res.status(400).json({ error: 'recipient_name must be 500 characters or less' });
+    }
+
+    // Validate priority if provided
+    const VALID_PRIORITIES = ['normal', 'urgent', 'rush', 'low'];
+    if (priority !== undefined && !VALID_PRIORITIES.includes(priority)) {
+      return res.status(400).json({ error: `Invalid priority. Must be one of: ${VALID_PRIORITIES.join(', ')}` });
+    }
+
+    // Validate serve_date format if provided
+    if (serve_date && !/^\d{4}-\d{2}-\d{2}$/.test(serve_date)) {
+      return res.status(400).json({ error: 'serve_date must be in YYYY-MM-DD format' });
+    }
+
+    // Validate max_attempts is a reasonable positive integer
+    if (max_attempts !== undefined) {
+      const ma = parseInt(max_attempts, 10);
+      if (isNaN(ma) || ma < 1 || ma > 99) {
+        return res.status(400).json({ error: 'max_attempts must be between 1 and 99' });
+      }
     }
 
     // Validate GPS coordinates if provided
@@ -521,6 +555,18 @@ router.post('/:id/attempt', validateParamId, requireRole(...WRITE_ROLES), (req: 
       result, gps_lat, gps_lng, notes, method, recipient_response,
       photo_url, signature_url, mileage,
     } = req.body;
+
+    // Validate result enum
+    const VALID_RESULTS = ['served', 'no_answer', 'refused', 'posted', 'left_with', 'other', 'unable_to_locate'];
+    if (result && !VALID_RESULTS.includes(result)) {
+      return res.status(400).json({ error: `Invalid result. Must be one of: ${VALID_RESULTS.join(', ')}` });
+    }
+
+    // Validate method enum
+    const VALID_METHODS = ['personal', 'substitute', 'posting', 'abode', 'mail', 'other'];
+    if (method && !VALID_METHODS.includes(method)) {
+      return res.status(400).json({ error: `Invalid method. Must be one of: ${VALID_METHODS.join(', ')}` });
+    }
 
     // Validate GPS coordinates for serve attempt location tracking
     if (gps_lat !== undefined && gps_lat !== null) {

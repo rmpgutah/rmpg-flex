@@ -127,6 +127,12 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
 // ─── GET /api/citations/person/:personId ──────────────────
 router.get('/person/:personId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
+    // Validate personId as positive integer
+    const personId = parseInt(String(req.params.personId), 10);
+    if (isNaN(personId) || personId < 1) {
+      res.status(400).json({ error: 'Invalid personId parameter' });
+      return;
+    }
     const db = getDb();
 
     const citations = db.prepare(`
@@ -280,6 +286,19 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispa
     if (!violation_date) {
       res.status(400).json({ error: 'violation_date is required' });
       return;
+    }
+    // Validate date format
+    if (typeof violation_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(violation_date)) {
+      res.status(400).json({ error: 'violation_date must be in YYYY-MM-DD format' });
+      return;
+    }
+    // Validate fine_amount if provided
+    if (fine_amount !== undefined && fine_amount !== null) {
+      const fa = parseFloat(String(fine_amount));
+      if (isNaN(fa) || fa < 0) {
+        res.status(400).json({ error: 'fine_amount must be a non-negative number' });
+        return;
+      }
     }
 
     // Validate enums

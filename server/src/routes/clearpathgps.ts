@@ -93,6 +93,20 @@ router.put('/credentials', requireRole('admin'), (req: Request, res: Response) =
       return;
     }
 
+    // Validate credential field types and lengths
+    if (typeof email !== 'string' || email.length > 300) {
+      res.status(400).json({ error: 'email must be a string of 300 characters or less' });
+      return;
+    }
+    if (typeof password !== 'string' || password.length > 500) {
+      res.status(400).json({ error: 'Invalid password length' });
+      return;
+    }
+    if (typeof account_id !== 'string' || account_id.length > 200) {
+      res.status(400).json({ error: 'account_id must be a string of 200 characters or less' });
+      return;
+    }
+
     setConfigValue(CONFIG_KEYS.email, email, true);
     setConfigValue(CONFIG_KEYS.password, password, true);
     setConfigValue(CONFIG_KEYS.accountId, account_id, true);
@@ -245,6 +259,25 @@ router.post('/mappings', requireRole('admin'), (req: Request, res: Response) => 
       return;
     }
 
+    // Validate field types
+    if (typeof cpg_device_id !== 'string' || cpg_device_id.length > 200) {
+      res.status(400).json({ error: 'cpg_device_id must be a string of 200 characters or less' });
+      return;
+    }
+    const parsedUnitId = parseInt(String(unit_id), 10);
+    if (isNaN(parsedUnitId) || parsedUnitId <= 0) {
+      res.status(400).json({ error: 'unit_id must be a positive integer' });
+      return;
+    }
+    if (cpg_display_name && (typeof cpg_display_name !== 'string' || cpg_display_name.length > 200)) {
+      res.status(400).json({ error: 'cpg_display_name must be 200 characters or less' });
+      return;
+    }
+    if (cpg_serial_number && (typeof cpg_serial_number !== 'string' || cpg_serial_number.length > 100)) {
+      res.status(400).json({ error: 'cpg_serial_number must be 100 characters or less' });
+      return;
+    }
+
     const db = getDb();
     const now = localNow();
 
@@ -376,6 +409,22 @@ router.get('/history/:deviceId', requireRole('admin', 'manager'), async (req: Re
       return;
     }
 
+    // Validate deviceId format
+    if (typeof deviceId !== 'string' || deviceId.length > 200 || deviceId.length < 1) {
+      res.status(400).json({ error: 'Invalid deviceId' });
+      return;
+    }
+
+    // Validate date format (ISO-like)
+    if (!/^\d{4}-\d{2}-\d{2}/.test(from) || !/^\d{4}-\d{2}-\d{2}/.test(to)) {
+      res.status(400).json({ error: 'from and to must be ISO date strings (YYYY-MM-DD...)' });
+      return;
+    }
+    if (from.length > 30 || to.length > 30) {
+      res.status(400).json({ error: 'Date parameters too long' });
+      return;
+    }
+
     const events = await getDeviceHistory(deviceId, String(from), String(to));
     res.json({ events, count: events.length });
   } catch (error: any) {
@@ -403,18 +452,22 @@ router.get('/dashcam-events', requireRole('admin', 'manager', 'supervisor', 'off
     const params: any[] = [];
 
     if (from) {
+      if (typeof from !== 'string' || from.length > 30) { res.status(400).json({ error: 'Invalid from parameter' }); return; }
       query += ' AND d.event_timestamp >= ?';
       params.push(from);
     }
     if (to) {
+      if (typeof to !== 'string' || to.length > 30) { res.status(400).json({ error: 'Invalid to parameter' }); return; }
       query += ' AND d.event_timestamp <= ?';
       params.push(to);
     }
     if (device_id) {
+      if (typeof device_id !== 'string' || device_id.length > 200) { res.status(400).json({ error: 'Invalid device_id' }); return; }
       query += ' AND d.cpg_device_id = ?';
       params.push(device_id);
     }
     if (event_type) {
+      if (typeof event_type !== 'string' || event_type.length > 100) { res.status(400).json({ error: 'Invalid event_type' }); return; }
       query += ' AND d.event_type = ?';
       params.push(event_type);
     }

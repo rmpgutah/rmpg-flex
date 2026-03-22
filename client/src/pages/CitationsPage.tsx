@@ -1076,24 +1076,24 @@ export default function CitationsPage() {
             {/* Section / Zone / Beat — cascading */}
             <div className="grid grid-cols-3 gap-2">
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Section</label>
-                <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
+                <label className="block text-xs text-rmpg-400 mb-1">Section</label>
+                <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-sm text-white"
                   value={form.section_id || ''} onChange={(e) => { updateField('section_id', e.target.value); updateField('zone_id', ''); updateField('beat_id', ''); }}>
                   <option value="">—</option>
                   {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Zone</label>
-                <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
+                <label className="block text-xs text-rmpg-400 mb-1">Zone</label>
+                <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-sm text-white"
                   value={form.zone_id || ''} onChange={(e) => { updateField('zone_id', e.target.value); updateField('beat_id', ''); }}>
                   <option value="">—</option>
                   {zonesForSection(form.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Beat</label>
-                <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
+                <label className="block text-xs text-rmpg-400 mb-1">Beat</label>
+                <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-sm text-white"
                   value={form.beat_id || ''} onChange={(e) => updateField('beat_id', e.target.value)}>
                   <option value="">—</option>
                   {beatsForZone(form.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(form.zone_id, b)}</option>)}

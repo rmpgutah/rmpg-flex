@@ -199,7 +199,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
   return (
     <div className="space-y-4">
       {error && (
-        <div className="flex items-center gap-2 px-3 py-2 text-xs rounded bg-red-500/10 border border-red-500/30 text-red-400">
+        <div className="flex items-center gap-2 px-3 py-2 text-xs rounded-sm bg-red-500/10 border border-red-500/30 text-red-400">
           <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
           {error}
           <button onClick={() => setError(null)} className="ml-auto text-red-400/60 hover:text-red-400">&times;</button>
@@ -266,7 +266,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
             target="_blank" rel="noopener" className="text-brand-400 hover:underline">
             Azure Portal <ExternalLink className="w-2.5 h-2.5 inline" />
           </a>
-          {' '}with redirect URI: <code className="text-rmpg-300 bg-surface-sunken px-1 rounded">https://rmpgutah.us/api/email/oauth/callback</code>
+          {' '}with redirect URI: <code className="text-rmpg-300 bg-surface-sunken px-1 rounded-sm">https://rmpgutah.us/api/email/oauth/callback</code>
         </p>
 
         <div className="grid grid-cols-1 gap-2">

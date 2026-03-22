@@ -669,7 +669,7 @@ const PatrolPage: React.FC = () => {
                               </button>
                               <button
                                 onClick={() => handleArchiveCheckpoint(checkpoint.id)}
-                                className="text-slate-400 hover:text-slate-300"
+                                className="text-rmpg-400 hover:text-rmpg-300"
                                 title="Archive"
                               >
                                 <Archive className="w-4 h-4" />

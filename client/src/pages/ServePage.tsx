@@ -499,7 +499,7 @@ export default function ServePage() {
   return (
     <div className="flex flex-col h-full bg-surface-base">
       {fetchError && (
-        <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded text-red-400 text-xs flex items-center gap-2">
+        <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
           <span>⚠ {fetchError}</span>
           <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
         </div>
@@ -518,7 +518,7 @@ export default function ServePage() {
             type="date"
             value={selectedDate}
             onChange={e => setSelectedDate(e.target.value)}
-            className="px-2 py-1 text-xs bg-[#141e2b] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+            className="px-2 py-1 text-xs bg-[#141e2b] border border-[#1e3048] rounded-sm text-white focus:border-brand-500 focus:outline-none"
           />
         </div>
 
@@ -526,7 +526,7 @@ export default function ServePage() {
         <div className="flex items-center gap-1.5">
           <button
             onClick={() => setRoutePlannerOpen(true)}
-            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-blue-400 bg-blue-900/20 hover:bg-blue-900/40 border border-blue-700/40 rounded transition-colors"
+            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-blue-400 bg-blue-900/20 hover:bg-blue-900/40 border border-blue-700/40 rounded-sm transition-colors"
             title="Plan Route"
           >
             <Route size={12} />
@@ -535,7 +535,7 @@ export default function ServePage() {
           <button
             onClick={handleSyncFromSM}
             disabled={syncing}
-            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-cyan-400 bg-cyan-900/20 hover:bg-cyan-900/40 border border-cyan-700/40 rounded transition-colors disabled:opacity-40"
+            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-cyan-400 bg-cyan-900/20 hover:bg-cyan-900/40 border border-cyan-700/40 rounded-sm transition-colors disabled:opacity-40"
             title="Sync from ServeManager"
           >
             {syncing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
@@ -543,7 +543,7 @@ export default function ServePage() {
           </button>
           <button
             onClick={openCreate}
-            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-green-400 bg-green-900/20 hover:bg-green-900/40 border border-green-700/40 rounded transition-colors"
+            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-green-400 bg-green-900/20 hover:bg-green-900/40 border border-green-700/40 rounded-sm transition-colors"
             title="Add Job"
           >
             <Plus size={12} />
@@ -585,7 +585,7 @@ export default function ServePage() {
                 <button
                   key={f.value}
                   onClick={() => setStatusFilter(f.value)}
-                  className={`px-2.5 py-1 text-[11px] font-medium rounded border transition-colors whitespace-nowrap ${
+                  className={`px-2.5 py-1 text-[11px] font-medium rounded-sm border transition-colors whitespace-nowrap ${
                     statusFilter === f.value
                       ? 'text-white bg-brand-700 border-brand-500'
                       : 'text-rmpg-400 bg-transparent border-rmpg-600 hover:border-rmpg-400'
@@ -661,7 +661,7 @@ export default function ServePage() {
             {mapReady && jobs.some(j => j.status === 'pending' || j.status === 'in_progress') && (
               <button
                 onClick={handleNavigateToNext}
-                className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg shadow-lg border border-blue-500 transition-colors"
+                className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-sm shadow-lg border border-blue-500 transition-colors"
               >
                 <Navigation size={16} />
                 Navigate to Next
@@ -707,7 +707,7 @@ export default function ServePage() {
 
             {/* Mileage / efficiency */}
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
-              <div className="px-4 py-3 bg-[#141e2b] border border-[#1e3048] rounded">
+              <div className="px-4 py-3 bg-[#141e2b] border border-[#1e3048] rounded-sm">
                 <div className="text-[10px] text-rmpg-400 uppercase font-semibold mb-1">Mileage Today</div>
                 <div className="text-lg font-bold text-white font-mono">
                   {routeData?.totalDistance
@@ -723,7 +723,7 @@ export default function ServePage() {
                   </div>
                 )}
               </div>
-              <div className="px-4 py-3 bg-[#141e2b] border border-[#1e3048] rounded">
+              <div className="px-4 py-3 bg-[#141e2b] border border-[#1e3048] rounded-sm">
                 <div className="text-[10px] text-rmpg-400 uppercase font-semibold mb-1">Route Efficiency</div>
                 <div className="text-lg font-bold text-white font-mono">
                   {routeData && stats?.planned_mileage && stats.planned_mileage > 0
@@ -798,7 +798,7 @@ export default function ServePage() {
               required
               value={formData.recipient_name}
               onChange={e => handleFormChange('recipient_name', e.target.value)}
-              className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+              className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-sm text-white focus:border-brand-500 focus:outline-none"
               placeholder="Full name"
             />
           </div>
@@ -811,7 +811,7 @@ export default function ServePage() {
                 type="text"
                 value={formData.recipient_address}
                 onChange={e => handleFormChange('recipient_address', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-sm text-white focus:border-brand-500 focus:outline-none"
                 placeholder="Street address"
               />
             </div>
@@ -821,7 +821,7 @@ export default function ServePage() {
                 type="text"
                 value={formData.recipient_city}
                 onChange={e => handleFormChange('recipient_city', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-sm text-white focus:border-brand-500 focus:outline-none"
               />
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -831,7 +831,7 @@ export default function ServePage() {
                   type="text"
                   value={formData.recipient_state}
                   onChange={e => handleFormChange('recipient_state', e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-sm text-white focus:border-brand-500 focus:outline-none"
                   maxLength={2}
                 />
               </div>
@@ -841,7 +841,7 @@ export default function ServePage() {
                   type="text"
                   value={formData.recipient_zip}
                   onChange={e => handleFormChange('recipient_zip', e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-sm text-white focus:border-brand-500 focus:outline-none"
                   maxLength={10}
                 />
               </div>
@@ -855,7 +855,7 @@ export default function ServePage() {
               <select
                 value={formData.document_type}
                 onChange={e => handleFormChange('document_type', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-sm text-white focus:border-brand-500 focus:outline-none"
               >
                 {DOCUMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
@@ -865,7 +865,7 @@ export default function ServePage() {
               <select
                 value={formData.priority}
                 onChange={e => handleFormChange('priority', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-sm text-white focus:border-brand-500 focus:outline-none"
               >
                 <option value="low">Low</option>
                 <option value="normal">Normal</option>
@@ -882,7 +882,7 @@ export default function ServePage() {
               <select
                 value={formData.time_window}
                 onChange={e => handleFormChange('time_window', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-sm text-white focus:border-brand-500 focus:outline-none"
               >
                 <option value="morning">Morning</option>
                 <option value="afternoon">Afternoon</option>
@@ -896,7 +896,7 @@ export default function ServePage() {
                 type="date"
                 value={formData.deadline}
                 onChange={e => handleFormChange('deadline', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-sm text-white focus:border-brand-500 focus:outline-none"
               />
             </div>
           </div>
@@ -909,7 +909,7 @@ export default function ServePage() {
                 type="text"
                 value={formData.case_number}
                 onChange={e => handleFormChange('case_number', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-sm text-white focus:border-brand-500 focus:outline-none"
               />
             </div>
             <div>
@@ -918,7 +918,7 @@ export default function ServePage() {
                 type="text"
                 value={formData.court_name}
                 onChange={e => handleFormChange('court_name', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-sm text-white focus:border-brand-500 focus:outline-none"
               />
             </div>
             <div>
@@ -927,7 +927,7 @@ export default function ServePage() {
                 type="text"
                 value={formData.jurisdiction}
                 onChange={e => handleFormChange('jurisdiction', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-sm text-white focus:border-brand-500 focus:outline-none"
               />
             </div>
           </div>
@@ -940,7 +940,7 @@ export default function ServePage() {
                 type="text"
                 value={formData.client_name}
                 onChange={e => handleFormChange('client_name', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-sm text-white focus:border-brand-500 focus:outline-none"
               />
             </div>
             <div>
@@ -949,7 +949,7 @@ export default function ServePage() {
                 type="text"
                 value={formData.attorney_name}
                 onChange={e => handleFormChange('attorney_name', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-sm text-white focus:border-brand-500 focus:outline-none"
               />
             </div>
           </div>
@@ -964,7 +964,7 @@ export default function ServePage() {
                 max={10}
                 value={formData.max_attempts}
                 onChange={e => handleFormChange('max_attempts', parseInt(e.target.value, 10) || 3)}
-                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-sm text-white focus:border-brand-500 focus:outline-none"
               />
             </div>
           </div>
@@ -976,7 +976,7 @@ export default function ServePage() {
               value={formData.service_instructions}
               onChange={e => handleFormChange('service_instructions', e.target.value)}
               rows={2}
-              className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none resize-none"
+              className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-sm text-white focus:border-brand-500 focus:outline-none resize-none"
               placeholder="Special instructions for service..."
             />
           </div>
@@ -986,7 +986,7 @@ export default function ServePage() {
               value={formData.notes}
               onChange={e => handleFormChange('notes', e.target.value)}
               rows={2}
-              className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none resize-none"
+              className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-sm text-white focus:border-brand-500 focus:outline-none resize-none"
               placeholder="Internal notes..."
             />
           </div>
@@ -1012,7 +1012,7 @@ function StatCard({
   border: string;
 }) {
   return (
-    <div className={`px-4 py-3 rounded border ${bg} ${border}`}>
+    <div className={`px-4 py-3 rounded-sm border ${bg} ${border}`}>
       <div className="text-[10px] text-rmpg-400 uppercase font-semibold mb-1">{label}</div>
       <div className={`text-2xl font-bold font-mono ${color}`}>{value}</div>
     </div>

@@ -28,8 +28,7 @@ declare global {
   }
 }
 
-// Shared verify options — validates issuer/audience if present in the token,
-// but does not reject tokens missing these claims (backward-compatible during rollout)
+// Shared verify options — strictly validates issuer/audience claims
 const JWT_VERIFY_OPTIONS: VerifyOptions = {
   issuer: JWT_ISSUER,
   audience: JWT_AUDIENCE,
@@ -45,19 +44,7 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
   }
 
   try {
-    // Try strict verification first (with issuer/audience)
-    let decoded: JwtPayload;
-    try {
-      decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
-    } catch (strictErr: any) {
-      // Legacy token backward compat — log for deprecation tracking (enforce after 2026-04-15)
-      if (strictErr.message?.includes('jwt issuer invalid') || strictErr.message?.includes('jwt audience invalid')) {
-        console.warn('[AUTH] Legacy token without iss/aud accepted — enforce strict validation after 2026-04-15');
-        decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
-      } else {
-        throw strictErr;
-      }
-    }
+    const decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
 
     // Reject refresh tokens and MFA-pending tokens used as access tokens
     if (decoded.type === 'refresh' || decoded.type === 'mfa_pending') {
@@ -135,6 +122,12 @@ export function requireRole(...roles: string[]) {
       return;
     }
 
+    // Validate role field exists and is a string to prevent type confusion
+    if (typeof req.user.role !== 'string' || !req.user.role) {
+      res.status(403).json({ error: 'Invalid user role' });
+      return;
+    }
+
     // Admin role always has full access to every endpoint
     if (req.user.role === 'admin') {
       next();
@@ -177,16 +170,7 @@ export function generateRefreshToken(payload: Omit<JwtPayload, 'type'>): string 
 }
 
 export function verifyRefreshToken(token: string): JwtPayload {
-  let decoded: JwtPayload;
-  try {
-    decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
-  } catch (err: any) {
-    if (err.message?.includes('jwt issuer invalid') || err.message?.includes('jwt audience invalid')) {
-      decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
-    } else {
-      throw err;
-    }
-  }
+  const decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
   if (decoded.type !== 'refresh') {
     throw new Error('Invalid token type');
   }
@@ -213,16 +197,7 @@ export function authenticateTempToken(req: Request, res: Response, next: NextFun
   }
 
   try {
-    let decoded: JwtPayload;
-    try {
-      decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
-    } catch (strictErr: any) {
-      if (strictErr.message?.includes('jwt issuer invalid') || strictErr.message?.includes('jwt audience invalid')) {
-        decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
-      } else {
-        throw strictErr;
-      }
-    }
+    const decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
 
     if (decoded.type !== 'mfa_pending') {
       res.status(403).json({ error: 'Invalid token type — MFA token required' });
@@ -254,17 +229,7 @@ export function authenticateAnyToken(req: Request, res: Response, next: NextFunc
   }
 
   try {
-    let decoded: JwtPayload;
-    try {
-      decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
-    } catch (strictErr: any) {
-      if (strictErr.message?.includes('jwt issuer invalid') || strictErr.message?.includes('jwt audience invalid')) {
-        console.warn('[AUTH] Legacy token without iss/aud in authenticateAnyToken — enforce after 2026-04-15');
-        decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
-      } else {
-        throw strictErr;
-      }
-    }
+    const decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
 
     // Block refresh tokens — they should never be used as access tokens
     if (decoded.type === 'refresh') {

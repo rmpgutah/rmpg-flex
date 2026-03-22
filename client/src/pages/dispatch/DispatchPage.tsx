@@ -1792,7 +1792,7 @@ export default function DispatchPage() {
                 {selectedCall.status === 'pending' && (
                   <button
                     onClick={() => handleStatusChange(selectedCall.id, 'dispatched')}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded"
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
                     style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0' }}
                   >
                     <Send style={{ width: 16, height: 16 }} /> Dispatch
@@ -1801,7 +1801,7 @@ export default function DispatchPage() {
                 {selectedCall.status === 'dispatched' && (
                   <button
                     onClick={() => handleStatusChange(selectedCall.id, 'enroute')}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded"
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
                     style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0' }}
                   >
                     <Navigation style={{ width: 16, height: 16 }} /> En Route
@@ -1810,7 +1810,7 @@ export default function DispatchPage() {
                 {selectedCall.status === 'enroute' && (
                   <button
                     onClick={() => handleStatusChange(selectedCall.id, 'onscene')}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded"
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
                     style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0' }}
                   >
                     <Eye style={{ width: 16, height: 16 }} /> On Scene
@@ -1820,21 +1820,21 @@ export default function DispatchPage() {
                   <>
                     <button
                       onClick={() => handleClearWithDisposition(selectedCall.id)}
-                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded"
+                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
                       style={{ minHeight: 48, minWidth: 80, background: '#16a34a20', border: '1px solid #16a34a50', color: '#4ade80' }}
                     >
                       <CheckCircle style={{ width: 16, height: 16 }} /> Clear
                     </button>
                     <button
                       onClick={() => handleHoldCall(selectedCall.id)}
-                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded"
+                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
                       style={{ minHeight: 48, minWidth: 80, background: '#f59e0b20', border: '1px solid #f59e0b50', color: '#f59e0b' }}
                     >
                       ⏸ Hold
                     </button>
                     <button
                       onClick={() => handleStatusChange(selectedCall.id, 'cancelled')}
-                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded"
+                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
                       style={{ minHeight: 48, minWidth: 80, background: '#dc262620', border: '1px solid #dc262650', color: '#ef7a7a' }}
                     >
                       <XCircle style={{ width: 16, height: 16 }} /> Cancel
@@ -1844,7 +1844,7 @@ export default function DispatchPage() {
                 {selectedCall.status === 'on_hold' && (
                   <button
                     onClick={() => handleResumeCall(selectedCall.id)}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded"
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
                     style={{ minHeight: 48, minWidth: 80, background: '#f59e0b', color: '#000' }}
                   >
                     ▶ Resume
@@ -1854,7 +1854,7 @@ export default function DispatchPage() {
                   <>
                     <button
                       onClick={() => handleStatusChange(selectedCall.id, 'closed')}
-                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded"
+                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
                       style={{ minHeight: 48, minWidth: 80, background: '#374151', border: '1px solid #4b5563', color: '#d1d5db' }}
                     >
                       Close
@@ -1862,7 +1862,7 @@ export default function DispatchPage() {
                     <button
                       onClick={handleGenerateIncident}
                       disabled={isGenerating}
-                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded"
+                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
                       style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0' }}
                     >
                       {isGenerating ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" /> : <FileText style={{ width: 16, height: 16 }} />}
@@ -1874,7 +1874,7 @@ export default function DispatchPage() {
                   <button
                     onClick={handleGenerateIncident}
                     disabled={isGenerating}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded"
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
                     style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0' }}
                   >
                     {isGenerating ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" /> : <FileText style={{ width: 16, height: 16 }} />}
@@ -1884,7 +1884,7 @@ export default function DispatchPage() {
                 {['dispatched', 'enroute', 'onscene', 'cleared', 'closed'].includes(selectedCall.status) && (
                   <button
                     onClick={() => handleRevertStatus(selectedCall.id)}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded"
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
                     style={{ minHeight: 48, minWidth: 80, background: '#f59e0b20', border: '1px solid #f59e0b50', color: '#f59e0b' }}
                   >
                     <Undo2 style={{ width: 16, height: 16 }} /> Back
@@ -1893,7 +1893,7 @@ export default function DispatchPage() {
                 {selectedCall.status !== 'archived' && (
                   <button
                     onClick={() => handleArchive(selectedCall.id)}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded"
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
                     style={{ minHeight: 48, minWidth: 80, background: '#37415120', border: '1px solid #4b556350', color: '#9ca3af' }}
                   >
                     <Archive style={{ width: 16, height: 16 }} /> Archive
@@ -1902,7 +1902,7 @@ export default function DispatchPage() {
                 {selectedCall.status === 'archived' && (
                   <button
                     onClick={() => handleUnarchive(selectedCall.id)}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded"
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
                     style={{ minHeight: 48, minWidth: 80, background: '#37415120', border: '1px solid #4b556350', color: '#9ca3af' }}
                   >
                     <RotateCcw style={{ width: 16, height: 16 }} /> Restore
@@ -2012,7 +2012,7 @@ export default function DispatchPage() {
                   <div className="flex gap-2">
                     <input
                       type="text"
-                      className="flex-1 bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-200 px-3 rounded"
+                      className="flex-1 bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-200 px-3 rounded-sm"
                       style={{ minHeight: 44 }}
                       placeholder="Add note…"
                       maxLength={2000}
@@ -2023,7 +2023,7 @@ export default function DispatchPage() {
                     <button
                       onClick={handleAddNote}
                       disabled={!newNote.trim()}
-                      className="flex items-center justify-center px-4 py-3 text-xs font-bold text-white rounded"
+                      className="flex items-center justify-center px-4 py-3 text-xs font-bold text-white rounded-sm"
                       style={{ minHeight: 44, minWidth: 56, background: !newNote.trim() ? '#374151' : '#1a5a9e', border: '1px solid #2a6ab0' }}
                     >
                       <Send style={{ width: 16, height: 16 }} />
@@ -2037,7 +2037,7 @@ export default function DispatchPage() {
                     <div className="field-label mb-2 flex items-center gap-2">
                       PSO Details
                       {selectedCall.pso_attempt_number && selectedCall.pso_attempt_number > 1 && (
-                        <span className="px-1.5 py-0.5 text-[9px] font-bold rounded" style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24' }}>
+                        <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-sm" style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24' }}>
                           VISIT #{selectedCall.pso_attempt_number}
                         </span>
                       )}
@@ -2064,7 +2064,7 @@ export default function DispatchPage() {
                               <span className="text-[10px] font-mono text-cyan-400">
                                 {serveLink.attempt_count}/{serveLink.max_attempts} attempts
                               </span>
-                              <span className="text-[10px] font-mono px-1 rounded" style={{
+                              <span className="text-[10px] font-mono px-1 rounded-sm" style={{
                                 background: serveLink.status === 'served' ? '#22c55e20' : serveLink.status === 'failed' ? '#dc262620' : '#f59e0b20',
                                 color: serveLink.status === 'served' ? '#4ade80' : serveLink.status === 'failed' ? '#f87171' : '#fbbf24',
                               }}>
@@ -2073,14 +2073,14 @@ export default function DispatchPage() {
                             </div>
                             <button
                               className="text-[10px] text-blue-400 hover:text-blue-300 underline"
-                              onClick={() => window.open('/serve', '_blank', 'noopener,noreferrer')}
+                              onClick={() => navigate('/serve')}
                             >
                               View in Process Server
                             </button>
                           </div>
                         ) : (
                           <button
-                            className="w-full py-2 px-3 text-xs font-semibold rounded flex items-center justify-center gap-2 transition-colors"
+                            className="w-full py-2 px-3 text-xs font-semibold rounded-sm flex items-center justify-center gap-2 transition-colors"
                             style={{
                               background: sendingToServe ? '#374151' : '#7c3aed20',
                               border: '1px solid #7c3aed50',
@@ -2118,12 +2118,12 @@ export default function DispatchPage() {
                         <div className="field-label mb-1.5">Visit History</div>
                         <div className="space-y-1.5">
                           {selectedCall.visit_history.map((visit) => (
-                            <div key={visit.id} className="bg-rmpg-800/60 border border-rmpg-600/50 rounded px-2 py-1.5 text-[10px]">
+                            <div key={visit.id} className="bg-rmpg-800/60 border border-rmpg-600/50 rounded-sm px-2 py-1.5 text-[10px]">
                               <div className="flex items-center gap-2 mb-0.5">
                                 <span className="font-bold text-amber-300">VISIT #{visit.visit_number}</span>
                                 <span className="text-rmpg-300">{(visit.status || '').toUpperCase()}</span>
                                 {visit.time_window && (
-                                  <span className="px-1 rounded text-[8px] font-mono" style={{ background: '#1a5a9e20', border: '1px solid #1a5a9e40', color: '#6ba3d4' }}>
+                                  <span className="px-1 rounded-sm text-[8px] font-mono" style={{ background: '#1a5a9e20', border: '1px solid #1a5a9e40', color: '#6ba3d4' }}>
                                     {visit.time_window === 'early_morning' ? '6-9AM' : visit.time_window === 'daytime' ? '9AM-6PM' : '6-9PM'}
                                     {visit.is_weekend ? ' (wknd)' : ''}
                                   </span>
@@ -2152,7 +2152,7 @@ export default function DispatchPage() {
                         <div className="mt-3 pt-2 border-t border-rmpg-600">
                           <div className="field-label mb-1.5 flex items-center gap-2">
                             Service Windows
-                            <span className="text-[9px] font-mono px-1 rounded" style={{
+                            <span className="text-[9px] font-mono px-1 rounded-sm" style={{
                               background: allMet ? '#22c55e20' : '#f59e0b20',
                               border: `1px solid ${allMet ? '#22c55e40' : '#f59e0b40'}`,
                               color: allMet ? '#4ade80' : '#fbbf24',
@@ -2167,7 +2167,7 @@ export default function DispatchPage() {
                               { key: 'evening', label: '6PM – 9PM', met: windows.evening },
                               { key: 'weekend', label: 'Weekend', met: windows.weekend },
                             ] as const).map(({ key, label, met }) => (
-                              <div key={key} className="flex items-center gap-1.5 text-[10px] py-0.5 px-1.5 rounded" style={{
+                              <div key={key} className="flex items-center gap-1.5 text-[10px] py-0.5 px-1.5 rounded-sm" style={{
                                 background: met ? '#22c55e10' : '#dc262610',
                                 border: `1px solid ${met ? '#22c55e30' : '#dc262630'}`,
                               }}>
@@ -2193,14 +2193,14 @@ export default function DispatchPage() {
                       const hoursLeft = Math.max(0, 72 - elapsed / 3600000);
                       if (elapsed >= 72 * 3600000) {
                         return (
-                          <div className="mt-2 p-2 rounded text-center text-xs font-bold animate-pulse" style={{ background: '#dc262630', border: '1px solid #dc262650', color: '#f87171' }}>
+                          <div className="mt-2 p-2 rounded-sm text-center text-xs font-bold animate-pulse" style={{ background: '#dc262630', border: '1px solid #dc262650', color: '#f87171' }}>
                             72-HOUR DEADLINE PASSED — RE-DISPATCH REQUIRED
                           </div>
                         );
                       }
                       if (elapsed >= 48 * 3600000) {
                         return (
-                          <div className="mt-2 p-2 rounded text-center text-xs font-bold" style={{ background: '#f59e0b20', border: '1px solid #f59e0b40', color: '#fbbf24' }}>
+                          <div className="mt-2 p-2 rounded-sm text-center text-xs font-bold" style={{ background: '#f59e0b20', border: '1px solid #f59e0b40', color: '#fbbf24' }}>
                             {Math.floor(hoursLeft)} HOURS UNTIL 72-HR DEADLINE
                           </div>
                         );
@@ -2211,7 +2211,7 @@ export default function DispatchPage() {
                     {/* Schedule Return Visit button (mobile) */}
                     {['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
                       <button
-                        className="w-full mt-3 py-2.5 px-4 text-sm font-semibold rounded"
+                        className="w-full mt-3 py-2.5 px-4 text-sm font-semibold rounded-sm"
                         style={{ background: '#d4a01730', border: '1px solid #d4a01760', color: '#d4a017' }}
                         onClick={async () => {
                           const attempt = (selectedCall.pso_attempt_number || 1) + 1;
@@ -2980,7 +2980,7 @@ export default function DispatchPage() {
                         )}
                         {selectedCall.archived_at && (
                           <div className="flex items-center gap-2 text-xs">
-                            <Archive className="w-3 h-3 text-slate-400" />
+                            <Archive className="w-3 h-3 text-rmpg-400" />
                             <span className="text-rmpg-300">Archived:</span>
                             <span className="text-white font-mono">{formatTime(selectedCall.archived_at)}</span>
                           </div>
@@ -3236,7 +3236,7 @@ export default function DispatchPage() {
                           {callPersons.length > 0 && (
                             <div className="flex flex-wrap gap-1 mb-1">
                               {callPersons.map((cp: any) => (
-                                <span key={cp.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-rmpg-700 border border-rmpg-500 rounded text-rmpg-200">
+                                <span key={cp.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-rmpg-700 border border-rmpg-500 rounded-sm text-rmpg-200">
                                   <span className="text-brand-gold-500 uppercase text-[7px] font-black">{(cp.role || '').replace('_', ' ')}</span>
                                   {cp.last_name}, {cp.first_name}
                                   <WarrantBadge flags={cp.flags} size="sm" />
@@ -3249,7 +3249,7 @@ export default function DispatchPage() {
                           <div className="relative" ref={personDropdownRef}>
                             <input type="text" className="input-dark text-xs" placeholder="Search person records to link..." value={editData.subject_description} onChange={(e) => { updateEditField('subject_description', e.target.value); searchPersons(e.target.value); }} onFocus={() => { if (personSearchResults.length > 0) setShowPersonDropdown(true); }} />
                             {showPersonDropdown && personSearchResults.length > 0 && (
-                              <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded shadow-lg">
+                              <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded-sm shadow-lg">
                                 {personSearchResults.map((p: any) => (
                                   <button key={p.id} className="w-full text-left px-2 py-1 text-[10px] text-rmpg-200 hover:bg-brand-500/20 border-b border-rmpg-700 last:border-0" onClick={() => {
                                     linkPersonToCall(selectedCall.id, p.id, linkPersonRole);
@@ -3287,7 +3287,7 @@ export default function DispatchPage() {
                           {callVehicles.length > 0 && (
                             <div className="flex flex-wrap gap-1 mb-1">
                               {callVehicles.map((cv: any) => (
-                                <span key={cv.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-rmpg-700 border border-rmpg-500 rounded text-rmpg-200">
+                                <span key={cv.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-rmpg-700 border border-rmpg-500 rounded-sm text-rmpg-200">
                                   <span className="text-brand-gold-500 uppercase text-[7px] font-black">{(cv.role || '').replace(/_/g, ' ')}</span>
                                   {[cv.color, cv.year, cv.make, cv.model].filter(Boolean).join(' ')}
                                   {cv.plate_number && <span className="text-brand-400 ml-0.5">PLT:{cv.plate_number}</span>}
@@ -3299,7 +3299,7 @@ export default function DispatchPage() {
                           <div className="relative" ref={vehicleDropdownRef}>
                             <input type="text" className="input-dark text-xs" placeholder="Search vehicle records to link..." value={editData.vehicle_description} onChange={(e) => { updateEditField('vehicle_description', e.target.value); searchVehicles(e.target.value); }} onFocus={() => { if (vehicleSearchResults.length > 0) setShowVehicleDropdown(true); }} />
                             {showVehicleDropdown && vehicleSearchResults.length > 0 && (
-                              <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded shadow-lg">
+                              <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded-sm shadow-lg">
                                 {vehicleSearchResults.map((v: any) => (
                                   <button key={v.id} className="w-full text-left px-2 py-1 text-[10px] text-rmpg-200 hover:bg-brand-500/20 border-b border-rmpg-700 last:border-0" onClick={() => {
                                     linkVehicleToCall(selectedCall.id, v.id, linkVehicleRole);
@@ -3351,8 +3351,8 @@ export default function DispatchPage() {
                           <div className="mt-2 space-y-1">
                             <span className="text-[9px] text-brand-gold-500 font-semibold uppercase">Linked Persons ({callPersons.length})</span>
                             {callPersons.map((cp: any) => (
-                              <div key={cp.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded text-[10px]">
-                                <span className="text-brand-gold-500 uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded">{(cp.role || '').replace(/_/g, ' ')}</span>
+                              <div key={cp.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded-sm text-[10px]">
+                                <span className="text-brand-gold-500 uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded-sm">{(cp.role || '').replace(/_/g, ' ')}</span>
                                 <span className="text-white font-semibold">{cp.last_name}, {cp.first_name}</span>
                                 <WarrantBadge flags={cp.flags} size="sm" />
                                 {cp.dob && <span className="text-rmpg-400">DOB: {cp.dob}</span>}
@@ -3367,8 +3367,8 @@ export default function DispatchPage() {
                           <div className="mt-2 space-y-1">
                             <span className="text-[9px] text-brand-gold-500 font-semibold uppercase">Linked Vehicles ({callVehicles.length})</span>
                             {callVehicles.map((cv: any) => (
-                              <div key={cv.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded text-[10px]">
-                                <span className="text-brand-gold-500 uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded">{(cv.role || '').replace(/_/g, ' ')}</span>
+                              <div key={cv.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded-sm text-[10px]">
+                                <span className="text-brand-gold-500 uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded-sm">{(cv.role || '').replace(/_/g, ' ')}</span>
                                 <span className="text-white font-semibold">{[cv.color, cv.year, cv.make, cv.model].filter(Boolean).join(' ')}</span>
                                 {cv.plate_number && <span className="text-brand-400">PLT: {cv.plate_number}{cv.plate_state ? `/${cv.plate_state}` : ''}</span>}
                                 {cv.stolen_status && cv.stolen_status !== 'none' && <span className="text-red-400 font-bold uppercase">STOLEN</span>}
@@ -3476,7 +3476,7 @@ export default function DispatchPage() {
                       <label className="field-label !flex items-center gap-1.5">
                         <Building2 className="w-3 h-3" /> PSO Client Request Details
                         {selectedCall.pso_attempt_number && selectedCall.pso_attempt_number > 1 && (
-                          <span className="ml-1.5 px-1.5 py-0.5 text-[8px] font-bold rounded" style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24' }}>
+                          <span className="ml-1.5 px-1.5 py-0.5 text-[8px] font-bold rounded-sm" style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24' }}>
                             {selectedCall.pso_attempt_number === 2 ? '2nd' : selectedCall.pso_attempt_number === 3 ? '3rd' : `${selectedCall.pso_attempt_number}th`} ATTEMPT
                           </span>
                         )}
@@ -3489,14 +3489,14 @@ export default function DispatchPage() {
                         const hoursLeft = Math.max(0, 72 - elapsed / (3600000));
                         if (elapsed >= 72 * 3600000) {
                           return (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded animate-pulse" style={{ background: '#dc262640', border: '1px solid #dc262660', color: '#f87171' }}>
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm animate-pulse" style={{ background: '#dc262640', border: '1px solid #dc262660', color: '#f87171' }}>
                               72HR OVERDUE — RE-DISPATCH REQUIRED
                             </span>
                           );
                         }
                         if (elapsed >= 48 * 3600000) {
                           return (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: '#f59e0b20', border: '1px solid #f59e0b40', color: '#fbbf24' }}>
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm" style={{ background: '#f59e0b20', border: '1px solid #f59e0b40', color: '#fbbf24' }}>
                               {Math.floor(hoursLeft)}HR UNTIL DEADLINE
                             </span>
                           );
@@ -3582,7 +3582,7 @@ export default function DispatchPage() {
                         <div className="mt-2 pt-2 border-t border-rmpg-700">
                           <div className="flex items-center gap-2 mb-1.5">
                             <span className="text-[9px] font-bold uppercase tracking-wider text-rmpg-400">Service Windows</span>
-                            <span className="text-[8px] font-mono px-1 rounded" style={{
+                            <span className="text-[8px] font-mono px-1 rounded-sm" style={{
                               background: allMet ? '#22c55e20' : '#f59e0b20',
                               border: `1px solid ${allMet ? '#22c55e40' : '#f59e0b40'}`,
                               color: allMet ? '#4ade80' : '#fbbf24',
@@ -3598,7 +3598,7 @@ export default function DispatchPage() {
                               { key: 'evening', label: '6PM – 9PM', met: windows.evening },
                               { key: 'weekend', label: 'Weekend', met: windows.weekend },
                             ] as const).map(({ key, label, met }) => (
-                              <span key={key} className="inline-flex items-center gap-1 text-[9px] py-0.5 px-2 rounded font-mono" style={{
+                              <span key={key} className="inline-flex items-center gap-1 text-[9px] py-0.5 px-2 rounded-sm font-mono" style={{
                                 background: met ? '#22c55e10' : '#dc262610',
                                 border: `1px solid ${met ? '#22c55e30' : '#dc262630'}`,
                                 color: met ? '#86efac' : '#fca5a5',
@@ -3623,7 +3623,7 @@ export default function DispatchPage() {
                     <label className="field-label !flex items-center gap-1.5 mb-2">
                       <FileText className="w-3 h-3" /> Process Service Details
                       {!isEditing && selectedCall.process_service_result && (
-                        <span className={`ml-1.5 px-1.5 py-0.5 text-[8px] font-bold rounded ${
+                        <span className={`ml-1.5 px-1.5 py-0.5 text-[8px] font-bold rounded-sm ${
                           selectedCall.process_service_result === 'served'
                             ? 'bg-green-900/40 border border-green-700/50 text-green-400'
                             : selectedCall.process_service_result === 'unable_to_serve'
@@ -3634,7 +3634,7 @@ export default function DispatchPage() {
                         </span>
                       )}
                       {!isEditing && (selectedCall.process_attempts || 0) > 0 && (
-                        <span className="ml-1 px-1.5 py-0.5 text-[8px] font-bold rounded bg-brand-900/40 border border-brand-600/40 text-brand-300">
+                        <span className="ml-1 px-1.5 py-0.5 text-[8px] font-bold rounded-sm bg-brand-900/40 border border-brand-600/40 text-brand-300">
                           {selectedCall.process_attempts} {selectedCall.process_attempts === 1 ? 'ATTEMPT' : 'ATTEMPTS'}
                         </span>
                       )}
@@ -3703,7 +3703,7 @@ export default function DispatchPage() {
                   <div className="border-t border-rmpg-600 pt-3 mb-3">
                     <label className="field-label !flex items-center gap-1.5 mb-2">
                       <Clock className="w-3 h-3" /> Visit History
-                      <span className="ml-1 px-1.5 py-0.5 text-[8px] font-bold rounded" style={{ background: '#3b82f620', border: '1px solid #3b82f640', color: '#60a5fa' }}>
+                      <span className="ml-1 px-1.5 py-0.5 text-[8px] font-bold rounded-sm" style={{ background: '#3b82f620', border: '1px solid #3b82f640', color: '#60a5fa' }}>
                         {selectedCall.visit_history.length} PRIOR {selectedCall.visit_history.length === 1 ? 'VISIT' : 'VISITS'}
                       </span>
                     </label>
@@ -3715,13 +3715,13 @@ export default function DispatchPage() {
                           ? (visit.ending_mileage - visit.starting_mileage).toFixed(1)
                           : null;
                         return (
-                          <div key={visit.id} className="bg-rmpg-800/60 border border-rmpg-600/50 rounded px-2.5 py-1.5">
+                          <div key={visit.id} className="bg-rmpg-800/60 border border-rmpg-600/50 rounded-sm px-2.5 py-1.5">
                             <div className="flex items-center justify-between mb-1">
                               <div className="flex items-center gap-2">
                                 <span className="text-[9px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1 py-0">
                                   VISIT #{visit.visit_number}
                                 </span>
-                                <span className={`text-[8px] font-bold px-1 py-0 rounded ${
+                                <span className={`text-[8px] font-bold px-1 py-0 rounded-sm ${
                                   visit.status === 'cleared' ? 'bg-green-900/40 border border-green-700/50 text-green-400'
                                   : visit.status === 'closed' ? 'bg-blue-900/40 border border-blue-700/50 text-blue-400'
                                   : visit.status === 'cancelled' ? 'bg-red-900/40 border border-red-700/50 text-red-400'
@@ -3793,7 +3793,7 @@ export default function DispatchPage() {
                         return (
                           <button
                             key={field}
-                            className="px-2 py-0.5 text-[9px] font-semibold rounded transition-colors border"
+                            className="px-2 py-0.5 text-[9px] font-semibold rounded-sm transition-colors border"
                             style={isOn
                               ? { background: onBg, borderColor: onBorder, color: onText }
                               : { background: 'var(--color-rmpg-700, #1a1a2e)', borderColor: 'var(--color-rmpg-600, #2a2a3e)', color: 'var(--color-rmpg-400, #888)' }
@@ -4166,7 +4166,7 @@ export default function DispatchPage() {
                 <span className={`text-xs font-bold px-2 py-0.5 border ${
                   quickTemplateData.priority === 'P1' ? 'border-red-500 text-red-400 bg-red-900/30' :
                   quickTemplateData.priority === 'P2' ? 'border-amber-500 text-amber-400 bg-amber-900/30' :
-                  quickTemplateData.priority === 'P4' ? 'border-gray-500 text-rmpg-300 bg-rmpg-700/30' :
+                  quickTemplateData.priority === 'P4' ? 'border-rmpg-500 text-rmpg-300 bg-rmpg-700/30' :
                   'border-brand-500 text-brand-400 bg-brand-900/30'
                 }`}>{quickTemplateData.priority}</span>
                 <span className="text-xs font-bold text-white">{quickTemplateData.name}</span>

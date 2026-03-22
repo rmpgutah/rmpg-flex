@@ -163,7 +163,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
       <div className="panel-beveled bg-surface-base p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded" style={{ background: 'rgba(59, 130, 246, 0.15)' }}>
+            <div className="p-2 rounded-sm" style={{ background: 'rgba(59, 130, 246, 0.15)' }}>
               <Search className="w-5 h-5 text-blue-400" />
             </div>
             <div>

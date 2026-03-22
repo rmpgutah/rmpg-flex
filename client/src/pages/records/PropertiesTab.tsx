@@ -270,7 +270,7 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
             `}
           >
             <div className="flex items-start gap-3">
-              <div className={`flex-shrink-0 w-9 h-9 rounded flex items-center justify-center border ${
+              <div className={`flex-shrink-0 w-9 h-9 rounded-sm flex items-center justify-center border ${
                 prop.is_active ? 'bg-brand-900/30 text-brand-400 border-brand-700/50' : 'bg-rmpg-800 text-rmpg-500 border-rmpg-600'
               }`}>
                 <Building2 className="w-4 h-4" />

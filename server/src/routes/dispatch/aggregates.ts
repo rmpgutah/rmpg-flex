@@ -211,6 +211,14 @@ router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', '
     const db = getDb();
     const { latitude, longitude, message } = req.body;
 
+    // Validate panic input
+    if (message !== undefined && message !== null) {
+      if (typeof message !== 'string' || message.length > 500) {
+        res.status(400).json({ error: 'Message must be a string of 500 characters or less' });
+        return;
+      }
+    }
+
     const user = db.prepare('SELECT id, full_name, badge_number, role FROM users WHERE id = ?')
       .get(req.user!.userId) as any;
 
@@ -434,6 +442,11 @@ router.get('/safety-screen', requireRole('admin', 'manager', 'supervisor', 'offi
       return res.json({ persons: [], directWarrantHits: [], hasWarnings: false });
     }
 
+    if (name.length > 200) {
+      res.status(400).json({ error: 'Name must be 200 characters or less' });
+      return;
+    }
+
     const searchName = name.trim();
 
     // Split into possible first/last name parts
@@ -550,8 +563,13 @@ router.get('/districts/lookup', requireRole('admin', 'manager', 'supervisor', 'o
     const db = getDb();
     const { zone_id, beat_id } = req.query;
 
-    if (!zone_id) {
-      res.status(400).json({ error: 'zone_id is required' });
+    if (!zone_id || typeof zone_id !== 'string' || zone_id.length > 50) {
+      res.status(400).json({ error: 'zone_id is required (max 50 chars)' });
+      return;
+    }
+
+    if (beat_id && (typeof beat_id !== 'string' || beat_id.length > 50)) {
+      res.status(400).json({ error: 'beat_id must be 50 characters or less' });
       return;
     }
 
@@ -588,8 +606,15 @@ router.get('/districts/identify', requireRole('admin', 'manager', 'supervisor', 
       res.status(400).json({ error: 'lat and lng are required' });
       return;
     }
+    const latNum = Number(lat);
+    const lngNum = Number(lng);
+    if (!Number.isFinite(latNum) || latNum < -90 || latNum > 90 ||
+        !Number.isFinite(lngNum) || lngNum < -180 || lngNum > 180) {
+      res.status(400).json({ error: 'lat must be -90..90, lng must be -180..180' });
+      return;
+    }
 
-    const beat = identifyBeat(Number(lat), Number(lng));
+    const beat = identifyBeat(latNum, lngNum);
     if (!beat) {
       res.json({ found: false });
       return;

@@ -941,7 +941,7 @@ export default function DashCamDetailPage() {
             <HudSection title="GPS Map" icon={Map}
               isOpen={sections.gps} onToggle={() => toggleSection('gps')}>
               <div ref={mapContainerRef}
-                className="w-full rounded"
+                className="w-full rounded-sm"
                 style={{ height: 200, background: '#0d1520' }}>
                 {!window.google?.maps && (
                   <div className="flex items-center justify-center h-full">

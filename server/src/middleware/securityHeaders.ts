@@ -14,11 +14,14 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   // Prevent clickjacking (SAMEORIGIN allows internal blob: PDF viewer iframes)
   res.set('X-Frame-Options', 'SAMEORIGIN');
 
-  // XSS protection (legacy browsers)
-  res.set('X-XSS-Protection', '1; mode=block');
+  // XSS protection — set to 0 (modern best practice)
+  // The legacy '1; mode=block' value can introduce XSS vulnerabilities in older IE.
+  // Modern browsers have deprecated this header; CSP provides the real protection.
+  res.set('X-XSS-Protection', '0');
 
-  // Referrer policy — 'no-referrer' prevents tokens in URLs from leaking via Referer header
-  res.set('Referrer-Policy', 'no-referrer');
+  // Referrer policy — sends origin on cross-origin requests, full URL on same-origin
+  // Balances security (no path/query leakage cross-origin) with analytics/debugging utility
+  res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
 
   // Permissions policy — restrict browser features to minimum required
   // camera/microphone: needed for body cam and radio; geolocation: needed for patrol GPS

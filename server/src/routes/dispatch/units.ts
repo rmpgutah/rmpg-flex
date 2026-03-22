@@ -203,12 +203,22 @@ router.put('/units/:id/status', validateParamId, requireRole('admin', 'manager',
       }
     }
     if (latitude !== undefined) {
+      const lat = parseFloat(String(latitude));
+      if (isNaN(lat) || lat < -90 || lat > 90) {
+        res.status(400).json({ error: 'latitude must be between -90 and 90' });
+        return;
+      }
       updates.push('latitude = ?');
-      params.push(latitude);
+      params.push(lat);
     }
     if (longitude !== undefined) {
+      const lng = parseFloat(String(longitude));
+      if (isNaN(lng) || lng < -180 || lng > 180) {
+        res.status(400).json({ error: 'longitude must be between -180 and 180' });
+        return;
+      }
       updates.push('longitude = ?');
-      params.push(longitude);
+      params.push(lng);
     }
 
     if (updates.length === 0) {

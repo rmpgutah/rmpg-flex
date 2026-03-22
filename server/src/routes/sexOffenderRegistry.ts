@@ -130,6 +130,31 @@ router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, r
       return res.status(400).json({ error: 'First and last name required' });
     }
 
+    // Validate tier (1-3)
+    if (tier !== undefined && tier !== null) {
+      const t = Number(tier);
+      if (!Number.isInteger(t) || t < 1 || t > 3) {
+        return res.status(400).json({ error: 'Tier must be 1, 2, or 3' });
+      }
+    }
+
+    // Validate registration_status
+    const VALID_REG_STATUSES = ['compliant', 'non_compliant', 'absconded', 'incarcerated', 'deceased', 'removed'];
+    if (registration_status && !VALID_REG_STATUSES.includes(registration_status)) {
+      return res.status(400).json({ error: `Invalid registration_status. Must be one of: ${VALID_REG_STATUSES.join(', ')}` });
+    }
+
+    // Validate risk_level
+    const VALID_RISK = ['low', 'moderate', 'high'];
+    if (risk_level && !VALID_RISK.includes(risk_level)) {
+      return res.status(400).json({ error: `Invalid risk_level. Must be one of: ${VALID_RISK.join(', ')}` });
+    }
+
+    // Validate string lengths
+    if (first_name.length > 200 || last_name.length > 200) {
+      return res.status(400).json({ error: 'Name fields must be 200 characters or less' });
+    }
+
     const result = db.prepare(`
       INSERT INTO sex_offender_registry (
         person_id, registry_id, first_name, last_name, middle_name, aliases,
@@ -238,6 +263,14 @@ router.put('/:id/verify', validateParamId, requireRole('admin', 'manager', 'supe
     const now = localNow();
     const { status, notes } = req.body;
 
+    // Validate verification status if provided
+    if (status) {
+      const VALID_V_STATUSES = ['compliant', 'non_compliant', 'absconded', 'incarcerated', 'verified'];
+      if (!VALID_V_STATUSES.includes(status)) {
+        return res.status(400).json({ error: `Invalid verification status. Must be one of: ${VALID_V_STATUSES.join(', ')}` });
+      }
+    }
+
     // Calculate next verification based on tier
     const record = db.prepare('SELECT tier FROM sex_offender_registry WHERE id = ?').get(req.params.id) as any;
     if (!record) return res.status(404).json({ error: 'Record not found' });
@@ -285,6 +318,9 @@ router.post('/import', requireRole('admin'), (req: Request, res: Response) => {
     const { records } = req.body;
     if (!Array.isArray(records) || records.length === 0) {
       return res.status(400).json({ error: 'Records array required' });
+    }
+    if (records.length > 5000) {
+      return res.status(400).json({ error: 'Maximum 5000 records per import' });
     }
 
     const insert = db.prepare(`

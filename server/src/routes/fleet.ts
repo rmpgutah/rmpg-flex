@@ -11,7 +11,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 import { queueOverlayProcessing, type DashCamOverlayConfig } from '../utils/videoOverlay';
 import { auditLog } from '../utils/auditLogger';
-import { validateParamId } from '../middleware/sanitize';
+import { validateParamId, validateStr, validateEnum, requireInt, requireFloat, validateDateStr } from '../middleware/sanitize';
 import { broadcast } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
 
@@ -100,6 +100,8 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     const params: any[] = [];
 
     if (status) {
+      const validStatuses = ['in_service', 'maintenance', 'out_of_service', 'retired'];
+      if (!validStatuses.includes(status as string)) { res.status(400).json({ error: 'Invalid status filter' }); return; }
       whereClause += ' AND fv.status = ?';
       params.push(status);
     }
@@ -360,13 +362,36 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       notes,
     } = req.body;
 
-    if (!vehicle_number) {
+    // ── Input validation ──
+    const FLEET_STATUSES = ['in_service', 'maintenance', 'out_of_service', 'retired'] as const;
+
+    const validVehicleNum = validateStr(vehicle_number, 'vehicle_number', 50);
+    if (!validVehicleNum) {
       res.status(400).json({ error: 'vehicle_number is required' });
       return;
     }
+    validateStr(make, 'make', 100);
+    validateStr(model, 'model', 100);
+    if (year != null) {
+      const y = requireInt(year, 'year');
+      if (y != null && (y < 1900 || y > 2100)) { res.status(400).json({ error: 'year must be between 1900 and 2100' }); return; }
+    }
+    validateStr(color, 'color', 50);
+    if (vin) {
+      const vinStr = String(vin).trim();
+      if (vinStr.length > 17) { res.status(400).json({ error: 'VIN must be at most 17 characters' }); return; }
+    }
+    validateStr(plate_number, 'plate_number', 20);
+    validateStr(plate_state, 'plate_state', 10);
+    if (current_mileage != null) requireFloat(current_mileage, 'current_mileage', 0, 9_999_999);
+    if (insurance_expiry) validateDateStr(insurance_expiry, 'insurance_expiry');
+    if (registration_expiry) validateDateStr(registration_expiry, 'registration_expiry');
+    if (equipment && !Array.isArray(equipment) && typeof equipment !== 'string') {
+      res.status(400).json({ error: 'equipment must be an array or JSON string' }); return;
+    }
 
     // Check for duplicate vehicle_number
-    const existing = db.prepare('SELECT id FROM fleet_vehicles WHERE vehicle_number = ?').get(vehicle_number);
+    const existing = db.prepare('SELECT id FROM fleet_vehicles WHERE vehicle_number = ?').get(validVehicleNum);
     if (existing) {
       res.status(409).json({ error: 'A vehicle with this vehicle_number already exists' });
       return;
@@ -414,6 +439,9 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       equipment: safeParseJson(created.equipment, []),
     });
   } catch (error: any) {
+    if (error.message?.startsWith('Invalid ') || error.message?.includes('must be')) {
+      res.status(400).json({ error: error.message }); return;
+    }
     console.error('Error creating fleet vehicle:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to create fleet vehicle' });
   }
@@ -447,6 +475,16 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Reque
       equipment,
       notes,
     } = req.body;
+
+    // ── Validate update fields ──
+    const FLEET_UPDATE_STATUSES = ['in_service', 'maintenance', 'out_of_service', 'retired'] as const;
+    if (status) validateEnum(status, FLEET_UPDATE_STATUSES, 'status');
+    if (vehicle_number) validateStr(vehicle_number, 'vehicle_number', 50);
+    if (vin) { const v = String(vin).trim(); if (v.length > 17) { res.status(400).json({ error: 'VIN must be at most 17 characters' }); return; } }
+    if (current_mileage != null) requireFloat(current_mileage, 'current_mileage', 0, 9_999_999);
+    if (year != null) { const y = requireInt(year, 'year'); if (y != null && (y < 1900 || y > 2100)) { res.status(400).json({ error: 'year must be 1900-2100' }); return; } }
+    if (insurance_expiry) validateDateStr(insurance_expiry, 'insurance_expiry');
+    if (registration_expiry) validateDateStr(registration_expiry, 'registration_expiry');
 
     // If changing vehicle_number, check for duplicates
     if (vehicle_number && vehicle_number !== existing.vehicle_number) {
@@ -504,6 +542,9 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Reque
       equipment: safeParseJson(updated.equipment, []),
     });
   } catch (error: any) {
+    if (error.message?.startsWith('Invalid ') || error.message?.includes('must be')) {
+      res.status(400).json({ error: error.message }); return;
+    }
     console.error('Error updating fleet vehicle:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to update fleet vehicle' });
   }
@@ -520,6 +561,12 @@ router.put('/:id/assign', validateParamId, requireRole('admin', 'manager', 'supe
     if (!vehicle) {
       res.status(404).json({ error: 'Fleet vehicle not found' });
       return;
+    }
+
+    // Validate unit_id
+    if (unit_id !== null && unit_id !== undefined) {
+      const uid = parseInt(String(unit_id), 10);
+      if (isNaN(uid) || uid < 1) { res.status(400).json({ error: 'Invalid unit_id' }); return; }
     }
 
     // If assigning to a unit, verify the unit exists

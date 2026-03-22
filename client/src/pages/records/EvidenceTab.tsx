@@ -235,7 +235,7 @@ export function EvidenceTabList({ state }: { state: EvidenceTabState }) {
               `}
             >
               <div className="flex items-center gap-3">
-                <div className={`flex-shrink-0 w-9 h-9 rounded flex items-center justify-center border ${
+                <div className={`flex-shrink-0 w-9 h-9 rounded-sm flex items-center justify-center border ${
                   isDisposed ? 'bg-rmpg-800 text-rmpg-500 border-rmpg-600' :
                   hasLab ? 'bg-purple-900/40 text-purple-400 border-purple-700/50' :
                   'bg-green-900/30 text-green-400 border-green-700/50'

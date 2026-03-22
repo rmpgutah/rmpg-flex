@@ -211,7 +211,13 @@ export type AuditAction =
   | 'LOGIN'
   | 'ADMIN_PASSWORD_RESET'
   | 'MOVE_EMAIL'
-  | 'CANCEL_EMAIL';
+  | 'CANCEL_EMAIL'
+  // Integrations
+  | 'integration_service_request'
+  | 'integration_key_created'
+  | 'integration_key_revoked'
+  | 'integration_key_activated'
+  | 'integration_key_deleted';
 
 export type AuditEntityType =
   | 'user'
@@ -305,7 +311,9 @@ export type AuditEntityType =
   | 'shift_plan'
   | 'patrol_checkpoint'
   | 'invoice_line_item'
-  | 'scheduled_email';
+  | 'scheduled_email'
+  | 'integration_service_request'
+  | 'integration_api_key';
 
 // Sensitive field patterns that must never appear in audit log details
 const SENSITIVE_PATTERNS = [

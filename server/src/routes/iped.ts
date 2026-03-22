@@ -59,6 +59,29 @@ router.put('/config', requireRole('admin'), (req: Request, res: Response) => {
     const { installPath, javaHome, webApiUrl, webApiPort, defaultProfile,
             photodnaEnabled, autoHashOnUpload, hashSetsPath } = req.body;
 
+    // Validate paths don't contain null bytes or shell metacharacters
+    const pathFields = [installPath, javaHome, hashSetsPath];
+    for (const p of pathFields) {
+      if (p !== undefined && p !== null && p !== '') {
+        if (typeof p !== 'string' || p.includes('\0') || /[;|&`$(){}]/.test(p)) {
+          return res.status(400).json({ error: 'Config path contains invalid characters' });
+        }
+      }
+    }
+    // Validate webApiUrl format if provided
+    if (webApiUrl !== undefined && webApiUrl !== '') {
+      if (typeof webApiUrl !== 'string' || !/^https?:\/\//.test(webApiUrl)) {
+        return res.status(400).json({ error: 'webApiUrl must be a valid HTTP(S) URL' });
+      }
+    }
+    // Validate webApiPort
+    if (webApiPort !== undefined) {
+      const port = Number(webApiPort);
+      if (isNaN(port) || port < 1 || port > 65535) {
+        return res.status(400).json({ error: 'webApiPort must be between 1 and 65535' });
+      }
+    }
+
     const values: Record<string, string> = {};
     if (installPath !== undefined) values.installPath = installPath;
     if (javaHome !== undefined) values.javaHome = javaHome;
@@ -166,9 +189,24 @@ router.post('/jobs', requireRole('admin', 'manager'), async (req: Request, res: 
       return res.status(400).json({ error: 'Invalid jobType (hash/process/triage/csam_scan)' });
     }
 
+    // Validate evidenceId if provided
+    if (evidenceId != null && (isNaN(Number(evidenceId)) || Number(evidenceId) < 1)) {
+      return res.status(400).json({ error: 'evidenceId must be a positive integer' });
+    }
+
     // Validate input path — block shell metacharacters and traversal
     if (/[;|&`$(){}]/.test(inputPath)) {
       return res.status(400).json({ error: 'Input path contains invalid characters' });
+    }
+    if (inputPath.includes('\0')) {
+      return res.status(400).json({ error: 'Input path contains null bytes' });
+    }
+
+    // Validate output path if provided
+    if (outputPath) {
+      if (/[;|&`$(){}]/.test(outputPath) || outputPath.includes('\0')) {
+        return res.status(400).json({ error: 'Output path contains invalid characters' });
+      }
     }
 
     // Validate path exists
@@ -412,6 +450,14 @@ router.post('/hash/check', requireRole('admin'), (req: Request, res: Response) =
     const { md5, sha256 } = req.body;
     if (!md5 && !sha256) return res.status(400).json({ error: 'md5 or sha256 required' });
 
+    // Validate hash formats
+    if (md5 && !/^[a-fA-F0-9]{32}$/.test(md5)) {
+      return res.status(400).json({ error: 'Invalid MD5 hash format (expected 32 hex chars)' });
+    }
+    if (sha256 && !/^[a-fA-F0-9]{64}$/.test(sha256)) {
+      return res.status(400).json({ error: 'Invalid SHA256 hash format (expected 64 hex chars)' });
+    }
+
     const hashes = { md5: md5 || '', sha1: '', sha256: sha256 || '', sha512: '' };
     const matches = checkAgainstHashSets(hashes);
 
@@ -438,6 +484,24 @@ router.post('/hash-sets/import', requireRole('admin'), (req: Request, res: Respo
     const { filePath, setName, category, hashType } = req.body;
     if (!filePath || !setName || !category) {
       return res.status(400).json({ error: 'filePath, setName, and category required' });
+    }
+    // Validate path traversal
+    if (filePath.includes('..') || filePath.includes('\0')) {
+      return res.status(400).json({ error: 'Invalid file path' });
+    }
+    // Validate setName (alphanumeric, dashes, underscores, spaces)
+    if (!/^[a-zA-Z0-9_\-\s]{1,100}$/.test(setName)) {
+      return res.status(400).json({ error: 'Invalid set name (alphanumeric, dashes, underscores, 1-100 chars)' });
+    }
+    // Validate category
+    const VALID_CATEGORIES = ['known_bad', 'known_good', 'notable', 'nsrl', 'custom'];
+    if (!VALID_CATEGORIES.includes(category)) {
+      return res.status(400).json({ error: `Invalid category. Must be one of: ${VALID_CATEGORIES.join(', ')}` });
+    }
+    // Validate hashType
+    const VALID_HASH_TYPES = ['md5', 'sha1', 'sha256'];
+    if (hashType && !VALID_HASH_TYPES.includes(hashType)) {
+      return res.status(400).json({ error: `Invalid hashType. Must be one of: ${VALID_HASH_TYPES.join(', ')}` });
     }
 
     const count = importHashSet(filePath, setName, category, hashType || 'md5');
@@ -471,6 +535,10 @@ router.post('/hash-sets/import-iped', requireRole('admin'), async (req: Request,
 // ── DELETE /hash-sets/:name — Remove hash set ───────────────
 router.delete('/hash-sets/:name', requireRole('admin'), (req: Request, res: Response) => {
   try {
+    // Validate name param
+    if (!req.params.name || !/^[a-zA-Z0-9_\-\s]{1,100}$/.test(req.params.name)) {
+      return res.status(400).json({ error: 'Invalid hash set name' });
+    }
     const removed = removeHashSet(req.params.name as string);
     if (removed) auditLog(req, 'iped_hashset_removed', 'iped_hashset', String(req.params.name), `Hash set "${req.params.name}" removed`);
     res.json({ success: true, removed });

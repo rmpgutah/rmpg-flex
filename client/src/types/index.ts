@@ -2447,6 +2447,8 @@ export interface LeadScrapeSource {
   last_success_at?: string;
   consecutive_failures: number;
   total_leads_imported: number;
+  scraper_type?: 'legacy' | 'firecrawl';
+  extra_config?: string;
 }
 
 export interface PipelineSummary {

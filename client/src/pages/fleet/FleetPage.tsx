@@ -811,7 +811,7 @@ export default function FleetPage() {
                   onClick={() => setSelectedId(v.id)}
                 >
                   <div className="flex items-center gap-2.5">
-                    <div className={`relative flex-shrink-0 w-9 h-9 rounded flex items-center justify-center border ${
+                    <div className={`relative flex-shrink-0 w-9 h-9 rounded-sm flex items-center justify-center border ${
                       v.status === 'in_service' ? 'bg-green-900/20 border-green-700/40' :
                       v.status === 'maintenance' ? 'bg-amber-900/20 border-amber-700/40' :
                       v.status === 'out_of_service' ? 'bg-red-900/20 border-red-700/40' :

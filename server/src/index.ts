@@ -105,6 +105,9 @@ import userPreferencesRoutes from './routes/userPreferences';
 import serveRoutes from './routes/serve';
 import hrRoutes from './routes/hr';
 import { scheduleLeadScrapers, stopLeadScrapers } from './utils/leadScraperBase';
+import { registerFirecrawlScrapers } from './utils/firecrawlScraper';
+import crmFirecrawlRoutes from './routes/crmFirecrawl';
+import integrationRoutes from './routes/integrations';
 
 const app = express();
 
@@ -236,8 +239,10 @@ app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'applicati
   child.unref();
 });
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// Body parser limits — 5mb covers base64 profile images/signatures (~3.5MB raw)
+// while rejecting abnormally large payloads that could cause memory pressure
+app.use(express.json({ limit: '5mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 app.use(sanitizeInput);
 
 // ─── Request ID for Tracing ─────────────────────────
@@ -481,9 +486,11 @@ app.use('/api/email', emailRoutes);
 app.use('/api/crm', crmRoutes);
 app.use('/api/crm', crmLeadsRoutes);
 app.use('/api/crm', crmProposalsRoutes);
+app.use('/api/crm', crmFirecrawlRoutes);
 app.use('/api/user/preferences', authenticateToken, userPreferencesRoutes);
 app.use('/api/process-server', serveRoutes);
 app.use('/api/hr', hrRoutes);
+app.use('/api/integrations', integrationRoutes);
 
 // Mount download page and file serving routes (outside /api)
 // Also mounts /updates/latest.yml, /updates/latest-mac.yml for electron-updater
@@ -784,6 +791,9 @@ try {
 
     // Start JailBase arrest record sync (hourly from RapidAPI)
     scheduleArrestSync();
+
+    // Register Firecrawl-based scrapers before scheduling
+    registerFirecrawlScrapers();
 
     // Start CRM lead scrapers (Overwatch)
     scheduleLeadScrapers();

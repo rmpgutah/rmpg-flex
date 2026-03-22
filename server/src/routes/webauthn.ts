@@ -179,6 +179,18 @@ router.post('/register-verify', authenticateToken, mfaRateLimit, async (req: Req
       return;
     }
 
+    // Validate challengeId format (hex string from randomBytes(16))
+    if (typeof challengeId !== 'string' || challengeId.length > 64 || !/^[a-f0-9]+$/.test(challengeId)) {
+      res.status(400).json({ error: 'Invalid challengeId format' });
+      return;
+    }
+
+    // Validate name length
+    if (name !== undefined && name !== null && (typeof name !== 'string' || name.length > 100)) {
+      res.status(400).json({ error: 'Security key name must be 100 characters or less' });
+      return;
+    }
+
     const stored = challengeStore.get(challengeId);
     if (!stored || stored.expiresAt < Date.now()) {
       challengeStore.delete(challengeId);
@@ -395,6 +407,21 @@ router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Resp
 
     if (!challengeId || !tempToken || !authResponse) {
       res.status(400).json({ error: 'Missing required fields' });
+      return;
+    }
+
+    // Validate field types and lengths
+    if (typeof challengeId !== 'string' || challengeId.length > 64 || !/^[a-f0-9]+$/.test(challengeId)) {
+      res.status(400).json({ error: 'Invalid challengeId format' });
+      return;
+    }
+    if (typeof tempToken !== 'string' || tempToken.length > 2048) {
+      res.status(400).json({ error: 'Invalid tempToken' });
+      return;
+    }
+    if (deviceFingerprint !== undefined && deviceFingerprint !== null &&
+        (typeof deviceFingerprint !== 'string' || deviceFingerprint.length > 500)) {
+      res.status(400).json({ error: 'Invalid deviceFingerprint' });
       return;
     }
 

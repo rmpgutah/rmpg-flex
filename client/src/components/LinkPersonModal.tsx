@@ -191,7 +191,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
 
         {/* Results dropdown */}
         {searchResults.length > 0 && !selectedPerson && (
-          <div className="mt-1 max-h-48 overflow-y-auto border border-rmpg-600 bg-surface-sunken divide-y divide-gray-700">
+          <div className="mt-1 max-h-48 overflow-y-auto border border-rmpg-600 bg-surface-sunken divide-y divide-rmpg-700">
             {searchResults.map((person) => {
               const flags = parseFlags(person.flags);
               return (

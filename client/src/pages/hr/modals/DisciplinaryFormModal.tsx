@@ -123,7 +123,7 @@ export default function DisciplinaryFormModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded border ${accentBorder} bg-[#141e2b] shadow-xl`}
+        className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-sm border ${accentBorder} bg-[#141e2b] shadow-xl`}
       >
         {/* Header */}
         <div className={`flex items-center justify-between px-4 py-3 border-b ${accentBorder} ${accentHeader}`}>
@@ -149,7 +149,7 @@ export default function DisciplinaryFormModal({
                 value={form.officer_id}
                 onChange={handleChange}
                 required
-                className="w-full bg-[#0d1520] border border-[#1e3048] rounded px-2 py-1.5 text-sm text-white"
+                className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1.5 text-sm text-white"
               >
                 <option value="">Select officer...</option>
                 {officers.map(o => (
@@ -168,7 +168,7 @@ export default function DisciplinaryFormModal({
                 value={form.type}
                 onChange={handleChange}
                 required
-                className="w-full bg-[#0d1520] border border-[#1e3048] rounded px-2 py-1.5 text-sm text-white"
+                className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1.5 text-sm text-white"
               >
                 {TYPE_OPTIONS.map(t => (
                   <option key={t.value} value={t.value}>
@@ -187,7 +187,7 @@ export default function DisciplinaryFormModal({
                   value={form.severity}
                   onChange={handleChange}
                   required
-                  className="w-full bg-[#0d1520] border border-[#1e3048] rounded px-2 py-1.5 text-sm text-white"
+                  className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1.5 text-sm text-white"
                 >
                   {SEVERITY_OPTIONS.map(s => (
                     <option key={s.value} value={s.value}>
@@ -207,7 +207,7 @@ export default function DisciplinaryFormModal({
                 value={form.incident_date}
                 onChange={handleChange}
                 required
-                className="w-full bg-[#0d1520] border border-[#1e3048] rounded px-2 py-1.5 text-sm text-white"
+                className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1.5 text-sm text-white"
               />
             </div>
 
@@ -219,7 +219,7 @@ export default function DisciplinaryFormModal({
                 name="follow_up_date"
                 value={form.follow_up_date}
                 onChange={handleChange}
-                className="w-full bg-[#0d1520] border border-[#1e3048] rounded px-2 py-1.5 text-sm text-white"
+                className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1.5 text-sm text-white"
               />
             </div>
 
@@ -232,7 +232,7 @@ export default function DisciplinaryFormModal({
                 value={form.witness}
                 onChange={handleChange}
                 placeholder="Witness name"
-                className="w-full bg-[#0d1520] border border-[#1e3048] rounded px-2 py-1.5 text-sm text-white placeholder-rmpg-500"
+                className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1.5 text-sm text-white placeholder-rmpg-500"
               />
             </div>
           </div>
@@ -246,7 +246,7 @@ export default function DisciplinaryFormModal({
               onChange={handleChange}
               required
               rows={3}
-              className="w-full bg-[#0d1520] border border-[#1e3048] rounded px-2 py-1.5 text-sm text-white placeholder-rmpg-500 resize-none"
+              className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1.5 text-sm text-white placeholder-rmpg-500 resize-none"
               placeholder="Describe the incident or commendation..."
             />
           </div>
@@ -259,7 +259,7 @@ export default function DisciplinaryFormModal({
               value={form.action_taken}
               onChange={handleChange}
               rows={2}
-              className="w-full bg-[#0d1520] border border-[#1e3048] rounded px-2 py-1.5 text-sm text-white placeholder-rmpg-500 resize-none"
+              className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1.5 text-sm text-white placeholder-rmpg-500 resize-none"
               placeholder="Corrective action or follow-up steps..."
             />
           </div>
@@ -270,14 +270,14 @@ export default function DisciplinaryFormModal({
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="px-3 py-1.5 text-xs text-rmpg-400 hover:text-white border border-[#1e3048] rounded"
+              className="px-3 py-1.5 text-xs text-rmpg-400 hover:text-white border border-[#1e3048] rounded-sm"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={submitting}
-              className={`px-3 py-1.5 text-xs font-medium rounded flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 text-xs font-medium rounded-sm flex items-center gap-1.5 ${
                 isCommendation
                   ? 'bg-amber-600 hover:bg-amber-500 text-white'
                   : 'bg-brand-600 hover:bg-brand-500 text-white'

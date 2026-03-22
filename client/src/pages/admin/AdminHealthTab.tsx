@@ -180,7 +180,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
           {h.version && (
             <button
               onClick={() => setShowChangelog(!showChangelog)}
-              className="ml-3 flex items-center gap-1 px-2 py-0.5 rounded border border-brand-600/40 bg-brand-950/30 text-brand-400 text-[10px] font-mono font-bold hover:bg-brand-900/40 transition-colors"
+              className="ml-3 flex items-center gap-1 px-2 py-0.5 rounded-sm border border-brand-600/40 bg-brand-950/30 text-brand-400 text-[10px] font-mono font-bold hover:bg-brand-900/40 transition-colors"
             >
               <Tag className="w-3 h-3" />
               v{h.version}
@@ -222,7 +222,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
                     <ChevronRight className="w-3 h-3 text-rmpg-400 shrink-0" />
                   )}
                   <span className="text-[11px] font-mono font-bold text-rmpg-100">v{entry.version}</span>
-                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border ${versionTypeBadge(entry.type)}`}>
+                  <span className={`px-1.5 py-0.5 rounded-sm text-[9px] font-bold uppercase border ${versionTypeBadge(entry.type)}`}>
                     {toDisplayLabel(entry.type)}
                   </span>
                   <span className="text-[10px] text-rmpg-400 flex-1">{entry.summary}</span>
@@ -232,7 +232,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
                   <div className="px-3 pb-2 space-y-1 bg-surface-sunken/50">
                     {entry.changes.map((change, i) => (
                       <div key={i} className="flex items-start gap-2 py-0.5">
-                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border shrink-0 mt-0.5 ${changeTypeBadge(change.type)}`}>
+                        <span className={`px-1.5 py-0.5 rounded-sm text-[9px] font-bold uppercase border shrink-0 mt-0.5 ${changeTypeBadge(change.type)}`}>
                           {toDisplayLabel(change.type)}
                         </span>
                         <span className="text-[10px] text-rmpg-300">{change.description}</span>

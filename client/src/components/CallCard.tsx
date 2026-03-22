@@ -299,8 +299,8 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
 
       {/* Drop to assign indicator */}
       {isDragOver && canAcceptDrop && (
-        <div className="absolute inset-0 flex items-center justify-center bg-green-900/30 pointer-events-none rounded">
-          <span className="text-xs font-bold text-green-400 bg-green-950/80 px-2 py-1 rounded border border-green-600/50">
+        <div className="absolute inset-0 flex items-center justify-center bg-green-900/30 pointer-events-none rounded-sm">
+          <span className="text-xs font-bold text-green-400 bg-green-950/80 px-2 py-1 rounded-sm border border-green-600/50">
             Drop to assign
           </span>
         </div>

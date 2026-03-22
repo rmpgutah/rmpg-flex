@@ -106,7 +106,7 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
             <Camera className="w-3.5 h-3.5 shrink-0 opacity-70" />
             <div>
               <div className="text-xs font-medium">Screenshot Map</div>
-              <div className={`text-[9px] ${light ? 'text-gray-400' : 'text-rmpg-500'}`}>Download as PNG</div>
+              <div className={`text-[9px] ${light ? 'text-rmpg-400' : 'text-rmpg-500'}`}>Download as PNG</div>
             </div>
           </button>
           <button
@@ -116,7 +116,7 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
             <Printer className="w-3.5 h-3.5 shrink-0 opacity-70" />
             <div>
               <div className="text-xs font-medium">Print Map</div>
-              <div className={`text-[9px] ${light ? 'text-gray-400' : 'text-rmpg-500'}`}>Open print dialog</div>
+              <div className={`text-[9px] ${light ? 'text-rmpg-400' : 'text-rmpg-500'}`}>Open print dialog</div>
             </div>
           </button>
         </div>

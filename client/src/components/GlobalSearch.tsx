@@ -359,7 +359,7 @@ export const GlobalSearch: React.FC = () => {
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Search persons, vehicles, incidents, warrants, personnel..."
-            className="flex-1 bg-transparent text-sm text-white placeholder-gray-500 outline-none"
+            className="flex-1 bg-transparent text-sm text-white placeholder-rmpg-500 outline-none"
           />
           <div className="flex items-center gap-2 text-xs text-rmpg-400">
             <kbd className="px-2 py-1 bg-rmpg-700 border border-rmpg-600">

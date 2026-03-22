@@ -45,7 +45,22 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
     if (Array.isArray(req.body?.points) && req.body.points.length > 0) {
       // Batch format: { points: [...] }
       pointsReceived = req.body.points.length;
-      points = req.body.points.slice(0, 60); // Cap at 60 points per request
+      // Validate each point has the expected shape before processing
+      const rawPoints = req.body.points.slice(0, 60); // Cap at 60 points per request
+      for (const pt of rawPoints) {
+        if (pt === null || typeof pt !== 'object' || Array.isArray(pt)) {
+          res.status(400).json({ error: 'Each point must be an object with lat/lng' });
+          return;
+        }
+      }
+      points = rawPoints.map((pt: any) => ({
+        lat: Number(pt.lat),
+        lng: Number(pt.lng),
+        accuracy: pt.accuracy != null ? Number(pt.accuracy) : null,
+        heading: pt.heading != null ? Number(pt.heading) : null,
+        speed: pt.speed != null ? Number(pt.speed) : null,
+        timestamp: typeof pt.timestamp === 'string' && pt.timestamp.length <= 50 ? pt.timestamp : null,
+      }));
     } else if (req.body.latitude != null && req.body.longitude != null) {
       // Legacy single-point format
       const lat = Number(req.body.latitude);
@@ -57,9 +72,9 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
       points = [{
         lat,
         lng,
-        accuracy: req.body.accuracy ?? null,
-        heading: req.body.heading ?? null,
-        speed: req.body.speed ?? null,
+        accuracy: req.body.accuracy != null ? Number(req.body.accuracy) : null,
+        heading: req.body.heading != null ? Number(req.body.heading) : null,
+        speed: req.body.speed != null ? Number(req.body.speed) : null,
         timestamp: null,
       }];
     } else {
@@ -131,7 +146,9 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
 
     // ── GPS Source Priority Check ──
     // Determine incoming source: phone GPS > desktop WiFi
-    const deviceType = req.body.device_type || 'desktop';
+    const allowedDeviceTypes = ['mobile', 'desktop'];
+    const rawDeviceType = typeof req.body.device_type === 'string' ? req.body.device_type : 'desktop';
+    const deviceType = allowedDeviceTypes.includes(rawDeviceType) ? rawDeviceType : 'desktop';
     const gpsSource = deviceType === 'mobile' ? 'browser_mobile' : 'browser_desktop';
     const incomingPriority = GPS_SOURCE_PRIORITY[gpsSource] ?? 1;
 

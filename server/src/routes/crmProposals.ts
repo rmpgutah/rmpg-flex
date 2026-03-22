@@ -10,7 +10,7 @@ import { Router, Request, Response } from 'express';
 import { authenticateToken as authenticate, requireRole } from '../middleware/auth';
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
-import { validateParamId } from '../middleware/sanitize';
+import { validateParamId, validateStr, validateEnum, requireInt, requireFloat, validateDateStr } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
 import { broadcast } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
@@ -134,10 +134,25 @@ router.post('/proposals', requireRole('admin', 'manager', 'contract_manager'), (
       contract_length_months, assigned_to, notes,
     } = req.body;
 
-    if (!title?.trim()) {
+    // ── Validate proposal inputs ──
+    const validTitle = validateStr(title, 'title', 300);
+    if (!validTitle) {
       res.status(400).json({ error: 'title is required' });
       return;
     }
+    const BILLING_FREQUENCIES = ['monthly', 'quarterly', 'semi_annual', 'annual', 'one_time'] as const;
+    if (lead_id) requireInt(lead_id, 'lead_id');
+    if (client_id) requireInt(client_id, 'client_id');
+    if (assigned_to) requireInt(assigned_to, 'assigned_to');
+    if (monthly_value != null) requireFloat(monthly_value, 'monthly_value', 0, 100_000_000);
+    if (total_value != null) requireFloat(total_value, 'total_value', 0, 100_000_000);
+    if (contract_length_months != null) requireInt(contract_length_months, 'contract_length_months');
+    if (billing_frequency) validateEnum(billing_frequency, BILLING_FREQUENCIES, 'billing_frequency');
+    if (valid_until) validateDateStr(valid_until, 'valid_until');
+    if (proposed_start) validateDateStr(proposed_start, 'proposed_start');
+    if (proposed_end) validateDateStr(proposed_end, 'proposed_end');
+    validateStr(template_type, 'template_type', 100);
+    validateStr(description, 'description', 5000);
 
     const now = localNow();
 
@@ -229,6 +244,9 @@ router.post('/proposals', requireRole('admin', 'manager', 'contract_manager'), (
     broadcast('admin', 'proposal:created', proposal);
     res.json(proposal);
   } catch (err: any) {
+    if (err.message?.startsWith('Invalid ') || err.message?.includes('must be')) {
+      res.status(400).json({ error: err.message }); return;
+    }
     console.error('CRM proposals error:', err?.message || err);
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -416,10 +434,17 @@ router.post('/proposal-templates', requireRole('admin'), (req: Request, res: Res
       default_monthly_value, default_billing_frequency, default_contract_months,
     } = req.body;
 
-    if (!name?.trim() || !template_type?.trim()) {
+    // ── Validate template inputs ──
+    const validName = validateStr(name, 'name', 200);
+    const validTplType = validateStr(template_type, 'template_type', 100);
+    if (!validName || !validTplType) {
       res.status(400).json({ error: 'name and template_type are required' });
       return;
     }
+    if (default_monthly_value != null) requireFloat(default_monthly_value, 'default_monthly_value', 0, 100_000_000);
+    if (default_contract_months != null) requireInt(default_contract_months, 'default_contract_months');
+    const TMPL_BILLING = ['monthly', 'quarterly', 'semi_annual', 'annual', 'one_time'] as const;
+    if (default_billing_frequency) validateEnum(default_billing_frequency, TMPL_BILLING, 'default_billing_frequency');
 
     const now = localNow();
     const result = db.prepare(`
@@ -429,7 +454,7 @@ router.post('/proposal-templates', requireRole('admin'), (req: Request, res: Res
         is_active, created_by, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
     `).run(
-      name.trim(), template_type.trim(), description || null,
+      validName, validTplType, description || null,
       default_scope || null, default_terms || null,
       default_monthly_value ?? null, default_billing_frequency || 'monthly',
       default_contract_months ?? 12,

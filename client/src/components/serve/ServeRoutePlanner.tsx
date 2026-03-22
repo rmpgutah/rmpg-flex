@@ -134,10 +134,10 @@ function TimeWindowBadge({ tw }: { tw: ServeJob['time_window'] }) {
     morning: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
     afternoon: 'bg-blue-900/40 text-blue-400 border-blue-700/50',
     evening: 'bg-purple-900/40 text-purple-400 border-purple-700/50',
-    anytime: 'bg-gray-800/40 text-gray-400 border-gray-700/50',
+    anytime: 'bg-rmpg-800/40 text-rmpg-400 border-rmpg-700/50',
   };
   return (
-    <span className={`text-[10px] px-1.5 py-0.5 rounded border ${colors[tw] || colors.anytime}`}>
+    <span className={`text-[10px] px-1.5 py-0.5 rounded-sm border ${colors[tw] || colors.anytime}`}>
       {tw}
     </span>
   );
@@ -147,11 +147,11 @@ function PriorityBadge({ p }: { p: ServeJob['priority'] }) {
   const colors: Record<string, string> = {
     rush: 'bg-red-900/40 text-red-400 border-red-700/50',
     high: 'bg-orange-900/40 text-orange-400 border-orange-700/50',
-    normal: 'bg-gray-800/40 text-gray-400 border-gray-700/50',
-    low: 'bg-gray-800/30 text-gray-500 border-gray-700/30',
+    normal: 'bg-rmpg-800/40 text-rmpg-400 border-rmpg-700/50',
+    low: 'bg-rmpg-800/30 text-rmpg-500 border-rmpg-700/30',
   };
   return (
-    <span className={`text-[10px] px-1.5 py-0.5 rounded border ${colors[p] || colors.normal}`}>
+    <span className={`text-[10px] px-1.5 py-0.5 rounded-sm border ${colors[p] || colors.normal}`}>
       {p}
     </span>
   );
@@ -523,26 +523,26 @@ export default function ServeRoutePlanner({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-      <div className="bg-[#141e2b] border border-[#1e3048] rounded w-full h-full max-w-[1400px] max-h-[95vh] flex flex-col shadow-2xl">
+      <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm w-full h-full max-w-[1400px] max-h-[95vh] flex flex-col shadow-2xl">
         {/* ─── Header ─────────────────────────────────────────────── */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#1e3048] bg-[#0d1520]">
           <div className="flex items-center gap-2">
             <Route size={16} className="text-blue-400" />
             <h2 className="text-sm font-semibold text-white">Route Planner</h2>
-            <span className="text-[11px] text-gray-500 ml-2">
+            <span className="text-[11px] text-rmpg-500 ml-2">
               {selectedCount} of {stops.length} stops selected
             </span>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={handleApplyAndClose}
-              className="px-3 py-1 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 rounded border border-blue-500 transition-colors"
+              className="px-3 py-1 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-sm border border-blue-500 transition-colors"
             >
               Apply Route
             </button>
             <button
               onClick={onClose}
-              className="p-1 text-gray-500 hover:text-white transition-colors"
+              className="p-1 text-rmpg-500 hover:text-white transition-colors"
             >
               <X size={16} />
             </button>
@@ -562,7 +562,7 @@ export default function ServeRoutePlanner({
                 >
                   Select All
                 </button>
-                <span className="text-gray-600">|</span>
+                <span className="text-rmpg-600">|</span>
                 <button
                   onClick={deselectAll}
                   className="text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
@@ -573,7 +573,7 @@ export default function ServeRoutePlanner({
               <button
                 onClick={optimizeRoute}
                 disabled={optimizing || selectedCount < 2}
-                className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-500 disabled:bg-gray-700 disabled:text-gray-500 rounded border border-emerald-500 disabled:border-gray-600 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-500 disabled:bg-rmpg-700 disabled:text-rmpg-500 rounded-sm border border-emerald-500 disabled:border-rmpg-600 transition-colors"
               >
                 {optimizing ? (
                   <><Loader2 size={12} className="animate-spin" /> Optimizing...</>
@@ -593,7 +593,7 @@ export default function ServeRoutePlanner({
             {/* Stop List */}
             <div className="flex-1 overflow-y-auto">
               {stops.length === 0 ? (
-                <div className="flex items-center justify-center h-32 text-xs text-gray-500">
+                <div className="flex items-center justify-center h-32 text-xs text-rmpg-500">
                   No geocoded stops available
                 </div>
               ) : (
@@ -605,7 +605,7 @@ export default function ServeRoutePlanner({
                     }`}
                   >
                     {/* Checkbox */}
-                    <button onClick={() => toggleStop(idx)} className="shrink-0 text-gray-400 hover:text-white">
+                    <button onClick={() => toggleStop(idx)} className="shrink-0 text-rmpg-400 hover:text-white">
                       {stop.selected ? (
                         <CheckSquare size={14} className="text-blue-400" />
                       ) : (
@@ -625,7 +625,7 @@ export default function ServeRoutePlanner({
                       <div className="text-xs font-medium text-white truncate">
                         {stop.job.recipient_name}
                       </div>
-                      <div className="text-[10px] text-gray-500 truncate">
+                      <div className="text-[10px] text-rmpg-500 truncate">
                         {stop.job.recipient_address || 'No address'}
                         {stop.job.recipient_city ? `, ${stop.job.recipient_city}` : ''}
                       </div>
@@ -640,14 +640,14 @@ export default function ServeRoutePlanner({
                       <button
                         onClick={() => moveStop(idx, -1)}
                         disabled={idx === 0}
-                        className="p-0.5 text-gray-500 hover:text-white disabled:text-gray-700 transition-colors"
+                        className="p-0.5 text-rmpg-500 hover:text-white disabled:text-rmpg-700 transition-colors"
                       >
                         <ChevronUp size={12} />
                       </button>
                       <button
                         onClick={() => moveStop(idx, 1)}
                         disabled={idx === stops.length - 1}
-                        className="p-0.5 text-gray-500 hover:text-white disabled:text-gray-700 transition-colors"
+                        className="p-0.5 text-rmpg-500 hover:text-white disabled:text-rmpg-700 transition-colors"
                       >
                         <ChevronDown size={12} />
                       </button>
@@ -663,7 +663,7 @@ export default function ServeRoutePlanner({
             <div ref={mapContainerRef} className="absolute inset-0" />
             {!mapReady && (
               <div className="absolute inset-0 flex items-center justify-center bg-[#0d1520]">
-                <div className="flex items-center gap-2 text-xs text-gray-400">
+                <div className="flex items-center gap-2 text-xs text-rmpg-400">
                   <Loader2 size={14} className="animate-spin" />
                   Loading map...
                 </div>
@@ -674,19 +674,19 @@ export default function ServeRoutePlanner({
 
         {/* ─── Stats Bar ──────────────────────────────────────────── */}
         <div className="flex items-center gap-6 px-4 py-2 border-t border-[#1e3048] bg-[#0d1520] text-xs">
-          <div className="flex items-center gap-1.5 text-gray-400">
+          <div className="flex items-center gap-1.5 text-rmpg-400">
             <MapPin size={12} className="text-blue-400" />
             <span>Total stops:</span>
             <span className="text-white font-medium">{selectedCount}</span>
           </div>
-          <div className="flex items-center gap-1.5 text-gray-400">
+          <div className="flex items-center gap-1.5 text-rmpg-400">
             <Gauge size={12} className="text-emerald-400" />
             <span>Distance:</span>
             <span className="text-white font-medium">
               {totalDistance > 0 ? `${totalDistance.toFixed(1)} mi` : '--'}
             </span>
           </div>
-          <div className="flex items-center gap-1.5 text-gray-400">
+          <div className="flex items-center gap-1.5 text-rmpg-400">
             <Clock size={12} className="text-amber-400" />
             <span>Est. time:</span>
             <span className="text-white font-medium">
@@ -695,7 +695,7 @@ export default function ServeRoutePlanner({
                 : '--'}
             </span>
           </div>
-          <div className="flex items-center gap-1.5 text-gray-400">
+          <div className="flex items-center gap-1.5 text-rmpg-400">
             <DollarSign size={12} className="text-green-400" />
             <span>Fuel cost:</span>
             <span className="text-white font-medium">

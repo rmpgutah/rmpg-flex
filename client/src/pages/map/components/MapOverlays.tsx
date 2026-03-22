@@ -108,8 +108,8 @@ export default function MapOverlays({
             <div className="flex items-center gap-1 px-2 py-0.5" style={{ borderRight: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.1)' : '1px solid #1e3048' }}>
               <Siren className={`w-3 h-3 shrink-0 ${isLightMapStyle(mapStyle) ? 'text-red-600' : 'text-red-400'}`} />
               <span className={`text-[13px] font-mono font-black ${isLightMapStyle(mapStyle) ? 'text-gray-900' : 'text-white'}`}>{callsWithCoords.length}</span>
-              {callsByPriority['P1'] ? <span className="text-[8px] font-mono font-bold text-red-500 bg-red-500/15 px-1 rounded">P1:{callsByPriority['P1']}</span> : null}
-              {callsByPriority['P2'] ? <span className="text-[8px] font-mono font-bold text-amber-500 bg-amber-500/15 px-1 rounded">P2:{callsByPriority['P2']}</span> : null}
+              {callsByPriority['P1'] ? <span className="text-[8px] font-mono font-bold text-red-500 bg-red-500/15 px-1 rounded-sm">P1:{callsByPriority['P1']}</span> : null}
+              {callsByPriority['P2'] ? <span className="text-[8px] font-mono font-bold text-amber-500 bg-amber-500/15 px-1 rounded-sm">P2:{callsByPriority['P2']}</span> : null}
             </div>
 
             <div className="flex items-center gap-1 px-2 py-0.5">
@@ -122,7 +122,7 @@ export default function MapOverlays({
                   { key: 'enroute', label: 'ENR', color: '#3b82f6' },
                   { key: 'onscene', label: 'ONS', color: '#a855f7' },
                 ] as const).filter(s => (unitsByStatus[s.key] || 0) > 0).map(({ key, label, color }) => (
-                  <span key={key} className="text-[8px] font-mono font-bold px-1 rounded" style={{ color, background: color + '15' }}>
+                  <span key={key} className="text-[8px] font-mono font-bold px-1 rounded-sm" style={{ color, background: color + '15' }}>
                     {label}:{unitsByStatus[key] || 0}
                   </span>
                 ))}
