@@ -23,12 +23,15 @@ import {
   setActiveCaseNumber,
   getActiveBranding,
   loadPdfAssets,
+  formSectionPageBreak,
 } from './pdfGenerator';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,
   getContentWidth, getHalfWidth, getFullFieldWidth,
   getLeftX, getRightColumnX, getHalfFieldWidth, getQuarterWidth,
 } from './pdfTokens';
+import { drawNibrsHeader, drawFormSection, type FormRow } from './pdfFormHelpers';
+import { FORM_NUMBERS } from './pdfAssets';
 
 // ── Data interface ────────────────────────────────────────
 
@@ -102,29 +105,55 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
   // ── Watermark ────────────────────────────────────────
   addConfidentialWatermark(doc);
 
-  // ── Header with seal (same as all reports) ───────────
-  let y = addReportHeader(doc, data.invoice_number, 'Invoice', 'routine', undefined, { useLogo: true });
+  // ── NIBRS-style Header ───────────────────────────────
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    formTitle: 'INVOICE',
+    formNumber: FORM_NUMBERS.invoice || 'FORM PS-301',
+    caseNumber: data.invoice_number,
+    reportDate: data.issue_date?.substring(0, 10) || '',
+  });
 
-  // ── Invoice Information Section (auto-sizing) ─────────
-  { const sec = openAutoSection(doc, 'Invoice Information', y); y = sec.contentY;
-    const qw = getQuarterWidth(doc);
-    addFieldPair(doc, 'Invoice Number', data.invoice_number, lx, y, qw);
-    addFieldPair(doc, 'Status', (data.status || 'draft').toUpperCase(), lx + qw + SPACING.MD, y, qw);
-    addFieldPair(doc, 'Issue Date', data.issue_date?.substring(0, 10) || '', lx + (qw + SPACING.MD) * 2, y, qw);
-    y = addFieldPair(doc, 'Due Date', data.due_date?.substring(0, 10) || '', lx + (qw + SPACING.MD) * 3, y, qw);
-    addFieldPair(doc, 'Payment Terms', data.payment_terms || 'Net 30', lx, y, hfw);
-    y = addFieldPair(doc, 'Billing Period', `${data.period_start?.substring(0, 10) || ''} to ${data.period_end?.substring(0, 10) || ''}`, rx, y, hfw);
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
+  // ── Invoice Information ─────────────────────────────
+  y = drawFormSection(doc, {
+    sideTab: { label: 'INVOICE' },
+    topBanner: true,
+    onPageBreak: formSectionPageBreak,
+    rows: [
+      { cells: [
+        { label: '1. INVOICE NUMBER', value: data.invoice_number, ratio: 2, valueBold: true },
+        { label: '2. STATUS', value: (data.status || 'draft').toUpperCase(), ratio: 1, align: 'center', valueBold: true },
+        { label: '3. ISSUE DATE', value: data.issue_date?.substring(0, 10) || '', ratio: 1 },
+        { label: '4. DUE DATE', value: data.due_date?.substring(0, 10) || '', ratio: 1 },
+      ]},
+      { cells: [
+        { label: '5. PAYMENT TERMS', value: data.payment_terms || 'Net 30', ratio: 1 },
+        { label: '6. BILLING PERIOD', value: `${data.period_start?.substring(0, 10) || ''} to ${data.period_end?.substring(0, 10) || ''}`, ratio: 2 },
+      ]},
+    ],
+    y,
+  });
 
-  // ── Client Information Section (auto-sizing) ──────────
-  { const sec = openAutoSection(doc, 'Client / Bill To', y); y = sec.contentY;
-    y = addFieldPair(doc, 'Client Name', data.client_name || '', lx, y, ffw);
-    y = addFieldPair(doc, 'Billing Address', data.billing_address || data.client_address || '', lx, y, ffw);
-    addFieldPair(doc, 'Contact', data.contact_name || '', lx, y, hfw);
-    y = addFieldPair(doc, 'Email', data.billing_email || data.contact_email || '', rx, y, hfw);
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
+  // ── Client / Bill To ──────────────────────────────
+  y = drawFormSection(doc, {
+    sideTab: { label: 'BILL TO' },
+    topBanner: true,
+    onPageBreak: formSectionPageBreak,
+    rows: [
+      { cells: [
+        { label: '7. CLIENT NAME', value: data.client_name || '', ratio: 1, valueBold: true },
+      ]},
+      { cells: [
+        { label: '8. BILLING ADDRESS', value: data.billing_address || data.client_address || '', ratio: 1 },
+      ]},
+      { cells: [
+        { label: '9. CONTACT', value: data.contact_name || '', ratio: 1 },
+        { label: '10. EMAIL', value: data.billing_email || data.contact_email || '', ratio: 1 },
+      ]},
+    ],
+    y,
+  });
 
   // ── Line Items Table ─────────────────────────────────
   {

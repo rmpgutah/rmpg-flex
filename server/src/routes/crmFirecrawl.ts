@@ -20,7 +20,7 @@ router.use(authenticate);
 
 router.get(
   '/firecrawl/status',
-  requireRole(['admin', 'manager']),
+  requireRole('admin', 'manager'),
   async (_req: Request, res: Response) => {
     try {
       const connected = await firecrawlHealthCheck();
@@ -36,7 +36,7 @@ router.get(
 
 router.post(
   '/firecrawl/search',
-  requireRole(['admin', 'manager']),
+  requireRole('admin', 'manager'),
   async (req: Request, res: Response) => {
     const { query, limit } = req.body as { query?: string; limit?: number };
 
@@ -54,7 +54,7 @@ router.post(
         scrapeOptions: { formats: ['markdown'], onlyMainContent: true },
       });
 
-      auditLog(req, 'SEARCH', 'firecrawl', 0, null, { query: query.trim(), limit: cappedLimit });
+      auditLog(req, 'SEARCH' as any, 'crm_leads', 0, `Firecrawl search: ${query.trim()} (limit: ${cappedLimit})`);
 
       res.json({ results: result.data || [] });
     } catch (err: unknown) {
@@ -70,7 +70,7 @@ router.post(
 
 router.post(
   '/firecrawl/scrape',
-  requireRole(['admin', 'manager']),
+  requireRole('admin', 'manager'),
   async (req: Request, res: Response) => {
     const { url, extract_schema } = req.body as {
       url?: string;
@@ -90,7 +90,7 @@ router.post(
         extract: extract_schema ? { schema: extract_schema } : undefined,
       });
 
-      auditLog(req, 'SCRAPE', 'firecrawl', 0, null, { url: url.trim() });
+      auditLog(req, 'SEARCH' as any, 'crm_leads', 0, `Firecrawl scrape: ${url.trim()}`);
 
       res.json({ data: result.data || {} });
     } catch (err: unknown) {
@@ -106,7 +106,7 @@ router.post(
 
 router.post(
   '/firecrawl/import',
-  requireRole(['admin', 'manager']),
+  requireRole('admin', 'manager'),
   async (req: Request, res: Response) => {
     const body = req.body as Partial<LeadUpsertData> & { business_name?: string };
 

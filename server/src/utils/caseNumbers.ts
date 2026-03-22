@@ -64,7 +64,7 @@ export function getCaseTypeCode(caseType: string): string {
 }
 
 // ── Case Number Generation ──────────────────────────────────
-// Format: YY-######-XX  (2-digit year + 6-digit sequence + 2-letter type code)
+// Format: YY-#####-XX  (2-digit year + 5-digit sequence + 2-letter type code)
 
 export function generateCaseNumber(db: Database.Database, caseType: string = 'general'): string {
   const yy = localToday().slice(2, 4);
@@ -77,13 +77,14 @@ export function generateCaseNumber(db: Database.Database, caseType: string = 'ge
 
   let nextNum = 1;
   if (lastCase) {
-    const match = lastCase.case_number.match(/\d{2}-(\d{6})-[A-Z]{2}/);
+    // Match both old 6-digit and new 5-digit formats for backward compatibility
+    const match = lastCase.case_number.match(/\d{2}-(\d{5,6})-[A-Z]{2}/);
     if (match) {
       nextNum = parseInt(match[1], 10) + 1;
     }
   }
 
-  return `${prefix}${String(nextNum).padStart(6, '0')}-${typeCode}`;
+  return `${prefix}${String(nextNum).padStart(5, '0')}-${typeCode}`;
 }
 
 // ── Incident Number Generation ──────────────────────────────

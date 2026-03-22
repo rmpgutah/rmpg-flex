@@ -515,7 +515,6 @@ export default function LoginPage() {
                 <TotpCodeInput
                   value={totpCode}
                   onChange={setTotpCode}
-                  onComplete={() => {}}
                   disabled={loginBusy}
                   error={!!error}
                 />

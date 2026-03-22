@@ -26,6 +26,7 @@ import {
   Search,
   Mail,
   Plug,
+  ClipboardList,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -240,7 +241,7 @@ export default function AdminPage() {
   const clientEditPendingRef = useRef(false);
 
   // Restore active tab from URL ?tab= param or localStorage (default: 'users')
-  const VALID_TABS = ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'skiptracer', 'sessions', 'training', 'radio', 'offline', 'security', 'branding', 'email', 'integrations'];
+  const VALID_TABS = ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'skiptracer', 'skiptracer_v2', 'sessions', 'training', 'radio', 'offline', 'security', 'branding', 'email', 'iped', 'integrations'];
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       // URL ?tab= param takes priority (used by Help → Training link)
@@ -661,6 +662,7 @@ export default function AdminPage() {
       category: 'Compliance',
       tabs: [
         { id: 'audit', label: 'Audit Log', icon: ScrollText },
+        { id: 'iped', label: 'IPED', icon: ClipboardList },
       ],
     },
   ];
@@ -937,30 +939,6 @@ export default function AdminPage() {
 
         {activeTab === 'security' && (
           <AdminSecurityTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'clearpathgps' && (
-          <AdminClearPathGpsTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'arrests' && (
-          <AdminArrestsTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'skiptracer' && (
-          <AdminSkipTracerTab
             LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}

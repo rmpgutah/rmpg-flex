@@ -3307,7 +3307,7 @@ function migrateSchema(): void {
       const match = c.case_number.match(/CASE-(\d{4})-(\d+)/);
       if (match) {
         const yy = match[1].slice(-2);
-        const seq = String(parseInt(match[2], 10)).padStart(6, '0');
+        const seq = String(parseInt(match[2], 10)).padStart(5, '0');
         const caseTypeCodes: Record<string, string> = {
           general: 'GN', criminal: 'CR', traffic: 'TR', medical: 'MD',
           security: 'SE', disorder: 'DS', service: 'SV', fire: 'FR',

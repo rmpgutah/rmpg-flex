@@ -65,7 +65,7 @@ export default function WebIntelPanel() {
   useEffect(() => {
     (async () => {
       try {
-        const data = await apiFetch<{ connected: boolean }>('/api/crm/firecrawl/status');
+        const data = await apiFetch<{ connected: boolean }>('/crm/firecrawl/status');
         setFirecrawlConnected(!!data?.connected);
       } catch {
         setFirecrawlConnected(false);
@@ -84,7 +84,7 @@ export default function WebIntelPanel() {
     setExtractedMap({});
     setExpandedMap({});
     try {
-      const data = await apiFetch<{ results: SearchResult[] }>('/api/crm/firecrawl/search', {
+      const data = await apiFetch<{ results: SearchResult[] }>('/crm/firecrawl/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: trimmed }),
@@ -105,7 +105,7 @@ export default function WebIntelPanel() {
   const handleScrape = useCallback(async (url: string) => {
     setScrapingMap(p => ({ ...p, [url]: true }));
     try {
-      const data = await apiFetch<{ extracted?: ExtractedData } & ExtractedData>('/api/crm/firecrawl/scrape', {
+      const data = await apiFetch<{ extracted?: ExtractedData } & ExtractedData>('/crm/firecrawl/scrape', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
@@ -125,7 +125,7 @@ export default function WebIntelPanel() {
   const handleImport = useCallback(async (data: Record<string, unknown>, url: string) => {
     setImportingMap(p => ({ ...p, [url]: true }));
     try {
-      await apiFetch('/api/crm/firecrawl/import', {
+      await apiFetch('/crm/firecrawl/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...data, source_url: url }),

@@ -1350,7 +1350,7 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
 }
 
 /** Page break handler for drawFormSection — forces a page break with continuation header */
-function formSectionPageBreak(doc: jsPDF, _neededH: number): number {
+export function formSectionPageBreak(doc: jsPDF, _neededH: number): number {
   // Force a page break by passing a Y beyond the page
   return checkPageBreak(doc, doc.internal.pageSize.getHeight(), 1);
 }
