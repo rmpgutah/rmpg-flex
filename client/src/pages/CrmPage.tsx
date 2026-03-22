@@ -181,6 +181,8 @@ export default function CrmPage() {
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [editingTask, setEditingTask] = useState<CrmTask | null>(null);
   const [taskForm, setTaskForm] = useState<Partial<CrmTask>>({});
+  const [completingTaskId, setCompletingTaskId] = useState<Set<number | string>>(new Set());
+  const [taskGroupCollapsed, setTaskGroupCollapsed] = useState<Record<string, boolean>>({});
 
   // Officers for assignment
   const [officers, setOfficers] = useState<{ id: string; full_name: string }[]>([]);
@@ -306,7 +308,10 @@ export default function CrmPage() {
     if (activeSection === 'properties') fetchProperties();
     if (activeSection === 'contacts') fetchContacts();
     if (activeSection === 'invoices') fetchInvoices();
-    if (activeSection === 'tasks') fetchTasks();
+    if (activeSection === 'tasks') {
+      // Silently trigger auto-renewal task generation, then refresh task list
+      apiFetch('/crm/dashboard/renewal-tasks').catch(() => {}).finally(() => fetchTasks());
+    }
     if (activeSection === 'dashboard') fetchDashboard();
   }, [activeSection, fetchProperties, fetchContacts, fetchInvoices, fetchTasks, fetchDashboard]);
 
@@ -382,11 +387,15 @@ export default function CrmPage() {
 
   const toggleTaskComplete = async (task: CrmTask) => {
     const newStatus = task.status === 'completed' ? 'pending' : 'completed';
+    setCompletingTaskId(prev => new Set(prev).add(task.id));
     try {
       await apiFetch(`/crm/tasks/${task.id}`, { method: 'PUT', body: JSON.stringify({ status: newStatus }) });
-      fetchTasks();
+      // Optimistic update: update local state immediately
+      setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: newStatus } : t));
     } catch (err: any) {
       addToast(err?.message || 'Failed to update task', 'error');
+    } finally {
+      setCompletingTaskId(prev => { const s = new Set(prev); s.delete(task.id); return s; });
     }
   };
 
@@ -623,11 +632,17 @@ export default function CrmPage() {
               >
                 <Icon className="w-3.5 h-3.5 flex-shrink-0" />
                 {item.label}
-                {item.id === 'tasks' && tasks.filter(t => t.status === 'pending' || t.status === 'in_progress').length > 0 && (
-                  <span className="ml-auto text-[9px] font-mono px-1 py-0.5 bg-amber-900/30 text-amber-400 border border-amber-700/50">
-                    {tasks.filter(t => t.status === 'pending' || t.status === 'in_progress').length}
-                  </span>
-                )}
+                {item.id === 'tasks' && (() => {
+                  const todayStr = new Date().toISOString().slice(0, 10);
+                  const activeTasks = tasks.filter(t => t.status === 'pending' || t.status === 'in_progress');
+                  const urgentTasks = activeTasks.filter(t => t.due_date && t.due_date <= todayStr);
+                  if (activeTasks.length === 0) return null;
+                  return (
+                    <span className={`ml-auto text-[9px] font-mono px-1 py-0.5 border ${urgentTasks.length > 0 ? 'bg-red-900/40 text-red-400 border-red-700/60' : 'bg-amber-900/30 text-amber-400 border-amber-700/50'}`}>
+                      {activeTasks.length}
+                    </span>
+                  );
+                })()}
               </button>
             );
           })}
@@ -1842,6 +1857,105 @@ export default function CrmPage() {
   }
 
   function renderTasks() {
+    // ── Due-date grouping helpers ──────────────────────────
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const weekEnd = new Date();
+    weekEnd.setDate(weekEnd.getDate() + 7);
+    const weekEndStr = weekEnd.toISOString().slice(0, 10);
+
+    const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
+    const sortByPriority = (a: CrmTask, b: CrmTask) =>
+      (PRIORITY_ORDER[a.priority] ?? 99) - (PRIORITY_ORDER[b.priority] ?? 99);
+
+    // Only group active tasks; show completed/cancelled flat
+    const activeTasks = tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled');
+    const otherTasks = tasks.filter(t => t.status === 'completed' || t.status === 'cancelled');
+
+    const overdueTasks = activeTasks.filter(t => t.due_date && t.due_date < todayStr).sort(sortByPriority);
+    const thisWeekTasks = activeTasks.filter(t => t.due_date && t.due_date >= todayStr && t.due_date <= weekEndStr).sort(sortByPriority);
+    const upcomingTasks = activeTasks.filter(t => !t.due_date || t.due_date > weekEndStr).sort(sortByPriority);
+
+    const toggleGroup = (key: string) =>
+      setTaskGroupCollapsed(prev => ({ ...prev, [key]: !prev[key] }));
+
+    const renderTaskRow = (task: CrmTask) => {
+      const isCompleting = completingTaskId.has(task.id);
+      return (
+        <div key={task.id} className="panel-inset p-3 flex items-start gap-3">
+          {/* Quick-complete button */}
+          <button
+            onClick={() => toggleTaskComplete(task)}
+            disabled={isCompleting}
+            title={task.status === 'completed' ? 'Mark as pending' : 'Mark as complete'}
+            className={`mt-0.5 w-4 h-4 border flex-shrink-0 flex items-center justify-center transition-colors ${
+              task.status === 'completed'
+                ? 'bg-green-600 border-green-500 text-white'
+                : isCompleting
+                ? 'border-brand-500 bg-brand-900/30 animate-pulse'
+                : 'border-rmpg-500 hover:border-green-400 hover:bg-green-900/20'
+            }`}
+          >
+            {isCompleting
+              ? <span className="text-[8px] text-brand-400">...</span>
+              : task.status === 'completed'
+              ? <span className="text-[10px]">✓</span>
+              : <span className="text-[10px] text-rmpg-500 hover:text-green-400">✓</span>
+            }
+          </button>
+
+          {/* Content */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={`text-xs font-medium ${task.status === 'completed' ? 'text-rmpg-400 line-through' : 'text-rmpg-200'}`}>
+                {task.title}
+              </span>
+              <span className={`px-1 py-0.5 text-[8px] font-bold border ${priorityColor(task.priority)}`}>{task.priority.toUpperCase()}</span>
+              <span className={`px-1 py-0.5 text-[8px] font-bold border ${statusColor(task.status)}`}>{toDisplayLabel(task.status)}</span>
+              <span className="px-1 py-0.5 text-[8px] font-bold border border-rmpg-600 text-rmpg-400 bg-rmpg-800/20">{toDisplayLabel(task.task_type)}</span>
+            </div>
+            <div className="flex items-center gap-3 mt-1 text-[10px] text-rmpg-400">
+              {task.client_name && <span className="flex items-center gap-1"><Building2 className="w-2.5 h-2.5" />{task.client_name}</span>}
+              {task.due_date && (
+                <span className={`flex items-center gap-1 ${task.due_date < todayStr && task.status !== 'completed' ? 'text-red-400' : ''}`}>
+                  <Calendar className="w-2.5 h-2.5" />{formatDate(task.due_date)}
+                </span>
+              )}
+              {task.assigned_to_name && <span className="flex items-center gap-1"><Users className="w-2.5 h-2.5" />{task.assigned_to_name}</span>}
+            </div>
+            {task.description && <div className="text-[10px] text-rmpg-300 mt-1 line-clamp-2">{task.description}</div>}
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button onClick={() => openEditTask(task)} className="p-1 text-rmpg-400 hover:text-rmpg-200"><Edit3 className="w-3 h-3" /></button>
+            <button onClick={() => deleteTask(task.id)} className="p-1 text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
+          </div>
+        </div>
+      );
+    };
+
+    const renderGroup = (key: string, label: string, color: string, groupTasks: CrmTask[]) => {
+      if (groupTasks.length === 0) return null;
+      const collapsed = taskGroupCollapsed[key];
+      return (
+        <div key={key} className="mb-3">
+          <button
+            onClick={() => toggleGroup(key)}
+            className="w-full flex items-center gap-2 px-2 py-1 mb-1.5 text-[10px] font-bold uppercase tracking-widest border-b border-rmpg-700/50 hover:border-rmpg-600 transition-colors text-left"
+          >
+            <span className={color}>{collapsed ? '▶' : '▼'}</span>
+            <span className={color}>{label}</span>
+            <span className={`ml-1 text-[9px] font-mono px-1 border ${color === 'text-red-400' ? 'border-red-700/50 bg-red-900/20 text-red-400' : color === 'text-amber-400' ? 'border-amber-700/50 bg-amber-900/20 text-amber-400' : 'border-rmpg-600 bg-rmpg-800/20 text-rmpg-400'}`}>
+              {groupTasks.length}
+            </span>
+          </button>
+          {!collapsed && <div className="space-y-2">{groupTasks.map(renderTaskRow)}</div>}
+        </div>
+      );
+    };
+
+    const hasGroups = overdueTasks.length > 0 || thisWeekTasks.length > 0 || upcomingTasks.length > 0;
+
     return (
       <div className="flex-1 overflow-y-auto">
         <PanelTitleBar title="TASKS" icon={CheckSquare}>
@@ -1861,50 +1975,24 @@ export default function CrmPage() {
           {tasks.length === 0 ? (
             <div className="text-center py-12 text-rmpg-400 text-sm">No tasks found</div>
           ) : (
-            <div className="space-y-2">
-              {tasks.map(task => (
-                <div key={task.id} className="panel-inset p-3 flex items-start gap-3">
-                  {/* Checkbox */}
-                  <button
-                    onClick={() => toggleTaskComplete(task)}
-                    className={`mt-0.5 w-4 h-4 border flex-shrink-0 flex items-center justify-center ${
-                      task.status === 'completed'
-                        ? 'bg-green-600 border-green-500 text-white'
-                        : 'border-rmpg-500 hover:border-brand-400'
-                    }`}
-                  >
-                    {task.status === 'completed' && <span className="text-[10px]">✓</span>}
-                  </button>
-
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-xs font-medium ${task.status === 'completed' ? 'text-rmpg-400 line-through' : 'text-rmpg-200'}`}>
-                        {task.title}
-                      </span>
-                      <span className={`px-1 py-0.5 text-[8px] font-bold border ${priorityColor(task.priority)}`}>{task.priority.toUpperCase()}</span>
-                      <span className={`px-1 py-0.5 text-[8px] font-bold border ${statusColor(task.status)}`}>{toDisplayLabel(task.status)}</span>
-                      <span className="px-1 py-0.5 text-[8px] font-bold border border-rmpg-600 text-rmpg-400 bg-rmpg-800/20">{toDisplayLabel(task.task_type)}</span>
+            <div>
+              {hasGroups ? (
+                <>
+                  {renderGroup('overdue', 'OVERDUE', 'text-red-400', overdueTasks)}
+                  {renderGroup('this_week', 'DUE THIS WEEK', 'text-amber-400', thisWeekTasks)}
+                  {renderGroup('upcoming', 'UPCOMING', 'text-rmpg-300', upcomingTasks)}
+                  {otherTasks.length > 0 && (
+                    <div className="mt-3">
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-rmpg-500 border-b border-rmpg-700/50 pb-1 mb-2">
+                        COMPLETED / CANCELLED
+                      </div>
+                      <div className="space-y-2">{otherTasks.map(renderTaskRow)}</div>
                     </div>
-                    <div className="flex items-center gap-3 mt-1 text-[10px] text-rmpg-400">
-                      {task.client_name && <span className="flex items-center gap-1"><Building2 className="w-2.5 h-2.5" />{task.client_name}</span>}
-                      {task.due_date && (
-                        <span className={`flex items-center gap-1 ${new Date(task.due_date) < new Date() && task.status !== 'completed' ? 'text-red-400' : ''}`}>
-                          <Calendar className="w-2.5 h-2.5" />{formatDate(task.due_date)}
-                        </span>
-                      )}
-                      {task.assigned_to_name && <span className="flex items-center gap-1"><Users className="w-2.5 h-2.5" />{task.assigned_to_name}</span>}
-                    </div>
-                    {task.description && <div className="text-[10px] text-rmpg-300 mt-1 line-clamp-2">{task.description}</div>}
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <button onClick={() => openEditTask(task)} className="p-1 text-rmpg-400 hover:text-rmpg-200"><Edit3 className="w-3 h-3" /></button>
-                    <button onClick={() => deleteTask(task.id)} className="p-1 text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
-                  </div>
-                </div>
-              ))}
+                  )}
+                </>
+              ) : (
+                <div className="space-y-2">{tasks.map(renderTaskRow)}</div>
+              )}
             </div>
           )}
         </div>
