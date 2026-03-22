@@ -85,15 +85,15 @@ interface MapLayersPanelProps {
   // Event planning
   eventPlanning: any;
 
-  // Traffic layer
-  showTraffic: boolean;
-  onToggleTraffic: () => void;
+  // Traffic layer (optional — wired up when traffic layer feature is enabled)
+  showTraffic?: boolean;
+  onToggleTraffic?: () => void;
 
-  // Measurement tool
-  measuring: boolean;
-  measureMode: MeasureMode | null;
-  onStartMeasure: (mode: MeasureMode) => void;
-  onClearMeasurement: () => void;
+  // Measurement tool (optional — wired up when measurement feature is enabled)
+  measuring?: boolean;
+  measureMode?: MeasureMode | null;
+  onStartMeasure?: (mode: MeasureMode) => void;
+  onClearMeasurement?: () => void;
 }
 
 export default function MapLayersPanel(props: MapLayersPanelProps) {
@@ -244,6 +244,18 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
             )}
           </div>
         )}
+
+        {/* Traffic Layer */}
+        <button
+          onClick={onToggleTraffic}
+          className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${
+            showTraffic ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70 hover:bg-rmpg-800/50'
+          }`}
+        >
+          {showTraffic ? <Eye className="w-3 h-3 text-amber-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
+          <Car className="w-3 h-3 text-amber-400" />
+          <span className="text-[10px] text-rmpg-200 flex-1">Traffic</span>
+        </button>
 
         {/* Tracking Lines */}
         <button
@@ -424,6 +436,52 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
             )}
           </div>
         )}
+      </div>
+
+      {/* Measurement Tools */}
+      <div className="border-t border-rmpg-700 p-1.5">
+        <div className="flex items-center gap-1 px-2 py-1">
+          <Ruler className="w-3 h-3" style={{ color: '#d4a017' }} />
+          <span className="text-[10px] text-rmpg-300 flex-1">Measure</span>
+        </div>
+        <div className="flex items-center gap-1 px-2">
+          <button
+            onClick={() => onStartMeasure?.('distance')}
+            className={`flex items-center gap-1 px-2 py-1 text-[9px] font-mono font-bold transition-colors ${
+              measuring && measureMode === 'distance'
+                ? 'bg-yellow-900/40 border border-yellow-700/50'
+                : 'text-rmpg-400 hover:text-rmpg-200 hover:bg-rmpg-800/50 border border-transparent'
+            }`}
+            style={{ borderRadius: 2, color: measuring && measureMode === 'distance' ? '#d4a017' : undefined }}
+            title="Measure distance"
+          >
+            <Ruler className="w-2.5 h-2.5" />
+            Dist
+          </button>
+          <button
+            onClick={() => onStartMeasure?.('area')}
+            className={`flex items-center gap-1 px-2 py-1 text-[9px] font-mono font-bold transition-colors ${
+              measuring && measureMode === 'area'
+                ? 'bg-yellow-900/40 border border-yellow-700/50'
+                : 'text-rmpg-400 hover:text-rmpg-200 hover:bg-rmpg-800/50 border border-transparent'
+            }`}
+            style={{ borderRadius: 2, color: measuring && measureMode === 'area' ? '#d4a017' : undefined }}
+            title="Measure area"
+          >
+            <Maximize2 className="w-2.5 h-2.5" />
+            Area
+          </button>
+          {measureMode && (
+            <button
+              onClick={onClearMeasurement}
+              className="px-1.5 py-1 text-[9px] font-mono font-bold text-red-400 hover:bg-red-900/30 transition-colors ml-auto"
+              style={{ borderRadius: 2 }}
+              title="Clear measurement"
+            >
+              <X className="w-2.5 h-2.5" />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="border-t border-rmpg-700 p-1.5">
