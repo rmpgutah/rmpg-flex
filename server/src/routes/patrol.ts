@@ -488,4 +488,30 @@ router.get('/compliance', (req: Request, res: Response) => {
   }
 });
 
+// GET /api/patrol/checkpoints/map - Checkpoint data for map overlay with last scan info
+router.get('/checkpoints/map', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT pc.id, pc.name, pc.latitude, pc.longitude, pc.property_id, pc.sequence_order,
+             pc.scan_required_interval_minutes,
+             ps.scanned_at AS last_scanned, u.full_name AS scanned_by_name, p.name AS property_name
+      FROM patrol_checkpoints pc
+      LEFT JOIN (
+        SELECT checkpoint_id, MAX(scanned_at) AS scanned_at, officer_id
+        FROM patrol_scans GROUP BY checkpoint_id
+      ) ps ON ps.checkpoint_id = pc.id
+      LEFT JOIN users u ON u.id = ps.officer_id
+      LEFT JOIN properties p ON p.id = pc.property_id
+      WHERE pc.is_active = 1 AND pc.latitude IS NOT NULL AND pc.longitude IS NOT NULL
+      ORDER BY pc.property_id, pc.sequence_order
+    `).all();
+
+    res.json(rows);
+  } catch (error) {
+    console.error('Error fetching checkpoint map data:', error);
+    res.status(500).json({ error: 'Failed to fetch checkpoint map data' });
+  }
+});
+
 export default router;

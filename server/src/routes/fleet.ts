@@ -271,11 +271,63 @@ router.get('/analytics', (req: Request, res: Response) => {
   }
 });
 
+// ─── GET /api/fleet/map ─ Fleet vehicles with GPS for map overlay ──
+router.get('/map', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    // Check if cpgps_vehicles table exists for GPS data
+    let hasCpgps = false;
+    try {
+      db.prepare("SELECT 1 FROM cpgps_vehicles LIMIT 0").run();
+      hasCpgps = true;
+    } catch {
+      // Table doesn't exist — return vehicles without GPS
+    }
+
+    let rows: any[];
+
+    if (hasCpgps) {
+      rows = db.prepare(`
+        SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year, fv.plate_number,
+               fv.status, fv.current_mileage, fv.next_service_due, fv.assigned_unit_id,
+               u.call_sign AS assigned_call_sign,
+               cv.last_lat AS gps_lat, cv.last_lon AS gps_lon,
+               cv.last_speed AS gps_speed, cv.last_heading AS gps_heading,
+               cv.last_reported_at AS gps_reported_at
+        FROM fleet_vehicles fv
+        LEFT JOIN units u ON u.id = fv.assigned_unit_id
+        LEFT JOIN cpgps_vehicles cv ON cv.vehicle_id = fv.id
+        WHERE fv.status != 'retired'
+        ORDER BY fv.vehicle_number
+      `).all();
+    } else {
+      rows = db.prepare(`
+        SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year, fv.plate_number,
+               fv.status, fv.current_mileage, fv.next_service_due, fv.assigned_unit_id,
+               u.call_sign AS assigned_call_sign,
+               NULL AS gps_lat, NULL AS gps_lon,
+               NULL AS gps_speed, NULL AS gps_heading,
+               NULL AS gps_reported_at
+        FROM fleet_vehicles fv
+        LEFT JOIN units u ON u.id = fv.assigned_unit_id
+        WHERE fv.status != 'retired'
+        ORDER BY fv.vehicle_number
+      `).all();
+    }
+
+    res.json(rows);
+  } catch (error) {
+    console.error('Error fetching fleet map data:', error);
+    res.status(500).json({ error: 'Failed to fetch fleet map data' });
+  }
+});
+
 // ─── GET /api/fleet/:id ─ Get single fleet vehicle ────────────────
 router.get('/:id', (req: Request, res: Response) => {
   try {
     // Avoid matching sub-routes that are handled by other route definitions
-    if (['maintenance', 'analytics'].includes(req.params.id as string)) {
+    if (['maintenance', 'analytics', 'map'].includes(req.params.id as string)) {
       res.status(404).json({ error: 'Not found' });
       return;
     }

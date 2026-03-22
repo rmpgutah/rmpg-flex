@@ -45,6 +45,13 @@ import {
   ShieldAlert,
   Grab,
   Radar,
+  FileSearch,
+  Timer,
+  Target,
+  Scale,
+  Car,
+  AlertOctagon,
+  Sun,
 } from 'lucide-react';
 import type { UnitStatus } from '../../types';
 import RmpgLogo from '../../components/RmpgLogo';
@@ -76,6 +83,16 @@ import { useMapSafetyZones } from './hooks/useMapSafetyZones';
 import { useMapGeofences } from './hooks/useMapGeofences';
 import { useMapClustering } from './hooks/useMapClustering';
 import { useMapDragDispatch } from './hooks/useMapDragDispatch';
+import { useMapPatrolCheckpoints } from './hooks/useMapPatrolCheckpoints';
+import { useMapFieldInterviews } from './hooks/useMapFieldInterviews';
+import { useMapDwellTime } from './hooks/useMapDwellTime';
+import { useMapResponseRadius } from './hooks/useMapResponseRadius';
+import { useMapEnforcementClusters } from './hooks/useMapEnforcementClusters';
+import { useMapCoverageGaps } from './hooks/useMapCoverageGaps';
+import { useMapFleetVehicles } from './hooks/useMapFleetVehicles';
+import { useMapRepeatAddresses } from './hooks/useMapRepeatAddresses';
+import { useMapPanicZone } from './hooks/useMapPanicZone';
+import { useMapDaylightOverlay } from './hooks/useMapDaylightOverlay';
 import PredictionsPanel from './components/PredictionsPanel';
 import GeofenceManager from './components/GeofenceManager';
 
@@ -288,6 +305,24 @@ export default function MapPage() {
     setIntelLayers(prev => ({ ...prev, [layer]: !prev[layer] }));
   };
 
+  // New tactical layer toggles
+  const [showPatrolCheckpoints, setShowPatrolCheckpoints] = useState(false);
+  const [showFieldInterviews, setShowFieldInterviews] = useState(false);
+  const [fiDays, setFiDays] = useState(30);
+  const [showDwellTime, setShowDwellTime] = useState(false);
+  const [showResponseRadius, setShowResponseRadius] = useState(false);
+  const [showEnforcementClusters, setShowEnforcementClusters] = useState(false);
+  const [enforcementType, setEnforcementType] = useState<'citations' | 'arrests'>('citations');
+  const [enforcementDays, setEnforcementDays] = useState(90);
+  const [showCoverage, setShowCoverage] = useState(false);
+  const [coverageRadius, setCoverageRadius] = useState(3);
+  const [showFleetVehicles, setShowFleetVehicles] = useState(false);
+  const [showRepeatAddresses, setShowRepeatAddresses] = useState(false);
+  const [repeatDays, setRepeatDays] = useState(30);
+  const [repeatMinCount, setRepeatMinCount] = useState(3);
+  const [showPanicZone, setShowPanicZone] = useState(true); // on by default for safety
+  const [showDaylight, setShowDaylight] = useState(false);
+
   // Tactical map hooks
   const timelapse = useMapHeatmapTimelapse(mapInstanceRef.current, showTimelapse && showHeatmap, heatmapDays, heatmapMode as 'all' | 'risk');
   const predictions = useMapPredictions(mapInstanceRef.current, showPredictions);
@@ -296,6 +331,18 @@ export default function MapPage() {
   const geofences = useMapGeofences(mapInstanceRef.current, showGeofences);
   // Note: clustering and drag-dispatch need marker references which may not be easily available
   // Wire them with empty arrays/maps for now — they'll work once markers are exposed
+
+  // New tactical hooks
+  const patrolCheckpoints = useMapPatrolCheckpoints(mapInstanceRef.current, showPatrolCheckpoints);
+  const fieldInterviews = useMapFieldInterviews(mapInstanceRef.current, showFieldInterviews, fiDays);
+  const dwellTime = useMapDwellTime(mapInstanceRef.current, units as any, showDwellTime);
+  const responseRadius = useMapResponseRadius(mapInstanceRef.current, showResponseRadius);
+  const enforcementClusters = useMapEnforcementClusters(mapInstanceRef.current, showEnforcementClusters, enforcementType, enforcementDays);
+  const coverageGaps = useMapCoverageGaps(mapInstanceRef.current, units as any, showCoverage, coverageRadius);
+  const fleetVehicles = useMapFleetVehicles(mapInstanceRef.current, showFleetVehicles);
+  const repeatAddresses = useMapRepeatAddresses(mapInstanceRef.current, showRepeatAddresses, repeatDays, repeatMinCount);
+  const panicZone = useMapPanicZone(mapInstanceRef.current, showPanicZone);
+  const daylight = useMapDaylightOverlay(mapInstanceRef.current, showDaylight);
 
   // Geofence alerts — show toast when triggered
   useEffect(() => {
@@ -2349,6 +2396,257 @@ export default function MapPage() {
                   </button>
                 )}
               </div>
+            </div>
+
+            {/* ── Tactical Layers ── */}
+            <div className="border-t border-rmpg-700 p-1.5">
+              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Tactical</div>
+
+              {/* Patrol Checkpoints */}
+              <button
+                onClick={() => setShowPatrolCheckpoints(!showPatrolCheckpoints)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showPatrolCheckpoints ? 'panel-inset bg-green-900/20 text-green-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <Crosshair className="w-3 h-3" />
+                <span className="flex-1 text-left">Patrol Checkpoints</span>
+                {showPatrolCheckpoints && patrolCheckpoints.overdueCount > 0 && (
+                  <span className="text-[9px] font-mono text-orange-400">{patrolCheckpoints.overdueCount} due</span>
+                )}
+                {showPatrolCheckpoints && !patrolCheckpoints.loading && patrolCheckpoints.overdueCount === 0 && (
+                  <span className="text-[9px] font-mono">{patrolCheckpoints.checkpoints.length}</span>
+                )}
+              </button>
+
+              {/* Field Interviews */}
+              <button
+                onClick={() => setShowFieldInterviews(!showFieldInterviews)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showFieldInterviews ? 'panel-inset bg-blue-900/20 text-blue-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <FileSearch className="w-3 h-3" />
+                <span className="flex-1 text-left">Field Interviews</span>
+                {showFieldInterviews && fieldInterviews.count > 0 && (
+                  <span className="text-[9px] font-mono">{fieldInterviews.count}</span>
+                )}
+              </button>
+              {showFieldInterviews && (
+                <div className="px-3 py-1 flex items-center gap-1">
+                  {[7, 14, 30, 90].map((d) => (
+                    <button
+                      key={d}
+                      onClick={() => setFiDays(d)}
+                      className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
+                        fiDays === d
+                          ? 'bg-blue-900/50 text-blue-400 border border-blue-700/50'
+                          : 'text-rmpg-500 hover:text-rmpg-300'
+                      }`}
+                    >
+                      {d}d
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Dwell Time */}
+              <button
+                onClick={() => setShowDwellTime(!showDwellTime)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showDwellTime ? 'panel-inset bg-amber-900/20 text-amber-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <Timer className="w-3 h-3" />
+                <span className="flex-1 text-left">Dwell Time</span>
+                {showDwellTime && dwellTime.dwellAlertCount > 0 && (
+                  <span className="text-[9px] font-mono text-amber-400">{dwellTime.dwellAlertCount}</span>
+                )}
+              </button>
+
+              {/* Response Radius */}
+              <button
+                onClick={() => setShowResponseRadius(!showResponseRadius)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showResponseRadius ? 'panel-inset bg-indigo-900/20 text-indigo-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <Target className="w-3 h-3" />
+                <span className="flex-1 text-left">Response Radius</span>
+                {showResponseRadius && responseRadius.activePoint && (
+                  <span className="led-dot led-indigo" style={{ width: 5, height: 5 }} />
+                )}
+              </button>
+
+              {/* Enforcement Clusters */}
+              <button
+                onClick={() => setShowEnforcementClusters(!showEnforcementClusters)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showEnforcementClusters ? 'panel-inset bg-rose-900/20 text-rose-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <Scale className="w-3 h-3" />
+                <span className="flex-1 text-left">Enforcement</span>
+                {showEnforcementClusters && enforcementClusters.totalRecords > 0 && (
+                  <span className="text-[9px] font-mono">{enforcementClusters.totalRecords}</span>
+                )}
+              </button>
+              {showEnforcementClusters && (
+                <div className="px-3 py-1 space-y-1">
+                  <div className="flex items-center gap-1">
+                    {(['citations', 'arrests'] as const).map((t) => (
+                      <button
+                        key={t}
+                        onClick={() => setEnforcementType(t)}
+                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
+                          enforcementType === t
+                            ? 'bg-rose-900/50 text-rose-400 border border-rose-700/50'
+                            : 'text-rmpg-500 hover:text-rmpg-300'
+                        }`}
+                      >
+                        {t === 'citations' ? 'Citations' : 'Arrests'}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {[30, 60, 90, 180].map((d) => (
+                      <button
+                        key={d}
+                        onClick={() => setEnforcementDays(d)}
+                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
+                          enforcementDays === d
+                            ? 'bg-rose-900/50 text-rose-400 border border-rose-700/50'
+                            : 'text-rmpg-500 hover:text-rmpg-300'
+                        }`}
+                      >
+                        {d}d
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Coverage Map */}
+              <button
+                onClick={() => setShowCoverage(!showCoverage)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showCoverage ? 'panel-inset bg-teal-900/20 text-teal-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <Radar className="w-3 h-3" />
+                <span className="flex-1 text-left">Coverage Map</span>
+                {showCoverage && coverageGaps.coverageCount > 0 && (
+                  <span className="text-[9px] font-mono">{coverageGaps.coverageCount}</span>
+                )}
+              </button>
+              {showCoverage && (
+                <div className="px-3 py-1 flex items-center gap-1">
+                  {[1, 2, 3, 5].map((r) => (
+                    <button
+                      key={r}
+                      onClick={() => setCoverageRadius(r)}
+                      className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
+                        coverageRadius === r
+                          ? 'bg-teal-900/50 text-teal-400 border border-teal-700/50'
+                          : 'text-rmpg-500 hover:text-rmpg-300'
+                      }`}
+                    >
+                      {r}mi
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Fleet Vehicles */}
+              <button
+                onClick={() => setShowFleetVehicles(!showFleetVehicles)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showFleetVehicles ? 'panel-inset bg-sky-900/20 text-sky-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <Car className="w-3 h-3" />
+                <span className="flex-1 text-left">Fleet Vehicles</span>
+                {showFleetVehicles && fleetVehicles.count > 0 && (
+                  <span className="text-[9px] font-mono">{fleetVehicles.count}</span>
+                )}
+              </button>
+
+              {/* Repeat Addresses */}
+              <button
+                onClick={() => setShowRepeatAddresses(!showRepeatAddresses)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showRepeatAddresses ? 'panel-inset bg-orange-900/20 text-orange-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <AlertOctagon className="w-3 h-3" />
+                <span className="flex-1 text-left">Repeat Addresses</span>
+                {showRepeatAddresses && repeatAddresses.count > 0 && (
+                  <span className="text-[9px] font-mono">{repeatAddresses.count}</span>
+                )}
+              </button>
+              {showRepeatAddresses && (
+                <div className="px-3 py-1 space-y-1">
+                  <div className="flex items-center gap-1">
+                    {[7, 14, 30, 90].map((d) => (
+                      <button
+                        key={d}
+                        onClick={() => setRepeatDays(d)}
+                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
+                          repeatDays === d
+                            ? 'bg-orange-900/50 text-orange-400 border border-orange-700/50'
+                            : 'text-rmpg-500 hover:text-rmpg-300'
+                        }`}
+                      >
+                        {d}d
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[7px] text-rmpg-500">Min:</span>
+                    {[2, 3, 5, 10].map((c) => (
+                      <button
+                        key={c}
+                        onClick={() => setRepeatMinCount(c)}
+                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
+                          repeatMinCount === c
+                            ? 'bg-orange-900/50 text-orange-400 border border-orange-700/50'
+                            : 'text-rmpg-500 hover:text-rmpg-300'
+                        }`}
+                      >
+                        {c}x
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Panic Zone */}
+              <button
+                onClick={() => setShowPanicZone(!showPanicZone)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showPanicZone ? 'panel-inset bg-red-900/20 text-red-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <ShieldAlert className="w-3 h-3" />
+                <span className="flex-1 text-left">Panic Zone</span>
+                {showPanicZone && panicZone.activePanic && (
+                  <span className="text-[8px] font-bold bg-red-600 text-white px-1 py-0.5 rounded-sm animate-pulse">ACTIVE</span>
+                )}
+              </button>
+
+              {/* Daylight Overlay */}
+              <button
+                onClick={() => setShowDaylight(!showDaylight)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showDaylight ? 'panel-inset bg-yellow-900/20 text-yellow-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <Sun className="w-3 h-3" />
+                <span className="flex-1 text-left">Daylight</span>
+                {showDaylight && daylight.phase && (
+                  <span className="text-[8px] font-mono text-yellow-400">{daylight.phase}</span>
+                )}
+              </button>
             </div>
 
             {/* ── Dispatch Mode ── */}

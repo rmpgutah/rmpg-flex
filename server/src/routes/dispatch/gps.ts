@@ -470,6 +470,92 @@ router.get('/gps/trails', requireRole('admin', 'manager', 'supervisor', 'officer
   }
 });
 
+// GET /api/dispatch/gps/dwell-times - Calculate how long each active unit has been stationary
+// Walks back through recent breadcrumbs to find when position last changed by >50m.
+router.get('/gps/dwell-times', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    // Get all active units with a known position
+    const units = db.prepare(`
+      SELECT id, call_sign, latitude, longitude, status
+      FROM units
+      WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        AND status != 'off_duty'
+    `).all() as Array<{ id: number; call_sign: string; latitude: number; longitude: number; status: string }>;
+
+    const THRESHOLD_M = 50; // meters — movement threshold
+
+    // Haversine distance in meters
+    const haversine = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+      const R = 6371000;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat / 2) ** 2 +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    };
+
+    const getBreadcrumbs = db.prepare(`
+      SELECT latitude, longitude, recorded_at
+      FROM gps_breadcrumbs
+      WHERE unit_id = ?
+      ORDER BY id DESC
+      LIMIT 100
+    `);
+
+    const results: Array<{ call_sign: string; latitude: number; longitude: number; dwell_minutes: number; status: string }> = [];
+
+    for (const unit of units) {
+      const breadcrumbs = getBreadcrumbs.all(unit.id) as Array<{ latitude: number; longitude: number; recorded_at: string }>;
+
+      if (breadcrumbs.length === 0) continue;
+
+      // Latest position from unit table
+      const latestLat = unit.latitude;
+      const latestLng = unit.longitude;
+
+      // Walk backwards to find first breadcrumb where position changed by >50m
+      let lastMovedAt: string | null = null;
+      for (const bc of breadcrumbs) {
+        const dist = haversine(latestLat, latestLng, bc.latitude, bc.longitude);
+        if (dist > THRESHOLD_M) {
+          lastMovedAt = bc.recorded_at;
+          break;
+        }
+      }
+
+      // If no movement found in last 100 breadcrumbs, use the oldest breadcrumb time
+      if (!lastMovedAt && breadcrumbs.length > 0) {
+        lastMovedAt = breadcrumbs[breadcrumbs.length - 1].recorded_at;
+      }
+
+      if (!lastMovedAt) continue;
+
+      const movedAtMs = new Date(lastMovedAt).getTime();
+      const nowMs = Date.now();
+      const dwellMinutes = Math.round((nowMs - movedAtMs) / 60000);
+
+      // Only include units dwelling > 5 min
+      if (dwellMinutes >= 5) {
+        results.push({
+          call_sign: unit.call_sign,
+          latitude: latestLat,
+          longitude: latestLng,
+          dwell_minutes: dwellMinutes,
+          status: unit.status,
+        });
+      }
+    }
+
+    res.json(results);
+  } catch (error: any) {
+    console.error('[GPS] dwell-times error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // DELETE /api/dispatch/gps/breadcrumbs/cleanup - Purge old breadcrumb data
 router.delete('/gps/breadcrumbs/cleanup', requireRole('admin'), (req: Request, res: Response) => {
   try {

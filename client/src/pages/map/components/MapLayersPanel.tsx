@@ -6,6 +6,7 @@ import {
   SkipForward, Gauge, Palette, PanelLeftClose, PanelLeftOpen, ChevronDown,
   ChevronUp, Globe2, Loader2, Map as MapIcon, Car, Ruler, Maximize2,
   Brain, ShieldAlert, Grab, Radar,
+  Crosshair, FileSearch, Timer, Target, Scale, AlertOctagon, Sun,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { formatIncidentType } from '../../../utils/caseNumbers';
@@ -116,6 +117,69 @@ interface MapLayersPanelProps {
   intelLayers?: { warrants: boolean; trespass: boolean; offenders: boolean; bolos: boolean };
   toggleIntelLayer?: (layer: 'warrants' | 'trespass' | 'offenders' | 'bolos') => void;
   intelCounts?: { warrants: number; trespass: number; offenders: number; bolos: number };
+
+  // Patrol Checkpoints
+  showPatrolCheckpoints?: boolean;
+  setShowPatrolCheckpoints?: (v: boolean) => void;
+  patrolCheckpointsOverdue?: number;
+  patrolCheckpointsCount?: number;
+
+  // Field Interviews
+  showFieldInterviews?: boolean;
+  setShowFieldInterviews?: (v: boolean) => void;
+  fiDays?: number;
+  setFiDays?: (v: number) => void;
+  fieldInterviewCount?: number;
+
+  // Dwell Time
+  showDwellTime?: boolean;
+  setShowDwellTime?: (v: boolean) => void;
+  dwellAlertCount?: number;
+
+  // Response Radius
+  showResponseRadius?: boolean;
+  setShowResponseRadius?: (v: boolean) => void;
+  responseRadiusActive?: boolean;
+
+  // Enforcement Clusters
+  showEnforcementClusters?: boolean;
+  setShowEnforcementClusters?: (v: boolean) => void;
+  enforcementType?: 'citations' | 'arrests';
+  setEnforcementType?: (v: 'citations' | 'arrests') => void;
+  enforcementDays?: number;
+  setEnforcementDays?: (v: number) => void;
+  enforcementTotalRecords?: number;
+
+  // Coverage Map
+  showCoverage?: boolean;
+  setShowCoverage?: (v: boolean) => void;
+  coverageRadius?: number;
+  setCoverageRadius?: (v: number) => void;
+  coverageCount?: number;
+
+  // Fleet Vehicles
+  showFleetVehicles?: boolean;
+  setShowFleetVehicles?: (v: boolean) => void;
+  fleetVehicleCount?: number;
+
+  // Repeat Addresses
+  showRepeatAddresses?: boolean;
+  setShowRepeatAddresses?: (v: boolean) => void;
+  repeatDays?: number;
+  setRepeatDays?: (v: number) => void;
+  repeatMinCount?: number;
+  setRepeatMinCount?: (v: number) => void;
+  repeatAddressCount?: number;
+
+  // Panic Zone
+  showPanicZone?: boolean;
+  setShowPanicZone?: (v: boolean) => void;
+  panicActive?: boolean;
+
+  // Daylight Overlay
+  showDaylight?: boolean;
+  setShowDaylight?: (v: boolean) => void;
+  daylightPhase?: string;
 }
 
 export default function MapLayersPanel(props: MapLayersPanelProps) {
@@ -157,6 +221,16 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
     showGeofences, setShowGeofences, geofencesCount, geofenceDrawingMode, onToggleGeofenceDraw,
     dragDispatchMode, setDragDispatchMode,
     intelLayers, toggleIntelLayer, intelCounts,
+    showPatrolCheckpoints, setShowPatrolCheckpoints, patrolCheckpointsOverdue, patrolCheckpointsCount,
+    showFieldInterviews, setShowFieldInterviews, fiDays, setFiDays, fieldInterviewCount,
+    showDwellTime, setShowDwellTime, dwellAlertCount,
+    showResponseRadius, setShowResponseRadius, responseRadiusActive,
+    showEnforcementClusters, setShowEnforcementClusters, enforcementType, setEnforcementType, enforcementDays, setEnforcementDays, enforcementTotalRecords,
+    showCoverage, setShowCoverage, coverageRadius, setCoverageRadius, coverageCount,
+    showFleetVehicles, setShowFleetVehicles, fleetVehicleCount,
+    showRepeatAddresses, setShowRepeatAddresses, repeatDays, setRepeatDays, repeatMinCount, setRepeatMinCount, repeatAddressCount,
+    showPanicZone, setShowPanicZone, panicActive,
+    showDaylight, setShowDaylight, daylightPhase,
   } = props;
 
   if (!layersPanelOpen) {
@@ -1307,6 +1381,287 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                 </button>
               )}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Tactical Layers ── */}
+      {(setShowPatrolCheckpoints || setShowFieldInterviews || setShowDwellTime || setShowResponseRadius || setShowEnforcementClusters || setShowCoverage || setShowFleetVehicles || setShowRepeatAddresses || setShowPanicZone || setShowDaylight) && (
+        <div className="border-t border-rmpg-700 p-1.5">
+          <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Tactical</div>
+
+          {/* Patrol Checkpoints */}
+          {setShowPatrolCheckpoints && (
+            <button
+              onClick={() => setShowPatrolCheckpoints(!showPatrolCheckpoints)}
+              className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                showPatrolCheckpoints ? 'panel-inset bg-green-900/20 text-green-400' : 'text-rmpg-400 hover:bg-surface-raised'
+              }`}
+            >
+              <Crosshair className="w-3 h-3" />
+              <span className="flex-1 text-left">Patrol Checkpoints</span>
+              {showPatrolCheckpoints && (patrolCheckpointsOverdue ?? 0) > 0 && (
+                <span className="text-[9px] font-mono text-orange-400">{patrolCheckpointsOverdue} due</span>
+              )}
+              {showPatrolCheckpoints && !(patrolCheckpointsOverdue ?? 0) && (patrolCheckpointsCount ?? 0) > 0 && (
+                <span className="text-[9px] font-mono">{patrolCheckpointsCount}</span>
+              )}
+            </button>
+          )}
+
+          {/* Field Interviews */}
+          {setShowFieldInterviews && (
+            <>
+              <button
+                onClick={() => setShowFieldInterviews(!showFieldInterviews)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showFieldInterviews ? 'panel-inset bg-blue-900/20 text-blue-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <FileSearch className="w-3 h-3" />
+                <span className="flex-1 text-left">Field Interviews</span>
+                {showFieldInterviews && (fieldInterviewCount ?? 0) > 0 && (
+                  <span className="text-[9px] font-mono">{fieldInterviewCount}</span>
+                )}
+              </button>
+              {showFieldInterviews && setFiDays && (
+                <div className="px-3 py-1 flex items-center gap-1">
+                  {[7, 14, 30, 90].map((d) => (
+                    <button
+                      key={d}
+                      onClick={() => setFiDays(d)}
+                      className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
+                        fiDays === d
+                          ? 'bg-blue-900/50 text-blue-400 border border-blue-700/50'
+                          : 'text-rmpg-500 hover:text-rmpg-300'
+                      }`}
+                    >
+                      {d}d
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Dwell Time */}
+          {setShowDwellTime && (
+            <button
+              onClick={() => setShowDwellTime(!showDwellTime)}
+              className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                showDwellTime ? 'panel-inset bg-amber-900/20 text-amber-400' : 'text-rmpg-400 hover:bg-surface-raised'
+              }`}
+            >
+              <Timer className="w-3 h-3" />
+              <span className="flex-1 text-left">Dwell Time</span>
+              {showDwellTime && (dwellAlertCount ?? 0) > 0 && (
+                <span className="text-[9px] font-mono text-amber-400">{dwellAlertCount}</span>
+              )}
+            </button>
+          )}
+
+          {/* Response Radius */}
+          {setShowResponseRadius && (
+            <button
+              onClick={() => setShowResponseRadius(!showResponseRadius)}
+              className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                showResponseRadius ? 'panel-inset bg-indigo-900/20 text-indigo-400' : 'text-rmpg-400 hover:bg-surface-raised'
+              }`}
+            >
+              <Target className="w-3 h-3" />
+              <span className="flex-1 text-left">Response Radius</span>
+              {showResponseRadius && responseRadiusActive && (
+                <span className="led-dot led-indigo" style={{ width: 5, height: 5 }} />
+              )}
+            </button>
+          )}
+
+          {/* Enforcement Clusters */}
+          {setShowEnforcementClusters && (
+            <>
+              <button
+                onClick={() => setShowEnforcementClusters(!showEnforcementClusters)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showEnforcementClusters ? 'panel-inset bg-rose-900/20 text-rose-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <Scale className="w-3 h-3" />
+                <span className="flex-1 text-left">Enforcement</span>
+                {showEnforcementClusters && (enforcementTotalRecords ?? 0) > 0 && (
+                  <span className="text-[9px] font-mono">{enforcementTotalRecords}</span>
+                )}
+              </button>
+              {showEnforcementClusters && setEnforcementType && setEnforcementDays && (
+                <div className="px-3 py-1 space-y-1">
+                  <div className="flex items-center gap-1">
+                    {(['citations', 'arrests'] as const).map((t) => (
+                      <button
+                        key={t}
+                        onClick={() => setEnforcementType(t)}
+                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
+                          enforcementType === t
+                            ? 'bg-rose-900/50 text-rose-400 border border-rose-700/50'
+                            : 'text-rmpg-500 hover:text-rmpg-300'
+                        }`}
+                      >
+                        {t === 'citations' ? 'Citations' : 'Arrests'}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {[30, 60, 90, 180].map((d) => (
+                      <button
+                        key={d}
+                        onClick={() => setEnforcementDays(d)}
+                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
+                          enforcementDays === d
+                            ? 'bg-rose-900/50 text-rose-400 border border-rose-700/50'
+                            : 'text-rmpg-500 hover:text-rmpg-300'
+                        }`}
+                      >
+                        {d}d
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Coverage Map */}
+          {setShowCoverage && (
+            <>
+              <button
+                onClick={() => setShowCoverage(!showCoverage)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showCoverage ? 'panel-inset bg-teal-900/20 text-teal-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <Radar className="w-3 h-3" />
+                <span className="flex-1 text-left">Coverage Map</span>
+                {showCoverage && (coverageCount ?? 0) > 0 && (
+                  <span className="text-[9px] font-mono">{coverageCount}</span>
+                )}
+              </button>
+              {showCoverage && setCoverageRadius && (
+                <div className="px-3 py-1 flex items-center gap-1">
+                  {[1, 2, 3, 5].map((r) => (
+                    <button
+                      key={r}
+                      onClick={() => setCoverageRadius(r)}
+                      className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
+                        coverageRadius === r
+                          ? 'bg-teal-900/50 text-teal-400 border border-teal-700/50'
+                          : 'text-rmpg-500 hover:text-rmpg-300'
+                      }`}
+                    >
+                      {r}mi
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Fleet Vehicles */}
+          {setShowFleetVehicles && (
+            <button
+              onClick={() => setShowFleetVehicles(!showFleetVehicles)}
+              className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                showFleetVehicles ? 'panel-inset bg-sky-900/20 text-sky-400' : 'text-rmpg-400 hover:bg-surface-raised'
+              }`}
+            >
+              <Car className="w-3 h-3" />
+              <span className="flex-1 text-left">Fleet Vehicles</span>
+              {showFleetVehicles && (fleetVehicleCount ?? 0) > 0 && (
+                <span className="text-[9px] font-mono">{fleetVehicleCount}</span>
+              )}
+            </button>
+          )}
+
+          {/* Repeat Addresses */}
+          {setShowRepeatAddresses && (
+            <>
+              <button
+                onClick={() => setShowRepeatAddresses(!showRepeatAddresses)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showRepeatAddresses ? 'panel-inset bg-orange-900/20 text-orange-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <AlertOctagon className="w-3 h-3" />
+                <span className="flex-1 text-left">Repeat Addresses</span>
+                {showRepeatAddresses && (repeatAddressCount ?? 0) > 0 && (
+                  <span className="text-[9px] font-mono">{repeatAddressCount}</span>
+                )}
+              </button>
+              {showRepeatAddresses && setRepeatDays && setRepeatMinCount && (
+                <div className="px-3 py-1 space-y-1">
+                  <div className="flex items-center gap-1">
+                    {[7, 14, 30, 90].map((d) => (
+                      <button
+                        key={d}
+                        onClick={() => setRepeatDays(d)}
+                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
+                          repeatDays === d
+                            ? 'bg-orange-900/50 text-orange-400 border border-orange-700/50'
+                            : 'text-rmpg-500 hover:text-rmpg-300'
+                        }`}
+                      >
+                        {d}d
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[7px] text-rmpg-500">Min:</span>
+                    {[2, 3, 5, 10].map((c) => (
+                      <button
+                        key={c}
+                        onClick={() => setRepeatMinCount(c)}
+                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
+                          repeatMinCount === c
+                            ? 'bg-orange-900/50 text-orange-400 border border-orange-700/50'
+                            : 'text-rmpg-500 hover:text-rmpg-300'
+                        }`}
+                      >
+                        {c}x
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Panic Zone */}
+          {setShowPanicZone && (
+            <button
+              onClick={() => setShowPanicZone(!showPanicZone)}
+              className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                showPanicZone ? 'panel-inset bg-red-900/20 text-red-400' : 'text-rmpg-400 hover:bg-surface-raised'
+              }`}
+            >
+              <ShieldAlert className="w-3 h-3" />
+              <span className="flex-1 text-left">Panic Zone</span>
+              {showPanicZone && panicActive && (
+                <span className="text-[8px] font-bold bg-red-600 text-white px-1 py-0.5 rounded-sm animate-pulse">ACTIVE</span>
+              )}
+            </button>
+          )}
+
+          {/* Daylight Overlay */}
+          {setShowDaylight && (
+            <button
+              onClick={() => setShowDaylight(!showDaylight)}
+              className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                showDaylight ? 'panel-inset bg-yellow-900/20 text-yellow-400' : 'text-rmpg-400 hover:bg-surface-raised'
+              }`}
+            >
+              <Sun className="w-3 h-3" />
+              <span className="flex-1 text-left">Daylight</span>
+              {showDaylight && daylightPhase && (
+                <span className="text-[8px] font-mono text-yellow-400">{daylightPhase}</span>
+              )}
+            </button>
           )}
         </div>
       )}

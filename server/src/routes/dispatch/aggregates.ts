@@ -914,4 +914,94 @@ router.get('/heatmap/safety-zones', requireRole('admin', 'manager', 'supervisor'
   }
 });
 
+// GET /api/dispatch/repeat-addresses - Addresses with repeated calls for service
+// Query params: days (int, default 30), min_count (int, default 3)
+router.get('/repeat-addresses', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+    const minCount = Math.max(2, Math.min(100, parseInt(req.query.min_count as string, 10) || 3));
+
+    const cutoff = `-${days}`;
+
+    const addresses = db.prepare(`
+      SELECT location_address, ROUND(latitude, 4) AS lat, ROUND(longitude, 4) AS lng,
+             COUNT(*) AS call_count, GROUP_CONCAT(DISTINCT incident_type) AS incident_types,
+             MAX(created_at) AS last_call
+      FROM calls_for_service
+      WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        AND created_at >= datetime('now', 'localtime', ? || ' days')
+      GROUP BY ROUND(latitude, 4), ROUND(longitude, 4)
+      HAVING COUNT(*) >= ?
+      ORDER BY call_count DESC
+      LIMIT 100
+    `).all(cutoff, minCount);
+
+    res.json(addresses);
+  } catch (error: any) {
+    console.error('[Dispatch] repeat-addresses error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/dispatch/heatmap/enforcement - Citation/arrest geographic clusters
+// Query params: type ('citations' | 'arrests'), days (int, default 90)
+router.get('/heatmap/enforcement', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const type = req.query.type as string;
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 90));
+
+    if (!type || !['citations', 'arrests'].includes(type)) {
+      res.status(400).json({ error: 'type must be "citations" or "arrests"' });
+      return;
+    }
+
+    const cutoff = `-${days}`;
+
+    if (type === 'citations') {
+      // Join citations to calls_for_service via call_id to get coordinates
+      const clusters = db.prepare(`
+        SELECT ROUND(c2.latitude, 3) AS lat, ROUND(c2.longitude, 3) AS lng,
+               COUNT(*) AS total,
+               GROUP_CONCAT(DISTINCT c.violation_description) AS top_statutes,
+               MIN(c.created_at) AS first_date,
+               MAX(c.created_at) AS last_date
+        FROM citations c
+        JOIN calls_for_service c2 ON c.call_id = c2.id
+        WHERE c2.latitude IS NOT NULL AND c2.longitude IS NOT NULL
+          AND c.created_at >= datetime('now', 'localtime', ? || ' days')
+        GROUP BY ROUND(c2.latitude, 3), ROUND(c2.longitude, 3)
+        ORDER BY total DESC
+        LIMIT 100
+      `).all(cutoff);
+
+      res.json(clusters);
+      return;
+    }
+
+    // Arrests: use incidents with arrest-related dispositions joined to calls_for_service
+    const clusters = db.prepare(`
+      SELECT ROUND(c.latitude, 3) AS lat, ROUND(c.longitude, 3) AS lng,
+             COUNT(*) AS total,
+             GROUP_CONCAT(DISTINCT i.incident_type) AS top_statutes,
+             MIN(i.created_at) AS first_date,
+             MAX(i.created_at) AS last_date
+      FROM incidents i
+      JOIN calls_for_service c ON i.call_id = c.id
+      WHERE c.latitude IS NOT NULL AND c.longitude IS NOT NULL
+        AND i.created_at >= datetime('now', 'localtime', ? || ' days')
+        AND (i.disposition LIKE '%arrest%' OR i.disposition LIKE '%custody%' OR i.disposition LIKE '%booked%')
+      GROUP BY ROUND(c.latitude, 3), ROUND(c.longitude, 3)
+      ORDER BY total DESC
+      LIMIT 100
+    `).all(cutoff);
+
+    res.json(clusters);
+  } catch (error: any) {
+    console.error('[Dispatch] enforcement heatmap error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

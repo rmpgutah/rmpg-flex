@@ -70,6 +70,29 @@ router.get('/', (req: Request, res: Response) => {
   }
 });
 
+// GET /map — Field interviews with coordinates for map overlay
+router.get('/map', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = parseInt(req.query.days as string, 10) || 30;
+
+    const rows = db.prepare(`
+      SELECT id, fi_number, subject_first_name, subject_last_name, latitude, longitude,
+             contact_reason, action_taken, officer_name, created_at, location
+      FROM field_interviews
+      WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        AND created_at >= datetime('now', '-' || ? || ' days', 'localtime')
+        AND archived_at IS NULL
+      ORDER BY created_at DESC
+      LIMIT 200
+    `).all(days);
+
+    res.json(rows);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /:id — Single FI detail
 router.get('/:id', (req: Request, res: Response) => {
   try {
