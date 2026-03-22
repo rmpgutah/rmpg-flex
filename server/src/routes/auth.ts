@@ -695,9 +695,12 @@ router.get('/password-policy', (_req: Request, res: Response) => {
 // TWO-FACTOR AUTHENTICATION (TOTP)
 // ============================================================
 
-// ─── POST /api/auth/verify-2fa ───────────────────────
+// ─── POST /api/auth/verify-2fa (also /api/auth/login/verify-2fa) ───
 // Second step of login — verify TOTP code after password accepted
-router.post('/verify-2fa', authRateLimit, (req: Request, res: Response) => {
+router.post('/login/verify-2fa', authRateLimit, verify2FAHandler);
+router.post('/verify-2fa', authRateLimit, verify2FAHandler);
+
+function verify2FAHandler(req: Request, res: Response) {
   try {
     const { tempToken, code } = req.body;
 
@@ -821,7 +824,7 @@ router.post('/verify-2fa', authRateLimit, (req: Request, res: Response) => {
     console.error('2FA verification error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
-});
+}
 
 // ─── GET /api/auth/totp/status ───────────────────────
 router.get('/totp/status', authenticateToken, (req: Request, res: Response) => {
