@@ -148,6 +148,10 @@ export default function CrmPage() {
   // Properties
   const [properties, setProperties] = useState<(Property & { client_name?: string })[]>([]);
   const [propertySearch, setPropertySearch] = useState('');
+  const [propertyIncidentCounts, setPropertyIncidentCounts] = useState<Record<string, number>>({});
+  const [showPropertyModal, setShowPropertyModal] = useState(false);
+  const [editingProperty, setEditingProperty] = useState<Property | null>(null);
+  const [propertyForm, setPropertyForm] = useState<Partial<Property & { client_id: string }>>({});
 
   // Contacts
   const [contacts, setContacts] = useState<any[]>([]);
@@ -223,8 +227,16 @@ export default function CrmPage() {
 
   const fetchProperties = useCallback(async () => {
     try {
-      const res = await apiFetch<any[]>('/records/properties');
+      const [res, counts] = await Promise.all([
+        apiFetch<any[]>('/records/properties'),
+        apiFetch<{ property_id: string; count_30d: number }[]>('/crm/properties/incident-counts').catch(() => []),
+      ]);
       setProperties(Array.isArray(res) ? res : []);
+      const countMap: Record<string, number> = {};
+      if (Array.isArray(counts)) {
+        for (const row of counts) countMap[String(row.property_id)] = row.count_30d;
+      }
+      setPropertyIncidentCounts(countMap);
     } catch { setProperties([]); }
   }, []);
 
@@ -320,6 +332,24 @@ export default function CrmPage() {
       fetchTasks();
     } catch (err: any) {
       addToast(err?.message || 'Failed to save task', 'error');
+    }
+  };
+
+  const saveProperty = async () => {
+    try {
+      if (editingProperty) {
+        await apiFetch(`/records/properties/${editingProperty.id}`, { method: 'PUT', body: JSON.stringify(propertyForm) });
+        addToast('Property updated', 'success');
+      } else {
+        await apiFetch('/records/properties', { method: 'POST', body: JSON.stringify(propertyForm) });
+        addToast('Property created', 'success');
+      }
+      setShowPropertyModal(false);
+      setEditingProperty(null);
+      setPropertyForm({});
+      fetchProperties();
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to save property', 'error');
     }
   };
 
@@ -520,6 +550,76 @@ export default function CrmPage() {
         {activeSection === 'tasks' && renderTasks()}
         {activeSection === 'reports' && <ReportsTab />}
       </div>
+
+      {/* ── Property Modal ────────────────────────────── */}
+      {showPropertyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => { setShowPropertyModal(false); setEditingProperty(null); setPropertyForm({}); }}>
+          <div className="bg-surface-raised border border-rmpg-600 w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="panel-title-bar flex items-center justify-between">
+              <span className="text-xs font-bold text-white">{editingProperty ? 'Edit Property' : 'New Property'}</span>
+              <button onClick={() => { setShowPropertyModal(false); setEditingProperty(null); setPropertyForm({}); }} className="text-rmpg-400 hover:text-rmpg-200"><X className="w-3.5 h-3.5" /></button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="field-label">Name *</label>
+                  <input className="input-dark w-full" value={propertyForm.name || ''} onChange={e => setPropertyForm(p => ({ ...p, name: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="field-label">Client *</label>
+                  <select className="input-dark w-full" value={String(propertyForm.client_id || '')} onChange={e => setPropertyForm(p => ({ ...p, client_id: e.target.value }))}>
+                    <option value="">Select client…</option>
+                    {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="field-label">Address *</label>
+                <input className="input-dark w-full" value={propertyForm.address || ''} onChange={e => setPropertyForm(p => ({ ...p, address: e.target.value }))} />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="field-label">City</label>
+                  <input className="input-dark w-full" value={propertyForm.city || ''} onChange={e => setPropertyForm(p => ({ ...p, city: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="field-label">State</label>
+                  <input className="input-dark w-full" value={propertyForm.state || ''} onChange={e => setPropertyForm(p => ({ ...p, state: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="field-label">ZIP</label>
+                  <input className="input-dark w-full" value={propertyForm.zip || ''} onChange={e => setPropertyForm(p => ({ ...p, zip: e.target.value }))} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="field-label">Property Type</label>
+                  <input className="input-dark w-full" placeholder="e.g. Commercial, Residential" value={(propertyForm as any).property_type || ''} onChange={e => setPropertyForm(p => ({ ...p, property_type: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="field-label">Risk Level</label>
+                  <select className="input-dark w-full" value={propertyForm.risk_level || 'low'} onChange={e => setPropertyForm(p => ({ ...p, risk_level: e.target.value as Property['risk_level'] }))}>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="critical">Critical</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="field-label">Hazard Notes</label>
+                <textarea className="input-dark w-full" rows={2} value={(propertyForm as any).hazard_notes || ''} onChange={e => setPropertyForm(p => ({ ...p, hazard_notes: e.target.value }))} />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
+              <button onClick={() => { setShowPropertyModal(false); setEditingProperty(null); setPropertyForm({}); }} className="toolbar-btn">Cancel</button>
+              <button onClick={saveProperty} className="toolbar-btn toolbar-btn-primary" disabled={!propertyForm.name?.trim() || !propertyForm.address?.trim() || !propertyForm.client_id}>
+                <Save className="w-3 h-3" /> {editingProperty ? 'Update' : 'Create'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Task Modal ────────────────────────────────── */}
       {showTaskModal && (
@@ -1257,37 +1357,71 @@ export default function CrmPage() {
   }
 
   function renderProperties() {
+    const RISK_DOT: Record<string, string> = {
+      low: 'bg-rmpg-500',
+      medium: 'bg-amber-400',
+      high: 'bg-orange-500',
+      critical: 'bg-red-500',
+    };
+
     return (
       <div className="flex-1 overflow-y-auto">
         <PanelTitleBar title="PROPERTIES" icon={MapPin}>
           <input className="input-dark text-xs" style={{ maxWidth: 200 }} placeholder="Search properties..." value={propertySearch} onChange={e => setPropertySearch(e.target.value)} />
+          <button
+            onClick={() => { setEditingProperty(null); setPropertyForm({ risk_level: 'low', is_active: true }); setShowPropertyModal(true); }}
+            className="toolbar-btn toolbar-btn-primary"
+          >
+            <Plus className="w-3 h-3" /> New
+          </button>
         </PanelTitleBar>
         <div className="p-4">
           {filteredProperties.length === 0 ? (
             <div className="text-center py-12 text-rmpg-400 text-sm">No properties found</div>
           ) : (
             <div className="grid grid-cols-2 gap-3">
-              {filteredProperties.map(p => (
-                <div key={p.id} className="panel-inset p-3">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-bold text-rmpg-200">{p.name}</span>
-                    {(p as any).property_type && <span className="text-[9px] px-1.5 py-0.5 bg-rmpg-800/30 text-rmpg-400 border border-rmpg-700/50">{(p as any).property_type}</span>}
-                  </div>
-                  <div className="text-[10px] text-rmpg-400 flex items-center gap-1">
-                    <MapPin className="w-2.5 h-2.5" /> {p.address}
-                  </div>
-                  {(p as any).client_name && (
-                    <div className="text-[10px] text-brand-400 mt-0.5 flex items-center gap-1">
-                      <Building2 className="w-2.5 h-2.5" /> {(p as any).client_name}
+              {filteredProperties.map(p => {
+                const incidentCount = propertyIncidentCounts[String(p.id)] ?? 0;
+                const riskLevel = (p as any).risk_level as string | undefined;
+                return (
+                  <div key={p.id} className="panel-inset p-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        {riskLevel && RISK_DOT[riskLevel] && (
+                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${RISK_DOT[riskLevel]}`} title={`Risk: ${riskLevel}`} />
+                        )}
+                        <span className="text-xs font-bold text-rmpg-200 truncate">{p.name}</span>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        {incidentCount > 0 && (
+                          <span className="text-[9px] px-1.5 py-0.5 bg-amber-900/30 text-amber-400 border border-amber-700/50 font-bold">{incidentCount} incident{incidentCount !== 1 ? 's' : ''}</span>
+                        )}
+                        {(p as any).property_type && <span className="text-[9px] px-1.5 py-0.5 bg-rmpg-800/30 text-rmpg-400 border border-rmpg-700/50">{(p as any).property_type}</span>}
+                        <button
+                          onClick={() => { setEditingProperty(p); setPropertyForm({ ...p }); setShowPropertyModal(true); }}
+                          className="toolbar-btn p-0.5"
+                          title="Edit property"
+                        >
+                          <Edit3 className="w-3 h-3" />
+                        </button>
+                      </div>
                     </div>
-                  )}
-                  {(p as any).hazard_notes && (
-                    <div className="text-[10px] text-red-400 mt-1 flex items-center gap-1">
-                      <AlertTriangle className="w-2.5 h-2.5" /> {(p as any).hazard_notes}
+                    <div className="text-[10px] text-rmpg-400 flex items-center gap-1">
+                      <MapPin className="w-2.5 h-2.5" /> {p.address}
                     </div>
-                  )}
-                </div>
-              ))}
+                    {(p as any).client_name && (
+                      <div className="text-[10px] text-brand-400 mt-0.5 flex items-center gap-1">
+                        <Building2 className="w-2.5 h-2.5" /> {(p as any).client_name}
+                      </div>
+                    )}
+                    {(p as any).hazard_notes && (
+                      <div className="text-[10px] text-red-400 mt-1 flex items-center gap-1">
+                        <AlertTriangle className="w-2.5 h-2.5" /> {(p as any).hazard_notes}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

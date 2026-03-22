@@ -1147,6 +1147,7 @@ router.post('/properties', requireRole('admin', 'manager', 'supervisor', 'office
     const db = getDb();
     const {
       client_id, name, address, city, state, zip, latitude, longitude, property_type,
+      risk_level,
       gate_code, alarm_code, emergency_contact, post_orders, hazard_notes,
       access_instructions, is_active,
     } = req.body;
@@ -1178,12 +1179,13 @@ router.post('/properties', requireRole('admin', 'manager', 'supervisor', 'office
 
     const result = db.prepare(`
       INSERT INTO properties (client_id, name, address, city, state, zip, latitude, longitude, property_type,
-        gate_code, alarm_code, emergency_contact, post_orders, hazard_notes, access_instructions, is_active)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        risk_level, gate_code, alarm_code, emergency_contact, post_orders, hazard_notes, access_instructions, is_active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       client_id, name, address, city || null, state || null, zip || null,
       latitude ?? null, longitude ?? null,
-      property_type || null, gate_code || null, alarm_code || null,
+      property_type || null, risk_level || 'low',
+      gate_code || null, alarm_code || null,
       emergency_contact || null, post_orders || null, hazard_notes || null,
       access_instructions || null, is_active !== undefined ? (is_active ? 1 : 0) : 1,
     );
@@ -1618,6 +1620,7 @@ router.put('/properties/:id', validateParamId, requireRole('admin', 'manager', '
       alarm_code: v => v ?? null, emergency_contact: v => v ?? null,
       post_orders: v => v ?? null, hazard_notes: v => v ?? null,
       access_instructions: v => v ?? null,
+      risk_level: v => v ?? null,
       is_active: v => v ? 1 : 0,
       client_id: v => v || null,
     };

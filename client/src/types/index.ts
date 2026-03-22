@@ -166,6 +166,7 @@ export interface Property {
   latitude?: number;
   longitude?: number;
   property_type?: string;
+  risk_level?: 'low' | 'medium' | 'high' | 'critical';
   gate_code?: string;
   alarm_code?: string;
   emergency_contact?: string;
