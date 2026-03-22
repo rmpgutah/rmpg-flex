@@ -130,6 +130,80 @@ export function buildPropertyMarkerContent(name: string, address?: string, clien
   return wrapper;
 }
 
+// ── Historical Call Marker (semi-transparent, smaller, with clock badge) ──
+
+export function buildHistoricalCallMarkerContent(priority: string, incidentType: string, callNumber?: string): HTMLElement {
+  const color = PRIORITY_COLORS[priority] || '#6b7280';
+  const { category } = getIncidentCategory(incidentType);
+
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.6));opacity:0.65;';
+
+  const tag = document.createElement('div');
+  tag.style.cssText =
+    `background:${color};color:#fff;font-size:7px;font-weight:900;` +
+    "padding:1px 4px;border:1px solid rgba(255,255,255,0.7);white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;" +
+    'display:flex;align-items:center;gap:2px;border-radius:1px;position:relative;';
+
+  // Clock badge (top-right corner)
+  const badge = document.createElement('div');
+  badge.style.cssText =
+    'position:absolute;top:-5px;right:-5px;width:10px;height:10px;border-radius:50%;' +
+    'background:#0d1520;border:1px solid ' + color + ';display:flex;align-items:center;justify-content:center;' +
+    'font-size:6px;color:' + color + ';font-weight:900;line-height:1;';
+  badge.textContent = 'H';
+  tag.appendChild(badge);
+
+  if (callNumber) {
+    const numSpan = document.createElement('span');
+    numSpan.textContent = callNumber;
+    tag.appendChild(numSpan);
+  }
+
+  const catSpan = document.createElement('span');
+  catSpan.style.cssText = 'font-size:6px;opacity:0.85;letter-spacing:0.3px;';
+  catSpan.textContent = category;
+  tag.appendChild(catSpan);
+
+  const caret = document.createElement('div');
+  caret.style.cssText =
+    `width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid ${color};`;
+
+  wrapper.appendChild(tag);
+  wrapper.appendChild(caret);
+  return wrapper;
+}
+
+// ── Incident Report Marker (diamond shape with "IR" label) ──
+
+export function buildIncidentReportMarkerContent(status: string): HTMLElement {
+  const statusColors: Record<string, string> = {
+    draft: '#6b7280',
+    submitted: '#3b82f6',
+    under_review: '#f59e0b',
+    approved: '#22c55e',
+    returned: '#ef4444',
+  };
+  const color = statusColors[status] || '#6b7280';
+
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7));';
+
+  const diamond = document.createElement('div');
+  diamond.style.cssText =
+    `width:20px;height:20px;background:${color};transform:rotate(45deg);` +
+    'border:1.5px solid rgba(255,255,255,0.9);display:flex;align-items:center;justify-content:center;';
+
+  const label = document.createElement('span');
+  label.style.cssText =
+    "transform:rotate(-45deg);color:#fff;font-size:7px;font-weight:900;font-family:'JetBrains Mono',monospace;letter-spacing:0.3px;line-height:1;";
+  label.textContent = 'IR';
+  diamond.appendChild(label);
+
+  wrapper.appendChild(diamond);
+  return wrapper;
+}
+
 // ── Self-Position Marker (pulsing "you are here") ────────────
 // NOTE: Uses innerHTML with developer-controlled template strings only (no user input).
 

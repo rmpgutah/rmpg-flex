@@ -1262,4 +1262,130 @@ router.get('/heatmap/enforcement', requireRole('admin', 'manager', 'supervisor',
   }
 });
 
+// GET /api/dispatch/history-map - Historical cleared/closed/archived calls with coords for map display
+router.get('/history-map', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 7));
+    const limit = Math.max(1, Math.min(2000, parseInt(req.query.limit as string, 10) || 500));
+
+    // Parse comma-separated filters
+    const validStatuses = ['cleared', 'closed', 'archived'];
+    const statusFilter = req.query.status
+      ? String(req.query.status).split(',').filter(s => validStatuses.includes(s))
+      : validStatuses;
+    if (statusFilter.length === 0) {
+      res.status(400).json({ error: 'Invalid status filter' });
+      return;
+    }
+
+    const typesFilter = req.query.types
+      ? String(req.query.types).split(',').filter(t => t.length > 0 && t.length < 100).slice(0, 30)
+      : [];
+
+    const validPriorities = ['P1', 'P2', 'P3', 'P4'];
+    const priorityFilter = req.query.priority
+      ? String(req.query.priority).split(',').filter(p => validPriorities.includes(p))
+      : [];
+
+    const conditions: string[] = [
+      'c.latitude IS NOT NULL',
+      'c.longitude IS NOT NULL',
+      `c.created_at >= datetime('now', 'localtime', '-${days} days')`,
+    ];
+    const params: any[] = [];
+
+    // Status filter
+    const statusPlaceholders = statusFilter.map(() => '?').join(',');
+    conditions.push(`c.status IN (${statusPlaceholders})`);
+    params.push(...statusFilter);
+
+    // Types filter
+    if (typesFilter.length > 0) {
+      const typePlaceholders = typesFilter.map(() => '?').join(',');
+      conditions.push(`c.incident_type IN (${typePlaceholders})`);
+      params.push(...typesFilter);
+    }
+
+    // Priority filter
+    if (priorityFilter.length > 0) {
+      const priPlaceholders = priorityFilter.map(() => '?').join(',');
+      conditions.push(`c.priority IN (${priPlaceholders})`);
+      params.push(...priorityFilter);
+    }
+
+    const whereClause = conditions.join(' AND ');
+
+    const rows = db.prepare(`
+      SELECT
+        c.id,
+        c.call_number,
+        c.incident_type,
+        c.priority,
+        c.status,
+        c.disposition,
+        c.location_address,
+        c.latitude,
+        c.longitude,
+        c.created_at,
+        c.cleared_at,
+        c.onscene_at,
+        c.assigned_unit_ids,
+        c.description,
+        c.source,
+        CASE
+          WHEN c.onscene_at IS NOT NULL THEN ROUND((julianday(c.onscene_at) - julianday(c.created_at)) * 24 * 60, 1)
+          WHEN c.cleared_at IS NOT NULL THEN ROUND((julianday(c.cleared_at) - julianday(c.created_at)) * 24 * 60, 1)
+          ELSE NULL
+        END as response_time_min
+      FROM calls_for_service c
+      WHERE ${whereClause}
+      ORDER BY c.created_at DESC
+      LIMIT ?
+    `).all(...params, limit) as any[];
+
+    // Resolve assigned_unit_ids to call_signs
+    const unitStmt = db.prepare('SELECT call_sign FROM units WHERE id = ?');
+    const results = rows.map((row: any) => {
+      let assignedUnits = '';
+      if (row.assigned_unit_ids) {
+        try {
+          const ids = JSON.parse(row.assigned_unit_ids);
+          if (Array.isArray(ids)) {
+            assignedUnits = ids
+              .map((uid: any) => {
+                const u = unitStmt.get(uid) as any;
+                return u?.call_sign || null;
+              })
+              .filter(Boolean)
+              .join(', ');
+          }
+        } catch { /* ignore parse errors */ }
+      }
+      return {
+        id: row.id,
+        call_number: row.call_number,
+        incident_type: row.incident_type,
+        priority: row.priority,
+        status: row.status,
+        disposition: row.disposition,
+        location_address: row.location_address,
+        latitude: row.latitude,
+        longitude: row.longitude,
+        created_at: row.created_at,
+        cleared_at: row.cleared_at,
+        response_time_min: row.response_time_min,
+        assigned_units: assignedUnits,
+        description: row.description,
+        source: row.source,
+      };
+    });
+
+    res.json(results);
+  } catch (error: any) {
+    console.error('[Dispatch] history-map error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

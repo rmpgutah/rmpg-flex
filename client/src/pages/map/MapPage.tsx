@@ -100,6 +100,8 @@ import { useMapFleetVehicles } from './hooks/useMapFleetVehicles';
 import { useMapRepeatAddresses } from './hooks/useMapRepeatAddresses';
 import { useMapPanicZone } from './hooks/useMapPanicZone';
 import { useMapDaylightOverlay } from './hooks/useMapDaylightOverlay';
+import { useMapCallHistory } from './hooks/useMapCallHistory';
+import { useMapIncidentReports } from './hooks/useMapIncidentReports';
 import PredictionsPanel from './components/PredictionsPanel';
 import GeofenceManager from './components/GeofenceManager';
 import { useMapThreatAssessment } from './hooks/useMapThreatAssessment';
@@ -368,6 +370,17 @@ export default function MapPage() {
   const [showPanicZone, setShowPanicZone] = useState(true); // on by default for safety
   const [showDaylight, setShowDaylight] = useState(false);
 
+  // Historical call & incident report layers
+  const [showCallHistory, setShowCallHistory] = useState(false);
+  const [callHistoryDays, setCallHistoryDays] = useState(7);
+  const [callHistoryStatuses, setCallHistoryStatuses] = useState(['cleared', 'closed']);
+  const [callHistoryTypes, setCallHistoryTypes] = useState<string[]>([]);
+  const [callHistoryPriorities, setCallHistoryPriorities] = useState<string[]>([]);
+  const [showIncidentReports, setShowIncidentReports] = useState(false);
+  const [incidentDays, setIncidentDays] = useState(30);
+  const [incidentStatuses, setIncidentStatuses] = useState<string[]>([]);
+  const [incidentTypes, setIncidentTypes] = useState<string[]>([]);
+
   // Officer Safety System
   const [showSafetyDashboard, setShowSafetyDashboard] = useState(false);
   const [showSafetyAlertModal, setShowSafetyAlertModal] = useState(false);
@@ -400,6 +413,23 @@ export default function MapPage() {
   const repeatAddresses = useMapRepeatAddresses(mapInstanceRef.current, showRepeatAddresses, repeatDays, repeatMinCount);
   const panicZone = useMapPanicZone(mapInstanceRef.current, showPanicZone);
   const daylight = useMapDaylightOverlay(mapInstanceRef.current, showDaylight);
+
+  // Historical call & incident report hooks
+  const callHistory = useMapCallHistory({
+    map: mapInstanceRef.current,
+    enabled: showCallHistory,
+    days: callHistoryDays,
+    statuses: callHistoryStatuses,
+    types: callHistoryTypes,
+    priorities: callHistoryPriorities,
+  });
+  const incidentReports = useMapIncidentReports({
+    map: mapInstanceRef.current,
+    enabled: showIncidentReports,
+    days: incidentDays,
+    statuses: incidentStatuses,
+    types: incidentTypes,
+  });
 
   // Officer Safety hooks
   const threatAssessment = useMapThreatAssessment(mapInstanceRef.current, showThreatAssessment);
@@ -2803,6 +2833,143 @@ export default function MapPage() {
                   )}
                 </button>
               ))}
+            </div>
+
+            {/* ── History Layers ── */}
+            <div className="border-t border-rmpg-700 p-1.5">
+              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">History</div>
+
+              {/* Call History */}
+              <button
+                onClick={() => setShowCallHistory(!showCallHistory)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showCallHistory ? 'panel-inset bg-cyan-900/20 text-cyan-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <Clock className="w-3 h-3" />
+                <span className="flex-1 text-left">Call History</span>
+                {showCallHistory && callHistory.count > 0 && (
+                  <span className="text-[9px] font-mono">{callHistory.count}</span>
+                )}
+                {showCallHistory && callHistory.loading && (
+                  <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                )}
+              </button>
+
+              {/* Call History sub-controls */}
+              {showCallHistory && (
+                <div className="ml-5 mt-1 space-y-1.5 pb-1">
+                  {/* Days slider */}
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <span className="text-[7px] text-rmpg-600 uppercase w-8">Days:</span>
+                    {[1, 3, 7, 14, 30, 90].map((d) => (
+                      <button
+                        key={d}
+                        onClick={() => setCallHistoryDays(d)}
+                        className={`px-1.5 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
+                          callHistoryDays === d
+                            ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
+                            : 'text-rmpg-500 hover:text-rmpg-300'
+                        }`}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Status checkboxes */}
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <span className="text-[7px] text-rmpg-600 uppercase w-8">Status:</span>
+                    {['cleared', 'closed', 'archived'].map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => setCallHistoryStatuses(prev =>
+                          prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]
+                        )}
+                        className={`px-1.5 py-0 text-[7px] font-mono rounded-sm transition-colors ${
+                          callHistoryStatuses.includes(s)
+                            ? 'bg-cyan-900/40 text-cyan-300 border border-cyan-700/40'
+                            : 'text-rmpg-600 hover:text-rmpg-400'
+                        }`}
+                      >
+                        {s.charAt(0).toUpperCase() + s.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Priority pills */}
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <span className="text-[7px] text-rmpg-600 uppercase w-8">Pri:</span>
+                    {['P1', 'P2', 'P3', 'P4'].map((p) => {
+                      const priColors: Record<string, string> = { P1: 'red', P2: 'amber', P3: 'blue', P4: 'gray' };
+                      const c = priColors[p] || 'gray';
+                      return (
+                        <button
+                          key={p}
+                          onClick={() => setCallHistoryPriorities(prev =>
+                            prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]
+                          )}
+                          className={`px-1.5 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
+                            callHistoryPriorities.includes(p)
+                              ? `bg-${c}-900/40 text-${c}-400 border border-${c}-700/40`
+                              : 'text-rmpg-600 hover:text-rmpg-400'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      );
+                    })}
+                    {callHistoryPriorities.length > 0 && (
+                      <button
+                        onClick={() => setCallHistoryPriorities([])}
+                        className="text-[7px] text-rmpg-600 hover:text-rmpg-400 ml-0.5"
+                        title="Clear priority filter"
+                      >
+                        All
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Incident Reports */}
+              <button
+                onClick={() => setShowIncidentReports(!showIncidentReports)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showIncidentReports ? 'panel-inset bg-emerald-900/20 text-emerald-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <FileText className="w-3 h-3" />
+                <span className="flex-1 text-left">Incident Reports</span>
+                {showIncidentReports && incidentReports.count > 0 && (
+                  <span className="text-[9px] font-mono">{incidentReports.count}</span>
+                )}
+                {showIncidentReports && incidentReports.loading && (
+                  <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                )}
+              </button>
+
+              {/* Incident Reports sub-controls */}
+              {showIncidentReports && (
+                <div className="ml-5 mt-1 space-y-1.5 pb-1">
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <span className="text-[7px] text-rmpg-600 uppercase w-8">Days:</span>
+                    {[7, 14, 30, 60, 90].map((d) => (
+                      <button
+                        key={d}
+                        onClick={() => setIncidentDays(d)}
+                        className={`px-1.5 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
+                          incidentDays === d
+                            ? 'bg-emerald-900/50 text-emerald-400 border border-emerald-700/50'
+                            : 'text-rmpg-500 hover:text-rmpg-300'
+                        }`}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* ── Analysis ── */}

@@ -89,6 +89,79 @@ router.get('/', (req: Request, res: Response) => {
   }
 });
 
+// GET /api/incidents/map - Incidents with coordinates for map display
+router.get('/map', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+    const limit = Math.max(1, Math.min(2000, parseInt(req.query.limit as string, 10) || 500));
+
+    const statusFilter = req.query.status
+      ? String(req.query.status).split(',').filter(s => s.length > 0 && s.length < 50).slice(0, 10)
+      : [];
+
+    const typesFilter = req.query.types
+      ? String(req.query.types).split(',').filter(t => t.length > 0 && t.length < 100).slice(0, 30)
+      : [];
+
+    const conditions: string[] = [
+      'i.latitude IS NOT NULL',
+      'i.longitude IS NOT NULL',
+      `i.created_at >= datetime('now', 'localtime', '-${days} days')`,
+      'i.archived_at IS NULL',
+    ];
+    const params: any[] = [];
+
+    if (statusFilter.length > 0) {
+      const placeholders = statusFilter.map(() => '?').join(',');
+      conditions.push(`i.status IN (${placeholders})`);
+      params.push(...statusFilter);
+    }
+
+    if (typesFilter.length > 0) {
+      const placeholders = typesFilter.map(() => '?').join(',');
+      conditions.push(`i.incident_type IN (${placeholders})`);
+      params.push(...typesFilter);
+    }
+
+    // Officers can only see their own incidents
+    if (req.user!.role === 'officer') {
+      conditions.push('i.officer_id = ?');
+      params.push(req.user!.userId);
+    }
+
+    const whereClause = conditions.join(' AND ');
+
+    const rows = db.prepare(`
+      SELECT
+        i.id,
+        i.incident_number,
+        i.incident_type,
+        i.priority,
+        i.status,
+        i.location_address,
+        i.latitude,
+        i.longitude,
+        SUBSTR(i.narrative, 1, 100) as narrative_preview,
+        o.full_name as officer_name,
+        i.created_at,
+        c.call_number,
+        i.case_number
+      FROM incidents i
+      LEFT JOIN users o ON i.officer_id = o.id
+      LEFT JOIN calls_for_service c ON i.call_id = c.id
+      WHERE ${whereClause}
+      ORDER BY i.created_at DESC
+      LIMIT ?
+    `).all(...params, limit);
+
+    res.json(rows);
+  } catch (error: any) {
+    console.error('Get incidents map error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // GET /api/incidents/stats - Incident statistics
 router.get('/stats', (req: Request, res: Response) => {
   try {
