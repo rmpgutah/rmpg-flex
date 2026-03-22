@@ -132,7 +132,7 @@ export function useDispatchVoiceAlerts(): void {
     unsubs.push(
       subscribe('backup_request', (msg) => {
         const data = (msg.data || msg.payload || msg) as any;
-        announceBackupRequest(data.call_sign || data.unit || '', data.location);
+        announceBackupRequest({ officer_name: data.call_sign || data.unit, location: data.location });
       })
     );
 
@@ -140,7 +140,7 @@ export function useDispatchVoiceAlerts(): void {
     unsubs.push(
       subscribe('pursuit_update', (msg) => {
         const data = (msg.data || msg.payload || msg) as any;
-        announcePursuit(data.call_sign || data.unit || '', data.direction);
+        announcePursuit({ officer_name: data.call_sign || data.unit, direction: data.direction });
       })
     );
 

@@ -6,7 +6,7 @@
 // Respects the user's sound toggle (localStorage 'rmpg-sound').
 // ============================================================
 
-type ToneType = 'caution' | 'warning' | 'info' | 'error' | 'alarm';
+type ToneType = 'caution' | 'warning' | 'info' | 'error' | 'alarm' | 'alert';
 
 let audioCtx: AudioContext | null = null;
 
@@ -79,6 +79,18 @@ const PROFILES: Record<ToneType, ToneProfile> = {
     steps: [
       { freq: 400, start: 0,    dur: 0.15 },
       { freq: 280, start: 0.18, dur: 0.15 },
+    ],
+  },
+
+  // ── Alert: Sharp rising tone (backup request, pursuit, critical event)
+  alert: {
+    type: 'sine',
+    gain: 0.35,
+    steps: [
+      { freq: 700,  start: 0,    dur: 0.15 },
+      { freq: 1000, start: 0.18, dur: 0.15 },
+      { freq: 700,  start: 0.36, dur: 0.15 },
+      { freq: 1000, start: 0.54, dur: 0.15 },
     ],
   },
 
