@@ -1646,4 +1646,25 @@ router.get('/thread/:conversationId', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/email/threads — Threaded view of messages
+router.get('/threads', authenticateToken, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { folder, limit: limitParam } = req.query;
+    const limitVal = Math.min(parseInt(limitParam as string, 10) || 50, 200);
+
+    // Get messages and group by conversationId or subject
+    let sql = `SELECT * FROM email_messages WHERE 1=1`;
+    const params: any[] = [];
+    if (folder) { sql += ' AND folder = ?'; params.push(folder); }
+    sql += ' ORDER BY received_at DESC LIMIT ?';
+    params.push(limitVal);
+
+    const messages = db.prepare(sql).all(...params);
+    res.json(messages);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

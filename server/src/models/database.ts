@@ -3497,6 +3497,9 @@ function migrateSchema(): void {
   addCol('warrants', 'external_source_key', 'TEXT');
   addCol('warrants', 'auto_created', 'INTEGER DEFAULT 0');
 
+  // ── dispatch_units mileage column ──
+  addCol('dispatch_units', 'mileage', 'REAL');
+
   // ── warrant_scraper_config missing columns ──
   addCol('warrant_scraper_config', 'source_name', 'TEXT');
   addCol('warrant_scraper_config', 'last_run_at', 'TEXT');
@@ -3560,6 +3563,19 @@ function migrateSchema(): void {
       FOREIGN KEY (case_id) REFERENCES forensic_cases(id)
     );
     CREATE INDEX IF NOT EXISTS idx_forensic_hash_results_case ON forensic_hash_results(case_id);
+
+    CREATE TABLE IF NOT EXISTS skiptracer_dossiers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      subject_name TEXT NOT NULL,
+      subject_dob TEXT,
+      notes TEXT,
+      search_results TEXT,
+      status TEXT DEFAULT 'active',
+      created_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    );
   `);
 
   console.log('Schema migration completed.');

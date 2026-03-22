@@ -2037,4 +2037,99 @@ router.get('/attendance/summary/:officerId', (req: Request, res: Response) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════
+// Path Aliases (client uses different names than server)
+// Express use() sub-mount trick: mount the same router at alternate paths
+// ═══════════════════════════════════════════════════════════════
+
+// /hr/performance-reviews/* → redirects to /hr/reviews/* handlers
+router.get('/performance-reviews', (req: Request, res: Response) => {
+  const db = getDb();
+  const user = (req as any).user;
+  let sql = `SELECT r.*, u.full_name as officer_name, rev.full_name as reviewer_name FROM hr_performance_reviews r JOIN users u ON u.id = r.officer_id LEFT JOIN users rev ON rev.id = r.reviewer_id WHERE 1=1`;
+  const params: any[] = [];
+  if (!isManagerOrAbove(user.role)) { sql += ' AND r.officer_id = ?'; params.push(user.id); }
+  sql += ' ORDER BY r.review_date DESC';
+  try { res.json(db.prepare(sql).all(...params)); } catch { res.json([]); }
+});
+
+router.post('/performance-reviews', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { officer_id, review_type, review_date, period_start, period_end, overall_rating, strengths, areas_for_improvement, goals, comments } = req.body;
+    if (!officer_id || !review_type) return res.status(400).json({ error: 'officer_id and review_type required' });
+    const result = db.prepare(`
+      INSERT INTO hr_performance_reviews (officer_id, reviewer_id, review_type, review_date, period_start, period_end, overall_rating, strengths, areas_for_improvement, goals, comments, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
+    `).run(officer_id, (req as any).user?.id, review_type, review_date || localNow(), period_start || null, period_end || null, overall_rating || null, strengths || null, areas_for_improvement || null, goals || null, comments || null);
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create review' });
+  }
+});
+
+router.put('/performance-reviews/:id', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const fields = ['overall_rating', 'strengths', 'areas_for_improvement', 'goals', 'comments', 'status'];
+    const sets: string[] = [];
+    const vals: any[] = [];
+    for (const f of fields) {
+      if (req.body[f] !== undefined) { sets.push(`${f} = ?`); vals.push(req.body[f]); }
+    }
+    if (sets.length === 0) return res.status(400).json({ error: 'No fields to update' });
+    vals.push(req.params.id);
+    db.prepare(`UPDATE hr_performance_reviews SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to update review' });
+  }
+});
+
+// /hr/disciplinary-actions/* → redirects to /hr/disciplinary/* handlers
+router.get('/disciplinary-actions', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    let sql = `SELECT d.*, u.full_name as officer_name, iu.full_name as issued_by_name FROM hr_disciplinary d JOIN users u ON u.id = d.officer_id LEFT JOIN users iu ON iu.id = d.issued_by WHERE 1=1`;
+    const params: any[] = [];
+    if (!isManagerOrAbove(user.role)) { sql += ' AND d.officer_id = ?'; params.push(user.id); }
+    sql += ' ORDER BY d.issued_date DESC';
+    res.json(db.prepare(sql).all(...params));
+  } catch { res.json([]); }
+});
+
+router.post('/disciplinary-actions', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { officer_id, action_type, severity, description, issued_date } = req.body;
+    if (!officer_id || !action_type) return res.status(400).json({ error: 'officer_id and action_type required' });
+    const result = db.prepare(`
+      INSERT INTO hr_disciplinary (officer_id, issued_by, action_type, severity, description, issued_date, status)
+      VALUES (?, ?, ?, ?, ?, ?, 'active')
+    `).run(officer_id, (req as any).user?.id, action_type, severity || 'written_warning', description || null, issued_date || localNow());
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create disciplinary action' });
+  }
+});
+
+router.put('/disciplinary-actions/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const fields = ['action_type', 'severity', 'description', 'status', 'resolution', 'resolution_date'];
+    const sets: string[] = [];
+    const vals: any[] = [];
+    for (const f of fields) {
+      if (req.body[f] !== undefined) { sets.push(`${f} = ?`); vals.push(req.body[f]); }
+    }
+    if (sets.length === 0) return res.status(400).json({ error: 'No fields to update' });
+    vals.push(req.params.id);
+    db.prepare(`UPDATE hr_disciplinary SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to update disciplinary action' });
+  }
+});
+
 export default router;

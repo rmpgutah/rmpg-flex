@@ -574,4 +574,29 @@ router.delete('/gps/breadcrumbs/cleanup', requireRole('admin'), (req: Request, r
   }
 });
 
+// GET /api/dispatch/gps/units-with-trails — Units with their most recent trail data
+router.get('/gps/units-with-trails', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const hours = parseInt(req.query.hours as string, 10) || 8;
+
+    const units = db.prepare(`
+      SELECT u.id, u.call_sign, u.status, u.officer_id, usr.full_name as officer_name,
+        (SELECT COUNT(*) FROM gps_breadcrumbs b WHERE b.unit_id = u.id AND b.timestamp >= datetime('now','localtime','-${hours} hours')) as trail_points,
+        (SELECT b.latitude FROM gps_breadcrumbs b WHERE b.unit_id = u.id ORDER BY b.timestamp DESC LIMIT 1) as last_lat,
+        (SELECT b.longitude FROM gps_breadcrumbs b WHERE b.unit_id = u.id ORDER BY b.timestamp DESC LIMIT 1) as last_lng,
+        (SELECT b.timestamp FROM gps_breadcrumbs b WHERE b.unit_id = u.id ORDER BY b.timestamp DESC LIMIT 1) as last_seen
+      FROM dispatch_units u
+      LEFT JOIN users usr ON u.officer_id = usr.id
+      WHERE u.status != 'off_duty'
+      ORDER BY u.call_sign
+    `).all();
+
+    res.json(units);
+  } catch (error: any) {
+    console.error('[GPS] units-with-trails error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

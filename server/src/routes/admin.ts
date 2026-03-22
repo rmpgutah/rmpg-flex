@@ -367,6 +367,25 @@ router.delete('/call-templates/:id', (req: Request, res: Response) => {
 // System Settings - Batch update
 // ============================================================
 
+// GET /api/admin/system-settings - Read all system_settings config items
+router.get('/system-settings', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(
+      "SELECT config_key, config_value FROM system_config WHERE category = 'system_settings' AND is_active = 1"
+    ).all() as { config_key: string; config_value: string }[];
+
+    const settings: Record<string, string> = {};
+    for (const row of rows) {
+      settings[row.config_key] = row.config_value;
+    }
+    res.json(settings);
+  } catch (error: any) {
+    console.error('Get system settings error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // PUT /api/admin/system-settings - Upsert multiple system_settings config items
 router.put('/system-settings', (req: Request, res: Response) => {
   try {

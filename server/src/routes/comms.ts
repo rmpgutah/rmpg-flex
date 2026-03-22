@@ -1092,4 +1092,30 @@ router.post('/emergency-broadcast', requireRole('admin', 'manager', 'dispatcher'
   }
 });
 
+// GET /api/comms/radio/audio/:entryId — Get radio audio recording
+router.get('/radio/audio/:entryId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const entry = db.prepare(
+      'SELECT * FROM radio_transcripts WHERE id = ?'
+    ).get(req.params.entryId) as any;
+
+    if (!entry) { res.status(404).json({ error: 'Audio entry not found' }); return; }
+
+    if (entry.audio_path) {
+      const path = require('path');
+      const fs = require('fs');
+      const audioPath = path.resolve(entry.audio_path);
+      if (fs.existsSync(audioPath)) {
+        res.sendFile(audioPath);
+        return;
+      }
+    }
+
+    res.status(404).json({ error: 'Audio file not available' });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

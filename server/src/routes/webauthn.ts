@@ -92,6 +92,21 @@ function parseTransports(json: string | null): AuthenticatorTransportFuture[] | 
 }
 
 
+// ─── GET /api/auth/webauthn/status ─────────────────
+// Check if user has any registered security keys
+router.get('/status', authenticateToken, (req: Request, res: Response) => {
+  try {
+    const creds = getCredentialsForUser(req.user!.userId);
+    res.json({
+      enabled: creds.length > 0,
+      credentialCount: creds.length,
+    });
+  } catch (error: any) {
+    console.error('WebAuthn status error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── GET /api/auth/webauthn/credentials ─────────────
 // List registered security keys for the authenticated user
 router.get('/credentials', authenticateToken, (req: Request, res: Response) => {

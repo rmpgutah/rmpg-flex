@@ -250,4 +250,18 @@ router.put('/units/:id/status', validateParamIdMiddleware, requireRole('admin', 
   }
 });
 
+// PUT /api/dispatch/units/:id/mileage — Update unit mileage
+router.put('/units/:id/mileage', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { mileage } = req.body;
+    if (mileage === undefined) { res.status(400).json({ error: 'mileage required' }); return; }
+    db.prepare('UPDATE dispatch_units SET mileage = ?, updated_at = ? WHERE id = ?')
+      .run(mileage, localNow(), req.params.id);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

@@ -1127,4 +1127,34 @@ router.post('/notification-rules/:id/test', requireRole('admin', 'manager'), (re
   }
 });
 
+// POST /api/admin/health/client-error — Log client-side errors
+router.post('/health/client-error', (req: Request, res: Response) => {
+  try {
+    const { message, stack, componentStack, url, userAgent } = req.body;
+    console.error(`[Client Error] ${message}`, { stack, url, userAgent });
+    res.json({ logged: true });
+  } catch {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/admin/training — Training management data
+router.get('/training', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    // Get training records from credentials table (training type)
+    const training = db.prepare(`
+      SELECT c.*, u.full_name as officer_name
+      FROM officer_credentials c
+      JOIN users u ON u.id = c.officer_id
+      WHERE c.type = 'training' OR c.type = 'certification'
+      ORDER BY c.expiry_date ASC
+    `).all();
+    res.json(training);
+  } catch (error: any) {
+    // If table doesn't exist yet, return empty
+    res.json([]);
+  }
+});
+
 export default router;

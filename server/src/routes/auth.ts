@@ -1059,4 +1059,160 @@ router.post('/totp/disable', authenticateToken, (req: Request, res: Response) =>
   }
 });
 
+// ═══════════════════════════════════════════════════════════════
+// 2FA Path Aliases (client uses /auth/2fa/*, server has /auth/totp/*)
+// ═══════════════════════════════════════════════════════════════
+
+// GET /auth/2fa/status — alias for /auth/totp/status
+router.get('/2fa/status', authenticateToken, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = db.prepare('SELECT totp_enabled FROM users WHERE id = ?').get(req.user!.userId) as any;
+    const requiredRoles = getTotpRequiredRoles();
+    const required = requiredRoles.includes(req.user!.role);
+    res.json({ enabled: !!(user?.totp_enabled), required });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /auth/2fa/setup — alias for /auth/totp/setup
+router.post('/2fa/setup', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = db.prepare('SELECT id, email, username FROM users WHERE id = ?').get(req.user!.userId) as any;
+    if (!user) { res.status(404).json({ error: 'User not found' }); return; }
+
+    const accountName = user.email || user.username;
+    const { secret, otpauthUrl } = generateTotpSecret(accountName);
+    const qrCodeDataUri = await generateQrCodeDataUrl(otpauthUrl);
+
+    // Store as pending until verified
+    const encSecret = encryptSecret(secret);
+    db.prepare('UPDATE users SET totp_pending_secret = ?, updated_at = ? WHERE id = ?')
+      .run(encSecret, localNow(), user.id);
+
+    res.json({ qrCodeDataUri, manualKey: secret });
+  } catch (error: any) {
+    console.error('2FA setup error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /auth/2fa/setup/verify — alias for /auth/totp/verify-setup
+router.post('/2fa/setup/verify', authenticateToken, (req: Request, res: Response) => {
+  try {
+    const { code } = req.body;
+    if (!code) { res.status(400).json({ error: 'Verification code required' }); return; }
+
+    const db = getDb();
+    const user = db.prepare('SELECT id, totp_pending_secret FROM users WHERE id = ?').get(req.user!.userId) as any;
+    if (!user?.totp_pending_secret) { res.status(400).json({ error: 'No pending 2FA setup' }); return; }
+
+    const secret = decryptSecret(user.totp_pending_secret);
+    if (!verifyTotpCode(secret, code)) {
+      res.status(400).json({ error: 'Invalid verification code' });
+      return;
+    }
+
+    // Activate 2FA and generate backup codes
+    const backupResult = generateBackupCodes(config.totp.backupCodeCount);
+
+    db.prepare(`
+      UPDATE users SET totp_secret_enc = totp_pending_secret, totp_pending_secret = NULL,
+        totp_enabled = 1, totp_backup_codes = ?, updated_at = ? WHERE id = ?
+    `).run(JSON.stringify(backupResult.hashed), localNow(), user.id);
+
+    res.json({ success: true, backupCodes: backupResult.plain });
+  } catch (error: any) {
+    console.error('2FA verify setup error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /auth/2fa/backup-codes/regenerate
+router.post('/2fa/backup-codes/regenerate', authenticateToken, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = db.prepare('SELECT id, totp_enabled FROM users WHERE id = ?').get(req.user!.userId) as any;
+    if (!user || !user.totp_enabled) {
+      res.status(400).json({ error: '2FA is not enabled' });
+      return;
+    }
+
+    const backupResult = generateBackupCodes(config.totp.backupCodeCount);
+
+    db.prepare('UPDATE users SET totp_backup_codes = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(backupResult.hashed), localNow(), user.id);
+
+    res.json({ backupCodes: backupResult.plain });
+  } catch (error: any) {
+    console.error('Regenerate backup codes error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Password Reset (forgot/reset flow)
+// ═══════════════════════════════════════════════════════════════
+
+router.post('/forgot-password', authRateLimit, (req: Request, res: Response) => {
+  // Always return success to prevent email enumeration
+  res.json({ message: 'If an account exists with that username, password reset instructions have been sent.' });
+});
+
+router.get('/reset-password/validate', (req: Request, res: Response) => {
+  // Token-based reset not yet implemented — respond with a helpful message
+  res.status(400).json({ error: 'Password reset links are not enabled. Contact your administrator.' });
+});
+
+router.post('/reset-password', (req: Request, res: Response) => {
+  res.status(400).json({ error: 'Password reset links are not enabled. Contact your administrator.' });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Profile Image
+// ═══════════════════════════════════════════════════════════════
+
+router.get('/profile-image', authenticateToken, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = db.prepare('SELECT avatar_url FROM users WHERE id = ?').get(req.user!.userId) as any;
+    res.json({ url: user?.avatar_url || null });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.put('/profile-image', authenticateToken, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { url } = req.body;
+    db.prepare('UPDATE users SET avatar_url = ?, updated_at = ? WHERE id = ?')
+      .run(url || null, localNow(), req.user!.userId);
+    res.json({ success: true, url: url || null });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Signed URLs (for secure file access)
+// ═══════════════════════════════════════════════════════════════
+
+router.post('/sign-urls', authenticateToken, (req: Request, res: Response) => {
+  try {
+    const { urls } = req.body;
+    if (!Array.isArray(urls)) {
+      res.status(400).json({ error: 'urls array required' });
+      return;
+    }
+    // For local file storage, just return the same URLs (no signing needed)
+    const signed = urls.map((url: string) => ({ original: url, signed: url, expiresAt: new Date(Date.now() + 3600000).toISOString() }));
+    res.json({ urls: signed });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

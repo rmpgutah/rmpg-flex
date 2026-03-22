@@ -1130,4 +1130,90 @@ router.post('/:id/unarchive', (req: Request, res: Response) => {
   }
 });
 
+// POST /api/warrants/ingest-utah — Import warrants from Utah API search results
+router.post('/ingest-utah', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { warrants: incomingWarrants } = req.body;
+    if (!Array.isArray(incomingWarrants) || incomingWarrants.length === 0) {
+      res.status(400).json({ error: 'warrants array required' });
+      return;
+    }
+
+    let imported = 0;
+    let skipped = 0;
+
+    for (const w of incomingWarrants) {
+      const extId = `utah_api:${w.utah_warrant_id || w.id}`;
+      const existing = db.prepare('SELECT id FROM warrants WHERE external_warrant_id = ?').get(extId);
+      if (existing) { skipped++; continue; }
+
+      const result = db.prepare(`
+        INSERT INTO warrants (warrant_number, type, status, charge_description, issuing_court,
+          entered_by, source, external_warrant_id, external_source_key, auto_created, notes, created_at, updated_at)
+        VALUES ('__PENDING__', 'arrest', 'active', ?, ?, ?, 'utah_api', ?, 'utah_api', 1, ?, ?, ?)
+      `).run(
+        w.charges || w.charge_description || 'Utah warrant',
+        w.court_name || null,
+        req.user!.userId,
+        extId,
+        `Imported from Utah warrants API`,
+        localNow(), localNow()
+      );
+
+      const warrantId = result.lastInsertRowid;
+      const year = new Date().getFullYear();
+      db.prepare('UPDATE warrants SET warrant_number = ? WHERE id = ?')
+        .run(`EXT-${year}-${String(warrantId).padStart(5, '0')}`, warrantId);
+      imported++;
+    }
+
+    res.json({ imported, skipped, total: incomingWarrants.length });
+  } catch (error: any) {
+    console.error('Ingest Utah warrants error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/warrants/person-intel — Person intelligence summary for warrants
+router.get('/person-intel', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { person_id, name } = req.query;
+
+    if (person_id) {
+      const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(person_id) as any;
+      if (!person) { res.status(404).json({ error: 'Person not found' }); return; }
+
+      const warrants = db.prepare(`
+        SELECT * FROM warrants WHERE subject_person_id = ? AND status = 'active'
+      `).all(person_id);
+
+      const utahHits = db.prepare(`
+        SELECT * FROM utah_warrants WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?)
+      `).all(person.first_name || '', person.last_name || '');
+
+      res.json({ person, warrants, utahHits, hasActiveWarrants: warrants.length > 0 });
+    } else if (name) {
+      const parts = String(name).trim().split(/\s+/);
+      if (parts.length < 2) { res.json({ results: [] }); return; }
+
+      const results = db.prepare(`
+        SELECT p.id, p.first_name, p.last_name, p.dob,
+          (SELECT COUNT(*) FROM warrants w WHERE w.subject_person_id = p.id AND w.status = 'active') as active_warrant_count
+        FROM persons p
+        WHERE LOWER(first_name) LIKE LOWER(?) AND LOWER(last_name) LIKE LOWER(?)
+        LIMIT 20
+      `).all(`%${parts[0]}%`, `%${parts[parts.length - 1]}%`);
+
+      res.json({ results });
+    } else {
+      res.status(400).json({ error: 'person_id or name query required' });
+    }
+  } catch (error: any) {
+    console.error('Person intel error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;
