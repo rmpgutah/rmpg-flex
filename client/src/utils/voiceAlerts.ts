@@ -590,44 +590,50 @@ export async function announceBolo(title: string, priority?: string): Promise<vo
   enqueuePhrases(phrases);
 }
 
-/** Announce warrant hit: "WARRANT HIT — [SUBJECT NAME]" */
-export async function announceWarrantHit(subjectName: string): Promise<void> {
+/** Announce warrant hit */
+export async function announceWarrantHit(data: { person_name?: string; warrant_count?: number }): Promise<void> {
   if (!isVoiceEnabled() || !isSpeechAvailable()) return;
-  const dedupKey = `warrant:${subjectName}`;
+  const name = data.person_name || 'unknown subject';
+  const dedupKey = `warrant:${name}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);
   await playToneAsync('caution');
   await delay(TONE_GAP_MS);
-  enqueuePhrases([{ text: naturalPhrase('ACTIVE WARRANTS') }, { text: `Subject: ${subjectName}.` }]);
-}
-
-/** Announce backup request: "BACKUP REQUESTED BY UNIT [CALL_SIGN]" */
-export async function announceBackupRequest(callSign: string, location?: string): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
-  const dedupKey = `backup:${callSign}`;
-  if (wasRecentlyAnnounced(dedupKey)) return;
-  markAnnounced(dedupKey);
-  await playToneAsync('alarm');
-  await delay(TONE_GAP_MS);
-  const phrases: VoicePhrase[] = [{ text: `Backup requested by unit ${callSign}.` }];
-  if (location) phrases.push({ text: `Location: ${location}.` });
+  const phrases: VoicePhrase[] = [{ text: naturalPhrase('ACTIVE WARRANTS') }, { text: `Subject: ${name}.` }];
+  if (data.warrant_count && data.warrant_count > 1) phrases.push({ text: `${data.warrant_count} active warrants.` });
   enqueuePhrases(phrases);
 }
 
-/** Announce pursuit: "PURSUIT IN PROGRESS — UNIT [CALL_SIGN]" */
-export async function announcePursuit(callSign: string, direction?: string): Promise<void> {
+/** Announce backup request */
+export async function announceBackupRequest(data: { officer_name?: string; location?: string; call_number?: string }): Promise<void> {
   if (!isVoiceEnabled() || !isSpeechAvailable()) return;
-  const dedupKey = `pursuit:${callSign}`;
+  const who = data.officer_name || 'unknown';
+  const dedupKey = `backup:${who}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);
-  await playToneAsync('alarm');
+  await playToneAsync('warning');
   await delay(TONE_GAP_MS);
-  const phrases: VoicePhrase[] = [{ text: `Pursuit in progress. Unit ${callSign}.` }];
-  if (direction) phrases.push({ text: `Direction of travel: ${direction}.` });
+  const phrases: VoicePhrase[] = [{ text: `Backup requested by ${who}.` }];
+  if (data.location) phrases.push({ text: `Location: ${data.location}.` });
   enqueuePhrases(phrases);
 }
 
-/** Announce all-units broadcast: "ATTENTION ALL UNITS — [MESSAGE]" */
+/** Announce pursuit */
+export async function announcePursuit(data: { officer_name?: string; location?: string; direction?: string; speed?: string }): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  const who = data.officer_name || 'unknown unit';
+  const dedupKey = `pursuit:${who}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+  await playToneAsync('warning');
+  await delay(TONE_GAP_MS);
+  const phrases: VoicePhrase[] = [{ text: `Pursuit in progress. ${who}.` }];
+  if (data.direction) phrases.push({ text: `Direction of travel: ${data.direction}.` });
+  if (data.location) phrases.push({ text: `Location: ${data.location}.` });
+  enqueuePhrases(phrases);
+}
+
+/** Announce all-units broadcast */
 export async function announceAllUnits(message: string): Promise<void> {
   if (!isVoiceEnabled() || !isSpeechAvailable()) return;
   const dedupKey = `allunits:${message.slice(0, 50)}`;
@@ -740,25 +746,3 @@ function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// ── Dispatch voice alert functions ──────────────────────────────────────
-export function announceWarrantHit(data: any): void {
-  const name = data?.subject_name || 'Unknown subject';
-  speakAlert(`Warrant hit on ${name}`, 'high');
-}
-
-export function announceBackupRequest(data: any): void {
-  const unit = data?.call_sign || 'Unknown unit';
-  const location = data?.location || '';
-  speakAlert(`Backup requested by ${unit}${location ? ` at ${location}` : ''}`, 'critical');
-}
-
-export function announcePursuit(data: any): void {
-  const unit = data?.call_sign || 'Unknown unit';
-  const direction = data?.direction || '';
-  speakAlert(`Pursuit in progress, ${unit}${direction ? `, heading ${direction}` : ''}`, 'critical');
-}
-
-export function announceAllUnits(data: any): void {
-  const message = data?.message || 'All units advisory';
-  speakAlert(`All units: ${message}`, 'high');
-}
