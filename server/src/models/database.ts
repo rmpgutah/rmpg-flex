@@ -3386,6 +3386,117 @@ function migrateSchema(): void {
   // ── Feature 23: Per-user notification sound toggle ──
   // Stored in user_preferences table with pref_key='notification_sounds_enabled'
 
+  // ── Ensure call_persons junction table exists (used by dispatch person linking) ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS call_persons (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_id INTEGER NOT NULL,
+      person_id INTEGER NOT NULL,
+      role TEXT,
+      notes TEXT,
+      added_by INTEGER,
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_call_persons_call ON call_persons(call_id);
+    CREATE INDEX IF NOT EXISTS idx_call_persons_person ON call_persons(person_id);
+  `);
+
+  // ══════════════════════════════════════════════════════════════
+  // Warrant Scanner / Watch Tables
+  // ══════════════════════════════════════════════════════════════
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS warrant_watch_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      run_id TEXT UNIQUE,
+      started_at TEXT NOT NULL,
+      completed_at TEXT,
+      persons_checked INTEGER DEFAULT 0,
+      new_warrants_found INTEGER DEFAULT 0,
+      warrants_cleared INTEGER DEFAULT 0,
+      errors INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'running',
+      error_message TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS warrant_watch_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      person_id INTEGER,
+      person_name TEXT,
+      event TEXT NOT NULL,
+      utah_warrant_id TEXT,
+      utah_person_id TEXT,
+      court_name TEXT,
+      case_id TEXT,
+      charges TEXT,
+      issue_date TEXT,
+      scan_run_id TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS utah_warrants (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      utah_person_id TEXT,
+      first_name TEXT,
+      middle_name TEXT,
+      last_name TEXT,
+      age INTEGER,
+      city TEXT,
+      utah_warrant_id TEXT,
+      issue_date TEXT,
+      court_name TEXT,
+      case_id TEXT,
+      charges TEXT,
+      fetched_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS scraped_warrants (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_key TEXT,
+      full_name TEXT,
+      first_name TEXT,
+      last_name TEXT,
+      date_of_birth TEXT,
+      warrant_type TEXT,
+      charge_description TEXT,
+      court_name TEXT,
+      case_number TEXT,
+      bail_amount REAL,
+      offense_level TEXT,
+      issue_date TEXT,
+      status TEXT DEFAULT 'active',
+      warrant_id TEXT,
+      person_id INTEGER,
+      scraped_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS warrant_scraper_config (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_key TEXT UNIQUE,
+      state TEXT,
+      county TEXT,
+      source_url TEXT,
+      enabled INTEGER DEFAULT 1,
+      scrape_interval_minutes INTEGER DEFAULT 360,
+      last_scrape_at TEXT,
+      consecutive_errors INTEGER DEFAULT 0,
+      circuit_broken INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_utah_warrants_name ON utah_warrants(last_name, first_name);
+    CREATE INDEX IF NOT EXISTS idx_utah_warrants_fetched ON utah_warrants(fetched_at);
+    CREATE INDEX IF NOT EXISTS idx_warrant_watch_log_person ON warrant_watch_log(person_id);
+    CREATE INDEX IF NOT EXISTS idx_scraped_warrants_name ON scraped_warrants(last_name, first_name);
+  `);
+
+  // New columns on warrants table for external source tracking
+  addCol('warrants', 'source', "TEXT DEFAULT 'manual'");
+  addCol('warrants', 'external_warrant_id', 'TEXT');
+  addCol('warrants', 'external_source_key', 'TEXT');
+  addCol('warrants', 'auto_created', 'INTEGER DEFAULT 0');
+
   console.log('Schema migration completed.');
 }
 

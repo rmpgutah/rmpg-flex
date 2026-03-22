@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Clock, MapPin, Users, AlertTriangle, Phone, Radio, UserCheck, Globe, Layers, MessageSquare } from 'lucide-react';
+import { Clock, MapPin, Users, AlertTriangle, Phone, Radio, UserCheck, Globe, Layers, MessageSquare, ShieldAlert } from 'lucide-react';
 import type { CallForService } from '../types';
 import StatusBadge from './StatusBadge';
 import { formatIncidentType } from '../utils/caseNumbers';
@@ -53,11 +53,13 @@ interface CallCardProps {
   stackCount?: number;
   /** Feature 6: Quick note add handler */
   onQuickNote?: (callId: string, note: string) => void;
+  /** Warrant indicator: true if any linked person has an active warrant */
+  hasActiveWarrant?: boolean;
 }
 
 const NON_DROPPABLE_STATUSES = ['cleared', 'closed', 'cancelled', 'archived'];
 
-export default React.memo(function CallCard({ call, isSelected = false, onClick, onUnitDrop, onStatusChange, onContextMenu, warnings, stackCount, onQuickNote }: CallCardProps) {
+export default React.memo(function CallCard({ call, isSelected = false, onClick, onUnitDrop, onStatusChange, onContextMenu, warnings, stackCount, onQuickNote, hasActiveWarrant }: CallCardProps) {
   const isEmergency = call.priority === 'P1';
   const [isDragOver, setIsDragOver] = useState(false);
   const timerRef = useRef<HTMLSpanElement>(null);
@@ -221,6 +223,11 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             <AlertTriangle className="w-4 h-4 text-red-500 animate-emergency-blink" />
           )}
           <span className="text-sm font-bold text-green-400 font-mono">{call.call_number}</span>
+          {hasActiveWarrant && (
+            <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-red-100 bg-red-600 px-1 py-0 rounded-sm animate-pulse" title="Person on this call has active warrant(s)">
+              <ShieldAlert style={{ width: 9, height: 9 }} /> WRN
+            </span>
+          )}
           {call.incident_type === 'pso_client_request' && call.pso_attempt_number && (
             <span className="text-[9px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1 py-0">
               VISIT #{call.pso_attempt_number}

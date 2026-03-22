@@ -367,8 +367,8 @@ export default function Layout() {
   // ── Feature 24: Auto-logout on idle ──
   const lastActivityRef = useRef(Date.now());
   const [showIdleDialog, setShowIdleDialog] = useState(false);
-  const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
-  const IDLE_WARNING_MS = 25 * 60 * 1000; // Warn at 25 minutes
+  const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // 60 minutes of no activity
+  const IDLE_WARNING_MS = 55 * 60 * 1000; // Warn at 55 minutes
 
   useEffect(() => {
     const resetActivity = () => { lastActivityRef.current = Date.now(); setShowIdleDialog(false); };

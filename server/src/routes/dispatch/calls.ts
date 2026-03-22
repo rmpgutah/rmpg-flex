@@ -116,7 +116,12 @@ router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
     const calls = db.prepare(`
       SELECT c.*, p.name as property_name, u.full_name as dispatcher_name,
         cl.name as client_name,
-        (SELECT i.incident_number FROM incidents i WHERE i.call_id = c.id ORDER BY i.id DESC LIMIT 1) as incident_number
+        (SELECT i.incident_number FROM incidents i WHERE i.call_id = c.id ORDER BY i.id DESC LIMIT 1) as incident_number,
+        (SELECT COUNT(*) FROM call_persons cp
+          JOIN persons per ON cp.person_id = per.id
+          WHERE cp.call_id = c.id
+            AND per.flags IS NOT NULL
+            AND per.flags LIKE '%ACTIVE_WARRANT%') as has_active_warrant
       FROM calls_for_service c
       LEFT JOIN properties p ON c.property_id = p.id
       LEFT JOIN users u ON c.dispatcher_id = u.id

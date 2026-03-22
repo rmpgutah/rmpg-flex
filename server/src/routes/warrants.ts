@@ -3,6 +3,8 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { broadcast } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
+import { universalWarrantCheck, runUniversalWarrantScan } from '../utils/universalWarrantScanner';
+import { getUtahWarrantSyncStatus, isUtahApiBlocked, runWarrantWatchScan } from '../utils/utahWarrantScraper';
 
 const router = Router();
 
@@ -196,6 +198,325 @@ router.put('/batch-update', requireRole('admin', 'manager', 'supervisor'), (req:
     res.json({ success: true, updated: ids.length });
   } catch (error: any) {
     console.error('Batch update warrants error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
+// Dashboard / Scanner Endpoints
+// ══════════════════════════════════════════════════════════════
+
+// GET /api/warrants/dashboard/stats — Dashboard statistics
+router.get('/dashboard/stats', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    const totalActive = (db.prepare(
+      `SELECT COUNT(*) as cnt FROM warrants WHERE status = 'active' AND archived_at IS NULL`
+    ).get() as any).cnt;
+
+    // Served in last 30 days
+    const totalServed30d = (db.prepare(
+      `SELECT COUNT(*) as cnt FROM warrants
+       WHERE status = 'served' AND served_at >= datetime('now', '-30 days', 'localtime')`
+    ).get() as any).cnt;
+
+    // By type
+    const typeRows = db.prepare(
+      `SELECT type, COUNT(*) as cnt FROM warrants WHERE status = 'active' AND archived_at IS NULL GROUP BY type`
+    ).all() as { type: string; cnt: number }[];
+    const total_by_type: Record<string, number> = { arrest: 0, bench: 0, search: 0, civil: 0 };
+    for (const r of typeRows) total_by_type[r.type] = r.cnt;
+
+    // By source
+    const sourceRows = db.prepare(
+      `SELECT COALESCE(source, 'manual') as src, COUNT(*) as cnt FROM warrants WHERE status = 'active' AND archived_at IS NULL GROUP BY src`
+    ).all() as { src: string; cnt: number }[];
+    const total_by_source: Record<string, number> = { manual: 0, utah_api: 0, scraper: 0 };
+    for (const r of sourceRows) total_by_source[r.src] = r.cnt;
+
+    // Average age of active warrants (days)
+    const avgAge = (db.prepare(
+      `SELECT AVG(julianday('now','localtime') - julianday(created_at)) as avg_days
+       FROM warrants WHERE status = 'active' AND archived_at IS NULL`
+    ).get() as any)?.avg_days || 0;
+
+    // Oldest and newest active
+    const oldest = db.prepare(
+      `SELECT id, warrant_number, created_at FROM warrants WHERE status = 'active' AND archived_at IS NULL ORDER BY created_at ASC LIMIT 1`
+    ).get() as any;
+    const newest = db.prepare(
+      `SELECT id, warrant_number, created_at FROM warrants WHERE status = 'active' AND archived_at IS NULL ORDER BY created_at DESC LIMIT 1`
+    ).get() as any;
+
+    // Served this calendar month
+    const servedMonth = (db.prepare(
+      `SELECT COUNT(*) as cnt FROM warrants
+       WHERE status = 'served' AND served_at >= date('now','start of month','localtime')`
+    ).get() as any).cnt;
+
+    // Clearance rate: served / (served + active) over last 30 days
+    const totalAll30d = totalActive + totalServed30d;
+    const clearanceRate = totalAll30d > 0 ? Math.round((totalServed30d / totalAll30d) * 100) : 0;
+
+    res.json({
+      total_active: totalActive,
+      total_served_30d: totalServed30d,
+      total_by_type,
+      total_by_source,
+      avg_age_days: Math.round(avgAge),
+      oldest_active: oldest || null,
+      newest_active: newest || null,
+      served_this_month: servedMonth,
+      clearance_rate_30d: clearanceRate,
+    });
+  } catch (error: any) {
+    console.error('Dashboard stats error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/warrants/dashboard/feed — Recent warrant activity feed
+router.get('/dashboard/feed', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    // Combine warrant_watch_log + activity_log warrant entries
+    const feed = db.prepare(`
+      SELECT
+        'watch' as feed_source,
+        wl.id,
+        wl.person_name,
+        wl.event,
+        wl.charges,
+        wl.court_name as court,
+        wl.utah_warrant_id as source_id,
+        wl.created_at as timestamp
+      FROM warrant_watch_log wl
+      UNION ALL
+      SELECT
+        'activity' as feed_source,
+        al.id,
+        COALESCE(u.full_name, 'System') as person_name,
+        al.action as event,
+        al.details as charges,
+        NULL as court,
+        CAST(al.entity_id AS TEXT) as source_id,
+        al.created_at as timestamp
+      FROM activity_log al
+      LEFT JOIN users u ON al.user_id = u.id
+      WHERE al.entity_type = 'warrant'
+      ORDER BY timestamp DESC
+      LIMIT 50
+    `).all();
+
+    res.json(feed);
+  } catch (error: any) {
+    console.error('Dashboard feed error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/warrants/dashboard/priority — High priority warrants
+router.get('/dashboard/priority', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    const warrants = db.prepare(`
+      SELECT w.*,
+        p.first_name as subject_first_name,
+        p.last_name as subject_last_name,
+        (p.first_name || ' ' || p.last_name) as subject_name,
+        p.photo_url as subject_photo_url
+      FROM warrants w
+      LEFT JOIN persons p ON w.subject_person_id = p.id
+      WHERE w.status = 'active' AND w.archived_at IS NULL
+      ORDER BY
+        CASE w.offense_level
+          WHEN 'felony' THEN 0
+          WHEN 'misdemeanor' THEN 1
+          WHEN 'infraction' THEN 2
+          WHEN 'civil' THEN 3
+          ELSE 4
+        END,
+        w.created_at ASC
+      LIMIT 20
+    `).all();
+
+    res.json(warrants);
+  } catch (error: any) {
+    console.error('Priority warrants error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/warrants/unified — Merged warrants from all sources
+router.get('/unified', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    // Local warrants
+    const localWarrants = db.prepare(`
+      SELECT w.*,
+        p.first_name as subject_first_name,
+        p.last_name as subject_last_name,
+        (p.first_name || ' ' || p.last_name) as subject_name,
+        u.full_name as entered_by_name,
+        COALESCE(w.source, 'manual') as source
+      FROM warrants w
+      LEFT JOIN persons p ON w.subject_person_id = p.id
+      LEFT JOIN users u ON w.entered_by = u.id
+      WHERE w.status = 'active' AND w.archived_at IS NULL
+      ORDER BY w.created_at DESC
+    `).all() as any[];
+
+    // Scraped warrants not already linked to a local record
+    const scrapedWarrants = db.prepare(`
+      SELECT
+        sw.id,
+        sw.full_name as subject_name,
+        sw.first_name as subject_first_name,
+        sw.last_name as subject_last_name,
+        sw.warrant_type as type,
+        'active' as status,
+        sw.charge_description,
+        sw.court_name as issuing_court,
+        sw.bail_amount,
+        sw.offense_level,
+        sw.issue_date as created_at,
+        sw.source_key,
+        'scraper' as source,
+        ('scraper:' || sw.source_key || ':' || sw.warrant_id) as external_warrant_id
+      FROM scraped_warrants sw
+      WHERE sw.status = 'active'
+        AND NOT EXISTS (
+          SELECT 1 FROM warrants w
+          WHERE w.external_warrant_id = ('scraper:' || sw.source_key || ':' || sw.warrant_id)
+        )
+    `).all() as any[];
+
+    // Utah cached warrants not already linked
+    const utahCached = db.prepare(`
+      SELECT
+        uw.id,
+        (uw.first_name || ' ' || uw.last_name) as subject_name,
+        uw.first_name as subject_first_name,
+        uw.last_name as subject_last_name,
+        'arrest' as type,
+        'active' as status,
+        uw.charges as charge_description,
+        uw.court_name as issuing_court,
+        NULL as bail_amount,
+        NULL as offense_level,
+        uw.issue_date as created_at,
+        'utah_api' as source_key,
+        'utah_api' as source,
+        ('utah_api:' || uw.utah_warrant_id) as external_warrant_id
+      FROM utah_warrants uw
+      WHERE NOT EXISTS (
+        SELECT 1 FROM warrants w
+        WHERE w.external_warrant_id = ('utah_api:' || uw.utah_warrant_id)
+      )
+    `).all() as any[];
+
+    // Deduplicate by external_warrant_id
+    const seen = new Set<string>();
+    const unified: any[] = [];
+
+    for (const w of localWarrants) {
+      if (w.external_warrant_id) seen.add(w.external_warrant_id);
+      unified.push(w);
+    }
+    for (const w of [...scrapedWarrants, ...utahCached]) {
+      if (w.external_warrant_id && seen.has(w.external_warrant_id)) continue;
+      if (w.external_warrant_id) seen.add(w.external_warrant_id);
+      unified.push(w);
+    }
+
+    res.json(unified);
+  } catch (error: any) {
+    console.error('Unified warrants error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/warrants/check/:personId — Manual warrant check against all sources
+router.post('/check/:personId', (req: Request, res: Response) => {
+  (async () => {
+    try {
+      const personId = parseInt(req.params.personId, 10);
+      if (isNaN(personId)) {
+        res.status(400).json({ error: 'Invalid person ID' });
+        return;
+      }
+
+      const result = await universalWarrantCheck(personId, true);
+      res.json({
+        hitsFound: result.hitsFound,
+        warrantsCreated: result.warrantsCreated,
+        warrantsCleared: result.warrantsCleared,
+        errors: result.errors,
+        personName: result.personName,
+      });
+    } catch (error: any) {
+      console.error('Manual warrant check error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  })();
+});
+
+// GET /api/warrants/scan/status — Scanner status
+router.get('/scan/status', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    // Last completed scan run
+    const lastRun = db.prepare(
+      `SELECT * FROM warrant_watch_runs ORDER BY started_at DESC LIMIT 1`
+    ).get() as any;
+
+    const utahStatus = getUtahWarrantSyncStatus();
+    const utahBlocked = isUtahApiBlocked();
+
+    // Next scan estimate: last run + 4 hours
+    let nextScan: string | null = null;
+    if (lastRun?.completed_at) {
+      const last = new Date(lastRun.completed_at);
+      nextScan = new Date(last.getTime() + 4 * 60 * 60 * 1000).toISOString();
+    }
+
+    res.json({
+      lastScan: lastRun || null,
+      nextScan,
+      status: lastRun?.status || 'idle',
+      warrantWatchEnabled: true,
+      utahApiBlocked: utahBlocked,
+      utahCache: utahStatus,
+    });
+  } catch (error: any) {
+    console.error('Scan status error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/warrants/scan/trigger — Manually trigger a full scan (admin only)
+router.post('/scan/trigger', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    // Run in background — don't await
+    runWarrantWatchScan().catch((err: any) => {
+      console.error('[Warrant Scan] Manual trigger failed:', err.message || err);
+    });
+
+    // Log the manual trigger
+    const db = getDb();
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'warrant_scan_triggered', 'system', 0, 'Manual warrant scan triggered', ?)
+    `).run(req.user!.userId, req.ip || 'unknown');
+
+    res.json({ message: 'Scan started', started_at: localNow() });
+  } catch (error: any) {
+    console.error('Trigger scan error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
