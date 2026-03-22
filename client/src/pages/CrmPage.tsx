@@ -133,6 +133,9 @@ export default function CrmPage() {
   const [stats, setStats] = useState<CrmDashboardStats | null>(null);
   const [recentActivity, setRecentActivity] = useState<CrmActivity[]>([]);
   const [expiringContracts, setExpiringContracts] = useState<any[]>([]);
+  const [pipelineSummary, setPipelineSummary] = useState<any[]>([]);
+  const [revenueTrend, setRevenueTrend] = useState<any[]>([]);
+  const [dashTasks, setDashTasks] = useState<CrmTask[]>([]);
 
   // Clients
   const [clients, setClients] = useState<Client[]>([]);
@@ -177,14 +180,20 @@ export default function CrmPage() {
   // ── Data Fetching ──────────────────────────────────────
   const fetchDashboard = useCallback(async () => {
     try {
-      const [statsRes, activityRes, expiringRes] = await Promise.all([
+      const [statsRes, activityRes, expiringRes, pipelineRes, trendRes, tasksRes] = await Promise.all([
         apiFetch<CrmDashboardStats>('/crm/dashboard'),
         apiFetch<CrmActivity[]>('/crm/recent-activity?limit=20'),
         apiFetch<any[]>('/crm/expiring-contracts?days=90'),
+        apiFetch<any[]>('/crm/leads/pipeline-summary').catch(() => []),
+        apiFetch<any[]>('/crm/reports/revenue-trend').catch(() => []),
+        apiFetch<CrmTask[]>('/crm/tasks').catch(() => []),
       ]);
       setStats(statsRes);
       setRecentActivity(Array.isArray(activityRes) ? activityRes : []);
       setExpiringContracts(Array.isArray(expiringRes) ? expiringRes : []);
+      setPipelineSummary(Array.isArray(pipelineRes) ? pipelineRes : []);
+      setRevenueTrend(Array.isArray(trendRes) ? trendRes : []);
+      setDashTasks(Array.isArray(tasksRes) ? tasksRes : []);
     } catch (err: any) {
       console.error('CRM dashboard fetch error:', err);
     }
@@ -580,11 +589,168 @@ export default function CrmPage() {
         {stats && (
           <div className="p-4 space-y-4">
             {/* Stats Cards */}
-            <div className="grid grid-cols-4 gap-3">
-              <StatCard icon={Building2} label="Active Clients" value={stats.active_clients} sub={`${stats.total_clients} total`} color="text-brand-400" />
-              <StatCard icon={DollarSign} label="Outstanding" value={formatCurrency(stats.outstanding_revenue)} sub={`${stats.overdue_invoices} overdue`} color="text-amber-400" />
-              <StatCard icon={TrendingUp} label="Invoiced MTD" value={formatCurrency(stats.total_invoiced_mtd)} sub={`${formatCurrency(stats.total_paid_mtd)} paid`} color="text-green-400" />
-              <StatCard icon={CheckSquare} label="Pending Tasks" value={stats.pending_tasks} sub={`${stats.expiring_contracts} contracts expiring`} color="text-blue-400" />
+            {(() => {
+              const pipelineValue = pipelineSummary
+                .filter((s: any) => !['lost', 'dismissed'].includes(s.stage))
+                .reduce((sum: number, s: any) => sum + (s.total_value || 0), 0);
+              const fmtPipelineValue = pipelineValue >= 1000
+                ? `$${(pipelineValue / 1000).toFixed(1)}K`
+                : `$${pipelineValue.toFixed(0)}`;
+              return (
+                <div className="grid grid-cols-5 gap-3">
+                  <StatCard icon={Building2} label="Active Clients" value={stats.active_clients} sub={`${stats.total_clients} total`} color="text-brand-400" />
+                  <StatCard icon={DollarSign} label="Outstanding" value={formatCurrency(stats.outstanding_revenue)} sub={`${stats.overdue_invoices} overdue`} color="text-amber-400" />
+                  <StatCard icon={TrendingUp} label="Invoiced MTD" value={formatCurrency(stats.total_invoiced_mtd)} sub={`${formatCurrency(stats.total_paid_mtd)} paid`} color="text-green-400" />
+                  <StatCard icon={CheckSquare} label="Pending Tasks" value={stats.pending_tasks} sub={`${stats.expiring_contracts} contracts expiring`} color="text-blue-400" />
+                  <StatCard icon={Target} label="Pipeline Value" value={fmtPipelineValue} sub={`${pipelineSummary.filter((s: any) => !['lost','dismissed'].includes(s.stage)).reduce((n: number, s: any) => n + (s.count || 0), 0)} active leads`} color="text-purple-400" />
+                </div>
+              );
+            })()}
+
+            {/* New widgets row */}
+            <div className="grid grid-cols-3 gap-4">
+              {/* Pipeline Funnel */}
+              <div className="panel-raised p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <BarChart3 className="w-3.5 h-3.5 text-purple-400" />
+                  <span className="text-xs font-bold text-white">PIPELINE</span>
+                </div>
+                {pipelineSummary.length === 0 ? (
+                  <p className="text-xs text-rmpg-400">No pipeline data</p>
+                ) : (() => {
+                  const STAGES = ['new', 'qualified', 'proposal', 'negotiation', 'won'];
+                  const stageColors: Record<string, string> = {
+                    new: '#475569',
+                    qualified: '#1d4ed8',
+                    proposal: '#7c3aed',
+                    negotiation: '#b45309',
+                    won: '#15803d',
+                  };
+                  const stageMap = Object.fromEntries(pipelineSummary.map((s: any) => [s.stage, s]));
+                  const maxCount = Math.max(1, ...STAGES.map(st => stageMap[st]?.count || 0));
+                  return (
+                    <div className="space-y-1.5">
+                      {STAGES.map(st => {
+                        const row = stageMap[st];
+                        const count = row?.count || 0;
+                        const pct = Math.max(4, Math.round((count / maxCount) * 100));
+                        return (
+                          <button
+                            key={st}
+                            onClick={() => setActiveSection('leads')}
+                            className="w-full text-left group"
+                          >
+                            <div className="flex items-center justify-between text-[10px] mb-0.5">
+                              <span className="text-rmpg-300 uppercase tracking-wide">{st}</span>
+                              <span className="text-rmpg-400 font-mono">{count}</span>
+                            </div>
+                            <div className="h-2 bg-surface-sunken border border-rmpg-700/40">
+                              <div
+                                className="h-full transition-all"
+                                style={{ width: `${pct}%`, backgroundColor: stageColors[st] || '#475569' }}
+                              />
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Revenue Trend Sparkline */}
+              <div className="panel-raised p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <TrendingUp className="w-3.5 h-3.5 text-green-400" />
+                  <span className="text-xs font-bold text-white">REVENUE TREND (6 MO)</span>
+                </div>
+                {revenueTrend.length === 0 ? (
+                  <p className="text-xs text-rmpg-400">No data</p>
+                ) : (() => {
+                  const invoicedVals = revenueTrend.map((r: any) => r.invoiced || 0);
+                  const paidVals = revenueTrend.map((r: any) => r.paid || 0);
+                  const allVals = [...invoicedVals, ...paidVals];
+                  const maxVal = Math.max(1, ...allVals);
+                  const W = 200, H = 60, PAD = 4;
+                  const n = revenueTrend.length;
+                  const xStep = n > 1 ? (W - PAD * 2) / (n - 1) : W - PAD * 2;
+                  const toY = (v: number) => PAD + (H - PAD * 2) * (1 - v / maxVal);
+                  const toX = (i: number) => PAD + i * xStep;
+                  const buildPath = (vals: number[]) =>
+                    vals.map((v, i) => `${i === 0 ? 'M' : 'L'}${toX(i).toFixed(1)},${toY(v).toFixed(1)}`).join(' ');
+                  return (
+                    <div>
+                      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 60 }}>
+                        <path d={buildPath(invoicedVals)} fill="none" stroke="#1a5a9e" strokeWidth="1.5" />
+                        <path d={buildPath(paidVals)} fill="none" stroke="#22c55e" strokeWidth="1.5" />
+                        {revenueTrend.map((_: any, i: number) => (
+                          <line key={i} x1={toX(i).toFixed(1)} y1={H - 2} x2={toX(i).toFixed(1)} y2={H - 1} stroke="#334155" strokeWidth="1" />
+                        ))}
+                      </svg>
+                      <div className="flex items-center gap-3 mt-1">
+                        <span className="flex items-center gap-1 text-[10px] text-rmpg-400">
+                          <span className="inline-block w-3 h-0.5" style={{ backgroundColor: '#1a5a9e' }} /> Invoiced
+                        </span>
+                        <span className="flex items-center gap-1 text-[10px] text-rmpg-400">
+                          <span className="inline-block w-3 h-0.5" style={{ backgroundColor: '#22c55e' }} /> Paid
+                        </span>
+                        <span className="ml-auto text-[10px] text-rmpg-500">
+                          {revenueTrend[0]?.month && revenueTrend[revenueTrend.length - 1]?.month
+                            ? `${revenueTrend[0].month} – ${revenueTrend[revenueTrend.length - 1].month}`
+                            : ''}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Due This Week */}
+              <div className="panel-raised p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <Clock className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="text-xs font-bold text-white">DUE THIS WEEK</span>
+                </div>
+                {(() => {
+                  const now = new Date();
+                  const cutoff = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+                  const dueTasks = dashTasks
+                    .filter((t: CrmTask) =>
+                      t.status !== 'completed' &&
+                      t.status !== 'cancelled' &&
+                      t.due_date &&
+                      new Date(t.due_date) <= cutoff
+                    )
+                    .sort((a, b) => {
+                      const pri: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
+                      return (pri[a.priority] ?? 2) - (pri[b.priority] ?? 2);
+                    })
+                    .slice(0, 5);
+                  if (dueTasks.length === 0) return <p className="text-xs text-rmpg-400">No tasks due this week</p>;
+                  return (
+                    <div className="space-y-1.5">
+                      {dueTasks.map((t: CrmTask) => {
+                        const dotColor = t.priority === 'urgent' || t.priority === 'high'
+                          ? 'bg-red-500'
+                          : t.priority === 'normal'
+                          ? 'bg-amber-500'
+                          : 'bg-green-500';
+                        return (
+                          <button
+                            key={t.id}
+                            onClick={() => setActiveSection('tasks')}
+                            className="w-full text-left flex items-start gap-2 p-1.5 bg-surface-sunken border border-rmpg-700/30 hover:border-rmpg-600 transition-colors group"
+                          >
+                            <span className={`w-2 h-2 rounded-full flex-shrink-0 mt-0.5 ${dotColor}`} />
+                            <span className="flex-1 text-[10px] text-rmpg-200 group-hover:text-white truncate">{t.title}</span>
+                            <span className="text-[9px] text-rmpg-500 font-mono flex-shrink-0">{formatDate(t.due_date)}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
