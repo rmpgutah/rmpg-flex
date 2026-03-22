@@ -7,7 +7,7 @@
 
 // ── Configuration ────────────────────────────────────────────
 
-const FIRECRAWL_BASE_URL = process.env.FIRECRAWL_URL || 'http://localhost:3002';
+const FIRECRAWL_BASE_URL = process.env.FIRECRAWL_URL || 'http://localhost:3003';
 const TIMEOUT_MS = 30_000;
 
 // ── Types ────────────────────────────────────────────────────
@@ -129,7 +129,7 @@ export async function firecrawlHealthCheck(): Promise<boolean> {
     const timeout = setTimeout(() => controller.abort(), 5_000);
 
     try {
-      const res = await fetch(`${FIRECRAWL_BASE_URL}/v1/health`, {
+      const res = await fetch(`${FIRECRAWL_BASE_URL}/`, {
         signal: controller.signal,
       });
       return res.ok;
