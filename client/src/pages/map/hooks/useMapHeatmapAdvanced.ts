@@ -226,18 +226,18 @@ export function useMapHeatmapAdvanced(
     } else {
       fetchData();
     }
-  }, [
-    options.enabled, options.days, options.mode, options.resolution,
-    JSON.stringify(options.types), options.hourRange[0], options.hourRange[1],
-    JSON.stringify(options.dayFilter), options.comparisonDays,
-  ]);
+    // fetchData captures buildUrl which captures all options — include it
+    // so that switching modes/filters triggers a fresh fetch with the correct URL.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchData, options.enabled, options.mode, temporalHour]);
 
   // ── Temporal hour change → re-fetch ─────────────────────
 
   useEffect(() => {
     if (!options.enabled || options.mode !== 'temporal') return;
     fetchData(temporalHour);
-  }, [temporalHour]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [temporalHour, fetchData]);
 
   // ── Temporal auto-advance ───────────────────────────────
 
