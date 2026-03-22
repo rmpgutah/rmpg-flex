@@ -131,7 +131,8 @@ export function generate2faPendingToken(payload: Omit<JwtPayload, 'type'>): stri
   );
 }
 
-// Backwards compatibility
+// Backwards compatibility aliases
 export function generateToken(payload: Omit<JwtPayload, 'type'>): string {
   return generateAccessToken(payload);
 }
+export const generateTempToken = generate2faPendingToken;

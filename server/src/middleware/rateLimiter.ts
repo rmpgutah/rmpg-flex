@@ -66,6 +66,14 @@ export function rateLimit(options: RateLimitOptions = {}) {
   };
 }
 
+// Stricter rate limiter for auth/MFA endpoints
+export const mfaRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  maxRequests: 10,
+  keyGenerator: (req) => `mfa:${req.ip || 'unknown'}`,
+  message: 'Too many MFA attempts. Please try again in 15 minutes.',
+});
+
 // Stricter rate limiter for auth endpoints
 export const authRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -79,3 +87,33 @@ export const apiRateLimit = rateLimit({
   windowMs: config.security.rateLimitWindowMs,
   maxRequests: config.security.rateLimitMaxRequests,
 });
+
+// ── Blocked IP tracking (used by security dashboard) ──
+
+const blockedIps = new Map<string, { reason: string; blockedAt: number; expiresAt: number }>();
+
+export function getBlockedIps(): Array<{ ip: string; reason: string; blockedAt: string; expiresAt: string }> {
+  const now = Date.now();
+  const result: Array<{ ip: string; reason: string; blockedAt: string; expiresAt: string }> = [];
+  for (const [ip, entry] of blockedIps) {
+    if (now > entry.expiresAt) {
+      blockedIps.delete(ip);
+      continue;
+    }
+    result.push({
+      ip,
+      reason: entry.reason,
+      blockedAt: new Date(entry.blockedAt).toISOString(),
+      expiresAt: new Date(entry.expiresAt).toISOString(),
+    });
+  }
+  return result;
+}
+
+export function unblockIp(ip: string): boolean {
+  return blockedIps.delete(ip);
+}
+
+export function blockIp(ip: string, reason: string, durationMs = 30 * 60 * 1000): void {
+  blockedIps.set(ip, { reason, blockedAt: Date.now(), expiresAt: Date.now() + durationMs });
+}

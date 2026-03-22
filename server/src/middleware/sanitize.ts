@@ -37,6 +37,56 @@ function sanitizeObject(obj: Record<string, unknown>): Record<string, unknown> {
   return sanitized;
 }
 
+// ── Validation / utility helpers used by route files ──────────
+
+/** Escape SQL LIKE wildcards */
+export function escapeLike(str: string): string {
+  return str.replace(/[%_\\]/g, '\\$&');
+}
+
+/** Validate that req.params[name] is a positive integer */
+export function validateParamId(req: Request, name = 'id'): number {
+  const val = Number(req.params[name]);
+  if (!Number.isInteger(val) || val < 1) throw new Error(`Invalid ${name}`);
+  return val;
+}
+
+/** Validate a required string field */
+export function validateStr(val: unknown, fieldName: string, maxLen = 1000): string {
+  if (typeof val !== 'string' || !val.trim()) throw new Error(`${fieldName} is required`);
+  const trimmed = val.trim();
+  if (trimmed.length > maxLen) throw new Error(`${fieldName} exceeds max length`);
+  return trimmed;
+}
+
+/** Validate a date string (ISO or common formats) */
+export function validateDateStr(val: unknown, fieldName: string): string {
+  if (typeof val !== 'string' || !val.trim()) throw new Error(`${fieldName} is required`);
+  const d = new Date(val);
+  if (isNaN(d.getTime())) throw new Error(`${fieldName} is not a valid date`);
+  return val.trim();
+}
+
+/** Require a value to be an integer */
+export function requireInt(val: unknown, fieldName: string): number {
+  const n = Number(val);
+  if (!Number.isInteger(n)) throw new Error(`${fieldName} must be an integer`);
+  return n;
+}
+
+/** Require a value to be a float/number */
+export function requireFloat(val: unknown, fieldName: string): number {
+  const n = Number(val);
+  if (isNaN(n)) throw new Error(`${fieldName} must be a number`);
+  return n;
+}
+
+/** Validate a value is one of the allowed enum values */
+export function validateEnum<T extends string>(val: unknown, allowed: readonly T[], fieldName: string): T {
+  if (!allowed.includes(val as T)) throw new Error(`${fieldName} must be one of: ${allowed.join(', ')}`);
+  return val as T;
+}
+
 export function sanitizeInput(req: Request, _res: Response, next: NextFunction): void {
   if (req.body && typeof req.body === 'object') {
     req.body = sanitizeObject(req.body);
