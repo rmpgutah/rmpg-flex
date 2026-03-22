@@ -147,10 +147,10 @@ router.post('/proposals', requireRole('admin', 'manager', 'contract_manager'), (
       let finalScope = scope_of_work || null;
       let finalTerms = terms || null;
       let finalMonthly: number | null = monthly_value != null ? Number(monthly_value) : null;
-      if (finalMonthly != null && (isNaN(finalMonthly) || !isFinite(finalMonthly))) finalMonthly = null;
+      if (finalMonthly != null && (isNaN(finalMonthly) || !isFinite(finalMonthly) || finalMonthly < 0)) finalMonthly = null;
       let finalBilling = billing_frequency || 'monthly';
       let finalContractMonths: number | null = contract_length_months != null ? Number(contract_length_months) : null;
-      if (finalContractMonths != null && (isNaN(finalContractMonths) || !isFinite(finalContractMonths))) finalContractMonths = null;
+      if (finalContractMonths != null && (isNaN(finalContractMonths) || !isFinite(finalContractMonths) || finalContractMonths < 1)) finalContractMonths = null;
 
       if (template_type && !scope_of_work && !terms) {
         const template = db.prepare(

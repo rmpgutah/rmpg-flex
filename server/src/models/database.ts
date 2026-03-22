@@ -4762,6 +4762,13 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_calls_status_created ON calls_for_service(status, created_at);
 
     CREATE INDEX IF NOT EXISTS idx_credentials_officer ON credentials(officer_id);
+
+    -- Composite indexes for common query patterns
+    CREATE INDEX IF NOT EXISTS idx_incidents_status_created ON incidents(status, created_at);
+    CREATE INDEX IF NOT EXISTS idx_time_entries_officer_status ON time_entries(officer_id, status);
+    CREATE INDEX IF NOT EXISTS idx_schedules_officer_date ON schedules(officer_id, shift_date);
+    CREATE INDEX IF NOT EXISTS idx_evidence_collected_by ON evidence(collected_by);
+    CREATE INDEX IF NOT EXISTS idx_evidence_incident ON evidence(incident_id);
     CREATE INDEX IF NOT EXISTS idx_credentials_status ON credentials(status);
 
     CREATE INDEX IF NOT EXISTS idx_patrol_checkpoints_property ON patrol_checkpoints(property_id);
