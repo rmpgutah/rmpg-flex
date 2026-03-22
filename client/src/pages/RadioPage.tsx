@@ -252,7 +252,7 @@ export default function RadioPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `radio-transcripts-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `radio-transcripts-${localToday()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };

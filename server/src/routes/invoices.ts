@@ -323,10 +323,10 @@ router.post('/', requireRole('admin', 'manager', 'contract_manager'), (req: Requ
     // Activity log
     db.prepare(
       'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(user.userId, 'invoice_created', 'invoice', result.lastInsertRowid, `Created invoice ${invoice_number} for client ${client.name}`, req.ip || 'unknown', now);
+    ).run(user.userId, 'invoice_created', 'invoice', Number(result.lastInsertRowid), `Created invoice ${invoice_number} for client ${client.name}`, req.ip || 'unknown', now);
 
-    auditLog(req, 'CREATE' as any, 'invoice' as any, result.lastInsertRowid, `Created invoice ${invoice_number} for client ${client.name}`);
-    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(result.lastInsertRowid);
+    auditLog(req, 'CREATE' as any, 'invoice' as any, Number(result.lastInsertRowid), `Created invoice ${invoice_number} for client ${client.name}`);
+    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(Number(result.lastInsertRowid));
     if (!invoice) { res.status(500).json({ error: 'Failed to retrieve created invoice' }); return; }
     broadcast('admin', 'invoice:created', invoice);
     res.status(201).json({ data: invoice });
@@ -710,9 +710,9 @@ router.post('/:id/line-items', validateParamId, requireRole('admin', 'manager', 
 
     recalculateInvoiceTotals(req.params.id);
 
-    auditLog(req, 'CREATE' as any, 'invoice_line_item' as any, result.lastInsertRowid, `Added line item to invoice ${req.params.id}: ${description}`);
-    const item = db.prepare('SELECT * FROM invoice_line_items WHERE id = ?').get(result.lastInsertRowid);
-    res.status(201).json({ data: item || { id: result.lastInsertRowid } });
+    auditLog(req, 'CREATE' as any, 'invoice_line_item' as any, Number(result.lastInsertRowid), `Added line item to invoice ${req.params.id}: ${description}`);
+    const item = db.prepare('SELECT * FROM invoice_line_items WHERE id = ?').get(Number(result.lastInsertRowid));
+    res.status(201).json({ data: item || { id: Number(result.lastInsertRowid) } });
   } catch (error: any) {
     console.error('Add line item error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -817,13 +817,13 @@ router.post('/:id/payments', validateParamId, requireRole('admin', 'manager'), (
       'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
     ).run(user.userId, 'payment_recorded', 'invoice', req.params.id, `Payment of $${amount} recorded on invoice ${invoice.invoice_number}`, req.ip || 'unknown', now);
 
-    auditLog(req, 'CREATE' as any, 'payment' as any, result.lastInsertRowid, `Recorded payment of $${amount} on invoice ${invoice.invoice_number}`);
+    auditLog(req, 'CREATE' as any, 'payment' as any, Number(result.lastInsertRowid), `Recorded payment of $${amount} on invoice ${invoice.invoice_number}`);
     const payment = db.prepare(`
       SELECT p.*, u.full_name as recorded_by_name
       FROM payments p LEFT JOIN users u ON p.recorded_by = u.id
       WHERE p.id = ?
-    `).get(result.lastInsertRowid);
-    res.status(201).json({ data: payment || { id: result.lastInsertRowid } });
+    `).get(Number(result.lastInsertRowid));
+    res.status(201).json({ data: payment || { id: Number(result.lastInsertRowid) } });
   } catch (error: any) {
     console.error('Record payment error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });

@@ -38,7 +38,7 @@ function formatDate(dateStr: string) {
 }
 
 function todayStr() {
-  return new Date().toISOString().split('T')[0];
+  return localToday();
 }
 
 // ── Status badge helper ────────────────────────────────────

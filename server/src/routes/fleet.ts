@@ -404,11 +404,11 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       FROM fleet_vehicles fv
       LEFT JOIN units u ON fv.assigned_unit_id = u.id
       WHERE fv.id = ?
-    `).get(result.lastInsertRowid) as any;
+    `).get(Number(result.lastInsertRowid)) as any;
     if (!created) { res.status(500).json({ error: 'Failed to retrieve created fleet vehicle' }); return; }
 
-    auditLog(req, 'vehicle_fleet_created', 'fleet_vehicle', result.lastInsertRowid as number, `Created fleet vehicle ${vehicle_number}`);
-    broadcast('personnel', 'fleet:created', { id: result.lastInsertRowid, vehicle_number });
+    auditLog(req, 'vehicle_fleet_created', 'fleet_vehicle', Number(result.lastInsertRowid) as number, `Created fleet vehicle ${vehicle_number}`);
+    broadcast('personnel', 'fleet:created', { id: Number(result.lastInsertRowid), vehicle_number });
     res.status(201).json({
       ...created,
       equipment: safeParseJson(created.equipment, []),
@@ -779,10 +779,10 @@ router.post('/:id/maintenance', validateParamId, requireRole('admin', 'manager',
     fleetSetValues.push(id);
     db.prepare(`UPDATE fleet_vehicles SET ${fleetSetClauses.join(', ')} WHERE id = ?`).run(...fleetSetValues);
 
-    const record = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(result.lastInsertRowid);
+    const record = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(Number(result.lastInsertRowid));
     if (!record) { res.status(500).json({ error: 'Failed to retrieve maintenance record' }); return; }
 
-    auditLog(req, 'maintenance_logged', 'maintenance', result.lastInsertRowid as number, `Logged maintenance for vehicle ${vehicle.vehicle_number}`);
+    auditLog(req, 'maintenance_logged', 'maintenance', Number(result.lastInsertRowid) as number, `Logged maintenance for vehicle ${vehicle.vehicle_number}`);
 
     res.status(201).json(record);
   } catch (error: any) {
@@ -995,10 +995,10 @@ router.post('/:id/fuel', validateParamId, requireRole('admin', 'manager', 'super
       `).run(odometer_reading, localNow(), id);
     }
 
-    const record = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(result.lastInsertRowid);
+    const record = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(Number(result.lastInsertRowid));
     if (!record) { res.status(500).json({ error: 'Failed to retrieve fuel log' }); return; }
 
-    auditLog(req, 'fuel_logged', 'fuel_log', result.lastInsertRowid as number, `Logged fuel for vehicle ${vehicle.vehicle_number}`);
+    auditLog(req, 'fuel_logged', 'fuel_log', Number(result.lastInsertRowid) as number, `Logged fuel for vehicle ${vehicle.vehicle_number}`);
 
     res.status(201).json(record);
   } catch (error: any) {
@@ -1194,10 +1194,10 @@ router.post('/:id/inspections', validateParamId, requireRole('admin', 'manager',
       `).run(mileage, localNow(), id);
     }
 
-    const record = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(result.lastInsertRowid) as any;
+    const record = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(Number(result.lastInsertRowid)) as any;
     if (!record) { res.status(500).json({ error: 'Failed to retrieve inspection record' }); return; }
 
-    auditLog(req, 'inspection_completed', 'inspection', result.lastInsertRowid as number, `Completed inspection for vehicle ${vehicle.vehicle_number}`);
+    auditLog(req, 'inspection_completed', 'inspection', Number(result.lastInsertRowid) as number, `Completed inspection for vehicle ${vehicle.vehicle_number}`);
 
     res.status(201).json({
       ...record,
@@ -1449,7 +1449,7 @@ router.post('/:id/personnel-notes', validateParamId, requireRole('admin', 'manag
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(id, officer_id || null, officer_name || null, note.trim(), req.user!.userId, creator?.full_name || 'Unknown', localNow());
 
-    const created = db.prepare('SELECT * FROM fleet_personnel_notes WHERE id = ?').get(result.lastInsertRowid) as any;
+    const created = db.prepare('SELECT * FROM fleet_personnel_notes WHERE id = ?').get(Number(result.lastInsertRowid)) as any;
     if (!created) { res.status(500).json({ error: 'Failed to retrieve created note' }); return; }
 
     auditLog(req, 'vehicle_fleet_updated', 'fleet_vehicle', String(id), `Added personnel note for vehicle #${id}`);
@@ -1757,7 +1757,7 @@ router.post('/dashcam-videos', requireRole('admin', 'manager'), (req: Request, r
           notes || null, String(req.user!.userId),
         );
 
-        const videoId = result.lastInsertRowid;
+        const videoId = Number(result.lastInsertRowid);
 
         const video = db.prepare(`
           SELECT v.*, fv.vehicle_number, fv.year as vehicle_year, fv.make as vehicle_make, fv.model as vehicle_model,

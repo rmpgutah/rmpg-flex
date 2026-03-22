@@ -361,7 +361,7 @@ function ScheduleSendModal({ onSchedule, onClose }: { onSchedule: (dateTime: str
             <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider block mb-2">Custom Date & Time</span>
             <div className="flex items-center gap-2">
               <input type="date" value={date} onChange={e => setDate(e.target.value)}
-                className="input-dark text-xs flex-1" min={new Date().toISOString().split('T')[0]} />
+                className="input-dark text-xs flex-1" min={localToday()} />
               <input type="time" value={time} onChange={e => setTime(e.target.value)}
                 className="input-dark text-xs w-28" />
             </div>

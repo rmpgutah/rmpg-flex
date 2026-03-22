@@ -181,7 +181,7 @@ router.post('/jobs', requireRole('admin', 'manager'), async (req: Request, res: 
       VALUES (?, ?, 'queued', ?, ?, ?, ?, ?, ?)
     `).run(evidenceId || null, jobType, profile || 'forensic', inputPath, outputPath || null, userId, now, now);
 
-    const jobId = result.lastInsertRowid as number;
+    const jobId = Number(result.lastInsertRowid) as number;
 
     // If it's a hash job on evidence, use Tier 1 built-in hashing
     if (jobType === 'hash' && evidenceId) {

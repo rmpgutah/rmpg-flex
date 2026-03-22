@@ -194,7 +194,7 @@ function exportCsv(records: ArrestRecord[]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `arrest-records-${new Date().toISOString().split('T')[0]}.csv`;
+  a.download = `arrest-records-${localToday()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

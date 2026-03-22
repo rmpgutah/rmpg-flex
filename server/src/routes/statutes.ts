@@ -188,9 +188,9 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(stateCode || 'UT', stateName || 'Utah', title || 0, chapter || null, section || '', subsection || null, citation, short_title, description || null, definition || null, offense_level || null, category, subcategory || null);
 
-    const statute = db.prepare('SELECT * FROM utah_statutes WHERE id = ?').get(result.lastInsertRowid);
+    const statute = db.prepare('SELECT * FROM utah_statutes WHERE id = ?').get(Number(result.lastInsertRowid));
     if (!statute) { res.status(500).json({ error: 'Failed to retrieve created statute' }); return; }
-    auditLog(req, 'CREATE' as any, 'statute' as any, result.lastInsertRowid, `Created statute ${citation}: ${short_title}`);
+    auditLog(req, 'CREATE' as any, 'statute' as any, Number(result.lastInsertRowid), `Created statute ${citation}: ${short_title}`);
     broadcast('records', 'statute:created', statute);
     res.status(201).json(statute);
   } catch (error: any) {
@@ -302,10 +302,10 @@ router.post('/entity', requireRole('admin', 'manager', 'supervisor', 'officer'),
       FROM entity_statutes es
       JOIN utah_statutes s ON es.statute_id = s.id
       WHERE es.id = ?
-    `).get(result.lastInsertRowid);
+    `).get(Number(result.lastInsertRowid));
     if (!link) { res.status(500).json({ error: 'Failed to retrieve linked statute' }); return; }
 
-    auditLog(req, 'CREATE' as any, 'entity_statute' as any, result.lastInsertRowid, `Linked statute ${statute_id} to ${entity_type} ${entity_id}`);
+    auditLog(req, 'CREATE' as any, 'entity_statute' as any, Number(result.lastInsertRowid), `Linked statute ${statute_id} to ${entity_type} ${entity_id}`);
     res.status(201).json(link);
   } catch (error: any) {
     console.error('Link statute error:', error?.message || 'Unknown error');

@@ -141,7 +141,7 @@ router.post('/leave', (req: Request, res: Response) => {
     auditLog(req, 'CREATE' as any, 'leave_request' as any, Number(result.lastInsertRowid),
       `Leave request created: ${type} ${start_date} to ${end_date}`);
     broadcast('admin', 'hr:updated', { entity: 'leave', action: 'created', id: Number(result.lastInsertRowid) });
-    res.status(201).json({ success: true, id: result.lastInsertRowid });
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
     console.error('[HR] Leave create error:', error?.message);
     res.status(500).json({ error: 'Failed to create leave request' });
@@ -512,7 +512,7 @@ router.post('/disciplinary', requireRole('admin', 'manager'), (req: Request, res
     auditLog(req, 'CREATE' as any, 'disciplinary_record' as any, Number(result.lastInsertRowid),
       `Disciplinary record created for officer ${officer_id}: ${type || 'verbal_warning'}`);
     broadcast('admin', 'hr:updated', { entity: 'disciplinary', action: 'created', id: Number(result.lastInsertRowid) });
-    res.status(201).json({ success: true, id: result.lastInsertRowid });
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
     console.error('[HR] Disciplinary create error:', error?.message);
     res.status(500).json({ error: 'Failed to create disciplinary record' });
@@ -630,7 +630,7 @@ router.post('/reviews', requireRole('admin', 'manager', 'supervisor'), (req: Req
     auditLog(req, 'CREATE' as any, 'performance_review' as any, Number(result.lastInsertRowid),
       `Performance review created for officer ${officer_id}`);
     broadcast('admin', 'hr:updated', { entity: 'review', action: 'created', id: Number(result.lastInsertRowid) });
-    res.status(201).json({ success: true, id: result.lastInsertRowid });
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
     console.error('[HR] Review create error:', error?.message);
     res.status(500).json({ error: 'Failed to create review' });
@@ -775,8 +775,8 @@ router.post('/payroll/periods', requireRole('admin', 'manager'), (req: Request, 
       `INSERT INTO hr_pay_periods (name, start_date, end_date, pay_date, status, created_by) VALUES (?, ?, ?, ?, 'open', ?)`
     ).run(name || `Pay Period ${start_date} - ${end_date}`, start_date, end_date, pay_date, userId);
 
-    const period = db.prepare('SELECT * FROM hr_pay_periods WHERE id = ?').get(result.lastInsertRowid);
-    auditLog(req, 'CREATE' as any, 'hr_pay_period' as any, result.lastInsertRowid, `Created pay period: ${start_date} to ${end_date}`);
+    const period = db.prepare('SELECT * FROM hr_pay_periods WHERE id = ?').get(Number(result.lastInsertRowid));
+    auditLog(req, 'CREATE' as any, 'hr_pay_period' as any, Number(result.lastInsertRowid), `Created pay period: ${start_date} to ${end_date}`);
     res.json(period);
   } catch (error: any) {
     console.error('[HR] Create pay period error:', error?.message);
@@ -876,8 +876,8 @@ router.post('/payroll/rates', requireRole('admin', 'manager'), (req: Request, re
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(user_id, pay_type, rate, overtime_rate ?? 1.5, holiday_rate ?? 1.5, effective_date, notes || null, userId);
 
-    const newRate = db.prepare('SELECT pr.*, u.full_name as officer_name FROM hr_pay_rates pr JOIN users u ON u.id = pr.user_id WHERE pr.id = ?').get(result.lastInsertRowid);
-    auditLog(req, 'CREATE' as any, 'hr_pay_rate' as any, result.lastInsertRowid, `Set pay rate for user ${user_id}: ${pay_type} $${rate}`);
+    const newRate = db.prepare('SELECT pr.*, u.full_name as officer_name FROM hr_pay_rates pr JOIN users u ON u.id = pr.user_id WHERE pr.id = ?').get(Number(result.lastInsertRowid));
+    auditLog(req, 'CREATE' as any, 'hr_pay_rate' as any, Number(result.lastInsertRowid), `Set pay rate for user ${user_id}: ${pay_type} $${rate}`);
     res.json(newRate);
   } catch (error: any) {
     console.error('[HR] Create pay rate error:', error?.message);
@@ -958,9 +958,9 @@ router.post('/payroll/entries', requireRole('admin', 'manager'), (req: Request, 
 
     const entry = db.prepare(`
       SELECT pe.*, u.full_name as officer_name FROM hr_payroll_entries pe JOIN users u ON u.id = pe.user_id WHERE pe.id = ?
-    `).get(result.lastInsertRowid);
+    `).get(Number(result.lastInsertRowid));
 
-    auditLog(req, 'CREATE' as any, 'hr_payroll_entry' as any, result.lastInsertRowid, `Payroll entry for user ${user_id}, gross: $${grossPay.toFixed(2)}`);
+    auditLog(req, 'CREATE' as any, 'hr_payroll_entry' as any, Number(result.lastInsertRowid), `Payroll entry for user ${user_id}, gross: $${grossPay.toFixed(2)}`);
     res.json(entry);
   } catch (error: any) {
     console.error('[HR] Create payroll entry error:', error?.message);

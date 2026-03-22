@@ -261,11 +261,11 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       safety_concerns || null, recommendations || null, now, now);
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'create', 'dar', ?, ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ dar_number }), req.ip || 'unknown', now);
+      VALUES (?, 'create', 'dar', ?, ?, ?, ?)`).run(req.user!.userId, Number(result.lastInsertRowid), JSON.stringify({ dar_number }), req.ip || 'unknown', now);
 
-    auditLog(req, 'CREATE' as any, 'dar' as any, result.lastInsertRowid, `Created DAR ${dar_number} for ${shift_date}`);
-    broadcast('records', 'dar:created', { id: result.lastInsertRowid, dar_number });
-    res.status(201).json({ data: { id: result.lastInsertRowid, dar_number } });
+    auditLog(req, 'CREATE' as any, 'dar' as any, Number(result.lastInsertRowid), `Created DAR ${dar_number} for ${shift_date}`);
+    broadcast('records', 'dar:created', { id: Number(result.lastInsertRowid), dar_number });
+    res.status(201).json({ data: { id: Number(result.lastInsertRowid), dar_number } });
   } catch (error: any) {
     console.error('Create DAR error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
