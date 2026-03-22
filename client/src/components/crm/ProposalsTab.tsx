@@ -3,7 +3,7 @@
 // Proposal management, templates, stage tracking
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus,
   X,
@@ -59,7 +59,12 @@ function toDisplayLabel(s: string): string {
 // ════════════════════════════════════════════════════════
 // PROPOSALS TAB
 // ════════════════════════════════════════════════════════
-export default function ProposalsTab() {
+interface ProposalsTabProps {
+  prefillData?: { title?: string; scope_of_work?: string; total_value?: string } | null;
+  onPrefillConsumed?: () => void;
+}
+
+export default function ProposalsTab({ prefillData, onPrefillConsumed }: ProposalsTabProps = {}) {
   const { addToast } = useToast();
 
   // ── Data state ──────────────────────────────────────
@@ -141,6 +146,22 @@ export default function ProposalsTab() {
     fetchLeads();
     fetchClients();
   }, [fetchTemplates, fetchLeads, fetchClients]);
+
+  // ── Handle pre-fill from lead quick-convert ──────────
+  const appliedPrefillRef = useRef<typeof prefillData>(undefined);
+  useEffect(() => {
+    if (prefillData && prefillData !== appliedPrefillRef.current) {
+      appliedPrefillRef.current = prefillData;
+      setForm(f => ({
+        ...f,
+        title: prefillData.title || f.title,
+        scope_of_work: prefillData.scope_of_work || f.scope_of_work,
+        total_value: prefillData.total_value || f.total_value,
+      }));
+      setShowCreateModal(true);
+      onPrefillConsumed?.();
+    }
+  }, [prefillData, onPrefillConsumed]);
 
   // ── Template auto-fill ──────────────────────────────
   const handleTemplateChange = (templateType: string) => {

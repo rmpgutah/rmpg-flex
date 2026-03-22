@@ -168,6 +168,9 @@ export default function CrmPage() {
   // Officers for assignment
   const [officers, setOfficers] = useState<{ id: string; full_name: string }[]>([]);
 
+  // Proposal pre-fill from lead quick-convert
+  const [proposalPrefill, setProposalPrefill] = useState<{ title?: string; scope_of_work?: string; total_value?: string } | null>(null);
+
   // Activity log modal
   const [showActivityModal, setShowActivityModal] = useState(false);
   const [activityForm, setActivityForm] = useState<{ client_id: string; activity_type: string; subject: string; details: string }>({
@@ -421,11 +424,23 @@ export default function CrmPage() {
       {/* ── Main Content ──────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {activeSection === 'dashboard' && renderDashboard()}
-        {activeSection === 'leads' && <LeadsTab />}
+        {activeSection === 'leads' && (
+          <LeadsTab
+            onNavigateToProposals={(prefill) => {
+              setProposalPrefill(prefill);
+              setActiveSection('proposals');
+            }}
+          />
+        )}
         {activeSection === 'clients' && renderClients()}
         {activeSection === 'properties' && renderProperties()}
         {activeSection === 'contacts' && renderContacts()}
-        {activeSection === 'proposals' && <ProposalsTab />}
+        {activeSection === 'proposals' && (
+          <ProposalsTab
+            prefillData={proposalPrefill}
+            onPrefillConsumed={() => setProposalPrefill(null)}
+          />
+        )}
         {activeSection === 'invoices' && renderInvoices()}
         {activeSection === 'tasks' && renderTasks()}
         {activeSection === 'reports' && <ReportsTab />}
