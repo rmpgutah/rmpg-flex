@@ -18,13 +18,17 @@ import {
   Calendar,
   Save,
   Edit3,
+  Printer,
+  History,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
 import PanelTitleBar from '../PanelTitleBar';
+import { generateProposalPdf } from '../../utils/proposalPdf';
 import type {
   CrmProposal,
   CrmProposalTemplate,
+  CrmProposalVersion,
   ProposalStage,
   CrmLead,
   Client,
@@ -41,6 +45,7 @@ const PROPOSAL_STAGE_CLASSES: Record<ProposalStage, string> = {
 };
 
 const PROPOSAL_STAGES: ProposalStage[] = ['draft', 'sent', 'viewed', 'accepted', 'rejected', 'expired'];
+const PROPOSAL_TIMELINE_STAGES: ProposalStage[] = ['draft', 'sent', 'viewed', 'accepted'];
 
 function formatCurrency(val: number | null | undefined): string {
   if (!val) return '$0';
@@ -103,6 +108,20 @@ export default function ProposalsTab({ prefillData, onPrefillConsumed }: Proposa
   const [editMode, setEditMode] = useState(false);
   const [editForm, setEditForm] = useState<Partial<CrmProposal>>({});
 
+  // ── Detail sub-tab ──────────────────────────────────
+  const [detailTab, setDetailTab] = useState<'info' | 'history'>('info');
+
+  // ── Version history ─────────────────────────────────
+  const [versions, setVersions] = useState<CrmProposalVersion[]>([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [expandedVersions, setExpandedVersions] = useState<Set<number>>(new Set());
+
+  // ── PDF export ──────────────────────────────────────
+  const [exportingPdf, setExportingPdf] = useState(false);
+
+  // ── Send ────────────────────────────────────────────
+  const [sending, setSending] = useState(false);
+
   // ── Fetch data ──────────────────────────────────────
   const fetchProposals = useCallback(async () => {
     setLoading(true);
@@ -140,12 +159,66 @@ export default function ProposalsTab({ prefillData, onPrefillConsumed }: Proposa
     } catch { /* silent */ }
   }, []);
 
+  const fetchVersions = useCallback(async (id: number | string) => {
+    setVersionsLoading(true);
+    try {
+      const data = await apiFetch<CrmProposalVersion[]>(`/api/crm/proposals/${id}/versions`);
+      if (data) setVersions(data);
+    } catch {
+      addToast('Failed to load version history', 'error');
+    } finally {
+      setVersionsLoading(false);
+    }
+  }, [addToast]);
+
+  // ── PDF export ──────────────────────────────────────
+  const handleExportPdf = async () => {
+    if (!selectedProposal) return;
+    setExportingPdf(true);
+    try {
+      const clientData = selectedProposal.client_id
+        ? clients.find(c => c.id === selectedProposal.client_id) || null
+        : null;
+      await generateProposalPdf(selectedProposal, clientData);
+    } catch {
+      addToast('Failed to generate PDF', 'error');
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
+  // ── Send proposal ───────────────────────────────────
+  const handleSendProposal = async () => {
+    if (!selectedProposal) return;
+    setSending(true);
+    try {
+      await apiFetch(`/api/crm/proposals/${selectedProposal.id}/send`, { method: 'POST' });
+      addToast('Proposal sent', 'success');
+      fetchProposals();
+      const updated = await apiFetch<CrmProposal>(`/api/crm/proposals/${selectedProposal.id}`);
+      if (updated) setSelectedProposal(updated);
+    } catch {
+      addToast('Failed to send proposal', 'error');
+    } finally {
+      setSending(false);
+    }
+  };
+
   useEffect(() => { fetchProposals(); }, [fetchProposals]);
   useEffect(() => {
     fetchTemplates();
     fetchLeads();
     fetchClients();
   }, [fetchTemplates, fetchLeads, fetchClients]);
+
+  // ── Reset detail sub-tab when proposal changes ───────
+  useEffect(() => {
+    if (selectedProposal) {
+      setDetailTab('info');
+      setExpandedVersions(new Set());
+      setVersions([]);
+    }
+  }, [selectedProposal?.id]);
 
   // ── Handle pre-fill from lead quick-convert ──────────
   const appliedPrefillRef = useRef<typeof prefillData>(undefined);
@@ -244,6 +317,89 @@ export default function ProposalsTab({ prefillData, onPrefillConsumed }: Proposa
     } finally {
       setSaving(false);
     }
+  };
+
+  // ── Expiry countdown helper ──────────────────────────
+  const renderExpiryChip = (validUntil?: string | null) => {
+    if (!validUntil) return null;
+    const now = new Date();
+    const exp = new Date(validUntil);
+    const diffMs = exp.getTime() - now.getTime();
+    const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    if (days < 0) {
+      return (
+        <span className="text-[10px] px-1.5 py-0.5 rounded-sm border bg-red-900/30 border-red-700/50 text-red-400 font-bold tracking-wider">
+          EXPIRED
+        </span>
+      );
+    }
+    const color = days > 14
+      ? 'bg-green-900/30 border-green-700/50 text-green-400'
+      : 'bg-amber-900/30 border-amber-700/50 text-amber-400';
+    return (
+      <span className={`text-[10px] px-1.5 py-0.5 rounded-sm border ${color}`}>
+        Expires in {days}d
+      </span>
+    );
+  };
+
+  // ── Stage timeline renderer ──────────────────────────
+  const renderStageTimeline = (proposal: CrmProposal) => {
+    let stageTimestamps: Record<string, string> = {};
+    try {
+      if (proposal.stage_entered_at) {
+        stageTimestamps = JSON.parse(proposal.stage_entered_at);
+      }
+    } catch { /* ignore */ }
+
+    // fallback: use individual timestamp fields
+    if (!stageTimestamps.sent && proposal.sent_at) stageTimestamps.sent = proposal.sent_at;
+    if (!stageTimestamps.viewed && proposal.viewed_at) stageTimestamps.viewed = proposal.viewed_at;
+    if (!stageTimestamps.accepted && proposal.accepted_at) stageTimestamps.accepted = proposal.accepted_at;
+    if (!stageTimestamps.draft && proposal.created_at) stageTimestamps.draft = proposal.created_at;
+
+    const currentIdx = PROPOSAL_TIMELINE_STAGES.indexOf(proposal.stage);
+
+    return (
+      <div className="panel-beveled p-2">
+        <div className="text-[10px] text-rmpg-400 uppercase tracking-wider mb-2">Stage Timeline</div>
+        <div className="flex items-start gap-0">
+          {PROPOSAL_TIMELINE_STAGES.map((s, idx) => {
+            const isPast = idx < currentIdx;
+            const isActive = idx === currentIdx;
+            const ts = stageTimestamps[s];
+            const dotColor = isActive
+              ? 'bg-brand-500 border-brand-400'
+              : isPast
+                ? 'bg-green-600 border-green-500'
+                : 'bg-rmpg-700 border-rmpg-600';
+            const labelColor = isActive
+              ? 'text-brand-400'
+              : isPast
+                ? 'text-green-400'
+                : 'text-rmpg-600';
+
+            return (
+              <div key={s} className="flex-1 flex flex-col items-center">
+                <div className="flex items-center w-full">
+                  {idx > 0 && (
+                    <div className={`flex-1 h-px ${isPast || isActive ? 'bg-green-700' : 'bg-rmpg-700'}`} />
+                  )}
+                  <div className={`w-2 h-2 rounded-full border ${dotColor} flex-shrink-0`} />
+                  {idx < PROPOSAL_TIMELINE_STAGES.length - 1 && (
+                    <div className={`flex-1 h-px ${isPast ? 'bg-green-700' : 'bg-rmpg-700'}`} />
+                  )}
+                </div>
+                <div className={`text-[9px] font-bold mt-1 ${labelColor}`}>{toDisplayLabel(s)}</div>
+                <div className="text-[8px] text-rmpg-500 text-center leading-tight">
+                  {ts ? formatDate(ts) : '—'}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
   };
 
   // ════════════════════════════════════════════════════════
@@ -345,15 +501,37 @@ export default function ProposalsTab({ prefillData, onPrefillConsumed }: Proposa
             {/* Header */}
             <div className="px-3 py-2 bg-[#0d1520] border-b border-rmpg-700 flex items-center gap-2">
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-[10px] text-brand-400 font-mono">{selectedProposal.proposal_number}</span>
                   <span className={`text-[10px] px-1.5 py-0.5 rounded-sm border ${PROPOSAL_STAGE_CLASSES[selectedProposal.stage]}`}>
                     {toDisplayLabel(selectedProposal.stage)}
                   </span>
+                  {renderExpiryChip(selectedProposal.valid_until)}
                 </div>
                 <h3 className="text-sm font-bold text-white truncate">{selectedProposal.title}</h3>
               </div>
               <div className="flex items-center gap-1">
+                {/* Export PDF */}
+                <button
+                  onClick={handleExportPdf}
+                  disabled={exportingPdf}
+                  title="Export PDF"
+                  className="toolbar-btn text-xs p-1 flex items-center gap-1 disabled:opacity-40"
+                >
+                  {exportingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />}
+                </button>
+                {/* Send button (only if draft) */}
+                {selectedProposal.stage === 'draft' && (
+                  <button
+                    onClick={handleSendProposal}
+                    disabled={sending}
+                    title="Send Proposal"
+                    className="toolbar-btn-primary text-xs px-2 py-1 flex items-center gap-1 disabled:opacity-40"
+                  >
+                    {sending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                    Send
+                  </button>
+                )}
                 {selectedProposal.stage === 'draft' && (
                   <button
                     onClick={() => { setEditMode(!editMode); setEditForm(selectedProposal); }}
@@ -368,14 +546,78 @@ export default function ProposalsTab({ prefillData, onPrefillConsumed }: Proposa
               </div>
             </div>
 
+            {/* Sub-tabs */}
+            <div className="flex border-b border-rmpg-700 bg-[#0d1520]">
+              {(['info', 'history'] as const).map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => {
+                    setDetailTab(tab);
+                    if (tab === 'history' && versions.length === 0) {
+                      fetchVersions(selectedProposal.id);
+                    }
+                  }}
+                  className={`text-[10px] uppercase tracking-wider px-3 py-1.5 border-b-2 transition-colors ${
+                    detailTab === tab
+                      ? 'border-brand-500 text-brand-400'
+                      : 'border-transparent text-rmpg-500 hover:text-rmpg-300'
+                  }`}
+                >
+                  {tab === 'info' ? <><FileText className="w-3 h-3 inline mr-1" />Info</> : <><History className="w-3 h-3 inline mr-1" />History</>}
+                </button>
+              ))}
+            </div>
+
+            {/* History tab */}
+            {detailTab === 'history' && (
+              <div className="flex-1 overflow-y-auto p-3">
+                {versionsLoading ? (
+                  <div className="flex items-center justify-center h-16">
+                    <Loader2 className="w-4 h-4 animate-spin text-brand-400" />
+                  </div>
+                ) : versions.length === 0 ? (
+                  <div className="text-xs text-rmpg-500 text-center py-8">No version history available</div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {versions.map(v => (
+                      <div key={v.id} className="panel-beveled p-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-white font-mono">v{v.version}</span>
+                          <span className="text-[10px] text-rmpg-400">
+                            {v.edited_by || 'unknown'} &mdash; {new Date(v.edited_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          <button
+                            onClick={() => setExpandedVersions(prev => {
+                              const next = new Set(prev);
+                              if (next.has(v.id)) next.delete(v.id); else next.add(v.id);
+                              return next;
+                            })}
+                            className="text-[10px] text-rmpg-500 hover:text-rmpg-300 ml-2"
+                          >
+                            {expandedVersions.has(v.id) ? '▲' : '▼'}
+                          </button>
+                        </div>
+                        {expandedVersions.has(v.id) && (
+                          <pre className="mt-1.5 text-[9px] text-rmpg-400 bg-[#0d1520] rounded-sm p-2 overflow-auto max-h-40 whitespace-pre-wrap break-all">
+                            {(() => {
+                              try { return JSON.stringify(JSON.parse(v.snapshot), null, 2); } catch { return v.snapshot; }
+                            })()}
+                          </pre>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {detailTab === 'info' && (
             <div className="flex-1 overflow-y-auto p-3 space-y-3">
+              {/* Stage timeline */}
+              {renderStageTimeline(selectedProposal)}
+
               {/* Stage action buttons */}
               <div className="flex gap-1.5 flex-wrap">
-                {selectedProposal.stage === 'draft' && (
-                  <button onClick={() => handleStageChange(selectedProposal.id, 'sent')} className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-xs font-bold px-2 py-1 rounded-sm border border-blue-700/50 flex items-center gap-1">
-                    <Send className="w-3 h-3" /> Send
-                  </button>
-                )}
                 {selectedProposal.stage === 'sent' && (
                   <button onClick={() => handleStageChange(selectedProposal.id, 'viewed')} className="bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 text-xs font-bold px-2 py-1 rounded-sm border border-purple-700/50 flex items-center gap-1">
                     <Eye className="w-3 h-3" /> Mark Viewed
@@ -591,6 +833,7 @@ export default function ProposalsTab({ prefillData, onPrefillConsumed }: Proposa
                 </div>
               )}
             </div>
+            )}
           </div>
         )}
       </div>

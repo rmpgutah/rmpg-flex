@@ -2408,6 +2408,7 @@ export interface CrmProposal {
   proposed_end?: string;
   contract_length_months?: number;
   stage: ProposalStage;
+  stage_entered_at?: string; // JSON: { draft: ISO, sent: ISO, ... }
   sent_at?: string;
   viewed_at?: string;
   accepted_at?: string;
@@ -2419,6 +2420,15 @@ export interface CrmProposal {
   pdf_path?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface CrmProposalVersion {
+  id: number;
+  proposal_id: number | string;
+  version: number;
+  snapshot: string; // JSON stringified proposal snapshot
+  edited_by?: string;
+  edited_at: string;
 }
 
 export interface CrmProposalTemplate {
