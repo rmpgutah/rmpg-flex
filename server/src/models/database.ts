@@ -944,7 +944,6 @@ function createTables(): void {
       FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id)
     );
 
-    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_camera ON dashcam_videos(camera_id);
     CREATE INDEX IF NOT EXISTS idx_dashcam_videos_vehicle ON dashcam_videos(vehicle_id);
     CREATE INDEX IF NOT EXISTS idx_dashcam_videos_case ON dashcam_videos(case_number);
 
