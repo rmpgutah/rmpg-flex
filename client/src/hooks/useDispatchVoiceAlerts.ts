@@ -116,7 +116,7 @@ export function useDispatchVoiceAlerts(): void {
     unsubs.push(
       subscribe('bolo_alert', (msg) => {
         const data = (msg.data || msg.payload || msg) as any;
-        announceBolo(data);
+        announceBolo(data.title || data.subject || 'Alert', data.priority);
       })
     );
 
@@ -124,7 +124,7 @@ export function useDispatchVoiceAlerts(): void {
     unsubs.push(
       subscribe('call:warrant_alert', (msg) => {
         const data = (msg.data || msg.payload || msg) as any;
-        announceWarrantHit(data);
+        announceWarrantHit(data.subject_name || data.name || 'Unknown subject');
       })
     );
 
@@ -132,7 +132,7 @@ export function useDispatchVoiceAlerts(): void {
     unsubs.push(
       subscribe('backup_request', (msg) => {
         const data = (msg.data || msg.payload || msg) as any;
-        announceBackupRequest(data);
+        announceBackupRequest(data.call_sign || data.unit || '', data.location);
       })
     );
 
@@ -140,7 +140,7 @@ export function useDispatchVoiceAlerts(): void {
     unsubs.push(
       subscribe('pursuit_update', (msg) => {
         const data = (msg.data || msg.payload || msg) as any;
-        announcePursuit(data);
+        announcePursuit(data.call_sign || data.unit || '', data.direction);
       })
     );
 

@@ -38,6 +38,7 @@ interface Props {
 }
 
 export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Props) {
+  const { addToast } = useToast();
   const [stats, setStats] = useState<TrainingStats | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -124,7 +125,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
         by_category: byCategory,
       });
     } catch (err: any) {
-      setError(err.message || 'Failed to load training data');
+      addToast(err.message || 'Failed to load training data', 'error');
     } finally {
       setLoading(false);
     }

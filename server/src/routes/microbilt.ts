@@ -180,7 +180,7 @@ router.get('/status', requireRole('admin', 'manager'), (_req: Request, res: Resp
     const enabledProducts = getConfigValue(CONFIG_KEYS.enabledProducts);
 
     let products: string[] = [];
-    try { products = enabledProducts ? JSON.parse(enabledProducts) : []; } catch { /* */ }
+    try { products = enabledProducts ? JSON.parse(enabledProducts) : []; } catch (err: any) { console.error('[Microbilt] parse enabled products error:', err?.message); }
 
     res.json({
       configured: !!clientId,
@@ -199,6 +199,21 @@ router.get('/status', requireRole('admin', 'manager'), (_req: Request, res: Resp
 router.put('/credentials', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const { client_id, client_secret, subscriber_id, environment } = req.body;
+
+    if (!client_id && !client_secret && subscriber_id === undefined && !environment) {
+      res.status(400).json({ error: 'At least one credential field is required (client_id, client_secret, subscriber_id, or environment)' });
+      return;
+    }
+
+    if (client_id && (typeof client_id !== 'string' || client_id.length > 500)) {
+      res.status(400).json({ error: 'Invalid client_id' });
+      return;
+    }
+
+    if (client_secret && (typeof client_secret !== 'string' || client_secret.length > 500)) {
+      res.status(400).json({ error: 'Invalid client_secret' });
+      return;
+    }
 
     if (client_id) setConfigValue(CONFIG_KEYS.clientId, client_id, true);
     if (client_secret) setConfigValue(CONFIG_KEYS.clientSecret, client_secret, true);
@@ -254,6 +269,7 @@ router.post('/test-connection', requireRole('admin', 'manager'), async (_req: Re
       message: 'Successfully authenticated with Microbilt API',
     });
   } catch (error: any) {
+    console.error('[Microbilt] connection test error:', error?.message || 'Unknown error');
     res.status(502).json({
       success: false,
       error: 'Connection test failed',

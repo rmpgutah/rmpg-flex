@@ -13,6 +13,7 @@ import { localNow, localToday } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
 import { computeFileHashes, computeContentFingerprint } from '../utils/ipedManager';
 import { validateParamId, escapeLike } from '../middleware/sanitize';
+import { broadcast } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
 import path from 'path';
 import fs from 'fs';
@@ -151,7 +152,7 @@ router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
 router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = req.user!;
+    const user = (req as any).user;
     const {
       title, case_type = 'digital', priority = 'routine', incident_id,
       evidence_ids, requesting_officer_id, requesting_officer_name,
@@ -192,16 +193,17 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
     );
 
     addTimelineEntry(
-      Number(result.lastInsertRowid) as number, 'created',
+      result.lastInsertRowid as number, 'created',
       `Case ${lab_case_number} created — ${title}`,
       user.userId, user.fullName || user.username,
     );
 
-    auditLog(req, 'forensic_case_created', 'forensic_case', Number(result.lastInsertRowid) as number,
+    auditLog(req, 'forensic_case_created', 'forensic_case', result.lastInsertRowid as number,
       `Forensic case ${lab_case_number} created: ${title.trim()}`);
 
-    const created = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(Number(result.lastInsertRowid));
+    const created = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(result.lastInsertRowid);
     if (!created) { res.status(500).json({ error: 'Failed to retrieve created forensic case' }); return; }
+    broadcast('records', 'forensic:created', created);
     res.status(201).json(created);
   } catch (error: any) {
     console.error('Create forensic case error:', error?.message || 'Unknown error');
@@ -214,7 +216,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
 router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = req.user!;
+    const user = (req as any).user;
     const existing = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id) as any;
     if (!existing) return res.status(404).json({ error: 'Case not found' });
 
@@ -305,6 +307,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
       `Forensic case ${existing.lab_case_number} updated${status && status !== existing.status ? ` (status: ${existing.status} → ${status})` : ''}`);
 
     const updated = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id);
+    broadcast('records', 'forensic:updated', updated);
     res.json(updated);
   } catch (error: any) {
     console.error('Update forensic case error:', error?.message || 'Unknown error');
@@ -322,6 +325,7 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
     db.prepare('DELETE FROM forensic_cases WHERE id = ?').run(req.params.id);
     auditLog(req, 'forensic_case_deleted', 'forensic_case', (existing as any).id,
       `Forensic case ${(existing as any).lab_case_number} deleted`);
+    broadcast('records', 'forensic:deleted', { id: (existing as any).id });
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete forensic case error:', error?.message || 'Unknown error');
@@ -348,7 +352,7 @@ router.get('/:id/exhibits', validateParamId, (req: Request, res: Response) => {
 router.post('/:id/exhibits', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = req.user!;
+    const user = (req as any).user;
     const caseRow = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id) as any;
     if (!caseRow) return res.status(404).json({ error: 'Case not found' });
 
@@ -368,7 +372,7 @@ router.post('/:id/exhibits', validateParamId, requireRole('admin', 'manager', 's
 
     addTimelineEntry(caseRow.id, 'exhibit_added', `Exhibit ${exhibit_number} added — ${description}`, user.userId, user.fullName || user.username);
 
-    const created = db.prepare('SELECT * FROM forensic_exhibits WHERE id = ?').get(Number(result.lastInsertRowid));
+    const created = db.prepare('SELECT * FROM forensic_exhibits WHERE id = ?').get(result.lastInsertRowid);
     if (!created) { res.status(500).json({ error: 'Failed to retrieve created exhibit' }); return; }
     res.status(201).json(created);
   } catch (error: any) {
@@ -431,7 +435,7 @@ router.get('/:id/analyses', validateParamId, (req: Request, res: Response) => {
 router.post('/:id/analyses', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = req.user!;
+    const user = (req as any).user;
     const caseRow = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id) as any;
     if (!caseRow) return res.status(404).json({ error: 'Case not found' });
 
@@ -446,7 +450,7 @@ router.post('/:id/analyses', validateParamId, requireRole('admin', 'manager', 's
 
     addTimelineEntry(caseRow.id, 'analysis_created', `${analysis_type} analysis created`, user.userId, user.fullName || user.username);
 
-    const created = db.prepare('SELECT * FROM forensic_analyses WHERE id = ?').get(Number(result.lastInsertRowid));
+    const created = db.prepare('SELECT * FROM forensic_analyses WHERE id = ?').get(result.lastInsertRowid);
     if (!created) { res.status(500).json({ error: 'Failed to retrieve created analysis' }); return; }
     res.status(201).json(created);
   } catch (error: any) {
@@ -460,7 +464,7 @@ router.post('/:id/analyses', validateParamId, requireRole('admin', 'manager', 's
 router.put('/:caseId/analyses/:analysisId', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = req.user!;
+    const user = (req as any).user;
     const { analysis_type, examiner_id, examiner_name, status, methodology, instruments_used, results, conclusion, started_at, completed_at, notes } = req.body;
     const now = localNow();
 
@@ -527,7 +531,7 @@ router.get('/:id/timeline', validateParamId, (req: Request, res: Response) => {
 router.post('/:id/timeline', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = req.user!;
+    const user = (req as any).user;
     const { action = 'note', description } = req.body;
     if (!description?.trim()) return res.status(400).json({ error: 'Description is required' });
 
@@ -575,7 +579,7 @@ router.get('/:id/hashes', validateParamId, (req: Request, res: Response) => {
 router.post('/:id/hashes/compute', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = req.user!;
+    const user = (req as any).user;
     const caseRow = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id) as any;
     if (!caseRow) return res.status(404).json({ error: 'Case not found' });
 
@@ -685,7 +689,7 @@ router.post('/:id/hashes/compute', validateParamId, requireRole('admin', 'manage
       user.userId, user.fullName || user.username,
     );
 
-    const record = db.prepare('SELECT * FROM digital_evidence_hashes WHERE id = ?').get(Number(result.lastInsertRowid));
+    const record = db.prepare('SELECT * FROM digital_evidence_hashes WHERE id = ?').get(result.lastInsertRowid);
     if (!record) { res.status(500).json({ error: 'Failed to retrieve hash record' }); return; }
     res.status(201).json(record);
   } catch (error: any) {
@@ -699,7 +703,7 @@ router.post('/:id/hashes/compute', validateParamId, requireRole('admin', 'manage
 router.post('/:id/hashes/manual', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = req.user!;
+    const user = (req as any).user;
     const caseRow = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id) as any;
     if (!caseRow) return res.status(404).json({ error: 'Case not found' });
 
@@ -736,7 +740,7 @@ router.post('/:id/hashes/manual', validateParamId, requireRole('admin', 'manager
       user.userId, user.fullName || user.username,
     );
 
-    const record = db.prepare('SELECT * FROM digital_evidence_hashes WHERE id = ?').get(Number(result.lastInsertRowid));
+    const record = db.prepare('SELECT * FROM digital_evidence_hashes WHERE id = ?').get(result.lastInsertRowid);
     if (!record) { res.status(500).json({ error: 'Failed to retrieve hash record' }); return; }
     res.status(201).json(record);
   } catch (error: any) {
@@ -750,7 +754,7 @@ router.post('/:id/hashes/manual', validateParamId, requireRole('admin', 'manager
 router.put('/:id/hashes/:hashId', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = req.user!;
+    const user = (req as any).user;
     const existing = db.prepare(`
       SELECT * FROM digital_evidence_hashes WHERE id = ? AND forensic_case_id = ?
     `).get(req.params.hashId, req.params.id) as any;
@@ -818,7 +822,7 @@ router.delete('/:id/hashes/:hashId', validateParamId, requireRole('admin', 'mana
 
     db.prepare('DELETE FROM digital_evidence_hashes WHERE id = ?').run(req.params.hashId);
 
-    const user = req.user!;
+    const user = (req as any).user;
     addTimelineEntry(
       parseInt(req.params.id as string, 10), 'hash_deleted',
       `Hash record deleted: ${existing.file_name}`,
@@ -984,7 +988,7 @@ router.post('/:id/links', validateParamId, requireRole('admin', 'manager', 'supe
   try {
     const db = getDb();
     const caseId = parseInt(req.params.id as string, 10);
-    const user = req.user!;
+    const user = (req as any).user;
     const { linked_type, linked_id, relationship, relevance, notes } = req.body;
 
     // Validate
@@ -1000,15 +1004,15 @@ router.post('/:id/links', validateParamId, requireRole('admin', 'manager', 'supe
     const result = db.prepare(`
       INSERT INTO forensic_case_links (forensic_case_id, linked_type, linked_id, relationship, relevance, notes, linked_by, linked_by_name, linked_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(caseId, linked_type, linked_id, relationship || 'associated', relevance || 'standard', notes || null, req.user!.userId, req.user!.fullName, localNow());
+    `).run(caseId, linked_type, linked_id, relationship || 'associated', relevance || 'standard', notes || null, user.id, user.full_name, localNow());
 
     // Timeline entry
     addTimelineEntry(caseId, 'evidence_linked',
       `Linked ${linked_type.replace(/_/g, ' ')} "${resolved.display_name}" (${relationship || 'associated'})`,
-      req.user!.userId, req.user!.fullName
+      user.id, user.full_name
     );
 
-    const link = db.prepare('SELECT * FROM forensic_case_links WHERE id = ?').get(Number(result.lastInsertRowid)) as any;
+    const link = db.prepare('SELECT * FROM forensic_case_links WHERE id = ?').get(result.lastInsertRowid) as any;
     if (!link) { res.status(500).json({ error: 'Failed to retrieve created link' }); return; }
     res.status(201).json({ ...link, resolved });
   } catch (error: any) {
@@ -1026,7 +1030,7 @@ router.put('/:id/links/:linkId', validateParamId, requireRole('admin', 'manager'
     const db = getDb();
     const caseId = parseInt(req.params.id as string, 10);
     const linkId = parseInt(req.params.linkId as string, 10);
-    const user = req.user!;
+    const user = (req as any).user;
     const { relationship, relevance, notes } = req.body;
 
     const existing = db.prepare('SELECT * FROM forensic_case_links WHERE id = ? AND forensic_case_id = ?').get(linkId, caseId) as any;
@@ -1047,7 +1051,7 @@ router.put('/:id/links/:linkId', validateParamId, requireRole('admin', 'manager'
     if (relationship && relationship !== existing.relationship) {
       addTimelineEntry(caseId, 'link_updated',
         `Changed link relationship for ${existing.linked_type} #${existing.linked_id}: ${existing.relationship} → ${relationship}`,
-        req.user!.userId, req.user!.fullName
+        user.id, user.full_name
       );
     }
 
@@ -1066,7 +1070,7 @@ router.delete('/:id/links/:linkId', validateParamId, requireRole('admin', 'manag
     const db = getDb();
     const caseId = parseInt(req.params.id as string, 10);
     const linkId = parseInt(req.params.linkId as string, 10);
-    const user = req.user!;
+    const user = (req as any).user;
 
     const existing = db.prepare('SELECT * FROM forensic_case_links WHERE id = ? AND forensic_case_id = ?').get(linkId, caseId) as any;
     if (!existing) return res.status(404).json({ error: 'Link not found' });
@@ -1075,7 +1079,7 @@ router.delete('/:id/links/:linkId', validateParamId, requireRole('admin', 'manag
 
     addTimelineEntry(caseId, 'evidence_unlinked',
       `Removed link to ${existing.linked_type.replace(/_/g, ' ')} #${existing.linked_id}`,
-      req.user!.userId, req.user!.fullName
+      user.id, user.full_name
     );
 
     res.json({ success: true });
@@ -1322,7 +1326,7 @@ router.post('/cases/:id/custody', validateParamId, (req: Request, res: Response)
   try {
     const db = getDb();
     const caseId = Number(req.params.id);
-    const user = req.user!;
+    const user = (req as any).user;
     const { action, to_user_id, notes, location } = req.body;
     if (!action) return res.status(400).json({ error: 'action is required' });
 
@@ -1330,15 +1334,15 @@ router.post('/cases/:id/custody', validateParamId, (req: Request, res: Response)
     const result = db.prepare(`
       INSERT INTO forensic_custody_log (case_id, action, from_user_id, to_user_id, location, notes, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(caseId, action, req.user!.userId, to_user_id || null, location || null, notes || null, now);
+    `).run(caseId, action, user.id, to_user_id || null, location || null, notes || null, now);
 
     const entry = db.prepare(`
       SELECT cl.*, fu.full_name as from_name, tu.full_name as to_name
       FROM forensic_custody_log cl LEFT JOIN users fu ON fu.id = cl.from_user_id
       LEFT JOIN users tu ON tu.id = cl.to_user_id WHERE cl.id = ?
-    `).get(Number(result.lastInsertRowid));
+    `).get(result.lastInsertRowid);
 
-    auditLog(req, 'CREATE' as any, 'forensic_custody' as any, Number(result.lastInsertRowid), `Custody: ${action} for case ${caseId}`);
+    auditLog(req, 'CREATE' as any, 'forensic_custody' as any, result.lastInsertRowid, `Custody: ${action} for case ${caseId}`);
     res.json(entry);
   } catch (error: any) {
     console.error('Custody create error:', error?.message);
@@ -1387,8 +1391,8 @@ router.post('/tools', requireRole('admin', 'manager'), (req: Request, res: Respo
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(name, category, serial_number||null, license_key||null, version||null, vendor||null,
       purchase_date||null, license_expiry||null, status||'active', assigned_to||null, notes||null, now, now);
-    const tool = db.prepare('SELECT * FROM forensic_tools WHERE id = ?').get(Number(result.lastInsertRowid));
-    auditLog(req, 'CREATE' as any, 'forensic_tool' as any, Number(result.lastInsertRowid), `Added tool: ${name}`);
+    const tool = db.prepare('SELECT * FROM forensic_tools WHERE id = ?').get(result.lastInsertRowid);
+    auditLog(req, 'CREATE' as any, 'forensic_tool' as any, result.lastInsertRowid, `Added tool: ${name}`);
     res.json(tool);
   } catch (error: any) {
     console.error('Create tool error:', error?.message);
@@ -1431,6 +1435,44 @@ router.delete('/tools/:id', validateParamId, requireRole('admin'), (req: Request
   } catch (error: any) {
     console.error('Delete tool error:', error?.message);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── CSV EXPORT ──────────────────────────────────────────
+
+// GET /api/forensics/export/csv — Export forensic lab cases
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT fc.id, fc.lab_case_number, fc.title, fc.case_type, fc.status, fc.priority,
+        fc.synopsis, fc.requesting_officer_name, fc.requesting_agency,
+        fc.linked_incident_number, fc.linked_case_number,
+        fc.received_date, fc.due_date, fc.completed_date,
+        fc.assigned_examiner_id, fc.created_at, fc.updated_at
+      FROM forensic_cases fc
+      WHERE fc.archived_at IS NULL
+      ORDER BY fc.created_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'forensic_cases_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'lab_case_number', header: 'Lab Case Number' },
+      { key: 'title', header: 'Title' },
+      { key: 'case_type', header: 'Case Type' },
+      { key: 'status', header: 'Status' },
+      { key: 'priority', header: 'Priority' },
+      { key: 'synopsis', header: 'Synopsis' },
+      { key: 'requesting_officer_name', header: 'Requesting Officer' },
+      { key: 'requesting_agency', header: 'Requesting Agency' },
+      { key: 'linked_incident_number', header: 'Linked Incident' },
+      { key: 'linked_case_number', header: 'Linked Case' },
+      { key: 'received_date', header: 'Received Date' },
+      { key: 'due_date', header: 'Due Date' },
+      { key: 'completed_date', header: 'Completed Date' },
+      { key: 'created_at', header: 'Created At' },
+    ], rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Export failed' });
   }
 });
 

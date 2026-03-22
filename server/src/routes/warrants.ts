@@ -238,7 +238,8 @@ router.get('/utah/count', (req: Request, res: Response) => {
     const db = getDb();
     const row = db.prepare('SELECT COUNT(*) as count FROM utah_warrants').get() as any;
     res.json({ count: row?.count ?? 0 });
-  } catch {
+  } catch (err: any) {
+    console.error('[Warrants] utah count error:', err?.message);
     res.json({ count: 0 });
   }
 });
@@ -257,7 +258,8 @@ router.get('/utah/sync-status', (req: Request, res: Response) => {
       currentCount: status.warrantCount,
       ipBlocked: isUtahApiBlocked(),
     });
-  } catch {
+  } catch (err: any) {
+    console.error('[Warrants] utah sync status error:', err?.message);
     res.json({ lastSync: null, status: 'ready', currentCount: 0 });
   }
 });
@@ -408,6 +410,7 @@ router.get('/dashboard/stats', requireRole('admin', 'manager', 'supervisor', 'of
 
     res.json({ activeWarrants, hitsToday, personsFlagged, sourcesOnline: healthySources, sourcesTotal: totalSources });
   } catch (err: any) {
+    console.error('[Warrants] dashboard stats error:', err?.message);
     res.status(500).json({ error: 'Failed to load stats' });
   }
 });
@@ -445,6 +448,7 @@ router.get('/dashboard/feed', requireRole('admin', 'manager', 'supervisor', 'off
     const feed = db.prepare(sql).all(...params);
     res.json(feed);
   } catch (err: any) {
+    console.error('[Warrants] dashboard feed error:', err?.message);
     res.status(500).json({ error: 'Failed to load feed' });
   }
 });
@@ -469,6 +473,7 @@ router.get('/dashboard/priority', requireRole('admin', 'manager', 'supervisor', 
 
     res.json(warrants);
   } catch (err: any) {
+    console.error('[Warrants] priority warrants error:', err?.message);
     res.status(500).json({ error: 'Failed to load priority warrants' });
   }
 });
@@ -523,6 +528,7 @@ router.get('/unified', requireRole('admin', 'manager', 'supervisor', 'officer', 
 
     res.json({ warrants, total });
   } catch (err: any) {
+    console.error('[Warrants] unified list error:', err?.message);
     res.status(500).json({ error: 'Failed to load warrants' });
   }
 });
@@ -558,6 +564,7 @@ router.get('/person/:personId/profile', requireRole('admin', 'manager', 'supervi
 
     res.json({ person, warrants, scanHistory, lastChecked });
   } catch (err: any) {
+    console.error('[Warrants] person profile error:', err?.message);
     res.status(500).json({ error: 'Failed to load person profile' });
   }
 });

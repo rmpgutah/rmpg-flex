@@ -6,6 +6,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
+import { broadcast } from '../utils/websocket';
 
 const router = Router();
 router.use(authenticateToken);
@@ -116,11 +117,12 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       LEFT JOIN users u ON d.created_by = u.id
       LEFT JOIN attachments a ON d.file_id = a.file_id
       WHERE d.id = ?
-    `).get(Number(result.lastInsertRowid));
+    `).get(result.lastInsertRowid);
     if (!doc) { res.status(500).json({ error: 'Failed to retrieve created document' }); return; }
 
-    auditLog(req, 'CREATE' as any, 'company_document' as any, Number(result.lastInsertRowid), `Created company document: ${title}`);
-    res.status(201).json(doc || { id: Number(result.lastInsertRowid) });
+    auditLog(req, 'CREATE' as any, 'company_document' as any, result.lastInsertRowid, `Created company document: ${title}`);
+    broadcast('admin', 'document:created', doc || { id: result.lastInsertRowid });
+    res.status(201).json(doc || { id: result.lastInsertRowid });
   } catch (error: any) {
     console.error('Create company document error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -182,6 +184,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Reque
     `).get(id);
 
     auditLog(req, 'UPDATE' as any, 'company_document' as any, id, `Updated company document ${id}`);
+    broadcast('admin', 'document:updated', doc);
     res.json(doc);
   } catch (error: any) {
     console.error('Update company document error:', error?.message || 'Unknown error');
@@ -222,6 +225,7 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
 
     db.prepare('DELETE FROM company_documents WHERE id = ?').run(id);
     auditLog(req, 'DELETE' as any, 'company_document' as any, id, `Deleted company document: ${doc.title}`);
+    broadcast('admin', 'document:deleted', { id });
     res.json({ message: 'Document deleted' });
   } catch (error: any) {
     console.error('Delete company document error:', error?.message || 'Unknown error');

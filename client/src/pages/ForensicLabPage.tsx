@@ -19,6 +19,7 @@ import FormModal from '../components/FormModal';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
+import ExportButton from '../components/ExportButton';
 
 // ─── Constants ───────────────────────────────────────────
 
@@ -1614,6 +1615,7 @@ export default function ForensicLabPage() {
           {!isMobile && <span className="text-sm font-semibold text-white">Forensic Lab</span>}
         </div>
         <div className="flex items-center gap-1.5 ml-auto">
+          <ExportButton exportUrl="/api/forensic-lab/export/csv" exportFilename="forensic-cases.csv" />
           <button
             onClick={() => navigate('/forensics')}
             className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-purple-400 bg-purple-900/20 hover:bg-purple-900/40 border border-purple-700/40 rounded transition-colors"

@@ -795,7 +795,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                     Password Requirements
                   </div>
                   {pwPolicy.map((rule, i) => (
-                    <div key={i}>• {rule}</div>
+                    <div key={rule}>• {rule}</div>
                   ))}
                 </div>
               )}

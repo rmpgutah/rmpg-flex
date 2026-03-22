@@ -89,6 +89,10 @@ router.get('/config', requireRole('admin'), (_req: Request, res: Response) => {
 router.put('/config/:county', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const county = req.params.county as string;
+    if (!county || county.trim().length < 2 || !/^[a-zA-Z_-]+$/.test(county) || county.length > 50) {
+      res.status(400).json({ error: 'Invalid county identifier (letters, hyphens, underscores only, 2-50 chars)' });
+      return;
+    }
     const { enabled, scrape_interval_minutes } = req.body;
 
     const updates: { enabled?: boolean; scrape_interval_minutes?: number } = {};
@@ -123,6 +127,10 @@ router.put('/config/:county', requireRole('admin'), (req: Request, res: Response
 router.post('/sync/:county', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
   try {
     const county = req.params.county as string;
+    if (!county || !/^[a-zA-Z_-]+$/.test(county) || county.length < 2 || county.length > 50) {
+      res.status(400).json({ error: 'Invalid county identifier' });
+      return;
+    }
     const result = await scrapeCountyManual(county);
 
     auditLog(req, 'jail_roster_sync_triggered', 'jail_roster', 0,
@@ -142,6 +150,10 @@ router.post('/sync/:county', requireRole('admin', 'manager'), async (req: Reques
 router.post('/reset-errors/:county', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const county = req.params.county as string;
+    if (!county || !/^[a-zA-Z_-]+$/.test(county) || county.length < 2 || county.length > 50) {
+      res.status(400).json({ error: 'Invalid county identifier' });
+      return;
+    }
     const success = resetCountyErrors(county);
     if (!success) {
       return res.status(404).json({ error: 'County not found' });

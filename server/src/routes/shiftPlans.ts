@@ -5,6 +5,7 @@ import { validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
 import { broadcast } from '../utils/websocket';
 import { auditLog } from '../utils/auditLogger';
+import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 
@@ -208,7 +209,7 @@ router.post('/shift-plans', requireRole('admin', 'manager', 'supervisor'), (req:
 
       db.prepare(`
         INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'shift_plan_updated', 'schedule', ?, ?, ?)
+        VALUES (?, 'shift_plan_updated', 'shift_plan', ?, ?, ?)
       `).run(req.user!.userId, id, `Updated shift plan: ${name}`, req.ip || 'unknown');
     } else {
       // Insert new plan
@@ -229,7 +230,7 @@ router.post('/shift-plans', requireRole('admin', 'manager', 'supervisor'), (req:
 
       db.prepare(`
         INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'shift_plan_created', 'schedule', ?, ?, ?)
+        VALUES (?, 'shift_plan_created', 'shift_plan', ?, ?, ?)
       `).run(req.user!.userId, id, `Created shift plan: ${name}`, req.ip || 'unknown');
     }
 
@@ -241,7 +242,7 @@ router.post('/shift-plans', requireRole('admin', 'manager', 'supervisor'), (req:
     `).get(id) as any;
 
     const parsed = parseAssignments(plan);
-    auditLog(req, existing ? 'UPDATE' : 'CREATE', 'schedule', id, `${existing ? 'Updated' : 'Created'} shift plan: ${name} (${date})`);
+    auditLog(req, existing ? 'UPDATE' as any : 'CREATE' as any, 'schedule' as any, id, `${existing ? 'Updated' : 'Created'} shift plan: ${name}`);
     broadcast('admin', existing ? 'shiftPlan:updated' : 'shiftPlan:created', parsed);
     res.status(existing ? 200 : 201).json(parsed);
   } catch (error: any) {
@@ -291,7 +292,7 @@ router.put('/shift-plans/:id', validateParamId, requireRole('admin', 'manager', 
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'shift_plan_updated', 'schedule', ?, ?, ?)
+      VALUES (?, 'shift_plan_updated', 'shift_plan', ?, ?, ?)
     `).run(req.user!.userId, req.params.id, `Updated shift plan: ${existing.name}`, req.ip || 'unknown');
 
     const updated = db.prepare(`
@@ -303,7 +304,7 @@ router.put('/shift-plans/:id', validateParamId, requireRole('admin', 'manager', 
 
     if (!updated) return res.status(404).json({ error: 'Shift plan not found after update' });
     const parsed = parseAssignments(updated);
-    auditLog(req, 'UPDATE', 'schedule', req.params.id, `Updated shift plan: ${existing.name}`);
+    auditLog(req, 'UPDATE' as any, 'schedule' as any, req.params.id, `Updated shift plan: ${existing.name}`);
     broadcast('admin', 'shiftPlan:updated', parsed);
     res.json(parsed);
   } catch (error: any) {
@@ -328,10 +329,10 @@ router.delete('/shift-plans/:id', validateParamId, requireRole('admin', 'manager
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'shift_plan_deleted', 'schedule', ?, ?, ?)
+      VALUES (?, 'shift_plan_deleted', 'shift_plan', ?, ?, ?)
     `).run(req.user!.userId, existing.id, `Deleted shift plan: ${existing.name}`, req.ip || 'unknown');
 
-    auditLog(req, 'DELETE', 'schedule', req.params.id, `Deleted shift plan: ${existing.name}`);
+    auditLog(req, 'DELETE' as any, 'schedule' as any, req.params.id, `Deleted shift plan: ${existing.name}`);
     broadcast('admin', 'shiftPlan:deleted', { id: req.params.id });
     res.json({ message: 'Shift plan deleted' });
   } catch (error: any) {
@@ -368,7 +369,7 @@ router.post('/shift-plans/:id/activate', validateParamId, requireRole('admin', '
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'shift_plan_activated', 'schedule', ?, ?, ?)
+      VALUES (?, 'shift_plan_activated', 'shift_plan', ?, ?, ?)
     `).run(req.user!.userId, req.params.id, `Activated shift plan: ${existing.name} for ${existing.date}`, req.ip || 'unknown');
 
     const updated = db.prepare(`
@@ -379,11 +380,41 @@ router.post('/shift-plans/:id/activate', validateParamId, requireRole('admin', '
     `).get(req.params.id) as any;
 
     const parsed = parseAssignments(updated);
-    auditLog(req, 'UPDATE', 'schedule', req.params.id, `Activated shift plan: ${existing.name} for ${existing.date}`);
+    auditLog(req, 'UPDATE' as any, 'schedule' as any, req.params.id, `Activated shift plan: ${existing.name} for ${existing.date}`);
     broadcast('admin', 'shiftPlan:activated', parsed);
     res.json(parsed);
   } catch (error: any) {
     console.error('Activate shift plan error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// GET /shift-plans/export/csv — Export shift plans as CSV
+// ============================================================
+router.get('/shift-plans/export/csv', requireRole('admin', 'manager', 'supervisor'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT sp.*, u.full_name as created_by_name
+      FROM shift_plans sp
+      LEFT JOIN users u ON sp.created_by = u.id
+      ORDER BY sp.date DESC, sp.created_at DESC
+    `).all();
+
+    sendCsv(res, `shift_plans_export_${localNow().slice(0, 10)}.csv`, [
+      { key: 'id', header: 'Plan ID' },
+      { key: 'name', header: 'Name' },
+      { key: 'date', header: 'Date' },
+      { key: 'shift_type', header: 'Shift Type' },
+      { key: 'status', header: 'Status' },
+      { key: 'assignments', header: 'Assignments (JSON)' },
+      { key: 'created_by_name', header: 'Created By' },
+      { key: 'created_at', header: 'Created At' },
+      { key: 'updated_at', header: 'Updated At' },
+    ], rows);
+  } catch (error: any) {
+    console.error('Export shift plans error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

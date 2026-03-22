@@ -208,7 +208,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
                     {flags.length > 0 && (
                       <div className="flex gap-1">
                         {flags.map((f, i) => (
-                          <span key={i} className="px-1.5 py-0.5 bg-red-900/40 text-red-400 text-[10px] uppercase font-bold">
+                          <span key={`${f}-${i}`} className="px-1.5 py-0.5 bg-red-900/40 text-red-400 text-[10px] uppercase font-bold">
                             {f}
                           </span>
                         ))}

@@ -743,4 +743,52 @@ router.post('/:id/skip-trace', validateParamId, requireRole(...WRITE_ROLES), asy
   }
 });
 
+// ─── CSV EXPORT ──────────────────────────────────────────
+
+// GET /api/serve/export/csv — Export serve queue jobs
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT sq.id, sq.status, sq.recipient_name, sq.recipient_address,
+        sq.recipient_city, sq.recipient_state, sq.recipient_zip,
+        sq.document_type, sq.case_number, sq.court_name, sq.jurisdiction,
+        sq.client_name, sq.attorney_name, sq.priority, sq.deadline,
+        sq.max_attempts, sq.attempt_count, sq.serve_date,
+        sq.service_instructions, sq.notes,
+        sq.created_at, sq.updated_at,
+        u.full_name as officer_name
+      FROM serve_queue sq
+      LEFT JOIN users u ON sq.officer_id = u.id
+      ORDER BY sq.created_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'serve_queue_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'status', header: 'Status' },
+      { key: 'recipient_name', header: 'Recipient Name' },
+      { key: 'recipient_address', header: 'Address' },
+      { key: 'recipient_city', header: 'City' },
+      { key: 'recipient_state', header: 'State' },
+      { key: 'recipient_zip', header: 'ZIP' },
+      { key: 'document_type', header: 'Document Type' },
+      { key: 'case_number', header: 'Case Number' },
+      { key: 'court_name', header: 'Court' },
+      { key: 'jurisdiction', header: 'Jurisdiction' },
+      { key: 'client_name', header: 'Client' },
+      { key: 'attorney_name', header: 'Attorney' },
+      { key: 'officer_name', header: 'Officer' },
+      { key: 'priority', header: 'Priority' },
+      { key: 'deadline', header: 'Deadline' },
+      { key: 'max_attempts', header: 'Max Attempts' },
+      { key: 'attempt_count', header: 'Attempt Count' },
+      { key: 'serve_date', header: 'Serve Date' },
+      { key: 'service_instructions', header: 'Instructions' },
+      { key: 'notes', header: 'Notes' },
+      { key: 'created_at', header: 'Created At' },
+    ], rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Export failed' });
+  }
+});
+
 export default router;

@@ -15,6 +15,7 @@ import {
 } from '../utils/serveManagerClient';
 import { escapeLike, validateParamId } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
+import { broadcast } from '../utils/websocket';
 
 const router = Router();
 router.use(authenticateToken);
@@ -427,7 +428,7 @@ router.post('/jobs', requireRole('admin', 'manager'), async (req: Request, res: 
       `Created SM job #${result.data.servemanager_job_number}`, req.ip || 'unknown', now);
 
     auditLog(req, 'CREATE' as any, 'serve_queue' as any, result.data.id, `Created SM job #${result.data.servemanager_job_number}`);
-
+    broadcast('dispatch', 'serve:created', result.data);
     res.status(201).json({ data: result.data });
   } catch (error: any) {
     if (error instanceof ServeManagerError) { res.status(error.status).json({ error: 'ServeManager request failed' }); return; }
@@ -451,7 +452,7 @@ router.put('/jobs/:id', validateParamId, requireRole('admin', 'manager'), async 
       `Updated SM job #${result.data.servemanager_job_number}`, req.ip || 'unknown', now);
 
     auditLog(req, 'UPDATE' as any, 'serve_queue' as any, req.params.id, `Updated SM job #${result.data.servemanager_job_number}`);
-
+    broadcast('dispatch', 'serve:updated', result.data);
     res.json({ data: result.data });
   } catch (error: any) {
     if (error instanceof ServeManagerError) { res.status(error.status).json({ error: 'ServeManager request failed' }); return; }

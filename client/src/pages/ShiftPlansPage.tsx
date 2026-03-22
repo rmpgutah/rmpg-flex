@@ -28,6 +28,7 @@ import type { ShiftPlan, ShiftType, AreaAssignment } from '../hooks/useShiftPlan
 import { useIsMobile } from '../hooks/useIsMobile';
 import StatusBadge from '../components/StatusBadge';
 import { useToast } from '../components/ToastProvider';
+import ExportButton from '../components/ExportButton';
 
 // ── Date helpers ───────────────────────────────────────────
 
@@ -65,6 +66,7 @@ function PlanStatusBadge({ status }: { status: string }) {
 
 export default function ShiftPlansPage() {
   const isMobile = useIsMobile();
+  const { addToast } = useToast();
   const sp = useShiftPlanning();
   const [selectedDate, setSelectedDate] = useState(todayStr());
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -113,8 +115,9 @@ export default function ShiftPlansPage() {
   const handleSave = async (planId: string) => {
     try {
       await sp.savePlanToServer(planId);
+      addToast('Shift plan saved', 'success');
     } catch {
-      // Error logged in hook
+      addToast('Failed to save shift plan', 'error');
     }
   };
 
@@ -173,6 +176,7 @@ export default function ShiftPlansPage() {
             </div>
           )}
 
+          <ExportButton exportUrl="/api/shift-plans/export/csv" exportFilename="shift-plans.csv" />
           <button
             onClick={() => setShowCreateForm(true)}
             className="flex items-center gap-1 px-3 py-1 text-[9px] font-bold uppercase tracking-wider bg-blue-900/50 text-blue-400 border border-blue-700/50 hover:bg-blue-800/50 transition-colors"

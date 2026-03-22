@@ -27,6 +27,7 @@ import ArrestFormModal from '../components/ArrestFormModal';
 import type { ArrestFormData } from '../components/ArrestFormModal';
 import { useWebSocket } from '../context/WebSocketContext';
 import { useToast } from '../components/ToastProvider';
+import ExportButton from '../components/ExportButton';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -203,6 +204,7 @@ function exportCsv(records: ArrestRecord[]) {
 export default function ArrestRecordsPage() {
   // ── State ───────────────────────────────────────────────
   const { subscribe } = useWebSocket();
+  const { addToast } = useToast();
 
   // Statistics
   const [stats, setStats] = useState<{
@@ -359,9 +361,10 @@ export default function ArrestRecordsPage() {
           setSelectedRecord(fresh);
         } catch { /* keep existing */ }
       }
+      addToast('Person linked to arrest record', 'success');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to link person';
-      setError(msg);
+      addToast(msg, 'error');
     } finally {
       setLinkingPerson(false);
     }
@@ -374,9 +377,10 @@ export default function ArrestRecordsPage() {
       if (selectedRecord?.id === arrestId) {
         setSelectedRecord(prev => prev ? { ...prev, linked_person: null, person_id: null } : null);
       }
+      addToast('Person unlinked', 'success');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to unlink person';
-      setError(msg);
+      addToast(msg, 'error');
     }
   };
 
@@ -406,9 +410,11 @@ export default function ArrestRecordsPage() {
           setSelectedRecord(fresh);
         } catch { /* keep existing */ }
       }
+      addToast(editingRecord ? 'Booking updated' : 'Booking created', 'success');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to save booking';
       setFormError(msg);
+      addToast(msg, 'error');
     } finally {
       setFormSubmitting(false);
     }
@@ -420,9 +426,10 @@ export default function ArrestRecordsPage() {
       setDeleteConfirm(null);
       if (selectedRecord?.id === id) setSelectedRecord(null);
       fetchRecords(recordsPage);
+      addToast('Record deleted', 'success');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to delete record';
-      setError(msg);
+      addToast(msg, 'error');
     }
   };
 
@@ -581,6 +588,7 @@ export default function ArrestRecordsPage() {
           <button onClick={openNew} className="toolbar-btn toolbar-btn-primary text-[9px] flex items-center gap-1 px-2 py-1">
             <Plus className="w-3 h-3" /> New Booking
           </button>
+          <ExportButton exportUrl="/api/arrests/export/csv" exportFilename="arrests.csv" />
           <button onClick={() => exportCsv(sortedRecords)} className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1">
             <Download className="w-3 h-3" /> CSV
           </button>

@@ -129,13 +129,13 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
         const callId = parseInt(String(linked_call_id), 10);
         if (isNaN(callId)) throw new Error('Invalid linked_call_id');
         db.prepare('UPDATE calls_for_service SET case_id = ?, case_number = ? WHERE id = ?')
-          .run(Number(result.lastInsertRowid), case_number, callId);
+          .run(result.lastInsertRowid, case_number, callId);
       }
 
       db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-        VALUES (?, 'create', 'case', ?, ?, ?, ?)`).run(req.user!.userId, Number(result.lastInsertRowid), JSON.stringify({ case_number, title }), req.ip || 'unknown', now);
+        VALUES (?, 'create', 'case', ?, ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ case_number, title }), req.ip || 'unknown', now);
 
-      return { id: Number(result.lastInsertRowid), case_number };
+      return { id: result.lastInsertRowid, case_number };
     });
 
     const caseData = createCase();
@@ -232,9 +232,9 @@ router.post('/:id/notes', validateParamId, requireRole('admin', 'manager', 'supe
     `).run(req.params.id, req.user!.userId, user?.full_name || '', note_type, content, now);
 
     db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(now, req.params.id);
-    auditLog(req, 'CREATE' as any, 'case_note' as any, Number(result.lastInsertRowid), `Added ${note_type} note to case ${req.params.id}`);
+    auditLog(req, 'CREATE' as any, 'case_note' as any, result.lastInsertRowid, `Added ${note_type} note to case ${req.params.id}`);
     broadcast('records', 'case:updated', { id: parseInt(req.params.id as string, 10) });
-    res.status(201).json({ data: { id: Number(result.lastInsertRowid) } });
+    res.status(201).json({ data: { id: result.lastInsertRowid } });
   } catch (error: any) {
     console.error('Create case note error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });

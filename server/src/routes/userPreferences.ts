@@ -58,8 +58,8 @@ router.get('/', (req: Request, res: Response) => {
 
     res.json(prefs);
   } catch (error: any) {
-    console.error('[UserPreferences] GET error:', error.message);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[UserPreferences] GET error:', error?.message);
+    res.status(500).json({ error: 'Failed to get user preferences' });
   }
 });
 
@@ -70,15 +70,31 @@ router.put('/', (req: Request, res: Response) => {
     const userId = req.user!.userId;
     const updates = req.body;
 
-    if (!updates || typeof updates !== 'object') {
+    if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
       res.status(400).json({ error: 'Request body must be an object' });
       return;
     }
 
-    // Filter to only allowed fields
+    // Reject excessively large payloads
+    if (Object.keys(updates).length > 50) {
+      res.status(400).json({ error: 'Too many fields in request' });
+      return;
+    }
+
+    // Filter to only allowed fields and validate value types
     const validUpdates: Record<string, any> = {};
     for (const [key, value] of Object.entries(updates)) {
       if (ALLOWED_FIELDS.has(key)) {
+        // Reject complex objects — only allow primitives and null
+        if (value !== null && typeof value === 'object') {
+          // Allow dashboard_widgets as JSON string
+          if (key === 'dashboard_widgets' && typeof value === 'object') {
+            validUpdates[key] = JSON.stringify(value);
+            continue;
+          }
+          res.status(400).json({ error: `Invalid value type for ${key}` });
+          return;
+        }
         validUpdates[key] = value;
       }
     }
@@ -114,8 +130,8 @@ router.put('/', (req: Request, res: Response) => {
 
     res.json(updated);
   } catch (error: any) {
-    console.error('[UserPreferences] PUT error:', error.message);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[UserPreferences] PUT error:', error?.message);
+    res.status(500).json({ error: 'Failed to update user preferences' });
   }
 });
 
@@ -132,8 +148,8 @@ router.post('/reset', (req: Request, res: Response) => {
 
     res.json({ ...DEFAULTS, user_id: userId });
   } catch (error: any) {
-    console.error('[UserPreferences] RESET error:', error.message);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[UserPreferences] RESET error:', error?.message);
+    res.status(500).json({ error: 'Failed to reset user preferences' });
   }
 });
 

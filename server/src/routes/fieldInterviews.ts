@@ -89,8 +89,8 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       pagination: { page: pageNum, per_page: perPage, total, totalPages: Math.ceil(total / perPage) },
     });
   } catch (err: any) {
-    console.error('Field interview error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[FieldInterviews] list error:', err?.message);
+    res.status(500).json({ error: 'Failed to list field interviews' });
   }
 });
 
@@ -110,8 +110,8 @@ router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     if (!row) return res.status(404).json({ error: 'Field interview not found' });
     res.json(row);
   } catch (err: any) {
-    console.error('Field interview error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[FieldInterviews] get detail error:', err?.message);
+    res.status(500).json({ error: 'Failed to get field interview' });
   }
 });
 
@@ -119,7 +119,7 @@ router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
 router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = req.user!;
+    const user = (req as any).user;
     const fi_number = generateFiNumber(db);
     const now = localNow();
 
@@ -173,7 +173,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       now
     );
 
-    const created = db.prepare('SELECT * FROM field_interviews WHERE id = ?').get(Number(result.lastInsertRowid)) as any;
+    const created = db.prepare('SELECT * FROM field_interviews WHERE id = ?').get(result.lastInsertRowid) as any;
     if (!created) { res.status(500).json({ error: 'Failed to retrieve created field interview' }); return; }
     // Broadcast minimal payload — no subject PII over WebSocket
     if (created.fi_number) {
@@ -205,8 +205,8 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
 
     res.status(201).json(created);
   } catch (err: any) {
-    console.error('Field interview error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[FieldInterviews] create error:', err?.message);
+    res.status(500).json({ error: 'Failed to create field interview' });
   }
 });
 
@@ -265,8 +265,8 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
 
     res.json(updated);
   } catch (err: any) {
-    console.error('Field interview error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[FieldInterviews] update error:', err?.message);
+    res.status(500).json({ error: 'Failed to update field interview' });
   }
 });
 
@@ -281,8 +281,8 @@ router.post('/:id/archive', validateParamId, requireRole('admin', 'manager', 'su
 
     res.json({ success: true });
   } catch (err: any) {
-    console.error('Field interview error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[FieldInterviews] archive error:', err?.message);
+    res.status(500).json({ error: 'Failed to archive field interview' });
   }
 });
 
@@ -297,8 +297,8 @@ router.post('/:id/unarchive', validateParamId, requireRole('admin', 'manager', '
 
     res.json({ success: true });
   } catch (err: any) {
-    console.error('Field interview error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[FieldInterviews] unarchive error:', err?.message);
+    res.status(500).json({ error: 'Failed to unarchive field interview' });
   }
 });
 
@@ -313,8 +313,8 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
 
     res.json({ success: true });
   } catch (err: any) {
-    console.error('Field interview error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[FieldInterviews] delete error:', err?.message);
+    res.status(500).json({ error: 'Failed to delete field interview' });
   }
 });
 
@@ -358,7 +358,6 @@ router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: R
       { key: 'created_at', header: 'Created At' },
     ], rows);
   } catch (error: any) {
-    console.error('Field interview export error:', error?.message || error);
     res.status(500).json({ error: 'Export failed' });
   }
 });

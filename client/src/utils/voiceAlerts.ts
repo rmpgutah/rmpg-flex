@@ -607,7 +607,7 @@ export async function announceBackupRequest(callSign: string, location?: string)
   const dedupKey = `backup:${callSign}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);
-  await playToneAsync('alert');
+  await playToneAsync('alarm');
   await delay(TONE_GAP_MS);
   const phrases: VoicePhrase[] = [{ text: `Backup requested by unit ${callSign}.` }];
   if (location) phrases.push({ text: `Location: ${location}.` });
@@ -620,7 +620,7 @@ export async function announcePursuit(callSign: string, direction?: string): Pro
   const dedupKey = `pursuit:${callSign}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);
-  await playToneAsync('alert');
+  await playToneAsync('alarm');
   await delay(TONE_GAP_MS);
   const phrases: VoicePhrase[] = [{ text: `Pursuit in progress. Unit ${callSign}.` }];
   if (direction) phrases.push({ text: `Direction of travel: ${direction}.` });

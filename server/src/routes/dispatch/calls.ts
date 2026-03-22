@@ -9,6 +9,7 @@ import { geocodeCallIfNeeded } from '../../utils/geocode';
 import { identifyBeat } from '../../utils/geofence';
 import { broadcastDispatchUpdate } from '../../utils/websocket';
 import { createNotificationForRoles } from '../notifications';
+import { auditLog } from '../../utils/auditLogger';
 
 
 // ── PSO Service Window helpers (shared with callActions.ts) ──

@@ -107,8 +107,13 @@ router.post('/sync/pull', syncRateLimit, (req: Request, res: Response) => {
       return;
     }
 
-    if (!table || !SYNC_TABLES[table]) {
+    if (!table || typeof table !== 'string' || !SYNC_TABLES[table]) {
       res.status(400).json({ error: 'Invalid or unrecognized table name' });
+      return;
+    }
+
+    if (since && (typeof since !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(since))) {
+      res.status(400).json({ error: 'Invalid since parameter — expected ISO date string' });
       return;
     }
 
@@ -148,7 +153,7 @@ router.post('/sync/pull', syncRateLimit, (req: Request, res: Response) => {
       pulledAt: localNow(),
     });
   } catch (error: any) {
-    console.error('[OFFLINE] Pull sync error:', error.message);
+    console.error('[OFFLINE] Pull sync error:', error?.message);
     res.status(500).json({ error: 'Failed to pull sync data' });
   }
 });
@@ -230,7 +235,7 @@ router.post('/sync/push', syncRateLimit, (req: Request, res: Response) => {
 
     res.json({ pushed, failed, results });
   } catch (error: any) {
-    console.error('[OFFLINE] Push sync error:', error.message);
+    console.error('[OFFLINE] Push sync error:', error?.message);
     res.status(500).json({ error: 'Failed to push sync data' });
   }
 });
@@ -393,7 +398,7 @@ router.get('/secrets', requireRole('admin'), (req: Request, res: Response) => {
       admin_secret: adminSecret ? adminSecret.secret : null,
     });
   } catch (error: any) {
-    console.error('[OFFLINE] Get secrets error:', error.message);
+    console.error('[OFFLINE] Get secrets error:', error?.message);
     res.status(500).json({ error: 'Failed to get offline secrets' });
   }
 });
@@ -417,7 +422,7 @@ router.get('/my-secret', requireRole('admin', 'manager', 'supervisor', 'officer'
       signature: secret ? signSecret(secret, req.user!.userId) : null,
     });
   } catch (error: any) {
-    console.error('[OFFLINE] Get my-secret error:', error.message);
+    console.error('[OFFLINE] Get my-secret error:', error?.message);
     res.status(500).json({ error: 'Failed to get offline secret' });
   }
 });
@@ -456,7 +461,7 @@ router.post('/secrets/generate', requireRole('admin'), (req: Request, res: Respo
 
     res.json({ userId, secret, signature: signSecret(secret, userId), generated_at: now });
   } catch (error: any) {
-    console.error('[OFFLINE] Generate secret error:', error.message);
+    console.error('[OFFLINE] Generate secret error:', error?.message);
     res.status(500).json({ error: 'Failed to generate offline secret' });
   }
 });
@@ -488,7 +493,7 @@ router.post('/secrets/generate-all', requireRole('admin'), (req: Request, res: R
 
     res.json({ generated: users.length });
   } catch (error: any) {
-    console.error('[OFFLINE] Generate-all error:', error.message);
+    console.error('[OFFLINE] Generate-all error:', error?.message);
     res.status(500).json({ error: 'Failed to generate offline secrets' });
   }
 });

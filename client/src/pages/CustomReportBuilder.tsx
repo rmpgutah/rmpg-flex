@@ -251,7 +251,7 @@ export default function CustomReportBuilder() {
             </div>
 
             {filters.map((f, i) => (
-              <div key={i} className={`${isMobile ? 'flex flex-col gap-1.5' : 'flex items-center gap-2'} panel-surface p-2`}>
+              <div key={`${f.column}-${f.operator}-${i}`} className={`${isMobile ? 'flex flex-col gap-1.5' : 'flex items-center gap-2'} panel-surface p-2`}>
                 <div className="flex items-center gap-2">
                   <select className={`select-dark text-[10px] ${isMobile ? 'flex-1' : 'w-40'}`} value={f.column} onChange={e => updateFilter(i, 'column', e.target.value)}>
                     {availableCols.map(c => <option key={c} value={c}>{toDisplayLabel(c)}</option>)}

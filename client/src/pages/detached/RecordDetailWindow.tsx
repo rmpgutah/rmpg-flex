@@ -134,7 +134,7 @@ export default function RecordDetailWindow() {
           {flags.length > 0 && (
             <div className="flex items-center gap-2 mt-4">
               {flags.map((f, i) => (
-                <span key={i} className="px-2 py-0.5 bg-red-900/40 text-red-400 text-[10px] uppercase font-bold border border-red-700/40">
+                <span key={`${f}-${i}`} className="px-2 py-0.5 bg-red-900/40 text-red-400 text-[10px] uppercase font-bold border border-red-700/40">
                   {f}
                 </span>
               ))}

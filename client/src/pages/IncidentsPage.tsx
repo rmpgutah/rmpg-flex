@@ -1447,7 +1447,7 @@ export default function IncidentsPage() {
                       <WarrantBadge flags={lp.flags || '[]'} size="sm" />
                       {lp.dob && <span className="text-[11px] text-rmpg-400">DOB: {lp.dob}</span>}
                       {flags.map((f, i) => (
-                        <span key={i} className="px-1 py-0.5 bg-red-900/40 text-red-400 text-[10px] uppercase font-bold">
+                        <span key={`${f}-${i}`} className="px-1 py-0.5 bg-red-900/40 text-red-400 text-[10px] uppercase font-bold">
                           {f}
                         </span>
                       ))}

@@ -42,6 +42,7 @@ interface Props {
 }
 
 export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Props) {
+  const { addToast } = useToast();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -64,8 +65,9 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
     try {
       await apiFetch(`/admin/sessions/${sessionId}`, { method: 'DELETE' });
       fetchSessions();
+      addToast('Session revoked', 'success');
     } catch (err: any) {
-      setError(err.message || 'Failed to revoke session');
+      addToast(err.message || 'Failed to revoke session', 'error');
     }
   };
 

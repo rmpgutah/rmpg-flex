@@ -12,6 +12,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { escapeLike, validateParamId } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
+import { broadcast } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
@@ -283,7 +284,7 @@ router.get('/:id', validateParamId, requireRole('admin', 'manager', 'contract_ma
 router.post('/', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = req.user!;
+    const user = (req as any).user;
     const now = localNow();
     const { client_id, period_start, period_end, issue_date, notes, internal_notes } = req.body;
 
@@ -322,11 +323,12 @@ router.post('/', requireRole('admin', 'manager', 'contract_manager'), (req: Requ
     // Activity log
     db.prepare(
       'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(user.userId, 'invoice_created', 'invoice', Number(result.lastInsertRowid), `Created invoice ${invoice_number} for client ${client.name}`, req.ip || 'unknown', now);
+    ).run(user.userId, 'invoice_created', 'invoice', result.lastInsertRowid, `Created invoice ${invoice_number} for client ${client.name}`, req.ip || 'unknown', now);
 
-    auditLog(req, 'CREATE', 'invoice', Number(result.lastInsertRowid), `Created invoice ${invoice_number} for client ${client.name}`);
-    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(Number(result.lastInsertRowid));
+    auditLog(req, 'CREATE' as any, 'invoice' as any, result.lastInsertRowid, `Created invoice ${invoice_number} for client ${client.name}`);
+    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(result.lastInsertRowid);
     if (!invoice) { res.status(500).json({ error: 'Failed to retrieve created invoice' }); return; }
+    broadcast('admin', 'invoice:created', invoice);
     res.status(201).json({ data: invoice });
   } catch (error: any) {
     console.error('Invoice create error:', error?.message || 'Unknown error');
@@ -547,7 +549,7 @@ router.post('/:id/generate', validateParamId, requireRole('admin', 'manager', 'c
       'SELECT * FROM invoice_line_items WHERE invoice_id = ? ORDER BY sort_order, id'
     ).all(invoice.id);
 
-    auditLog(req, 'UPDATE', 'invoice', req.params.id, `Auto-generated ${count} line items for invoice ${invoice.invoice_number}`);
+    auditLog(req, 'UPDATE' as any, 'invoice' as any, req.params.id, `Auto-generated ${count} line items for invoice ${invoice.invoice_number}`);
     res.json({ data: { ...updated, line_items }, generated: count });
   } catch (error: any) {
     console.error('Invoice generate error:', error?.message || 'Unknown error');
@@ -560,7 +562,7 @@ router.post('/:id/generate', validateParamId, requireRole('admin', 'manager', 'c
 router.put('/:id', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = req.user!;
+    const user = (req as any).user;
     const now = localNow();
 
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
@@ -602,11 +604,12 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'contract_ma
       'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
     ).run(user.userId, 'invoice_updated', 'invoice', req.params.id, `Updated invoice ${invoice.invoice_number}`, req.ip || 'unknown', now);
 
-    auditLog(req, 'UPDATE', 'invoice', req.params.id, `Updated invoice ${invoice.invoice_number}`);
+    auditLog(req, 'UPDATE' as any, 'invoice' as any, req.params.id, `Updated invoice ${invoice.invoice_number}`);
     const updated = db.prepare(`
       SELECT i.*, c.name as client_name FROM invoices i
       LEFT JOIN clients c ON i.client_id = c.id WHERE i.id = ?
     `).get(req.params.id);
+    broadcast('admin', 'invoice:updated', updated);
     res.json({ data: updated });
   } catch (error: any) {
     console.error('Invoice update error:', error?.message || 'Unknown error');
@@ -619,7 +622,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'contract_ma
 router.put('/:id/status', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = req.user!;
+    const user = (req as any).user;
     const now = localNow();
     const { status } = req.body;
 
@@ -667,8 +670,9 @@ router.put('/:id/status', validateParamId, requireRole('admin', 'manager'), (req
       'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
     ).run(user.userId, 'invoice_status_changed', 'invoice', req.params.id, `Status: ${invoice.status} → ${status}`, req.ip || 'unknown', now);
 
-    auditLog(req, 'UPDATE', 'invoice', req.params.id, `Invoice status changed from ${invoice.status} to ${status}`);
+    auditLog(req, 'UPDATE' as any, 'invoice' as any, req.params.id, `Invoice status changed from ${invoice.status} to ${status}`);
     const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
+    broadcast('admin', 'invoice:updated', updated);
     res.json({ data: updated });
   } catch (error: any) {
     console.error('Invoice status error:', error?.message || 'Unknown error');
@@ -692,13 +696,6 @@ router.post('/:id/line-items', validateParamId, requireRole('admin', 'manager', 
 
     const qty = quantity ?? 1;
     const price = unit_price ?? 0;
-    // Validate financial fields
-    if (typeof qty !== 'number' || isNaN(qty) || qty < 0) {
-      return res.status(400).json({ error: 'quantity must be a non-negative number' });
-    }
-    if (typeof price !== 'number' || isNaN(price)) {
-      return res.status(400).json({ error: 'unit_price must be a valid number' });
-    }
     const amount = Math.round(qty * price * 100) / 100;
 
     // Get max sort order
@@ -713,9 +710,9 @@ router.post('/:id/line-items', validateParamId, requireRole('admin', 'manager', 
 
     recalculateInvoiceTotals(req.params.id);
 
-    auditLog(req, 'CREATE', 'invoice_line_item', Number(result.lastInsertRowid), `Added line item to invoice ${req.params.id}: ${description}`);
-    const item = db.prepare('SELECT * FROM invoice_line_items WHERE id = ?').get(Number(result.lastInsertRowid));
-    res.status(201).json({ data: item || { id: Number(result.lastInsertRowid) } });
+    auditLog(req, 'CREATE' as any, 'invoice_line_item' as any, result.lastInsertRowid, `Added line item to invoice ${req.params.id}: ${description}`);
+    const item = db.prepare('SELECT * FROM invoice_line_items WHERE id = ?').get(result.lastInsertRowid);
+    res.status(201).json({ data: item || { id: result.lastInsertRowid } });
   } catch (error: any) {
     console.error('Add line item error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -754,7 +751,7 @@ router.put('/:id/line-items/:itemId', validateParamId, requireRole('admin', 'man
 
     recalculateInvoiceTotals(req.params.id);
 
-    auditLog(req, 'UPDATE', 'invoice_line_item', req.params.itemId, `Updated line item ${req.params.itemId} on invoice ${req.params.id}`);
+    auditLog(req, 'UPDATE' as any, 'invoice_line_item' as any, req.params.itemId, `Updated line item ${req.params.itemId} on invoice ${req.params.id}`);
     const updated = db.prepare('SELECT * FROM invoice_line_items WHERE id = ?').get(req.params.itemId);
     res.json({ data: updated });
   } catch (error: any) {
@@ -774,7 +771,7 @@ router.delete('/:id/line-items/:itemId', validateParamId, requireRole('admin', '
 
     db.prepare('DELETE FROM invoice_line_items WHERE id = ?').run(req.params.itemId);
     recalculateInvoiceTotals(req.params.id);
-    auditLog(req, 'DELETE', 'invoice_line_item', req.params.itemId, `Deleted line item ${req.params.itemId} from invoice ${req.params.id}`);
+    auditLog(req, 'DELETE' as any, 'invoice_line_item' as any, req.params.itemId, `Deleted line item ${req.params.itemId} from invoice ${req.params.id}`);
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete line item error:', error?.message || 'Unknown error');
@@ -787,7 +784,7 @@ router.delete('/:id/line-items/:itemId', validateParamId, requireRole('admin', '
 router.post('/:id/payments', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = req.user!;
+    const user = (req as any).user;
     const now = localNow();
 
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
@@ -798,22 +795,10 @@ router.post('/:id/payments', validateParamId, requireRole('admin', 'manager'), (
       return res.status(400).json({ error: 'amount and payment_date are required' });
     }
 
-    // Validate payment amount
-    const payAmt = parseFloat(amount);
-    if (isNaN(payAmt) || payAmt <= 0 || payAmt > 9999999.99) {
-      return res.status(400).json({ error: 'amount must be a positive number (max $9,999,999.99)' });
-    }
-
-    // Validate payment_date format
-    const dateRx = /^\d{4}-\d{2}-\d{2}$/;
-    if (!dateRx.test(String(payment_date)) || isNaN(new Date(String(payment_date)).getTime())) {
-      return res.status(400).json({ error: 'payment_date must be in YYYY-MM-DD format' });
-    }
-
     const result = db.prepare(`
       INSERT INTO payments (invoice_id, amount, payment_date, payment_method, reference_number, notes, recorded_by, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(req.params.id, payAmt, payment_date, payment_method || null, reference_number || null, notes || null, user.userId, now);
+    `).run(req.params.id, amount, payment_date, payment_method || null, reference_number || null, notes || null, user.userId, now);
 
     // Recalculate totals
     recalculateInvoiceTotals(req.params.id);
@@ -832,13 +817,13 @@ router.post('/:id/payments', validateParamId, requireRole('admin', 'manager'), (
       'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
     ).run(user.userId, 'payment_recorded', 'invoice', req.params.id, `Payment of $${amount} recorded on invoice ${invoice.invoice_number}`, req.ip || 'unknown', now);
 
-    auditLog(req, 'CREATE', 'payment', Number(result.lastInsertRowid), `Recorded payment of $${amount} on invoice ${invoice.invoice_number}`);
+    auditLog(req, 'CREATE' as any, 'payment' as any, result.lastInsertRowid, `Recorded payment of $${amount} on invoice ${invoice.invoice_number}`);
     const payment = db.prepare(`
       SELECT p.*, u.full_name as recorded_by_name
       FROM payments p LEFT JOIN users u ON p.recorded_by = u.id
       WHERE p.id = ?
-    `).get(Number(result.lastInsertRowid));
-    res.status(201).json({ data: payment || { id: Number(result.lastInsertRowid) } });
+    `).get(result.lastInsertRowid);
+    res.status(201).json({ data: payment || { id: result.lastInsertRowid } });
   } catch (error: any) {
     console.error('Record payment error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -850,7 +835,7 @@ router.post('/:id/payments', validateParamId, requireRole('admin', 'manager'), (
 router.delete('/:id/payments/:paymentId', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = req.user!;
+    const user = (req as any).user;
     const now = localNow();
 
     const payment = db.prepare(
@@ -875,7 +860,7 @@ router.delete('/:id/payments/:paymentId', validateParamId, requireRole('admin', 
       'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
     ).run(user.userId, 'payment_reversed', 'invoice', req.params.id, `Payment of $${payment.amount} reversed on invoice ${updated.invoice_number}`, req.ip || 'unknown', now);
 
-    auditLog(req, 'DELETE', 'payment', req.params.paymentId, `Reversed payment of $${payment.amount} on invoice ${updated.invoice_number}`);
+    auditLog(req, 'DELETE' as any, 'payment' as any, req.params.paymentId, `Reversed payment of $${payment.amount} on invoice ${updated.invoice_number}`);
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete payment error:', error?.message || 'Unknown error');
@@ -1000,6 +985,45 @@ router.get('/:id/person-chain', validateParamId, requireRole('admin', 'manager',
   } catch (error: any) {
     console.error('Invoice person-chain error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── CSV EXPORT ──────────────────────────────────────────
+
+// GET /api/invoices/export/csv — Export invoices
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT i.id, i.invoice_number, i.status, i.issue_date, i.due_date, i.paid_date,
+        i.subtotal, i.discount_amount, i.late_fee_amount, i.total,
+        i.amount_paid, i.balance_due, i.payment_terms, i.notes,
+        i.created_at, i.updated_at,
+        c.name as client_name
+      FROM invoices i
+      LEFT JOIN clients c ON c.id = i.client_id
+      ORDER BY i.created_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'invoices_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'invoice_number', header: 'Invoice Number' },
+      { key: 'client_name', header: 'Client' },
+      { key: 'status', header: 'Status' },
+      { key: 'issue_date', header: 'Issue Date' },
+      { key: 'due_date', header: 'Due Date' },
+      { key: 'paid_date', header: 'Paid Date' },
+      { key: 'subtotal', header: 'Subtotal' },
+      { key: 'discount_amount', header: 'Discount' },
+      { key: 'late_fee_amount', header: 'Late Fee' },
+      { key: 'total', header: 'Total' },
+      { key: 'amount_paid', header: 'Amount Paid' },
+      { key: 'balance_due', header: 'Balance Due' },
+      { key: 'payment_terms', header: 'Payment Terms' },
+      { key: 'notes', header: 'Notes' },
+      { key: 'created_at', header: 'Created At' },
+    ], rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Export failed' });
   }
 });
 

@@ -19,6 +19,7 @@ import ServeRoutePlanner from '../components/serve/ServeRoutePlanner';
 import ServeSkipTracePanel from '../components/serve/ServeSkipTracePanel';
 import FormModal from '../components/FormModal';
 import type { ServeJob, ServeAttemptData, ServeSkipAddress } from '../types';
+import ExportButton from '../components/ExportButton';
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
@@ -548,6 +549,7 @@ export default function ServePage() {
             <Plus size={12} />
             {!isMobile && 'Add Job'}
           </button>
+          <ExportButton exportUrl="/api/process-server/export/csv" exportFilename="serve-jobs.csv" />
         </div>
       </div>
 

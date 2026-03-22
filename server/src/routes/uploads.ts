@@ -10,6 +10,7 @@ import { authenticateToken, requireRole, type JwtPayload } from '../middleware/a
 import { rateLimit } from '../middleware/rateLimiter';
 import { validateParamId } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
+import { broadcast } from '../utils/websocket';
 import config from '../config';
 
 // Rate limiter for file uploads — prevent abuse/DoS via large uploads
@@ -464,6 +465,7 @@ router.post('/', uploadRateLimit, upload.array('files', 10), (req: Request, res:
       req.ip || 'unknown',
     );
 
+    broadcast('records', 'upload:created', { count: results.length, entity_type, entity_id });
     res.status(201).json(results);
   } catch (error: any) {
     console.error('Upload error:', error?.message || 'Unknown error');

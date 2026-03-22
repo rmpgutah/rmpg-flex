@@ -120,7 +120,7 @@ router.get('/', authenticateToken, (req: Request, res: Response) => {
 
     res.json({ videos, total });
   } catch (error: any) {
-    console.error('List dashcam videos error:', error?.message || 'Unknown error');
+    console.error('[DashcamVideos] list videos error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -151,7 +151,7 @@ router.get('/:id', validateParamId, authenticateToken, (req: Request, res: Respo
     }
     res.json(video);
   } catch (error: any) {
-    console.error('Get dashcam video error:', error?.message || 'Unknown error');
+    console.error('[DashcamVideos] get video error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -223,7 +223,7 @@ router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor'
 
     res.json({ success: true, id });
   } catch (error: any) {
-    console.error('Upload dashcam video error:', error?.message || 'Unknown error');
+    console.error('[DashcamVideos] upload video error:', error?.message || 'Unknown error');
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
@@ -286,7 +286,7 @@ router.put('/:id', validateParamId, authenticateToken, requireRole('admin', 'man
 
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Update dashcam video error:', error?.message || 'Unknown error');
+    console.error('[DashcamVideos] update video error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -318,7 +318,7 @@ router.delete('/:id', validateParamId, authenticateToken, requireRole('admin'), 
 
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Delete dashcam video error:', error?.message || 'Unknown error');
+    console.error('[DashcamVideos] delete video error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -378,7 +378,7 @@ router.get('/:id/stream', validateParamId, (req: Request, res: Response, next) =
         'Content-Type': video.mime_type || 'video/mp4',
       });
       const stream = fs.createReadStream(filePath, { start, end });
-      stream.on('error', (err) => { console.error('Dashcam stream error:', err?.message || 'Unknown error'); res.destroy(); });
+      stream.on('error', (err) => { console.error('[DashcamVideos] stream error:', err?.message || 'Unknown error'); res.destroy(); });
       stream.pipe(res);
     } else {
       res.writeHead(200, {
@@ -386,11 +386,11 @@ router.get('/:id/stream', validateParamId, (req: Request, res: Response, next) =
         'Content-Type': video.mime_type || 'video/mp4',
       });
       const stream = fs.createReadStream(filePath);
-      stream.on('error', (err) => { console.error('Dashcam stream error:', err?.message || 'Unknown error'); res.destroy(); });
+      stream.on('error', (err) => { console.error('[DashcamVideos] stream error:', err?.message || 'Unknown error'); res.destroy(); });
       stream.pipe(res);
     }
   } catch (error: any) {
-    console.error('Stream dashcam video error:', error?.message || 'Unknown error');
+    console.error('[DashcamVideos] stream video error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -410,7 +410,7 @@ router.get('/:id/links', validateParamId, authenticateToken, (req: Request, res:
 
     res.json(links);
   } catch (error: any) {
-    console.error('List dashcam video links error:', error?.message || 'Unknown error');
+    console.error('[DashcamVideos] list video links error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -464,7 +464,7 @@ router.post('/:id/links', validateParamId, authenticateToken, requireRole('admin
 
     res.json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
-    console.error('Link dashcam video error:', error?.message || 'Unknown error');
+    console.error('[DashcamVideos] link video error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -492,7 +492,7 @@ router.delete('/:id/links/:linkId', validateParamId, authenticateToken, requireR
 
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Unlink dashcam video error:', error?.message || 'Unknown error');
+    console.error('[DashcamVideos] unlink video error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -615,7 +615,7 @@ router.post('/webhook/clearpathgps', webhookUpload.single('video'), (req: Reques
       res.json({ success: true, message: 'Event received, no video file attached' });
     }
   } catch (error: any) {
-    console.error('ClearPathGPS webhook error:', error?.message || 'Unknown error');
+    console.error('[DashcamVideos] webhook error:', error?.message || 'Unknown error');
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }

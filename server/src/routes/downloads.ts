@@ -186,6 +186,19 @@ router.get('/check', async (req: Request, res: Response) => {
     const currentVersion = (req.query.currentVersion as string) || '0.0.0';
     const platform = (req.query.platform as string) || 'win32';
 
+    // Validate version format
+    if (!/^\d+\.\d+\.\d+$/.test(currentVersion)) {
+      res.status(400).json({ error: 'Invalid version format. Expected x.y.z' });
+      return;
+    }
+
+    // Validate platform
+    const validPlatforms = ['win32', 'darwin', 'android'];
+    if (!validPlatforms.includes(platform)) {
+      res.status(400).json({ error: `Invalid platform. Must be one of: ${validPlatforms.join(', ')}` });
+      return;
+    }
+
     const info = await getInstallerInfoAsync();
     const installer = platform === 'darwin' ? info.mac : platform === 'android' ? info.android : info.win;
 

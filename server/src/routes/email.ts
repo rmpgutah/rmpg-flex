@@ -10,6 +10,7 @@ import { Router, Request, Response } from 'express';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
+import { broadcast } from '../utils/websocket';
 import { escapeLike, validateParamId } from '../middleware/sanitize';
 import type { NextFunction } from 'express';
 
@@ -630,6 +631,7 @@ router.post('/send', async (req: Request, res: Response) => {
 
     if (sent) {
       auditLog(req, 'SEND_EMAIL', 'email', 0, JSON.stringify({ to: toList, subject, attachmentCount: emailAttachments.length }));
+      broadcast('admin', 'email:sent', { to: toList, subject });
       res.json({ success: true });
     } else {
       res.status(500).json({ error: 'Failed to send email' });

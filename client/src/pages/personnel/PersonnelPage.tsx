@@ -51,6 +51,7 @@ import OfficerFormModal from './modals/OfficerFormModal';
 import type { OfficerFormData } from './modals/OfficerFormModal';
 import TimeEntryEditModal from './modals/TimeEntryEditModal';
 import type { TimeEntryEditData } from './modals/TimeEntryEditModal';
+import ExportButton from '../../components/ExportButton';
 
 // ============================================================
 // Activity entry type (matches backend activity_log)
@@ -897,6 +898,7 @@ export default function PersonnelPage() {
               </button>
             )}
           </div>
+          <ExportButton exportUrl="/api/personnel/export/csv" exportFilename="personnel.csv" />
           <button
             onClick={() => { setOfficerEditData(undefined); setOfficerModalMode('create'); setModal('new_officer'); }}
             className="toolbar-btn toolbar-btn-primary flex items-center gap-1 whitespace-nowrap"

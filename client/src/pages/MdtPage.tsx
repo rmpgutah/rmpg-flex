@@ -65,6 +65,7 @@ interface MdtMessage {
 }
 
 function MdtMessagesPanel({ userId }: { userId?: string }) {
+  const { addToast } = useToast();
   const [messages, setMessages] = useState<MdtMessage[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [composeText, setComposeText] = useState('');
@@ -95,8 +96,10 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
       });
       setComposeText('');
       fetchMessages();
+      addToast('Message sent', 'success');
     } catch (err) {
       console.error('Send message failed:', err);
+      addToast('Failed to send message', 'error');
     }
   };
 
@@ -331,7 +334,7 @@ export default function MdtPage() {
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Failed to generate shift report:', err);
-      showError('Failed to generate shift report');
+      addToast('Failed to generate shift report', 'error');
     }
     setGeneratingReport(false);
   };
@@ -352,9 +355,10 @@ export default function MdtPage() {
       });
       setFiData({ subject_name: '', location: '', reason: '', narrative: '' });
       setShowFiForm(false);
+      addToast('Field interview submitted', 'success');
     } catch (err) {
       console.error('Failed to submit FI:', err);
-      showError('Failed to submit field interview');
+      addToast('Failed to submit field interview', 'error');
     }
     setFiSubmitting(false);
   };
@@ -402,7 +406,7 @@ export default function MdtPage() {
 
     } catch (err) {
       console.error('MDT fetch error:', err);
-      showError('Failed to load dispatch data');
+      addToast('Failed to load dispatch data', 'error');
     } finally {
       setLoading(false);
     }
@@ -440,7 +444,7 @@ export default function MdtPage() {
       fetchData();
     } catch (err) {
       console.error('Status change failed:', err);
-      showError('Failed to change unit status');
+      addToast('Failed to change unit status', 'error');
     }
   };
 
@@ -457,7 +461,7 @@ export default function MdtPage() {
       fetchData();
     } catch (err) {
       console.error('Call status update failed:', err);
-      showError('Failed to update call status');
+      addToast('Failed to update call status', 'error');
     }
   };
 
@@ -473,7 +477,7 @@ export default function MdtPage() {
       fetchData();
     } catch (err) {
       console.error('Self-dispatch failed:', err);
-      showError('Failed to self-dispatch');
+      addToast('Failed to self-dispatch', 'error');
     } finally {
       setDispatchingCallId(null);
     }

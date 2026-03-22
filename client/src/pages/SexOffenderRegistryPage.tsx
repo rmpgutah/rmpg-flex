@@ -20,6 +20,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
+import ExportButton from '../components/ExportButton';
 
 // Re-type apiFetch for raw Response access (needed for PUT/POST error handling)
 async function apiRaw(endpoint: string, options?: RequestInit): Promise<Response> {
@@ -781,6 +782,7 @@ export default function SexOffenderRegistryPage() {
           >
             <Upload size={12} /> Import
           </button>
+          <ExportButton exportUrl="/api/sex-offender-registry/export/csv" exportFilename="sex-offenders.csv" />
         </div>
       </PanelTitleBar>
 

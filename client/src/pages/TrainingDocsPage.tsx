@@ -20,6 +20,7 @@ import { authUrl } from '../components/FileAttachments';
 import { useLiveSync } from '../hooks/useLiveSync';
 import type { CompanyDocCategory } from '../types';
 import { useToast } from '../components/ToastProvider';
+import ExportButton from '../components/ExportButton';
 
 // ── Category config ─────────────────────────────────────────
 const CATEGORIES: { key: CompanyDocCategory | 'all'; label: string }[] = [
@@ -154,6 +155,7 @@ export default function TrainingDocsPage() {
               </button>
             )}
           </div>
+          <ExportButton exportUrl="/api/company-documents/export/csv" exportFilename="training-docs.csv" />
           {isAdmin && (
             <button
               onClick={() => { setEditDoc(null); setShowModal(true); }}

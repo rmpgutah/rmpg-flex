@@ -222,6 +222,7 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
 
 const PatrolPage: React.FC = () => {
   const isMobile = useIsMobile();
+  const { addToast } = useToast();
   const checkpointModalTitleId = useId();
   const qrModalTitleId = useId();
   const [activeTab, setActiveTab] = usePersistedTab('rmpg_patrol_tab', 'checkpoints', ['checkpoints', 'scans', 'compliance', 'map'] as const);
@@ -402,9 +403,10 @@ const PatrolPage: React.FC = () => {
 
       setShowCheckpointModal(false);
       loadCheckpoints();
+      addToast(editingCheckpoint ? 'Checkpoint updated' : 'Checkpoint created', 'success');
     } catch (err: any) {
       console.error('Error saving checkpoint:', err);
-      setError(err?.message || 'Failed to save checkpoint');
+      addToast(err?.message || 'Failed to save checkpoint', 'error');
     }
   };
 
@@ -415,9 +417,10 @@ const PatrolPage: React.FC = () => {
       });
       setDeleteConfirmId(null);
       loadCheckpoints();
+      addToast('Checkpoint deleted', 'success');
     } catch (err: any) {
       console.error('Error deleting checkpoint:', err);
-      setError(err?.message || 'Failed to delete checkpoint');
+      addToast(err?.message || 'Failed to delete checkpoint', 'error');
     }
   };
 
@@ -425,9 +428,10 @@ const PatrolPage: React.FC = () => {
     try {
       await apiFetch(`/patrol/checkpoints/${id}/archive`, { method: 'POST' });
       loadCheckpoints();
+      addToast('Checkpoint archived', 'success');
     } catch (err: any) {
       console.error('Error archiving checkpoint:', err);
-      setError(err?.message || 'Failed to archive checkpoint');
+      addToast(err?.message || 'Failed to archive checkpoint', 'error');
     }
   };
 
@@ -435,9 +439,10 @@ const PatrolPage: React.FC = () => {
     try {
       await apiFetch(`/patrol/checkpoints/${id}/unarchive`, { method: 'POST' });
       loadCheckpoints();
+      addToast('Checkpoint restored', 'success');
     } catch (err: any) {
       console.error('Error unarchiving checkpoint:', err);
-      setError(err?.message || 'Failed to restore checkpoint');
+      addToast(err?.message || 'Failed to restore checkpoint', 'error');
     }
   };
 

@@ -81,10 +81,10 @@ router.post('/messages', requireRole('admin', 'manager', 'dispatcher', 'supervis
       FROM messages m
       LEFT JOIN users u ON m.from_user_id = u.id
       WHERE m.id = ?
-    `).get(Number(result.lastInsertRowid)) as any;
+    `).get(result.lastInsertRowid) as any;
     if (!message) { res.status(500).json({ error: 'Failed to retrieve created message' }); return; }
 
-    auditLog(req, 'message_sent' as any, 'message' as any, Number(result.lastInsertRowid), `Sent ${msgChannel} message #${Number(result.lastInsertRowid)}`);
+    auditLog(req, 'message_sent' as any, 'message' as any, Number(result.lastInsertRowid), `Sent ${msgChannel} message #${result.lastInsertRowid}`);
 
     // Send via WebSocket
     if (msgChannel === 'direct' && to_user_id) {
@@ -188,6 +188,8 @@ router.post('/messages/mark-all-read', (req: Request, res: Response) => {
     const result = db.prepare(`
       UPDATE messages SET read_at = ? WHERE to_user_id = ? AND read_at IS NULL
     `).run(now, req.user!.userId);
+
+    auditLog(req, 'UPDATE' as any, 'message' as any, 0, `Marked ${result.changes} messages as read`);
 
     res.json({ message: 'All messages marked as read', count: result.changes });
   } catch (error: any) {
@@ -433,7 +435,7 @@ router.post('/bolos', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       SELECT b.*, u.full_name as issued_by_name
       FROM bolos b LEFT JOIN users u ON b.issued_by = u.id
       WHERE b.id = ?
-    `).get(Number(result.lastInsertRowid)) as any;
+    `).get(result.lastInsertRowid) as any;
     if (!bolo) { res.status(500).json({ error: 'Failed to retrieve created BOLO' }); return; }
 
     // Broadcast minimal BOLO alert — full subject/vehicle descriptions are PII
@@ -449,7 +451,7 @@ router.post('/bolos', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'bolo_created', 'bolo', ?, ?, ?)
-    `).run(req.user!.userId, Number(result.lastInsertRowid), `Created BOLO: ${title}`, req.ip || 'unknown');
+    `).run(req.user!.userId, result.lastInsertRowid, `Created BOLO: ${title}`, req.ip || 'unknown');
 
     res.status(201).json(bolo);
   } catch (error: any) {

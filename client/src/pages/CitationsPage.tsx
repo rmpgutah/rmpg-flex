@@ -40,6 +40,7 @@ import { localToday, formatDate } from '../utils/dateUtils';
 import { useFormValidation } from '../hooks/useFormValidation';
 import { isValidDate, isValidPlate, isValidState } from '../utils/validate';
 import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
+import ExportButton from '../components/ExportButton';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -572,6 +573,7 @@ export default function CitationsPage() {
             <button onClick={handleNewCitation} className={`toolbar-btn toolbar-btn-primary ${isMobile ? 'flex-1 justify-center' : ''}`} title="New Citation" style={isMobile ? { minHeight: 48 } : undefined}>
               <Plus size={isMobile ? 16 : 12} /> New
             </button>
+            <ExportButton exportUrl="/api/citations/export/csv" exportFilename="citations.csv" />
             <button onClick={() => { fetchCitations(); fetchStats(); }} className="text-rmpg-400 hover:text-rmpg-200 p-1 transition-colors" title="Refresh" style={isMobile ? { minHeight: 48, minWidth: 48 } : undefined}>
               <RefreshCw size={isMobile ? 18 : 14} />
             </button>

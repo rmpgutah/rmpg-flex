@@ -19,8 +19,18 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer'), 
   try {
     const { lastName, firstName } = req.query;
 
-    if (!lastName || (lastName as string).trim().length < 2) {
+    if (!lastName || typeof lastName !== 'string' || lastName.trim().length < 2) {
       res.status(400).json({ error: 'lastName is required (minimum 2 characters)' });
+      return;
+    }
+
+    if ((lastName as string).length > 100) {
+      res.status(400).json({ error: 'lastName must be 100 characters or less' });
+      return;
+    }
+
+    if (firstName && (typeof firstName !== 'string' || (firstName as string).length > 100)) {
+      res.status(400).json({ error: 'firstName must be a string of 100 characters or less' });
       return;
     }
 
@@ -42,6 +52,10 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer'), 
 // GET /api/colorado-doc/offender/:docNumber — Get specific offender by DOC number
 router.get('/offender/:docNumber', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
+    if (!req.params.docNumber || req.params.docNumber.trim().length < 1) {
+      res.status(400).json({ error: 'docNumber is required' });
+      return;
+    }
     const offender = getCdocOffender(req.params.docNumber as string);
     if (!offender) {
       res.status(404).json({ error: 'Offender not found' });

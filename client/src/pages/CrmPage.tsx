@@ -36,9 +36,11 @@ import ReportsTab from '../components/crm/ReportsTab';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useToast } from '../components/ToastProvider';
+import { useIsMobile } from '../hooks/useIsMobile';
 import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
 import ClientFormModal from '../components/ClientFormModal';
+import ExportButton from '../components/ExportButton';
 import type {
   Client,
   Property,
@@ -123,6 +125,7 @@ function invoiceStatusColor(s: string): string {
 // CRM PAGE
 // ════════════════════════════════════════════════════════
 export default function CrmPage() {
+  const isMobile = useIsMobile();
   const { addToast } = useToast();
   const [activeSection, setActiveSection] = useState<CrmSection>(() => {
     const saved = localStorage.getItem('crm_active_section');
@@ -581,6 +584,7 @@ export default function CrmPage() {
       <div className="flex-1 overflow-y-auto">
         <PanelTitleBar title="OVERWATCH DASHBOARD" icon={LayoutDashboard}>
           <RmpgLogo height={16} iconOnly />
+          <ExportButton exportUrl="/api/crm/export/csv" exportFilename="crm.csv" />
           <button onClick={() => fetchDashboard()} className="toolbar-btn"><RefreshCw className="w-3 h-3" /> Refresh</button>
           <button onClick={() => { setActivityForm({ client_id: '', activity_type: 'note', subject: '', details: '' }); setShowActivityModal(true); }} className="toolbar-btn toolbar-btn-primary">
             <Plus className="w-3 h-3" /> Log Activity
@@ -672,6 +676,13 @@ export default function CrmPage() {
             </button>
           </PanelTitleBar>
           <div className="flex-1 overflow-y-auto">
+            {filteredClients.length === 0 && !isLoading && (
+              <div className="text-center py-12 text-rmpg-500">
+                <Building2 size={32} className="mx-auto mb-2 opacity-30" />
+                <p className="text-sm">{clientSearch ? 'No clients match your search' : 'No clients yet'}</p>
+                <p className="text-xs text-rmpg-600 mt-1">{clientSearch ? 'Try a different search term' : 'Click "New" to add your first client'}</p>
+              </div>
+            )}
             {filteredClients.map(c => (
               <button
                 key={c.id}

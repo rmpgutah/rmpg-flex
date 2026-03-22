@@ -14,6 +14,7 @@ import { queueOverlayProcessing, type BodyCamOverlayConfig } from '../utils/vide
 import { validateEmail, validatePhone, validateBadgeNumber, validateAll } from '../utils/inputValidation';
 import { validateParamId } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
+import { broadcast } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
 
 const execFileAsync = promisify(execFile);
@@ -331,13 +332,14 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
         employee_id, certifications, notes, profile_image,
         created_at, updated_at
       FROM users WHERE id = ?
-    `).get(Number(result.lastInsertRowid));
+    `).get(result.lastInsertRowid);
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'user_created', 'user', ?, ?, ?)
-    `).run(req.user!.userId, Number(result.lastInsertRowid), `Created user: ${username} (${role})`, req.ip || 'unknown');
+    `).run(req.user!.userId, result.lastInsertRowid, `Created user: ${username} (${role})`, req.ip || 'unknown');
 
+    broadcast('personnel', 'user:created', user);
     res.status(201).json(user);
   } catch (error: any) {
     console.error('Create user error:', error?.message || 'Unknown error');
@@ -444,6 +446,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Reque
       FROM users WHERE id = ?
     `).get(req.params.id);
 
+    broadcast('personnel', 'user:updated', updated);
     res.json(updated);
   } catch (error: any) {
     console.error('Update user error:', error?.message || 'Unknown error');
@@ -485,7 +488,7 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
 
     auditLog(req, 'TERMINATE' as any, 'user' as any, Number(req.params.id),
       `Terminated user: ${user.username} (${user.full_name || 'N/A'})`);
-
+    broadcast('personnel', 'user:updated', { id: Number(req.params.id), status: 'terminated' });
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete user error:', error?.message || 'Unknown error');
@@ -684,6 +687,45 @@ router.get('/bodycam-videos/:videoId/download', (req: Request, res: Response) =>
 // These routes are handled via mountScheduleRoutes() in index.ts
 // to avoid /:id route conflicts in this sub-router.
 
+// ─── CSV EXPORT ──────────────────────────────────────────
+
+// GET /api/personnel/export/csv — Export personnel roster
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT id, username, full_name, first_name, last_name, email, role,
+        badge_number, phone, status, rank, department,
+        hire_date, termination_date, shift_preference,
+        employee_id, created_at
+      FROM users
+      WHERE archived_at IS NULL
+      ORDER BY full_name LIMIT 10000
+    `).all();
+    sendCsv(res, 'personnel_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'username', header: 'Username' },
+      { key: 'full_name', header: 'Full Name' },
+      { key: 'first_name', header: 'First Name' },
+      { key: 'last_name', header: 'Last Name' },
+      { key: 'email', header: 'Email' },
+      { key: 'role', header: 'Role' },
+      { key: 'badge_number', header: 'Badge Number' },
+      { key: 'phone', header: 'Phone' },
+      { key: 'status', header: 'Status' },
+      { key: 'rank', header: 'Rank' },
+      { key: 'department', header: 'Department' },
+      { key: 'employee_id', header: 'Employee ID' },
+      { key: 'hire_date', header: 'Hire Date' },
+      { key: 'termination_date', header: 'Termination Date' },
+      { key: 'shift_preference', header: 'Shift Preference' },
+      { key: 'created_at', header: 'Created At' },
+    ], rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Export failed' });
+  }
+});
+
 export default router;
 
 // We export schedule and time routes separately for cleaner organization
@@ -762,7 +804,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         LEFT JOIN users u ON s.officer_id = u.id
         LEFT JOIN properties p ON s.property_id = p.id
         WHERE s.id = ?
-      `).get(Number(result.lastInsertRowid));
+      `).get(result.lastInsertRowid);
 
       res.status(201).json(schedule);
     } catch (error: any) {
@@ -811,12 +853,12 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       db.prepare(`
         INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
         VALUES (?, 'clock_in', 'time_entry', ?, ?, ?)
-      `).run(req.user!.userId, Number(result.lastInsertRowid), isSelf ? 'Clocked in' : `Clocked in ${officerName}`, req.ip || 'unknown');
+      `).run(req.user!.userId, result.lastInsertRowid, isSelf ? 'Clocked in' : `Clocked in ${officerName}`, req.ip || 'unknown');
 
       const entry = db.prepare(`
         SELECT t.*, u.full_name as officer_name, u.badge_number
         FROM time_entries t LEFT JOIN users u ON t.officer_id = u.id WHERE t.id = ?
-      `).get(Number(result.lastInsertRowid));
+      `).get(result.lastInsertRowid);
       res.status(201).json(entry);
     } catch (error: any) {
       console.error('Clock in error:', error?.message || 'Unknown error');
@@ -1149,7 +1191,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         VALUES (?, ?, ?, ?, ?, ?)
       `).run(officer_id, credential_type, credential_number || null, issued_date || null, expiry_date || null, notes || null);
 
-      const credential = db.prepare('SELECT * FROM credentials WHERE id = ?').get(Number(result.lastInsertRowid));
+      const credential = db.prepare('SELECT * FROM credentials WHERE id = ?').get(result.lastInsertRowid);
       res.status(201).json(credential);
     } catch (error: any) {
       console.error('Create credential error:', error?.message || 'Unknown error');
@@ -1423,7 +1465,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         description || null,
       );
 
-      const requirement = db.prepare('SELECT * FROM training_requirements WHERE id = ?').get(Number(result.lastInsertRowid)) as any;
+      const requirement = db.prepare('SELECT * FROM training_requirements WHERE id = ?').get(result.lastInsertRowid) as any;
       let parsedRoles: any = [];
       try { parsedRoles = typeof requirement.required_for_roles === 'string' ? JSON.parse(requirement.required_for_roles) : requirement.required_for_roles; } catch { parsedRoles = []; }
       res.status(201).json({
@@ -1532,7 +1574,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         FROM training_records t
         LEFT JOIN users u ON t.officer_id = u.id
         WHERE t.id = ?
-      `).get(Number(result.lastInsertRowid));
+      `).get(result.lastInsertRowid);
 
       res.status(201).json(record);
     } catch (error: any) {
@@ -1713,7 +1755,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         LEFT JOIN properties p ON d.property_id = p.id
         LEFT JOIN clients c ON p.client_id = c.id
         WHERE d.id = ?
-      `).get(Number(result.lastInsertRowid));
+      `).get(result.lastInsertRowid);
 
       res.status(201).json(deployment);
     } catch (error: any) {
@@ -1904,7 +1946,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         FROM officer_equipment e
         LEFT JOIN users u ON e.officer_id = u.id
         WHERE e.id = ?
-      `).get(Number(result.lastInsertRowid));
+      `).get(result.lastInsertRowid);
 
       res.status(201).json(equipment);
     } catch (error: any) {
@@ -2049,7 +2091,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         FROM body_cameras c
         LEFT JOIN users u ON c.officer_id = u.id
         WHERE c.id = ?
-      `).get(Number(result.lastInsertRowid));
+      `).get(result.lastInsertRowid);
 
       res.status(201).json(camera);
     } catch (error: any) {
@@ -2428,7 +2470,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       console.log(`[Bodycam] Reassembly complete: ${verifiedSize} bytes`);
 
       const relativePath = path.relative(BODYCAM_DIR, finalPath);
-      const user = req.user!;
+      const user = (req as any).user;
 
       const result = db.prepare(`
         INSERT INTO bodycam_videos (camera_id, officer_id, title, file_path, file_size, duration_seconds, mime_type, recorded_at, case_number, classification, notes, uploaded_by)
@@ -2440,7 +2482,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         classification || 'routine', notes || null, String(user?.userId || 'system')
       );
 
-      const videoId = Number(result.lastInsertRowid);
+      const videoId = result.lastInsertRowid;
 
       // Clean up chunk session
       try {
@@ -2556,7 +2598,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
             classification || 'routine', notes || null, String(req.user!.userId)
           );
 
-          const videoId = Number(result.lastInsertRowid);
+          const videoId = result.lastInsertRowid;
 
           const video = db.prepare(`
             SELECT v.*, u.full_name as officer_name, c.camera_id as camera_serial

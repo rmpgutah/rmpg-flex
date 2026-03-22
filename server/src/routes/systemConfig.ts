@@ -4,6 +4,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
+import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 
@@ -150,6 +151,34 @@ router.delete('/config/:id', validateParamId, requireRole('admin', 'manager'), (
     res.json({ message: 'Config item removed' });
   } catch (error: any) {
     console.error('Delete config error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// GET /api/admin/config/export/csv — Export system configuration as CSV
+// ============================================================
+router.get('/config/export/csv', requireRole('admin', 'manager', 'supervisor'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT * FROM system_config
+      WHERE is_active = 1
+      ORDER BY category, sort_order ASC
+    `).all();
+
+    sendCsv(res, `system_config_export_${localNow().slice(0, 10)}.csv`, [
+      { key: 'id', header: 'ID' },
+      { key: 'config_key', header: 'Key' },
+      { key: 'config_value', header: 'Value' },
+      { key: 'category', header: 'Category' },
+      { key: 'sort_order', header: 'Sort Order' },
+      { key: 'is_active', header: 'Active' },
+      { key: 'created_at', header: 'Created At' },
+      { key: 'updated_at', header: 'Updated At' },
+    ], rows);
+  } catch (error: any) {
+    console.error('Export config error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
