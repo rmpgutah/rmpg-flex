@@ -9,6 +9,7 @@ import React, { useState, useEffect } from 'react';
 import { ShieldAlert } from 'lucide-react';
 import FormModal from './FormModal';
 import { useFormDirty } from '../hooks/useFormDirty';
+import { localToday } from '../utils/dateUtils';
 
 // ── Types ─────────────────────────────────────────────────
 
