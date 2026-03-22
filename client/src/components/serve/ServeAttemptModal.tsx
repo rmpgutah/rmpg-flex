@@ -162,7 +162,7 @@ export default function ServeAttemptModal({
       for (const file of toUpload) {
         const formData = new FormData();
         formData.append('file', file);
-        const result = await apiFetch<{ id: string; url: string }>('/api/uploads', {
+        const result = await apiFetch<{ id: string; url: string }>('/uploads', {
           method: 'POST',
           body: formData,
         });

@@ -184,7 +184,7 @@ export default function LeadsTab() {
       if (filterScoreMin) params.set('score_min', filterScoreMin);
       if (filterService) params.set('service_interest', filterService);
       const qs = params.toString();
-      const data = await apiFetch<CrmLead[]>(`/api/crm/leads${qs ? `?${qs}` : ''}`);
+      const data = await apiFetch<CrmLead[]>(`/crm/leads${qs ? `?${qs}` : ''}`);
       if (data) setLeads(Array.isArray(data) ? data : []);
     } catch {
       addToast('Failed to load leads', 'error');
@@ -195,7 +195,7 @@ export default function LeadsTab() {
 
   const fetchPipeline = useCallback(async () => {
     try {
-      const data = await apiFetch<PipelineSummary[]>('/api/crm/leads/pipeline-summary');
+      const data = await apiFetch<PipelineSummary[]>('/crm/leads/pipeline-summary');
       if (data) setPipelineSummary(Array.isArray(data) ? data : []);
     } catch { /* silent */ }
   }, []);
@@ -209,7 +209,7 @@ export default function LeadsTab() {
     setEditNotes(selectedLead.notes || '');
     (async () => {
       try {
-        const data = await apiFetch<CrmLeadActivity[]>(`/api/crm/lead-activity/${selectedLead.id}`);
+        const data = await apiFetch<CrmLeadActivity[]>(`/crm/lead-activity/${selectedLead.id}`);
         if (data) setLeadActivities(data);
       } catch { /* silent */ }
     })();
@@ -221,7 +221,7 @@ export default function LeadsTab() {
   // ── Actions ─────────────────────────────────────────
   const handleStageChange = async (leadId: number | string, stage: PipelineStage) => {
     try {
-      await apiFetch(`/api/crm/leads/${leadId}/stage`, {
+      await apiFetch(`/crm/leads/${leadId}/stage`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ stage }),
@@ -239,7 +239,7 @@ export default function LeadsTab() {
 
   const handleConvert = async (leadId: number | string) => {
     try {
-      const result = await apiFetch<{ client_id: number }>(`/api/crm/leads/${leadId}/convert`, { method: 'POST' });
+      const result = await apiFetch<{ client_id: number }>(`/crm/leads/${leadId}/convert`, { method: 'POST' });
       if (result) {
         addToast('Lead converted to client', 'success');
         fetchLeads();
@@ -255,7 +255,7 @@ export default function LeadsTab() {
     if (!selectedLead) return;
     setSaving(true);
     try {
-      await apiFetch(`/api/crm/leads/${selectedLead.id}`, {
+      await apiFetch(`/crm/leads/${selectedLead.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ notes: editNotes }),
@@ -272,7 +272,7 @@ export default function LeadsTab() {
   const handleAddNote = async () => {
     if (!selectedLead || !newNoteSubject.trim()) return;
     try {
-      await apiFetch('/api/crm/lead-activity', {
+      await apiFetch('/crm/lead-activity', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -285,7 +285,7 @@ export default function LeadsTab() {
       setNewNoteSubject('');
       setNewNoteDetails('');
       // Refresh activities
-      const data = await apiFetch<CrmLeadActivity[]>(`/api/crm/lead-activity/${selectedLead.id}`);
+      const data = await apiFetch<CrmLeadActivity[]>(`/crm/lead-activity/${selectedLead.id}`);
       if (data) setLeadActivities(data);
       addToast('Note added', 'success');
     } catch {
@@ -296,7 +296,7 @@ export default function LeadsTab() {
   const handleBulkAction = async (action: string, assignedTo?: string) => {
     if (selectedIds.size === 0) return;
     try {
-      await apiFetch('/api/crm/leads/bulk-action', {
+      await apiFetch('/crm/leads/bulk-action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -319,7 +319,7 @@ export default function LeadsTab() {
     if (!createForm.business_name.trim()) return;
     setSaving(true);
     try {
-      await apiFetch('/api/crm/leads', {
+      await apiFetch('/crm/leads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

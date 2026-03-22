@@ -190,7 +190,7 @@ export default React.memo(function ServeJobCard({
                 <span className="text-[10px] font-bold text-blue-300 uppercase">Dispatch Link</span>
                 <button
                   className="text-[10px] text-blue-400 hover:text-blue-300 underline"
-                  onClick={(e) => { e.stopPropagation(); window.open(`/dispatch?call=${linkedCall.call_number}`, '_blank'); }}
+                  onClick={(e) => { e.stopPropagation(); window.open(`/dispatch?call=${linkedCall.call_number}`, '_blank', 'noopener,noreferrer'); }}
                 >
                   {linkedCall.call_number}
                 </button>

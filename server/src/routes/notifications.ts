@@ -111,7 +111,7 @@ export function createNotification(
 
     const notification = db.prepare(
       'SELECT * FROM notifications WHERE id = ?'
-    ).get(result.lastInsertRowid);
+    ).get(Number(result.lastInsertRowid));
 
     // Send directly to target user — not broadcast to all clients
     if (notification) sendToUser(userId, 'notification', notification);

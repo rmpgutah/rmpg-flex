@@ -109,7 +109,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
       if (filterSeverity) params.set('severity', filterSeverity);
       if (filterStatus) params.set('status', filterStatus);
       const qs = params.toString();
-      const data = await apiFetch<DisciplinaryRecord[]>(`/api/hr/disciplinary${qs ? `?${qs}` : ''}`);
+      const data = await apiFetch<DisciplinaryRecord[]>(`/hr/disciplinary${qs ? `?${qs}` : ''}`);
       setRecords(data);
     } catch {
       toast.addToast('Failed to load disciplinary records', 'error');
@@ -121,7 +121,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
   // ─── Fetch officers ──────────────────────────────────────
   useEffect(() => {
     if (!manager) return;
-    apiFetch<Array<{ id: number; full_name: string }>>('/api/personnel')
+    apiFetch<Array<{ id: number; full_name: string }>>('/personnel')
       .then(data => {
         // personnel endpoint may return more fields; just keep id & full_name
         setOfficers(data.map((o: any) => ({ id: o.id, full_name: o.full_name })));
@@ -140,7 +140,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
       return;
     }
     setTimelineLoading(true);
-    apiFetch<DisciplinaryRecord[]>(`/api/hr/disciplinary/${selectedOfficerId}/timeline`)
+    apiFetch<DisciplinaryRecord[]>(`/hr/disciplinary/${selectedOfficerId}/timeline`)
       .then(setTimelineRecords)
       .catch(() => toast.addToast('Failed to load timeline', 'error'))
       .finally(() => setTimelineLoading(false));
@@ -160,7 +160,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
   const handleDelete = async (id: number) => {
     if (!confirm('Delete this disciplinary record? This cannot be undone.')) return;
     try {
-      await apiFetch(`/api/hr/disciplinary/${id}`, { method: 'DELETE' });
+      await apiFetch(`/hr/disciplinary/${id}`, { method: 'DELETE' });
       toast.addToast('Record deleted', 'success');
       fetchRecords();
     } catch {
@@ -170,14 +170,14 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
 
   const handleSubmit = async (data: any) => {
     if (editRecord) {
-      await apiFetch(`/api/hr/disciplinary/${editRecord.id}`, {
+      await apiFetch(`/hr/disciplinary/${editRecord.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
       toast.addToast('Record updated', 'success');
     } else {
-      await apiFetch('/api/hr/disciplinary', {
+      await apiFetch('/hr/disciplinary', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),

@@ -101,13 +101,13 @@ router.post('/clients', (req: Request, res: Response) => {
       account_manager || null, priority_client ? 1 : 0, client_since || null,
     );
 
-    const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(result.lastInsertRowid);
+    const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(Number(result.lastInsertRowid));
     if (!client) { res.status(500).json({ error: 'Failed to retrieve created client' }); return; }
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'client_created', 'client', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Created client: ${name}`, req.ip || 'unknown');
+    `).run(req.user!.userId, Number(result.lastInsertRowid), `Created client: ${name}`, req.ip || 'unknown');
 
     res.status(201).json(client);
   } catch (error: any) {
@@ -308,12 +308,12 @@ router.post('/call-templates', (req: Request, res: Response) => {
       sortOrder, req.user!.userId,
     );
 
-    const template = db.prepare('SELECT * FROM call_templates WHERE id = ?').get(result.lastInsertRowid) || { id: result.lastInsertRowid };
+    const template = db.prepare('SELECT * FROM call_templates WHERE id = ?').get(Number(result.lastInsertRowid)) || { id: Number(result.lastInsertRowid) };
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'template_created', 'call_template', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Created call template: ${name}`, req.ip || 'unknown');
+    `).run(req.user!.userId, Number(result.lastInsertRowid), `Created call template: ${name}`, req.ip || 'unknown');
 
     res.status(201).json(template);
   } catch (error: any) {

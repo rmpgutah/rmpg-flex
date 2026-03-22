@@ -373,7 +373,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispa
 
     auditLog(req, 'citation_created', 'citation', Number(result.lastInsertRowid), `Created citation ${citation_number}${person_name ? ` for ${person_name}` : ''}`);
 
-    const created = db.prepare('SELECT * FROM citations WHERE id = ?').get(result.lastInsertRowid);
+    const created = db.prepare('SELECT * FROM citations WHERE id = ?').get(Number(result.lastInsertRowid));
     if (!created) { res.status(500).json({ error: 'Failed to retrieve created citation' }); return; }
 
     // Notify supervisors of citation issued

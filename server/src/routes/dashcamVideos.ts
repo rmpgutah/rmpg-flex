@@ -188,7 +188,7 @@ router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor'
       if (fv) resolvedVehicleId = fv.id;
     }
 
-    const user = (req as any).user;
+    const user = req.user!;
 
     const result = db.prepare(`
       INSERT INTO dashcam_videos
@@ -216,7 +216,7 @@ router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor'
       now, now,
     );
 
-    const id = result.lastInsertRowid;
+    const id = Number(result.lastInsertRowid);
 
     auditLog(req, 'dashcam_uploaded', 'dashcam_video', Number(id), `Uploaded dash cam video: ${title}`);
     broadcast('fleet', 'dashcam_uploaded', { id, title });
@@ -424,7 +424,7 @@ router.post('/:id/links', validateParamId, authenticateToken, requireRole('admin
     const videoId = parseInt(String(req.params.id), 10);
     if (isNaN(videoId)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
     const { entity_type, entity_id, notes } = req.body;
-    const user = (req as any).user;
+    const user = req.user!;
 
     if (!entity_type || !entity_id) {
       res.status(400).json({ error: 'entity_type and entity_id are required' });
@@ -462,7 +462,7 @@ router.post('/:id/links', validateParamId, authenticateToken, requireRole('admin
       `Linked video "${video.title}" to ${entity_type} #${entity_id}`);
     broadcast('fleet', 'dashcam_linked', { video_id: videoId, entity_type, entity_id });
 
-    res.json({ success: true, id: result.lastInsertRowid });
+    res.json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
     console.error('Link dashcam video error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -598,7 +598,7 @@ router.post('/webhook/clearpathgps', webhookUpload.single('video'), (req: Reques
         now, now,
       );
 
-      const videoId = result.lastInsertRowid;
+      const videoId = Number(result.lastInsertRowid);
 
       broadcast('fleet', 'dashcam_uploaded', {
         id: videoId,

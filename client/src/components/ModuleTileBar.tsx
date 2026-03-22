@@ -78,7 +78,7 @@ export default function ModuleTileBar({
         return;
       }
       if (newWindow) {
-        window.open(window.location.origin + path, '_blank');
+        window.open(window.location.origin + path, '_blank', 'noopener,noreferrer');
         return;
       }
       navigate(path);

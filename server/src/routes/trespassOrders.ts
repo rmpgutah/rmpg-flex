@@ -88,6 +88,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       pagination: { page: pageNum, per_page: perPage, total, totalPages: Math.ceil(total / perPage) },
     });
   } catch (err: any) {
+    console.error('Trespass order error:', err?.message || err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -122,6 +123,7 @@ router.get('/check', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
 
     res.json({ orders: rows, count: rows.length });
   } catch (err: any) {
+    console.error('Trespass order error:', err?.message || err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -145,6 +147,7 @@ router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     if (!row) return res.status(404).json({ error: 'Trespass order not found' });
     res.json(row);
   } catch (err: any) {
+    console.error('Trespass order error:', err?.message || err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -153,7 +156,7 @@ router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
 router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const order_number = generateOrderNumber(db);
     const now = localNow();
 
@@ -230,7 +233,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       now, now
     );
 
-    const created = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(result.lastInsertRowid) as any;
+    const created = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(Number(result.lastInsertRowid)) as any;
     if (!created) { res.status(500).json({ error: 'Failed to retrieve created trespass order' }); return; }
     // Broadcast minimal payload — no subject PII over WebSocket
     broadcast('alerts', 'trespass_order_created', {
@@ -249,6 +252,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
     auditLog(req, 'CREATE', 'trespass_order', created.id, `Created trespass order ${created.order_number}`);
     res.status(201).json(created);
   } catch (err: any) {
+    console.error('Trespass order error:', err?.message || err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -292,6 +296,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     auditLog(req, 'UPDATE', 'trespass_order', Number(req.params.id), `Updated trespass order #${req.params.id}`);
     res.json(updated);
   } catch (err: any) {
+    console.error('Trespass order error:', err?.message || err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -300,7 +305,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
 router.put('/:id/serve', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const now = localNow();
     const existing = db.prepare('SELECT id FROM trespass_orders WHERE id = ?').get(req.params.id);
     if (!existing) { res.status(404).json({ error: 'Trespass order not found' }); return; }
@@ -314,6 +319,7 @@ router.put('/:id/serve', validateParamId, requireRole('admin', 'manager', 'super
     auditLog(req, 'UPDATE', 'trespass_order', Number(req.params.id), `Served trespass order #${req.params.id}`);
     res.json(updated);
   } catch (err: any) {
+    console.error('Trespass order error:', err?.message || err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -334,6 +340,7 @@ router.put('/:id/lift', validateParamId, requireRole('admin', 'manager', 'superv
     auditLog(req, 'UPDATE', 'trespass_order', Number(req.params.id), `Lifted trespass order #${req.params.id}`);
     res.json(updated);
   } catch (err: any) {
+    console.error('Trespass order error:', err?.message || err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -354,6 +361,7 @@ router.put('/:id/violate', validateParamId, requireRole('admin', 'manager', 'sup
     auditLog(req, 'UPDATE', 'trespass_order', Number(req.params.id), `Recorded trespass order violation #${req.params.id}`);
     res.json(updated);
   } catch (err: any) {
+    console.error('Trespass order error:', err?.message || err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

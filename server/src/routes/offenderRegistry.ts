@@ -109,7 +109,7 @@ router.get('/check/:personId', requireRole('admin', 'manager', 'supervisor', 'of
       ORDER BY CASE severity WHEN 'danger' THEN 0 WHEN 'warning' THEN 1 WHEN 'caution' THEN 2 ELSE 3 END
     `).all(req.params.personId);
     res.json({ data: alerts });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { console.error('Offender registry error:', error?.message || error); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── GET /:id ────────────────────────────────────────────
@@ -124,7 +124,7 @@ router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     `).get(req.params.id);
     if (!row) return res.status(404).json({ error: 'Alert not found' });
     res.json({ data: row });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { console.error('Offender registry error:', error?.message || error); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── POST / ──────────────────────────────────────────────
@@ -151,10 +151,10 @@ router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, r
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, 'create', 'offender_alert', ?, ?, ?, ?)`).run(
-      req.user!.userId, result.lastInsertRowid, JSON.stringify({ person_id, alert_type, severity }), req.ip || 'unknown', now);
+      req.user!.userId, Number(result.lastInsertRowid), JSON.stringify({ person_id, alert_type, severity }), req.ip || 'unknown', now);
 
-    auditLog(req, 'CREATE' as any, 'offender_alert' as any, result.lastInsertRowid, `Created ${severity} ${alert_type} alert for person ${person_id}`);
-    res.status(201).json({ data: { id: result.lastInsertRowid } });
+    auditLog(req, 'CREATE' as any, 'offender_alert' as any, Number(result.lastInsertRowid), `Created ${severity} ${alert_type} alert for person ${person_id}`);
+    res.status(201).json({ data: { id: Number(result.lastInsertRowid) } });
   } catch (error: any) {
     console.error('Create offender alert error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -191,7 +191,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     db.prepare(`UPDATE offender_alerts SET ${updates.join(', ')} WHERE id = ?`).run(...params);
     auditLog(req, 'UPDATE' as any, 'offender_alert' as any, id, `Updated offender alert ${id}`);
     res.json({ data: { id } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { console.error('Offender registry error:', error?.message || error); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── PUT /:id/clear ──────────────────────────────────────
@@ -212,7 +212,7 @@ router.put('/:id/clear', validateParamId, requireRole('admin', 'manager', 'super
 
     auditLog(req, 'UPDATE' as any, 'offender_alert' as any, id, `Cleared offender alert ${id}`);
     res.json({ data: { id, status: 'cleared' } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { console.error('Offender registry error:', error?.message || error); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 export default router;

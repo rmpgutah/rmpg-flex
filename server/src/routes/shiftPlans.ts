@@ -4,6 +4,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
 import { broadcast } from '../utils/websocket';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 
@@ -207,7 +208,7 @@ router.post('/shift-plans', requireRole('admin', 'manager', 'supervisor'), (req:
 
       db.prepare(`
         INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'shift_plan_updated', 'shift_plan', ?, ?, ?)
+        VALUES (?, 'shift_plan_updated', 'schedule', ?, ?, ?)
       `).run(req.user!.userId, id, `Updated shift plan: ${name}`, req.ip || 'unknown');
     } else {
       // Insert new plan
@@ -228,7 +229,7 @@ router.post('/shift-plans', requireRole('admin', 'manager', 'supervisor'), (req:
 
       db.prepare(`
         INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'shift_plan_created', 'shift_plan', ?, ?, ?)
+        VALUES (?, 'shift_plan_created', 'schedule', ?, ?, ?)
       `).run(req.user!.userId, id, `Created shift plan: ${name}`, req.ip || 'unknown');
     }
 
@@ -240,6 +241,7 @@ router.post('/shift-plans', requireRole('admin', 'manager', 'supervisor'), (req:
     `).get(id) as any;
 
     const parsed = parseAssignments(plan);
+    auditLog(req, existing ? 'UPDATE' : 'CREATE', 'schedule', id, `${existing ? 'Updated' : 'Created'} shift plan: ${name} (${date})`);
     broadcast('admin', existing ? 'shiftPlan:updated' : 'shiftPlan:created', parsed);
     res.status(existing ? 200 : 201).json(parsed);
   } catch (error: any) {
@@ -289,7 +291,7 @@ router.put('/shift-plans/:id', validateParamId, requireRole('admin', 'manager', 
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'shift_plan_updated', 'shift_plan', ?, ?, ?)
+      VALUES (?, 'shift_plan_updated', 'schedule', ?, ?, ?)
     `).run(req.user!.userId, req.params.id, `Updated shift plan: ${existing.name}`, req.ip || 'unknown');
 
     const updated = db.prepare(`
@@ -301,6 +303,7 @@ router.put('/shift-plans/:id', validateParamId, requireRole('admin', 'manager', 
 
     if (!updated) return res.status(404).json({ error: 'Shift plan not found after update' });
     const parsed = parseAssignments(updated);
+    auditLog(req, 'UPDATE', 'schedule', req.params.id, `Updated shift plan: ${existing.name}`);
     broadcast('admin', 'shiftPlan:updated', parsed);
     res.json(parsed);
   } catch (error: any) {
@@ -325,9 +328,10 @@ router.delete('/shift-plans/:id', validateParamId, requireRole('admin', 'manager
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'shift_plan_deleted', 'shift_plan', ?, ?, ?)
+      VALUES (?, 'shift_plan_deleted', 'schedule', ?, ?, ?)
     `).run(req.user!.userId, existing.id, `Deleted shift plan: ${existing.name}`, req.ip || 'unknown');
 
+    auditLog(req, 'DELETE', 'schedule', req.params.id, `Deleted shift plan: ${existing.name}`);
     broadcast('admin', 'shiftPlan:deleted', { id: req.params.id });
     res.json({ message: 'Shift plan deleted' });
   } catch (error: any) {
@@ -364,7 +368,7 @@ router.post('/shift-plans/:id/activate', validateParamId, requireRole('admin', '
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'shift_plan_activated', 'shift_plan', ?, ?, ?)
+      VALUES (?, 'shift_plan_activated', 'schedule', ?, ?, ?)
     `).run(req.user!.userId, req.params.id, `Activated shift plan: ${existing.name} for ${existing.date}`, req.ip || 'unknown');
 
     const updated = db.prepare(`
@@ -375,6 +379,7 @@ router.post('/shift-plans/:id/activate', validateParamId, requireRole('admin', '
     `).get(req.params.id) as any;
 
     const parsed = parseAssignments(updated);
+    auditLog(req, 'UPDATE', 'schedule', req.params.id, `Activated shift plan: ${existing.name} for ${existing.date}`);
     broadcast('admin', 'shiftPlan:activated', parsed);
     res.json(parsed);
   } catch (error: any) {

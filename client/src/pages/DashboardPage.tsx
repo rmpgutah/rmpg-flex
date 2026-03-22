@@ -807,8 +807,8 @@ export default function DashboardPage() {
                       dataKey="value"
                       stroke="none"
                     >
-                      {pieData.map((entry, idx) => (
-                        <Cell key={idx} fill={entry.fill} />
+                      {pieData.map((entry) => (
+                        <Cell key={entry.name} fill={entry.fill} />
                       ))}
                     </Pie>
                     <Tooltip
@@ -1222,8 +1222,8 @@ export default function DashboardPage() {
                     ]}
                   />
                   <Bar dataKey="actions" radius={[0, 3, 3, 0]}>
-                    {chartRows.map((entry, idx) => (
-                      <Cell key={idx} fill={entry.fill} />
+                    {chartRows.map((entry) => (
+                      <Cell key={`${entry.name}-${entry.badge}`} fill={entry.fill} />
                     ))}
                   </Bar>
                 </BarChart>

@@ -71,6 +71,7 @@ export default function CaseManagementPage() {
   const [stats, setStats] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState('');
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -100,6 +101,7 @@ export default function CaseManagementPage() {
 
   const fetchCases = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
+    setFetchError('');
     try {
       const params = new URLSearchParams({
         page: String(page), limit: '50',
@@ -112,7 +114,7 @@ export default function CaseManagementPage() {
       setCases(res.data || []);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
-    } catch { /* silent */ } finally { setLoading(false); }
+    } catch (err: any) { setFetchError(err?.message || 'Failed to load data'); } finally { setLoading(false); }
   }, [page, searchQuery, filterStatus, filterType, filterPriority]);
 
   const fetchStats = useCallback(async () => {
@@ -212,6 +214,13 @@ export default function CaseManagementPage() {
           </button>
           <span className="text-[9px] font-mono text-rmpg-500">{totalCount}</span>
         </PanelTitleBar>
+
+        {fetchError && (
+          <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded text-red-400 text-xs flex items-center gap-2">
+            <span>⚠ {fetchError}</span>
+            <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+          </div>
+        )}
 
         {/* Stats */}
         {stats && (

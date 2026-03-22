@@ -73,6 +73,7 @@ export default function CourtTrackerPage() {
   const [upcoming, setUpcoming] = useState<CourtEvent[]>([]);
   const [selected, setSelected] = useState<CourtEvent | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState('');
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -93,6 +94,7 @@ export default function CourtTrackerPage() {
 
   const fetchEvents = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
+    setFetchError('');
     try {
       const params = new URLSearchParams({
         page: String(page), limit: '50',
@@ -103,7 +105,7 @@ export default function CourtTrackerPage() {
       setEvents(res.data || []);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
-    } catch { /* silent */ } finally { setLoading(false); }
+    } catch (err: any) { setFetchError(err?.message || 'Failed to load data'); } finally { setLoading(false); }
   }, [page, searchQuery, filterType]);
 
   const fetchUpcoming = useCallback(async () => {
@@ -171,6 +173,13 @@ export default function CourtTrackerPage() {
             <Plus style={{ width: 11, height: 11 }} /> New
           </button>
         </PanelTitleBar>
+
+        {fetchError && (
+          <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded text-red-400 text-xs flex items-center gap-2">
+            <span>⚠ {fetchError}</span>
+            <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+          </div>
+        )}
 
         {/* View Toggle */}
         <div className="flex border-b border-rmpg-700">

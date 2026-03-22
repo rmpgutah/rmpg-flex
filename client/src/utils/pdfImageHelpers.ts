@@ -42,12 +42,15 @@ export async function fetchImageAsBase64(
 ): Promise<ResolvedImage | null> {
   try {
     const token = getAuthToken();
-    const url = `/api/uploads/${fileId}?token=${encodeURIComponent(token)}`;
+    const url = `/api/uploads/${fileId}`;
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
     clearTimeout(timeout);
 
     if (!res.ok) return null;
@@ -101,17 +104,16 @@ export async function fetchImageFromUrl(
   fileName = 'photo',
 ): Promise<ResolvedImage | null> {
   try {
-    let url = imageUrl;
+    const url = imageUrl;
     const token = getAuthToken();
-    if (token && !url.includes('token=')) {
-      const sep = url.includes('?') ? '&' : '?';
-      url = `${url}${sep}token=${encodeURIComponent(token)}`;
-    }
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: token ? { 'Authorization': `Bearer ${token}` } : undefined,
+    });
     clearTimeout(timeout);
 
     if (!res.ok) return null;

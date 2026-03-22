@@ -68,6 +68,7 @@ export default function DlSearchPage() {
   const [selected, setSelected] = useState<DlSubject | null>(null);
   const [source, setSource] = useState('');
   const [loading, setLoading] = useState(false);
+  const [fetchError, setFetchError] = useState('');
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [isManualSubmitting, setIsManualSubmitting] = useState(false);
 
@@ -75,6 +76,7 @@ export default function DlSearchPage() {
     if (!lastName.trim() && !dlNumber.trim()) return;
     setLoading(true);
     setSelected(null);
+    setFetchError('');
     try {
       const body: any = {};
       if (firstName.trim()) body.firstName = firstName.trim();
@@ -89,8 +91,9 @@ export default function DlSearchPage() {
       });
       setResults(data.subjects || []);
       setSource(data.source || 'NONE');
-    } catch (err) {
+    } catch (err: any) {
       console.error('DL search error:', err);
+      setFetchError(err?.message || 'Failed to load data');
       addToast('Failed to search driver\'s license records', 'error');
       setResults([]);
       setSource('ERROR');
@@ -165,6 +168,12 @@ export default function DlSearchPage() {
 
   return (
     <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
+      {fetchError && (
+        <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded text-red-400 text-xs flex items-center gap-2">
+          <span>⚠ {fetchError}</span>
+          <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+        </div>
+      )}
       {!isMobile && <PanelTitleBar title="DL Search" icon={CreditCard}>{searchControls}</PanelTitleBar>}
 
       {/* Mobile search bar */}

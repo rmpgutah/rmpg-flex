@@ -91,7 +91,7 @@ router.get('/events/upcoming', requireRole('admin', 'manager', 'supervisor', 'of
       LIMIT 30
     `).all(today, `%${escapeLike(String(userId))}%`, userId);
     res.json({ data: rows });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { console.error('Court event error:', error?.message || error); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── GET /calendar ───────────────────────────────────────
@@ -121,7 +121,7 @@ router.get('/calendar', requireRole('admin', 'manager', 'supervisor', 'officer',
     }
 
     res.json({ data: calendar });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { console.error('Court event error:', error?.message || error); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── GET /events/:id ─────────────────────────────────────
@@ -135,7 +135,7 @@ router.get('/events/:id', validateParamId, requireRole('admin', 'manager', 'supe
     `).get(req.params.id);
     if (!row) return res.status(404).json({ error: 'Court event not found' });
     res.json({ data: row });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { console.error('Court event error:', error?.message || error); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── POST /events ────────────────────────────────────────
@@ -178,8 +178,8 @@ router.post('/events', requireRole('admin', 'manager', 'supervisor', 'officer'),
     const { result, event_number } = createEvent();
 
     auditLog(req, 'CREATE', 'court_event', Number(result.lastInsertRowid), 'Created court event');
-    broadcast('records', 'courtEvent:created', { id: result.lastInsertRowid, event_number, event_type, event_date });
-    res.status(201).json({ data: { id: result.lastInsertRowid, event_number } });
+    broadcast('records', 'courtEvent:created', { id: Number(result.lastInsertRowid), event_number, event_type, event_date });
+    res.status(201).json({ data: { id: Number(result.lastInsertRowid), event_number } });
   } catch (error: any) {
     console.error('Create court event error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -211,7 +211,7 @@ router.put('/events/:id', validateParamId, requireRole('admin', 'manager', 'supe
     auditLog(req, 'UPDATE', 'court_event', String(req.params.id), `Updated court event #${req.params.id}`);
     broadcast('records', 'courtEvent:updated', { id: parseInt(req.params.id as string, 10) });
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { console.error('Court event error:', error?.message || error); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── PUT /events/:id/outcome ─────────────────────────────
@@ -230,7 +230,7 @@ router.put('/events/:id/outcome', validateParamId, requireRole('admin', 'manager
     auditLog(req, 'UPDATE', 'court_event', String(req.params.id), `Recorded court event outcome #${req.params.id}`);
     broadcast('records', 'courtEvent:updated', { id: parseInt(req.params.id as string, 10), outcome, status: 'completed' });
     res.json({ data: { id: parseInt(req.params.id as string, 10), outcome } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { console.error('Court event error:', error?.message || error); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── GET /events/export/csv ─────────────────────────────

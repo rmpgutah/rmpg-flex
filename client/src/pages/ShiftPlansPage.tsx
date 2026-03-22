@@ -5,8 +5,6 @@
 // Uses the useShiftPlanning() hook for all state/CRUD.
 // ============================================================
 
-import React, { useState, useMemo } from 'react';
-import {
   Calendar,
   Plus,
   Trash2,
@@ -23,11 +21,6 @@ import {
   BarChart3,
   Save,
 } from 'lucide-react';
-import { useShiftPlanning, SHIFT_TYPES } from '../hooks/useShiftPlanning';
-import type { ShiftPlan, ShiftType, AreaAssignment } from '../hooks/useShiftPlanning';
-import { useIsMobile } from '../hooks/useIsMobile';
-import StatusBadge from '../components/StatusBadge';
-import { useToast } from '../components/ToastProvider';
 
 // ── Date helpers ───────────────────────────────────────────
 
@@ -37,7 +30,7 @@ function formatDate(dateStr: string) {
 }
 
 function todayStr() {
-  return new Date().toISOString().split('T')[0];
+  return localToday();
 }
 
 // ── Status badge helper ────────────────────────────────────
@@ -501,4 +494,12 @@ export default function ShiftPlansPage() {
       </div>
     </div>
   );
-}
+
+import React, { useState, useMemo } from 'react';
+import {
+import { useShiftPlanning, SHIFT_TYPES } from '../hooks/useShiftPlanning';
+import type { ShiftPlan, ShiftType, AreaAssignment } from '../hooks/useShiftPlanning';
+import { useIsMobile } from '../hooks/useIsMobile';
+import StatusBadge from '../components/StatusBadge';
+import { useToast } from '../components/ToastProvider';
+import { localToday } from '../utils/dateUtils';

@@ -72,6 +72,7 @@ export default function EvidencePropertyPage() {
   const [stats, setStats] = useState<any>(null);
   const [locations, setLocations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState('');
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -108,6 +109,7 @@ export default function EvidencePropertyPage() {
   // ─── Fetchers ──────────────────────────────────────
   const fetchItems = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
+    setFetchError('');
     try {
       const params = new URLSearchParams({
         page: String(page), per_page: '50',
@@ -119,7 +121,7 @@ export default function EvidencePropertyPage() {
       setItems(res.data || []);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
-    } catch { /* silent */ } finally { setLoading(false); }
+    } catch (err: any) { setFetchError(err?.message || 'Failed to load data'); } finally { setLoading(false); }
   }, [page, searchQuery, filterStatus, filterType]);
 
   const fetchStats = useCallback(async () => {
@@ -266,6 +268,13 @@ export default function EvidencePropertyPage() {
             <span className="hidden sm:inline">New Evidence</span>
           </button>
         </PanelTitleBar>
+
+        {fetchError && (
+          <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded text-red-400 text-xs flex items-center gap-2">
+            <span>⚠ {fetchError}</span>
+            <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+          </div>
+        )}
 
         {/* Stats Row */}
         {stats && (

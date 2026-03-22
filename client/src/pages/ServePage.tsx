@@ -82,6 +82,7 @@ export default function ServePage() {
   const [linkedCalls, setLinkedCalls] = useState<Record<number, any>>({});
   const [stats, setStats] = useState<StatsSummary | null>(null);
   const [loading, setLoading] = useState(false);
+  const [fetchError, setFetchError] = useState('');
   const [syncing, setSyncing] = useState(false);
 
   // ── Expanded card tracking ─────────────────────────────────────────
@@ -138,8 +139,9 @@ export default function ServePage() {
 
   const fetchJobs = useCallback(async () => {
     setLoading(true);
+    setFetchError('');
     try {
-      const data = await apiFetch<ServeJob[]>(`/api/process-server?date=${selectedDate}`);
+      const data = await apiFetch<ServeJob[]>(`/process-server?date=${selectedDate}`);
       const fetchedJobs = data || [];
       setJobs(fetchedJobs);
 
@@ -150,7 +152,7 @@ export default function ServePage() {
         await Promise.all(
           jobsWithCalls.map(async (j: any) => {
             try {
-              const call = await apiFetch(`/api/dispatch/calls/${j.call_id}`);
+              const call = await apiFetch(`/dispatch/calls/${j.call_id}`);
               if (call) callMap[j.id] = call;
             } catch {}
           })
@@ -159,8 +161,8 @@ export default function ServePage() {
       } else {
         setLinkedCalls({});
       }
-    } catch {
-      // silently fail — user can retry
+    } catch (err: any) {
+      setFetchError(err?.message || 'Failed to load data');
     } finally {
       setLoading(false);
     }
@@ -168,7 +170,7 @@ export default function ServePage() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const data = await apiFetch<StatsSummary>(`/api/process-server/stats/summary?date=${selectedDate}`);
+      const data = await apiFetch<StatsSummary>(`/process-server/stats/summary?date=${selectedDate}`);
       setStats(data);
     } catch {
       // stats are non-critical
@@ -195,7 +197,7 @@ export default function ServePage() {
   const handleSyncFromSM = useCallback(async () => {
     setSyncing(true);
     try {
-      await apiFetch('/api/process-server/sync-from-sm', { method: 'POST' });
+      await apiFetch('/process-server/sync-from-sm', { method: 'POST' });
       refreshJobs();
     } catch {
       // sync failed
@@ -223,7 +225,7 @@ export default function ServePage() {
 
   const handleFlagAddress = useCallback(async (jobId: number) => {
     try {
-      await apiFetch(`/api/process-server/${jobId}`, {
+      await apiFetch(`/process-server/${jobId}`, {
         method: 'PUT',
         body: JSON.stringify({ notes: 'BAD ADDRESS \u2014 needs verification', status: 'skipped' }),
       });
@@ -254,7 +256,7 @@ export default function ServePage() {
     setRouteData({ orderedIds: orderedJobIds, ...data });
     // Persist sort order to server
     try {
-      await apiFetch('/api/process-server/reorder', {
+      await apiFetch('/process-server/reorder', {
         method: 'PUT',
         body: JSON.stringify({ orderedIds: orderedJobIds }),
       });
@@ -319,12 +321,12 @@ export default function ServePage() {
     setFormSubmitting(true);
     try {
       if (editJob) {
-        await apiFetch(`/api/process-server/${editJob.id}`, {
+        await apiFetch(`/process-server/${editJob.id}`, {
           method: 'PUT',
           body: JSON.stringify(formData),
         });
       } else {
-        await apiFetch('/api/process-server', {
+        await apiFetch('/process-server', {
           method: 'POST',
           body: JSON.stringify({ ...formData, serve_date: selectedDate }),
         });
@@ -495,6 +497,12 @@ export default function ServePage() {
 
   return (
     <div className="flex flex-col h-full bg-surface-base">
+      {fetchError && (
+        <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded text-red-400 text-xs flex items-center gap-2">
+          <span>⚠ {fetchError}</span>
+          <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+        </div>
+      )}
       {/* ─── Header Bar ────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1e3048] bg-[#0d1520] flex-wrap">
         <div className="flex items-center gap-1.5">

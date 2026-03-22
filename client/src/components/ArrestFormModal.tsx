@@ -5,10 +5,6 @@
 // useFormDirty hook, 4-tab layout, EMPTY_FORM constant.
 // ============================================================
 
-import React, { useState, useEffect } from 'react';
-import { ShieldAlert } from 'lucide-react';
-import FormModal from './FormModal';
-import { useFormDirty } from '../hooks/useFormDirty';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -48,7 +44,7 @@ interface ArrestFormModalProps {
 const EMPTY_FORM: ArrestFormData = {
   full_name: '',
   date_of_birth: '',
-  booking_date: new Date().toISOString().split('T')[0],
+  booking_date: localToday(),
   release_date: '',
   county: '',
   status: 'active',
@@ -140,7 +136,7 @@ export default function ArrestFormModal({
         setForm(initial);
         snapshot(initial);
       } else {
-        const fresh = { ...EMPTY_FORM, booking_date: new Date().toISOString().split('T')[0] };
+        const fresh = { ...EMPTY_FORM, booking_date: localToday() };
         setForm(fresh);
         snapshot(fresh);
       }
@@ -397,4 +393,9 @@ export default function ArrestFormModal({
       )}
     </FormModal>
   );
-}
+
+import React, { useState, useEffect } from 'react';
+import { ShieldAlert } from 'lucide-react';
+import FormModal from './FormModal';
+import { useFormDirty } from '../hooks/useFormDirty';
+import { localToday } from '../utils/dateUtils';

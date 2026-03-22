@@ -142,8 +142,8 @@ export default function CrimeAnalysisPage() {
           <div className="panel-surface">
             <PanelTitleBar title="Top Offenses" icon={BarChart3} />
             <div className="p-3 space-y-2">
-              {(data.topOffenses || []).slice(0, 10).map((offense: any, idx: number) => (
-                <div key={idx} className="flex items-center gap-2">
+              {(data.topOffenses || []).slice(0, 10).map((offense: any) => (
+                <div key={offense.offense_type || 'unknown'} className="flex items-center gap-2">
                   <span className="text-[10px] text-rmpg-300 w-32 truncate" title={offense.offense_type}>
                     {offense.offense_type || 'Unknown'}
                   </span>

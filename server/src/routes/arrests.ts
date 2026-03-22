@@ -133,7 +133,7 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
   try {
     const db = getDb();
     const now = localNow();
-    const user = (req as any).user;
+    const user = req.user!;
     const b = req.body;
 
     // Require at minimum a name
@@ -174,7 +174,7 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
       user?.id || null, now, now,
     );
 
-    const newId = result.lastInsertRowid as number;
+    const newId = Number(result.lastInsertRowid) as number;
 
     auditLog(req, 'arrest_created', 'arrest_record', newId,
       `Manual booking: ${fullName}`);
@@ -309,7 +309,7 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
   try {
     const db = getDb();
     const now = localNow();
-    const user = (req as any).user;
+    const user = req.user!;
     const { records, county, agency } = req.body;
 
     if (!Array.isArray(records) || records.length === 0) {

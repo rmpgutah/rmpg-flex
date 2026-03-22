@@ -225,7 +225,7 @@ router.get('/training', requireRole('admin', 'manager', 'supervisor'), (req: Req
 router.post('/health/client-error', authenticateToken, (req: Request, res: Response) => {
   try {
     const { message, componentStack, url, timestamp } = req.body || {};
-    const user = (req as any).user;
+    const user = req.user!;
     console.error(
       `[CLIENT ERROR] user=${user?.username || '?'} url=${url || '?'} time=${timestamp || '?'}`,
       `\n  message: ${message || 'unknown'}`,
@@ -592,16 +592,16 @@ router.post('/announcements', requireRole('admin', 'manager'), (req: Request, re
       now, now,
     );
 
-    const announcement = db.prepare('SELECT * FROM system_announcements WHERE id = ?').get(result.lastInsertRowid);
+    const announcement = db.prepare('SELECT * FROM system_announcements WHERE id = ?').get(Number(result.lastInsertRowid));
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'announcement_created', 'announcement', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Created announcement: ${title}`, req.ip || 'unknown');
+    `).run(req.user!.userId, Number(result.lastInsertRowid), `Created announcement: ${title}`, req.ip || 'unknown');
 
     auditLog(req, 'CREATE' as any, 'system_config' as any, Number(result.lastInsertRowid), `Created announcement: ${title}`);
 
-    res.status(201).json(announcement || { id: result.lastInsertRowid });
+    res.status(201).json(announcement || { id: Number(result.lastInsertRowid) });
   } catch (error: any) {
     console.error('Create announcement error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -963,16 +963,16 @@ router.post('/departments', requireRole('admin', 'manager'), (req: Request, res:
       FROM departments d
       LEFT JOIN users u ON d.manager_id = u.id
       WHERE d.id = ?
-    `).get(result.lastInsertRowid);
+    `).get(Number(result.lastInsertRowid));
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'department_created', 'department', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Created department: ${name}`, req.ip || 'unknown');
+    `).run(req.user!.userId, Number(result.lastInsertRowid), `Created department: ${name}`, req.ip || 'unknown');
 
     auditLog(req, 'CREATE' as any, 'system_config' as any, Number(result.lastInsertRowid), `Created department: ${name}`);
 
-    res.status(201).json(department || { id: result.lastInsertRowid });
+    res.status(201).json(department || { id: Number(result.lastInsertRowid) });
   } catch (error: any) {
     if (error.message?.includes('UNIQUE constraint')) {
       res.status(409).json({ error: 'A department with this name or code already exists' });
@@ -1145,12 +1145,12 @@ router.post('/notification-rules', requireRole('admin', 'manager'), (req: Reques
       FROM notification_rules nr
       LEFT JOIN users u ON nr.created_by = u.id
       WHERE nr.id = ?
-    `).get(result.lastInsertRowid);
+    `).get(Number(result.lastInsertRowid));
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'notification_rule_created', 'notification_rule', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Created notification rule: ${name}`, req.ip || 'unknown');
+    `).run(req.user!.userId, Number(result.lastInsertRowid), `Created notification rule: ${name}`, req.ip || 'unknown');
 
     auditLog(req, 'CREATE' as any, 'system_config' as any, Number(result.lastInsertRowid), `Created notification rule: ${name}`);
 

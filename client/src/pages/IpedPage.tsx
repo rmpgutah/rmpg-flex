@@ -152,6 +152,7 @@ export default function IpedPage() {
     filePath: '', setName: '', category: 'known_bad', hashType: 'md5',
   });
   const [importSubmitting, setImportSubmitting] = useState(false);
+  const [fetchError, setFetchError] = useState('');
 
   // ── Fetch Functions ───────────────────────────────────────
 
@@ -171,6 +172,7 @@ export default function IpedPage() {
 
   const fetchJobs = useCallback(async () => {
     setJobsLoading(true);
+    setFetchError('');
     try {
       const qs = new URLSearchParams({ page: String(jobsPage), limit: '20' });
       if (jobsFilter) qs.set('status', jobsFilter);
@@ -178,6 +180,7 @@ export default function IpedPage() {
       setJobs(data.jobs || []);
       setJobsTotal(data.total || 0);
     } catch (err: any) {
+      setFetchError(err?.message || 'Failed to load data');
       addToast(err.message || 'Failed to load jobs', 'error');
     } finally {
       setJobsLoading(false);
@@ -332,6 +335,13 @@ export default function IpedPage() {
           </button>
         </div>
       </div>
+
+      {fetchError && (
+        <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded text-red-400 text-xs flex items-center gap-2">
+          <span>⚠ {fetchError}</span>
+          <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+        </div>
+      )}
 
       {/* ── Main Content (scrollable) ─────────────────────── */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">

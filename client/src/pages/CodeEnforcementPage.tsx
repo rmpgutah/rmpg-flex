@@ -97,6 +97,7 @@ export default function CodeEnforcementPage() {
 
   // Stats
   const [stats, setStats] = useState<any>(null);
+  const [fetchError, setFetchError] = useState('');
 
   // Forms
   const [vFormOpen, setVFormOpen] = useState(false);
@@ -108,6 +109,7 @@ export default function CodeEnforcementPage() {
   // Fetch violations
   const fetchViolations = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setVLoading(true);
+    setFetchError('');
     try {
       const params = new URLSearchParams({
         page: String(vPage), limit: '50',
@@ -118,7 +120,7 @@ export default function CodeEnforcementPage() {
       setViolations(res.data || []);
       setVTotalPages(res.pagination?.totalPages || 1);
       setVTotalCount(res.pagination?.total || 0);
-    } catch { /* silent */ } finally { setVLoading(false); }
+    } catch (err: any) { setFetchError(err?.message || 'Failed to load data'); } finally { setVLoading(false); }
   }, [vPage, vSearch, vFilterStatus]);
 
   // Fetch tows
@@ -220,6 +222,13 @@ export default function CodeEnforcementPage() {
             New
           </button>
         </PanelTitleBar>
+
+        {fetchError && (
+          <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded text-red-400 text-xs flex items-center gap-2">
+            <span>⚠ {fetchError}</span>
+            <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+          </div>
+        )}
 
         {/* Stats */}
         {stats && (

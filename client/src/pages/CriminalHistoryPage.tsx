@@ -50,17 +50,20 @@ export default function CriminalHistoryPage() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [fetchError, setFetchError] = useState('');
 
   const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) return;
     setLoading(true);
+    setFetchError('');
     try {
       const params = new URLSearchParams({ [searchType]: searchQuery.trim() });
       const data = await apiFetch<any[]>(`/records/persons?${params}`);
       setPersons(data || []);
       setSelectedPerson(null);
       setHistory([]);
-    } catch (err) {
+    } catch (err: any) {
+      setFetchError(err?.message || 'Failed to load data');
       console.error('Person search error:', err);
       addToast('Failed to search persons', 'error');
       setPersons([]);
@@ -169,6 +172,12 @@ export default function CriminalHistoryPage() {
 
   return (
     <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
+      {fetchError && (
+        <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded text-red-400 text-xs flex items-center gap-2">
+          <span>⚠ {fetchError}</span>
+          <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+        </div>
+      )}
       {!isMobile && <PanelTitleBar title="Criminal History" icon={Shield}>
         <div className="flex items-center gap-2">
           <select

@@ -129,6 +129,7 @@ export default function CrmPage() {
     return (saved as CrmSection) || 'dashboard';
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState('');
 
   // Dashboard
   const [stats, setStats] = useState<CrmDashboardStats | null>(null);
@@ -177,6 +178,7 @@ export default function CrmPage() {
 
   // ── Data Fetching ──────────────────────────────────────
   const fetchDashboard = useCallback(async () => {
+    setFetchError('');
     try {
       const [statsRes, activityRes, expiringRes] = await Promise.all([
         apiFetch<CrmDashboardStats>('/crm/dashboard'),
@@ -188,6 +190,7 @@ export default function CrmPage() {
       setExpiringContracts(Array.isArray(expiringRes) ? expiringRes : []);
     } catch (err: any) {
       console.error('CRM dashboard fetch error:', err);
+      setFetchError(err?.message || 'Failed to load data');
     }
   }, []);
 
@@ -412,6 +415,12 @@ export default function CrmPage() {
 
       {/* ── Main Content ──────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {fetchError && (
+          <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded text-red-400 text-xs flex items-center gap-2">
+            <span>⚠ {fetchError}</span>
+            <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+          </div>
+        )}
         {activeSection === 'dashboard' && renderDashboard()}
         {activeSection === 'leads' && <LeadsTab />}
         {activeSection === 'clients' && renderClients()}

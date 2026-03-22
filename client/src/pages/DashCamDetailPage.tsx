@@ -1066,8 +1066,8 @@ export default function DashCamDetailPage() {
               isOpen={sections.linked} onToggle={() => toggleSection('linked')}>
               {otherLinks.length > 0 ? (
                 <div className="space-y-1">
-                  {otherLinks.map((link: any, i: number) => (
-                    <button key={i}
+                  {otherLinks.map((link: any) => (
+                    <button key={`${link.entity_type}-${link.entity_id}`}
                       className="flex items-center gap-2 text-[10px] w-full text-left hover:bg-white/5 px-1 py-0.5 rounded-sm"
                       onClick={() => {
                         if (link.entity_type === 'warrant') navigate(`/warrants/${link.entity_id}`);

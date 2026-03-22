@@ -207,7 +207,7 @@ export default function IncidentsPage() {
     if (!custodyTransfer) return;
     setCustodySubmitting(true);
     try {
-      await apiFetch(`/api/records/evidence/${custodyTransfer.evidenceId}/chain-action`, {
+      await apiFetch(`/records/evidence/${custodyTransfer.evidenceId}/chain-action`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -224,7 +224,7 @@ export default function IncidentsPage() {
       setCustodyNotes('');
       // Refresh evidence for the selected incident
       if (selectedIncident) {
-        const evData = await apiFetch<any>(`/api/records/evidence?incident_id=${selectedIncident.id}`);
+        const evData = await apiFetch<any>(`/records/evidence?incident_id=${selectedIncident.id}`);
         setDetailEvidence(evData?.data || evData || []);
       }
     } catch {
@@ -1589,8 +1589,8 @@ export default function IncidentsPage() {
                         </button>
                         {isExpanded && (
                           <div className="mt-1 ml-3 border-l border-rmpg-600 pl-3 space-y-1.5">
-                            {custodyChain.map((entry: any, idx: number) => (
-                              <div key={idx} className="flex flex-col gap-0.5">
+                            {custodyChain.map((entry: any) => (
+                              <div key={`${entry.timestamp}-${entry.action}`} className="flex flex-col gap-0.5">
                                 <span className="font-mono text-green-400" style={{ fontSize: '9px' }}>
                                   {entry.timestamp ? formatDateTime(entry.timestamp) : 'N/A'}
                                 </span>

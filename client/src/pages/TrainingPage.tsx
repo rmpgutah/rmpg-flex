@@ -65,6 +65,7 @@ export default function TrainingPage() {
   const [requirements, setRequirements] = useState<TrainingRequirement[]>([]);
   const [officers, setOfficers] = useState<Officer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState('');
 
   // Modal state
   const [showRecordModal, setShowRecordModal] = useState(false);
@@ -76,6 +77,7 @@ export default function TrainingPage() {
   useEffect(() => () => { mountedRef.current = false; }, []);
 
   const fetchData = useCallback(async () => {
+    setFetchError('');
     try {
       setLoading(true);
       const [recs, reqs, users] = await Promise.all([
@@ -87,8 +89,9 @@ export default function TrainingPage() {
       setRecords(recs || []);
       setRequirements(reqs || []);
       setOfficers((users || []).filter(u => u.status === 'active'));
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load training data:', err);
+      if (mountedRef.current) setFetchError(err?.message || 'Failed to load data');
     } finally {
       if (mountedRef.current) setLoading(false);
     }
@@ -158,6 +161,12 @@ export default function TrainingPage() {
 
   return (
     <div className="flex flex-col h-full bg-surface-sunken">
+      {fetchError && (
+        <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded text-red-400 text-xs flex items-center gap-2">
+          <span>⚠ {fetchError}</span>
+          <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+        </div>
+      )}
       {/* Header */}
       <div className="panel-beveled border-b border-rmpg-700 p-3 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-2">

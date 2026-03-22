@@ -33,8 +33,11 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
           'Content-Type': 'application/json',
         },
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Setup failed');
+      }
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Setup failed');
       setQrDataUri(data.qrCodeDataUri);
       setManualKey(data.manualKey);
       setStep('scan');
@@ -57,8 +60,11 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
         },
         body: JSON.stringify({ token: verifyCode }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Verification failed');
+      }
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Verification failed');
       setBackupCodes(data.backupCodes);
       setStep('backup');
     } catch (err: any) {

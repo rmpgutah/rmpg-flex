@@ -74,16 +74,12 @@ router.post('/config', requireRole('admin', 'manager'), (req: Request, res: Resp
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(config_key, config_value, category, sortOrder, now, now);
 
-    const item = db.prepare('SELECT * FROM system_config WHERE id = ?').get(result.lastInsertRowid);
+    const item = db.prepare('SELECT * FROM system_config WHERE id = ?').get(Number(result.lastInsertRowid));
     if (!item) { res.status(500).json({ error: 'Failed to retrieve created config' }); return; }
 
     // Log activity
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'config_created', 'system_config', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Added config: ${config_key} = ${config_value}`, req.ip || 'unknown');
-
-    auditLog(req, 'CREATE' as any, 'system_config' as any, Number(result.lastInsertRowid), `Added config: ${config_key} in category ${category}`);
+    auditLog(req, 'CREATE', 'system_config', Number(result.lastInsertRowid),
+      `Added config: ${config_key} = ${/secret|password|token|key|smtp_pass/i.test(config_key) ? '[REDACTED]' : config_value}`);
 
     res.status(201).json(item);
   } catch (error: any) {
@@ -120,13 +116,13 @@ router.put('/config/:id', validateParamId, requireRole('admin', 'manager'), (req
     }
     if (cfgSet.length > 0) {
       cfgSet.push(`updated_at = ?`);
-      cfgVals.push(now, item.id);
+      cfgVals.push(now);
+      cfgVals.push(item.id); // WHERE id = ? must be last parameter
       db.prepare(`UPDATE system_config SET ${cfgSet.join(', ')} WHERE id = ?`).run(...cfgVals);
     }
 
+    auditLog(req, 'UPDATE', 'system_config', item.id, `Updated config: ${item.config_key}`);
     const updated = db.prepare('SELECT * FROM system_config WHERE id = ?').get(item.id);
-
-    auditLog(req, 'UPDATE' as any, 'system_config' as any, item.id, `Updated config #${item.id}: ${item.config_key}`);
 
     res.json(updated);
   } catch (error: any) {
@@ -148,12 +144,8 @@ router.delete('/config/:id', validateParamId, requireRole('admin', 'manager'), (
     const now = localNow();
     db.prepare('UPDATE system_config SET is_active = 0, updated_at = ? WHERE id = ?').run(now, item.id);
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'config_deleted', 'system_config', ?, ?, ?, ?)
-    `).run(req.user!.userId, item.id, `Removed config: ${item.config_key} = ${item.config_value}`, req.ip || 'unknown', now);
-
-    auditLog(req, 'DELETE' as any, 'system_config' as any, item.id, `Removed config: ${item.config_key}`);
+    auditLog(req, 'DELETE', 'system_config', item.id,
+      `Removed config: ${item.config_key} = ${/secret|password|token|key|smtp_pass/i.test(item.config_key) ? '[REDACTED]' : item.config_value}`);
 
     res.json({ message: 'Config item removed' });
   } catch (error: any) {

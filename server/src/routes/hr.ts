@@ -90,7 +90,7 @@ router.get('/dashboard', requireRole('admin', 'manager', 'supervisor'), (_req: R
 router.get('/leave', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const { officer_id, status, type, start_date, end_date } = req.query;
 
     let sql = `SELECT lr.*, u.full_name as officer_name
@@ -101,7 +101,7 @@ router.get('/leave', (req: Request, res: Response) => {
     // Officers see only their own
     if (!isManagerOrAbove(user.role)) {
       sql += ' AND lr.officer_id = ?';
-      params.push(user.id);
+      params.push(user.userId);
     } else if (officer_id) {
       sql += ' AND lr.officer_id = ?';
       params.push(Number(officer_id));
@@ -124,7 +124,7 @@ router.get('/leave', (req: Request, res: Response) => {
 router.post('/leave', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const { type, start_date, end_date, hours_requested, reason } = req.body;
 
     if (!type || !start_date || !end_date) {
@@ -135,12 +135,12 @@ router.post('/leave', (req: Request, res: Response) => {
     const result = db.prepare(
       `INSERT INTO leave_requests (officer_id, type, start_date, end_date, hours_requested, reason, status, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
-    ).run(user.id, type, start_date, end_date, hours_requested || 0, reason || null, now, now);
+    ).run(user.userId, type, start_date, end_date, hours_requested || 0, reason || null, now, now);
 
     auditLog(req, 'CREATE' as any, 'leave_request' as any, Number(result.lastInsertRowid),
       `Leave request created: ${type} ${start_date} to ${end_date}`);
 
-    res.status(201).json({ success: true, id: result.lastInsertRowid });
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
     console.error('[HR] Leave create error:', error?.message);
     res.status(500).json({ error: 'Failed to create leave request' });
@@ -150,12 +150,12 @@ router.post('/leave', (req: Request, res: Response) => {
 router.put('/leave/:id', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const id = Number(req.params.id);
 
     const existing = db.prepare('SELECT * FROM leave_requests WHERE id = ?').get(id) as any;
     if (!existing) return res.status(404).json({ error: 'Leave request not found' });
-    if (existing.officer_id !== user.id) return res.status(403).json({ error: 'Can only update own requests' });
+    if (existing.officer_id !== user.userId) return res.status(403).json({ error: 'Can only update own requests' });
     if (existing.status !== 'pending') return res.status(400).json({ error: 'Can only update pending requests' });
 
     const { type, start_date, end_date, hours_requested, reason } = req.body;
@@ -178,7 +178,7 @@ router.put('/leave/:id', validateParamId, (req: Request, res: Response) => {
 router.post('/leave/:id/approve', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const id = Number(req.params.id);
     const { review_notes } = req.body;
 
@@ -191,7 +191,7 @@ router.post('/leave/:id/approve', validateParamId, requireRole('admin', 'manager
     db.prepare(
       `UPDATE leave_requests SET status = 'approved', reviewed_by = ?, reviewed_at = ?,
        review_notes = ?, updated_at = ? WHERE id = ?`
-    ).run(user.id, now, review_notes || null, now, id);
+    ).run(user.userId, now, review_notes || null, now, id);
 
     // Deduct hours from leave_balances
     const year = new Date(existing.start_date).getFullYear();
@@ -221,7 +221,7 @@ router.post('/leave/:id/approve', validateParamId, requireRole('admin', 'manager
 router.post('/leave/:id/deny', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const id = Number(req.params.id);
     const { review_notes } = req.body;
 
@@ -233,7 +233,7 @@ router.post('/leave/:id/deny', validateParamId, requireRole('admin', 'manager', 
     db.prepare(
       `UPDATE leave_requests SET status = 'denied', reviewed_by = ?, reviewed_at = ?,
        review_notes = ?, updated_at = ? WHERE id = ?`
-    ).run(user.id, now, review_notes || null, now, id);
+    ).run(user.userId, now, review_notes || null, now, id);
 
     auditLog(req, 'UPDATE' as any, 'leave_request' as any, id, `Leave request denied`);
     res.json({ success: true });
@@ -247,7 +247,7 @@ router.post('/leave/:id/deny', validateParamId, requireRole('admin', 'manager', 
 router.post('/leave/bulk-approve', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const { ids, review_notes } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids array is required' });
 
@@ -259,7 +259,7 @@ router.post('/leave/bulk-approve', requireRole('admin', 'manager', 'supervisor')
     );
 
     for (const id of ids) {
-      const result = stmt.run(user.id, now, review_notes || 'Bulk approved', now, Number(id));
+      const result = stmt.run(user.userId, now, review_notes || 'Bulk approved', now, Number(id));
       if (result.changes > 0) {
         approved++;
         // Update balance
@@ -286,12 +286,12 @@ router.post('/leave/bulk-approve', requireRole('admin', 'manager', 'supervisor')
 router.delete('/leave/:id', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const id = Number(req.params.id);
 
     const existing = db.prepare('SELECT * FROM leave_requests WHERE id = ?').get(id) as any;
     if (!existing) return res.status(404).json({ error: 'Leave request not found' });
-    if (existing.officer_id !== user.id) return res.status(403).json({ error: 'Can only cancel own requests' });
+    if (existing.officer_id !== user.userId) return res.status(403).json({ error: 'Can only cancel own requests' });
     if (existing.status !== 'pending') return res.status(400).json({ error: 'Can only cancel pending requests' });
 
     const now = localNow();
@@ -310,7 +310,7 @@ router.delete('/leave/:id', validateParamId, (req: Request, res: Response) => {
 router.get('/leave/balances', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const { officer_id, year } = req.query;
     const targetYear = year ? Number(year) : new Date().getFullYear();
     const now = localNow();
@@ -320,13 +320,13 @@ router.get('/leave/balances', (req: Request, res: Response) => {
       db.prepare(
         `INSERT OR IGNORE INTO leave_balances (officer_id, year, vacation_total, vacation_used, sick_total, sick_used, personal_total, personal_used, created_at, updated_at)
          VALUES (?, ?, 80, 0, 40, 0, 24, 0, ?, ?)`
-      ).run(user.id, targetYear, now, now);
+      ).run(user.userId, targetYear, now, now);
 
       const row = db.prepare(
         `SELECT lb.*, u.full_name as officer_name FROM leave_balances lb
          JOIN users u ON u.id = lb.officer_id
          WHERE lb.officer_id = ? AND lb.year = ?`
-      ).get(user.id, targetYear);
+      ).get(user.userId, targetYear);
       return res.json(row ? [row] : []);
     }
 
@@ -400,7 +400,7 @@ router.put('/leave/balances/:id', validateParamId, requireRole('admin'), (req: R
 router.get('/disciplinary', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const { officer_id, type, severity, status, start_date, end_date } = req.query;
 
     if (!isManagerOrAbove(user.role)) {
@@ -412,7 +412,7 @@ router.get('/disciplinary', (req: Request, res: Response) => {
                  FROM disciplinary_records dr
                  JOIN users u ON u.id = dr.officer_id
                  WHERE dr.officer_id = ?`;
-      const params: any[] = [user.id];
+      const params: any[] = [user.userId];
 
       if (type) { sql += ' AND dr.type = ?'; params.push(type); }
       if (severity) { sql += ' AND dr.severity = ?'; params.push(severity); }
@@ -450,11 +450,11 @@ router.get('/disciplinary', (req: Request, res: Response) => {
 router.get('/disciplinary/:officerId/timeline', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const officerId = Number(req.params.officerId);
 
     // Officers can only see own timeline
-    if (!isManagerOrAbove(user.role) && user.id !== officerId) {
+    if (!isManagerOrAbove(user.role) && user.userId !== officerId) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -489,7 +489,7 @@ router.get('/disciplinary/:officerId/timeline', (req: Request, res: Response) =>
 router.post('/disciplinary', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const { officer_id, type, severity, incident_date, description, action_taken,
             follow_up_date, follow_up_notes, status, witness, attachments } = req.body;
 
@@ -504,12 +504,12 @@ router.post('/disciplinary', requireRole('admin', 'manager'), (req: Request, res
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(officer_id, type || 'verbal_warning', severity || 'minor', incident_date, description,
       action_taken || null, follow_up_date || null, follow_up_notes || null,
-      status || 'open', user.id, witness || null, attachments || '[]', now, now);
+      status || 'open', user.userId, witness || null, attachments || '[]', now, now);
 
     auditLog(req, 'CREATE' as any, 'disciplinary_record' as any, Number(result.lastInsertRowid),
       `Disciplinary record created for officer ${officer_id}: ${type || 'verbal_warning'}`);
 
-    res.status(201).json({ success: true, id: result.lastInsertRowid });
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
     console.error('[HR] Disciplinary create error:', error?.message);
     res.status(500).json({ error: 'Failed to create disciplinary record' });
@@ -571,7 +571,7 @@ router.delete('/disciplinary/:id', validateParamId, requireRole('admin'), (req: 
 router.get('/reviews', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const { officer_id, reviewer_id, type, status } = req.query;
 
     let sql = `SELECT pr.*, u.full_name as officer_name, rv.full_name as reviewer_name
@@ -583,7 +583,7 @@ router.get('/reviews', (req: Request, res: Response) => {
 
     if (!isManagerOrAbove(user.role)) {
       sql += ' AND pr.officer_id = ?';
-      params.push(user.id);
+      params.push(user.userId);
     } else {
       if (officer_id) { sql += ' AND pr.officer_id = ?'; params.push(Number(officer_id)); }
       if (reviewer_id) { sql += ' AND pr.reviewer_id = ?'; params.push(Number(reviewer_id)); }
@@ -611,13 +611,13 @@ router.post('/reviews', requireRole('admin', 'manager', 'supervisor'), (req: Req
     }
 
     const now = localNow();
-    const user = (req as any).user;
+    const user = req.user!;
     const result = db.prepare(
       `INSERT INTO performance_reviews (officer_id, reviewer_id, review_period_start, review_period_end,
        review_date, type, overall_rating, categories, strengths, areas_for_improvement, goals, status,
        created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(officer_id, reviewer_id || user.id, review_period_start, review_period_end,
+    ).run(officer_id, reviewer_id || user.userId, review_period_start, review_period_end,
       review_date || null, type || 'annual', overall_rating || null,
       typeof categories === 'object' ? JSON.stringify(categories) : (categories || '{}'),
       strengths || null, areas_for_improvement || null, goals || null,
@@ -626,7 +626,7 @@ router.post('/reviews', requireRole('admin', 'manager', 'supervisor'), (req: Req
     auditLog(req, 'CREATE' as any, 'performance_review' as any, Number(result.lastInsertRowid),
       `Performance review created for officer ${officer_id}`);
 
-    res.status(201).json({ success: true, id: result.lastInsertRowid });
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
     console.error('[HR] Review create error:', error?.message);
     res.status(500).json({ error: 'Failed to create review' });
@@ -636,7 +636,7 @@ router.post('/reviews', requireRole('admin', 'manager', 'supervisor'), (req: Req
 router.put('/reviews/:id', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const id = Number(req.params.id);
 
     const existing = db.prepare('SELECT * FROM performance_reviews WHERE id = ?').get(id) as any;
@@ -644,7 +644,7 @@ router.put('/reviews/:id', validateParamId, (req: Request, res: Response) => {
 
     // Managers/admins/supervisors can update any; officers can only update own drafts
     if (!isManagerOrAbove(user.role)) {
-      if (existing.officer_id !== user.id || existing.status !== 'draft') {
+      if (existing.officer_id !== user.userId || existing.status !== 'draft') {
         return res.status(403).json({ error: 'Can only update own draft reviews' });
       }
     }
@@ -686,13 +686,13 @@ router.put('/reviews/:id', validateParamId, (req: Request, res: Response) => {
 router.post('/reviews/:id/acknowledge', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const id = Number(req.params.id);
     const { officer_comments } = req.body;
 
     const existing = db.prepare('SELECT * FROM performance_reviews WHERE id = ?').get(id) as any;
     if (!existing) return res.status(404).json({ error: 'Review not found' });
-    if (existing.officer_id !== user.id) return res.status(403).json({ error: 'Can only acknowledge own reviews' });
+    if (existing.officer_id !== user.userId) return res.status(403).json({ error: 'Can only acknowledge own reviews' });
 
     const now = localNow();
     db.prepare(
@@ -766,13 +766,13 @@ router.post('/payroll/periods', requireRole('admin', 'manager'), (req: Request, 
     const { name, start_date, end_date, pay_date } = req.body;
     if (!start_date || !end_date || !pay_date) return res.status(400).json({ error: 'start_date, end_date, and pay_date are required' });
 
-    const userId = (req as any).user?.id;
+    const userId = req.user!.userId;
     const result = db.prepare(
       `INSERT INTO hr_pay_periods (name, start_date, end_date, pay_date, status, created_by) VALUES (?, ?, ?, ?, 'open', ?)`
     ).run(name || `Pay Period ${start_date} - ${end_date}`, start_date, end_date, pay_date, userId);
 
-    const period = db.prepare('SELECT * FROM hr_pay_periods WHERE id = ?').get(result.lastInsertRowid);
-    auditLog(req, 'CREATE' as any, 'hr_pay_period' as any, result.lastInsertRowid, `Created pay period: ${start_date} to ${end_date}`);
+    const period = db.prepare('SELECT * FROM hr_pay_periods WHERE id = ?').get(Number(result.lastInsertRowid));
+    auditLog(req, 'CREATE' as any, 'hr_pay_period' as any, Number(result.lastInsertRowid), `Created pay period: ${start_date} to ${end_date}`);
     res.json(period);
   } catch (error: any) {
     console.error('[HR] Create pay period error:', error?.message);
@@ -862,7 +862,7 @@ router.post('/payroll/rates', requireRole('admin', 'manager'), (req: Request, re
       return res.status(400).json({ error: 'user_id, pay_type, rate, and effective_date are required' });
     }
 
-    const userId = (req as any).user?.id;
+    const userId = req.user!.userId;
 
     // Close any existing active rate for this user
     db.prepare(`UPDATE hr_pay_rates SET end_date = ? WHERE user_id = ? AND end_date IS NULL`).run(effective_date, user_id);
@@ -872,8 +872,8 @@ router.post('/payroll/rates', requireRole('admin', 'manager'), (req: Request, re
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(user_id, pay_type, rate, overtime_rate ?? 1.5, holiday_rate ?? 1.5, effective_date, notes || null, userId);
 
-    const newRate = db.prepare('SELECT pr.*, u.full_name as officer_name FROM hr_pay_rates pr JOIN users u ON u.id = pr.user_id WHERE pr.id = ?').get(result.lastInsertRowid);
-    auditLog(req, 'CREATE' as any, 'hr_pay_rate' as any, result.lastInsertRowid, `Set pay rate for user ${user_id}: ${pay_type} $${rate}`);
+    const newRate = db.prepare('SELECT pr.*, u.full_name as officer_name FROM hr_pay_rates pr JOIN users u ON u.id = pr.user_id WHERE pr.id = ?').get(Number(result.lastInsertRowid));
+    auditLog(req, 'CREATE' as any, 'hr_pay_rate' as any, Number(result.lastInsertRowid), `Set pay rate for user ${user_id}: ${pay_type} $${rate}`);
     res.json(newRate);
   } catch (error: any) {
     console.error('[HR] Create pay rate error:', error?.message);
@@ -954,9 +954,9 @@ router.post('/payroll/entries', requireRole('admin', 'manager'), (req: Request, 
 
     const entry = db.prepare(`
       SELECT pe.*, u.full_name as officer_name FROM hr_payroll_entries pe JOIN users u ON u.id = pe.user_id WHERE pe.id = ?
-    `).get(result.lastInsertRowid);
+    `).get(Number(result.lastInsertRowid));
 
-    auditLog(req, 'CREATE' as any, 'hr_payroll_entry' as any, result.lastInsertRowid, `Payroll entry for user ${user_id}, gross: $${grossPay.toFixed(2)}`);
+    auditLog(req, 'CREATE' as any, 'hr_payroll_entry' as any, Number(result.lastInsertRowid), `Payroll entry for user ${user_id}, gross: $${grossPay.toFixed(2)}`);
     res.json(entry);
   } catch (error: any) {
     console.error('[HR] Create payroll entry error:', error?.message);
@@ -993,7 +993,7 @@ router.put('/payroll/entries/:id', validateParamId, requireRole('admin', 'manage
     const grossPay = basePay + overtimePay + holidayPay;
 
     const now = localNow();
-    const userId = (req as any).user?.id;
+    const userId = req.user!.userId;
 
     db.prepare(`
       UPDATE hr_payroll_entries SET
@@ -1061,8 +1061,8 @@ router.post('/payroll/periods/:id/populate', validateParamId, requireRole('admin
     `);
 
     for (const user of activeUsers) {
-      if (existingIds.has(user.id)) continue;
-      insert.run(user.id, id, user.pay_rate_id ?? null, now, now);
+      if (existingIds.has(user.userId)) continue;
+      insert.run(user.userId, id, user.pay_rate_id ?? null, now, now);
       created++;
     }
 

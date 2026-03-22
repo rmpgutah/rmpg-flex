@@ -448,7 +448,7 @@ router.post('/', uploadRateLimit, upload.array('files', 10), (req: Request, res:
         req.user!.userId,
       );
 
-      const attachment = db.prepare('SELECT * FROM attachments WHERE id = ?').get(result.lastInsertRowid);
+      const attachment = db.prepare('SELECT * FROM attachments WHERE id = ?').get(Number(result.lastInsertRowid));
       if (attachment) results.push(attachment);
     }
 

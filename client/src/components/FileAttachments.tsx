@@ -188,7 +188,7 @@ export default function FileAttachments({
       setPreviewAttachment(attachment);
     } else {
       // Direct download for non-previewable files
-      window.open(authUrl(`/api/uploads/${attachment.file_id}/download`, attachment.access_sig, attachment.access_exp), '_blank');
+      window.open(authUrl(`/api/uploads/${attachment.file_id}/download`, attachment.access_sig, attachment.access_exp), '_blank', 'noopener,noreferrer');
     }
   };
 

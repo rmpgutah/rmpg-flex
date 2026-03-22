@@ -144,7 +144,7 @@ router.post('/calls/:id/unarchive', validateParamId, requireRole('admin', 'manag
     }
 
     const unarchiveTx = db.transaction(() => {
-      db.prepare('UPDATE calls_for_service SET status = ? WHERE id = ?').run('closed', call.id);
+      db.prepare('UPDATE calls_for_service SET status = ?, archived_at = NULL WHERE id = ?').run('closed', call.id);
       db.prepare(`
         INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
         VALUES (?, 'call_unarchived', 'call', ?, ?, ?)
@@ -340,7 +340,7 @@ router.post('/calls/:id/generate-incident', validateParamId, requireRole('admin'
         'INSERT OR IGNORE INTO incident_persons (incident_id, person_id, role, notes, added_by) VALUES (?, ?, ?, ?, ?)'
       );
       for (const cp of callPersons) {
-        insertPerson.run(result.lastInsertRowid, cp.person_id, cp.role, cp.notes, req.user!.userId);
+        insertPerson.run(Number(result.lastInsertRowid), cp.person_id, cp.role, cp.notes, req.user!.userId);
       }
     }
 
@@ -350,14 +350,14 @@ router.post('/calls/:id/generate-incident', validateParamId, requireRole('admin'
       LEFT JOIN users o ON i.officer_id = o.id
       LEFT JOIN calls_for_service c ON i.call_id = c.id
       WHERE i.id = ?
-    `).get(result.lastInsertRowid);
+    `).get(Number(result.lastInsertRowid));
     if (!incident) { res.status(500).json({ error: 'Failed to retrieve created incident' }); return; }
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'incident_created', 'incident', ?, ?, ?)
     `).run(
-      req.user!.userId, result.lastInsertRowid,
+      req.user!.userId, Number(result.lastInsertRowid),
       `Generated ${incidentNumber} from call ${call.call_number}`,
       req.ip || 'unknown'
     );
@@ -446,7 +446,7 @@ router.post('/calls/:id/timeline', validateParamId, requireRole('admin', 'manage
       VALUES (?, ?, 'call', ?, ?, ?, ?)
     `).run(req.user!.userId, action || 'note_added', call.id, details, req.ip || 'unknown', timestamp);
 
-    const entry = db.prepare('SELECT al.*, u.full_name as user_name FROM activity_log al LEFT JOIN users u ON al.user_id = u.id WHERE al.id = ?').get(result.lastInsertRowid);
+    const entry = db.prepare('SELECT al.*, u.full_name as user_name FROM activity_log al LEFT JOIN users u ON al.user_id = u.id WHERE al.id = ?').get(Number(result.lastInsertRowid));
     if (!entry) { res.status(500).json({ error: 'Failed to retrieve created entry' }); return; }
     res.status(201).json(entry);
   } catch (error: any) {

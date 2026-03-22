@@ -229,7 +229,7 @@ async function pollOnce(): Promise<{ synced: number; callsCreated: number }> {
             callData.process_attempts, now, now
           );
 
-          const newCallId = result.lastInsertRowid as number;
+          const newCallId = Number(result.lastInsertRowid) as number;
 
           // Link SM job to prevent future duplicates
           db.prepare('UPDATE sm_jobs SET linked_call_id = ? WHERE id = ?').run(newCallId, job.id);

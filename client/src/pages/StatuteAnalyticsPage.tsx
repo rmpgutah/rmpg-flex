@@ -31,15 +31,18 @@ export default function StatuteAnalyticsPage() {
   const [incidentStatutes, setIncidentStatutes] = useState<StatuteEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [fetchError, setFetchError] = useState('');
 
   const fetchData = useCallback(async () => {
+    setFetchError('');
     try {
       const data = await apiFetch<any>(`/reports/statute-analytics?days=${days}`);
       setTopStatutes(data.topStatutes || []);
       setByLevel(data.byLevel || []);
       setTrend(data.trend || []);
       setIncidentStatutes(data.incidentStatutes || []);
-    } catch (err) {
+    } catch (err: any) {
+      setFetchError(err?.message || 'Failed to load data');
       console.error('Statute analytics error:', err);
     }
     setLoading(false);
@@ -72,6 +75,12 @@ export default function StatuteAnalyticsPage() {
 
   return (
     <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
+      {fetchError && (
+        <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded text-red-400 text-xs flex items-center gap-2">
+          <span>⚠ {fetchError}</span>
+          <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+        </div>
+      )}
       {!isMobile && <PanelTitleBar title="Statute Analytics" icon={BarChart3}>
         <div className="flex items-center gap-2">
           {[30, 60, 90, 180, 365].map(d => (

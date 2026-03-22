@@ -206,7 +206,12 @@ export type AuditAction =
   | 'UPDATE'
   | 'DELETE'
   | 'SEARCH'
-  | 'BLOCK';
+  | 'BLOCK'
+  | 'EXPORT'
+  | 'LOGIN'
+  | 'ADMIN_PASSWORD_RESET'
+  | 'MOVE_EMAIL'
+  | 'CANCEL_EMAIL';
 
 export type AuditEntityType =
   | 'user'
@@ -274,7 +279,33 @@ export type AuditEntityType =
   | 'field_interview'
   | 'trespass_order'
   | 'code_violation'
-  | 'vehicle_tow';
+  | 'vehicle_tow'
+  | 'attachment'
+  | 'case'
+  | 'case_note'
+  | 'company_documents'
+  | 'dar'
+  | 'statute'
+  | 'entity_statute'
+  | 'offender_alert'
+  | 'leave_request'
+  | 'leave_balance'
+  | 'performance_review'
+  | 'disciplinary_record'
+  | 'hr_pay_period'
+  | 'hr_pay_rate'
+  | 'hr_payroll_entry'
+  | 'forensic_tool'
+  | 'forensic_custody'
+  | 'scraper'
+  | 'notification'
+  | 'announcement'
+  | 'department'
+  | 'notification_rule'
+  | 'shift_plan'
+  | 'patrol_checkpoint'
+  | 'invoice_line_item'
+  | 'scheduled_email';
 
 // Sensitive field patterns that must never appear in audit log details
 const SENSITIVE_PATTERNS = [
@@ -310,7 +341,7 @@ export function auditLog(
   req: Request,
   action: AuditAction,
   entityType: AuditEntityType,
-  entityId: string | number,
+  entityId: string | number | bigint,
   details: string,
 ): void {
   try {
@@ -342,7 +373,7 @@ export function auditLog(
 export function auditLogSystem(
   action: AuditAction,
   entityType: AuditEntityType,
-  entityId: string | number,
+  entityId: string | number | bigint,
   details: string,
 ): void {
   try {

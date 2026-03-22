@@ -28,7 +28,10 @@ export default function ResetPasswordPage() {
 
     // Validate token
     fetch(`/api/auth/reset-password/validate?token=${encodeURIComponent(t)}`)
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to validate reset link');
+        return res.json();
+      })
       .then(data => {
         if (data.valid) {
           setTokenValid(true);

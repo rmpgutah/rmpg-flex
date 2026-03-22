@@ -517,6 +517,7 @@ router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: R
       { key: 'created_at', header: 'Created At' },
     ], rows);
   } catch (error: any) {
+    console.error('CRM export error:', error?.message || error);
     res.status(500).json({ error: 'Export failed' });
   }
 });

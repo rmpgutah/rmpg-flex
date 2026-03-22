@@ -170,13 +170,13 @@ router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, r
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
       VALUES (?, 'create', 'sex_offender_registry', ?, ?, ?)`).run(
-      req.user!.userId, result.lastInsertRowid,
+      req.user!.userId, Number(result.lastInsertRowid),
       JSON.stringify({ first_name, last_name, tier, registration_status: registration_status || 'compliant' }), now,
     );
 
     auditLog(req, 'CREATE' as any, 'colorado_doc_offenders' as any, Number(result.lastInsertRowid), `Created SOR entry: ${first_name} ${last_name}`);
 
-    res.status(201).json({ data: { id: result.lastInsertRowid } });
+    res.status(201).json({ data: { id: Number(result.lastInsertRowid) } });
   } catch (error: any) {
     console.error('SOR create error:', error?.message || 'Unknown error');
     if (error.message?.includes('UNIQUE constraint')) {

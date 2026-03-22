@@ -12,6 +12,8 @@ interface PanelTitleBarProps {
   className?: string;
   titleClassName?: string;
   id?: string;
+  statusLed?: string;
+  ledPulse?: boolean;
 }
 
 export default function PanelTitleBar({

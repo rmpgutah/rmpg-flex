@@ -70,9 +70,20 @@ router.get('/stats/summary', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Re
 router.get('/routes/:date', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { date } = req.params;
+    const date = String(req.params.date);
+    // Validate date format to prevent injection via route param
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD.' });
+      return;
+    }
     const parsedOfficerId = req.query.officer_id ? Number(req.query.officer_id) : null;
-    const officerId = (parsedOfficerId != null && !isNaN(parsedOfficerId)) ? parsedOfficerId : req.user!.userId;
+    const officerId = (parsedOfficerId != null && !isNaN(parsedOfficerId) && parsedOfficerId > 0 && Number.isInteger(parsedOfficerId)) ? parsedOfficerId : req.user!.userId;
+
+    // IDOR protection: only supervisors+ can view other officers' routes
+    if (officerId !== req.user!.userId && !['admin', 'manager', 'supervisor', 'dispatcher'].includes(req.user!.role)) {
+      res.status(403).json({ error: 'You can only view your own routes' });
+      return;
+    }
 
     const route = db.prepare(`
       SELECT * FROM serve_routes
@@ -99,6 +110,12 @@ router.post('/routes', requireRole(...WRITE_ROLES), (req: Request, res: Response
 
     if (!officer_id || !route_date) {
       res.status(400).json({ error: 'officer_id and route_date are required' });
+      return;
+    }
+
+    // IDOR protection: only supervisors+ can create/modify routes for other officers
+    if (Number(officer_id) !== req.user!.userId && !['admin', 'manager', 'supervisor', 'dispatcher'].includes(req.user!.role)) {
+      res.status(403).json({ error: 'You can only modify your own routes' });
       return;
     }
 
@@ -265,19 +282,30 @@ router.get('/', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: R
   try {
     const db = getDb();
     const parsedOid = req.query.officer_id ? Number(req.query.officer_id) : null;
-    const officerId = (parsedOid != null && !isNaN(parsedOid)) ? parsedOid : req.user!.userId;
+    let officerId = (parsedOid != null && !isNaN(parsedOid)) ? parsedOid : req.user!.userId;
+
+    // IDOR protection: officers can only list their own queue
+    if (req.user!.role === 'officer' && officerId !== req.user!.userId) {
+      officerId = req.user!.userId;
+    }
+
     const date = req.query.date as string || localToday();
     const status = req.query.status as string | undefined;
 
-    let sql = 'SELECT * FROM serve_queue WHERE officer_id = ? AND serve_date = ?';
+    // Show all pending/in_progress jobs regardless of date (they shouldn't disappear),
+    // plus any jobs matching the selected date
+    let sql = `SELECT * FROM serve_queue WHERE officer_id = ? AND (
+      serve_date = ? OR status IN ('pending', 'in_progress')
+    )`;
     const params: any[] = [officerId, date];
 
-    if (status) {
-      sql += ' AND status = ?';
-      params.push(status);
+    if (status && status !== 'all') {
+      sql = 'SELECT * FROM serve_queue WHERE officer_id = ? AND status = ?';
+      params.length = 0;
+      params.push(officerId, status);
     }
 
-    sql += ' ORDER BY sort_order ASC, priority DESC, deadline ASC';
+    sql += ` ORDER BY sort_order ASC, priority DESC, COALESCE(deadline, '9999-12-31') ASC`;
 
     const rows = db.prepare(sql).all(...params);
     res.json(rows);
@@ -303,6 +331,20 @@ router.post('/', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
 
     if (!recipient_name || !recipient_name.trim()) {
       return res.status(400).json({ error: 'recipient_name is required' });
+    }
+
+    // Validate GPS coordinates if provided
+    if (recipient_lat !== undefined && recipient_lat !== null) {
+      const lat = parseFloat(recipient_lat);
+      if (isNaN(lat) || lat < -90 || lat > 90) {
+        return res.status(400).json({ error: 'recipient_lat must be between -90 and 90' });
+      }
+    }
+    if (recipient_lng !== undefined && recipient_lng !== null) {
+      const lng = parseFloat(recipient_lng);
+      if (isNaN(lng) || lng < -180 || lng > 180) {
+        return res.status(400).json({ error: 'recipient_lng must be between -180 and 180' });
+      }
     }
 
     const info = db.prepare(`
@@ -349,6 +391,12 @@ router.get('/:id', validateParamId, requireRole(...WRITE_ROLES, 'dispatcher'), (
       return;
     }
 
+    // IDOR protection: officers can only view their own assigned jobs
+    if (req.user!.role === 'officer' && job.officer_id && job.officer_id !== req.user!.userId) {
+      res.status(403).json({ error: 'You can only view jobs assigned to you' });
+      return;
+    }
+
     const attempts = db.prepare(
       'SELECT * FROM serve_attempts WHERE serve_queue_id = ? ORDER BY attempt_number ASC'
     ).all(req.params.id);
@@ -382,6 +430,35 @@ router.put('/:id', validateParamId, requireRole(...WRITE_ROLES), (req: Request, 
     if (!existing) {
       res.status(404).json({ error: 'Serve job not found' });
       return;
+    }
+
+    // IDOR protection: officers can only modify their own assigned jobs
+    if (req.user!.role === 'officer' && existing.officer_id && existing.officer_id !== req.user!.userId) {
+      res.status(403).json({ error: 'You can only modify jobs assigned to you' });
+      return;
+    }
+
+    // Validate status enum if provided
+    const VALID_SERVE_STATUSES = ['pending', 'in_progress', 'served', 'failed', 'on_hold', 'cancelled'];
+    if (req.body.status !== undefined && !VALID_SERVE_STATUSES.includes(req.body.status)) {
+      res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_SERVE_STATUSES.join(', ')}` });
+      return;
+    }
+
+    // Validate GPS coordinates if provided
+    if (req.body.recipient_lat !== undefined && req.body.recipient_lat !== null) {
+      const lat = parseFloat(req.body.recipient_lat);
+      if (isNaN(lat) || lat < -90 || lat > 90) {
+        res.status(400).json({ error: 'recipient_lat must be between -90 and 90' });
+        return;
+      }
+    }
+    if (req.body.recipient_lng !== undefined && req.body.recipient_lng !== null) {
+      const lng = parseFloat(req.body.recipient_lng);
+      if (isNaN(lng) || lng < -180 || lng > 180) {
+        res.status(400).json({ error: 'recipient_lng must be between -180 and 180' });
+        return;
+      }
     }
 
     const updatableFields = [
@@ -434,10 +511,30 @@ router.post('/:id/attempt', validateParamId, requireRole(...WRITE_ROLES), (req: 
       return;
     }
 
+    // IDOR protection: officers can only record attempts on their own assigned jobs
+    if (req.user!.role === 'officer' && job.officer_id && job.officer_id !== req.user!.userId) {
+      res.status(403).json({ error: 'You can only record attempts on jobs assigned to you' });
+      return;
+    }
+
     const {
       result, gps_lat, gps_lng, notes, method, recipient_response,
       photo_url, signature_url, mileage,
     } = req.body;
+
+    // Validate GPS coordinates for serve attempt location tracking
+    if (gps_lat !== undefined && gps_lat !== null) {
+      const lat = parseFloat(gps_lat);
+      if (isNaN(lat) || lat < -90 || lat > 90) {
+        return res.status(400).json({ error: 'gps_lat must be between -90 and 90' });
+      }
+    }
+    if (gps_lng !== undefined && gps_lng !== null) {
+      const lng = parseFloat(gps_lng);
+      if (isNaN(lng) || lng < -180 || lng > 180) {
+        return res.status(400).json({ error: 'gps_lng must be between -180 and 180' });
+      }
+    }
 
     // Enforce posting requirements: need 2+ prior failed attempts
     if (result === 'posted') {

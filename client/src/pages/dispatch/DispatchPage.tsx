@@ -2073,7 +2073,7 @@ export default function DispatchPage() {
                             </div>
                             <button
                               className="text-[10px] text-blue-400 hover:text-blue-300 underline"
-                              onClick={() => window.open('/serve', '_blank')}
+                              onClick={() => window.open('/serve', '_blank', 'noopener,noreferrer')}
                             >
                               View in Process Server
                             </button>

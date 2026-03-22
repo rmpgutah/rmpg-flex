@@ -7,8 +7,6 @@
 // multi-source filtering (scraper / manual / CSV import).
 // ============================================================
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import {
   Database, Search, X, Loader2, ChevronDown, ChevronRight,
   Users, UserPlus, UserMinus, UserX, MapPin, Clock, Shield,
   BarChart3, TrendingUp, TrendingDown, Minus, Eye, Plus,
@@ -16,17 +14,6 @@ import {
   ArrowUpDown, ArrowUp, ArrowDown, FileText, ShieldAlert,
   Calendar, Building, Scale,
 } from 'lucide-react';
-import { apiFetch } from '../hooks/useApi';
-import { useLiveSync } from '../hooks/useLiveSync';
-import PanelTitleBar from '../components/PanelTitleBar';
-import EmptyState from '../components/EmptyState';
-import SplitPanel from '../components/SplitPanel';
-import CollapsibleSection from '../components/CollapsibleSection';
-import CriminalHistorySection from '../components/CriminalHistorySection';
-import ArrestFormModal from '../components/ArrestFormModal';
-import type { ArrestFormData } from '../components/ArrestFormModal';
-import { useWebSocket } from '../context/WebSocketContext';
-import { useToast } from '../components/ToastProvider';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -193,7 +180,7 @@ function exportCsv(records: ArrestRecord[]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `arrest-records-${new Date().toISOString().split('T')[0]}.csv`;
+  a.download = `arrest-records-${localToday()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -964,4 +951,18 @@ export default function ArrestRecordsPage() {
       )}
     </div>
   );
-}
+
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import {
+import { apiFetch } from '../hooks/useApi';
+import { useLiveSync } from '../hooks/useLiveSync';
+import PanelTitleBar from '../components/PanelTitleBar';
+import EmptyState from '../components/EmptyState';
+import SplitPanel from '../components/SplitPanel';
+import CollapsibleSection from '../components/CollapsibleSection';
+import CriminalHistorySection from '../components/CriminalHistorySection';
+import ArrestFormModal from '../components/ArrestFormModal';
+import type { ArrestFormData } from '../components/ArrestFormModal';
+import { useWebSocket } from '../context/WebSocketContext';
+import { useToast } from '../components/ToastProvider';
+import { localToday } from '../utils/dateUtils';

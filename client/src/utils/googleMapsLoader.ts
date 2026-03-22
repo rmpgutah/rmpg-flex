@@ -552,3 +552,23 @@ export function printWithLightMaps(): void {
     });
   }
 }
+
+/** Switch a map to offline tile mode. Returns the previous mapTypeId for restoration. */
+export function switchToOfflineMode(map: google.maps.Map): string | null {
+  try {
+    const prev = map.getMapTypeId() as string;
+    // Force map to roadmap so offline CartoDB tiles show through
+    map.setMapTypeId('roadmap');
+    return prev;
+  } catch {
+    return null;
+  }
+}
+
+/** Restore a map from offline mode to its previous map type and styles. */
+export function restoreFromOfflineMode(map: google.maps.Map, prevMapType: string, styles: google.maps.MapTypeStyle[]): void {
+  try {
+    map.setMapTypeId(prevMapType || 'roadmap');
+    map.setOptions({ styles });
+  } catch { /* ignore */ }
+}

@@ -1,5 +1,3 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import {
   Radio,
   Mic,
   MicOff,
@@ -19,13 +17,6 @@ import {
   Play,
   Square,
 } from 'lucide-react';
-import { useRadio } from '../hooks/useRadio';
-import { usePrivateCall } from '../hooks/usePrivateCall';
-import { useAuth } from '../context/AuthContext';
-import { useIsMobile } from '../hooks/useIsMobile';
-import { apiFetch } from '../hooks/useApi';
-import { useLiveSync } from '../hooks/useLiveSync';
-import { useToast } from '../components/ToastProvider';
 
 // ============================================================
 // RMPG Flex — RadioPage
@@ -137,6 +128,7 @@ export default function RadioPage() {
   const [historySearch, setHistorySearch] = useState('');
   const [historyChannel, setHistoryChannel] = useState('');
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [fetchError, setFetchError] = useState('');
 
   // ─── Audio Playback ───────────────────────────────────
   const [playingId, setPlayingId] = useState<string | number | null>(null);
@@ -223,13 +215,15 @@ export default function RadioPage() {
 
   const fetchHistory = useCallback(async () => {
     setHistoryLoading(true);
+    setFetchError('');
     try {
       const params = new URLSearchParams({ limit: '100' });
       if (historyChannel) params.set('channel', historyChannel);
       if (historySearch) params.set('search', historySearch);
       const result = await apiFetch<{ data: any[]; total: number }>(`/comms/radio/transcripts?${params.toString()}`);
       setHistoryEntries(result.data || []);
-    } catch {
+    } catch (err: any) {
+      setFetchError(err?.message || 'Failed to load data');
       setHistoryEntries([]);
     } finally {
       setHistoryLoading(false);
@@ -252,7 +246,7 @@ export default function RadioPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `radio-transcripts-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `radio-transcripts-${localToday()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -514,6 +508,12 @@ export default function RadioPage() {
 
   return (
     <div className="h-full flex flex-col" style={{ background: '#141e2b' }}>
+      {fetchError && (
+        <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded text-red-400 text-xs flex items-center gap-2">
+          <span>⚠ {fetchError}</span>
+          <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+        </div>
+      )}
 
       {/* ─── HTTPS Warning Banner ────────────────────────────── */}
       {!micSupported && (
@@ -1119,4 +1119,14 @@ export default function RadioPage() {
       `}</style>
     </div>
   );
-}
+
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import {
+import { useRadio } from '../hooks/useRadio';
+import { usePrivateCall } from '../hooks/usePrivateCall';
+import { useAuth } from '../context/AuthContext';
+import { useIsMobile } from '../hooks/useIsMobile';
+import { apiFetch } from '../hooks/useApi';
+import { useLiveSync } from '../hooks/useLiveSync';
+import { useToast } from '../components/ToastProvider';
+import { localToday } from '../utils/dateUtils';

@@ -1,5 +1,3 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import {
   Mail, Inbox, Send, Trash2, Archive, RefreshCw, Loader2,
   Search, Reply, ReplyAll, Forward, Paperclip, X, ChevronLeft,
   AlertTriangle, Download, Eye, Flag, MailOpen, Plus,
@@ -11,11 +9,6 @@ import {
   Link2, Unlink, CalendarClock, Filter, SlidersHorizontal,
   ExternalLink, Shield, Hash, Upload,
 } from 'lucide-react';
-import { apiFetch } from '../hooks/useApi';
-import { useWebSocket } from '../context/WebSocketContext';
-import { useLiveSync } from '../hooks/useLiveSync';
-import type { EmailMessage, EmailFolder, EmailAttachment } from '../types';
-import { useToast } from '../components/ToastProvider';
 
 // ─── Well-known folder config ───
 const WELL_KNOWN_FOLDERS = ['Inbox', 'Drafts', 'Sent Items', 'Deleted Items', 'Junk Email', 'Archive'];
@@ -361,7 +354,7 @@ function ScheduleSendModal({ onSchedule, onClose }: { onSchedule: (dateTime: str
             <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider block mb-2">Custom Date & Time</span>
             <div className="flex items-center gap-2">
               <input type="date" value={date} onChange={e => setDate(e.target.value)}
-                className="input-dark text-xs flex-1" min={new Date().toISOString().split('T')[0]} />
+                className="input-dark text-xs flex-1" min={localToday()} />
               <input type="time" value={time} onChange={e => setTime(e.target.value)}
                 className="input-dark text-xs w-28" />
             </div>
@@ -2471,4 +2464,12 @@ export default function EmailPage() {
       )}
     </div>
   );
-}
+
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import {
+import { apiFetch } from '../hooks/useApi';
+import { useWebSocket } from '../context/WebSocketContext';
+import { useLiveSync } from '../hooks/useLiveSync';
+import type { EmailMessage, EmailFolder, EmailAttachment } from '../types';
+import { useToast } from '../components/ToastProvider';
+import { localToday } from '../utils/dateUtils';
