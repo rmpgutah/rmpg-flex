@@ -16,6 +16,7 @@ import { useWebSocket } from '../context/WebSocketContext';
 import { useLiveSync } from '../hooks/useLiveSync';
 import type { EmailMessage, EmailFolder, EmailAttachment } from '../types';
 import { useToast } from '../components/ToastProvider';
+import { localToday } from '../utils/dateUtils';
 
 // ─── Well-known folder config ───
 const WELL_KNOWN_FOLDERS = ['Inbox', 'Drafts', 'Sent Items', 'Deleted Items', 'Junk Email', 'Archive'];
@@ -318,7 +319,7 @@ function ScheduleSendModal({ onSchedule, onClose }: { onSchedule: (dateTime: str
   useEffect(() => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    setDate(tomorrow.toISOString().split('T')[0]);
+    setDate(dateToLocalYMD(tomorrow));
   }, []);
 
   const handleSchedule = () => {
@@ -349,7 +350,7 @@ function ScheduleSendModal({ onSchedule, onClose }: { onSchedule: (dateTime: str
               {presets.map(preset => {
                 const d = preset.getDate();
                 return (
-                  <button key={preset.label} onClick={() => { setDate(d.toISOString().split('T')[0]); setTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`); }}
+                  <button key={preset.label} onClick={() => { setDate(dateToLocalYMD(d)); setTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`); }}
                     className="text-left px-2 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/10 hover:text-white rounded transition-colors">
                     {preset.label}
                   </button>
