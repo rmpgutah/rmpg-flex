@@ -61,6 +61,62 @@ export function validateString(value: unknown, fieldName: string, maxLength = 50
 }
 
 /**
+ * Validate a date string is in YYYY-MM-DD format and parses correctly.
+ */
+export function validateDate(date: unknown, fieldName = 'Date', required = false): string | null {
+  if (date === null || date === undefined || date === '') {
+    return required ? `${fieldName} is required` : null;
+  }
+  if (typeof date !== 'string') return `${fieldName} must be a string`;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return `${fieldName} must be in YYYY-MM-DD format`;
+  if (isNaN(new Date(date + 'T00:00:00').getTime())) return `${fieldName} is not a valid date`;
+  return null;
+}
+
+/**
+ * Validate GPS coordinates are within valid ranges.
+ */
+export function validateCoordinates(lat: unknown, lng: unknown, required = false): string | null {
+  if ((lat === null || lat === undefined) && (lng === null || lng === undefined)) {
+    return required ? 'Coordinates are required' : null;
+  }
+  if (lat !== null && lat !== undefined) {
+    const latNum = parseFloat(String(lat));
+    if (isNaN(latNum) || latNum < -90 || latNum > 90) return 'Latitude must be between -90 and 90';
+  }
+  if (lng !== null && lng !== undefined) {
+    const lngNum = parseFloat(String(lng));
+    if (isNaN(lngNum) || lngNum < -180 || lngNum > 180) return 'Longitude must be between -180 and 180';
+  }
+  return null;
+}
+
+/**
+ * Validate a numeric value is within a range.
+ */
+export function validateNumber(value: unknown, fieldName: string, min = -Infinity, max = Infinity, required = false): string | null {
+  if (value === null || value === undefined || value === '') {
+    return required ? `${fieldName} is required` : null;
+  }
+  const num = parseFloat(String(value));
+  if (isNaN(num) || !isFinite(num)) return `${fieldName} must be a valid number`;
+  if (num < min || num > max) return `${fieldName} must be between ${min} and ${max}`;
+  return null;
+}
+
+/**
+ * Validate a positive integer (for IDs, counts, etc.)
+ */
+export function validatePositiveInt(value: unknown, fieldName = 'Value', required = false): string | null {
+  if (value === null || value === undefined || value === '') {
+    return required ? `${fieldName} is required` : null;
+  }
+  const num = parseInt(String(value), 10);
+  if (isNaN(num) || num < 1) return `${fieldName} must be a positive integer`;
+  return null;
+}
+
+/**
  * Run multiple validators. Returns first error found, or null if all pass.
  */
 export function validateAll(...errors: (string | null)[]): string | null {

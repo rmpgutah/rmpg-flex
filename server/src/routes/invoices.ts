@@ -283,7 +283,7 @@ router.get('/:id', validateParamId, requireRole('admin', 'manager', 'contract_ma
 router.post('/', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const now = localNow();
     const { client_id, period_start, period_end, issue_date, notes, internal_notes } = req.body;
 
@@ -560,7 +560,7 @@ router.post('/:id/generate', validateParamId, requireRole('admin', 'manager', 'c
 router.put('/:id', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const now = localNow();
 
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
@@ -619,7 +619,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'contract_ma
 router.put('/:id/status', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const now = localNow();
     const { status } = req.body;
 
@@ -692,6 +692,13 @@ router.post('/:id/line-items', validateParamId, requireRole('admin', 'manager', 
 
     const qty = quantity ?? 1;
     const price = unit_price ?? 0;
+    // Validate financial fields
+    if (typeof qty !== 'number' || isNaN(qty) || qty < 0) {
+      return res.status(400).json({ error: 'quantity must be a non-negative number' });
+    }
+    if (typeof price !== 'number' || isNaN(price)) {
+      return res.status(400).json({ error: 'unit_price must be a valid number' });
+    }
     const amount = Math.round(qty * price * 100) / 100;
 
     // Get max sort order
@@ -780,7 +787,7 @@ router.delete('/:id/line-items/:itemId', validateParamId, requireRole('admin', '
 router.post('/:id/payments', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const now = localNow();
 
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
@@ -791,10 +798,22 @@ router.post('/:id/payments', validateParamId, requireRole('admin', 'manager'), (
       return res.status(400).json({ error: 'amount and payment_date are required' });
     }
 
+    // Validate payment amount
+    const payAmt = parseFloat(amount);
+    if (isNaN(payAmt) || payAmt <= 0 || payAmt > 9999999.99) {
+      return res.status(400).json({ error: 'amount must be a positive number (max $9,999,999.99)' });
+    }
+
+    // Validate payment_date format
+    const dateRx = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRx.test(String(payment_date)) || isNaN(new Date(String(payment_date)).getTime())) {
+      return res.status(400).json({ error: 'payment_date must be in YYYY-MM-DD format' });
+    }
+
     const result = db.prepare(`
       INSERT INTO payments (invoice_id, amount, payment_date, payment_method, reference_number, notes, recorded_by, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(req.params.id, amount, payment_date, payment_method || null, reference_number || null, notes || null, user.userId, now);
+    `).run(req.params.id, payAmt, payment_date, payment_method || null, reference_number || null, notes || null, user.userId, now);
 
     // Recalculate totals
     recalculateInvoiceTotals(req.params.id);
@@ -831,7 +850,7 @@ router.post('/:id/payments', validateParamId, requireRole('admin', 'manager'), (
 router.delete('/:id/payments/:paymentId', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const now = localNow();
 
     const payment = db.prepare(

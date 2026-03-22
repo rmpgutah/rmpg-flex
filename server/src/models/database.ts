@@ -4414,6 +4414,22 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_criminal_history_type ON criminal_history(record_type);
     CREATE INDEX IF NOT EXISTS idx_criminal_history_date ON criminal_history(offense_date);
 
+    -- Composite indexes for common query patterns
+    CREATE INDEX IF NOT EXISTS idx_incidents_status_created ON incidents(status, created_at);
+    CREATE INDEX IF NOT EXISTS idx_calls_status_priority ON calls_for_service(status, priority);
+    CREATE INDEX IF NOT EXISTS idx_calls_status_created ON calls_for_service(status, created_at);
+    CREATE INDEX IF NOT EXISTS idx_time_entries_officer_status ON time_entries(officer_id, status);
+    CREATE INDEX IF NOT EXISTS idx_schedules_officer_date ON schedules(officer_id, shift_date);
+    CREATE INDEX IF NOT EXISTS idx_evidence_collected_by ON evidence(collected_by);
+
+    -- Activity log integrity + query indexes
+    CREATE INDEX IF NOT EXISTS idx_activity_log_hash ON activity_log(log_hash);
+
+    -- Dispatch/GPS FK indexes
+    CREATE INDEX IF NOT EXISTS idx_calls_property ON calls_for_service(property_id);
+    CREATE INDEX IF NOT EXISTS idx_calls_dispatcher ON calls_for_service(dispatcher_id);
+    CREATE INDEX IF NOT EXISTS idx_units_current_call ON units(current_call_id);
+
     -- GPS breadcrumb indexes
     CREATE INDEX IF NOT EXISTS idx_breadcrumbs_unit_time ON gps_breadcrumbs(unit_id, recorded_at);
     CREATE INDEX IF NOT EXISTS idx_breadcrumbs_officer ON gps_breadcrumbs(officer_id);
