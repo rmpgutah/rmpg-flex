@@ -1074,4 +1074,116 @@ router.post('/payroll/periods/:id/populate', validateParamId, requireRole('admin
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// CSV Exports
+// ═══════════════════════════════════════════════════════════════════════════════
+
+router.get('/leave/export/csv', requireRole('admin', 'manager', 'supervisor'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT lr.*, u.full_name as officer_name, r.full_name as reviewer_name
+      FROM leave_requests lr JOIN users u ON u.id = lr.officer_id
+      LEFT JOIN users r ON r.id = lr.reviewed_by
+      ORDER BY lr.created_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'leave-requests.csv', [
+      { key: 'officer_name', header: 'Employee' },
+      { key: 'type', header: 'Leave Type' },
+      { key: 'start_date', header: 'Start Date' },
+      { key: 'end_date', header: 'End Date' },
+      { key: 'hours_requested', header: 'Hours' },
+      { key: 'reason', header: 'Reason' },
+      { key: 'status', header: 'Status' },
+      { key: 'reviewer_name', header: 'Reviewed By' },
+      { key: 'created_at', header: 'Submitted' },
+    ], rows);
+  } catch (error: any) {
+    console.error('[HR] Leave CSV export error:', error?.message);
+    res.status(500).json({ error: 'Export failed' });
+  }
+});
+
+router.get('/disciplinary/export/csv', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT dr.*, u.full_name as officer_name, ib.full_name as issued_by_name
+      FROM disciplinary_records dr JOIN users u ON u.id = dr.officer_id
+      LEFT JOIN users ib ON ib.id = dr.issued_by
+      ORDER BY dr.created_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'disciplinary-records.csv', [
+      { key: 'officer_name', header: 'Employee' },
+      { key: 'type', header: 'Type' },
+      { key: 'severity', header: 'Severity' },
+      { key: 'incident_date', header: 'Incident Date' },
+      { key: 'description', header: 'Description' },
+      { key: 'action_taken', header: 'Action Taken' },
+      { key: 'status', header: 'Status' },
+      { key: 'issued_by_name', header: 'Issued By' },
+      { key: 'created_at', header: 'Created' },
+    ], rows);
+  } catch (error: any) {
+    console.error('[HR] Disciplinary CSV export error:', error?.message);
+    res.status(500).json({ error: 'Export failed' });
+  }
+});
+
+router.get('/reviews/export/csv', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT pr.*, u.full_name as officer_name, rv.full_name as reviewer_name
+      FROM performance_reviews pr JOIN users u ON u.id = pr.officer_id
+      LEFT JOIN users rv ON rv.id = pr.reviewer_id
+      ORDER BY pr.created_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'performance-reviews.csv', [
+      { key: 'officer_name', header: 'Employee' },
+      { key: 'type', header: 'Review Type' },
+      { key: 'review_period_start', header: 'Period Start' },
+      { key: 'review_period_end', header: 'Period End' },
+      { key: 'overall_rating', header: 'Overall Rating' },
+      { key: 'status', header: 'Status' },
+      { key: 'reviewer_name', header: 'Reviewer' },
+      { key: 'review_date', header: 'Review Date' },
+    ], rows);
+  } catch (error: any) {
+    console.error('[HR] Reviews CSV export error:', error?.message);
+    res.status(500).json({ error: 'Export failed' });
+  }
+});
+
+router.get('/payroll/export/csv', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { pay_period_id } = req.query;
+    if (!pay_period_id) return res.status(400).json({ error: 'pay_period_id required' });
+    const rows = db.prepare(`
+      SELECT pe.*, u.full_name as officer_name, u.badge_number
+      FROM hr_payroll_entries pe JOIN users u ON u.id = pe.user_id
+      WHERE pe.pay_period_id = ? ORDER BY u.full_name
+    `).all(Number(pay_period_id));
+    sendCsv(res, 'payroll.csv', [
+      { key: 'officer_name', header: 'Employee' },
+      { key: 'badge_number', header: 'Badge' },
+      { key: 'regular_hours', header: 'Reg Hours' },
+      { key: 'overtime_hours', header: 'OT Hours' },
+      { key: 'holiday_hours', header: 'Holiday Hours' },
+      { key: 'pto_hours', header: 'PTO Hours' },
+      { key: 'sick_hours', header: 'Sick Hours' },
+      { key: 'base_pay', header: 'Base Pay' },
+      { key: 'overtime_pay', header: 'OT Pay' },
+      { key: 'holiday_pay', header: 'Holiday Pay' },
+      { key: 'gross_pay', header: 'Gross Pay' },
+      { key: 'net_pay', header: 'Net Pay' },
+      { key: 'status', header: 'Status' },
+    ], rows);
+  } catch (error: any) {
+    console.error('[HR] Payroll CSV export error:', error?.message);
+    res.status(500).json({ error: 'Export failed' });
+  }
+});
+
 export default router;

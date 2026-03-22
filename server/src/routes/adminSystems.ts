@@ -8,6 +8,7 @@ import { getConnectedClientCount } from '../utils/websocket';
 import { createNotification } from './notifications';
 import { sendNotificationEmail } from '../utils/emailSender';
 import { auditLog } from '../utils/auditLogger';
+import { sendCsv } from '../utils/csvExport';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -1324,6 +1325,39 @@ router.post('/notification-rules/:id/test', validateParamId, requireRole('admin'
     res.json({ message: `Test notification sent to ${sentCount} user(s)`, sent_to: targetUserIds });
   } catch (error: any) {
     console.error('Test notification rule error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// GET /announcements/export/csv — Export announcements as CSV
+// ============================================================
+router.get('/announcements/export/csv', requireRole('admin', 'manager', 'supervisor'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT sa.*, u.full_name as created_by_name
+      FROM system_announcements sa
+      LEFT JOIN users u ON sa.created_by = u.id
+      ORDER BY sa.created_at DESC
+    `).all();
+
+    sendCsv(res, `announcements_export_${localNow().slice(0, 10)}.csv`, [
+      { key: 'id', header: 'ID' },
+      { key: 'title', header: 'Title' },
+      { key: 'body', header: 'Body' },
+      { key: 'type', header: 'Type' },
+      { key: 'priority', header: 'Priority' },
+      { key: 'target_roles', header: 'Target Roles' },
+      { key: 'is_active', header: 'Active' },
+      { key: 'starts_at', header: 'Starts At' },
+      { key: 'expires_at', header: 'Expires At' },
+      { key: 'created_by_name', header: 'Created By' },
+      { key: 'created_at', header: 'Created At' },
+      { key: 'updated_at', header: 'Updated At' },
+    ], rows);
+  } catch (error: any) {
+    console.error('Export announcements error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -623,4 +623,45 @@ router.post('/webhook/clearpathgps', webhookUpload.single('video'), (req: Reques
   }
 });
 
+// ─── CSV EXPORT ──────────────────────────────────────────
+
+// GET /api/fleet/dashcam-videos/export/csv — Export dashcam video metadata
+router.get('/export/csv', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT v.id, v.title, v.file_size, v.duration_seconds, v.mime_type,
+        v.recorded_at, v.case_number, v.classification, v.speed_mph,
+        v.latitude, v.longitude, v.address, v.source, v.uploaded_by,
+        v.notes, v.created_at,
+        fv.vehicle_number, u.call_sign as unit_call_sign
+      FROM dashcam_videos v
+      LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
+      LEFT JOIN units u ON v.unit_id = u.id
+      ORDER BY v.recorded_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'dashcam_videos_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'title', header: 'Title' },
+      { key: 'vehicle_number', header: 'Vehicle' },
+      { key: 'unit_call_sign', header: 'Unit' },
+      { key: 'recorded_at', header: 'Recorded At' },
+      { key: 'case_number', header: 'Case Number' },
+      { key: 'classification', header: 'Classification' },
+      { key: 'duration_seconds', header: 'Duration (sec)' },
+      { key: 'file_size', header: 'File Size (bytes)' },
+      { key: 'speed_mph', header: 'Speed (mph)' },
+      { key: 'latitude', header: 'Latitude' },
+      { key: 'longitude', header: 'Longitude' },
+      { key: 'address', header: 'Address' },
+      { key: 'source', header: 'Source' },
+      { key: 'uploaded_by', header: 'Uploaded By' },
+      { key: 'notes', header: 'Notes' },
+      { key: 'created_at', header: 'Created At' },
+    ], rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Export failed' });
+  }
+});
+
 export default router;

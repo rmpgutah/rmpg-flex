@@ -24,6 +24,7 @@ import type { User, UserRole } from '../../types';
 import type { UserFormData } from '../../components/UserFormModal';
 import { toDisplayLabel } from '../../utils/formatters';
 import { apiFetch } from '../../hooks/useApi';
+import { useToast } from '../../components/ToastProvider';
 
 // ============================================================
 // Shared types

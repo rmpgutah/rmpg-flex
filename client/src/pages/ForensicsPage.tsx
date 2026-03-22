@@ -14,6 +14,7 @@ import {
   ZoomIn, ZoomOut, RotateCcw, Maximize2, Minus, Plus, Eye, EyeOff,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useIsMobile } from '../hooks/useIsMobile';
 import SplitPanel from '../components/SplitPanel';
 import type { GraphNode, GraphEdge, ConnectionGraph } from '../types';
 import { useToast } from '../components/ToastProvider';
@@ -781,6 +782,7 @@ function DetailPanel({ node, edges, allNodes, onExpandNode }: {
 // ── Main Page Component ──────────────────────────────────────
 
 export default function ForensicsPage() {
+  const isMobile = useIsMobile();
   const { addToast } = useToast();
   // Graph data
   const [graph, setGraph] = useState<ConnectionGraph | null>(null);

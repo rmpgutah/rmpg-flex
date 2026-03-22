@@ -160,4 +160,47 @@ router.delete('/:id', validateParamId, requireRole('admin'), (req: Request, res:
   }
 });
 
+// ─── CSV EXPORT ──────────────────────────────────────────
+
+// GET /api/dl-records/export/csv — Export DL records
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT id, source, full_name, first_name, last_name, middle_name,
+        date_of_birth, gender, height, weight, eye_color, hair_color, race,
+        dl_number, dl_state, dl_class, dl_status, dl_expiration, dl_issue_date,
+        dl_restrictions, dl_endorsements, created_at, updated_at
+      FROM dl_records
+      ORDER BY updated_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'dl_records_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'full_name', header: 'Full Name' },
+      { key: 'first_name', header: 'First Name' },
+      { key: 'last_name', header: 'Last Name' },
+      { key: 'date_of_birth', header: 'DOB' },
+      { key: 'gender', header: 'Gender' },
+      { key: 'race', header: 'Race' },
+      { key: 'height', header: 'Height' },
+      { key: 'weight', header: 'Weight' },
+      { key: 'eye_color', header: 'Eye Color' },
+      { key: 'hair_color', header: 'Hair Color' },
+      { key: 'dl_number', header: 'DL Number' },
+      { key: 'dl_state', header: 'DL State' },
+      { key: 'dl_class', header: 'DL Class' },
+      { key: 'dl_status', header: 'DL Status' },
+      { key: 'dl_expiration', header: 'DL Expiration' },
+      { key: 'dl_issue_date', header: 'DL Issue Date' },
+      { key: 'dl_restrictions', header: 'Restrictions' },
+      { key: 'dl_endorsements', header: 'Endorsements' },
+      { key: 'source', header: 'Source' },
+      { key: 'created_at', header: 'Created At' },
+      { key: 'updated_at', header: 'Updated At' },
+    ], rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Export failed' });
+  }
+});
+
 export default router;

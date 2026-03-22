@@ -9,6 +9,7 @@ import { GraduationCap, AlertTriangle, CheckCircle, Clock, RefreshCw } from 'luc
 import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { toDisplayLabel } from '../../utils/formatters';
+import { useToast } from '../../components/ToastProvider';
 
 interface OfficerCompliance {
   user_id: number;

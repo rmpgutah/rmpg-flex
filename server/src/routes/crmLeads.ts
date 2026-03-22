@@ -191,6 +191,7 @@ router.post('/leads', requireRole('admin', 'manager', 'contract_manager'), (req:
 
     const lead = db.prepare('SELECT * FROM crm_leads WHERE id = ?').get(leadId);
     if (!lead) return res.status(404).json({ error: 'Lead not found after creation' });
+    broadcast('admin', 'lead:created', lead);
     res.json(lead);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
@@ -255,6 +256,7 @@ router.put('/leads/:id', validateParamId, requireRole('admin', 'manager', 'contr
       LEFT JOIN users u ON u.id = l.assigned_to
       WHERE l.id = ?
     `).get(id);
+    broadcast('admin', 'lead:updated', lead);
     res.json(lead);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
@@ -277,6 +279,7 @@ router.delete('/leads/:id', validateParamId, requireRole('admin', 'manager'), (r
     db.prepare('DELETE FROM crm_lead_activity WHERE lead_id = ?').run(id);
     db.prepare('DELETE FROM crm_leads WHERE id = ?').run(id);
     auditLog(req, 'DELETE', 'crm_leads' as any, String(id), `Deleted lead: ${existing.business_name}`);
+    broadcast('admin', 'lead:deleted', { id: Number(id) });
     res.json({ success: true });
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
@@ -329,6 +332,7 @@ router.put('/leads/:id/stage', validateParamId, requireRole('admin', 'manager', 
       LEFT JOIN users u ON u.id = l.assigned_to
       WHERE l.id = ?
     `).get(id);
+    broadcast('admin', 'lead:updated', lead);
     res.json(lead);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
@@ -372,6 +376,7 @@ router.put('/leads/:id/assign', validateParamId, requireRole('admin', 'manager',
       LEFT JOIN users u ON u.id = l.assigned_to
       WHERE l.id = ?
     `).get(id);
+    broadcast('admin', 'lead:updated', lead);
     res.json(lead);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
@@ -441,6 +446,7 @@ router.post('/leads/:id/convert', validateParamId, requireRole('admin', 'manager
     auditLog(req, 'UPDATE', 'crm_leads' as any, String(id), `Converted to client #${clientId}`);
 
     const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(clientId);
+    broadcast('admin', 'lead:updated', { id: Number(id), converted: true, client_id: clientId });
     res.json({ success: true, client: client || null, lead_id: Number(id), client_id: clientId });
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
@@ -492,6 +498,7 @@ router.post('/leads/bulk-action', requireRole('admin', 'manager', 'contract_mana
     }
 
     auditLog(req, 'UPDATE', 'crm_leads' as any, lead_ids.join(','), `Bulk ${action}: ${updated} leads`);
+    broadcast('admin', 'lead:updated', { action, updated, lead_ids });
     res.json({ success: true, updated });
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
@@ -673,6 +680,48 @@ router.get('/scrape-log', requireRole('admin', 'manager', 'contract_manager'), (
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── CSV EXPORT ──────────────────────────────────────────
+
+// GET /api/crm/leads/export/csv — Export leads
+router.get('/leads/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT l.id, l.source, l.business_name, l.industry, l.business_type,
+        l.contact_name, l.contact_email, l.contact_phone,
+        l.address, l.city, l.state, l.zip,
+        l.estimated_value, l.pipeline_stage, l.lead_score,
+        l.created_at, l.updated_at,
+        u.full_name as assigned_to_name
+      FROM crm_leads l
+      LEFT JOIN users u ON u.id = l.assigned_to
+      ORDER BY l.created_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'crm_leads_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'source', header: 'Source' },
+      { key: 'business_name', header: 'Business Name' },
+      { key: 'industry', header: 'Industry' },
+      { key: 'business_type', header: 'Business Type' },
+      { key: 'contact_name', header: 'Contact Name' },
+      { key: 'contact_email', header: 'Contact Email' },
+      { key: 'contact_phone', header: 'Contact Phone' },
+      { key: 'address', header: 'Address' },
+      { key: 'city', header: 'City' },
+      { key: 'state', header: 'State' },
+      { key: 'zip', header: 'ZIP' },
+      { key: 'estimated_value', header: 'Estimated Value' },
+      { key: 'pipeline_stage', header: 'Pipeline Stage' },
+      { key: 'lead_score', header: 'Lead Score' },
+      { key: 'assigned_to_name', header: 'Assigned To' },
+      { key: 'created_at', header: 'Created At' },
+      { key: 'updated_at', header: 'Updated At' },
+    ], rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Export failed' });
   }
 });
 

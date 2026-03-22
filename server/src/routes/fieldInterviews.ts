@@ -311,4 +311,48 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
   }
 });
 
+// ─── CSV EXPORT ──────────────────────────────────────────
+
+// GET /api/field-interviews/export/csv — Export field interview records
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT fi.id, fi.fi_number, fi.status, fi.officer_name,
+        fi.subject_first_name, fi.subject_last_name, fi.subject_dob,
+        fi.subject_gender, fi.subject_race,
+        fi.location, fi.latitude, fi.longitude,
+        fi.contact_reason, fi.contact_type, fi.action_taken,
+        fi.narrative, fi.vehicle_plate, fi.vehicle_description,
+        fi.zone_beat, fi.created_at, fi.archived_at
+      FROM field_interviews fi
+      ORDER BY fi.created_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'field_interviews_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'fi_number', header: 'FI Number' },
+      { key: 'status', header: 'Status' },
+      { key: 'officer_name', header: 'Officer' },
+      { key: 'subject_first_name', header: 'Subject First Name' },
+      { key: 'subject_last_name', header: 'Subject Last Name' },
+      { key: 'subject_dob', header: 'Subject DOB' },
+      { key: 'subject_gender', header: 'Subject Gender' },
+      { key: 'subject_race', header: 'Subject Race' },
+      { key: 'location', header: 'Location' },
+      { key: 'latitude', header: 'Latitude' },
+      { key: 'longitude', header: 'Longitude' },
+      { key: 'contact_reason', header: 'Contact Reason' },
+      { key: 'contact_type', header: 'Contact Type' },
+      { key: 'action_taken', header: 'Action Taken' },
+      { key: 'narrative', header: 'Narrative' },
+      { key: 'vehicle_plate', header: 'Vehicle Plate' },
+      { key: 'vehicle_description', header: 'Vehicle Description' },
+      { key: 'zone_beat', header: 'Zone/Beat' },
+      { key: 'created_at', header: 'Created At' },
+    ], rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Export failed' });
+  }
+});
+
 export default router;

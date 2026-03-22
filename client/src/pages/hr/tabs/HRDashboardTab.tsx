@@ -10,6 +10,7 @@ import {
   Activity, ChevronRight, Loader2,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { useToast } from '../../../components/ToastProvider';
 
 interface DashboardData {
   total_active: number;

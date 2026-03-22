@@ -29,6 +29,7 @@ import ExportButton from '../components/ExportButton';
 import TabBar from '../components/TabBar';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, onOnlineRetryMaps } from '../utils/googleMapsLoader';
+import { useToast } from '../components/ToastProvider';
 
 type Checkpoint = {
   id: number;

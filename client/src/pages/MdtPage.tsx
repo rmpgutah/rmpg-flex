@@ -37,6 +37,7 @@ import StatusBadge from '../components/StatusBadge';
 import PremiseHistory from '../components/PremiseHistory';
 import NcicQueryPanel from '../components/NcicQueryPanel';
 import { formatDateTime } from '../utils/dateUtils';
+import { useToast } from '../components/ToastProvider';
 
 // ── Quick Status Buttons ────────────────────────────────────
 
@@ -233,6 +234,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
 
 export default function MdtPage() {
   const isMobile = useIsMobile();
+  const { addToast } = useToast();
   const gps = useGpsTracking();
   const [myUnit, setMyUnit] = useState<Unit | null>(null);
   const [myCalls, setMyCalls] = useState<CallForService[]>([]);

@@ -483,4 +483,42 @@ router.get('/reports/metrics', requireRole('admin', 'manager', 'contract_manager
   }
 });
 
+// ─── CSV EXPORT ──────────────────────────────────────────
+
+// GET /api/crm/export/csv — Export CRM tasks and activity
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT t.id, t.title, t.description, t.task_type, t.priority, t.status, t.due_date,
+        t.completed_at, t.created_at,
+        c.name as client_name, p.name as property_name,
+        u1.full_name as assigned_to_name, u2.full_name as created_by_name
+      FROM crm_tasks t
+      LEFT JOIN clients c ON c.id = t.client_id
+      LEFT JOIN properties p ON p.id = t.property_id
+      LEFT JOIN users u1 ON u1.id = t.assigned_to
+      LEFT JOIN users u2 ON u2.id = t.created_by
+      ORDER BY t.created_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'crm_tasks_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'title', header: 'Title' },
+      { key: 'description', header: 'Description' },
+      { key: 'task_type', header: 'Task Type' },
+      { key: 'priority', header: 'Priority' },
+      { key: 'status', header: 'Status' },
+      { key: 'due_date', header: 'Due Date' },
+      { key: 'client_name', header: 'Client' },
+      { key: 'property_name', header: 'Property' },
+      { key: 'assigned_to_name', header: 'Assigned To' },
+      { key: 'created_by_name', header: 'Created By' },
+      { key: 'completed_at', header: 'Completed At' },
+      { key: 'created_at', header: 'Created At' },
+    ], rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Export failed' });
+  }
+});
+
 export default router;

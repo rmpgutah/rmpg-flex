@@ -394,6 +394,8 @@ router.put('/calls/:id/timeline/:entryId', validateParamId, requireRole('admin',
     params.push(entry.id);
     db.prepare(`UPDATE activity_log SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
+    auditLog(req, 'UPDATE' as any, 'call' as any, Number(req.params.id), `Edited timeline entry #${entry.id} on call #${req.params.id}`);
+
     const updated = db.prepare('SELECT al.*, u.full_name as user_name FROM activity_log al LEFT JOIN users u ON al.user_id = u.id WHERE al.id = ?').get(entry.id);
     res.json(updated);
   } catch (error: any) {
@@ -414,6 +416,7 @@ router.delete('/calls/:id/timeline/:entryId', validateParamId, requireRole('admi
     }
 
     db.prepare('DELETE FROM activity_log WHERE id = ?').run(entry.id);
+    auditLog(req, 'DELETE' as any, 'call' as any, Number(req.params.id), `Deleted timeline entry #${entry.id} from call #${req.params.id}`);
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete timeline entry error:', error?.message || 'Unknown error');

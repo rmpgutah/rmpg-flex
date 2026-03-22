@@ -11,6 +11,7 @@ import { validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
 import { broadcastAdminUpdate, broadcastFleetUpdate } from '../utils/websocket';
+import { sendCsv } from '../utils/csvExport';
 import {
   CONFIG_KEYS,
   getConfigValue,
@@ -613,6 +614,42 @@ router.post('/media-sync-now', requireRole('admin'), async (req: Request, res: R
     });
   } catch (error: any) {
     console.error('ClearPathGPS media sync-now error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// GET /api/clearpathgps/export/csv — Export device mappings as CSV
+// ============================================================
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT m.*, u.call_sign, u.status as unit_status,
+        usr.full_name as officer_name
+      FROM cpg_device_mappings m
+      LEFT JOIN units u ON m.unit_id = u.id
+      LEFT JOIN users usr ON u.officer_id = usr.id
+      ORDER BY m.cpg_display_name
+    `).all();
+
+    sendCsv(res, `clearpathgps_mappings_${localNow().slice(0, 10)}.csv`, [
+      { key: 'id', header: 'ID' },
+      { key: 'cpg_device_id', header: 'Device ID' },
+      { key: 'cpg_display_name', header: 'Device Name' },
+      { key: 'cpg_serial_number', header: 'Serial Number' },
+      { key: 'call_sign', header: 'Unit Call Sign' },
+      { key: 'officer_name', header: 'Officer' },
+      { key: 'unit_status', header: 'Unit Status' },
+      { key: 'is_active', header: 'Active' },
+      { key: 'last_synced_at', header: 'Last Synced' },
+      { key: 'last_media_synced_at', header: 'Last Media Sync' },
+      { key: 'media_sync_errors', header: 'Media Sync Errors' },
+      { key: 'created_at', header: 'Created At' },
+      { key: 'updated_at', header: 'Updated At' },
+    ], rows);
+  } catch (error: any) {
+    console.error('ClearPathGPS export error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

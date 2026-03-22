@@ -26,6 +26,7 @@ import CriminalHistorySection from '../components/CriminalHistorySection';
 import ArrestFormModal from '../components/ArrestFormModal';
 import type { ArrestFormData } from '../components/ArrestFormModal';
 import { useWebSocket } from '../context/WebSocketContext';
+import { useToast } from '../components/ToastProvider';
 
 // ── Types ─────────────────────────────────────────────────
 

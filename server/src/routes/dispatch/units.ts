@@ -4,6 +4,7 @@ import { requireRole } from '../../middleware/auth';
 import { validateParamId } from '../../middleware/sanitize';
 import { broadcastUnitUpdate } from '../../utils/websocket';
 import { localNow } from '../../utils/timeUtils';
+import { auditLog } from '../../utils/auditLogger';
 
 const router = Router();
 

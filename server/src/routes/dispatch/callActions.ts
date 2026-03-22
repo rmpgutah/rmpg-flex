@@ -9,6 +9,7 @@ import { generateIncidentNumber } from '../../utils/caseNumbers';
 import { createNotification, createNotificationForRoles } from '../notifications';
 import { universalWarrantCheck } from '../../utils/universalWarrantScanner';
 import { auditLog } from '../../utils/auditLogger';
+import { sendCsv } from '../../utils/csvExport';
 
 const router = Router();
 
@@ -1261,6 +1262,51 @@ router.get('/calls/:id/serve-link', validateParamId, requireRole('admin', 'manag
   } catch (err: any) {
     console.error('[DISPATCH] Serve link error:', err);
     res.status(500).json({ error: 'Failed to fetch serve link' });
+  }
+});
+
+// ============================================================
+// GET /calls/actions/export/csv — Export call action log as CSV
+// ============================================================
+router.get('/calls/actions/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { from, to } = req.query;
+
+    let where = "WHERE al.entity_type = 'call'";
+    const params: any[] = [];
+
+    if (from) {
+      where += ' AND al.created_at >= ?';
+      params.push(from);
+    }
+    if (to) {
+      where += ' AND al.created_at <= ?';
+      params.push(to);
+    }
+
+    const rows = db.prepare(`
+      SELECT al.id, al.action, al.entity_id as call_id, al.details,
+        al.ip_address, al.created_at, u.full_name as user_name
+      FROM activity_log al
+      LEFT JOIN users u ON al.user_id = u.id
+      ${where}
+      ORDER BY al.created_at DESC
+      LIMIT 10000
+    `).all(...params);
+
+    sendCsv(res, `call_actions_export_${localNow().slice(0, 10)}.csv`, [
+      { key: 'id', header: 'ID' },
+      { key: 'call_id', header: 'Call ID' },
+      { key: 'action', header: 'Action' },
+      { key: 'details', header: 'Details' },
+      { key: 'user_name', header: 'User' },
+      { key: 'ip_address', header: 'IP Address' },
+      { key: 'created_at', header: 'Timestamp' },
+    ], rows);
+  } catch (error: any) {
+    console.error('Export call actions error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

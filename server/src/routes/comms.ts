@@ -4,6 +4,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { validateEnum, escapeLike, validateParamId } from '../middleware/sanitize';
 import { broadcastNewMessage, broadcastAlert, sendToUser } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
+import { auditLog } from '../utils/auditLogger';
 import { sendCsv } from '../utils/csvExport';
 import path from 'path';
 import fs from 'fs';
@@ -82,6 +83,8 @@ router.post('/messages', requireRole('admin', 'manager', 'dispatcher', 'supervis
       WHERE m.id = ?
     `).get(result.lastInsertRowid) as any;
     if (!message) { res.status(500).json({ error: 'Failed to retrieve created message' }); return; }
+
+    auditLog(req, 'message_sent' as any, 'message' as any, Number(result.lastInsertRowid), `Sent ${msgChannel} message #${result.lastInsertRowid}`);
 
     // Send via WebSocket
     if (msgChannel === 'direct' && to_user_id) {
@@ -756,6 +759,64 @@ router.get('/radio/audio/:id', validateParamId, (req: Request, res: Response) =>
   } catch (error: any) {
     console.error('Get radio audio error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── CSV EXPORTS ─────────────────────────────────────────
+
+// GET /api/comms/export/csv — Export messages
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT m.id, m.channel, m.subject, m.content, m.priority, m.created_at, m.read_at,
+        f.full_name as from_name, t.full_name as to_name
+      FROM messages m
+      LEFT JOIN users f ON m.from_user_id = f.id
+      LEFT JOIN users t ON m.to_user_id = t.id
+      ORDER BY m.created_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'messages_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'channel', header: 'Channel' },
+      { key: 'from_name', header: 'From' },
+      { key: 'to_name', header: 'To' },
+      { key: 'subject', header: 'Subject' },
+      { key: 'content', header: 'Content' },
+      { key: 'priority', header: 'Priority' },
+      { key: 'created_at', header: 'Created At' },
+      { key: 'read_at', header: 'Read At' },
+    ], rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Export failed' });
+  }
+});
+
+// GET /api/comms/bolos/export/csv — Export BOLOs
+router.get('/bolos/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT b.id, b.bolo_number, b.type, b.title, b.description, b.priority, b.status,
+        b.created_at, b.expires_at, u.full_name as issued_by_name
+      FROM bolos b
+      LEFT JOIN users u ON b.issued_by = u.id
+      ORDER BY b.created_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'bolos_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'bolo_number', header: 'BOLO Number' },
+      { key: 'type', header: 'Type' },
+      { key: 'title', header: 'Title' },
+      { key: 'description', header: 'Description' },
+      { key: 'priority', header: 'Priority' },
+      { key: 'status', header: 'Status' },
+      { key: 'issued_by_name', header: 'Issued By' },
+      { key: 'created_at', header: 'Created At' },
+      { key: 'expires_at', header: 'Expires At' },
+    ], rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Export failed' });
   }
 });
 

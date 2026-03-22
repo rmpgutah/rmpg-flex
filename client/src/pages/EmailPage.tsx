@@ -13,7 +13,9 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useWebSocket } from '../context/WebSocketContext';
+import { useLiveSync } from '../hooks/useLiveSync';
 import type { EmailMessage, EmailFolder, EmailAttachment } from '../types';
+import { useToast } from '../components/ToastProvider';
 
 // ─── Well-known folder config ───
 const WELL_KNOWN_FOLDERS = ['Inbox', 'Drafts', 'Sent Items', 'Deleted Items', 'Junk Email', 'Archive'];
@@ -1570,6 +1572,8 @@ export default function EmailPage() {
   }, []);
 
   // ─── Effects ───
+
+  useLiveSync('admin', fetchMessages);
 
   useEffect(() => { fetchStatus(); }, [fetchStatus]);
   useEffect(() => {

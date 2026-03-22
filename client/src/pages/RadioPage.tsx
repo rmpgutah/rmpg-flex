@@ -24,6 +24,8 @@ import { usePrivateCall } from '../hooks/usePrivateCall';
 import { useAuth } from '../context/AuthContext';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { apiFetch } from '../hooks/useApi';
+import { useLiveSync } from '../hooks/useLiveSync';
+import { useToast } from '../components/ToastProvider';
 
 // ============================================================
 // RMPG Flex — RadioPage
@@ -79,6 +81,7 @@ export default function RadioPage() {
 
   const { user } = useAuth();
   const isMobile = useIsMobile();
+  const { addToast } = useToast();
   const pttRef = useRef<HTMLButtonElement>(null);
 
   // Track whether space is held down (prevent key-repeat)
@@ -199,6 +202,7 @@ export default function RadioPage() {
       setPlayingId(entryId);
     } catch (err) {
       console.error('[Radio Playback] Failed:', err);
+      addToast('Failed to play recording', 'error');
       setPlayingId(null);
     }
   }, [playingId]);
@@ -231,6 +235,8 @@ export default function RadioPage() {
       setHistoryLoading(false);
     }
   }, [historyChannel, historySearch]);
+
+  useLiveSync('dispatch', fetchHistory);
 
   useEffect(() => {
     if (showHistory) fetchHistory();

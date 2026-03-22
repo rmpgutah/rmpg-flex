@@ -27,6 +27,7 @@ import { useShiftPlanning, SHIFT_TYPES } from '../hooks/useShiftPlanning';
 import type { ShiftPlan, ShiftType, AreaAssignment } from '../hooks/useShiftPlanning';
 import { useIsMobile } from '../hooks/useIsMobile';
 import StatusBadge from '../components/StatusBadge';
+import { useToast } from '../components/ToastProvider';
 
 // ── Date helpers ───────────────────────────────────────────
 

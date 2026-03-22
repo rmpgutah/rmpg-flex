@@ -12,6 +12,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { escapeLike, validateParamId } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
+import { broadcast } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
@@ -263,6 +264,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       VALUES (?, 'create', 'dar', ?, ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ dar_number }), req.ip || 'unknown', now);
 
     auditLog(req, 'CREATE' as any, 'dar' as any, result.lastInsertRowid, `Created DAR ${dar_number} for ${shift_date}`);
+    broadcast('records', 'dar:created', { id: result.lastInsertRowid, dar_number });
     res.status(201).json({ data: { id: result.lastInsertRowid, dar_number } });
   } catch (error: any) {
     console.error('Create DAR error:', error?.message || 'Unknown error');
@@ -357,6 +359,48 @@ router.put('/:id/return', validateParamId, requireRole('admin', 'manager', 'supe
     auditLog(req, 'UPDATE' as any, 'dar' as any, req.params.id, `Returned DAR ${req.params.id} for revision`);
     res.json({ data: { id: parseInt(req.params.id as string, 10), status: 'returned' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ─── CSV EXPORT ──────────────────────────────────────────
+
+// GET /api/dar/export/csv — Export daily activity reports
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT d.id, d.dar_number, d.status, d.officer_name, d.shift_date,
+        d.shift_start, d.shift_end, d.property_name, d.post_assignment,
+        d.activities_narrative, d.notable_events, d.equipment_issues,
+        d.safety_concerns, d.recommendations,
+        d.submitted_at, d.reviewed_at, d.reviewed_by_name, d.review_notes,
+        d.created_at
+      FROM daily_activity_reports d
+      ORDER BY d.shift_date DESC, d.created_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'dar_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'dar_number', header: 'DAR Number' },
+      { key: 'status', header: 'Status' },
+      { key: 'officer_name', header: 'Officer' },
+      { key: 'shift_date', header: 'Shift Date' },
+      { key: 'shift_start', header: 'Shift Start' },
+      { key: 'shift_end', header: 'Shift End' },
+      { key: 'property_name', header: 'Property' },
+      { key: 'post_assignment', header: 'Post Assignment' },
+      { key: 'activities_narrative', header: 'Activities Narrative' },
+      { key: 'notable_events', header: 'Notable Events' },
+      { key: 'equipment_issues', header: 'Equipment Issues' },
+      { key: 'safety_concerns', header: 'Safety Concerns' },
+      { key: 'recommendations', header: 'Recommendations' },
+      { key: 'submitted_at', header: 'Submitted At' },
+      { key: 'reviewed_by_name', header: 'Reviewed By' },
+      { key: 'reviewed_at', header: 'Reviewed At' },
+      { key: 'review_notes', header: 'Review Notes' },
+      { key: 'created_at', header: 'Created At' },
+    ], rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Export failed' });
+  }
 });
 
 export default router;

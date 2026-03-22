@@ -10,6 +10,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import PanelTitleBar from '../components/PanelTitleBar';
+import { useToast } from '../components/ToastProvider';
 
 interface StatuteEntry {
   statute_number: string;

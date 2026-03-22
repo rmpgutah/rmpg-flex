@@ -17,6 +17,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
+import { sendCsv } from '../utils/csvExport';
 import {
   getIpedConfig,
   setIpedConfigValues,
@@ -47,8 +48,8 @@ router.get('/status', (_req: Request, res: Response) => {
     const stats = getIpedUsageStats();
     res.json({ ...cfg, ...stats });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[IPED] get status error:', err?.message || err);
+    res.status(500).json({ error: 'Failed to get IPED status' });
   }
 });
 
@@ -72,8 +73,8 @@ router.put('/config', requireRole('admin'), (req: Request, res: Response) => {
     auditLog(req, 'iped_config_updated', 'config', 'iped', `IPED config updated: ${Object.keys(values).join(', ')}`);
     res.json({ success: true, message: 'IPED configuration saved' });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[IPED] save config error:', err?.message || err);
+    res.status(500).json({ error: 'Failed to save IPED configuration' });
   }
 });
 
@@ -84,8 +85,8 @@ router.delete('/config', requireRole('admin'), (req: Request, res: Response) => 
     auditLog(req, 'iped_config_cleared', 'config', 'iped', 'IPED configuration cleared');
     res.json({ success: true, message: 'IPED configuration cleared' });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[IPED] operation error:', err?.message || err);
+    res.status(500).json({ error: 'IPED operation failed' });
   }
 });
 
@@ -95,8 +96,8 @@ router.post('/validate', requireRole('admin'), (_req: Request, res: Response) =>
     const result = validateIpedInstallation();
     res.json(result);
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[IPED] operation error:', err?.message || err);
+    res.status(500).json({ error: 'IPED operation failed' });
   }
 });
 
@@ -106,8 +107,8 @@ router.post('/test-api', requireRole('admin'), async (_req: Request, res: Respon
     const result = await testIpedApiConnection();
     res.json(result);
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[IPED] operation error:', err?.message || err);
+    res.status(500).json({ error: 'IPED operation failed' });
   }
 });
 
@@ -142,8 +143,8 @@ router.get('/download/info', (_req: Request, res: Response) => {
       githubUrl: 'https://github.com/sepinf-inc/IPED/releases',
     });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[IPED] operation error:', err?.message || err);
+    res.status(500).json({ error: 'IPED operation failed' });
   }
 });
 
@@ -229,8 +230,8 @@ router.post('/jobs', requireRole('admin', 'manager'), async (req: Request, res: 
     auditLog(req, 'iped_job_created', 'iped_job', jobId, `IPED ${jobType} job created for input: ${inputPath}`);
     res.json({ success: true, jobId, status: 'queued' });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[IPED] operation error:', err?.message || err);
+    res.status(500).json({ error: 'IPED operation failed' });
   }
 });
 
@@ -266,8 +267,8 @@ router.get('/jobs', (req: Request, res: Response) => {
 
     res.json({ jobs, total, page, limit, totalPages: Math.ceil(total / limit) });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[IPED] operation error:', err?.message || err);
+    res.status(500).json({ error: 'IPED operation failed' });
   }
 });
 
@@ -296,8 +297,8 @@ router.get('/jobs/:id', validateParamId, (req: Request, res: Response) => {
 
     res.json({ ...job, hashes, progress });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[IPED] operation error:', err?.message || err);
+    res.status(500).json({ error: 'IPED operation failed' });
   }
 });
 
@@ -310,8 +311,8 @@ router.post('/jobs/:id/cancel', validateParamId, requireRole('admin', 'manager')
     if (cancelled) auditLog(req, 'iped_job_cancelled', 'iped_job', id, `IPED job ${id} cancelled`);
     res.json({ success: cancelled, message: cancelled ? 'Job cancelled' : 'Job not running' });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[IPED] operation error:', err?.message || err);
+    res.status(500).json({ error: 'IPED operation failed' });
   }
 });
 
@@ -351,8 +352,8 @@ router.post('/hash/compute', requireRole('admin', 'manager'), async (req: Reques
 
     res.json({ ...hashes, matches, flagged: matches.length > 0 });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[IPED] operation error:', err?.message || err);
+    res.status(500).json({ error: 'IPED operation failed' });
   }
 });
 
@@ -365,8 +366,8 @@ router.post('/hash/batch', requireRole('admin', 'manager'), async (req: Request,
     const result = await hashEvidenceAttachments(evidenceId);
     res.json({ success: true, ...result });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[IPED] operation error:', err?.message || err);
+    res.status(500).json({ error: 'IPED operation failed' });
   }
 });
 
@@ -396,8 +397,8 @@ router.get('/hash/results', requireRole('admin', 'manager'), (req: Request, res:
 
     res.json({ results, count: results.length });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[IPED] operation error:', err?.message || err);
+    res.status(500).json({ error: 'IPED operation failed' });
   }
 });
 
@@ -412,8 +413,8 @@ router.post('/hash/check', requireRole('admin'), (req: Request, res: Response) =
 
     res.json({ matches, hit: matches.length > 0 });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[IPED] operation error:', err?.message || err);
+    res.status(500).json({ error: 'IPED operation failed' });
   }
 });
 
@@ -422,8 +423,8 @@ router.get('/hash-sets', requireRole('admin'), (_req: Request, res: Response) =>
   try {
     res.json({ sets: getHashSetSummary() });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[IPED] operation error:', err?.message || err);
+    res.status(500).json({ error: 'IPED operation failed' });
   }
 });
 
@@ -439,8 +440,8 @@ router.post('/hash-sets/import', requireRole('admin'), (req: Request, res: Respo
     auditLog(req, 'iped_hashset_imported', 'iped_hashset', setName, `Imported ${count} hashes into set "${setName}" (${category})`);
     res.json({ success: true, imported: count, setName, category });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[IPED] operation error:', err?.message || err);
+    res.status(500).json({ error: 'IPED operation failed' });
   }
 });
 
@@ -454,8 +455,8 @@ router.post('/hash-sets/import-iped', requireRole('admin'), async (req: Request,
     const output = await importToIpedHashDb(filePath);
     res.json({ success: true, output });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[IPED] operation error:', err?.message || err);
+    res.status(500).json({ error: 'IPED operation failed' });
   }
 });
 
@@ -466,8 +467,8 @@ router.delete('/hash-sets/:name', requireRole('admin'), (req: Request, res: Resp
     if (removed) auditLog(req, 'iped_hashset_removed', 'iped_hashset', String(req.params.name), `Hash set "${req.params.name}" removed`);
     res.json({ success: true, removed });
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[IPED] operation error:', err?.message || err);
+    res.status(500).json({ error: 'IPED operation failed' });
   }
 });
 
@@ -523,8 +524,8 @@ router.get('/usage', (_req: Request, res: Response) => {
   try {
     res.json(getIpedUsageStats());
   } catch (err: any) {
-    console.error('IPED error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[IPED] operation error:', err?.message || err);
+    res.status(500).json({ error: 'IPED operation failed' });
   }
 });
 
