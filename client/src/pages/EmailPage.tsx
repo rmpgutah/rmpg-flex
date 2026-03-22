@@ -1919,7 +1919,7 @@ export default function EmailPage() {
       })
     : messages;
 
-  const threads = groupByConversation(filteredMessages);
+  const conversationThreads = groupByConversation(filteredMessages);
   const unreadCount = messages.filter(m => !m.isRead).length;
   const isWellKnown = (name: string) => WELL_KNOWN_FOLDERS.includes(name);
 
@@ -2225,7 +2225,7 @@ export default function EmailPage() {
             </div>
           ) : (
             <>
-              {threads.map(thread => {
+              {conversationThreads.map(thread => {
                 const isMulti = thread.messages.length > 1;
                 const isExpanded = expandedThreads.has(thread.conversationId);
                 const displayMessages = isMulti && !isExpanded ? [thread.latest] : thread.messages;
