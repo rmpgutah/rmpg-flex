@@ -417,6 +417,8 @@ export default function MenuBar({
           { type: 'action', label: 'Warrant Check', icon: Gavel, action: () => window.open('/warrants', '_blank', 'noopener,noreferrer') },
           { type: 'action', label: 'Offender Registry', icon: UserCheck, action: () => navigate('/offender-registry') },
           { type: 'action', label: 'Sex Offender Registry', icon: ShieldAlert, action: () => navigate('/sex-offender-registry') },
+          { type: 'separator' },
+          { type: 'action', label: 'Web Research', icon: Globe, action: () => navigate('/web-research') },
         ],
       },
       {

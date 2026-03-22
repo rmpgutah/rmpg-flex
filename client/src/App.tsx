@@ -54,6 +54,7 @@ import ArrestRecordsPage from './pages/ArrestRecordsPage';
 import EmailPage from './pages/EmailPage';
 import CrmPage from './pages/CrmPage';
 import ServePage from './pages/ServePage';
+import WebResearchPage from './pages/WebResearchPage';
 import HRPage from './pages/hr/HRPage';
 import IncidentDetailWindow from './pages/detached/IncidentDetailWindow';
 import RecordDetailWindow from './pages/detached/RecordDetailWindow';
@@ -206,6 +207,7 @@ function AppRoutes() {
           <Route path="/email" element={<EmailPage />} />
           <Route path="/crm" element={<CrmPage />} />
           <Route path="/serve" element={<ServePage />} />
+          <Route path="/web-research" element={<WebResearchPage />} />
           <Route path="/hr" element={<HRPage />} />
           <Route path="/admin" element={<AdminPage />} />
         </Route>

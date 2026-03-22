@@ -5,6 +5,7 @@ import {
   FileText, MousePointer2, CalendarDays, UserCheck, Copy, Save, Play, Pause,
   SkipForward, Gauge, Palette, PanelLeftClose, PanelLeftOpen, ChevronDown,
   ChevronUp, Globe2, Loader2, Map as MapIcon, Car, Ruler, Maximize2,
+  Brain, ShieldAlert, Grab, Radar,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { formatIncidentType } from '../../../utils/caseNumbers';
@@ -94,6 +95,27 @@ interface MapLayersPanelProps {
   measureMode?: MeasureMode | null;
   onStartMeasure?: (mode: MeasureMode) => void;
   onClearMeasurement?: () => void;
+
+  // Tactical map features (optional — wired when tactical upgrade is enabled)
+  showTimelapse?: boolean;
+  setShowTimelapse?: (v: boolean) => void;
+  timelapse?: { isPlaying: boolean; setIsPlaying: (v: boolean) => void; speed: 1 | 2 | 4; setSpeed: (v: 1 | 2 | 4) => void; currentIndex: number; setCurrentIndex: (v: number) => void; totalSlices: number; currentLabel: string; loading: boolean };
+  showPredictions?: boolean;
+  setShowPredictions?: (v: boolean) => void;
+  predictionsCount?: number;
+  showSafetyZones?: boolean;
+  setShowSafetyZones?: (v: boolean) => void;
+  safetyZonesCount?: number;
+  showGeofences?: boolean;
+  setShowGeofences?: (v: boolean) => void;
+  geofencesCount?: number;
+  geofenceDrawingMode?: boolean;
+  onToggleGeofenceDraw?: () => void;
+  dragDispatchMode?: boolean;
+  setDragDispatchMode?: (v: boolean) => void;
+  intelLayers?: { warrants: boolean; trespass: boolean; offenders: boolean; bolos: boolean };
+  toggleIntelLayer?: (layer: 'warrants' | 'trespass' | 'offenders' | 'bolos') => void;
+  intelCounts?: { warrants: number; trespass: number; offenders: number; bolos: number };
 }
 
 export default function MapLayersPanel(props: MapLayersPanelProps) {
@@ -129,6 +151,12 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
     shiftPlanning, eventPlanning,
     showTraffic, onToggleTraffic,
     measuring, measureMode, onStartMeasure, onClearMeasurement,
+    showTimelapse, setShowTimelapse, timelapse,
+    showPredictions, setShowPredictions, predictionsCount,
+    showSafetyZones, setShowSafetyZones, safetyZonesCount,
+    showGeofences, setShowGeofences, geofencesCount, geofenceDrawingMode, onToggleGeofenceDraw,
+    dragDispatchMode, setDragDispatchMode,
+    intelLayers, toggleIntelLayer, intelCounts,
   } = props;
 
   if (!layersPanelOpen) {
@@ -241,6 +269,58 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                   </option>
                 ))}
               </select>
+            )}
+
+            {/* Timelapse controls */}
+            {setShowTimelapse && timelapse && (
+              <div className="border-t border-rmpg-700/50 pt-1 mt-1">
+                <button
+                  onClick={() => setShowTimelapse(!showTimelapse)}
+                  className={`flex items-center gap-1.5 w-full text-[9px] font-bold transition-colors ${
+                    showTimelapse ? 'text-orange-400' : 'text-rmpg-500 hover:text-rmpg-300'
+                  }`}
+                >
+                  <SkipForward className="w-2.5 h-2.5" />
+                  <span className="flex-1 text-left">Time-Lapse</span>
+                  {showTimelapse && <span className="led-dot led-orange" style={{ width: 5, height: 5 }} />}
+                </button>
+                {showTimelapse && (
+                  <div className="mt-1 space-y-1">
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => timelapse.setIsPlaying(!timelapse.isPlaying)}
+                        className="p-0.5 rounded-sm hover:bg-orange-900/40 transition-colors"
+                      >
+                        {timelapse.isPlaying ? <Pause className="w-3 h-3 text-amber-400" /> : <Play className="w-3 h-3 text-green-400" />}
+                      </button>
+                      <input
+                        type="range"
+                        min={0}
+                        max={Math.max(timelapse.totalSlices - 1, 0)}
+                        value={timelapse.currentIndex}
+                        onChange={(e) => { timelapse.setCurrentIndex(Number(e.target.value)); timelapse.setIsPlaying(false); }}
+                        className="flex-1 h-1 accent-orange-400"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[7px] font-mono text-orange-300">{timelapse.currentLabel}</span>
+                      <div className="flex items-center gap-0.5">
+                        {([1, 2, 4] as const).map((s) => (
+                          <button
+                            key={s}
+                            onClick={() => timelapse.setSpeed(s)}
+                            className={`px-1 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
+                              timelapse.speed === s ? 'bg-orange-900/50 text-orange-400 border border-orange-700/50' : 'text-rmpg-500 hover:text-rmpg-300'
+                            }`}
+                          >
+                            {s}x
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         )}
@@ -1139,6 +1219,113 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
             )}
           </div>
         )}
+
+      {/* ── Intelligence Layers ── */}
+      {intelLayers && toggleIntelLayer && (
+        <div className="border-t border-rmpg-700 p-1.5">
+          <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Intelligence</div>
+          {([
+            { key: 'warrants' as const, label: 'Active Warrants', color: 'red' },
+            { key: 'trespass' as const, label: 'Trespass Orders', color: 'orange' },
+            { key: 'offenders' as const, label: 'Sex Offenders', color: 'purple' },
+            { key: 'bolos' as const, label: 'BOLOs', color: 'amber' },
+          ] as const).map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => toggleIntelLayer(key)}
+              className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                intelLayers[key] ? 'panel-inset bg-surface-deep text-rmpg-200' : 'text-rmpg-400 hover:bg-surface-raised'
+              }`}
+            >
+              <Shield className="w-3 h-3" />
+              <span className="flex-1 text-left">{label}</span>
+              {intelLayers[key] && intelCounts && intelCounts[key] > 0 && (
+                <span className="text-[9px] font-mono">{intelCounts[key]}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Analysis ── */}
+      {(setShowPredictions || setShowSafetyZones || setShowGeofences) && (
+        <div className="border-t border-rmpg-700 p-1.5">
+          <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Analysis</div>
+
+          {setShowPredictions && (
+            <button
+              onClick={() => setShowPredictions(!showPredictions)}
+              className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                showPredictions ? 'panel-inset bg-purple-900/20 text-purple-400' : 'text-rmpg-400 hover:bg-surface-raised'
+              }`}
+            >
+              <Brain className="w-3 h-3" />
+              <span className="flex-1 text-left">Predictions</span>
+              {showPredictions && predictionsCount != null && predictionsCount > 0 && (
+                <span className="text-[9px] font-mono">{predictionsCount}</span>
+              )}
+            </button>
+          )}
+
+          {setShowSafetyZones && (
+            <button
+              onClick={() => setShowSafetyZones(!showSafetyZones)}
+              className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                showSafetyZones ? 'panel-inset bg-red-900/20 text-red-400' : 'text-rmpg-400 hover:bg-surface-raised'
+              }`}
+            >
+              <ShieldAlert className="w-3 h-3" />
+              <span className="flex-1 text-left">Safety Zones</span>
+              {showSafetyZones && safetyZonesCount != null && safetyZonesCount > 0 && (
+                <span className="text-[9px] font-mono">{safetyZonesCount}</span>
+              )}
+            </button>
+          )}
+
+          {setShowGeofences && (
+            <div className="flex items-center gap-0.5">
+              <button
+                onClick={() => setShowGeofences(!showGeofences)}
+                className={`flex-1 flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showGeofences ? 'panel-inset bg-cyan-900/20 text-cyan-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <Radar className="w-3 h-3" />
+                <span className="flex-1 text-left">Geofences</span>
+                {showGeofences && geofencesCount != null && geofencesCount > 0 && (
+                  <span className="text-[9px] font-mono">{geofencesCount}</span>
+                )}
+              </button>
+              {showGeofences && onToggleGeofenceDraw && (
+                <button
+                  onClick={onToggleGeofenceDraw}
+                  className={`px-1.5 py-1 text-[8px] font-bold rounded-sm transition-colors ${
+                    geofenceDrawingMode ? 'bg-cyan-900/50 text-cyan-300 border border-cyan-700/50' : 'text-rmpg-500 hover:text-rmpg-300'
+                  }`}
+                >
+                  Draw
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Dispatch Mode ── */}
+      {setDragDispatchMode && (
+        <div className="border-t border-rmpg-700 p-1.5">
+          <button
+            onClick={() => setDragDispatchMode(!dragDispatchMode)}
+            className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+              dragDispatchMode ? 'panel-inset bg-amber-900/20 text-amber-400' : 'text-rmpg-400 hover:bg-surface-raised'
+            }`}
+          >
+            <Grab className="w-3 h-3" />
+            <span className="flex-1 text-left">Drag Dispatch</span>
+            {dragDispatchMode && <span className="led-dot led-amber" style={{ width: 5, height: 5 }} />}
+          </button>
+        </div>
+      )}
       </div>
     </div>
   );

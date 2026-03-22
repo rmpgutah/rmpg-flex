@@ -652,4 +652,266 @@ router.get('/districts/identify', requireRole('admin', 'manager', 'supervisor', 
   }
 });
 
+// GET /api/dispatch/heatmap/timelapse - Animated heatmap data sliced by time
+router.get('/heatmap/timelapse', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(90, parseInt(req.query.days as string, 10) || 7));
+    const mode = (req.query.mode as string) || 'all';
+    const validModes = ['all', 'risk'];
+    if (!validModes.includes(mode)) {
+      res.status(400).json({ error: `Invalid mode. Must be one of: ${validModes.join(', ')}` });
+      return;
+    }
+
+    // Determine slice duration based on range
+    let sliceHours: number;
+    if (req.query.slices) {
+      const totalHours = days * 24;
+      const requestedSlices = Math.max(1, Math.min(500, parseInt(req.query.slices as string, 10) || 24));
+      sliceHours = Math.max(1, Math.floor(totalHours / requestedSlices));
+    } else if (days <= 7) {
+      sliceHours = 1; // hourly
+    } else if (days <= 30) {
+      sliceHours = 6; // 6-hour blocks
+    } else {
+      sliceHours = 24; // daily
+    }
+
+    const totalHours = days * 24;
+    const sliceCount = Math.ceil(totalHours / sliceHours);
+    const now = new Date();
+    const startTime = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+
+    const riskFilter = mode === 'risk'
+      ? `AND (weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0'
+           OR domestic_violence = 1 OR injuries_reported = 1
+           OR alcohol_involved = 1 OR drugs_involved = 1)`
+      : '';
+
+    const riskColumns = mode === 'risk'
+      ? `, SUM(CASE WHEN weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0' THEN 3 ELSE 0 END
+            + CASE WHEN domestic_violence = 1 THEN 2 ELSE 0 END
+            + CASE WHEN injuries_reported = 1 THEN 2 ELSE 0 END
+            + CASE WHEN alcohol_involved = 1 THEN 1 ELSE 0 END
+            + CASE WHEN drugs_involved = 1 THEN 1 ELSE 0 END
+          ) as risk_weight`
+      : '';
+
+    const slices: { start: string; end: string; points: any[] }[] = [];
+
+    for (let i = 0; i < sliceCount; i++) {
+      const sliceStart = new Date(startTime.getTime() + i * sliceHours * 60 * 60 * 1000);
+      const sliceEnd = new Date(sliceStart.getTime() + sliceHours * 60 * 60 * 1000);
+
+      const startStr = sliceStart.toISOString().replace('T', ' ').slice(0, 19);
+      const endStr = sliceEnd.toISOString().replace('T', ' ').slice(0, 19);
+
+      const points = db.prepare(`
+        SELECT
+          ROUND(latitude, 3) as latitude,
+          ROUND(longitude, 3) as longitude,
+          COUNT(*) as count
+          ${riskColumns}
+        FROM calls_for_service
+        WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+          AND created_at >= ? AND created_at < ?
+          ${riskFilter}
+        GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
+        ORDER BY count DESC
+        LIMIT 200
+      `).all(startStr, endStr);
+
+      slices.push({ start: startStr, end: endStr, points });
+    }
+
+    res.json({ slices });
+  } catch (error: any) {
+    console.error('[Dispatch] heatmap timelapse error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/dispatch/heatmap/predictions - Predictive hotspot analysis
+router.get('/heatmap/predictions', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    // Determine target shift
+    const shiftParam = req.query.shift as string | undefined;
+    const validShifts = ['day', 'swing', 'night'];
+    let targetShift: string;
+
+    if (shiftParam && validShifts.includes(shiftParam)) {
+      targetShift = shiftParam;
+    } else {
+      // Auto-detect current shift
+      const currentHour = new Date().getHours();
+      if (currentHour >= 6 && currentHour < 14) targetShift = 'day';
+      else if (currentHour >= 14 && currentHour < 22) targetShift = 'swing';
+      else targetShift = 'night';
+    }
+
+    // Shift hour ranges
+    const shiftHours: Record<string, [number, number]> = {
+      day: [6, 14],
+      swing: [14, 22],
+      night: [22, 6],
+    };
+    const [shiftStart, shiftEnd] = shiftHours[targetShift];
+
+    const todayDow = new Date().getDay(); // 0=Sunday
+
+    // Query last 90 days of calls with valid lat/lng
+    const rows = db.prepare(`
+      SELECT
+        ROUND(latitude, 3) as latitude,
+        ROUND(longitude, 3) as longitude,
+        created_at,
+        incident_type,
+        CASE WHEN weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0' THEN 1 ELSE 0 END as has_weapon,
+        CASE WHEN domestic_violence = 1 THEN 1 ELSE 0 END as has_dv
+      FROM calls_for_service
+      WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        AND created_at >= datetime('now', 'localtime', '-90 days')
+    `).all() as any[];
+
+    // Aggregate by grid cell
+    const cells: Record<string, {
+      latitude: number;
+      longitude: number;
+      score: number;
+      incident_count: number;
+      types: Record<string, number>;
+      weapons_count: number;
+      dv_count: number;
+    }> = {};
+
+    const now = Date.now();
+    const msPerDay = 86400000;
+
+    for (const row of rows) {
+      const key = `${row.latitude},${row.longitude}`;
+      if (!cells[key]) {
+        cells[key] = {
+          latitude: row.latitude,
+          longitude: row.longitude,
+          score: 0,
+          incident_count: 0,
+          types: {},
+          weapons_count: 0,
+          dv_count: 0,
+        };
+      }
+
+      const cell = cells[key];
+      cell.incident_count++;
+      if (row.has_weapon) cell.weapons_count++;
+      if (row.has_dv) cell.dv_count++;
+      if (row.incident_type) {
+        cell.types[row.incident_type] = (cell.types[row.incident_type] || 0) + 1;
+      }
+
+      // Calculate weight
+      let weight = 1;
+
+      // Recency weight
+      const callDate = new Date(row.created_at);
+      const ageMs = now - callDate.getTime();
+      const ageDays = ageMs / msPerDay;
+      if (ageDays <= 7) weight = 3;
+      else if (ageDays <= 30) weight = 2;
+      // else weight = 1 (default)
+
+      // Day-of-week match
+      if (callDate.getDay() === todayDow) {
+        weight *= 1.5;
+      }
+
+      // Shift match
+      const callHour = callDate.getHours();
+      let inShift = false;
+      if (targetShift === 'night') {
+        inShift = callHour >= 22 || callHour < 6;
+      } else {
+        inShift = callHour >= shiftStart && callHour < shiftEnd;
+      }
+      if (inShift) {
+        weight *= 2.0;
+      }
+
+      cell.score += weight;
+    }
+
+    // Sort by score, take top 15
+    const hotspots = Object.values(cells)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 15)
+      .map(cell => ({
+        latitude: cell.latitude,
+        longitude: cell.longitude,
+        score: Math.round(cell.score * 10) / 10,
+        incident_count: cell.incident_count,
+        top_types: Object.entries(cell.types)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 3)
+          .map(([t]) => t)
+          .join(', '),
+        weapons_count: cell.weapons_count,
+        dv_count: cell.dv_count,
+      }));
+
+    res.json({ shift: targetShift, hotspots });
+  } catch (error: any) {
+    console.error('[Dispatch] heatmap predictions error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/dispatch/heatmap/safety-zones - High-risk safety zones
+router.get('/heatmap/safety-zones', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    const zones = db.prepare(`
+      SELECT
+        ROUND(latitude, 3) as latitude,
+        ROUND(longitude, 3) as longitude,
+        SUM(CASE WHEN weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0' THEN 1 ELSE 0 END) as weapons_count,
+        SUM(CASE WHEN domestic_violence = 1 THEN 1 ELSE 0 END) as dv_count,
+        SUM(CASE WHEN injuries_reported = 1 THEN 1 ELSE 0 END) as injuries_count,
+        COUNT(*) as total_flagged,
+        MAX(created_at) as last_incident
+      FROM calls_for_service
+      WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        AND created_at >= datetime('now', 'localtime', '-90 days')
+        AND (
+          (weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0')
+          OR domestic_violence = 1
+          OR injuries_reported = 1
+        )
+      GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
+      HAVING COUNT(*) >= 2
+      ORDER BY total_flagged DESC
+      LIMIT 50
+    `).all() as any[];
+
+    const result = zones.map(z => ({
+      latitude: z.latitude,
+      longitude: z.longitude,
+      risk_level: (z.weapons_count >= 3 || z.total_flagged >= 5) ? 'high' : 'moderate',
+      weapons_count: z.weapons_count,
+      dv_count: z.dv_count,
+      injuries_count: z.injuries_count,
+      total_flagged: z.total_flagged,
+      last_incident: z.last_incident,
+    }));
+
+    res.json({ zones: result });
+  } catch (error: any) {
+    console.error('[Dispatch] safety zones error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

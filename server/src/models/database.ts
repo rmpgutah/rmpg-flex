@@ -4094,6 +4094,8 @@ function migrateSchema(): void {
 
   // ── CRM LEADS — service interest for legal/collections leads ──
   addCol('crm_leads', 'service_interest', 'TEXT');
+  addCol('crm_leads', 'enrichment_status', 'TEXT');
+  addCol('crm_leads', 'enrichment_data', 'TEXT');
 
   // ── CALL VISIT HISTORY — snapshot each PSO visit before redispatch ──
   db.exec(`
@@ -4169,6 +4171,23 @@ function migrateSchema(): void {
 
   // ── LEAD SCRAPE SOURCES — Firecrawl migration ──────
   addCol('lead_scrape_sources', 'scraper_type', "TEXT DEFAULT 'legacy'");
+
+  // ── GEOFENCES — custom map geofence zones ──────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS geofences (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      zone_type TEXT DEFAULT 'custom',
+      polygon_coords TEXT NOT NULL,
+      alert_on_enter INTEGER DEFAULT 1,
+      alert_on_exit INTEGER DEFAULT 0,
+      color TEXT DEFAULT '#ef4444',
+      is_active INTEGER DEFAULT 1,
+      created_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+  `);
 
   console.log('Schema migration completed.');
 }
@@ -4818,6 +4837,90 @@ function createIndexes(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_lead_scrape_log_source ON lead_scrape_log(source_key);
     CREATE INDEX IF NOT EXISTS idx_lead_scrape_log_date ON lead_scrape_log(created_at);
+
+    -- ─── FIRECRAWL SEARCH HISTORY ─────────────────────────────────
+    CREATE TABLE IF NOT EXISTS firecrawl_search_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      query TEXT NOT NULL,
+      result_count INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_fc_search_history_user ON firecrawl_search_history(user_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS firecrawl_saved_searches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      query TEXT NOT NULL,
+      extract_schema TEXT,
+      search_limit INTEGER DEFAULT 10,
+      created_by INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    -- ─── COMPETITOR MONITORING ────────────────────────────────
+    CREATE TABLE IF NOT EXISTS firecrawl_monitored_urls (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      url TEXT NOT NULL UNIQUE,
+      label TEXT,
+      check_interval_minutes INTEGER NOT NULL DEFAULT 1440,
+      last_check_at TEXT,
+      last_content_hash TEXT,
+      last_content TEXT,
+      is_enabled INTEGER DEFAULT 1,
+      consecutive_failures INTEGER DEFAULT 0,
+      created_by INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS firecrawl_url_changes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      monitored_url_id INTEGER NOT NULL,
+      diff_summary TEXT,
+      old_hash TEXT,
+      new_hash TEXT,
+      new_content TEXT,
+      significance TEXT DEFAULT 'minor' CHECK(significance IN ('minor','moderate','major')),
+      acknowledged INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_fc_url_changes ON firecrawl_url_changes(monitored_url_id, created_at);
+
+    -- ─── LEAD ENRICHMENT QUEUE ────────────────────────────────
+    CREATE TABLE IF NOT EXISTS firecrawl_enrichment_queue (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      lead_id INTEGER NOT NULL UNIQUE,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','processing','completed','failed')),
+      target_url TEXT,
+      result_data TEXT,
+      error_message TEXT,
+      attempts INTEGER DEFAULT 0,
+      max_attempts INTEGER DEFAULT 3,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      completed_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_fc_enrichment_status ON firecrawl_enrichment_queue(status);
+
+    -- ─── WEB RESEARCH RESULTS ─────────────────────────────────
+    CREATE TABLE IF NOT EXISTS web_research_results (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      query TEXT NOT NULL,
+      result_type TEXT NOT NULL DEFAULT 'search' CHECK(result_type IN ('search','scrape')),
+      url TEXT,
+      title TEXT,
+      content_summary TEXT,
+      raw_data TEXT,
+      linked_incident_id INTEGER,
+      linked_person_id INTEGER,
+      linked_case_id INTEGER,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_web_research_user ON web_research_results(user_id);
+    CREATE INDEX IF NOT EXISTS idx_web_research_incident ON web_research_results(linked_incident_id);
 
     -- ─── PROCESS SERVER FIELD SUITE ─────────────────────────────────
 

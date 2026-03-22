@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../../models/database';
 import { requireRole } from '../../middleware/auth';
-import { broadcastUnitUpdate } from '../../utils/websocket';
+import { broadcastUnitUpdate, broadcastAlert } from '../../utils/websocket';
 import { reverseGeocodeDetailed } from '../../utils/geocode';
 import { localNow } from '../../utils/timeUtils';
 import { auditLog } from '../../utils/auditLogger';
@@ -14,6 +14,19 @@ const GPS_SOURCE_PRIORITY: Record<string, number> = {
   clearpathgps: 3,
 };
 const GPS_STALE_MS = 30_000; // 30 seconds — stale source can be overridden by lower priority
+
+/** Ray-casting point-in-polygon test */
+function pointInPolygon(lat: number, lng: number, polygon: { lat: number; lng: number }[]): boolean {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].lat, yi = polygon[i].lng;
+    const xj = polygon[j].lat, yj = polygon[j].lng;
+    if ((yi > lng) !== (yj > lng) && lat < (xj - xi) * (lng - yi) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
 
 const router = Router();
 
@@ -211,6 +224,27 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
     if (shouldUpdateLive) {
       broadcastUnitUpdate({ action: 'unit_position_update', unit: updated });
     }
+
+    // ── Check geofences for the latest point ──
+    try {
+      const geofences = db.prepare('SELECT * FROM geofences WHERE is_active = 1').all() as any[];
+      for (const fence of geofences) {
+        const coords = JSON.parse(fence.polygon_coords);
+        if (pointInPolygon(latest.lat, latest.lng, coords)) {
+          // Broadcast geofence entry alert — frontend deduplicates
+          if (fence.alert_on_enter) {
+            broadcastAlert({
+              type: 'geofence:alert',
+              unit: unit.call_sign,
+              geofence_id: fence.id,
+              geofence_name: fence.name,
+              zone_type: fence.zone_type,
+              action: 'enter',
+            });
+          }
+        }
+      }
+    } catch { /* geofence check is non-critical */ }
 
     const pointsCapped = pointsReceived > 60 ? pointsReceived - 60 : 0;
     const pointsInvalid = points.length - validPoints.length;

@@ -25,11 +25,13 @@ import {
   Target,
   FileSignature,
   Globe,
+  Eye,
 } from 'lucide-react';
 import LeadsTab from '../components/crm/LeadsTab';
 import ProposalsTab from '../components/crm/ProposalsTab';
 import ReportsTab from '../components/crm/ReportsTab';
 import WebIntelPanel from '../components/crm/WebIntelPanel';
+import CompetitorMonitorPanel from '../components/crm/CompetitorMonitorPanel';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useToast } from '../components/ToastProvider';
@@ -47,7 +49,7 @@ import type {
   CrmDashboardStats,
 } from '../types';
 
-type CrmSection = 'dashboard' | 'clients' | 'properties' | 'contacts' | 'invoices' | 'tasks' | 'leads' | 'proposals' | 'reports' | 'webintel';
+type CrmSection = 'dashboard' | 'clients' | 'properties' | 'contacts' | 'invoices' | 'tasks' | 'leads' | 'proposals' | 'reports' | 'webintel' | 'competitors';
 
 const SIDEBAR_ITEMS: { id: CrmSection; label: string; icon: React.ElementType }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -60,6 +62,7 @@ const SIDEBAR_ITEMS: { id: CrmSection; label: string; icon: React.ElementType }[
   { id: 'tasks', label: 'Tasks', icon: CheckSquare },
   { id: 'reports', label: 'Reports', icon: BarChart3 },
   { id: 'webintel', label: 'Web Intel', icon: Globe },
+  { id: 'competitors', label: 'Competitors', icon: Eye },
 ];
 
 const TASK_TYPES = ['follow_up', 'site_visit', 'contract_renewal', 'billing', 'other'] as const;
@@ -432,6 +435,7 @@ export default function CrmPage() {
         {activeSection === 'tasks' && renderTasks()}
         {activeSection === 'reports' && <ReportsTab />}
         {activeSection === 'webintel' && <WebIntelPanel />}
+        {activeSection === 'competitors' && <CompetitorMonitorPanel />}
       </div>
 
       {/* ── Task Modal ────────────────────────────────── */}

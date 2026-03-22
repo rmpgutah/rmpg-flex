@@ -107,7 +107,12 @@ import hrRoutes from './routes/hr';
 import { scheduleLeadScrapers, stopLeadScrapers } from './utils/leadScraperBase';
 import { registerFirecrawlScrapers } from './utils/firecrawlScraper';
 import crmFirecrawlRoutes from './routes/crmFirecrawl';
+import crmCompetitorMonitorRoutes from './routes/crmCompetitorMonitor';
+import webResearchRoutes from './routes/webResearch';
+import { startEnrichmentWorker } from './utils/leadEnrichmentWorker';
+import { startCompetitorPoller } from './utils/competitorMonitorPoller';
 import integrationRoutes from './routes/integrations';
+import mapGeofenceRoutes from './routes/mapGeofences';
 
 const app = express();
 
@@ -487,10 +492,13 @@ app.use('/api/crm', crmRoutes);
 app.use('/api/crm', crmLeadsRoutes);
 app.use('/api/crm', crmProposalsRoutes);
 app.use('/api/crm', crmFirecrawlRoutes);
+app.use('/api/crm/competitor-monitor', crmCompetitorMonitorRoutes);
+app.use('/api/web-research', webResearchRoutes);
 app.use('/api/user/preferences', authenticateToken, userPreferencesRoutes);
 app.use('/api/process-server', serveRoutes);
 app.use('/api/hr', hrRoutes);
 app.use('/api/integrations', integrationRoutes);
+app.use('/api/map/geofences', mapGeofenceRoutes);
 
 // Mount download page and file serving routes (outside /api)
 // Also mounts /updates/latest.yml, /updates/latest-mac.yml for electron-updater
@@ -797,6 +805,10 @@ try {
 
     // Start CRM lead scrapers (Overwatch)
     scheduleLeadScrapers();
+
+    // Start Firecrawl background workers
+    startEnrichmentWorker();
+    startCompetitorPoller();
 
     // Auto-backfill OFAC screening for existing person records (runs 60s after boot
     // to allow OFAC data sync to complete first)
