@@ -4,6 +4,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
 import { broadcast } from '../utils/websocket';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 

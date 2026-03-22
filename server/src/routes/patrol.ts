@@ -346,16 +346,16 @@ router.get('/scans/export', requireRole('admin', 'manager', 'supervisor'), (req:
     const params: any[] = [];
 
     if (checkpointId) {
-      conditions.push('ps.checkpoint_id = ?');
-      params.push(checkpointId);
+      const cpid = parseInt(String(checkpointId), 10);
+      if (!isNaN(cpid)) { conditions.push('ps.checkpoint_id = ?'); params.push(cpid); }
     }
     if (officerId) {
-      conditions.push('ps.officer_id = ?');
-      params.push(officerId);
+      const oid = parseInt(String(officerId), 10);
+      if (!isNaN(oid)) { conditions.push('ps.officer_id = ?'); params.push(oid); }
     }
     if (startDate) {
       conditions.push('ps.scanned_at >= ?');
-      params.push(startDate);
+      params.push(String(startDate));
     }
     if (endDate) {
       conditions.push('ps.scanned_at <= ?');
@@ -398,18 +398,18 @@ router.get('/scans', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
     const params: any[] = [];
 
     if (checkpointId) {
-      conditions.push('ps.checkpoint_id = ?');
-      params.push(checkpointId);
+      const cpid = parseInt(String(checkpointId), 10);
+      if (!isNaN(cpid)) { conditions.push('ps.checkpoint_id = ?'); params.push(cpid); }
     }
 
     if (officerId) {
-      conditions.push('ps.officer_id = ?');
-      params.push(officerId);
+      const oid = parseInt(String(officerId), 10);
+      if (!isNaN(oid)) { conditions.push('ps.officer_id = ?'); params.push(oid); }
     }
 
     if (startDate) {
       conditions.push('ps.scanned_at >= ?');
-      params.push(startDate);
+      params.push(String(startDate));
     }
 
     if (endDate) {

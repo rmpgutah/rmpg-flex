@@ -7,6 +7,7 @@ import { localNow } from '../utils/timeUtils';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { auditLog } from '../utils/auditLogger';
 
 const __comms_filename = fileURLToPath(import.meta.url);
 const __comms_dirname = path.dirname(__comms_filename);

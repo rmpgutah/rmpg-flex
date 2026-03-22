@@ -530,11 +530,7 @@ router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Resp
 
     const accessToken = generateAccessToken({ ...payload, sessionId });
 
-    // Log activity
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'user_login_webauthn', 'user', ?, 'Security key 2FA login completed', ?)
-    `).run(user.id, user.id, ip);
+    auditLog(req, 'LOGIN', 'user', user.id, 'Security key 2FA login completed');
 
     db.prepare(`
       UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = ? WHERE id = ?

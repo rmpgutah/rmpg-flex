@@ -33,8 +33,8 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       params.push(priority);
     }
     if (officerId) {
-      whereClause += ' AND i.officer_id = ?';
-      params.push(officerId);
+      const oid = parseInt(String(officerId), 10);
+      if (!isNaN(oid)) { whereClause += ' AND i.officer_id = ?'; params.push(oid); }
     }
     if (startDate) {
       whereClause += ' AND i.created_at >= ?';
@@ -162,8 +162,8 @@ router.get('/export', requireRole('admin', 'manager', 'supervisor'), exportRateL
       params.push(priority);
     }
     if (officerId) {
-      whereClause += ' AND i.officer_id = ?';
-      params.push(officerId);
+      const oid = parseInt(String(officerId), 10);
+      if (!isNaN(oid)) { whereClause += ' AND i.officer_id = ?'; params.push(oid); }
     }
     if (startDate) {
       whereClause += ' AND i.created_at >= ?';

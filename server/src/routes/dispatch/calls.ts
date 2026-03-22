@@ -75,8 +75,8 @@ router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       params.push(endDate);
     }
     if (propertyId) {
-      whereClause += ' AND c.property_id = ?';
-      params.push(propertyId);
+      const pid = parseInt(String(propertyId), 10);
+      if (!isNaN(pid)) { whereClause += ' AND c.property_id = ?'; params.push(pid); }
     }
     if (search) {
       whereClause += " AND (c.call_number LIKE ? ESCAPE '\\' OR c.call_type LIKE ? ESCAPE '\\' OR c.location_address LIKE ? ESCAPE '\\' OR c.narrative LIKE ? ESCAPE '\\')";
