@@ -5,7 +5,6 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { validateParamId } from '../middleware/sanitize';
 import { sendCsv } from '../utils/csvExport';
 import { localNow } from '../utils/timeUtils';
-import { auditLog } from '../utils/auditLogger';
 import { broadcast } from '../utils/websocket';
 
 const router = Router();
@@ -97,10 +96,19 @@ router.post('/checkpoints', requireRole('admin', 'manager', 'supervisor'), (req:
       FROM patrol_checkpoints pc
       LEFT JOIN properties p ON pc.property_id = p.id
       WHERE pc.id = ?
-    `).get(Number(result.lastInsertRowid));
+    `).get(result.lastInsertRowid);
     if (!checkpoint) { res.status(500).json({ error: 'Failed to retrieve created checkpoint' }); return; }
 
-    auditLog(req, 'checkpoint_created', 'checkpoint', Number(result.lastInsertRowid), `Created checkpoint: ${name}`);
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'checkpoint_created', 'patrol_checkpoint', ?, ?, ?, ?)
+    `).run(
+      req.user!.userId,
+      result.lastInsertRowid,
+      `Created checkpoint: ${name}`,
+      req.ip || 'unknown',
+      localNow()
+    );
 
     broadcast('patrol', 'checkpoint:created', checkpoint);
     res.status(201).json(checkpoint);
@@ -148,7 +156,11 @@ router.put('/checkpoints/:id', validateParamId, requireRole('admin', 'manager', 
       db.prepare(`UPDATE patrol_checkpoints SET ${cpFields.join(', ')} WHERE id = ?`).run(...cpValues);
     }
 
-    auditLog(req, 'checkpoint_updated', 'checkpoint', id, `Updated checkpoint: ${existing.name}`);
+    // Activity log
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'checkpoint_updated', 'patrol_checkpoint', ?, ?, ?, ?)
+    `).run(req.user!.userId, id, `Updated checkpoint: ${existing.name}`, req.ip || 'unknown', localNow());
 
     const updated = db.prepare(`
       SELECT pc.*, p.name as property_name
@@ -179,7 +191,16 @@ router.delete('/checkpoints/:id', validateParamId, requireRole('admin', 'manager
 
     db.prepare('DELETE FROM patrol_checkpoints WHERE id = ?').run(id);
 
-    auditLog(req, 'checkpoint_deleted', 'checkpoint', id, `Deleted checkpoint: ${existing.name}`);
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'checkpoint_deleted', 'patrol_checkpoint', ?, ?, ?, ?)
+    `).run(
+      req.user!.userId,
+      id,
+      `Deleted checkpoint: ${existing.name}`,
+      req.ip || 'unknown',
+      localNow()
+    );
 
     broadcast('patrol', 'checkpoint:deleted', { id: Number(id) });
     res.json({ message: 'Checkpoint deleted successfully' });
@@ -200,7 +221,9 @@ router.post('/checkpoints/:id/archive', validateParamId, requireRole('admin', 'm
     const now = localNow();
     db.prepare('UPDATE patrol_checkpoints SET archived_at = ? WHERE id = ?').run(now, checkpoint.id);
 
-    auditLog(req, 'checkpoint_updated', 'checkpoint', checkpoint.id, `Archived checkpoint: ${checkpoint.name}`);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'checkpoint_archived', 'patrol_checkpoint', ?, ?, ?)`).run(
+      req.user!.userId, checkpoint.id, `Archived checkpoint: ${checkpoint.name}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT pc.*, p.name as property_name FROM patrol_checkpoints pc LEFT JOIN properties p ON pc.property_id = p.id WHERE pc.id = ?').get(checkpoint.id);
     broadcast('patrol', 'checkpoint:updated', updated);
@@ -221,7 +244,9 @@ router.post('/checkpoints/:id/unarchive', validateParamId, requireRole('admin', 
 
     db.prepare('UPDATE patrol_checkpoints SET archived_at = NULL WHERE id = ?').run(checkpoint.id);
 
-    auditLog(req, 'checkpoint_updated', 'checkpoint', checkpoint.id, `Unarchived checkpoint: ${checkpoint.name}`);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'checkpoint_unarchived', 'patrol_checkpoint', ?, ?, ?)`).run(
+      req.user!.userId, checkpoint.id, `Unarchived checkpoint: ${checkpoint.name}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT pc.*, p.name as property_name FROM patrol_checkpoints pc LEFT JOIN properties p ON pc.property_id = p.id WHERE pc.id = ?').get(checkpoint.id);
     broadcast('patrol', 'checkpoint:updated', updated);
@@ -288,10 +313,19 @@ router.post('/scan', requireRole('admin', 'manager', 'supervisor', 'officer'), (
       status
     );
 
-    const scan = db.prepare('SELECT * FROM patrol_scans WHERE id = ?').get(Number(result.lastInsertRowid));
+    const scan = db.prepare('SELECT * FROM patrol_scans WHERE id = ?').get(result.lastInsertRowid);
     if (!scan) { res.status(500).json({ error: 'Failed to retrieve created scan' }); return; }
 
-    auditLog(req, 'patrol_scan_logged', 'patrol_scan', checkpoint.id, `Scanned checkpoint: ${checkpoint.name} (${status})`);
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'patrol_scan', 'patrol_checkpoint', ?, ?, ?, ?)
+    `).run(
+      req.user!.userId,
+      checkpoint.id,
+      `Scanned checkpoint: ${checkpoint.name} (${status})`,
+      req.ip || 'unknown',
+      localNow()
+    );
 
     const scanData = { ...(scan as any), checkpoint_name: checkpoint.name, status };
     broadcast('patrol', 'patrol:scanned', scanData);
@@ -312,16 +346,16 @@ router.get('/scans/export', requireRole('admin', 'manager', 'supervisor'), (req:
     const params: any[] = [];
 
     if (checkpointId) {
-      const cpid = parseInt(String(checkpointId), 10);
-      if (!isNaN(cpid)) { conditions.push('ps.checkpoint_id = ?'); params.push(cpid); }
+      conditions.push('ps.checkpoint_id = ?');
+      params.push(checkpointId);
     }
     if (officerId) {
-      const oid = parseInt(String(officerId), 10);
-      if (!isNaN(oid)) { conditions.push('ps.officer_id = ?'); params.push(oid); }
+      conditions.push('ps.officer_id = ?');
+      params.push(officerId);
     }
     if (startDate) {
       conditions.push('ps.scanned_at >= ?');
-      params.push(String(startDate));
+      params.push(startDate);
     }
     if (endDate) {
       conditions.push('ps.scanned_at <= ?');
@@ -364,18 +398,18 @@ router.get('/scans', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
     const params: any[] = [];
 
     if (checkpointId) {
-      const cpid = parseInt(String(checkpointId), 10);
-      if (!isNaN(cpid)) { conditions.push('ps.checkpoint_id = ?'); params.push(cpid); }
+      conditions.push('ps.checkpoint_id = ?');
+      params.push(checkpointId);
     }
 
     if (officerId) {
-      const oid = parseInt(String(officerId), 10);
-      if (!isNaN(oid)) { conditions.push('ps.officer_id = ?'); params.push(oid); }
+      conditions.push('ps.officer_id = ?');
+      params.push(officerId);
     }
 
     if (startDate) {
       conditions.push('ps.scanned_at >= ?');
-      params.push(String(startDate));
+      params.push(startDate);
     }
 
     if (endDate) {

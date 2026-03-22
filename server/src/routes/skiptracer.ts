@@ -289,10 +289,9 @@ router.post('/test', requireRole('admin'), async (req: Request, res: Response) =
       });
     } else {
       const text = await testRes.text().catch(() => '');
-      console.error('[SkipTracer] API test returned:', testRes.status, text.slice(0, 200));
       res.status(502).json({
         success: false,
-        error: `API returned status ${testRes.status}`,
+        error: `API returned ${testRes.status}: ${text.slice(0, 200)}`,
       });
     }
   } catch (err: any) {
@@ -411,13 +410,13 @@ router.get('/person/:id', validateParamId, async (req: Request, res: Response) =
   }
 });
 
-// ── Search History (admin/manager/supervisor — contains PII search audit trail) ──
-router.get('/history', requireRole('admin', 'manager', 'supervisor'), async (req: Request, res: Response) => {
+// ── Search History ──────────────────────────────────────────
+router.get('/history', async (req: Request, res: Response) => {
   try {
     ensureTable();
     const db = getDb();
-    const limit = Math.min(parseInt(String(req.query.limit), 10) || 50, 200);
-    const offset = Math.max(0, Math.min(parseInt(String(req.query.offset), 10) || 0, 10000));
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const offset = Number(req.query.offset) || 0;
 
     const rows = db.prepare(`
       SELECT s.*, u.full_name AS searched_by_name
@@ -436,8 +435,8 @@ router.get('/history', requireRole('admin', 'manager', 'supervisor'), async (req
   }
 });
 
-// ── Search Stats (admin/manager only — aggregate usage data) ────
-router.get('/stats', requireRole('admin', 'manager'), async (_req: Request, res: Response) => {
+// ── Search Stats ────────────────────────────────────────────
+router.get('/stats', async (_req: Request, res: Response) => {
   try {
     ensureTable();
     const db = getDb();

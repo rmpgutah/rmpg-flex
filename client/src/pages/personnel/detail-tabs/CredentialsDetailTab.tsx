@@ -48,10 +48,11 @@ export default function CredentialsDetailTab({
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="section-header">
-        <Award className="w-3.5 h-3.5 section-icon" />
-        <h3>Credentials</h3>
-        <div className="flex-1" />
+      <div className="flex items-center justify-between">
+        <h3 className="field-label text-brand-400 flex items-center gap-1.5">
+          <Award className="w-3 h-3" />
+          Credentials
+        </h3>
         <button
           onClick={() => onAddCredential(officerId)}
           className="toolbar-btn toolbar-btn-primary flex items-center gap-1 text-[10px]"
@@ -63,38 +64,38 @@ export default function CredentialsDetailTab({
 
       {/* Status Overview */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-        <div className="stat-pod panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-green-500 summary-card-shimmer" style={{ '--pod-glow': 'rgba(34, 197, 94, 0.12)' } as React.CSSProperties}>
-          <p className="text-lg font-bold text-green-400 font-mono stat-value">{validCount}</p>
-          <p className="field-label stat-label">Valid</p>
+        <div className="panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-green-500">
+          <p className="text-lg font-bold text-green-400 font-mono">{validCount}</p>
+          <p className="field-label">Valid</p>
         </div>
-        <div className="stat-pod panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-amber-500 summary-card-shimmer" style={{ '--pod-glow': 'rgba(245, 158, 11, 0.12)' } as React.CSSProperties}>
-          <p className="text-lg font-bold text-amber-400 font-mono stat-value">{expiringCount}</p>
-          <p className="field-label stat-label">Expiring</p>
+        <div className="panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-amber-500">
+          <p className="text-lg font-bold text-amber-400 font-mono">{expiringCount}</p>
+          <p className="field-label">Expiring</p>
         </div>
-        <div className="stat-pod panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-red-500 summary-card-shimmer" style={{ '--pod-glow': 'rgba(239, 68, 68, 0.12)' } as React.CSSProperties}>
-          <p className="text-lg font-bold text-red-400 font-mono stat-value">{expiredCount}</p>
-          <p className="field-label stat-label">Expired</p>
+        <div className="panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-red-500">
+          <p className="text-lg font-bold text-red-400 font-mono">{expiredCount}</p>
+          <p className="field-label">Expired</p>
         </div>
       </div>
 
       {/* Credential Cards */}
       {credentials.length > 0 ? (
         <div className="space-y-3">
-          {credentials.map((cred, idx) => {
+          {credentials.map((cred) => {
             const days = calcDaysUntilExpiry(cred.expiry_date);
             const statusLabel = (cred.status || '').replace(/_/g, ' ').toUpperCase();
 
             return (
               <div
                 key={cred.id}
-                className={`cascade-item panel-beveled p-3 bg-surface-base ${topBorderColor(cred.status)}`}
+                className={`panel-beveled p-3 bg-surface-base ${topBorderColor(cred.status)}`}
               >
                 {/* Title row */}
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <span className={ledClass(cred.status)} />
                     <h4 className="text-xs font-semibold text-rmpg-100">{toDisplayLabel(cred.type)}</h4>
-                    <span className={`badge-pill text-[9px] px-1.5 py-0.5 font-bold ${CREDENTIAL_STATUS_COLORS[cred.status] || 'bg-rmpg-700 text-rmpg-300'}`}>
+                    <span className={`text-[9px] px-1.5 py-0.5 font-bold ${CREDENTIAL_STATUS_COLORS[cred.status] || 'bg-rmpg-700 text-rmpg-300'}`}>
                       {statusLabel}
                     </span>
                   </div>
@@ -160,10 +161,9 @@ export default function CredentialsDetailTab({
           })}
         </div>
       ) : (
-        <div className="empty-state-container panel-beveled p-8 text-center bg-surface-base">
-          <Award className="w-8 h-8 text-rmpg-600 mx-auto mb-2 empty-state-icon" />
+        <div className="panel-beveled p-8 text-center bg-surface-base">
+          <Award className="w-8 h-8 text-rmpg-600 mx-auto mb-2" />
           <p className="text-xs text-rmpg-400">No credentials on file</p>
-          <p className="text-[10px] text-rmpg-600 mt-1">Click &quot;Add Credential&quot; to create one.</p>
         </div>
       )}
     </div>

@@ -432,7 +432,7 @@ export async function runUniversalWarrantScan(): Promise<ScanSummary> {
   // Clean up any stuck "running" warrant watch runs from previous crashes
   try {
     const stuck = db.prepare(
-      `UPDATE warrant_watch_runs SET status = 'failed', error_message = 'Server restarted during scan', completed_at = datetime('now', 'localtime')
+      `UPDATE warrant_watch_runs SET status = 'failed', error_message = 'Server restarted during scan', completed_at = datetime('now')
        WHERE status = 'running'`
     ).run();
     if (stuck.changes > 0) {

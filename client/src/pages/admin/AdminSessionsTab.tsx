@@ -9,6 +9,7 @@ import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { toDisplayLabel } from '../../utils/formatters';
 import LoginHistoryTable from '../../components/security/LoginHistoryTable';
+import { useToast } from '../../components/ToastProvider';
 
 interface Session {
   id: number;

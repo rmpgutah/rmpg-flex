@@ -3,7 +3,7 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { broadcast } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
-import { searchUtahWarrants, searchUtahWarrantsLive, searchUtahWarrantsCache, getUtahWarrantSyncStatus, runWarrantWatchScan, isUtahApiBlocked } from '../utils/utahWarrantScraper';
+import { searchUtahWarrants, searchUtahWarrantsCache, getUtahWarrantSyncStatus, runWarrantWatchScan, isUtahApiBlocked } from '../utils/utahWarrantScraper';
 import {
   searchScrapedWarrants, getActiveScrapedWarrants, getWarrantScraperStatus,
   getWarrantScraperStats, manualScrapeSource, resetWarrantSourceErrors,
@@ -17,7 +17,6 @@ import { createNotificationForRoles } from './notifications';
 import { escapeLike, validateParamId, validateNumericParams } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 import { universalWarrantCheck } from '../utils/universalWarrantScanner';
-import { exportRateLimit } from '../middleware/rateLimiter';
 
 const router = Router();
 
@@ -62,7 +61,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     if (subject_name) {
       const nameStr = String(subject_name).slice(0, 200); // Prevent excessively long search terms
       whereClause += " AND (p.first_name || ' ' || p.last_name) LIKE ? ESCAPE '\\'";
-      params.push(`%${escapeLike(nameStr.trim())}%`);
+      params.push(`%${escapeLike(nameStr)}%`);
     }
 
     // Archive filter
@@ -116,7 +115,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
 });
 
 // GET /api/warrants/export — Export warrants as CSV
-router.get('/export', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), exportRateLimit, (req: Request, res: Response) => {
+router.get('/export', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const warrants = db.prepare(`
@@ -204,7 +203,7 @@ router.get('/check/:personId', validateNumericParams('personId'), requireRole('a
 // NOTE: These must be declared BEFORE /:id to avoid being caught by the param route
 
 // GET /api/warrants/utah — Search Utah state warrants (live from warrants.utah.gov)
-router.get('/utah', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (req: Request, res: Response) => {
+router.get('/utah', async (req: Request, res: Response) => {
   try {
     const { search } = req.query;
 
@@ -234,7 +233,7 @@ router.get('/utah', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
 });
 
 // GET /api/warrants/utah/count — Cached warrant count for tab badge
-router.get('/utah/count', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/utah/count', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare('SELECT COUNT(*) as count FROM utah_warrants').get() as any;
@@ -245,7 +244,7 @@ router.get('/utah/count', requireRole('admin', 'manager', 'supervisor', 'officer
 });
 
 // GET /api/warrants/utah/sync-status — Status info for UI
-router.get('/utah/sync-status', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.get('/utah/sync-status', (req: Request, res: Response) => {
   try {
     const status = getUtahWarrantSyncStatus();
     res.json({
@@ -263,172 +262,6 @@ router.get('/utah/sync-status', requireRole('admin', 'manager', 'supervisor'), (
   }
 });
 
-// ─── PERSON INTELLIGENCE — Unified warrant + court + local search ──
-
-/** Infer warrant severity from charge text */
-function inferSeverity(chargesJson: string | null, offenseLevel: string | null): 'felony' | 'misdemeanor' | 'bench' | 'civil' | null {
-  if (offenseLevel) return offenseLevel as any;
-  if (!chargesJson) return null;
-  let text = '';
-  try { text = JSON.parse(chargesJson).join(' ').toLowerCase(); } catch { text = chargesJson.toLowerCase(); }
-  if (/felony|f[123]\b/.test(text)) return 'felony';
-  if (/bench/.test(text)) return 'bench';
-  if (/misdemeanor|class [abc]\b/.test(text)) return 'misdemeanor';
-  if (/civil/.test(text)) return 'civil';
-  return null;
-}
-
-// POST /api/warrants/person-intel — Unified person intelligence search
-router.post('/person-intel', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (req: Request, res: Response) => {
-  try {
-    const { firstName, lastName, dob } = req.body;
-    if (!firstName?.trim() || !lastName?.trim()) {
-      res.status(400).json({ error: 'firstName and lastName are required' });
-      return;
-    }
-    const first = String(firstName).trim().toUpperCase();
-    const last = String(lastName).trim().toUpperCase();
-    const db = getDb();
-
-    // Run all three sources in parallel
-    const [utahRaw, courtRaw] = await Promise.all([
-      searchUtahWarrantsLive(first, last).catch(() => null),
-      searchCourtRecords(first, last).catch(() => []),
-    ]);
-
-    // Local person match
-    const localPersons = db.prepare(`
-      SELECT id, first_name, last_name, dob, city
-      FROM persons
-      WHERE UPPER(first_name) = ? AND UPPER(last_name) = ?
-      LIMIT 5
-    `).all(first, last) as any[];
-
-    // Group Utah results by utah_person_id
-    const utahByPerson = new Map<string, any[]>();
-    for (const w of (utahRaw || [])) {
-      const key = w.utah_person_id;
-      if (!utahByPerson.has(key)) utahByPerson.set(key, []);
-      utahByPerson.get(key)!.push(w);
-    }
-
-    // Build result cards — one per distinct Utah person + one for local-only matches
-    const seenPersonIds = new Set<string>();
-    const results: any[] = [];
-
-    for (const [personId, warrants] of utahByPerson) {
-      seenPersonIds.add(personId);
-      const sample = warrants[0];
-      const matchedLocal = localPersons.find(p => {
-        if (dob && p.dob) return p.dob === dob;
-        if (sample.city && p.city) return p.city.toUpperCase() === sample.city.toUpperCase();
-        return false;
-      }) || null;
-
-      // Confidence scoring
-      let score = 0;
-      const factors: string[] = ['name match'];
-      if (dob && matchedLocal?.dob === dob) { score += 2; factors.push('DOB match'); }
-      if (sample.city && matchedLocal?.city?.toUpperCase() === sample.city.toUpperCase()) { score += 1; factors.push('city match'); }
-      const confidence = score >= 2 ? 'high' : score === 1 ? 'medium' : 'low';
-
-      // Local warrants for matched person
-      const localWarrants = matchedLocal
-        ? db.prepare(`SELECT * FROM warrants WHERE subject_person_id = ? AND archived_at IS NULL ORDER BY created_at DESC LIMIT 20`).all(matchedLocal.id)
-        : [];
-
-      // Court records — filter by name similarity
-      const personCourt = (courtRaw as any[] || []).filter((cr: any) =>
-        (cr.defendant_name || '').toUpperCase().includes(last)
-      );
-
-      results.push({
-        utahPersonId: personId,
-        searchName: `${sample.first_name} ${sample.middle_name || ''} ${sample.last_name}`.trim(),
-        age: sample.age,
-        city: sample.city,
-        localPersonMatch: matchedLocal ? { id: matchedLocal.id, name: `${matchedLocal.first_name} ${matchedLocal.last_name}`, dob: matchedLocal.dob } : null,
-        identityConfidence: confidence,
-        confidenceFactors: factors,
-        utahWarrants: warrants,
-        courtRecords: personCourt,
-        localWarrants,
-      });
-    }
-
-    // Sort: high confidence first
-    const order: Record<string, number> = { high: 0, medium: 1, low: 2 };
-    results.sort((a, b) => (order[a.identityConfidence] ?? 2) - (order[b.identityConfidence] ?? 2));
-
-    auditLog(req, 'person_intel_search', 'warrant', 0, `Searched: ${first} ${last}${dob ? ` DOB:${dob}` : ''} — ${results.length} result(s)`);
-    res.json({ results, apiAvailable: !isUtahApiBlocked(), utahNull: utahRaw === null });
-  } catch (error: any) {
-    console.error('Person intel error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// POST /api/warrants/ingest-utah — Create local warrant record from a Utah API hit
-router.post('/ingest-utah', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const { utah_warrant_id, utah_person_id, first_name, last_name, court_name, case_id, charges, issue_date, age, city, subject_person_id } = req.body;
-
-    if (!utah_warrant_id || !last_name) {
-      res.status(400).json({ error: 'utah_warrant_id and last_name are required' });
-      return;
-    }
-
-    // Deduplicate — return existing if already ingested
-    const existing = db.prepare('SELECT id, warrant_number FROM warrants WHERE external_warrant_id = ?').get(utah_warrant_id) as any;
-    if (existing) {
-      res.json({ id: existing.id, warrant_number: existing.warrant_number, duplicate: true });
-      return;
-    }
-
-    // Generate warrant number
-    const year = new Date().getFullYear();
-    const lastRow = db.prepare(`SELECT warrant_number FROM warrants WHERE warrant_number LIKE 'EXT-${year}-%' ORDER BY id DESC LIMIT 1`).get() as any;
-    const seq = lastRow ? (parseInt(lastRow.warrant_number.split('-')[2], 10) + 1) : 1;
-    const warrantNumber = `EXT-${year}-${String(seq).padStart(5, '0')}`;
-
-    // Parse charges
-    let chargesArr: string[] = [];
-    try { chargesArr = typeof charges === 'string' ? JSON.parse(charges) : (charges || []); } catch { chargesArr = []; }
-    const chargeText = chargesArr.join('; ') || 'See Utah warrant record';
-
-    // Infer offense level from charge text
-    const offenseLevel = inferSeverity(JSON.stringify(chargesArr), null);
-
-    const now = localNow();
-    const result = db.prepare(`
-      INSERT INTO warrants (
-        warrant_number, type, status, subject_person_id,
-        subject_first_name, subject_last_name,
-        issuing_court, case_id,
-        charge_description, offense_level,
-        issue_date, source, external_warrant_id,
-        entered_by, created_at, updated_at
-      ) VALUES (?, 'arrest', 'active', ?, ?, ?, ?, ?, ?, ?, ?, 'utah_api', ?, ?, ?, ?)
-    `).run(
-      warrantNumber, subject_person_id || null, first_name || null, last_name,
-      court_name || null, case_id || null,
-      chargeText, offenseLevel,
-      issue_date || null, utah_warrant_id,
-      req.user!.userId, now, now
-    );
-
-    const newId = Number(result.lastInsertRowid);
-    broadcast('warrants', 'warrant:created', { id: newId, warrant_number: warrantNumber, source: 'utah_api' });
-    auditLog(req, 'warrant_created', 'warrant', newId, `Ingested from Utah API: ${utah_warrant_id}`);
-
-    res.status(201).json({ id: newId, warrant_number: warrantNumber, duplicate: false });
-  } catch (error: any) {
-    console.error('Ingest Utah warrant error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
 // ─── WARRANT WATCH — Automated scan log & controls ──────────────
 
 // GET /api/warrants/watch/log — View warrant watch event log
@@ -436,7 +269,7 @@ router.get('/watch/log', requireRole('admin', 'manager', 'supervisor', 'officer'
   try {
     const db = getDb();
     const { event, person_id, page = '1', limit = '50' } = req.query;
-    const pageNum = Math.min(1000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
@@ -467,10 +300,7 @@ router.get('/watch/log', requireRole('admin', 'manager', 'supervisor', 'officer'
     `).all(...params, limitNum, offset);
 
     res.json({
-      data: (rows as any[]).map(r => ({
-        ...r,
-        resolvedSeverity: inferSeverity(r.charges, r.offense_level),
-      })),
+      data: rows,
       pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) },
     });
   } catch (error: any) {
@@ -664,7 +494,7 @@ router.get('/unified', requireRole('admin', 'manager', 'supervisor', 'officer', 
     if (severity !== 'all') { whereClauses.push('w.offense_level = ?'); params.push(severity); }
     if (q) {
       whereClauses.push(`(w.warrant_number LIKE ? ESCAPE '\\' OR w.charge_description LIKE ? ESCAPE '\\' OR p.first_name LIKE ? ESCAPE '\\' OR p.last_name LIKE ? ESCAPE '\\')`);
-      const like = `%${escapeLike(String(q).trim())}%`;
+      const like = `%${escapeLike(q)}%`;
       params.push(like, like, like, like);
     }
 
@@ -845,7 +675,7 @@ router.post('/', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (r
       statute_citation || null,
     );
 
-    const warrantId = Number(result.lastInsertRowid);
+    const warrantId = result.lastInsertRowid;
 
     // Auto-generate warrant_number: WRN-YYYY-NNNNN
     const currentYear = parseInt(localNow().slice(0, 4), 10);
@@ -917,25 +747,6 @@ router.put('/:id', validateParamId, requireRole('dispatcher', 'supervisor', 'adm
       }
     }
 
-    // Reject direct status changes via PUT — use dedicated endpoints (/serve, /recall, etc.)
-    if (req.body.status !== undefined) {
-      res.status(400).json({ error: 'Status cannot be changed directly. Use the dedicated serve/recall endpoints.' });
-      return;
-    }
-
-    // Validate charge_description length to prevent database bloat
-    if (req.body.charge_description && req.body.charge_description.length > 5000) {
-      res.status(400).json({ error: 'charge_description exceeds 5000 character limit' });
-      return;
-    }
-
-    // Validate type enum if provided
-    const VALID_WARRANT_TYPES = ['arrest', 'bench', 'search', 'civil', 'other'];
-    if (req.body.type && !VALID_WARRANT_TYPES.includes(req.body.type)) {
-      res.status(400).json({ error: `Invalid warrant type. Must be one of: ${VALID_WARRANT_TYPES.join(', ')}` });
-      return;
-    }
-
     // Build dynamic SET clause — only update fields explicitly provided
     const bodyKeys = Object.keys(req.body);
     const warrantFields: Record<string, (v: any) => any> = {
@@ -946,6 +757,7 @@ router.put('/:id', validateParamId, requireRole('dispatcher', 'supervisor', 'adm
       charge_description: v => v || null,
       bail_amount: v => v ?? null,
       offense_level: v => v ?? null,
+      status: v => v || null,
       expires_at: v => v ?? null,
       notes: v => v ?? null,
       statute_id: v => v || null,
@@ -980,15 +792,7 @@ router.put('/:id', validateParamId, requireRole('dispatcher', 'supervisor', 'adm
       WHERE w.id = ?
     `).get(req.params.id) as any;
 
-    // Log which fields changed with old/new values for audit trail
-    const changedFields: string[] = [];
-    for (const [field] of Object.entries(warrantFields)) {
-      if (bodyKeys.includes(field) && warrant[field] !== req.body[field]) {
-        changedFields.push(`${field}: "${warrant[field] ?? ''}" → "${req.body[field] ?? ''}"`);
-      }
-    }
-    auditLog(req, 'warrant_updated', 'warrant', String(req.params.id),
-      `Updated warrant #${req.params.id}${changedFields.length > 0 ? ` — ${changedFields.join(', ')}` : ''}`);
+    auditLog(req, 'warrant_updated', 'warrant', String(req.params.id), `Updated warrant #${req.params.id}`);
 
     res.json(updated);
   } catch (error: any) {
@@ -1155,7 +959,7 @@ router.get('/scraped/search', requireRole('admin', 'manager', 'supervisor', 'off
       return;
     }
 
-    const pageNum = Math.min(1000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 

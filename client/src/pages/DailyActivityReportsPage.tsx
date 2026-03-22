@@ -20,7 +20,6 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
-import { localToday } from '../utils/dateUtils';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
@@ -43,15 +42,13 @@ export default function DailyActivityReportsPage() {
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
 
   // New DAR form
   const [createFormOpen, setCreateFormOpen] = useState(false);
-  const [newDarDate, setNewDarDate] = useState(localToday());
+  const [newDarDate, setNewDarDate] = useState(new Date().toISOString().slice(0, 10));
   const [newDarShiftStart, setNewDarShiftStart] = useState('');
   const [newDarShiftEnd, setNewDarShiftEnd] = useState('');
   const [autoPopulateData, setAutoPopulateData] = useState<any>(null);
@@ -71,18 +68,13 @@ export default function DailyActivityReportsPage() {
         page: String(page), limit: '50',
         ...(searchQuery ? { search: searchQuery } : {}),
         ...(filterStatus ? { status: filterStatus } : {}),
-        ...(dateFrom ? { date_from: dateFrom } : {}),
-        ...(dateTo ? { date_to: dateTo } : {}),
       });
       const res = await apiFetch<{ data: DailyActivityReport[]; pagination: any }>(`/dar?${params}`);
-      const newDars = res.data || [];
-      setDars(newDars);
+      setDars(res.data || []);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
-      // Keep selected item in sync with refreshed data
-      setSelected(prev => prev ? newDars.find((d: DailyActivityReport) => d.id === prev.id) || null : null);
-    } catch { addToast('Failed to load activity reports', 'error'); } finally { setLoading(false); }
-  }, [page, searchQuery, filterStatus, dateFrom, dateTo]);
+    } catch { /* silent */ } finally { setLoading(false); }
+  }, [page, searchQuery, filterStatus]);
 
   useEffect(() => { fetchDars(); }, [fetchDars]);
   useLiveSync('admin', () => fetchDars({ silent: true }));
@@ -151,11 +143,8 @@ export default function DailyActivityReportsPage() {
   };
 
   const handleReturn = async () => {
-    const rawNotes = prompt('Enter review notes (required):');
-    if (!rawNotes || !selected) return;
-    // Sanitize: trim, limit length, strip control characters
-    const notes = rawNotes.trim().replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '').slice(0, 2000);
-    if (!notes) { addToast('Review notes cannot be empty', 'error'); return; }
+    const notes = prompt('Enter review notes (required):');
+    if (!notes || !selected) return;
     try {
       await apiFetch(`/dar/${selected.id}/return`, { method: 'PUT', body: JSON.stringify({ review_notes: notes }) });
       addToast('DAR returned for revision', 'success');
@@ -213,17 +202,6 @@ export default function DailyActivityReportsPage() {
             <option value="approved">Approved</option>
             <option value="returned">Returned</option>
           </select>
-        </div>
-        <div className="flex items-center gap-1 px-1.5 pb-1.5 bg-surface-base">
-          <Calendar style={{ width: 10, height: 10 }} className="text-rmpg-500 flex-shrink-0" />
-          <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 py-0.5 outline-none" placeholder="From" />
-          <span className="text-[9px] text-rmpg-600">to</span>
-          <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 py-0.5 outline-none" placeholder="To" />
-          {(dateFrom || dateTo) && (
-            <button onClick={() => { setDateFrom(''); setDateTo(''); setPage(1); }} className="text-rmpg-500 hover:text-white" title="Clear date range">
-              <X style={{ width: 10, height: 10 }} />
-            </button>
-          )}
         </div>
 
         {/* DAR List */}

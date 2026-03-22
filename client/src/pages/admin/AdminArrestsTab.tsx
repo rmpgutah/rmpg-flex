@@ -7,7 +7,6 @@ import {
   Globe, Shield, Activity, RotateCcw,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
-import { useToast } from '../../components/ToastProvider';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -110,7 +109,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
       const data = await apiFetch<ArrestStatus>('/arrests/status');
       setStatus(data);
     } catch (err) {
-      console.error('Failed to fetch arrest status:', err); setError('Failed to load arrest status');
+      console.error('Failed to fetch arrest status:', err);
     } finally { setLoading(false); }
   }, []);
 
@@ -129,7 +128,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
         setRecords(data.records || []);
         setRecordsTotal(data.total || 0);
       }
-    } catch (e) { console.error('Failed to fetch arrest records:', e); setError('Failed to load arrest records'); }
+    } catch (e) { console.error('Failed to fetch arrest records:', e); }
     finally { setRecordsLoading(false); }
   }, []);
 
@@ -138,7 +137,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
     try {
       const data = await apiFetch<any>('/jail-roster/status');
       setScraperStatus(data);
-    } catch (e) { console.error('Failed to fetch scraper status:', e); setError('Failed to load scraper status'); }
+    } catch (e) { console.error('Failed to fetch scraper status:', e); }
     finally { setScraperLoading(false); }
   }, []);
 
@@ -830,7 +829,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                     <div className="text-[9px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Recent Sync Log</div>
                     <div className="space-y-0.5 max-h-[150px] overflow-y-auto">
                       {scraperStatus.recent_syncs.slice(0, 10).map((sync: any, idx: number) => (
-                        <div key={`${sync.county}-${sync.synced_at}`} className="flex items-center gap-2 text-[9px] px-2 py-1 rounded-sm bg-surface-base">
+                        <div key={idx} className="flex items-center gap-2 text-[9px] px-2 py-1 rounded-sm bg-surface-base">
                           <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${sync.status === 'success' ? 'bg-green-500' : 'bg-red-500'}`} />
                           <span className="text-rmpg-400 w-14">{sync.county}</span>
                           <span className="text-rmpg-500">{sync.synced_at?.split(' ')[1]?.substring(0, 5) || sync.synced_at}</span>

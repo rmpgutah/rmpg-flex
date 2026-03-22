@@ -28,7 +28,6 @@ import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,
   getContentWidth, getHalfWidth, getFullFieldWidth,
   getLeftX, getRightColumnX, getHalfFieldWidth, getQuarterWidth,
-  getLineHeight, getCapHeight,
 } from './pdfTokens';
 
 // ── Data interface ────────────────────────────────────────
@@ -175,17 +174,10 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-
-        // Dynamic row height for multi-line descriptions — compute BEFORE page break check
-        const descLines = doc.splitTextToSize(item.description || '', cols[0].w - 2);
-        const itemLineH = getLineHeight(FONT.SIZE_FIELD_VALUE);
-        const rowHeight = Math.max(descLines.length * itemLineH, itemLineH) + SPACING.SM;
-
-        // Page break check — use actual row height instead of hardcoded 8mm
+        // Page break check — re-draw headers on new page
         const prevPage = doc.getNumberOfPages();
         const prevY = y;
-        y = checkPageBreak(doc, y, rowHeight + 2);
+        y = checkPageBreak(doc, y, 8);
         if (doc.getNumberOfPages() > prevPage) {
           // Close segment on previous page
           tableSegments[tableSegments.length - 1].bottom = prevY;
@@ -195,6 +187,12 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
           doc.setFont('helvetica', 'normal');
           doc.setFontSize(FONT.SIZE_FIELD_VALUE);
         }
+
+        const item = items[i];
+
+        // Dynamic row height for multi-line descriptions
+        const descLines = doc.splitTextToSize(item.description || '', cols[0].w - 2);
+        const rowHeight = Math.max(descLines.length * LAYOUT.LINE_HEIGHT, LAYOUT.LINE_HEIGHT) + 1;
 
         // Alternating shading with dynamic height
         if (i % 2 === 0) {
@@ -258,7 +256,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
     doc.text(label, totX, y, { align: 'right' });
     doc.setTextColor(color ? color[0] : 30, color ? color[1] : 30, color ? color[2] : 30);
     doc.text(value, totVX, y, { align: 'right' });
-    y += bold ? LAYOUT.INVOICE_TOTAL_ROW_H : getLineHeight(FONT.SIZE_FIELD_VALUE);
+    y += bold ? 6 : LAYOUT.LINE_HEIGHT;
   };
 
   addTotal('Subtotal:', fmt(data.subtotal));
@@ -278,15 +276,13 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
   doc.setLineWidth(BORDER.SECTION_OUTER);
   const balBoxX = totX - 8;
   const balBoxW = totVX - balBoxX + 3;
-  const balBoxH = FONT.SIZE_BALANCE_DUE + 3;
-  doc.rect(balBoxX, y - 2, balBoxW, balBoxH);
+  doc.rect(balBoxX, y - 2, balBoxW, 9);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_BALANCE_DUE);
   doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-  const balTextY = y - 2 + (balBoxH + getCapHeight(FONT.SIZE_BALANCE_DUE)) / 2;
-  doc.text('BALANCE DUE:', totX, balTextY, { align: 'right' });
-  doc.text(fmt(data.balance_due), totVX, balTextY, { align: 'right' });
-  y += balBoxH + SPACING.LG;
+  doc.text('BALANCE DUE:', totX, y + 4, { align: 'right' });
+  doc.text(fmt(data.balance_due), totVX, y + 4, { align: 'right' });
+  y += 14;
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
 
@@ -298,14 +294,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
     const sec = openAutoSection(doc, 'Payment History', y);
     y = sec.contentY;
 
-    // Proportional columns: Date 15%, Amount 15%, Method 30%, Reference 40%
-    const payCW = getContentWidth(doc);
-    const payColPositions = [
-      LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET,
-      LAYOUT.PAGE_MARGIN + payCW * 0.15,
-      LAYOUT.PAGE_MARGIN + payCW * 0.30,
-      LAYOUT.PAGE_MARGIN + payCW * 0.60,
-    ];
+    const payColPositions = [LAYOUT.PAGE_MARGIN + 3, LAYOUT.PAGE_MARGIN + 30, LAYOUT.PAGE_MARGIN + 60, LAYOUT.PAGE_MARGIN + 100];
     const payHeaders = [
       { label: 'DATE', x: payColPositions[0] },
       { label: 'AMOUNT', x: payColPositions[1] },

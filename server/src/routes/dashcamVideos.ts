@@ -16,8 +16,8 @@ import { localNow } from '../utils/timeUtils';
 import { escapeLike } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 import { broadcast } from '../utils/websocket';
-import { burnVideoWithProgress } from '../utils/videoOverlay';
-import { validateParamId, validateNumericParams } from '../middleware/sanitize';
+import { validateParamId } from '../middleware/sanitize';
+import { sendCsv } from '../utils/csvExport';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -107,7 +107,7 @@ router.get('/', authenticateToken, (req: Request, res: Response) => {
     if (unit_id) { query += ' AND v.unit_id = ?'; params.push(unit_id); }
     if (case_number) { query += ' AND v.case_number = ?'; params.push(case_number); }
     if (search) {
-      const q = `%${escapeLike(String(search).trim())}%`;
+      const q = `%${escapeLike(String(search))}%`;
       query += " AND (v.title LIKE ? ESCAPE '\\' OR v.case_number LIKE ? ESCAPE '\\' OR v.address LIKE ? ESCAPE '\\' OR COALESCE(fv.vehicle_number, fv_unit.vehicle_number) LIKE ? ESCAPE '\\' OR u.call_sign LIKE ? ESCAPE '\\')";
       params.push(q, q, q, q, q);
     }
@@ -128,7 +128,7 @@ router.get('/', authenticateToken, (req: Request, res: Response) => {
 // ============================================================
 // GET /api/fleet/dashcam-videos/:id — Single video detail
 // ============================================================
-router.get('/:id', validateParamId, authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id', validateParamId, authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const video = db.prepare(`
@@ -137,19 +137,11 @@ router.get('/:id', validateParamId, authenticateToken, requireRole('admin', 'man
         COALESCE(fv.make, fv_unit.make) as vehicle_make,
         COALESCE(fv.model, fv_unit.model) as vehicle_model,
         COALESCE(fv.year, fv_unit.year) as vehicle_year,
-        COALESCE(fv.color, fv_unit.color) as vehicle_color,
-        COALESCE(fv.plate_number, fv_unit.plate_number) as vehicle_plate,
-        COALESCE(fv.plate_state, fv_unit.plate_state) as vehicle_plate_state,
-        u.call_sign as unit_call_sign,
-        u.status as unit_status,
-        usr.full_name as officer_name,
-        usr.badge_number as officer_badge,
-        usr.rank as officer_rank
+        u.call_sign as unit_call_sign
       FROM dashcam_videos v
       LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
       LEFT JOIN units u ON v.unit_id = u.id
       LEFT JOIN fleet_vehicles fv_unit ON fv_unit.assigned_unit_id = v.unit_id AND v.vehicle_id IS NULL
-      LEFT JOIN users usr ON u.officer_id = usr.id
       WHERE v.id = ?
     `).get(req.params.id);
 
@@ -157,14 +149,7 @@ router.get('/:id', validateParamId, authenticateToken, requireRole('admin', 'man
       res.status(404).json({ error: 'Video not found' });
       return;
     }
-
-    // Include linked entities and audit trail for detail page
-    const links = db.prepare('SELECT * FROM dashcam_video_links WHERE video_id = ? ORDER BY created_at DESC').all(req.params.id);
-    const auditTrail = db.prepare(
-      "SELECT * FROM audit_log WHERE entity_type = 'dashcam_video' AND CAST(entity_id AS TEXT) = ? ORDER BY created_at DESC LIMIT 50"
-    ).all(String(req.params.id));
-
-    res.json({ ...(video as any), links, audit_trail: auditTrail });
+    res.json(video);
   } catch (error: any) {
     console.error('Get dashcam video error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -172,44 +157,11 @@ router.get('/:id', validateParamId, authenticateToken, requireRole('admin', 'man
 });
 
 // ============================================================
-// GET /api/fleet/dashcam-videos/:id/neighbors — Previous/Next video
-// ============================================================
-router.get('/:id/neighbors', validateParamId, authenticateToken, (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const video = db.prepare('SELECT id, recorded_at FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
-    if (!video) {
-      res.status(404).json({ error: 'Video not found' });
-      return;
-    }
-
-    const prev = db.prepare(
-      'SELECT id, title FROM dashcam_videos WHERE recorded_at < ? OR (recorded_at = ? AND id < ?) ORDER BY recorded_at DESC, id DESC LIMIT 1'
-    ).get(video.recorded_at || '', video.recorded_at || '', video.id) as any;
-
-    const next = db.prepare(
-      'SELECT id, title FROM dashcam_videos WHERE recorded_at > ? OR (recorded_at = ? AND id > ?) ORDER BY recorded_at ASC, id ASC LIMIT 1'
-    ).get(video.recorded_at || '', video.recorded_at || '', video.id) as any;
-
-    res.json({ prev: prev || null, next: next || null });
-  } catch (error: any) {
-    console.error('Get dashcam neighbors error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ============================================================
 // POST /api/fleet/dashcam-videos — Upload a new dash cam video
 // ============================================================
-router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer'), upload.fields([{ name: 'video', maxCount: 1 }, { name: 'thumbnail', maxCount: 1 }]), (req: Request, res: Response) => {
+router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer'), upload.single('video'), (req: Request, res: Response) => {
   try {
-    const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
-    const videoFile = files?.['video']?.[0];
-    const thumbnailFile = files?.['thumbnail']?.[0];
-
-    if (!videoFile) {
-      // Cleanup thumbnail if uploaded without video
-      if (thumbnailFile && fs.existsSync(thumbnailFile.path)) fs.unlinkSync(thumbnailFile.path);
+    if (!req.file) {
       res.status(400).json({ error: 'No video file uploaded' });
       return;
     }
@@ -223,9 +175,8 @@ router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor'
     } = req.body;
 
     if (!title) {
-      // Cleanup uploaded files
-      fs.unlinkSync(videoFile.path);
-      if (thumbnailFile && fs.existsSync(thumbnailFile.path)) fs.unlinkSync(thumbnailFile.path);
+      // Cleanup uploaded file
+      fs.unlinkSync(req.file.path);
       res.status(400).json({ error: 'Title is required' });
       return;
     }
@@ -237,22 +188,22 @@ router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor'
       if (fv) resolvedVehicleId = fv.id;
     }
 
-    const user = req.user!;
+    const user = (req as any).user;
 
     const result = db.prepare(`
       INSERT INTO dashcam_videos
         (vehicle_id, unit_id, title, file_path, file_size, duration_seconds, mime_type,
          recorded_at, case_number, classification, speed_mph, latitude, longitude, address,
-         notes, source, uploaded_by, thumbnail_path, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'upload', ?, ?, ?, ?)
+         notes, source, uploaded_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'upload', ?, ?, ?)
     `).run(
       resolvedVehicleId,
       unit_id || null,
       title,
-      videoFile.filename,
-      videoFile.size,
+      req.file.filename,
+      req.file.size,
       duration_seconds ? parseInt(String(duration_seconds), 10) : null,
-      videoFile.mimetype || 'video/mp4',
+      req.file.mimetype || 'video/mp4',
       recorded_at || null,
       case_number || null,
       classification || 'routine',
@@ -262,11 +213,10 @@ router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor'
       address || null,
       notes || null,
       user?.username || 'system',
-      thumbnailFile ? thumbnailFile.filename : null,
       now, now,
     );
 
-    const id = Number(result.lastInsertRowid);
+    const id = result.lastInsertRowid;
 
     auditLog(req, 'dashcam_uploaded', 'dashcam_video', Number(id), `Uploaded dash cam video: ${title}`);
     broadcast('fleet', 'dashcam_uploaded', { id, title });
@@ -274,11 +224,9 @@ router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor'
     res.json({ success: true, id });
   } catch (error: any) {
     console.error('Upload dashcam video error:', error?.message || 'Unknown error');
-    const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
-    const videoFile = files?.['video']?.[0];
-    const thumbnailFile = files?.['thumbnail']?.[0];
-    if (videoFile && fs.existsSync(videoFile.path)) fs.unlinkSync(videoFile.path);
-    if (thumbnailFile && fs.existsSync(thumbnailFile.path)) fs.unlinkSync(thumbnailFile.path);
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -379,27 +327,12 @@ router.delete('/:id', validateParamId, authenticateToken, requireRole('admin'), 
 // GET /api/fleet/dashcam-videos/:id/stream — Stream with Range
 // ============================================================
 router.get('/:id/stream', validateParamId, (req: Request, res: Response, next) => {
-  // Prefer HMAC signed access (no JWT in URL), fall back to legacy ?token= during migration
-  if (!req.headers['authorization'] && typeof req.query.sig === 'string') {
-    const { verifyResourceAccess } = require('../utils/signedAccess');
-    const exp = parseInt(req.query.exp as string, 10);
-    const nonce = req.query.nonce as string | undefined;
-    if (verifyResourceAccess('dashcam', req.params.id, req.query.sig as string, exp, nonce)) {
-      req.user = { userId: 0, username: 'signed-access', role: 'viewer', fullName: 'Signed Access' };
-      next();
-      return;
-    }
-    res.status(403).json({ error: 'Invalid or expired signature' });
-    return;
-  }
-  // Legacy: Accept token from query string for <video> elements (can't set Authorization header)
+  // Accept token from query string for <video> elements (can't set Authorization header)
   if (!req.headers['authorization'] && typeof req.query.token === 'string' && req.query.token.length < 2048) {
-    const { logLegacyTokenUsage } = require('../utils/signedAccess');
-    logLegacyTokenUsage('dashcam/stream');
     req.headers['authorization'] = `Bearer ${req.query.token}`;
   }
   next();
-}, authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'viewer'), (req: Request, res: Response) => {
+}, authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const video = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
@@ -465,7 +398,7 @@ router.get('/:id/stream', validateParamId, (req: Request, res: Response, next) =
 // ============================================================
 // GET /api/fleet/dashcam-videos/:id/links — List linked entities
 // ============================================================
-router.get('/:id/links', validateParamId, authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id/links', validateParamId, authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const videoId = parseInt(String(req.params.id), 10);
@@ -491,7 +424,7 @@ router.post('/:id/links', validateParamId, authenticateToken, requireRole('admin
     const videoId = parseInt(String(req.params.id), 10);
     if (isNaN(videoId)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
     const { entity_type, entity_id, notes } = req.body;
-    const user = req.user!;
+    const user = (req as any).user;
 
     if (!entity_type || !entity_id) {
       res.status(400).json({ error: 'entity_type and entity_id are required' });
@@ -529,7 +462,7 @@ router.post('/:id/links', validateParamId, authenticateToken, requireRole('admin
       `Linked video "${video.title}" to ${entity_type} #${entity_id}`);
     broadcast('fleet', 'dashcam_linked', { video_id: videoId, entity_type, entity_id });
 
-    res.json({ success: true, id: Number(result.lastInsertRowid) });
+    res.json({ success: true, id: result.lastInsertRowid });
   } catch (error: any) {
     console.error('Link dashcam video error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -539,7 +472,7 @@ router.post('/:id/links', validateParamId, authenticateToken, requireRole('admin
 // ============================================================
 // DELETE /api/fleet/dashcam-videos/:id/links/:linkId — Remove link
 // ============================================================
-router.delete('/:id/links/:linkId', validateNumericParams('id', 'linkId'), authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.delete('/:id/links/:linkId', validateParamId, authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const linkId = parseInt(String(req.params.linkId), 10);
@@ -573,20 +506,6 @@ router.post('/webhook/clearpathgps', webhookUpload.single('video'), (req: Reques
   try {
     const db = getDb();
 
-    // ── IP Allowlist for webhook callers ──────────────────
-    // If CLEARPATHGPS_WEBHOOK_IPS is set, only accept requests from those IPs.
-    // Format: comma-separated CIDR or IP addresses (e.g., "1.2.3.4,5.6.7.0/24")
-    const allowedIps = process.env.CLEARPATHGPS_WEBHOOK_IPS;
-    if (allowedIps) {
-      const clientIp = req.ip || '';
-      const allowed = allowedIps.split(',').map(s => s.trim()).filter(Boolean);
-      if (!allowed.some(ip => clientIp === ip || clientIp.startsWith(ip.replace(/\/\d+$/, '')))) {
-        console.warn(`[DASHCAM] Webhook rejected: IP ${clientIp} not in allowlist`);
-        res.status(403).json({ error: 'Forbidden' });
-        return;
-      }
-    }
-
     // Validate webhook secret (required — reject if not configured)
     const webhookSecret = process.env.CLEARPATHGPS_WEBHOOK_SECRET;
     if (!webhookSecret) {
@@ -597,7 +516,6 @@ router.post('/webhook/clearpathgps', webhookUpload.single('video'), (req: Reques
     const providedSecret = String(req.headers['x-webhook-secret'] || req.body?.webhook_secret || '');
     if (!providedSecret || providedSecret.length !== webhookSecret.length ||
         !crypto.timingSafeEqual(Buffer.from(providedSecret), Buffer.from(webhookSecret))) {
-      console.warn(`[DASHCAM] Webhook rejected: invalid secret from IP ${req.ip}`);
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
@@ -680,7 +598,7 @@ router.post('/webhook/clearpathgps', webhookUpload.single('video'), (req: Reques
         now, now,
       );
 
-      const videoId = Number(result.lastInsertRowid);
+      const videoId = result.lastInsertRowid;
 
       broadcast('fleet', 'dashcam_uploaded', {
         id: videoId,
@@ -705,304 +623,44 @@ router.post('/webhook/clearpathgps', webhookUpload.single('video'), (req: Reques
   }
 });
 
-// ============================================================
-// POST /api/fleet/dashcam-videos/:id/burn — Trigger HUD burn
-// ============================================================
-router.post('/:id/burn', validateParamId, authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+// ─── CSV EXPORT ──────────────────────────────────────────
+
+// GET /api/fleet/dashcam-videos/export/csv — Export dashcam video metadata
+router.get('/export/csv', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(String(req.params.id), 10);
-    if (isNaN(id)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
-
-    const video = db.prepare(`
-      SELECT v.*, u.call_sign as unit_call_sign,
-        fv.vehicle_number, fv.year as vehicle_year, fv.make as vehicle_make, fv.model as vehicle_model
+    const rows = db.prepare(`
+      SELECT v.id, v.title, v.file_size, v.duration_seconds, v.mime_type,
+        v.recorded_at, v.case_number, v.classification, v.speed_mph,
+        v.latitude, v.longitude, v.address, v.source, v.uploaded_by,
+        v.notes, v.created_at,
+        fv.vehicle_number, u.call_sign as unit_call_sign
       FROM dashcam_videos v
-      LEFT JOIN units u ON v.unit_id = u.id
       LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
-      WHERE v.id = ?
-    `).get(id) as any;
-
-    if (!video) {
-      res.status(404).json({ error: 'Video not found' });
-      return;
-    }
-
-    // Verify file exists on disk
-    const filePath = safeDashcamPath(video.file_path);
-    if (!filePath || !fs.existsSync(filePath)) {
-      res.status(404).json({ error: 'Video file not found on disk' });
-      return;
-    }
-
-    if (video.burn_status === 'processing') {
-      res.status(409).json({ error: 'Burn already in progress' });
-      return;
-    }
-
-    // Set initial burn status
-    db.prepare('UPDATE dashcam_videos SET burn_status = ?, burn_progress = 0, burn_error = NULL, updated_at = ? WHERE id = ?')
-      .run('processing', localNow(), id);
-
-    auditLog(req, 'dashcam_burn_started', 'dashcam_video', id, `Started HUD burn for: ${video.title}`);
-
-    // Build vehicle description
-    const vehParts = [video.vehicle_year, video.vehicle_make, video.vehicle_model].filter(Boolean);
-    const vehicleDescription = vehParts.length > 0 ? vehParts.join(' ') : undefined;
-
-    // Build output path — same dir, _burned suffix
-    const ext = path.extname(filePath);
-    const base = path.basename(filePath, ext);
-    const outputPath = path.join(path.dirname(filePath), `${base}_burned${ext || '.mp4'}`);
-
-    // Start burn in background (fire-and-forget)
-    (async () => {
-      try {
-        await burnVideoWithProgress(
-          filePath,
-          outputPath,
-          {
-            agencyName: 'Rocky Mountain Protective Group',
-            unitCallSign: video.unit_call_sign || undefined,
-            vehicleDescription,
-            caseNumber: video.case_number || undefined,
-            classification: video.classification || undefined,
-            recordedAt: video.recorded_at || undefined,
-            speed: video.speed_mph != null ? video.speed_mph : undefined,
-            latitude: video.latitude != null ? video.latitude : undefined,
-            longitude: video.longitude != null ? video.longitude : undefined,
-          },
-          (percent: number) => {
-            try {
-              db.prepare('UPDATE dashcam_videos SET burn_progress = ?, updated_at = ? WHERE id = ?')
-                .run(percent, localNow(), id);
-              broadcast('fleet', 'dashcam_burn_progress', { id, progress: percent });
-            } catch (e) { /* ignore DB errors during progress */ }
-          }
-        );
-
-        // Verify output
-        if (!fs.existsSync(outputPath)) {
-          throw new Error('Burned output file was not created');
-        }
-
-        const burnedFilename = path.basename(outputPath);
-        db.prepare('UPDATE dashcam_videos SET burn_status = ?, burn_progress = 100, burned_file_path = ?, burn_error = NULL, updated_at = ? WHERE id = ?')
-          .run('complete', burnedFilename, localNow(), id);
-        broadcast('fleet', 'dashcam_burn_progress', { id, progress: 100, status: 'complete' });
-        console.log(`[Burn] Video ${id} burn complete: ${burnedFilename}`);
-      } catch (err: any) {
-        const errorMsg = err.message?.slice(0, 500) || 'Unknown error';
-        console.error(`[Burn] Video ${id} burn failed:`, errorMsg);
-        try {
-          db.prepare('UPDATE dashcam_videos SET burn_status = ?, burn_error = ?, updated_at = ? WHERE id = ?')
-            .run('error', errorMsg, localNow(), id);
-          broadcast('fleet', 'dashcam_burn_progress', { id, progress: 0, status: 'error', error: errorMsg });
-        } catch { /* ignore */ }
-      }
-    })();
-
-    res.json({ success: true, message: 'Burn started' });
+      LEFT JOIN units u ON v.unit_id = u.id
+      ORDER BY v.recorded_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'dashcam_videos_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'title', header: 'Title' },
+      { key: 'vehicle_number', header: 'Vehicle' },
+      { key: 'unit_call_sign', header: 'Unit' },
+      { key: 'recorded_at', header: 'Recorded At' },
+      { key: 'case_number', header: 'Case Number' },
+      { key: 'classification', header: 'Classification' },
+      { key: 'duration_seconds', header: 'Duration (sec)' },
+      { key: 'file_size', header: 'File Size (bytes)' },
+      { key: 'speed_mph', header: 'Speed (mph)' },
+      { key: 'latitude', header: 'Latitude' },
+      { key: 'longitude', header: 'Longitude' },
+      { key: 'address', header: 'Address' },
+      { key: 'source', header: 'Source' },
+      { key: 'uploaded_by', header: 'Uploaded By' },
+      { key: 'notes', header: 'Notes' },
+      { key: 'created_at', header: 'Created At' },
+    ], rows);
   } catch (error: any) {
-    console.error('Burn dashcam video error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ============================================================
-// GET /api/fleet/dashcam-videos/:id/download-burned — Download burned copy
-// ============================================================
-router.get('/:id/download-burned', validateParamId, (req: Request, res: Response, next) => {
-  // Prefer HMAC signed access, fall back to legacy ?token=
-  if (!req.headers['authorization'] && typeof req.query.sig === 'string') {
-    const { verifyResourceAccess } = require('../utils/signedAccess');
-    const exp = parseInt(req.query.exp as string, 10);
-    const nonce = req.query.nonce as string | undefined;
-    if (verifyResourceAccess('dashcam', req.params.id, req.query.sig as string, exp, nonce)) {
-      req.user = { userId: 0, username: 'signed-access', role: 'viewer', fullName: 'Signed Access' };
-      next();
-      return;
-    }
-    res.status(403).json({ error: 'Invalid or expired signature' });
-    return;
-  }
-  if (!req.headers['authorization'] && typeof req.query.token === 'string' && req.query.token.length < 2048) {
-    const { logLegacyTokenUsage } = require('../utils/signedAccess');
-    logLegacyTokenUsage('dashcam/download-burned');
-    req.headers['authorization'] = `Bearer ${req.query.token}`;
-  }
-  next();
-}, authenticateToken, (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const video = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
-    if (!video) {
-      res.status(404).json({ error: 'Video not found' });
-      return;
-    }
-
-    if (!video.burned_file_path) {
-      res.status(404).json({ error: 'No burned copy available' });
-      return;
-    }
-
-    const filePath = safeDashcamPath(video.burned_file_path);
-    if (!filePath || !fs.existsSync(filePath)) {
-      res.status(404).json({ error: 'Burned file not found on disk' });
-      return;
-    }
-
-    const stat = fs.statSync(filePath);
-    const fileSize = stat.size;
-    const range = req.headers.range;
-    const filename = `${video.title || 'dashcam'}_burned${path.extname(filePath)}`;
-
-    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-    res.set('X-Content-Type-Options', 'nosniff');
-    res.set('Content-Disposition', `attachment; filename="${filename.replace(/"/g, '_')}"`);
-    res.set('Referrer-Policy', 'no-referrer');
-
-    if (range) {
-      const parts = range.replace(/bytes=/, '').split('-');
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-
-      if (isNaN(start) || isNaN(end) || start < 0 || end >= fileSize || start > end) {
-        res.writeHead(416, { 'Content-Range': `bytes */${fileSize}` });
-        res.end();
-        return;
-      }
-
-      const chunkSize = end - start + 1;
-      res.writeHead(206, {
-        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-        'Accept-Ranges': 'bytes',
-        'Content-Length': chunkSize,
-        'Content-Type': video.mime_type || 'video/mp4',
-      });
-      const stream = fs.createReadStream(filePath, { start, end });
-      stream.on('error', (err) => { console.error('Burned stream error:', err?.message || 'Unknown error'); res.destroy(); });
-      stream.pipe(res);
-    } else {
-      res.writeHead(200, {
-        'Content-Length': fileSize,
-        'Content-Type': video.mime_type || 'video/mp4',
-      });
-      const stream = fs.createReadStream(filePath);
-      stream.on('error', (err) => { console.error('Burned stream error:', err?.message || 'Unknown error'); res.destroy(); });
-      stream.pipe(res);
-    }
-  } catch (error: any) {
-    console.error('Download burned video error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ============================================================
-// GET /api/fleet/dashcam-videos/:id/thumbnail — Serve thumbnail
-// ============================================================
-router.get('/:id/thumbnail', validateParamId, (req: Request, res: Response, next) => {
-  // Prefer HMAC signed access, fall back to legacy ?token=
-  if (!req.headers['authorization'] && typeof req.query.sig === 'string') {
-    const { verifyResourceAccess } = require('../utils/signedAccess');
-    const exp = parseInt(req.query.exp as string, 10);
-    const nonce = req.query.nonce as string | undefined;
-    if (verifyResourceAccess('dashcam', req.params.id, req.query.sig as string, exp, nonce)) {
-      req.user = { userId: 0, username: 'signed-access', role: 'viewer', fullName: 'Signed Access' };
-      next();
-      return;
-    }
-    res.status(403).json({ error: 'Invalid or expired signature' });
-    return;
-  }
-  if (!req.headers['authorization'] && typeof req.query.token === 'string' && req.query.token.length < 2048) {
-    const { logLegacyTokenUsage } = require('../utils/signedAccess');
-    logLegacyTokenUsage('dashcam/thumbnail');
-    req.headers['authorization'] = `Bearer ${req.query.token}`;
-  }
-  next();
-}, authenticateToken, (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const video = db.prepare('SELECT id, thumbnail_path FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
-    if (!video) {
-      res.status(404).json({ error: 'Video not found' });
-      return;
-    }
-
-    if (!video.thumbnail_path) {
-      res.status(404).json({ error: 'No thumbnail available' });
-      return;
-    }
-
-    const filePath = safeDashcamPath(video.thumbnail_path);
-    if (!filePath || !fs.existsSync(filePath)) {
-      res.status(404).json({ error: 'Thumbnail file not found on disk' });
-      return;
-    }
-
-    res.set('Content-Type', 'image/jpeg');
-    res.set('Cache-Control', 'private, max-age=3600');
-    res.set('X-Content-Type-Options', 'nosniff');
-    fs.createReadStream(filePath).pipe(res);
-  } catch (error: any) {
-    console.error('Get thumbnail error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ============================================================
-// POST /api/fleet/dashcam-videos/:id/thumbnail — Upload thumbnail
-// ============================================================
-const thumbnailUpload = multer({
-  storage,
-  limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB max
-  fileFilter: (_req, file, cb) => {
-    const allowed = ['image/jpeg', 'image/png'];
-    if (allowed.includes(file.mimetype) || file.originalname.match(/\.(jpg|jpeg|png)$/i)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only JPEG and PNG images are allowed'));
-    }
-  },
-});
-
-router.post('/:id/thumbnail', validateParamId, authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer'), thumbnailUpload.single('thumbnail'), (req: Request, res: Response) => {
-  try {
-    if (!req.file) {
-      res.status(400).json({ error: 'No thumbnail file uploaded' });
-      return;
-    }
-
-    const db = getDb();
-    const id = parseInt(String(req.params.id), 10);
-    if (isNaN(id)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
-
-    const video = db.prepare('SELECT id, title FROM dashcam_videos WHERE id = ?').get(id) as any;
-    if (!video) {
-      // Cleanup uploaded file
-      fs.unlinkSync(req.file.path);
-      res.status(404).json({ error: 'Video not found' });
-      return;
-    }
-
-    // Rename to consistent pattern
-    const thumbFilename = `thumbnail_${id}_${Date.now()}.jpg`;
-    const thumbPath = path.join(DASHCAM_DIR, thumbFilename);
-    fs.renameSync(req.file.path, thumbPath);
-
-    db.prepare('UPDATE dashcam_videos SET thumbnail_path = ?, updated_at = ? WHERE id = ?')
-      .run(thumbFilename, localNow(), id);
-
-    auditLog(req, 'dashcam_thumbnail_uploaded', 'dashcam_video', id, `Uploaded thumbnail for: ${video.title}`);
-
-    res.json({ success: true });
-  } catch (error: any) {
-    console.error('Upload thumbnail error:', error?.message || 'Unknown error');
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Export failed' });
   }
 });
 

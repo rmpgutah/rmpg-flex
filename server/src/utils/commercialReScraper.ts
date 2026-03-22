@@ -216,7 +216,7 @@ function isCommercialProperty(type: string): boolean {
 function normalizeDate(dateStr: string): string {
   if (!dateStr) return '';
   if (dateStr.includes('T')) return dateStr.slice(0, 10);
-  if (/^\d{13}$/.test(dateStr)) { const ms = new Date(parseInt(dateStr, 10)); return `${ms.getFullYear()}-${String(ms.getMonth() + 1).padStart(2, '0')}-${String(ms.getDate()).padStart(2, '0')}`; }
+  if (/^\d{13}$/.test(dateStr)) return new Date(parseInt(dateStr, 10)).toISOString().slice(0, 10);
   const m = dateStr.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
   if (m) {
     const year = m[3].length === 2 ? `20${m[3]}` : m[3];

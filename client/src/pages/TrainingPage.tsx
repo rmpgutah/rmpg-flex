@@ -14,7 +14,6 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
-import { useToast } from '../components/ToastProvider';
 import { formatDateTime, formatDate, parseTimestamp } from '../utils/dateUtils';
 import type { TrainingRecord, TrainingRequirement, TrainingCategory, TrainingStatus } from '../types';
 
@@ -60,7 +59,6 @@ interface Officer {
 // ── Main Component ─────────────────────────────────────────
 export default function TrainingPage() {
   const { user } = useAuth();
-  const { addToast } = useToast();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [records, setRecords] = useState<TrainingRecord[]>([]);
@@ -110,9 +108,8 @@ export default function TrainingPage() {
       setShowRecordModal(false);
       setEditRecord(null);
       fetchData();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Save record error:', err);
-      addToast(err?.message || 'Failed to save training record', 'error');
     }
   };
 
@@ -121,9 +118,8 @@ export default function TrainingPage() {
     try {
       await apiFetch(`/personnel/training/${id}`, { method: 'DELETE' });
       fetchData();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Delete record error:', err);
-      addToast(err?.message || 'Failed to delete training record', 'error');
     }
   };
 
@@ -161,7 +157,7 @@ export default function TrainingPage() {
   ];
 
   return (
-    <div className="flex flex-col h-full bg-surface-sunken app-grid-bg">
+    <div className="flex flex-col h-full bg-surface-sunken">
       {/* Header */}
       <div className="panel-beveled border-b border-rmpg-700 p-3 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-2">

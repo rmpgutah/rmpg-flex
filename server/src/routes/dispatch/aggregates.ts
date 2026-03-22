@@ -7,8 +7,6 @@ import { localNow } from '../../utils/timeUtils';
 import { reverseGeocodeAddress } from '../../utils/geocode';
 import { identifyBeat } from '../../utils/geofence';
 import { escapeLike } from '../../middleware/sanitize';
-import { auditLog } from '../../utils/auditLogger';
-import { assignUnitsToCall } from '../../utils/callUnits';
 
 const router = Router();
 
@@ -224,13 +222,20 @@ router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', '
     }
 
     // ── All DB writes in a single transaction for atomicity ──
+    const callNumber = generateCallNumber(db);
     const description = `PANIC ALARM — Officer ${user.full_name} (Badge: ${user.badge_number || 'N/A'}) triggered emergency alert.${message ? ' Message: ' + message : ''}`;
 
     const panicTx = db.transaction(() => {
-      // Generate call number INSIDE transaction to prevent race conditions
-      const callNumber = generateCallNumber(db);
-      // Log the panic alert
-      auditLog(req, 'panic_activated', 'user', user.id, `PANIC ALERT triggered by ${user.full_name} (${user.badge_number || 'N/A'})${message ? ': ' + message : ''}`);
+      // Log the panic alert to activity log
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'panic_alert', 'user', ?, ?, ?)
+      `).run(
+        user.id,
+        user.id,
+        `PANIC ALERT triggered by ${user.full_name} (${user.badge_number || 'N/A'})${message ? ': ' + message : ''}`,
+        req.ip || 'unknown'
+      );
 
       // Auto-create "Officer Assist — Panic Alarm" dispatch call
       const callResult = db.prepare(`
@@ -267,20 +272,21 @@ router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', '
         db.prepare('UPDATE units SET status = ?, current_call_id = ?, last_status_change = ? WHERE id = ?')
           .run('dispatched', call.id, now, unit.id);
 
-        // Write to both assigned_unit_ids (backward compat) and call_units junction table
         const unitIds = JSON.stringify([unit.id]);
         db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?')
           .run(unitIds, call.id);
-        assignUnitsToCall(call.id, [unit.id]);
       }
 
       // Log call creation
-      auditLog(req, 'call_created', 'call', call.id, `PANIC auto-created ${callNumber}: officer_assist`);
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'call_created', 'call', ?, ?, ?)
+      `).run(user.id, call.id, `PANIC auto-created ${callNumber}: officer_assist`, req.ip || 'unknown');
 
-      return { call, unit, callNumber };
+      return { call, unit };
     });
 
-    const { call, unit, callNumber } = panicTx();
+    const { call, unit } = panicTx();
 
     // ── Broadcasts happen AFTER transaction commits ──
     if (unit) {
@@ -421,7 +427,7 @@ router.get('/safety-screen', requireRole('admin', 'manager', 'supervisor', 'offi
         SELECT * FROM persons
         WHERE (first_name LIKE ? ESCAPE '\\' AND last_name LIKE ? ESCAPE '\\')
            OR (first_name LIKE ? ESCAPE '\\' AND last_name LIKE ? ESCAPE '\\')
-           OR ((first_name || ' ' || last_name) LIKE ? ESCAPE '\\')
+           OR (first_name || ' ' || last_name LIKE ? ESCAPE '\\')
         LIMIT 10
       `).all(
         `%${escapeLike(parts[0])}%`, `%${escapeLike(parts[1])}%`,
@@ -491,7 +497,7 @@ router.get('/safety-screen', requireRole('admin', 'manager', 'supervisor', 'offi
         p.warrants.length > 0 ||
         p.person.caution_flags ||
         p.person.is_sex_offender ||
-        (p.criminalHistory && p.criminalHistory.length > 0)
+        p.person.has_criminal_history
       ) ||
       uniqueDirectWarrants.length > 0;
 

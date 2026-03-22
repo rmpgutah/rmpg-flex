@@ -18,14 +18,13 @@ import {
   VolumeX,
   Play,
   Square,
-  Loader2,
 } from 'lucide-react';
 import { useRadio } from '../hooks/useRadio';
-import { localToday } from '../utils/dateUtils';
 import { usePrivateCall } from '../hooks/usePrivateCall';
 import { useAuth } from '../context/AuthContext';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { apiFetch } from '../hooks/useApi';
+import { useLiveSync } from '../hooks/useLiveSync';
 import { useToast } from '../components/ToastProvider';
 
 // ============================================================
@@ -82,9 +81,8 @@ export default function RadioPage() {
 
   const { user } = useAuth();
   const isMobile = useIsMobile();
-  const pttRef = useRef<HTMLButtonElement>(null);
-
   const { addToast } = useToast();
+  const pttRef = useRef<HTMLButtonElement>(null);
 
   // Track whether space is held down (prevent key-repeat)
   const spaceHeldRef = useRef(false);
@@ -204,7 +202,7 @@ export default function RadioPage() {
       setPlayingId(entryId);
     } catch (err) {
       console.error('[Radio Playback] Failed:', err);
-      addToast('Failed to play radio recording', 'error');
+      addToast('Failed to play recording', 'error');
       setPlayingId(null);
     }
   }, [playingId]);
@@ -238,6 +236,8 @@ export default function RadioPage() {
     }
   }, [historyChannel, historySearch]);
 
+  useLiveSync('dispatch', fetchHistory);
+
   useEffect(() => {
     if (showHistory) fetchHistory();
   }, [showHistory, fetchHistory]);
@@ -252,7 +252,7 @@ export default function RadioPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `radio-transcripts-${localToday()}.csv`;
+    a.download = `radio-transcripts-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -740,9 +740,9 @@ export default function RadioPage() {
                 Select a channel to join
               </p>
               {!isConnected && (
-                <div className="flex items-center justify-center gap-2 mt-2 text-amber-400 text-xs font-mono">
-                  <Loader2 style={{ width: 12, height: 12, animation: 'spin 1s linear infinite' }} />
-                  Connecting to radio server...
+                <div className="flex items-center justify-center gap-2 mt-2 text-red-400 text-xs font-mono">
+                  <WifiOff style={{ width: 12, height: 12 }} />
+                  DISCONNECTED — Radio unavailable
                 </div>
               )}
             </div>

@@ -10,6 +10,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { escapeLike } from '../middleware/sanitize';
+import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 router.use(authenticateToken);
@@ -71,7 +72,8 @@ function getRecordLabel(db: any, type: string, id: number): string {
       default:
         return `${type} #${id}`;
     }
-  } catch {
+  } catch (err: any) {
+    console.error('[Connections] getRecordLabel error:', err?.message);
     return `${type} #${id}`;
   }
 }
@@ -106,7 +108,8 @@ function getNodeMetadata(db: any, type: string, id: number): Record<string, any>
       default:
         return {};
     }
-  } catch {
+  } catch (err: any) {
+    console.error('[Connections] getNodeMetadata error:', err?.message);
     return {};
   }
 }
@@ -134,7 +137,7 @@ function findConnections(db: any, type: string, id: number): Connection[] {
         sourceTable: 'record_links',
       });
     }
-  } catch { /* table may not exist */ }
+  } catch (err: any) { /* record_links table may not exist */ console.error('[Connections] record_links query error:', err?.message); }
 
   // 2. Type-specific junction tables
   try {
@@ -166,7 +169,7 @@ function findConnections(db: any, type: string, id: number): Connection[] {
         }
 
         // cases.linked_persons (JSON array) → cases
-        const casesWithPerson = db.prepare("SELECT id, linked_persons FROM cases WHERE linked_persons LIKE ? ESCAPE '\\'").all(`%${escapeLike(String(id))}%`) as any[];
+        const casesWithPerson = db.prepare("SELECT id, linked_persons FROM cases WHERE linked_persons LIKE ?").all(`%${escapeLike(String(id))}%`) as any[];
         for (const c of casesWithPerson) {
           try {
             const linkedIds = JSON.parse(c.linked_persons || '[]');
@@ -243,7 +246,7 @@ function findConnections(db: any, type: string, id: number): Connection[] {
         }
 
         // cases.linked_incidents (JSON array) → cases
-        const casesWithInc = db.prepare("SELECT id, linked_incidents FROM cases WHERE linked_incidents LIKE ? ESCAPE '\\'").all(`%${escapeLike(String(id))}%`) as any[];
+        const casesWithInc = db.prepare("SELECT id, linked_incidents FROM cases WHERE linked_incidents LIKE ?").all(`%${escapeLike(String(id))}%`) as any[];
         for (const c of casesWithInc) {
           try {
             const linkedIds = JSON.parse(c.linked_incidents || '[]');
@@ -311,7 +314,7 @@ function findConnections(db: any, type: string, id: number): Connection[] {
         }
 
         // cases.linked_evidence (JSON array) → cases
-        const casesWithEv = db.prepare("SELECT id, linked_evidence FROM cases WHERE linked_evidence LIKE ? ESCAPE '\\'").all(`%${escapeLike(String(id))}%`) as any[];
+        const casesWithEv = db.prepare("SELECT id, linked_evidence FROM cases WHERE linked_evidence LIKE ?").all(`%${escapeLike(String(id))}%`) as any[];
         for (const c of casesWithEv) {
           try {
             const linkedIds = JSON.parse(c.linked_evidence || '[]');
@@ -323,7 +326,7 @@ function findConnections(db: any, type: string, id: number): Connection[] {
         break;
       }
     }
-  } catch { /* junction table queries are best-effort */ }
+  } catch (err: any) { console.error('[Connections] junction table query error:', err?.message); }
 
   return results;
 }
@@ -439,7 +442,7 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
         LIMIT 8
       `).all(term, term, term) as any[];
       results.push(...persons.map((p: any) => ({ id: p.id, type: 'person', label: `${p.first_name} ${p.last_name}` })));
-    } catch { /* table may not exist */ }
+    } catch (err: any) { console.error('[Connections] persons search error:', err?.message); }
 
     // Vehicles
     try {
@@ -449,7 +452,7 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
         LIMIT 8
       `).all(term, term, term, term) as any[];
       results.push(...vehicles.map((v: any) => ({ id: v.id, type: 'vehicle', label: `${v.color || ''} ${v.make || ''} ${v.model || ''} ${v.plate_number ? `(${v.plate_number})` : ''}`.trim() })));
-    } catch { /* */ }
+    } catch (err: any) { console.error('[Connections] vehicles search error:', err?.message); }
 
     // Properties
     try {
@@ -459,7 +462,7 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
         LIMIT 8
       `).all(term, term) as any[];
       results.push(...properties.map((p: any) => ({ id: p.id, type: 'property', label: p.name })));
-    } catch { /* */ }
+    } catch (err: any) { console.error('[Connections] properties search error:', err?.message); }
 
     // Cases
     try {
@@ -469,7 +472,7 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
         LIMIT 8
       `).all(term, term) as any[];
       results.push(...cases.map((c: any) => ({ id: c.id, type: 'case', label: `${c.case_number} - ${c.title}` })));
-    } catch { /* */ }
+    } catch (err: any) { console.error('[Connections] cases search error:', err?.message); }
 
     // Incidents
     try {
@@ -479,7 +482,7 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
         LIMIT 8
       `).all(term, term, term) as any[];
       results.push(...incidents.map((i: any) => ({ id: i.id, type: 'incident', label: `${i.incident_number || ''} ${i.incident_type}`.trim() })));
-    } catch { /* */ }
+    } catch (err: any) { console.error('[Connections] incidents search error:', err?.message); }
 
     // Evidence
     try {
@@ -489,12 +492,38 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
         LIMIT 8
       `).all(term, term) as any[];
       results.push(...evidence.map((e: any) => ({ id: e.id, type: 'evidence', label: `${e.evidence_number || ''} ${e.description || ''}`.trim() })));
-    } catch { /* */ }
+    } catch (err: any) { console.error('[Connections] evidence search error:', err?.message); }
 
     res.json(results);
   } catch (error: any) {
     console.error('Connection search error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Search failed' });
+  }
+});
+
+// ─── CSV EXPORT ──────────────────────────────────────────
+
+// GET /connections/export/csv — Export record_links
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT id, source_type, source_id, target_type, target_id, relationship, created_at
+      FROM record_links
+      ORDER BY created_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'connections_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'source_type', header: 'Source Type' },
+      { key: 'source_id', header: 'Source ID' },
+      { key: 'target_type', header: 'Target Type' },
+      { key: 'target_id', header: 'Target ID' },
+      { key: 'relationship', header: 'Relationship' },
+      { key: 'created_at', header: 'Created At' },
+    ], rows);
+  } catch (error: any) {
+    console.error('[Connections] CSV export error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Export failed' });
   }
 });
 

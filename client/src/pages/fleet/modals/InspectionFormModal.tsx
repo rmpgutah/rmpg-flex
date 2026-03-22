@@ -161,7 +161,7 @@ export default function InspectionFormModal({ isOpen, mode = 'create', form, onC
                 {form.items.map((item, index) => {
                   if (item.category !== category) return null;
                   return (
-                    <div key={item.item} className="flex items-center gap-2 px-3 py-1.5">
+                    <div key={index} className="flex items-center gap-2 px-3 py-1.5">
                       <span className="text-[10px] text-gray-300 flex-1 min-w-0">{item.item}</span>
                       <select
                         className={`select-dark text-[10px] py-0.5 px-1.5 w-24 ${STATUS_COLORS[item.status]}`}

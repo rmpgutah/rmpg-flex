@@ -153,15 +153,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
 
   const parseFlags = (flags?: string): string[] => {
     if (!flags) return [];
-    try {
-      const parsed = JSON.parse(flags);
-      if (!Array.isArray(parsed)) return [];
-      return parsed.map((item: unknown) => {
-        if (typeof item === 'string') return item;
-        if (item && typeof item === 'object' && 'type' in item) return String((item as any).type);
-        return String(item ?? '');
-      }).filter(Boolean);
-    } catch { return []; }
+    try { return JSON.parse(flags); } catch { return []; }
   };
 
   return (
@@ -215,8 +207,8 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
                     </span>
                     {flags.length > 0 && (
                       <div className="flex gap-1">
-                        {flags.map((f) => (
-                          <span key={f} className="px-1.5 py-0.5 bg-red-900/40 text-red-400 text-[10px] uppercase font-bold">
+                        {flags.map((f, i) => (
+                          <span key={i} className="px-1.5 py-0.5 bg-red-900/40 text-red-400 text-[10px] uppercase font-bold">
                             {f}
                           </span>
                         ))}

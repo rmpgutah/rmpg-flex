@@ -8,7 +8,6 @@ import React, { useState, useCallback } from 'react';
 import { Database, Columns, Filter, Play, Download, ArrowUpDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
-import { localToday } from '../utils/dateUtils';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { toDisplayLabel } from '../utils/formatters';
 import { useToast } from '../components/ToastProvider';
@@ -145,7 +144,7 @@ export default function CustomReportBuilder() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `custom-report-${source}-${localToday()}.csv`;
+    a.download = `custom-report-${source}-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -252,7 +251,7 @@ export default function CustomReportBuilder() {
             </div>
 
             {filters.map((f, i) => (
-              <div key={`${f.column}-${f.operator}-${i}`} className={`${isMobile ? 'flex flex-col gap-1.5' : 'flex items-center gap-2'} panel-surface p-2`}>
+              <div key={i} className={`${isMobile ? 'flex flex-col gap-1.5' : 'flex items-center gap-2'} panel-surface p-2`}>
                 <div className="flex items-center gap-2">
                   <select className={`select-dark text-[10px] ${isMobile ? 'flex-1' : 'w-40'}`} value={f.column} onChange={e => updateFilter(i, 'column', e.target.value)}>
                     {availableCols.map(c => <option key={c} value={c}>{toDisplayLabel(c)}</option>)}
@@ -297,12 +296,9 @@ export default function CustomReportBuilder() {
             </div>
 
             <div className="flex justify-end mt-4">
-              <button onClick={runQuery} disabled={loading || selectedCols.length === 0} className="toolbar-btn toolbar-btn-primary">
+              <button onClick={runQuery} disabled={loading} className="toolbar-btn toolbar-btn-primary">
                 {loading ? 'Running...' : 'Run Query'} <Play className="w-3 h-3" />
               </button>
-              {selectedCols.length === 0 && (
-                <p className="text-amber-400 text-[10px] mt-1">Select at least one column before running the query.</p>
-              )}
             </div>
             {error && <p className="text-red-400 text-[10px]">{error}</p>}
           </div>
@@ -338,7 +334,7 @@ export default function CustomReportBuilder() {
                 </thead>
                 <tbody>
                   {results.map((row, i) => (
-                    <tr key={`row-${i}`} className="border-b border-rmpg-800/30 hover:bg-rmpg-800/20">
+                    <tr key={i} className="border-b border-rmpg-800/30 hover:bg-rmpg-800/20">
                       {resultColumns.map(col => (
                         <td key={col} className="px-2 py-1 text-rmpg-200 font-mono max-w-48 truncate">
                           {String(row[col] ?? '')}

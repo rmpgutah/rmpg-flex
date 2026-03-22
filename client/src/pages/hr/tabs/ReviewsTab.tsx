@@ -137,6 +137,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
   const handleCreate = async (data: any) => {
     await apiFetch('/hr/reviews', {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
     addToast('Review created', 'success');
@@ -147,6 +148,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
     if (!editReview) return;
     await apiFetch(`/hr/reviews/${editReview.id}`, {
       method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
     addToast('Review updated', 'success');
@@ -170,6 +172,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
     try {
       await apiFetch(`/hr/reviews/${reviewId}/acknowledge`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ officer_comments: ackComment[reviewId] || '' }),
       });
       addToast('Review acknowledged', 'success');

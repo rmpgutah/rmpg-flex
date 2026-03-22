@@ -1575,10 +1575,7 @@ export type WSMessageType =
   | 'serve:created'
   | 'serve:updated'
   | 'serve:attempt'
-  | 'call:warrant_alert'
-  | 'backup_request'
-  | 'pursuit_update'
-  | 'all_units';
+  | 'call:warrant_alert';
 
 export interface WSMessage {
   type: WSMessageType;

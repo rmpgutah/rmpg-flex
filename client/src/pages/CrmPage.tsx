@@ -125,7 +125,8 @@ function invoiceStatusColor(s: string): string {
 export default function CrmPage() {
   const { addToast } = useToast();
   const [activeSection, setActiveSection] = useState<CrmSection>(() => {
-    try { const saved = localStorage.getItem('crm_active_section'); return (saved as CrmSection) || 'dashboard'; } catch { return 'dashboard'; }
+    const saved = localStorage.getItem('crm_active_section');
+    return (saved as CrmSection) || 'dashboard';
   });
   const [isLoading, setIsLoading] = useState(true);
 
@@ -373,7 +374,7 @@ export default function CrmPage() {
   }
 
   return (
-    <div className="flex h-full app-grid-bg">
+    <div className="flex h-full">
       {/* ── Sidebar ────────────────────────────────────── */}
       <div className="w-48 border-r border-rmpg-600 bg-surface-sunken flex flex-col flex-shrink-0">
         <div className="px-3 py-2 border-b border-rmpg-600">

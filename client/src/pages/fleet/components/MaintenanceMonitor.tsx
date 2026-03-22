@@ -40,7 +40,7 @@ export default function MaintenanceMonitor({ onSelectVehicle }: Props) {
   useEffect(() => {
     (async () => {
       try {
-        const res = await apiFetch<any>('/fleet?per_page=200');
+        const res = await apiFetch<any>('/api/fleet?per_page=200');
         setVehicles(res?.vehicles || res?.data || []);
       } catch { /* ignore */ }
       setLoading(false);

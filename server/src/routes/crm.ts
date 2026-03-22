@@ -9,8 +9,10 @@ import { Router, Request, Response } from 'express';
 import { authenticateToken as authenticate, requireRole } from '../middleware/auth';
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
-import { localNow, dateToLocalYMD } from '../utils/timeUtils';
-import { escapeLike, validateParamId, validateNumericParams } from '../middleware/sanitize';
+import { localNow } from '../utils/timeUtils';
+import { escapeLike, validateParamId } from '../middleware/sanitize';
+import { broadcast } from '../utils/websocket';
+import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 router.use(authenticate);
@@ -117,17 +119,11 @@ router.get('/tasks', requireRole('admin', 'manager', 'contract_manager'), (req: 
         params.push(...statuses);
       }
     }
-    if (client_id) { const cid = parseInt(String(client_id), 10); if (!isNaN(cid)) { sql += ' AND t.client_id = ?'; params.push(cid); } }
-    if (assigned_to) { const aid = parseInt(String(assigned_to), 10); if (!isNaN(aid)) { sql += ' AND t.assigned_to = ?'; params.push(aid); } }
-    if (due_before) { sql += ' AND t.due_date <= ?'; params.push(String(due_before)); }
+    if (client_id) { sql += ' AND t.client_id = ?'; params.push(client_id); }
+    if (assigned_to) { sql += ' AND t.assigned_to = ?'; params.push(assigned_to); }
+    if (due_before) { sql += ' AND t.due_date <= ?'; params.push(due_before); }
 
-    sql += ` ORDER BY CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, COALESCE(t.due_date, '9999-12-31') ASC, t.created_at DESC`;
-
-    // Pagination
-    const limit = Math.min(Math.max(1, parseInt(req.query.limit as string, 10) || 50), 500);
-    const offset = Math.max(0, parseInt(req.query.offset as string, 10) || 0);
-    sql += ' LIMIT ? OFFSET ?';
-    params.push(limit, offset);
+    sql += ' ORDER BY CASE t.priority WHEN \'urgent\' THEN 0 WHEN \'high\' THEN 1 WHEN \'normal\' THEN 2 ELSE 3 END, t.due_date ASC NULLS LAST, t.created_at DESC';
 
     res.json(db.prepare(sql).all(...params));
   } catch (err: any) {
@@ -156,6 +152,7 @@ router.post('/tasks', requireRole('admin', 'manager', 'contract_manager'), (req:
     auditLog(req, 'crm_task_created', 'crm_task', taskId, `Created task: ${title.trim()}`);
 
     const task = db.prepare('SELECT * FROM crm_tasks WHERE id = ?').get(taskId);
+    broadcast('admin', 'crm:updated', { entity: 'task', action: 'created', id: taskId });
     res.json(task);
   } catch (err: any) {
     console.error('CRM error:', err.message);
@@ -198,6 +195,7 @@ router.put('/tasks/:id', validateParamId, requireRole('admin', 'manager', 'contr
     auditLog(req, 'crm_task_updated', 'crm_task', String(id), `Updated task: ${title || existing.title}`);
 
     const task = db.prepare('SELECT * FROM crm_tasks WHERE id = ?').get(id);
+    broadcast('admin', 'crm:updated', { entity: 'task', action: 'updated', id: Number(id) });
     res.json(task);
   } catch (err: any) {
     console.error('CRM error:', err.message);
@@ -214,6 +212,7 @@ router.delete('/tasks/:id', validateParamId, requireRole('admin', 'manager'), (r
 
     db.prepare('DELETE FROM crm_tasks WHERE id = ?').run(id);
     auditLog(req, 'crm_task_deleted', 'crm_task', String(id), `Deleted task: ${existing.title}`);
+    broadcast('admin', 'crm:updated', { entity: 'task', action: 'deleted', id: Number(id) });
     res.json({ success: true });
   } catch (err: any) {
     console.error('CRM error:', err.message);
@@ -222,7 +221,7 @@ router.delete('/tasks/:id', validateParamId, requireRole('admin', 'manager'), (r
 });
 
 // ── Client Activity Log ──────────────────────────────────
-router.get('/activity/:clientId', validateNumericParams('clientId'), requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.get('/activity/:clientId', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { clientId } = req.params;
@@ -265,6 +264,7 @@ router.post('/activity', requireRole('admin', 'manager', 'contract_manager'), (r
       LEFT JOIN users u ON u.id = a.created_by
       WHERE a.id = ?
     `).get(activityId);
+    broadcast('admin', 'crm:updated', { entity: 'activity', action: 'created', id: activityId });
     res.json(activity);
   } catch (err: any) {
     console.error('CRM error:', err.message);
@@ -290,20 +290,13 @@ router.get('/contacts', requireRole('admin', 'manager', 'contract_manager'), (re
 
     if (search) {
       sql += " AND (p.first_name || ' ' || p.last_name LIKE ? ESCAPE '\\' OR p.phone LIKE ? ESCAPE '\\' OR p.email LIKE ? ESCAPE '\\')";
-      const q = `%${escapeLike(String(search).trim())}%`;
+      const q = `%${escapeLike(String(search))}%`;
       params.push(q, q, q);
     }
     if (relationship) { sql += ' AND cp.relationship = ?'; params.push(relationship); }
     if (client_id) { sql += ' AND cp.client_id = ?'; params.push(client_id); }
 
     sql += ' ORDER BY c.name, p.last_name, p.first_name';
-
-    // Pagination
-    const limit = Math.min(Math.max(1, parseInt(req.query.limit as string, 10) || 50), 500);
-    const offset = Math.max(0, parseInt(req.query.offset as string, 10) || 0);
-    sql += ' LIMIT ? OFFSET ?';
-    params.push(limit, offset);
-
     res.json(db.prepare(sql).all(...params));
   } catch (err: any) {
     console.error('CRM error:', err.message);
@@ -318,7 +311,7 @@ router.get('/expiring-contracts', requireRole('admin', 'manager', 'contract_mana
     const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 90));
     const futureDate = new Date();
     futureDate.setDate(futureDate.getDate() + days);
-    const future = dateToLocalYMD(futureDate);
+    const future = futureDate.toISOString().slice(0, 10);
 
     const rows = db.prepare(`
       SELECT id, name, contact_name, contact_email, contact_phone,
@@ -487,6 +480,44 @@ router.get('/reports/metrics', requireRole('admin', 'manager', 'contract_manager
   } catch (err: any) {
     console.error('CRM error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── CSV EXPORT ──────────────────────────────────────────
+
+// GET /api/crm/export/csv — Export CRM tasks and activity
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT t.id, t.title, t.description, t.task_type, t.priority, t.status, t.due_date,
+        t.completed_at, t.created_at,
+        c.name as client_name, p.name as property_name,
+        u1.full_name as assigned_to_name, u2.full_name as created_by_name
+      FROM crm_tasks t
+      LEFT JOIN clients c ON c.id = t.client_id
+      LEFT JOIN properties p ON p.id = t.property_id
+      LEFT JOIN users u1 ON u1.id = t.assigned_to
+      LEFT JOIN users u2 ON u2.id = t.created_by
+      ORDER BY t.created_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'crm_tasks_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'title', header: 'Title' },
+      { key: 'description', header: 'Description' },
+      { key: 'task_type', header: 'Task Type' },
+      { key: 'priority', header: 'Priority' },
+      { key: 'status', header: 'Status' },
+      { key: 'due_date', header: 'Due Date' },
+      { key: 'client_name', header: 'Client' },
+      { key: 'property_name', header: 'Property' },
+      { key: 'assigned_to_name', header: 'Assigned To' },
+      { key: 'created_by_name', header: 'Created By' },
+      { key: 'completed_at', header: 'Completed At' },
+      { key: 'created_at', header: 'Created At' },
+    ], rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Export failed' });
   }
 });
 

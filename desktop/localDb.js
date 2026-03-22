@@ -243,92 +243,6 @@ function createMirrorTables() {
       recorded_at TEXT NOT NULL,
       is_synced INTEGER DEFAULT 0
     );
-
-    -- Citations (read/write offline)
-    CREATE TABLE IF NOT EXISTS citations (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      local_id TEXT UNIQUE,
-      server_id INTEGER,
-      citation_number TEXT,
-      citation_type TEXT NOT NULL DEFAULT 'traffic',
-      person_id INTEGER,
-      person_name TEXT,
-      vehicle_id INTEGER,
-      officer_id INTEGER NOT NULL,
-      location_address TEXT,
-      latitude REAL,
-      longitude REAL,
-      violation_code TEXT,
-      violation_description TEXT,
-      fine_amount REAL,
-      court_date TEXT,
-      court_location TEXT,
-      status TEXT NOT NULL DEFAULT 'draft',
-      notes TEXT,
-      call_id INTEGER,
-      incident_id INTEGER,
-      issued_at TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT,
-      is_dirty INTEGER DEFAULT 0,
-      synced_at TEXT
-    );
-
-    -- Field Interviews (read/write offline)
-    CREATE TABLE IF NOT EXISTS field_interviews (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      local_id TEXT UNIQUE,
-      server_id INTEGER,
-      fi_number TEXT,
-      officer_id INTEGER NOT NULL,
-      person_name TEXT,
-      person_description TEXT,
-      dob TEXT,
-      address TEXT,
-      location_address TEXT,
-      latitude REAL,
-      longitude REAL,
-      reason TEXT,
-      narrative TEXT,
-      associated_call_id INTEGER,
-      person_id INTEGER,
-      vehicle_description TEXT,
-      status TEXT NOT NULL DEFAULT 'draft',
-      created_at TEXT NOT NULL,
-      updated_at TEXT,
-      is_dirty INTEGER DEFAULT 0,
-      synced_at TEXT
-    );
-
-    -- Evidence/Property (read/write offline)
-    CREATE TABLE IF NOT EXISTS evidence_property (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      local_id TEXT UNIQUE,
-      server_id INTEGER,
-      evidence_number TEXT,
-      incident_id INTEGER,
-      case_id INTEGER,
-      item_type TEXT NOT NULL,
-      description TEXT NOT NULL,
-      location_found TEXT,
-      collected_by INTEGER NOT NULL,
-      collected_date TEXT NOT NULL,
-      serial_number TEXT,
-      make TEXT,
-      model TEXT,
-      quantity INTEGER DEFAULT 1,
-      unit_of_measure TEXT DEFAULT 'each',
-      estimated_value REAL,
-      status TEXT NOT NULL DEFAULT 'in_custody',
-      storage_location TEXT,
-      notes TEXT,
-      latitude REAL,
-      longitude REAL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT,
-      is_dirty INTEGER DEFAULT 0,
-      synced_at TEXT
-    );
   `);
 }
 
@@ -397,12 +311,6 @@ function createLocalTables() {
     CREATE INDEX IF NOT EXISTS idx_incidents_dirty ON incidents(is_dirty);
     CREATE INDEX IF NOT EXISTS idx_incidents_local_id ON incidents(local_id);
     CREATE INDEX IF NOT EXISTS idx_units_dirty ON units(is_dirty);
-    CREATE INDEX IF NOT EXISTS idx_citations_dirty ON citations(is_dirty);
-    CREATE INDEX IF NOT EXISTS idx_citations_local_id ON citations(local_id);
-    CREATE INDEX IF NOT EXISTS idx_fi_dirty ON field_interviews(is_dirty);
-    CREATE INDEX IF NOT EXISTS idx_fi_local_id ON field_interviews(local_id);
-    CREATE INDEX IF NOT EXISTS idx_evidence_dirty ON evidence_property(is_dirty);
-    CREATE INDEX IF NOT EXISTS idx_evidence_local_id ON evidence_property(local_id);
   `);
 }
 
@@ -426,46 +334,33 @@ function upsertRow(tableName, row) {
 }
 
 // ─── Helper: Full-replace a reference table ──────────────────
-// Processes in chunks to avoid blocking the event loop on large datasets
 
 function replaceTable(tableName, rows) {
-  const CHUNK = 100;
-  db.prepare(`DELETE FROM ${tableName}`).run();
-
-  for (let i = 0; i < rows.length; i += CHUNK) {
-    const chunk = rows.slice(i, i + CHUNK);
-    const tx = db.transaction(() => {
-      for (const row of chunk) {
-        upsertRow(tableName, row);
-      }
-    });
-    tx();
-  }
-  updateSyncMeta(tableName, rows.length);
+  const tx = db.transaction(() => {
+    db.prepare(`DELETE FROM ${tableName}`).run();
+    for (const row of rows) {
+      upsertRow(tableName, row);
+    }
+    updateSyncMeta(tableName, rows.length);
+  });
+  tx();
 }
 
 // ─── Helper: Delta-upsert operational data ───────────────────
 // Only updates rows that are NOT dirty locally (local writes take precedence)
-// Processes in chunks to avoid blocking the event loop
 
 function deltaSync(tableName, rows) {
-  const CHUNK = 100;
-  const now = new Date().toISOString();
-
-  for (let i = 0; i < rows.length; i += CHUNK) {
-    const chunk = rows.slice(i, i + CHUNK);
-    const tx = db.transaction(() => {
-      for (const row of chunk) {
-        const local = db.prepare(`SELECT is_dirty FROM ${tableName} WHERE id = ?`).get(row.id);
-        if (!local || !local.is_dirty) {
-          upsertRow(tableName, { ...row, is_dirty: 0, synced_at: now });
-        }
+  const tx = db.transaction(() => {
+    for (const row of rows) {
+      const local = db.prepare(`SELECT is_dirty FROM ${tableName} WHERE id = ?`).get(row.id);
+      if (!local || !local.is_dirty) {
+        upsertRow(tableName, { ...row, is_dirty: 0, synced_at: new Date().toISOString() });
       }
-    });
-    tx();
-  }
-  const count = db.prepare(`SELECT COUNT(*) as c FROM ${tableName}`).get().c;
-  updateSyncMeta(tableName, count);
+    }
+    const count = db.prepare(`SELECT COUNT(*) as c FROM ${tableName}`).get().c;
+    updateSyncMeta(tableName, count);
+  });
+  tx();
 }
 
 // ─── Sync Metadata ───────────────────────────────────────────

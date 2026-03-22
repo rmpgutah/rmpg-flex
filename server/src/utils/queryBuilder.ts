@@ -123,9 +123,7 @@ export function buildWhereFromQuery(
     let value: any = rawValue;
 
     if (config.wrap) {
-      // Escape LIKE metacharacters (%, _, \) in the raw value before wrapping
-      const escaped = String(rawValue).replace(/[%_\\]/g, '\\$&');
-      value = `${config.wrap}${escaped}${config.wrap}`;
+      value = `${config.wrap}${rawValue}${config.wrap}`;
     }
 
     conditions.push({

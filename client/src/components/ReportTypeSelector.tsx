@@ -36,7 +36,7 @@ export default function ReportTypeSelector({ incidentType, onSelect, onPreview, 
   useEffect(() => {
     apiFetch<{ signature: string | null }>('/auth/signature')
       .then(data => setSavedSignature(data?.signature || null))
-      .catch(err => console.warn("[API] Load failed:", err));
+      .catch(() => {});
   }, []);
 
   // Close dropdown on outside click

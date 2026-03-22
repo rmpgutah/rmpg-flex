@@ -36,21 +36,16 @@ import WarrantBadge from '../../components/WarrantBadge';
 // ── DB Mapper ──────────────────────────────────────
 
 function parseFlags(raw: unknown): string[] {
-  let arr: unknown[] = [];
-  if (Array.isArray(raw)) {
-    arr = raw;
-  } else if (typeof raw === 'string') {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
     try {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) arr = parsed;
-    } catch { /* invalid JSON — skip */ }
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
   }
-  // Normalize: objects like {type, severity, count, updated_at} → string label
-  return arr.map(item => {
-    if (typeof item === 'string') return item;
-    if (item && typeof item === 'object' && 'type' in item) return String((item as any).type);
-    return String(item ?? '');
-  }).filter(Boolean);
+  return [];
 }
 
 function mapDbPerson(row: Record<string, unknown>): Person {
@@ -393,7 +388,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
           <input
             type="text"
-            className="input-dark search-glow pl-9 w-full text-[11px]"
+            className="input-dark pl-9 w-full text-[11px]"
             placeholder="Search persons by name, address, flags..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -409,10 +404,9 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
       {/* Person List */}
       <div className="flex-1 overflow-auto">
         {filteredPersons.length === 0 && (
-          <div className="record-empty-state">
-            <UserCircle className="w-8 h-8 text-rmpg-500 mb-2 opacity-40" />
+          <div className="text-center py-12">
+            <UserCircle className="w-8 h-8 text-rmpg-500 mx-auto mb-2" />
             <p className="text-sm text-rmpg-400">{searchQuery ? 'No persons match your search.' : 'No person records found.'}</p>
-            <p className="text-[9px] text-rmpg-500 mt-1">{searchQuery ? 'Try a different search term' : 'Add a person record to get started'}</p>
           </div>
         )}
         {filteredPersons.map((person) => (
@@ -420,15 +414,15 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
             key={person.id}
             onClick={() => { setSelectedPerson(selectedPerson?.id === person.id ? null : person); setSSNRevealed(false); }}
             className={`
-              record-list-item px-4 py-3 border-b border-rmpg-700/50 cursor-pointer
+              px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-colors
               ${selectedPerson?.id === person.id
-                ? 'record-selected border-l-2 border-l-brand-500'
-                : 'border-l-2 border-l-transparent'
+                ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
+                : 'hover:bg-rmpg-700/30 border-l-2 border-l-transparent'
               }
             `}
           >
             <div className="flex items-center gap-3">
-              <div className="record-avatar flex-shrink-0 w-9 h-9 rounded-full bg-rmpg-700 border border-rmpg-600 flex items-center justify-center text-xs font-bold text-rmpg-300 transition-all duration-150">
+              <div className="flex-shrink-0 w-9 h-9 rounded-full bg-rmpg-700 border border-rmpg-600 flex items-center justify-center text-xs font-bold text-rmpg-300">
                 {(person.first_name || '')[0]}{(person.last_name || '')[0]}
               </div>
               <div className="flex-1 min-w-0">
@@ -481,7 +475,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                     )}
                   </div>
                 )}
-                <div className="record-actions flex items-center gap-1">
+                <div className="flex items-center gap-1">
                   {!showArchived && (
                     <button
                       onClick={(e) => { e.stopPropagation(); openEditPerson(person); }}
@@ -558,7 +552,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
   if (!selectedPerson) return null;
 
   return (
-    <div className="h-full flex flex-col overflow-hidden detail-panel-enter card-glass">
+    <div className="h-full flex flex-col overflow-hidden">
       {/* Alert Banner + Flags (below PanelTitleBar, which RecordsPage provides) */}
       <div className="px-4 pt-3 pb-2 border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
         <AlertBanner alerts={personAlerts} />

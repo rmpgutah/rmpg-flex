@@ -93,23 +93,16 @@ export default function ReportsTab() {
   const [retention, setRetention] = useState<RetentionRow[]>([]);
   const [leadSourceROI, setLeadSourceROI] = useState<LeadSourceROI[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (dateFrom) params.set('from', dateFrom);
-      if (dateTo) params.set('to', dateTo);
-      const qs = params.toString();
-      const suffix = qs ? `?${qs}` : '';
       const [m, rev, pip, ret, roi] = await Promise.all([
-        apiFetch<CrmMetrics>(`/crm/reports/metrics${suffix}`),
-        apiFetch<RevenueRow[]>(`/crm/reports/revenue${suffix}`),
-        apiFetch<{ stages: PipelineSummary[] }>(`/crm/reports/pipeline${suffix}`),
-        apiFetch<RetentionRow[]>(`/crm/reports/retention${suffix}`),
-        apiFetch<LeadSourceROI[]>(`/crm/reports/lead-source-roi${suffix}`),
+        apiFetch<CrmMetrics>('/api/crm/reports/metrics'),
+        apiFetch<RevenueRow[]>('/api/crm/reports/revenue'),
+        apiFetch<{ stages: PipelineSummary[] }>('/api/crm/reports/pipeline'),
+        apiFetch<RetentionRow[]>('/api/crm/reports/retention'),
+        apiFetch<LeadSourceROI[]>('/api/crm/reports/lead-source-roi'),
       ]);
       if (m) setMetrics(m);
       if (rev) setRevenue(rev);
@@ -121,7 +114,7 @@ export default function ReportsTab() {
     } finally {
       setLoading(false);
     }
-  }, [addToast, dateFrom, dateTo]);
+  }, [addToast]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -140,32 +133,6 @@ export default function ReportsTab() {
 
   return (
     <div className="overflow-y-auto p-3 space-y-4">
-      {/* ── Date Range Filter ── */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-[10px] text-rmpg-400 uppercase tracking-wider">Date Range:</span>
-        <input
-          type="date"
-          value={dateFrom}
-          onChange={e => setDateFrom(e.target.value)}
-          className="bg-[#0d1520] border border-rmpg-700 text-white text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
-        />
-        <span className="text-[10px] text-rmpg-500">to</span>
-        <input
-          type="date"
-          value={dateTo}
-          onChange={e => setDateTo(e.target.value)}
-          className="bg-[#0d1520] border border-rmpg-700 text-white text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
-        />
-        {(dateFrom || dateTo) && (
-          <button
-            onClick={() => { setDateFrom(''); setDateTo(''); }}
-            className="text-[10px] text-rmpg-400 hover:text-white px-1.5 py-0.5 border border-rmpg-700 rounded-sm"
-          >
-            Clear
-          </button>
-        )}
-      </div>
-
       {/* ═══════════════════════════════════════════════ */}
       {/* 1. KEY METRICS                                 */}
       {/* ═══════════════════════════════════════════════ */}

@@ -336,7 +336,7 @@ const AuditLogPage: React.FC = () => {
               {stats.topActions.length > 1 && (
                 <div className="mt-1.5 pt-1.5 border-t border-rmpg-700/50 space-y-0.5">
                   {stats.topActions.slice(1, 4).map((a, i) => (
-                    <div key={a.action} className="flex items-center justify-between text-[9px]">
+                    <div key={i} className="flex items-center justify-between text-[9px]">
                       <span className="text-rmpg-400 truncate">{a.action}</span>
                       <span className="text-rmpg-500 font-mono ml-2">{a.count}</span>
                     </div>
@@ -359,7 +359,7 @@ const AuditLogPage: React.FC = () => {
               {stats.topUsers.length > 1 && (
                 <div className="mt-1.5 pt-1.5 border-t border-rmpg-700/50 space-y-0.5">
                   {stats.topUsers.slice(1, 4).map((u, i) => (
-                    <div key={u.user_name} className="flex items-center justify-between text-[9px]">
+                    <div key={i} className="flex items-center justify-between text-[9px]">
                       <span className="text-rmpg-400 truncate">{u.user_name}</span>
                       <span className="text-rmpg-500 font-mono ml-2">{u.count}</span>
                     </div>

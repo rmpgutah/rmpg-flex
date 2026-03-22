@@ -14,6 +14,7 @@ import {
   ZoomIn, ZoomOut, RotateCcw, Maximize2, Minus, Plus, Eye, EyeOff,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useIsMobile } from '../hooks/useIsMobile';
 import SplitPanel from '../components/SplitPanel';
 import type { GraphNode, GraphEdge, ConnectionGraph } from '../types';
 import { useToast } from '../components/ToastProvider';
@@ -97,22 +98,19 @@ function SeedSelector({ onSelect, loading }: {
   const [searching, setSearching] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
-  const searchGenRef = useRef(0);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (query.trim().length < 2) { setResults([]); setShowDropdown(false); return; }
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
-      const gen = ++searchGenRef.current;
       setSearching(true);
       try {
         const data = await apiFetch<SearchResult[]>(`/connections/search?q=${encodeURIComponent(query.trim())}`);
-        if (gen !== searchGenRef.current) return;
         setResults(data || []);
         setShowDropdown(true);
-      } catch { if (gen === searchGenRef.current) setResults([]); }
-      finally { if (gen === searchGenRef.current) setSearching(false); }
+      } catch { setResults([]); }
+      finally { setSearching(false); }
     }, 300);
     return () => clearTimeout(debounceRef.current);
   }, [query]);
@@ -718,7 +716,7 @@ function DetailPanel({ node, edges, allNodes, onExpandNode }: {
         {metaFields.length > 0 && (
           <div className="space-y-0.5 mt-2">
             {metaFields.map((f, i) => (
-              <div key={f.label} className="flex items-baseline gap-2 text-[9px]">
+              <div key={i} className="flex items-baseline gap-2 text-[9px]">
                 <span className="text-rmpg-500 uppercase tracking-wider w-16 shrink-0">{f.label}</span>
                 <span className="text-rmpg-300 font-mono truncate">{f.value}</span>
               </div>
@@ -754,7 +752,7 @@ function DetailPanel({ node, edges, allNodes, onExpandNode }: {
                 <div className="border-t border-rmpg-700">
                   {items.map(({ edge, otherNode }, idx) => (
                     <button
-                      key={`${otherNode.type}-${otherNode.entityId}`}
+                      key={idx}
                       onClick={() => onExpandNode(otherNode.type, otherNode.entityId, otherNode.label)}
                       className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-rmpg-800/30 text-left transition-colors"
                     >
@@ -784,6 +782,7 @@ function DetailPanel({ node, edges, allNodes, onExpandNode }: {
 // ── Main Page Component ──────────────────────────────────────
 
 export default function ForensicsPage() {
+  const isMobile = useIsMobile();
   const { addToast } = useToast();
   // Graph data
   const [graph, setGraph] = useState<ConnectionGraph | null>(null);

@@ -5,7 +5,6 @@
 // ============================================================
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import {
   X,
   Download,
@@ -106,8 +105,8 @@ export default function DocumentViewer({
 
   if (!isOpen) return null;
 
-  return createPortal(
-    <div className="fixed inset-0 z-[9999] flex flex-col bg-black/90" role="dialog" aria-modal="true">
+  return (
+    <div className="fixed inset-0 z-[100] flex flex-col bg-black/90" role="dialog" aria-modal="true">
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 bg-surface-base border-b border-rmpg-600 flex-shrink-0">
         <div className="flex items-center gap-3">
@@ -262,7 +261,6 @@ export default function DocumentViewer({
             : `Zoom: ${zoom}%`}
         </span>
       </div>
-    </div>,
-    document.body
+    </div>
   );
 }

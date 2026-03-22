@@ -28,6 +28,7 @@ import PrintRecordButton from '../components/PrintRecordButton';
 import ExportButton from '../components/ExportButton';
 import LinkRecordModal from '../components/LinkRecordModal';
 import type { Person, Vehicle, Property, RecordEntityType } from '../types';
+import { useToast } from '../components/ToastProvider';
 
 // Tab hooks + components
 import { usePersonsTab, PersonsTabList, PersonsTabDetail, mapDbPerson } from './records/PersonsTab';
@@ -518,7 +519,7 @@ export default function RecordsPage() {
   // ════════════════════════════════════════════════════
 
   const rightPanel = (
-    <div className="h-full flex flex-col card-glass">
+    <div className="h-full flex flex-col">
       {/* Panel Title Bar — Selected Record */}
       <PanelTitleBar
         title={selectedLabel}
@@ -560,7 +561,7 @@ export default function RecordsPage() {
   // ════════════════════════════════════════════════════
 
   return (
-    <div className="flex flex-col h-full animate-fade-in app-grid-bg">
+    <div className="flex flex-col h-full animate-fade-in">
       <SplitPanel
         left={leftPanel}
         right={rightPanel}

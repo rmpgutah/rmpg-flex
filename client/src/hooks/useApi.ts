@@ -32,9 +32,6 @@ function isOfflineCapable(method: string, path: string): boolean {
 // Access window.electron safely (only present in Electron desktop app)
 const electron = typeof window !== 'undefined' ? (window as any).electron : null;
 
-// ─── GET request deduplication (return existing in-flight promise) ────
-const inflightGets = new Map<string, Promise<Response>>();
-
 // ─── Mutation deduplication (prevent rapid double-click) ────
 const inflightMutations = new Map<string, { promise: Promise<Response>; ts: number }>();
 const DEDUP_WINDOW_MS = 500; // 500ms dedup window
@@ -59,16 +56,8 @@ async function fetchWithRetry(
     : 0;
   if (bodySize > 1_000_000) retries = 0; // 1MB threshold
 
-  // GET deduplication — if the same GET URL is already in-flight, return the existing promise
-  const method = init.method || 'GET';
-  if (method.toUpperCase() === 'GET') {
-    const existingGet = inflightGets.get(url);
-    if (existingGet) {
-      return existingGet.then(r => r.clone()); // Clone so each caller gets independent body
-    }
-  }
-
   // Mutation deduplication — return existing in-flight promise for same URL+method
+  const method = init.method || 'GET';
   if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method.toUpperCase())) {
     const dedupKey = `${method}:${url}`;
     const existing = inflightMutations.get(dedupKey);
@@ -80,7 +69,6 @@ async function fetchWithRetry(
   // Track in-flight mutations for deduplication
   const isMutation = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method.toUpperCase());
   const dedupKey = isMutation ? `${method}:${url}` : '';
-  const isGet = method.toUpperCase() === 'GET';
 
   const doFetch = async (): Promise<Response> => {
     let lastError: Error | null = null;
@@ -112,10 +100,6 @@ async function fetchWithRetry(
   };
 
   const promise = doFetch();
-  if (isGet) {
-    inflightGets.set(url, promise);
-    promise.finally(() => inflightGets.delete(url));
-  }
   if (isMutation) {
     inflightMutations.set(dedupKey, { promise, ts: Date.now() });
     promise.finally(() => inflightMutations.delete(dedupKey));
@@ -141,7 +125,7 @@ export function useApi<T = unknown>(options?: UseApiOptions) {
     isLoading: false,
   });
 
-  const getToken = () => { try { return localStorage.getItem('rmpg_token'); } catch { return null; } };
+  const getToken = () => localStorage.getItem('rmpg_token');
 
   const request = useCallback(
     async (
@@ -245,8 +229,7 @@ async function tryRefreshToken(): Promise<string | null> {
 
   _refreshPromise = (async () => {
     try {
-      let refreshToken: string | null = null;
-      try { refreshToken = localStorage.getItem('rmpg_refresh_token'); } catch { /* ignore */ }
+      const refreshToken = localStorage.getItem('rmpg_refresh_token');
       if (!refreshToken) return null;
 
       // AbortController timeout prevents infinite lock on hung requests
@@ -276,9 +259,9 @@ async function tryRefreshToken(): Promise<string | null> {
           if (!state.isOnline) return null;
         } catch { /* fall through */ }
       }
-      try { localStorage.removeItem('rmpg_token'); } catch { /* ignore */ }
-      try { localStorage.removeItem('rmpg_refresh_token'); } catch { /* ignore */ }
-      try { localStorage.removeItem('rmpg_session_id'); } catch { /* ignore */ }
+      localStorage.removeItem('rmpg_token');
+      localStorage.removeItem('rmpg_refresh_token');
+      localStorage.removeItem('rmpg_session_id');
       window.location.href = '/login';
       return null;
     } catch {
@@ -360,8 +343,7 @@ export async function apiFetch<T>(
   }
 
   // ─── Normal online fetch path ──────────────────────────
-  let token: string | null = null;
-  try { token = localStorage.getItem('rmpg_token'); } catch { /* ignore */ }
+  const token = localStorage.getItem('rmpg_token');
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'X-Requested-With': 'XMLHttpRequest',
@@ -405,8 +387,7 @@ export async function apiUploadFiles(
   entityType?: string,
   entityId?: string | number,
 ): Promise<any[]> {
-  let token: string | null = null;
-  try { token = localStorage.getItem('rmpg_token'); } catch { /* ignore */ }
+  const token = localStorage.getItem('rmpg_token');
   const formData = new FormData();
 
   for (const file of files) {

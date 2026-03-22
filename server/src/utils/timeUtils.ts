@@ -49,13 +49,6 @@ export function localToday(): string {
 }
 
 /**
- * Convert any Date to "YYYY-MM-DD" in local timezone (not UTC).
- */
-export function dateToLocalYMD(d: Date): string {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-/**
  * SQLite expression for current local time.
  * Use this in raw SQL DEFAULT expressions.
  * Note: This produces timezone-naive strings in the DB; prefer localNow()

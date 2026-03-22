@@ -1,6 +1,5 @@
 import React from 'react';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
-import { useCountUp } from '../hooks/useCountUp';
 
 interface StatsCardProps {
   icon: React.ElementType;
@@ -45,18 +44,6 @@ const TREND_COLOR_MAP: Record<string, string> = {
   gray: 'text-rmpg-300',
 };
 
-function AnimatedValue({ value, className }: { value: string | number; className: string }) {
-  const numericValue = typeof value === 'number' ? value : parseInt(String(value), 10);
-  const isNumeric = typeof value === 'number' || (!isNaN(numericValue) && String(numericValue) === String(value));
-  const animated = useCountUp(isNumeric ? numericValue : 0);
-
-  return (
-    <p className={className}>
-      {isNumeric ? animated : value}
-    </p>
-  );
-}
-
 export default function StatsCard({
   icon: Icon,
   label,
@@ -74,32 +61,21 @@ export default function StatsCard({
     <div
       onClick={onClick}
       className={`
-        relative overflow-hidden p-3 border-l-4 panel-beveled shimmer-on-hover card-glass stat-pod
+        relative overflow-hidden p-3 border-l-4 panel-beveled
         ${ACCENT_COLORS[accent] || ACCENT_COLORS.blue}
         bg-surface-base
         ${onClick ? 'cursor-pointer hover:bg-surface-raised transition-all duration-150' : ''}
         ${className}
       `}
     >
-      {/* Ambient glow accent at top */}
-      <div className="absolute top-0 left-0 right-0 h-[1px] opacity-40" style={{
-        background: `linear-gradient(90deg, transparent, ${
-          accent === 'red' ? '#dc2626' : accent === 'green' ? '#22c55e' : accent === 'amber' ? '#f59e0b' : accent === 'purple' ? '#a855f7' : '#1a5a9e'
-        }40, transparent)`
-      }} />
-
       <div className="flex items-start justify-between">
         <div>
           <p className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">
             {label}
           </p>
-          <AnimatedValue value={value} className={`text-xl font-bold font-mono ${VALUE_COLORS[accent] || VALUE_COLORS.blue}`} />
+          <p className={`text-xl font-bold font-mono ${VALUE_COLORS[accent] || VALUE_COLORS.blue}`}>{value}</p>
         </div>
-        <div className={`p-1.5 panel-inset ${ICON_COLORS[accent] || ICON_COLORS.blue}`} style={{
-          boxShadow: `0 0 8px ${
-            accent === 'red' ? 'rgba(220,38,38,0.15)' : accent === 'green' ? 'rgba(34,197,94,0.15)' : accent === 'amber' ? 'rgba(245,158,11,0.15)' : accent === 'purple' ? 'rgba(168,85,247,0.15)' : 'rgba(26,90,158,0.15)'
-          }`
-        }}>
+        <div className={`p-1.5 panel-inset ${ICON_COLORS[accent] || ICON_COLORS.blue}`}>
           <Icon className="w-4 h-4" />
         </div>
       </div>

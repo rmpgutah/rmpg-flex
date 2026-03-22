@@ -126,7 +126,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
   const fetchPeriods = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiFetch<PayPeriod[]>('/hr/payroll/periods');
+      const data = await apiFetch<PayPeriod[]>('/api/hr/payroll/periods');
       setPeriods(data);
     } catch { addToast('Failed to load pay periods', 'error'); }
     finally { setLoading(false); }
@@ -135,7 +135,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
   const fetchRates = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiFetch<PayRate[]>('/hr/payroll/rates');
+      const data = await apiFetch<PayRate[]>('/api/hr/payroll/rates');
       setRates(data);
     } catch { addToast('Failed to load pay rates', 'error'); }
     finally { setLoading(false); }
@@ -144,7 +144,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
   const fetchEntries = useCallback(async (periodId: number) => {
     setLoading(true);
     try {
-      const data = await apiFetch<PayrollEntry[]>(`/hr/payroll/entries?pay_period_id=${periodId}`);
+      const data = await apiFetch<PayrollEntry[]>(`/api/hr/payroll/entries?pay_period_id=${periodId}`);
       setEntries(data);
     } catch { addToast('Failed to load entries', 'error'); }
     finally { setLoading(false); }
@@ -152,7 +152,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
 
   const fetchOfficers = useCallback(async () => {
     try {
-      const data = await apiFetch<any[]>('/personnel');
+      const data = await apiFetch<any[]>('/api/personnel');
       setOfficers(data.map((o: any) => ({ id: o.id, full_name: o.full_name })));
     } catch { /* silent */ }
   }, []);
@@ -177,7 +177,8 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
       addToast('All dates are required', 'error'); return;
     }
     try {
-      await apiFetch('/hr/payroll/periods', {
+      await apiFetch('/api/hr/payroll/periods', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(periodForm),
       });
       addToast('Pay period created', 'success');
@@ -190,7 +191,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
   const handleDeletePeriod = async (id: number) => {
     if (!confirm('Delete this pay period and all its entries?')) return;
     try {
-      await apiFetch(`/hr/payroll/periods/${id}`, { method: 'DELETE' });
+      await apiFetch(`/api/hr/payroll/periods/${id}`, { method: 'DELETE' });
       addToast('Pay period deleted', 'success');
       if (selectedPeriod?.id === id) setSelectedPeriod(null);
       fetchPeriods();
@@ -199,7 +200,8 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
 
   const handleClosePeriod = async (id: number) => {
     try {
-      await apiFetch(`/hr/payroll/periods/${id}`, {
+      await apiFetch(`/api/hr/payroll/periods/${id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'closed' }),
       });
       addToast('Pay period closed', 'success');
@@ -209,7 +211,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
 
   const handlePopulatePeriod = async (id: number) => {
     try {
-      const result = await apiFetch<{ created: number; total: number }>(`/hr/payroll/periods/${id}/populate`, { method: 'POST' });
+      const result = await apiFetch<{ created: number; total: number }>(`/api/hr/payroll/periods/${id}/populate`, { method: 'POST' });
       addToast(`Created ${result.created} entries (${result.total} total employees)`, 'success');
       if (selectedPeriod?.id === id) fetchEntries(id);
       fetchPeriods();
@@ -221,7 +223,8 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
       addToast('Employee, rate, and effective date are required', 'error'); return;
     }
     try {
-      await apiFetch('/hr/payroll/rates', {
+      await apiFetch('/api/hr/payroll/rates', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: Number(rateForm.user_id), pay_type: rateForm.pay_type,
           rate: Number(rateForm.rate), overtime_rate: Number(rateForm.overtime_rate),
@@ -238,7 +241,8 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
 
   const handleSaveEntry = async (entryId: number) => {
     try {
-      await apiFetch(`/hr/payroll/entries/${entryId}`, {
+      await apiFetch(`/api/hr/payroll/entries/${entryId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editValues),
       });
       addToast('Entry updated', 'success');
@@ -250,7 +254,8 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
 
   const handleApproveEntry = async (entryId: number) => {
     try {
-      await apiFetch(`/hr/payroll/entries/${entryId}`, {
+      await apiFetch(`/api/hr/payroll/entries/${entryId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'approved' }),
       });
       addToast('Entry approved', 'success');

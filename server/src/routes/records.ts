@@ -2,18 +2,14 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { sendCsv } from '../utils/csvExport';
-import { escapeLike, validateParamId, validateCoordinates, validateDateField } from '../middleware/sanitize';
+import { escapeLike, validateParamId } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
 import { searchUtahWarrants } from '../utils/utahWarrantScraper';
 import { searchOfacLocal } from '../utils/ofacScraper';
 import { auditLog } from '../utils/auditLogger';
 import { universalWarrantCheck } from '../utils/universalWarrantScanner';
-import { exportRateLimit } from '../middleware/rateLimiter';
 
 const router = Router();
-
-// ─── Migration: add case_id to evidence table if missing ───
-try { getDb().prepare('ALTER TABLE evidence ADD COLUMN case_id INTEGER').run(); } catch { /* column already exists */ }
 
 /**
  * Screen a person against the OFAC consolidated sanctions list.
@@ -87,7 +83,7 @@ router.get('/persons', requireRole('admin', 'manager', 'supervisor', 'officer', 
   try {
     const db = getDb();
     const { page = '1', limit = '50', flags, search, archived } = req.query;
-    const pageNum = Math.min(1000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
@@ -101,7 +97,7 @@ router.get('/persons', requireRole('admin', 'manager', 'supervisor', 'officer', 
     }
     if (search) {
       whereClause += " AND (first_name LIKE ? ESCAPE '\\' OR last_name LIKE ? ESCAPE '\\' OR (first_name || ' ' || last_name) LIKE ? ESCAPE '\\' OR phone LIKE ? ESCAPE '\\' OR dl_number LIKE ? ESCAPE '\\')";
-      const s = `%${escapeLike(String(search).trim())}%`;
+      const s = `%${escapeLike(String(search))}%`;
       params.push(s, s, s, s, s);
     }
 
@@ -164,7 +160,7 @@ router.get('/persons/search', requireRole('admin', 'manager', 'supervisor', 'off
 });
 
 // GET /api/records/persons/export - Export persons as CSV
-router.get('/persons/export', requireRole('admin', 'manager', 'supervisor'), exportRateLimit, (req: Request, res: Response) => {
+router.get('/persons/export', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { flags } = req.query;
@@ -467,7 +463,7 @@ router.post('/persons', requireRole('admin', 'manager', 'supervisor', 'officer',
     );
 
     // SELECT after screening so watchlist_match is included in response (safe column list excludes ssn_full)
-    const person = db.prepare(`SELECT ${PERSON_COLUMNS}, watchlist_match, watchlist_checked_at FROM persons WHERE id = ?`).get(Number(result.lastInsertRowid));
+    const person = db.prepare(`SELECT ${PERSON_COLUMNS}, watchlist_match, watchlist_checked_at FROM persons WHERE id = ?`).get(result.lastInsertRowid);
     if (!person) { res.status(500).json({ error: 'Failed to retrieve created person' }); return; }
     res.status(201).json(person);
   } catch (error: any) {
@@ -580,19 +576,12 @@ router.delete('/persons/:id', validateParamId, requireRole('admin', 'manager'), 
       return;
     }
 
-    let deleted = false;
     const deleteTx = db.transaction(() => {
       db.prepare('DELETE FROM incident_persons WHERE person_id = ?').run(person.id);
       db.prepare('UPDATE vehicles_records SET owner_person_id = NULL WHERE owner_person_id = ?').run(person.id);
-      const result = db.prepare('DELETE FROM persons WHERE id = ?').run(person.id);
-      deleted = result.changes > 0;
+      db.prepare('DELETE FROM persons WHERE id = ?').run(person.id);
     });
     deleteTx();
-
-    if (!deleted) {
-      res.status(500).json({ error: 'Failed to delete person record' });
-      return;
-    }
 
     auditLog(req, 'person_deleted', 'person', person.id, `Deleted person record #${person.id}`);
 
@@ -680,7 +669,7 @@ router.get('/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer',
   try {
     const db = getDb();
     const { page = '1', limit = '50', search, archived } = req.query;
-    const pageNum = Math.min(1000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
@@ -694,7 +683,7 @@ router.get('/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer',
     }
     if (search) {
       whereClause += " AND (v.plate_number LIKE ? ESCAPE '\\' OR v.make LIKE ? ESCAPE '\\' OR v.model LIKE ? ESCAPE '\\' OR v.vin LIKE ? ESCAPE '\\' OR v.color LIKE ? ESCAPE '\\')";
-      const s = `%${escapeLike(String(search).trim())}%`;
+      const s = `%${escapeLike(String(search))}%`;
       params.push(s, s, s, s, s);
     }
 
@@ -755,7 +744,7 @@ router.get('/vehicles/search', requireRole('admin', 'manager', 'supervisor', 'of
 });
 
 // GET /api/records/vehicles/export - Export vehicles as CSV
-router.get('/vehicles/export', requireRole('admin', 'manager', 'supervisor'), exportRateLimit, (req: Request, res: Response) => {
+router.get('/vehicles/export', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -825,15 +814,6 @@ router.post('/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer'
       flags, notes,
     } = req.body;
 
-    // Validate VIN format if provided (17 alphanumeric chars, no I/O/Q)
-    if (vin) {
-      const cleanVin = String(vin).toUpperCase().trim();
-      if (cleanVin.length !== 17 || !/^[A-HJ-NPR-Z0-9]{17}$/.test(cleanVin)) {
-        res.status(400).json({ error: 'VIN must be exactly 17 alphanumeric characters (no I, O, or Q)' });
-        return;
-      }
-    }
-
     const result = db.prepare(`
       INSERT INTO vehicles_records (plate_number, state, make, model, year, color, secondary_color,
         body_style, doors, vin, owner_person_id,
@@ -860,7 +840,7 @@ router.post('/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer'
       JSON.stringify(flags || []), notes || null,
     );
 
-    const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(Number(result.lastInsertRowid));
+    const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(result.lastInsertRowid);
     if (!vehicle) { res.status(500).json({ error: 'Failed to retrieve created vehicle' }); return; }
 
     auditLog(req, 'vehicle_created', 'vehicle', Number(result.lastInsertRowid), `Created vehicle record: ${plate_number || 'No plate'}`);
@@ -957,19 +937,11 @@ router.delete('/vehicles/:id', validateParamId, requireRole('admin', 'manager'),
       return;
     }
 
-    let deleted = false;
     const deleteTx = db.transaction(() => {
       db.prepare('DELETE FROM incident_vehicles WHERE vehicle_id = ?').run(vehicle.id);
-      const result = db.prepare('DELETE FROM vehicles_records WHERE id = ?').run(vehicle.id);
-      deleted = result.changes > 0;
+      db.prepare('DELETE FROM vehicles_records WHERE id = ?').run(vehicle.id);
     });
     deleteTx();
-
-    if (!deleted) {
-      res.status(500).json({ error: 'Failed to delete vehicle record' });
-      return;
-    }
-
     auditLog(req, 'vehicle_deleted', 'vehicle', vehicle.id, `Deleted vehicle record #${vehicle.id}`);
     res.json({ message: 'Vehicle deleted' });
   } catch (error: any) {
@@ -1023,7 +995,7 @@ router.get('/properties', requireRole('admin', 'manager', 'supervisor', 'officer
 
     if (search) {
       conditions.push("(p.name LIKE ? ESCAPE '\\' OR p.address LIKE ? ESCAPE '\\' OR c.name LIKE ? ESCAPE '\\')");
-      const s = `%${escapeLike(String(search).trim())}%`;
+      const s = `%${escapeLike(String(search))}%`;
       params.push(s, s, s);
     }
 
@@ -1160,22 +1132,6 @@ router.post('/properties', requireRole('admin', 'manager', 'supervisor', 'office
       return;
     }
 
-    // Validate GPS coordinates if provided
-    if (latitude != null) {
-      const lat = parseFloat(latitude);
-      if (isNaN(lat) || lat < -90 || lat > 90) {
-        res.status(400).json({ error: 'latitude must be between -90 and 90' });
-        return;
-      }
-    }
-    if (longitude != null) {
-      const lng = parseFloat(longitude);
-      if (isNaN(lng) || lng < -180 || lng > 180) {
-        res.status(400).json({ error: 'longitude must be between -180 and 180' });
-        return;
-      }
-    }
-
     const result = db.prepare(`
       INSERT INTO properties (client_id, name, address, city, state, zip, latitude, longitude, property_type,
         gate_code, alarm_code, emergency_contact, post_orders, hazard_notes, access_instructions, is_active)
@@ -1195,7 +1151,7 @@ router.post('/properties', requireRole('admin', 'manager', 'supervisor', 'office
       FROM properties p
       LEFT JOIN clients c ON p.client_id = c.id
       WHERE p.id = ?
-    `).get(Number(result.lastInsertRowid));
+    `).get(result.lastInsertRowid);
     res.status(201).json(property);
   } catch (error: any) {
     console.error('Create property error:', error?.message || 'Unknown error');
@@ -1265,8 +1221,8 @@ router.get('/vehicles/:id/incidents', validateParamId, requireRole('admin', 'man
 router.get('/evidence', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { page = '1', limit = '50', per_page, archived, search, status, type, case_id } = req.query;
-    const pageNum = Math.min(1000, Math.max(1, parseInt(page as string, 10) || 1));
+    const { page = '1', limit = '50', per_page, archived, search, status, type } = req.query;
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const limitNum = Math.min(200, Math.max(1, parseInt((per_page || limit) as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
@@ -1279,37 +1235,30 @@ router.get('/evidence', requireRole('admin', 'manager', 'supervisor', 'officer',
     } else if (archived !== 'all') {
       whereClause += ' AND e.archived_at IS NULL';
     }
-    // Case ID filter
-    if (case_id) {
-      whereClause += ' AND e.case_id = ?';
-      params.push(parseInt(case_id as string, 10));
+
+    if (search) {
+      whereClause += " AND (e.description LIKE ? ESCAPE '\\' OR e.evidence_number LIKE ? ESCAPE '\\' OR e.serial_number LIKE ? ESCAPE '\\' OR e.storage_location LIKE ? ESCAPE '\\')";
+      const s = `%${escapeLike(String(search))}%`;
+      params.push(s, s, s, s);
     }
-    // Status filter
+
     if (status) {
       whereClause += ' AND e.status = ?';
-      params.push(status as string);
+      params.push(status);
     }
-    // Type filter
+
     if (type) {
       whereClause += ' AND e.evidence_type = ?';
-      params.push(type as string);
-    }
-    // Search filter
-    if (search) {
-      whereClause += ' AND (e.evidence_number LIKE ? OR e.description LIKE ? OR e.serial_number LIKE ?)';
-      const term = `%${search}%`;
-      params.push(term, term, term);
+      params.push(type);
     }
 
     const countRow = db.prepare(`SELECT COUNT(*) as total FROM evidence e ${whereClause}`).get(...params) as any;
 
     const evidence = db.prepare(`
-      SELECT e.*, i.incident_number, u.full_name as collected_by_name,
-             c.case_number as linked_case_number, c.title as linked_case_title
+      SELECT e.*, i.incident_number, u.full_name as collected_by_name
       FROM evidence e
       LEFT JOIN incidents i ON e.incident_id = i.id
       LEFT JOIN users u ON e.collected_by = u.id
-      LEFT JOIN cases c ON e.case_id = c.id
       ${whereClause}
       ORDER BY e.created_at DESC
       LIMIT ? OFFSET ?
@@ -1347,7 +1296,7 @@ router.put('/evidence/:id', validateParamId, requireRole('admin', 'manager', 'su
 
     const eFieldMap: Record<string, (v: any) => any> = {
       description: v => v ?? null, evidence_type: v => v ?? null,
-      incident_id: v => v ?? null, case_id: v => v ?? null,
+      incident_id: v => v ?? null,
       storage_location: v => v ?? null, collected_date: v => v ?? null,
       category: v => v ?? null, packaging_type: v => v ?? null,
       serial_number: v => v ?? null, brand: v => v ?? null, model: v => v ?? null,
@@ -1375,12 +1324,10 @@ router.put('/evidence/:id', validateParamId, requireRole('admin', 'manager', 'su
     auditLog(req, 'evidence_updated', 'evidence', String(req.params.id), `Updated evidence #${req.params.id}`);
 
     const updated = db.prepare(`
-      SELECT e.*, i.incident_number, u.full_name as collected_by_name,
-             c.case_number as linked_case_number, c.title as linked_case_title
+      SELECT e.*, i.incident_number, u.full_name as collected_by_name
       FROM evidence e
       LEFT JOIN incidents i ON e.incident_id = i.id
       LEFT JOIN users u ON e.collected_by = u.id
-      LEFT JOIN cases c ON e.case_id = c.id
       WHERE e.id = ?
     `).get(req.params.id);
     res.json(updated);
@@ -1400,11 +1347,7 @@ router.delete('/evidence/:id', validateParamId, requireRole('admin', 'manager'),
       return;
     }
 
-    const result = db.prepare('DELETE FROM evidence WHERE id = ?').run(req.params.id);
-    if (result.changes === 0) {
-      res.status(500).json({ error: 'Failed to delete evidence record' });
-      return;
-    }
+    db.prepare('DELETE FROM evidence WHERE id = ?').run(req.params.id);
     auditLog(req, 'evidence_deleted', 'evidence', evidence.id, `Deleted evidence #${evidence.id}`);
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
@@ -1582,11 +1525,7 @@ router.post('/evidence/:id/chain-action', validateParamId, requireRole('admin', 
     db.prepare(`UPDATE evidence SET chain_of_custody = ?, status = ?, storage_location = ?, updated_at = ? WHERE id = ?`)
       .run(JSON.stringify(chain), newStatus, storageLocation, localNow(), evidence.id);
 
-    const auditActionMap: Record<string, 'evidence_check_in' | 'evidence_check_out' | 'evidence_transfer' | 'evidence_lab_submit' | 'evidence_release' | 'evidence_dispose'> = {
-      check_in: 'evidence_check_in', check_out: 'evidence_check_out', transfer: 'evidence_transfer',
-      lab_submit: 'evidence_lab_submit', release: 'evidence_release', dispose: 'evidence_dispose',
-    };
-    auditLog(req, auditActionMap[action], 'evidence', evidence.id, `Evidence #${evidence.id} chain action: ${action}${to_location ? ` to ${to_location}` : ''}`);
+    auditLog(req, `evidence_${action}` as any, 'evidence', evidence.id, `Evidence #${evidence.id} chain action: ${action}${to_location ? ` to ${to_location}` : ''}`);
 
     res.json({ data: { id: evidence.id, status: newStatus, chain_of_custody: chain } });
   } catch (error: any) {
@@ -1661,7 +1600,6 @@ router.delete('/properties/:id', validateParamId, requireRole('admin', 'manager'
       return;
     }
 
-    let deleted = false;
     const delTx = db.transaction(() => {
       // Remove any record links involving this property
       db.prepare("DELETE FROM record_links WHERE (source_type = 'property' AND source_id = ?) OR (target_type = 'property' AND target_id = ?)").run(req.params.id, req.params.id);
@@ -1672,16 +1610,9 @@ router.delete('/properties/:id', validateParamId, requireRole('admin', 'manager'
       db.prepare('DELETE FROM patrol_checkpoints WHERE property_id = ?').run(req.params.id);
       // Remove attachments referencing this property
       db.prepare("DELETE FROM attachments WHERE entity_type = 'property' AND entity_id = ?").run(req.params.id);
-      const result = db.prepare('DELETE FROM properties WHERE id = ?').run(req.params.id);
-      deleted = result.changes > 0;
+      db.prepare('DELETE FROM properties WHERE id = ?').run(req.params.id);
     });
     delTx();
-
-    if (!deleted) {
-      res.status(500).json({ error: 'Failed to delete property record' });
-      return;
-    }
-
     auditLog(req, 'property_deleted', 'property', property.id, `Deleted property #${property.id}: ${property.name}`);
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
@@ -1769,17 +1700,15 @@ router.post('/evidence', requireRole('admin', 'manager', 'supervisor', 'officer'
       notes || null
     );
 
-    auditLog(req, 'evidence_created', 'evidence', Number(result.lastInsertRowid), `Created evidence #${Number(result.lastInsertRowid)}: ${evidenceNumber}`);
+    auditLog(req, 'evidence_created', 'evidence', Number(result.lastInsertRowid), `Created evidence #${result.lastInsertRowid}: ${evidenceNumber}`);
 
     const created = db.prepare(`
-      SELECT e.*, i.incident_number, u.full_name as collected_by_name,
-             c.case_number as linked_case_number, c.title as linked_case_title
+      SELECT e.*, i.incident_number, u.full_name as collected_by_name
       FROM evidence e
       LEFT JOIN incidents i ON e.incident_id = i.id
       LEFT JOIN users u ON e.collected_by = u.id
-      LEFT JOIN cases c ON e.case_id = c.id
       WHERE e.id = ?
-    `).get(Number(result.lastInsertRowid));
+    `).get(result.lastInsertRowid);
     res.status(201).json(created);
   } catch (error: any) {
     console.error('Create evidence error:', error?.message || 'Unknown error');
@@ -1894,7 +1823,7 @@ router.post('/links', requireRole('admin', 'manager', 'supervisor', 'officer', '
       FROM record_links rl
       LEFT JOIN users u ON rl.created_by = u.id
       WHERE rl.id = ?
-    `).get(Number(result.lastInsertRowid));
+    `).get(result.lastInsertRowid);
     res.status(201).json(created);
   } catch (error: any) {
     if (error.message?.includes('UNIQUE constraint failed')) {
@@ -2044,7 +1973,7 @@ router.get('/persons/:id/criminal-history', validateParamId, requireRole('admin'
 router.post('/persons/:id/criminal-history', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = req.user!;
+    const user = (req as any).user;
     const personId = req.params.id;
     const {
       record_type, offense, offense_level, statute, case_number,
@@ -2073,7 +2002,7 @@ router.post('/persons/:id/criminal-history', validateParamId, requireRole('admin
 
     auditLog(req, 'criminal_history_created', 'criminal_history', Number(result.lastInsertRowid), `Created criminal history entry for person #${personId}: ${offense}`);
 
-    const newRecord = db.prepare('SELECT * FROM criminal_history WHERE id = ?').get(Number(result.lastInsertRowid));
+    const newRecord = db.prepare('SELECT * FROM criminal_history WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json(newRecord);
   } catch (error: any) {
     console.error('Create criminal history error:', error?.message || 'Unknown error');
@@ -2188,7 +2117,7 @@ router.get('/clients/:id/persons', validateParamId, requireRole('admin', 'manage
 router.post('/client-persons', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = req.user!;
+    const user = (req as any).user;
     const { client_id, person_id, relationship, title, notes, is_primary } = req.body;
 
     if (!client_id || !person_id) {
@@ -2222,7 +2151,7 @@ router.post('/client-persons', requireRole('admin', 'manager', 'supervisor', 'of
 
     auditLog(req, 'client_person_linked', 'person', person_id, `Linked person ${person.first_name} ${person.last_name} to client ${client.name}`);
 
-    const link = db.prepare('SELECT * FROM client_persons WHERE id = ?').get(Number(result.lastInsertRowid));
+    const link = db.prepare('SELECT * FROM client_persons WHERE id = ?').get(result.lastInsertRowid);
     if (!link) { res.status(500).json({ error: 'Failed to retrieve created link' }); return; }
     res.status(201).json(link);
   } catch (error: any) {

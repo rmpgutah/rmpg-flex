@@ -10,7 +10,7 @@ import {
   Camera, Video, Upload, Search, Loader2, Trash2, Edit2, Link2,
   Filter, MapPin, Gauge, Clock, FileText, AlertTriangle,
   ChevronLeft, ChevronRight, Plus, Grid, List, Film,
-  HardDrive, Maximize2, X, Zap, Car, Play, Download, ExternalLink,
+  HardDrive, Maximize2, X, Zap, Car, Play,
 } from 'lucide-react';
 import type { DashCamVideo } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -18,7 +18,7 @@ import SplitPanel from '../components/SplitPanel';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import ExportButton from '../components/ExportButton';
-import DashCamUploadWizard from '../components/DashCamUploadWizard';
+import DashCamUploadModal from '../components/DashCamUploadModal';
 import DashCamVideoPlayer from '../components/DashCamVideoPlayer';
 import DashCamVideoEditModal, { type DashCamVideoEditData } from '../components/DashCamVideoEditModal';
 import DashCamLinkModal from '../components/DashCamLinkModal';
@@ -26,8 +26,6 @@ import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import { useLiveSync } from '../hooks/useLiveSync';
-import { useWebSocket } from '../context/WebSocketContext';
-import { useNavigate } from 'react-router-dom';
 import usePersistedState from '../hooks/usePersistedState';
 
 const PAGE_SIZE = 25;
@@ -102,14 +100,11 @@ export default function DashCamerasPage() {
   const { user } = useAuth();
   const canManage = ['admin', 'manager', 'supervisor'].includes(user?.role || '');
   const isAdmin = user?.role === 'admin';
-  const navigate = useNavigate();
-  const { subscribe } = useWebSocket();
 
   // ── State ────────────────────────────────
   const [videos, setVideos] = useState<DashCamVideo[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState('');
   const [search, setSearch] = useState('');
   const [classFilter, setClassFilter] = useState('all');
   const [sourceFilter, setSourceFilter] = useState('all');
@@ -130,7 +125,6 @@ export default function DashCamerasPage() {
   // ── Data Fetching ────────────────────────
   const fetchVideos = useCallback(async () => {
     try {
-      setFetchError('');
       const params = new URLSearchParams({
         limit: String(PAGE_SIZE),
         offset: String(page * PAGE_SIZE),
@@ -140,9 +134,7 @@ export default function DashCamerasPage() {
       setVideos(Array.isArray(data?.videos) ? data.videos : []);
       setTotal(data?.total || 0);
     } catch (err: any) {
-      const msg = err?.message || 'Failed to load videos';
-      setFetchError(msg);
-      addToast(msg, 'error');
+      addToast(err?.message || 'Failed to load videos', 'error');
     } finally {
       setLoading(false);
     }
@@ -163,19 +155,6 @@ export default function DashCamerasPage() {
   useEffect(() => { fetchVideos(); }, [fetchVideos]);
   useEffect(() => { fetchRefData(); }, [fetchRefData]);
   useLiveSync('dashcam', fetchVideos);
-
-  // Listen for burn progress updates
-  useEffect(() => {
-    if (!selectedVideo) return;
-    const handler = (msg: any) => {
-      const data = msg?.data || msg;
-      if (data?.id === selectedVideo.id && data?.progress != null) {
-        setSelectedVideo(prev => prev ? { ...prev, burn_progress: data.progress, burn_status: data.status || prev.burn_status } : null);
-      }
-    };
-    const unsub = subscribe('dashcam_burn_progress' as any, handler);
-    return () => unsub();
-  }, [selectedVideo?.id, subscribe]);
 
   // ── Filters & Stats ─────────────────────
   const filtered = useMemo(() => {
@@ -219,7 +198,7 @@ export default function DashCamerasPage() {
       addToast('Video deleted', 'success');
       if (selectedVideo?.id === id) setSelectedVideo(null);
       fetchVideos();
-    } catch (err: any) { addToast(err?.message || 'Failed to delete video', 'error'); }
+    } catch { addToast('Failed to delete video', 'error'); }
   };
 
   const handleEditSave = async (videoId: number, data: DashCamVideoEditData) => {
@@ -246,17 +225,6 @@ export default function DashCamerasPage() {
       setSelectedVideo(prev => prev ? { ...prev, classification: cls as any } : null);
       fetchVideos();
     } catch { addToast('Failed to update classification', 'error'); }
-  };
-
-  const handleBurnHud = async (videoId: number) => {
-    try {
-      const res = await apiFetch(`/fleet/dashcam-videos/${videoId}/burn`, { method: 'POST' });
-      if (res && !(res as any).error) {
-        fetchVideos(); // Refresh to get updated burn_status
-      }
-    } catch (err) {
-      console.error('Burn HUD error:', err);
-    }
   };
 
   // ── Gallery View (Left Panel) ────────────
@@ -292,15 +260,12 @@ export default function DashCamerasPage() {
             >
               {/* Thumbnail area */}
               <div className="relative aspect-video bg-surface-sunken overflow-hidden group">
-                {(v.thumbnail_path || v.cpg_thumbnail_url) ? (
-                  <img src={v.thumbnail_path
-                    ? `${apiBase}/fleet/dashcam-videos/${v.id}/thumbnail?token=${encodeURIComponent(localStorage.getItem('rmpg_token') || '')}`
-                    : v.cpg_thumbnail_url!} alt={v.title}
+                {v.cpg_thumbnail_url ? (
+                  <img src={v.cpg_thumbnail_url} alt={v.title}
                     className="w-full h-full object-cover" />
                 ) : (
                   <div className="flex items-center justify-center h-full"
-                    style={{ background: 'linear-gradient(135deg, #0d1520 0%, #141e2b 100%)' }}
-                    role="img" aria-label={`No thumbnail available for ${v.title}`}>
+                    style={{ background: 'linear-gradient(135deg, #0d1520 0%, #141e2b 100%)' }}>
                     <Film className="w-8 h-8 text-rmpg-600" />
                   </div>
                 )}
@@ -450,9 +415,6 @@ export default function DashCamerasPage() {
         style={{ background: 'linear-gradient(180deg, #1e3048, #1a2636)', borderBottom: '1px solid #141e2b' }}>
         <Video className="w-3 h-3 text-cyan-400 flex-shrink-0" />
         <span className="text-[10px] font-semibold text-rmpg-200 truncate flex-1">{selectedVideo.title}</span>
-        <button onClick={() => navigate(`/dash-cameras/${selectedVideo.id}`)} className="toolbar-btn p-1" title="Full detail view">
-          <ExternalLink className="w-3 h-3" />
-        </button>
         <button onClick={() => setPlayingVideo(selectedVideo)} className="toolbar-btn p-1" title="Full screen player with HUD">
           <Maximize2 className="w-3 h-3" />
         </button>
@@ -584,9 +546,9 @@ export default function DashCamerasPage() {
               {selectedVideo.address && (
                 <div className="text-rmpg-200">{selectedVideo.address}</div>
               )}
-              {selectedVideo.latitude != null && selectedVideo.longitude != null && (
+              {selectedVideo.latitude != null && (
                 <div className="font-mono text-rmpg-400 text-[9px]">
-                  {selectedVideo.latitude.toFixed(5)}, {selectedVideo.longitude.toFixed(5)}
+                  {selectedVideo.latitude.toFixed(5)}, {selectedVideo.longitude?.toFixed(5)}
                 </div>
               )}
             </div>
@@ -649,56 +611,6 @@ export default function DashCamerasPage() {
                 </button>
               )}
             </div>
-            {/* Burn HUD */}
-            {canManage && (
-              <div className="mt-2 pt-2 border-t border-rmpg-700/50">
-                {selectedVideo.burn_status === 'processing' ? (
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-1.5">
-                      <Loader2 className="w-3 h-3 animate-spin text-brand-400" />
-                      <span className="text-[9px] text-rmpg-400 uppercase font-bold">Burning HUD...</span>
-                      <span className="text-[9px] font-mono text-brand-400">{selectedVideo.burn_progress || 0}%</span>
-                    </div>
-                    <div className="h-1.5 bg-rmpg-700 rounded-full overflow-hidden">
-                      <div className="h-full bg-brand-500 transition-all" style={{ width: `${selectedVideo.burn_progress || 0}%` }} />
-                    </div>
-                  </div>
-                ) : selectedVideo.burn_status === 'complete' ? (
-                  <div className="flex items-center gap-1.5">
-                    <a
-                      href={`${apiBase}/fleet/dashcam-videos/${selectedVideo.id}/download-burned?token=${encodeURIComponent(localStorage.getItem('rmpg_token') || '')}`}
-                      download
-                      className="toolbar-btn text-[9px] px-2.5 py-1 flex items-center gap-1 text-green-400"
-                    >
-                      <Download className="w-3 h-3" /> Download Burned
-                    </a>
-                    <button
-                      onClick={() => handleBurnHud(selectedVideo.id)}
-                      className="toolbar-btn text-[9px] px-2.5 py-1 flex items-center gap-1"
-                    >
-                      <Film className="w-3 h-3" /> Re-burn
-                    </button>
-                  </div>
-                ) : selectedVideo.burn_status === 'error' ? (
-                  <div className="space-y-1">
-                    <div className="text-[9px] text-red-400">{selectedVideo.burn_error || 'Burn failed'}</div>
-                    <button
-                      onClick={() => handleBurnHud(selectedVideo.id)}
-                      className="toolbar-btn text-[9px] px-2.5 py-1 flex items-center gap-1 text-amber-400"
-                    >
-                      <Film className="w-3 h-3" /> Retry Burn
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => handleBurnHud(selectedVideo.id)}
-                    className="toolbar-btn text-[9px] px-2.5 py-1 flex items-center gap-1"
-                  >
-                    <Film className="w-3 h-3" /> Burn HUD
-                  </button>
-                )}
-              </div>
-            )}
           </section>
         )}
       </div>
@@ -744,8 +656,6 @@ export default function DashCamerasPage() {
           </button>
         )}
       </PanelTitleBar>
-
-      {fetchError && <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded text-red-400 text-xs">{fetchError}</div>}
 
       {/* ── Stats Strip ──────────────────── */}
       <div className="panel-inset flex items-center h-8 overflow-x-auto flex-shrink-0"
@@ -905,7 +815,7 @@ export default function DashCamerasPage() {
       )}
 
       {/* ── Modals ───────────────────────── */}
-      <DashCamUploadWizard
+      <DashCamUploadModal
         isOpen={showUpload}
         onClose={() => setShowUpload(false)}
         onUploaded={() => { setShowUpload(false); fetchVideos(); }}

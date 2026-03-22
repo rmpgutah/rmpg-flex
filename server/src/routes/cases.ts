@@ -14,6 +14,7 @@ import { generateCaseNumber } from '../utils/caseNumbers';
 import { validateParamId, escapeLike } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 import { sendCsv } from '../utils/csvExport';
+import { broadcast } from '../utils/websocket';
 
 const router = Router();
 router.use(authenticateToken);
@@ -128,16 +129,18 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
         const callId = parseInt(String(linked_call_id), 10);
         if (isNaN(callId)) throw new Error('Invalid linked_call_id');
         db.prepare('UPDATE calls_for_service SET case_id = ?, case_number = ? WHERE id = ?')
-          .run(Number(result.lastInsertRowid), case_number, callId);
+          .run(result.lastInsertRowid, case_number, callId);
       }
 
-      auditLog(req, 'CREATE', 'case', Number(result.lastInsertRowid) as number, JSON.stringify({ case_number, title }));
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, 'create', 'case', ?, ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ case_number, title }), req.ip || 'unknown', now);
 
-      return { id: Number(result.lastInsertRowid), case_number };
+      return { id: result.lastInsertRowid, case_number };
     });
 
     const caseData = createCase();
     auditLog(req, 'CREATE' as any, 'case' as any, caseData.id, `Created case ${caseData.case_number}`);
+    broadcast('records', 'case:created', caseData);
     res.status(201).json({ data: caseData });
   } catch (error: any) {
     console.error('Create case error:', error?.message || 'Unknown error');
@@ -170,7 +173,11 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     params.push(req.params.id);
     db.prepare(`UPDATE cases SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
-    auditLog(req, 'UPDATE', 'case', parseInt(String(req.params.id), 10), `Updated case fields: ${Object.keys(req.body).join(', ')}`);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'update', 'case', ?, ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ fields: Object.keys(req.body) }), req.ip || 'unknown', now);
+
+    auditLog(req, 'UPDATE' as any, 'case' as any, req.params.id, `Updated case fields: ${Object.keys(req.body).join(', ')}`);
+    broadcast('records', 'case:updated', { id: parseInt(req.params.id as string, 10) });
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) {
     console.error('Update case error:', error?.message || 'Unknown error');
@@ -197,7 +204,12 @@ router.put('/:id/status', validateParamId, requireRole('admin', 'manager', 'supe
     const setClauses = Object.keys(updates).map(k => `${k} = ?`).join(', ');
     db.prepare(`UPDATE cases SET ${setClauses} WHERE id = ?`).run(...Object.values(updates), req.params.id);
 
-    auditLog(req, 'UPDATE', 'case', parseInt(String(req.params.id), 10), `Case status changed from ${existing.status} to ${status}`);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'status_change', 'case', ?, ?, ?, ?)`).run(
+      req.user!.userId, req.params.id, JSON.stringify({ from: existing.status, to: status }), req.ip || 'unknown', now);
+
+    auditLog(req, 'UPDATE' as any, 'case' as any, req.params.id, `Case status changed from ${existing.status} to ${status}`);
+    broadcast('records', 'case:updated', { id: parseInt(req.params.id as string, 10), status });
     res.json({ data: { id: parseInt(req.params.id as string, 10), status } });
   } catch (error: any) {
     console.error('Update case status error:', error?.message || 'Unknown error');
@@ -220,8 +232,9 @@ router.post('/:id/notes', validateParamId, requireRole('admin', 'manager', 'supe
     `).run(req.params.id, req.user!.userId, user?.full_name || '', note_type, content, now);
 
     db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(now, req.params.id);
-    auditLog(req, 'CREATE' as any, 'case_note' as any, Number(result.lastInsertRowid), `Added ${note_type} note to case ${req.params.id}`);
-    res.status(201).json({ data: { id: Number(result.lastInsertRowid) } });
+    auditLog(req, 'CREATE' as any, 'case_note' as any, result.lastInsertRowid, `Added ${note_type} note to case ${req.params.id}`);
+    broadcast('records', 'case:updated', { id: parseInt(req.params.id as string, 10) });
+    res.status(201).json({ data: { id: result.lastInsertRowid } });
   } catch (error: any) {
     console.error('Create case note error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -263,6 +276,7 @@ router.post('/:id/calculate-solvability', validateParamId, requireRole('admin', 
       .run(score, JSON.stringify(factors), now, req.params.id);
 
     auditLog(req, 'UPDATE' as any, 'case' as any, req.params.id, `Calculated solvability score: ${score}`);
+    broadcast('records', 'case:updated', { id: parseInt(req.params.id as string, 10), score });
     res.json({ data: { score, factors } });
   } catch (error: any) {
     console.error('Calculate solvability error:', error?.message || 'Unknown error');

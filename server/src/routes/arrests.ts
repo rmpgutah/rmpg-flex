@@ -133,7 +133,7 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
   try {
     const db = getDb();
     const now = localNow();
-    const user = req.user!;
+    const user = (req as any).user;
     const b = req.body;
 
     // Require at minimum a name
@@ -143,20 +143,8 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
     }
 
     const { first, middle, last } = splitName(fullName);
-    // Normalize charges to valid JSON array string
-    let charges = '[]';
-    if (Array.isArray(b.charges)) {
-      charges = JSON.stringify(b.charges);
-    } else if (typeof b.charges === 'string') {
-      // Validate that string charges is valid JSON array
-      try {
-        const parsed = JSON.parse(b.charges);
-        charges = Array.isArray(parsed) ? JSON.stringify(parsed) : JSON.stringify([b.charges]);
-      } catch {
-        // If not valid JSON, wrap as single-element array
-        charges = JSON.stringify([b.charges]);
-      }
-    }
+    const charges = Array.isArray(b.charges) ? JSON.stringify(b.charges)
+      : typeof b.charges === 'string' ? b.charges : '[]';
 
     const result = db.prepare(`
       INSERT INTO arrest_records (
@@ -182,11 +170,11 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
       b.date_of_birth || null, b.booking_date || now, b.release_date || null,
       charges, b.county || '', b.state || 'UT', b.status || 'active', b.booking_number || null, b.agency || null,
       b.gender || null, b.race || null, b.height || null, b.weight || null, b.hair_color || null, b.eye_color || null,
-      b.address || null, b.bail_amount != null && !isNaN(parseFloat(b.bail_amount)) && isFinite(parseFloat(b.bail_amount)) && parseFloat(b.bail_amount) >= 0 ? parseFloat(b.bail_amount) : null, b.hold_reason || null, b.notes || null,
-      user?.userId || null, now, now,
+      b.address || null, b.bail_amount != null && !isNaN(parseFloat(b.bail_amount)) && isFinite(parseFloat(b.bail_amount)) ? parseFloat(b.bail_amount) : null, b.hold_reason || null, b.notes || null,
+      user?.id || null, now, now,
     );
 
-    const newId = Number(result.lastInsertRowid) as number;
+    const newId = result.lastInsertRowid as number;
 
     auditLog(req, 'arrest_created', 'arrest_record', newId,
       `Manual booking: ${fullName}`);
@@ -234,24 +222,12 @@ router.put('/manual/:id', validateParamId, requireRole('admin', 'manager', 'offi
 
     if (b.bail_amount !== undefined) {
       updates.push('bail_amount = ?');
-      params.push(b.bail_amount != null && !isNaN(parseFloat(b.bail_amount)) && isFinite(parseFloat(b.bail_amount)) && parseFloat(b.bail_amount) >= 0 ? parseFloat(b.bail_amount) : null);
+      params.push(b.bail_amount != null && !isNaN(parseFloat(b.bail_amount)) && isFinite(parseFloat(b.bail_amount)) ? parseFloat(b.bail_amount) : null);
     }
 
     if (b.charges !== undefined) {
       updates.push('charges = ?');
-      // Normalize charges to valid JSON array string (prevent double-encoding)
-      let chargesVal = '[]';
-      if (Array.isArray(b.charges)) {
-        chargesVal = JSON.stringify(b.charges);
-      } else if (typeof b.charges === 'string') {
-        try {
-          const parsed = JSON.parse(b.charges);
-          chargesVal = Array.isArray(parsed) ? JSON.stringify(parsed) : JSON.stringify([b.charges]);
-        } catch {
-          chargesVal = JSON.stringify([b.charges]);
-        }
-      }
-      params.push(chargesVal);
+      params.push(Array.isArray(b.charges) ? JSON.stringify(b.charges) : b.charges);
     }
 
     // If full_name changed, re-split first/last/middle
@@ -290,11 +266,9 @@ router.delete('/manual/:id', validateParamId, requireRole('admin', 'manager'), (
     const existing = db.prepare('SELECT id FROM arrest_records WHERE id = ?').get(id);
     if (!existing) return res.status(404).json({ error: 'Record not found' });
 
-    // Delete cross-links + record atomically
-    db.transaction(() => {
-      db.prepare('DELETE FROM arrest_cross_links WHERE arrest_record_id = ?').run(id);
-      db.prepare('DELETE FROM arrest_records WHERE id = ?').run(id);
-    })();
+    // Delete cross-links first (FK cascade should handle, but be explicit)
+    db.prepare('DELETE FROM arrest_cross_links WHERE arrest_record_id = ?').run(id);
+    db.prepare('DELETE FROM arrest_records WHERE id = ?').run(id);
 
     auditLog(req, 'arrest_deleted', 'arrest_record', id, `Deleted arrest record #${id}`);
     broadcastRecordUpdate({ type: 'arrest_deleted', id });
@@ -306,7 +280,7 @@ router.delete('/manual/:id', validateParamId, requireRole('admin', 'manager'), (
 });
 
 // ── GET /manual/:id — Get a single booking record ───────────
-router.get('/manual/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.get('/manual/:id', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
@@ -335,7 +309,7 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
   try {
     const db = getDb();
     const now = localNow();
-    const user = req.user!;
+    const user = (req as any).user;
     const { records, county, agency } = req.body;
 
     if (!Array.isArray(records) || records.length === 0) {
@@ -386,23 +360,9 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
           }
 
           const { first, middle, last } = splitName(fullName);
-          const rawCharges = r.charges || r.Charges || r.CHARGES || r.offense || r.Offense || '';
-          let chargesJson: string;
-          if (Array.isArray(rawCharges)) {
-            chargesJson = JSON.stringify(rawCharges);
-          } else if (typeof rawCharges === 'string' && rawCharges.trim()) {
-            // Check if it's already valid JSON array — avoid double-encoding
-            try {
-              const parsed = JSON.parse(rawCharges);
-              chargesJson = Array.isArray(parsed) ? rawCharges : JSON.stringify([rawCharges]);
-            } catch {
-              // Split on semicolons or commas to create a proper array from CSV text
-              const parts = rawCharges.includes(';') ? rawCharges.split(';') : [rawCharges];
-              chargesJson = JSON.stringify(parts.map((c: string) => c.trim()).filter(Boolean));
-            }
-          } else {
-            chargesJson = '[]';
-          }
+          const charges = r.charges || r.Charges || r.CHARGES || r.offense || r.Offense || '';
+          const chargesJson = Array.isArray(charges) ? JSON.stringify(charges)
+            : typeof charges === 'string' && charges ? JSON.stringify([charges]) : '[]';
 
           insert.run(
             `csv-${Date.now()}-${i}-${crypto.randomBytes(3).toString('hex')}`,
@@ -430,21 +390,14 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
             (() => { const v = parseFloat(r.bail_amount ?? r.BailAmount ?? r.BAIL_AMOUNT); return isNaN(v) || !isFinite(v) ? null : v; })(),
             r.hold_reason || r.HoldReason || null,
             r.notes || null,
-            user?.userId || null, now, now,
+            user?.id || null, now, now,
           );
           imported++;
         } catch (rowErr: any) {
           skipped++;
-          // Log full error server-side for debugging
+          // Log full error server-side for debugging; return generic message to client
           console.error(`[Arrests Import] Row ${i + 1} error:`, rowErr.message);
-          // Return sanitized but useful error details (up to 10 rows)
-          if (errors.length < 10) {
-            const rowName = r.full_name || r.name || `Row ${i + 1}`;
-            const reason = rowErr.message?.includes('UNIQUE constraint') ? 'Duplicate record'
-              : rowErr.message?.includes('NOT NULL') ? 'Missing required field'
-              : 'Import failed';
-            errors.push(`Row ${i + 1} (${rowName}): ${reason}`);
-          }
+          if (errors.length < 5) errors.push(`Row ${i + 1}: Import failed`);
         }
       }
     });
@@ -452,7 +405,7 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
     importTx();
 
     auditLog(req, 'arrest_imported', 'arrest_record', 0,
-      `CSV import: ${imported} imported, ${skipped} skipped of ${records.length} total (county: ${county || 'unknown'}, agency: ${agency || 'unknown'})${errors.length > 0 ? ` — Errors: ${errors.join('; ')}` : ''}`);
+      `CSV import: ${imported} of ${records.length} records (county: ${county || 'unknown'})`);
     broadcastRecordUpdate({ type: 'arrest_imported', imported, total: records.length });
 
     // Run cross-linking on all new records
@@ -480,8 +433,8 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
 // EXISTING ROUTES (JailBase API + Search + Status)
 // ============================================================
 
-// ── GET /status — Configuration + roster status (admin/manager only) ──
-router.get('/status', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
+// ── GET /status — Configuration + roster status ─────────────
+router.get('/status', (_req: Request, res: Response) => {
   try {
     const db = getDb();
     const hasApiKey = !!getDecryptedValue(CONFIG_KEYS.apiKey);
@@ -587,7 +540,7 @@ router.post('/test', requireRole('admin', 'manager'), async (_req: Request, res:
 });
 
 // ── GET /search — Search arrest records by name ─────────────
-router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (req: Request, res: Response) => {
+router.get('/search', async (req: Request, res: Response) => {
   try {
     const name = (req.query.name as string || '').trim();
     if (!name || name.length < 2) return res.status(400).json({ error: 'Name required (min 2 characters)' });
@@ -612,7 +565,7 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
 });
 
 // ── GET /recent — Recent arrests (paginated, filterable) ────
-router.get('/recent', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/recent', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const county = (req.query.county as string || '').trim();
@@ -667,15 +620,13 @@ router.get('/recent', requireRole('admin', 'manager', 'supervisor', 'officer', '
 });
 
 // ── GET /sync-status ────────────────────────────────────────
-// Restricted to admin/manager — exposes sync config details (enabled counties, errors)
-router.get('/sync-status', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
+router.get('/sync-status', (_req: Request, res: Response) => {
   try { res.json(getArrestSyncStatus()); }
   catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── GET /usage ──────────────────────────────────────────────
-// Restricted to admin/manager — exposes API usage stats
-router.get('/usage', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
+router.get('/usage', (_req: Request, res: Response) => {
   try { res.json(getArrestUsageStats()); }
   catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -734,7 +685,7 @@ router.put('/counties', requireRole('admin', 'manager'), (req: Request, res: Res
 });
 
 // ── GET /:id/cross-links ────────────────────────────────────
-router.get('/:id/cross-links', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.get('/:id/cross-links', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
@@ -760,20 +711,19 @@ router.put('/:id/link-person', validateParamId, requireRole('admin', 'manager', 
     const person = db.prepare('SELECT id, first_name, last_name FROM persons WHERE id = ?').get(person_id) as any;
     if (!person) return res.status(404).json({ error: 'Person not found' });
 
-    // Atomically update arrest record + add cross-link
-    db.transaction(() => {
-      db.prepare('UPDATE arrest_records SET person_id = ?, updated_at = ? WHERE id = ?')
-        .run(person_id, localNow(), id);
+    // Update arrest record with person_id
+    db.prepare('UPDATE arrest_records SET person_id = ?, updated_at = ? WHERE id = ?')
+      .run(person_id, localNow(), id);
 
-      const existing = db.prepare(
-        'SELECT id FROM arrest_cross_links WHERE arrest_record_id = ? AND linked_type = ? AND linked_id = ?'
-      ).get(id, 'person', person_id);
-      if (!existing) {
-        db.prepare(
-          'INSERT INTO arrest_cross_links (arrest_record_id, linked_type, linked_id, match_type, match_confidence) VALUES (?, ?, ?, ?, ?)'
-        ).run(id, 'person', person_id, 'manual', 1.0);
-      }
-    })();
+    // Also add a cross-link if not already present
+    const existing = db.prepare(
+      'SELECT id FROM arrest_cross_links WHERE arrest_record_id = ? AND linked_type = ? AND linked_id = ?'
+    ).get(id, 'person', person_id);
+    if (!existing) {
+      db.prepare(
+        'INSERT INTO arrest_cross_links (arrest_record_id, linked_type, linked_id, match_type, match_confidence) VALUES (?, ?, ?, ?, ?)'
+      ).run(id, 'person', person_id, 'manual', 1.0);
+    }
 
     auditLog(req, 'arrest_linked', 'arrest_record', id,
       `Linked arrest #${id} to person ${person.last_name}, ${person.first_name} (ID: ${person_id})`);
@@ -794,17 +744,15 @@ router.delete('/:id/link-person', validateParamId, requireRole('admin', 'manager
     const record = db.prepare('SELECT person_id FROM arrest_records WHERE id = ?').get(id) as any;
     if (!record) return res.status(404).json({ error: 'Arrest record not found' });
 
-    // Atomically unlink person + remove cross-link
-    db.transaction(() => {
-      db.prepare('UPDATE arrest_records SET person_id = NULL, updated_at = ? WHERE id = ?')
-        .run(localNow(), id);
+    db.prepare('UPDATE arrest_records SET person_id = NULL, updated_at = ? WHERE id = ?')
+      .run(localNow(), id);
 
-      if (record.person_id) {
-        db.prepare(
-          'DELETE FROM arrest_cross_links WHERE arrest_record_id = ? AND linked_type = ? AND linked_id = ? AND match_type = ?'
-        ).run(id, 'person', record.person_id, 'manual');
-      }
-    })();
+    // Remove manual cross-link
+    if (record.person_id) {
+      db.prepare(
+        'DELETE FROM arrest_cross_links WHERE arrest_record_id = ? AND linked_type = ? AND linked_id = ? AND match_type = ?'
+      ).run(id, 'person', record.person_id, 'manual');
+    }
 
     auditLog(req, 'arrest_unlinked', 'arrest_record', id,
       `Unlinked person from arrest #${id}`);

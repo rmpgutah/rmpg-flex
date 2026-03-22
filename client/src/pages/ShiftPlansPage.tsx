@@ -27,7 +27,7 @@ import { useShiftPlanning, SHIFT_TYPES } from '../hooks/useShiftPlanning';
 import type { ShiftPlan, ShiftType, AreaAssignment } from '../hooks/useShiftPlanning';
 import { useIsMobile } from '../hooks/useIsMobile';
 import StatusBadge from '../components/StatusBadge';
-import { localToday, dateToLocalYMD } from '../utils/dateUtils';
+import { useToast } from '../components/ToastProvider';
 
 // ── Date helpers ───────────────────────────────────────────
 
@@ -37,7 +37,7 @@ function formatDate(dateStr: string) {
 }
 
 function todayStr() {
-  return localToday();
+  return new Date().toISOString().split('T')[0];
 }
 
 // ── Status badge helper ────────────────────────────────────
@@ -91,7 +91,7 @@ export default function ShiftPlansPage() {
   const navigateDate = (delta: number) => {
     const d = new Date(selectedDate + 'T12:00:00');
     d.setDate(d.getDate() + delta);
-    setSelectedDate(dateToLocalYMD(d));
+    setSelectedDate(d.toISOString().split('T')[0]);
   };
 
   // ── Create plan ──
@@ -106,7 +106,7 @@ export default function ShiftPlansPage() {
   const handleDuplicate = (planId: string) => {
     const nextDay = new Date(selectedDate + 'T12:00:00');
     nextDay.setDate(nextDay.getDate() + 1);
-    sp.duplicatePlan(planId, dateToLocalYMD(nextDay));
+    sp.duplicatePlan(planId, nextDay.toISOString().split('T')[0]);
   };
 
   // ── Save to server ──
@@ -240,14 +240,13 @@ export default function ShiftPlansPage() {
             {plansForDate.length === 0 ? (
               <div className="flex items-center justify-center h-full text-rmpg-500 text-[10px]">
                 <div className="text-center">
-                  <Shield className="w-8 h-8 mx-auto mb-2 text-rmpg-600" />
-                  <p className="text-sm text-rmpg-400 font-semibold">No shift plans for this date</p>
-                  <p className="text-[9px] text-rmpg-600 mt-1">Create a new shift plan to assign officers and units to areas</p>
+                  <Calendar className="w-8 h-8 mx-auto mb-2 text-rmpg-600" />
+                  <p>No shift plans for this date</p>
                   <button
                     onClick={() => setShowCreateForm(true)}
-                    className="flex items-center gap-1 mx-auto mt-3 px-3 py-1 text-[9px] font-bold uppercase tracking-wider bg-blue-900/50 text-blue-400 border border-blue-700/50 hover:bg-blue-800/50 transition-colors"
+                    className="text-blue-400 hover:text-blue-300 text-[10px] mt-2"
                   >
-                    <Plus style={{ width: 10, height: 10 }} /> Create Shift Plan
+                    + Create one
                   </button>
                 </div>
               </div>
@@ -418,8 +417,8 @@ export default function ShiftPlansPage() {
                           <td className="px-4 py-2">
                             {a.officerNames.length > 0 ? (
                               <div className="flex flex-wrap gap-1">
-                                {a.officerNames.map((name) => (
-                                  <span key={name} className="text-[9px] font-mono px-1 py-px bg-blue-900/30 text-blue-400 border border-blue-800/50">
+                                {a.officerNames.map((name, i) => (
+                                  <span key={i} className="text-[9px] font-mono px-1 py-px bg-blue-900/30 text-blue-400 border border-blue-800/50">
                                     {name}
                                   </span>
                                 ))}
@@ -431,8 +430,8 @@ export default function ShiftPlansPage() {
                           <td className="px-4 py-2">
                             {a.unitCallSigns.length > 0 ? (
                               <div className="flex flex-wrap gap-1">
-                                {a.unitCallSigns.map((cs) => (
-                                  <span key={cs} className="text-[9px] font-mono px-1 py-px bg-green-900/30 text-green-400 border border-green-800/50">
+                                {a.unitCallSigns.map((cs, i) => (
+                                  <span key={i} className="text-[9px] font-mono px-1 py-px bg-green-900/30 text-green-400 border border-green-800/50">
                                     {cs}
                                   </span>
                                 ))}

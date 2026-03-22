@@ -12,6 +12,7 @@ import { localNow, localToday } from '../utils/timeUtils';
 import { queueOverlayProcessing, type DashCamOverlayConfig } from '../utils/videoOverlay';
 import { auditLog } from '../utils/auditLogger';
 import { validateParamId } from '../middleware/sanitize';
+import { sendCsv } from '../utils/csvExport';
 
 const execFileAsync = promisify(execFile);
 const __filename_f = fileURLToPath(import.meta.url);
@@ -45,12 +46,11 @@ const dashcamStorage = multer.diskStorage({
 
 const dashcamUpload = multer({
   storage: dashcamStorage,
-  limits: { fileSize: 10 * 1024 * 1024 * 1024 }, // 10 GB max per file
   fileFilter: (_req, file, cb) => {
     if (DASHCAM_MIME_TYPES.has(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('File type is not allowed. Accepted: MP4, MOV, AVI, WebM'));
+      cb(new Error(`File type ${file.mimetype} is not allowed. Accepted: MP4, MOV, AVI, WebM`));
     }
   },
 });
@@ -72,32 +72,10 @@ async function extractDashcamDuration(filePath: string): Promise<number | null> 
 
 const router = Router();
 
-// Accept HMAC signed access or legacy query-string token for <video>/<img> streaming
-router.use((req: Request, res: Response, next: NextFunction) => {
-  if (/\/(stream|download|thumbnail)/.test(req.path)) {
-    // Prefer HMAC signed access (no JWT in URL)
-    if (!req.headers['authorization'] && typeof req.query.sig === 'string') {
-      const { verifyResourceAccess } = require('../utils/signedAccess');
-      const idMatch = req.path.match(/\/(\d+)\/(stream|download|thumbnail)/);
-      const resourceId = idMatch?.[1];
-      if (resourceId) {
-        const exp = parseInt(req.query.exp as string, 10);
-        const nonce = req.query.nonce as string | undefined;
-        if (verifyResourceAccess('dashcam', resourceId, req.query.sig as string, exp, nonce)) {
-          req.user = { userId: 0, username: 'signed-access', role: 'viewer', fullName: 'Signed Access' };
-          next();
-          return;
-        }
-        res.status(403).json({ error: 'Invalid or expired signature' });
-        return;
-      }
-    }
-    // Legacy: promote ?token= to Authorization header
-    if (!req.headers['authorization'] && req.query.token) {
-      const { logLegacyTokenUsage } = require('../utils/signedAccess');
-      logLegacyTokenUsage('fleet/media');
-      req.headers['authorization'] = `Bearer ${req.query.token}`;
-    }
+// Promote query-string token to Authorization header for <video> streaming only
+router.use((req: Request, _res: Response, next: NextFunction) => {
+  if (!req.headers['authorization'] && req.query.token && /\/(stream|download|thumbnail)/.test(req.path)) {
+    req.headers['authorization'] = `Bearer ${req.query.token}`;
   }
   next();
 });
@@ -120,12 +98,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     let whereClause = 'WHERE 1=1';
     const params: any[] = [];
 
-    const VALID_FLEET_STATUSES = ['in_service', 'maintenance', 'out_of_service', 'retired'];
     if (status) {
-      if (!VALID_FLEET_STATUSES.includes(status as string)) {
-        res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_FLEET_STATUSES.join(', ')}` });
-        return;
-      }
       whereClause += ' AND fv.status = ?';
       params.push(status);
     }
@@ -143,7 +116,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       whereClause += ' AND fv.archived_at IS NULL';
     }
 
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 50));
     const offset = (pageNum - 1) * perPage;
 
@@ -180,22 +153,6 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
   } catch (error: any) {
     console.error('Error fetching fleet vehicles:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch fleet vehicles' });
-  }
-});
-
-// ─── GET /api/fleet/stats ─ Quick fleet summary ─────────────────
-router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const total = (db.prepare(`SELECT COUNT(*) as cnt FROM fleet_vehicles WHERE archived_at IS NULL`).get() as any).cnt;
-    const active = (db.prepare(`SELECT COUNT(*) as cnt FROM fleet_vehicles WHERE status = 'in_service' AND archived_at IS NULL`).get() as any).cnt;
-    const maintenance = (db.prepare(`SELECT COUNT(*) as cnt FROM fleet_vehicles WHERE status = 'maintenance' AND archived_at IS NULL`).get() as any).cnt;
-    const out_of_service = (db.prepare(`SELECT COUNT(*) as cnt FROM fleet_vehicles WHERE status = 'out_of_service' AND archived_at IS NULL`).get() as any).cnt;
-    const avg_mileage = (db.prepare(`SELECT COALESCE(AVG(current_mileage), 0) as avg FROM fleet_vehicles WHERE archived_at IS NULL AND current_mileage > 0`).get() as any).avg;
-    res.json({ data: { total, active, maintenance, out_of_service, avg_mileage: Math.round(avg_mileage) } });
-  } catch (error: any) {
-    console.error('Fleet stats error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -291,7 +248,7 @@ router.get('/analytics', requireRole('admin', 'manager', 'supervisor'), (req: Re
       month: f.month,
       total_gallons: f.total_gallons || 0,
       total_cost: f.total_cost || 0,
-      avg_mpg: mpgByMonth[f.month] && mpgByMonth[f.month].total_gallons > 0
+      avg_mpg: mpgByMonth[f.month]
         ? Math.round((mpgByMonth[f.month].total_miles / mpgByMonth[f.month].total_gallons) * 10) / 10
         : null,
     }));
@@ -446,10 +403,10 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       FROM fleet_vehicles fv
       LEFT JOIN units u ON fv.assigned_unit_id = u.id
       WHERE fv.id = ?
-    `).get(Number(result.lastInsertRowid)) as any;
+    `).get(result.lastInsertRowid) as any;
     if (!created) { res.status(500).json({ error: 'Failed to retrieve created fleet vehicle' }); return; }
 
-    auditLog(req, 'vehicle_fleet_created', 'fleet_vehicle', Number(result.lastInsertRowid), `Created fleet vehicle ${vehicle_number}`);
+    auditLog(req, 'vehicle_fleet_created', 'fleet_vehicle', result.lastInsertRowid as number, `Created fleet vehicle ${vehicle_number}`);
 
     res.status(201).json({
       ...created,
@@ -497,13 +454,6 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Reque
         res.status(409).json({ error: 'A vehicle with this vehicle_number already exists' });
         return;
       }
-    }
-
-    // Validate status enum if provided
-    const VALID_FLEET_STATUSES = ['in_service', 'maintenance', 'out_of_service', 'retired'];
-    if (req.body.status && !VALID_FLEET_STATUSES.includes(req.body.status)) {
-      res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_FLEET_STATUSES.join(', ')}` });
-      return;
     }
 
     // Build dynamic SET clause — only update fields explicitly provided
@@ -730,7 +680,7 @@ router.get('/:id/maintenance', validateParamId, requireRole('admin', 'manager', 
       return;
     }
 
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 25));
     const offset = (pageNum - 1) * perPage;
 
@@ -789,29 +739,6 @@ router.post('/:id/maintenance', validateParamId, requireRole('admin', 'manager',
       return;
     }
 
-    // Validate numeric fields to prevent type confusion and storage of invalid data
-    if (mileage_at_service !== undefined && mileage_at_service !== null) {
-      const m = Number(mileage_at_service);
-      if (isNaN(m) || m < 0 || m > 9999999) {
-        res.status(400).json({ error: 'mileage_at_service must be a number between 0 and 9,999,999' });
-        return;
-      }
-    }
-    if (cost !== undefined && cost !== null) {
-      const c = Number(cost);
-      if (isNaN(c) || c < 0 || c > 9999999) {
-        res.status(400).json({ error: 'cost must be a number between 0 and 9,999,999' });
-        return;
-      }
-    }
-    if (next_due_mileage !== undefined && next_due_mileage !== null) {
-      const ndm = Number(next_due_mileage);
-      if (isNaN(ndm) || ndm < 0 || ndm > 9999999) {
-        res.status(400).json({ error: 'next_due_mileage must be a number between 0 and 9,999,999' });
-        return;
-      }
-    }
-
     const result = db.prepare(`
       INSERT INTO fleet_maintenance (
         vehicle_id, type, description, mileage_at_service, cost,
@@ -850,10 +777,10 @@ router.post('/:id/maintenance', validateParamId, requireRole('admin', 'manager',
     fleetSetValues.push(id);
     db.prepare(`UPDATE fleet_vehicles SET ${fleetSetClauses.join(', ')} WHERE id = ?`).run(...fleetSetValues);
 
-    const record = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(Number(result.lastInsertRowid));
+    const record = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(result.lastInsertRowid);
     if (!record) { res.status(500).json({ error: 'Failed to retrieve maintenance record' }); return; }
 
-    auditLog(req, 'maintenance_logged', 'maintenance', Number(result.lastInsertRowid), `Logged maintenance for vehicle ${vehicle.vehicle_number}`);
+    auditLog(req, 'maintenance_logged', 'maintenance', result.lastInsertRowid as number, `Logged maintenance for vehicle ${vehicle.vehicle_number}`);
 
     res.status(201).json(record);
   } catch (error: any) {
@@ -868,18 +795,6 @@ router.put('/maintenance/:id', validateParamId, requireRole('admin', 'manager', 
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(req.params.id) as any;
     if (!record) { res.status(404).json({ error: 'Maintenance record not found' }); return; }
-
-    // Validate numeric fields if provided
-    const numericFields = ['mileage_at_service', 'cost', 'next_due_mileage'];
-    for (const field of numericFields) {
-      if (req.body[field] !== undefined && req.body[field] !== null) {
-        const val = Number(req.body[field]);
-        if (isNaN(val) || val < 0) {
-          res.status(400).json({ error: `${field} must be a non-negative number` }); return;
-        }
-        req.body[field] = val;
-      }
-    }
 
     const mFields: string[] = [];
     const mValues: any[] = [];
@@ -969,7 +884,7 @@ router.get('/:id/fuel', validateParamId, requireRole('admin', 'manager', 'superv
       return;
     }
 
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 50));
     const offset = (pageNum - 1) * perPage;
 
@@ -1050,28 +965,7 @@ router.post('/:id/fuel', validateParamId, requireRole('admin', 'manager', 'super
       return;
     }
 
-    // Validate numeric fields
-    const gal = parseFloat(gallons);
-    if (isNaN(gal) || gal <= 0 || gal > 500) {
-      res.status(400).json({ error: 'gallons must be a positive number (max 500)' });
-      return;
-    }
-    if (cost_per_gallon !== undefined && cost_per_gallon !== null) {
-      const cpg = parseFloat(cost_per_gallon);
-      if (isNaN(cpg) || cpg < 0 || cpg > 20) {
-        res.status(400).json({ error: 'cost_per_gallon must be between 0 and 20' });
-        return;
-      }
-    }
-    if (odometer_reading !== undefined && odometer_reading !== null) {
-      const odo = parseFloat(odometer_reading);
-      if (isNaN(odo) || odo < 0) {
-        res.status(400).json({ error: 'odometer_reading must be a non-negative number' });
-        return;
-      }
-    }
-
-    const computedTotal = total_cost != null ? total_cost : (cost_per_gallon ? gal * cost_per_gallon : null);
+    const computedTotal = total_cost != null ? total_cost : (cost_per_gallon ? gallons * cost_per_gallon : null);
 
     const result = db.prepare(`
       INSERT INTO fleet_fuel_logs (
@@ -1099,10 +993,10 @@ router.post('/:id/fuel', validateParamId, requireRole('admin', 'manager', 'super
       `).run(odometer_reading, localNow(), id);
     }
 
-    const record = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(Number(result.lastInsertRowid));
+    const record = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(result.lastInsertRowid);
     if (!record) { res.status(500).json({ error: 'Failed to retrieve fuel log' }); return; }
 
-    auditLog(req, 'fuel_logged', 'fuel_log', Number(result.lastInsertRowid), `Logged fuel for vehicle ${vehicle.vehicle_number}`);
+    auditLog(req, 'fuel_logged', 'fuel_log', result.lastInsertRowid as number, `Logged fuel for vehicle ${vehicle.vehicle_number}`);
 
     res.status(201).json(record);
   } catch (error: any) {
@@ -1117,18 +1011,6 @@ router.put('/fuel/:id', validateParamId, requireRole('admin', 'manager', 'superv
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(req.params.id) as any;
     if (!record) { res.status(404).json({ error: 'Fuel log not found' }); return; }
-
-    // Validate numeric fields if provided
-    const fuelNumericFields = ['gallons', 'cost_per_gallon', 'total_cost', 'odometer_reading'];
-    for (const field of fuelNumericFields) {
-      if (req.body[field] !== undefined && req.body[field] !== null) {
-        const val = Number(req.body[field]);
-        if (isNaN(val) || val < 0) {
-          res.status(400).json({ error: `${field} must be a non-negative number` }); return;
-        }
-        req.body[field] = val;
-      }
-    }
 
     const fFields: string[] = [];
     const fValues: any[] = [];
@@ -1225,7 +1107,7 @@ router.get('/:id/inspections', validateParamId, requireRole('admin', 'manager', 
       params.push(type);
     }
 
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 25));
     const offset = (pageNum - 1) * perPage;
 
@@ -1310,10 +1192,10 @@ router.post('/:id/inspections', validateParamId, requireRole('admin', 'manager',
       `).run(mileage, localNow(), id);
     }
 
-    const record = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(Number(result.lastInsertRowid)) as any;
+    const record = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(result.lastInsertRowid) as any;
     if (!record) { res.status(500).json({ error: 'Failed to retrieve inspection record' }); return; }
 
-    auditLog(req, 'inspection_completed', 'inspection', Number(result.lastInsertRowid), `Completed inspection for vehicle ${vehicle.vehicle_number}`);
+    auditLog(req, 'inspection_completed', 'inspection', result.lastInsertRowid as number, `Completed inspection for vehicle ${vehicle.vehicle_number}`);
 
     res.status(201).json({
       ...record,
@@ -1326,7 +1208,7 @@ router.post('/:id/inspections', validateParamId, requireRole('admin', 'manager',
 });
 
 // PUT /api/fleet/inspections/:id - Update inspection
-router.put('/inspections/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/inspections/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(req.params.id) as any;
@@ -1362,7 +1244,7 @@ router.put('/inspections/:id', validateParamId, requireRole('admin', 'manager', 
 });
 
 // DELETE /api/fleet/inspections/:id
-router.delete('/inspections/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/inspections/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(req.params.id) as any;
@@ -1377,7 +1259,7 @@ router.delete('/inspections/:id', validateParamId, requireRole('admin', 'manager
 });
 
 // POST /api/fleet/inspections/:id/archive
-router.post('/inspections/:id/archive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/inspections/:id/archive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(req.params.id) as any;
@@ -1396,7 +1278,7 @@ router.post('/inspections/:id/archive', validateParamId, requireRole('admin', 'm
 });
 
 // POST /api/fleet/inspections/:id/unarchive
-router.post('/inspections/:id/unarchive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/inspections/:id/unarchive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(req.params.id) as any;
@@ -1426,7 +1308,7 @@ router.get('/:id/assignments', validateParamId, requireRole('admin', 'manager', 
       return;
     }
 
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 50));
     const offset = (pageNum - 1) * perPage;
 
@@ -1497,7 +1379,7 @@ router.get('/:id/personnel', validateParamId, requireRole('admin', 'manager', 's
           FROM credentials c
           LEFT JOIN users u ON c.officer_id = u.id
           WHERE c.officer_id = ?
-          ORDER BY COALESCE(c.expiry_date, '9999-12-31') ASC
+          ORDER BY c.expiry_date ASC
         `).all(unit.officer_id);
 
         // Today's schedule
@@ -1565,7 +1447,7 @@ router.post('/:id/personnel-notes', validateParamId, requireRole('admin', 'manag
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(id, officer_id || null, officer_name || null, note.trim(), req.user!.userId, creator?.full_name || 'Unknown', localNow());
 
-    const created = db.prepare('SELECT * FROM fleet_personnel_notes WHERE id = ?').get(Number(result.lastInsertRowid)) as any;
+    const created = db.prepare('SELECT * FROM fleet_personnel_notes WHERE id = ?').get(result.lastInsertRowid) as any;
     if (!created) { res.status(500).json({ error: 'Failed to retrieve created note' }); return; }
 
     auditLog(req, 'vehicle_fleet_updated', 'fleet_vehicle', String(id), `Added personnel note for vehicle #${id}`);
@@ -1873,7 +1755,7 @@ router.post('/dashcam-videos', requireRole('admin', 'manager'), (req: Request, r
           notes || null, String(req.user!.userId),
         );
 
-        const videoId = Number(result.lastInsertRowid);
+        const videoId = result.lastInsertRowid;
 
         const video = db.prepare(`
           SELECT v.*, fv.vehicle_number, fv.year as vehicle_year, fv.make as vehicle_make, fv.model as vehicle_model,
@@ -1926,7 +1808,7 @@ router.post('/dashcam-videos', requireRole('admin', 'manager'), (req: Request, r
 });
 
 // ── GET /api/fleet/dashcam-videos/:id/stream — Stream with overlay ──
-router.get('/dashcam-videos/:id/stream', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/dashcam-videos/:id/stream', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const video = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
@@ -1987,7 +1869,7 @@ router.get('/dashcam-videos/:id/stream', validateParamId, requireRole('admin', '
 });
 
 // ── GET /api/fleet/dashcam-videos/:id/download — Force-download with overlay ──
-router.get('/dashcam-videos/:id/download', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/dashcam-videos/:id/download', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const video = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
@@ -2024,7 +1906,7 @@ router.get('/dashcam-videos/:id/download', validateParamId, requireRole('admin',
 });
 
 // ── PUT /api/fleet/dashcam-videos/:id — Update metadata ──
-router.put('/dashcam-videos/:id', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
+router.put('/dashcam-videos/:id', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
@@ -2075,7 +1957,7 @@ router.put('/dashcam-videos/:id', validateParamId, requireRole('admin'), (req: R
 });
 
 // ── DELETE /api/fleet/dashcam-videos/:id — Delete video + files ──
-router.delete('/dashcam-videos/:id', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
+router.delete('/dashcam-videos/:id', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
@@ -2107,7 +1989,7 @@ router.delete('/dashcam-videos/:id', validateParamId, requireRole('admin'), (req
 });
 
 // ── POST /api/fleet/dashcam-videos/:id/reprocess — Re-queue overlay ──
-router.post('/dashcam-videos/:id/reprocess', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
+router.post('/dashcam-videos/:id/reprocess', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const video = db.prepare(`

@@ -24,6 +24,7 @@ import type { User, UserRole } from '../../types';
 import type { UserFormData } from '../../components/UserFormModal';
 import { toDisplayLabel } from '../../utils/formatters';
 import { apiFetch } from '../../hooks/useApi';
+import { useToast } from '../../components/ToastProvider';
 
 // ============================================================
 // Shared types
@@ -49,7 +50,7 @@ interface UserSession {
   last_used_at: string;
 }
 
-const ALL_ROLES: UserRole[] = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager', 'human_resources', 'client_viewer'];
+const ALL_ROLES: UserRole[] = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
 
 const ROLE_COLORS: Record<UserRole, string> = {
   admin: 'bg-red-900/50 text-red-400 border-red-700/50',
@@ -59,7 +60,6 @@ const ROLE_COLORS: Record<UserRole, string> = {
   dispatcher: 'bg-green-900/50 text-green-400 border-green-700/50',
   client_viewer: 'bg-teal-900/50 text-teal-400 border-teal-700/50',
   contract_manager: 'bg-orange-900/50 text-orange-400 border-orange-700/50',
-  human_resources: 'bg-pink-900/50 text-pink-400 border-pink-700/50',
 };
 
 type UserStatus = 'active' | 'inactive' | 'terminated';
@@ -199,26 +199,6 @@ export default function AdminUsersTab({
     setSecurityActionLoading(null);
   };
 
-  const handleAdminResetPassword = async (userId: string) => {
-    const newPassword = prompt('Enter new temporary password for this user (min 8 characters):');
-    if (!newPassword || newPassword.trim().length < 8) {
-      if (newPassword !== null) setSecurityMsg({ type: 'error', text: 'Password must be at least 8 characters.' });
-      return;
-    }
-    setSecurityActionLoading('reset-pw');
-    setSecurityMsg(null);
-    try {
-      await apiFetch(`/admin/users/${userId}/reset-password`, {
-        method: 'POST',
-        body: JSON.stringify({ password: newPassword.trim() }),
-      });
-      setSecurityMsg({ type: 'success', text: 'Password reset. User must change it on next login. Login lockout cleared.' });
-    } catch (err: any) {
-      setSecurityMsg({ type: 'error', text: err.message || 'Failed to reset password' });
-    }
-    setSecurityActionLoading(null);
-  };
-
   return (
     <div className="flex h-full overflow-hidden">
       {/* Left: User List */}
@@ -228,20 +208,15 @@ export default function AdminUsersTab({
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
             <input
               type="text"
-              className="input-dark search-glow pl-9 text-xs"
+              className="input-dark pl-9 text-xs"
               placeholder="Search users..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-mono text-rmpg-400 bg-rmpg-800 border border-rmpg-700 px-1.5 py-0.5 rounded-sm">
-              {users.length} user{users.length !== 1 ? 's' : ''}
-            </span>
-            <button className="toolbar-btn toolbar-btn-primary" onClick={openAddUser}>
-              <Plus className="w-3.5 h-3.5" /> Add User
-            </button>
-          </div>
+          <button className="toolbar-btn toolbar-btn-primary" onClick={openAddUser}>
+            <Plus className="w-3.5 h-3.5" /> Add User
+          </button>
         </div>
 
         {loadingUsers ? (
@@ -262,14 +237,14 @@ export default function AdminUsersTab({
                 <div
                   key={user.id}
                   onClick={() => { setSelectedUser(selectedUser?.id === user.id ? null : user); setUserDetailTab('profile'); }}
-                  className={`record-list-item px-4 py-3 border-b border-rmpg-700/50 cursor-pointer ${
+                  className={`px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-colors ${
                     selectedUser?.id === user.id
-                      ? 'record-selected border-l-2 border-l-brand-500'
-                      : 'border-l-2 border-l-transparent'
+                      ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
+                      : 'hover:bg-rmpg-700/30 border-l-2 border-l-transparent'
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className={`record-avatar flex-shrink-0 w-9 h-9 rounded-full border flex items-center justify-center text-xs font-bold transition-all duration-150 ${
+                    <div className={`flex-shrink-0 w-9 h-9 rounded-full border flex items-center justify-center text-xs font-bold ${
                       user.is_active ? 'bg-rmpg-700 border-rmpg-600 text-rmpg-300' : 'bg-rmpg-800 border-rmpg-700 text-rmpg-500'
                     }`}>
                       {user.first_name?.[0]}{user.last_name?.[0]}
@@ -304,8 +279,8 @@ export default function AdminUsersTab({
                         const cfg = STATUS_CONFIG[rawStatus] || STATUS_CONFIG.active;
                         const Icon = cfg.icon;
                         return (
-                          <span className={`inline-flex items-center gap-1.5 px-1.5 py-0.5 text-[9px] font-semibold ${cfg.color}`}>
-                            <span className={`user-status-led led-${rawStatus}`} />
+                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-semibold ${cfg.color}`}>
+                            <Icon className="w-2.5 h-2.5" />
                             {cfg.label}
                           </span>
                         );
@@ -330,7 +305,7 @@ export default function AdminUsersTab({
 
       {/* Right: User Detail Panel */}
       {selectedUser && (
-        <div className="w-[60%] flex flex-col overflow-hidden detail-panel-enter">
+        <div className="w-[60%] flex flex-col overflow-hidden">
           {/* Detail Header */}
           <div className="p-4 border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
             <div className="flex items-start justify-between">
@@ -394,8 +369,8 @@ export default function AdminUsersTab({
                     onClick={() => {
                       if (window.confirm(`Reset 2FA for ${selectedUser.first_name} ${selectedUser.last_name}? They will need to set up 2FA again.`))
                         apiFetch(`/admin/users/${selectedUser.id}/totp`, { method: 'DELETE' })
-                          .then(() => { setSelectedUser({ ...selectedUser, totp_enabled: false } as any); })
-                          .catch((err) => { console.warn('[AdminUsersTab] reset 2FA failed:', err); alert('Failed to reset 2FA: ' + (err?.message || 'Unknown error')); });
+                          .then(() => { (selectedUser as any).totp_enabled = false; setSelectedUser({ ...selectedUser }); })
+                          .catch((err) => { console.warn('[AdminUsersTab] reset 2FA failed:', err); });
                     }}
                     className="toolbar-btn text-amber-400 hover:text-amber-300 hover:bg-amber-900/30"
                     title="Reset two-factor authentication"
@@ -531,8 +506,8 @@ export default function AdminUsersTab({
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Certifications & Training</h3>
                   {selectedUser.certifications ? (
                     <div className="flex flex-wrap gap-2">
-                      {selectedUser.certifications.split(',').map((cert) => (
-                        <span key={cert.trim()} className="px-2 py-1 bg-brand-900/30 text-brand-300 text-[10px] font-medium border border-brand-700/40">
+                      {selectedUser.certifications.split(',').map((cert, i) => (
+                        <span key={i} className="px-2 py-1 bg-brand-900/30 text-brand-300 text-[10px] font-medium border border-brand-700/40">
                           {cert.trim()}
                         </span>
                       ))}
@@ -684,18 +659,6 @@ export default function AdminUsersTab({
                       <KeyRound className="w-3 h-3" />
                     )}
                     Force Password Change
-                  </button>
-                  <button
-                    onClick={() => handleAdminResetPassword(selectedUser.id)}
-                    disabled={securityActionLoading === 'reset-pw'}
-                    className="toolbar-btn toolbar-btn-primary text-[9px] flex items-center gap-1"
-                  >
-                    {securityActionLoading === 'reset-pw' ? (
-                      <RefreshCw className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <KeyRound className="w-3 h-3" />
-                    )}
-                    Reset Password
                   </button>
                 </div>
 

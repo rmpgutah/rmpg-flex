@@ -12,14 +12,6 @@ const { AppUpdater } = require('./updater');
 const { initLocalDb, getLocalDb, closeLocalDb, getConfig, setConfig, getQueueDepth, getSyncMeta } = require('./localDb');
 const { ConnectivityMonitor } = require('./connectivityMonitor');
 
-// ─── Windows GPU Stability ──────────────────────────────────
-// Use software rendering fallback on Windows to prevent GPU-related
-// crashes and blank screens. This trades some rendering performance
-// for significantly better stability on diverse hardware.
-if (process.platform === 'win32') {
-  app.disableHardwareAcceleration();
-}
-
 // ─── Chromium Geolocation ────────────────────────────────────
 // Electron strips Chrome's bundled Google API key. Without it,
 // navigator.geolocation silently fails on desktop (no GPS hardware).
@@ -48,15 +40,6 @@ let isQuitting = false;
 let appReady = false;
 const appUpdater = new AppUpdater();
 let connectivityMonitor = null;
-
-// ─── Global Error Handlers ──────────────────────────────────
-// Prevent silent crashes on Windows — log and recover gracefully
-process.on('uncaughtException', (err) => {
-  console.error('[APP] Uncaught exception:', err.message, err.stack);
-});
-process.on('unhandledRejection', (reason) => {
-  console.error('[APP] Unhandled rejection:', reason);
-});
 
 // ─── Single Instance Lock ────────────────────────────────────
 // Prevent multiple instances from racing and crashing with
@@ -377,23 +360,6 @@ async function createMainWindow() {
     mainWindow.loadURL(getOfflineHTML());
   });
 
-  // Handle renderer process crashes (common on Windows with GPU issues)
-  mainWindow.webContents.on('render-process-gone', (event, details) => {
-    console.error(`[APP] Renderer crashed: ${details.reason} (exit code ${details.exitCode})`);
-    // Reload the app instead of showing a blank white screen
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.loadURL(REMOTE_SERVER_URL);
-    }
-  });
-
-  // Handle unresponsive renderer (frozen page)
-  mainWindow.on('unresponsive', () => {
-    console.warn('[APP] Window became unresponsive — waiting for recovery');
-  });
-  mainWindow.on('responsive', () => {
-    console.log('[APP] Window is responsive again');
-  });
-
   // Extract the server's hostname for link filtering
   let serverHost;
   try {
@@ -480,21 +446,10 @@ ipcMain.handle('geo:ip-locate', async () => {
 // ─── Offline Mode IPC Handlers ──────────────────────────────
 
 // Route an API request through the local SQLite database
-// Wrapped with a timeout to prevent the renderer from hanging indefinitely
 ipcMain.handle('offline:api', async (_event, { method, path, body }) => {
   try {
     if (!offlineRouter) return { status: 503, error: 'Offline mode not initialized' };
-    // Run in a microtask so the IPC bridge doesn't block Chromium's event loop
-    const result = await new Promise((resolve, reject) => {
-      setImmediate(() => {
-        try {
-          resolve(offlineRouter.handle(method, path, body));
-        } catch (err) {
-          reject(err);
-        }
-      });
-    });
-    return result;
+    return offlineRouter.handle(method, path, body);
   } catch (err) {
     console.error('[OFFLINE:API] Error:', err.message);
     return { status: 500, error: err.message };

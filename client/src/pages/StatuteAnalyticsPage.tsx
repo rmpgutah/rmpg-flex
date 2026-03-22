@@ -10,6 +10,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import PanelTitleBar from '../components/PanelTitleBar';
+import { useToast } from '../components/ToastProvider';
 
 interface StatuteEntry {
   statute_number: string;
@@ -39,7 +40,7 @@ export default function StatuteAnalyticsPage() {
       setTrend(data.trend || []);
       setIncidentStatutes(data.incidentStatutes || []);
     } catch (err) {
-      console.warn('[StatuteAnalytics] Failed to load data:', err);
+      console.error('Statute analytics error:', err);
     }
     setLoading(false);
   }, [days]);
@@ -153,8 +154,8 @@ export default function StatuteAnalyticsPage() {
                 </div>
               </div>
               <div className="space-y-1.5 max-h-80 overflow-auto">
-                {filteredStatutes.map((s) => (
-                  <div key={s.statute_number} className="flex items-center gap-2">
+                {filteredStatutes.map((s, i) => (
+                  <div key={i} className="flex items-center gap-2">
                     <span className="text-[9px] font-mono text-rmpg-400 w-24 shrink-0 truncate">{s.statute_number}</span>
                     <div className="flex-1 relative h-5 bg-rmpg-800/50">
                       <div
@@ -190,12 +191,12 @@ export default function StatuteAnalyticsPage() {
                 <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">By Offense Level</h3>
               </div>
               <div className="space-y-2">
-                {byLevel.map((l) => {
+                {byLevel.map((l, i) => {
                   const total = byLevel.reduce((s, e) => s + e.count, 0);
                   const pct = total > 0 ? Math.round((l.count / total) * 100) : 0;
                   const color = levelColors[l.offense_level] || '#6b7280';
                   return (
-                    <div key={l.offense_level || 'unknown'}>
+                    <div key={i}>
                       <div className="flex items-center justify-between mb-0.5">
                         <span className="text-[9px] text-rmpg-300 uppercase font-bold">{l.offense_level?.replace(/_/g, ' ') || 'Unknown'}</span>
                         <span className="text-[9px] font-mono font-bold" style={{ color }}>{l.count} ({pct}%)</span>
@@ -217,8 +218,8 @@ export default function StatuteAnalyticsPage() {
               <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Monthly Citation Trend</h3>
             </div>
             <div className="flex items-end gap-1 h-32">
-              {trend.map((t) => (
-                <div key={t.month} className="flex-1 flex flex-col items-center gap-1">
+              {trend.map((t, i) => (
+                <div key={i} className="flex-1 flex flex-col items-center gap-1">
                   <span className="text-[8px] font-mono text-brand-400 font-bold">{t.count}</span>
                   <div
                     className="w-full bg-brand-600/60 transition-all"

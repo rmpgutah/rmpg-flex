@@ -133,7 +133,7 @@ function safeSetItem(key: string, value: string): void {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(() => { try { return localStorage.getItem(TOKEN_KEY); } catch { return null; } });
+  const [token, setToken] = useState<string | null>(localStorage.getItem(TOKEN_KEY));
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -163,8 +163,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isRefreshingRef.current = true;
 
       try {
-        let refreshToken: string | null = null;
-        try { refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY); } catch { /* ignore */ }
+        const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
         if (!refreshToken) {
           // No refresh token — force logout
           isRefreshingRef.current = false;
@@ -229,9 +228,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   function clearTokens() {
-    try { localStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ }
-    try { localStorage.removeItem(REFRESH_TOKEN_KEY); } catch { /* ignore */ }
-    try { localStorage.removeItem(SESSION_ID_KEY); } catch { /* ignore */ }
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(REFRESH_TOKEN_KEY);
+    localStorage.removeItem(SESSION_ID_KEY);
     if (refreshTimerRef.current) {
       clearTimeout(refreshTimerRef.current);
       refreshTimerRef.current = null;
@@ -684,10 +683,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [tempToken, scheduleRefresh]);
 
   // ─── Setup 2FA (get QR code) ─────────────────────
-  const setup2FABusyRef = useRef(false);
   const setup2FA = useCallback(async (): Promise<{ qrCodeDataUri: string; manualKey: string }> => {
-    if (setup2FABusyRef.current) throw new Error('Setup already in progress');
-    setup2FABusyRef.current = true;
+    if (loginBusy) throw new Error('Setup already in progress');
     setLoginBusy(true);
     setError(null);
 
@@ -721,10 +718,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await res.json();
       return { qrCodeDataUri: data.qrCodeDataUri, manualKey: data.manualKey };
     } finally {
-      setup2FABusyRef.current = false;
       setLoginBusy(false);
     }
-  }, []);
+  }, [loginBusy]);
 
   // ─── Confirm 2FA Setup (verify first code) ───────
   const confirmSetup2FA = useCallback(async (code: string) => {
@@ -790,7 +786,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         headers: {
           'Content-Type': 'application/json',
           'X-Requested-With': 'XMLHttpRequest',
-          Authorization: `Bearer ${tempTokenRef.current || tempToken}`,
+          Authorization: `Bearer ${tempToken}`,
         },
         body: JSON.stringify({ newPassword, deviceFingerprint: deviceFingerprintRef.current }),
       });

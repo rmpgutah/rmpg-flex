@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import {
   Plus, Search, ClipboardList, MapPin, User, Clock, FileText,
-  ChevronDown, Archive, RotateCcw, X, Save, Loader2, Eye, Download,
+  ChevronDown, Archive, RotateCcw, X, Save, Loader2, Eye,
 } from 'lucide-react';
 import type { FieldInterview, FIContactReason, FIContactType, FIActionTaken } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -18,7 +17,6 @@ import { useFormValidation } from '../hooks/useFormValidation';
 import { isValidPlate, isValidDate } from '../utils/validate';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
 import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
-import { exportToCsv } from '../utils/csvExport';
 import WarrantBadge from '../components/WarrantBadge';
 
 const CONTACT_REASONS: { value: FIContactReason; label: string }[] = [
@@ -103,13 +101,9 @@ export default function FieldInterviewsPage() {
   const [personResults, setPersonResults] = useState<any[]>([]);
   const [selectedPerson, setSelectedPerson] = useState<any>(null);
   const personSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const personSearchGenRef = useRef(0);
 
   // Delete
   const [deleteTarget, setDeleteTarget] = useState<FieldInterview | null>(null);
-
-  // URL search params (auto-open new form from MDT)
-  const [searchParams, setSearchParams] = useSearchParams();
 
   // ── Fetch ──
   const fetchFis = useCallback(async (options?: { silent?: boolean }) => {
@@ -123,12 +117,9 @@ export default function FieldInterviewsPage() {
         archived: showArchived ? 'true' : 'false',
       });
       const res = await apiFetch<{ data: FieldInterview[]; pagination: any }>(`/field-interviews?${params}`);
-      const newFis = res.data || [];
-      setFis(newFis);
+      setFis(res.data || []);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
-      // Keep selected item in sync with refreshed data
-      setSelectedFi(prev => prev ? newFis.find((fi: FieldInterview) => fi.id === prev.id) || null : null);
     } catch (err: any) {
       setError(err?.message || 'Operation failed');
     } finally {
@@ -144,44 +135,13 @@ export default function FieldInterviewsPage() {
     if (personSearch.length < 2) { setPersonResults([]); return; }
     if (personSearchTimer.current) clearTimeout(personSearchTimer.current);
     personSearchTimer.current = setTimeout(async () => {
-      const gen = ++personSearchGenRef.current;
       try {
         const res = await apiFetch<{ data: any[] }>(`/records/persons?search=${encodeURIComponent(personSearch)}&per_page=8`);
-        if (gen !== personSearchGenRef.current) return;
         setPersonResults(res.data || []);
-      } catch { if (gen === personSearchGenRef.current) setPersonResults([]); }
+      } catch { setPersonResults([]); }
     }, 300);
     return () => { if (personSearchTimer.current) clearTimeout(personSearchTimer.current); };
   }, [personSearch]);
-
-  // ---------- Auto-open new form from URL params (MDT link) ----------
-  useEffect(() => {
-    const isNew = searchParams.get('new');
-    if (isNew !== 'true') return;
-    // Clear params immediately so it doesn't re-trigger
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      const lat = next.get('lat');
-      const lng = next.get('lng');
-      next.delete('new');
-      next.delete('lat');
-      next.delete('lng');
-      return next;
-    }, { replace: true });
-    // Build prefilled form data
-    const lat = searchParams.get('lat');
-    const lng = searchParams.get('lng');
-    const prefilled = { ...EMPTY_FORM };
-    if (lat && lng) {
-      prefilled.location = `${lat}, ${lng}`;
-    }
-    setEditingFi(null);
-    setFormData(prefilled);
-    setSelectedPerson(null);
-    setPersonSearch('');
-    clearAllErrors();
-    setFormOpen(true);
-  }, [searchParams]);
 
   // ── Handlers ──
   const handleOpenNew = () => {
@@ -295,42 +255,12 @@ export default function FieldInterviewsPage() {
   };
 
   return (
-    <div className="flex flex-col h-full app-grid-bg">
+    <div className="flex flex-col h-full">
       {/* Header */}
       <PanelTitleBar icon={ClipboardList} title="FIELD INTERVIEWS">
         <span className="text-[9px] font-mono text-rmpg-400">{totalCount} TOTAL</span>
         <span className="toolbar-separator" />
         <ExportButton exportUrl="/field-interviews?per_page=9999" exportFilename="field_interviews_export.csv" />
-        <button
-          onClick={() => exportToCsv('field_interviews_filtered.csv', fis, [
-            { key: 'fi_number', label: 'FI #' },
-            { key: 'status', label: 'Status' },
-            { key: 'subject_last_name', label: 'Last Name' },
-            { key: 'subject_first_name', label: 'First Name' },
-            { key: 'subject_dob', label: 'DOB' },
-            { key: 'subject_gender', label: 'Gender' },
-            { key: 'subject_race', label: 'Race' },
-            { key: 'subject_height', label: 'Height' },
-            { key: 'subject_weight', label: 'Weight' },
-            { key: 'subject_hair', label: 'Hair' },
-            { key: 'subject_eye', label: 'Eyes' },
-            { key: 'subject_clothing', label: 'Clothing' },
-            { key: 'location', label: 'Location' },
-            { key: 'contact_reason', label: 'Contact Reason' },
-            { key: 'contact_type', label: 'Contact Type' },
-            { key: 'action_taken', label: 'Action Taken' },
-            { key: 'vehicle_plate', label: 'Vehicle Plate' },
-            { key: 'vehicle_description', label: 'Vehicle Desc.' },
-            { key: 'officer_name', label: 'Officer' },
-            { key: 'narrative', label: 'Narrative' },
-            { key: 'created_at', label: 'Created' },
-          ])}
-          className="toolbar-btn"
-          title="Export filtered view to CSV"
-          disabled={fis.length === 0}
-        >
-          <Download style={{ width: 11, height: 11 }} /> CSV
-        </button>
         <button onClick={handleOpenNew} className="toolbar-btn">
           <Plus style={{ width: 11, height: 11 }} /> New FI Card
         </button>

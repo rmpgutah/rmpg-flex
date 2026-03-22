@@ -46,7 +46,7 @@ export default class ErrorBoundary extends Component<Props, State> {
             url: window.location.href,
             timestamp: new Date().toISOString(),
           }),
-        }).catch(err => console.warn("[ErrorBoundary] Failed to report error:", err));
+        }).catch(() => {});
       }
     } catch { /* silent */ }
   }

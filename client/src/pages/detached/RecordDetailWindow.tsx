@@ -25,8 +25,8 @@ export default function RecordDetailWindow() {
         const data = await apiFetch<any>(endpoint);
         setRecord(data);
         document.title = type === 'person'
-          ? `${data?.last_name || 'Unknown'}, ${data?.first_name || ''} — RMPG Flex`
-          : `${data?.plate_number || 'Vehicle'} — RMPG Flex`;
+          ? `${data.last_name}, ${data.first_name} — RMPG Flex`
+          : `${data.plate_number || 'Vehicle'} — RMPG Flex`;
       } catch (err: any) {
         setError(err.message || 'Failed to load record');
       } finally {
@@ -134,7 +134,7 @@ export default function RecordDetailWindow() {
           {flags.length > 0 && (
             <div className="flex items-center gap-2 mt-4">
               {flags.map((f, i) => (
-                <span key={`${f}-${i}`} className="px-2 py-0.5 bg-red-900/40 text-red-400 text-[10px] uppercase font-bold border border-red-700/40">
+                <span key={i} className="px-2 py-0.5 bg-red-900/40 text-red-400 text-[10px] uppercase font-bold border border-red-700/40">
                   {f}
                 </span>
               ))}

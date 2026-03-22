@@ -303,12 +303,9 @@ router.get('/response-times', (req: Request, res: Response) => {
       params.push(endDate);
     }
     if (propertyId) {
-      const pid = parseInt(String(propertyId), 10);
-      if (!isNaN(pid)) {
-        dateFilter += ' AND property_id = ?';
-        dateFilterAliased += ' AND c.property_id = ?';
-        params.push(pid);
-      }
+      dateFilter += ' AND property_id = ?';
+      dateFilterAliased += ' AND c.property_id = ?';
+      params.push(propertyId);
     }
 
     // Overall average response times

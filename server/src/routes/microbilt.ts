@@ -78,13 +78,13 @@ function getConfigValue(key: string): string | null {
       "SELECT config_value FROM system_config WHERE config_key = ? AND category = 'integrations' AND is_active = 1 LIMIT 1"
     ).get(key) as { config_value: string } | undefined;
     return row?.config_value || null;
-  } catch { return null; }
+  } catch (err: any) { console.error('[Microbilt] getConfigValue error:', err?.message); return null; }
 }
 
 function getDecryptedValue(key: string): string | null {
   const val = getConfigValue(key);
   if (!val) return null;
-  try { return decrypt(val); } catch { return null; }
+  try { return decrypt(val); } catch (err: any) { console.error('[Microbilt] decrypt error:', err?.message); return null; }
 }
 
 function setConfigValue(key: string, value: string, shouldEncrypt = false): void {

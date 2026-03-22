@@ -9,13 +9,12 @@ import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { rateLimit } from '../middleware/rateLimiter';
-import { localNow, localToday, dateToLocalYMD } from '../utils/timeUtils';
+import { localNow, localToday } from '../utils/timeUtils';
 import { queueOverlayProcessing, type BodyCamOverlayConfig } from '../utils/videoOverlay';
 import { validateEmail, validatePhone, validateBadgeNumber, validateAll } from '../utils/inputValidation';
-import { validatePassword, getPasswordPolicyDescription } from '../middleware/validatePassword';
-import { validateParamId, validateNumericParams } from '../middleware/sanitize';
+import { validateParamId } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
+import { sendCsv } from '../utils/csvExport';
 
 const execFileAsync = promisify(execFile);
 
@@ -68,7 +67,7 @@ const bodycamUpload = multer({
     if (VIDEO_MIME_TYPES.has(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('File type is not allowed. Accepted: MP4, MOV, AVI, WebM'));
+      cb(new Error(`File type ${file.mimetype} is not allowed. Accepted: MP4, MOV, AVI, WebM`));
     }
   },
 });
@@ -88,33 +87,15 @@ const chunkUpload = multer({
 
 const router = Router();
 
-// Accept HMAC signed access or legacy query-string token for body cam streaming.
-// Signed URLs prevent JWT leakage in browser history, Referer headers, and logs.
+// Promote query-string token to Authorization header BEFORE authenticateToken runs.
+// <video> elements can't set custom headers, so the VideoPlayer passes the JWT as
+// ?token=... on the streaming URL. This middleware promotes it so authenticateToken
+// can validate it normally. Scoped to video streaming routes ONLY to limit attack surface.
 router.use((req: Request, res: Response, next: NextFunction) => {
   const isVideoRoute = /\/(bodycam-videos|body-cameras)\//.test(req.path)
     && /(stream|download|thumbnail)/.test(req.path);
-  if (isVideoRoute) {
-    // Prefer HMAC signed access (no JWT in URL)
-    if (!req.headers['authorization'] && typeof req.query.sig === 'string') {
-      const { verifyResourceAccess } = require('../utils/signedAccess');
-      const idMatch = req.path.match(/\/(\d+)\/(stream|download|thumbnail)/);
-      const resourceId = idMatch?.[1];
-      if (resourceId) {
-        const exp = parseInt(req.query.exp as string, 10);
-        const nonce = req.query.nonce as string | undefined;
-        if (verifyResourceAccess('bodycam', resourceId, req.query.sig as string, exp, nonce)) {
-          req.user = { userId: 0, username: 'signed-access', role: 'viewer', fullName: 'Signed Access' };
-          next();
-          return;
-        }
-        res.status(403).json({ error: 'Invalid or expired signature' });
-        return;
-      }
-    }
-    // Legacy: promote ?token= to Authorization header
-    if (!req.headers['authorization'] && req.query.token) {
-      req.headers['authorization'] = `Bearer ${req.query.token}`;
-    }
+  if (!req.headers['authorization'] && req.query.token && isVideoRoute) {
+    req.headers['authorization'] = `Bearer ${req.query.token}`;
   }
   next();
 });
@@ -123,30 +104,10 @@ router.use(authenticateToken);
 
 // ─── USERS / OFFICERS ─────────────────────────────────
 
-// ── Personnel list cache (30-second TTL) ──
-let personnelCacheEtag = '';
-let personnelCacheTime = 0;
-const PERSONNEL_CACHE_TTL_MS = 30_000;
-
-/** Call whenever personnel data is modified to bust the cache */
-export function invalidatePersonnelCache(): void {
-  personnelCacheTime = 0;
-}
-
 // GET /api/personnel - List all personnel
 // Restricted to sworn/dispatch/command roles — contract_manager must NOT see officer PII
 router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
-    // ── Cache: return 304 if personnel data hasn't changed within 30s ──
-    const now = Date.now();
-    if (personnelCacheTime > 0 && now - personnelCacheTime < PERSONNEL_CACHE_TTL_MS) {
-      const ifNoneMatch = req.headers['if-none-match'];
-      if (ifNoneMatch && ifNoneMatch === personnelCacheEtag) {
-        res.status(304).end();
-        return;
-      }
-    }
-
     const db = getDb();
     const { role, status, archived } = req.query;
 
@@ -169,7 +130,6 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       whereClause += ' AND u.archived_at IS NULL';
     }
 
-    // Select all fields — PII redaction applied below based on caller's role
     const users = db.prepare(`
       SELECT u.id, u.username, u.full_name, u.first_name, u.last_name, u.middle_name, u.email, u.role,
         u.badge_number, u.phone, u.status, u.avatar_url, u.rank, u.department, u.address, u.city, u.state, u.zip,
@@ -185,28 +145,8 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       LEFT JOIN units un ON un.officer_id = u.id
       ${whereClause}
       ORDER BY u.full_name
-    `).all(...params) as any[];
+    `).all(...params);
 
-    // Redact PII for non-privileged callers — same logic as GET /:id
-    const callerRole = req.user?.role;
-    const isPrivileged = ['admin', 'manager', 'supervisor'].includes(callerRole || '');
-    if (!isPrivileged) {
-      const PII_FIELDS = ['address', 'city', 'state', 'zip', 'date_of_birth',
-        'dl_number', 'dl_state', 'dl_expiry', 'blood_type', 'allergies',
-        'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship'];
-      for (const user of users) {
-        if (user.id !== req.user?.userId) {
-          for (const field of PII_FIELDS) {
-            delete user[field];
-          }
-        }
-      }
-    }
-
-    // Update cache metadata
-    personnelCacheEtag = `"personnel-${Date.now()}"`;
-    personnelCacheTime = Date.now();
-    res.setHeader('ETag', personnelCacheEtag);
     res.json(users);
   } catch (error: any) {
     console.error('Get personnel error:', error?.message || 'Unknown error');
@@ -216,7 +156,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
 
 // GET /api/personnel/:id - Get user details
 // Restrict to sworn/dispatch/command roles — contract_manager must NOT see officer PII
-router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response, next) => {
+router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), validateParamId, (req: Request, res: Response, next) => {
   try {
     // Check for route conflicts with sub-paths handled by mountScheduleRoutes
     const subPaths = ['schedules', 'time', 'credentials', 'training', 'training-requirements', 'deployments', 'coverage-gaps', 'analytics', 'activity', 'equipment', 'body-cameras', 'bodycam-videos'];
@@ -224,9 +164,9 @@ router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dis
       return next('route');
     }
 
-    // Validate ID parameter (manual check after subPaths filter)
+    // Validate ID parameter
     const id = parseInt(String(req.params.id), 10);
-    if (isNaN(id) || id < 1) {
+    if (isNaN(id)) {
       res.status(400).json({ error: 'Invalid user ID' });
       return;
     }
@@ -301,15 +241,7 @@ router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dis
 });
 
 // POST /api/personnel - Create user (admin/manager only)
-// Rate limit user creation — 10 per 15 min to prevent bulk account creation
-const personnelCreateRateLimit = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  maxRequests: 10,
-  keyGenerator: (req) => `personnel-create:${req.user?.userId || req.ip || 'unknown'}`,
-  message: 'Too many user creation requests. Please try again later.',
-});
-
-router.post('/', requireRole('admin', 'manager'), personnelCreateRateLimit, (req: Request, res: Response) => {
+router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const {
@@ -339,9 +271,9 @@ router.post('/', requireRole('admin', 'manager'), personnelCreateRateLimit, (req
     }
 
     // Validate role against allowlist
-    const VALID_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager', 'human_resources', 'client_viewer'];
+    const VALID_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
     if (!VALID_ROLES.includes(role)) {
-      res.status(400).json({ error: 'Invalid role' });
+      res.status(400).json({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}` });
       return;
     }
     // Only admins can create admin accounts
@@ -354,17 +286,6 @@ router.post('/', requireRole('admin', 'manager'), personnelCreateRateLimit, (req
     const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
     if (existing) {
       res.status(409).json({ error: 'Username already exists' });
-      return;
-    }
-
-    // Validate password against policy requirements
-    const pwValidation = validatePassword(password);
-    if (!pwValidation.valid) {
-      res.status(400).json({
-        error: 'Password does not meet requirements',
-        requirementsFailed: pwValidation.errors.length,
-        policy: getPasswordPolicyDescription(),
-      });
       return;
     }
 
@@ -410,9 +331,12 @@ router.post('/', requireRole('admin', 'manager'), personnelCreateRateLimit, (req
         employee_id, certifications, notes, profile_image,
         created_at, updated_at
       FROM users WHERE id = ?
-    `).get(Number(result.lastInsertRowid));
+    `).get(result.lastInsertRowid);
 
-    auditLog(req, 'user_created', 'user', Number(result.lastInsertRowid), `Created user: ${username} (${role})`);
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'user_created', 'user', ?, ?, ?)
+    `).run(req.user!.userId, result.lastInsertRowid, `Created user: ${username} (${role})`, req.ip || 'unknown');
 
     res.status(201).json(user);
   } catch (error: any) {
@@ -422,12 +346,10 @@ router.post('/', requireRole('admin', 'manager'), personnelCreateRateLimit, (req
 });
 
 // PUT /api/personnel/:id - Update user
-router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
-    const id = parseInt(String(req.params.id), 10);
-    if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid user ID' }); return; }
     const db = getDb();
-    const user = db.prepare('SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, status, archived_at FROM users WHERE id = ?').get(id) as any;
+    const user = db.prepare('SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, status, archived_at FROM users WHERE id = ?').get(req.params.id) as any;
     if (!user) {
       res.status(404).json({ error: 'User not found' });
       return;
@@ -445,9 +367,9 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
     }
 
     // Validate role against allowlist if provided
-    const VALID_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager', 'human_resources', 'client_viewer'];
+    const VALID_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
     if (req.body.role && !VALID_ROLES.includes(req.body.role)) {
-      res.status(400).json({ error: 'Invalid role' });
+      res.status(400).json({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}` });
       return;
     }
     // Only admins can assign the admin role; prevent self-role-modification
@@ -488,16 +410,6 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
     // ── Admin password reset (not in updatableFields — needs bcrypt) ──
     const passwordChanged = !!(req.body.password && typeof req.body.password === 'string' && req.body.password.trim());
     if (passwordChanged) {
-      // Validate password against policy requirements
-      const pwValidation = validatePassword(req.body.password.trim());
-      if (!pwValidation.valid) {
-        res.status(400).json({
-          error: 'Password does not meet requirements',
-          requirementsFailed: pwValidation.errors.length,
-          policy: getPasswordPolicyDescription(),
-        });
-        return;
-      }
       const hash = bcryptjs.hashSync(req.body.password.trim(), 12);
       setClauses.push('password_hash = ?');
       setValues.push(hash);
@@ -521,11 +433,6 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
       db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(req.params.id);
     }
 
-    // Audit log for admin password resets
-    if (passwordChanged) {
-      auditLog(req, 'ADMIN_PASSWORD_RESET', 'users', id, `Admin password reset for ${user.username}`);
-    }
-
     const updated = db.prepare(`
       SELECT id, username, full_name, first_name, last_name, middle_name, email, role,
         badge_number, phone, status, avatar_url, rank, department, address, city, state, zip,
@@ -545,12 +452,10 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
 });
 
 // DELETE /api/personnel/:id - Soft-delete (terminate) user
-router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
-    const id = parseInt(String(req.params.id), 10);
-    if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid user ID' }); return; }
     const db = getDb();
-    const user = db.prepare('SELECT id, username, full_name, status FROM users WHERE id = ?').get(id) as any;
+    const user = db.prepare('SELECT id, username, full_name, status FROM users WHERE id = ?').get(req.params.id) as any;
     if (!user) {
       res.status(404).json({ error: 'User not found' });
       return;
@@ -570,10 +475,15 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
       db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(req.params.id);
       // Free assigned units
       db.prepare('UPDATE units SET officer_id = NULL, status = \'off_duty\' WHERE officer_id = ?').run(req.params.id);
+      // Log activity
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'user_terminated', 'user', ?, ?, ?)
+      `).run(req.user!.userId, req.params.id, `Terminated user: ${user.full_name || user.username}`, req.ip || 'unknown');
     });
     delTx();
 
-    auditLog(req, 'user_terminated', 'user', Number(req.params.id),
+    auditLog(req, 'TERMINATE' as any, 'user' as any, Number(req.params.id),
       `Terminated user: ${user.username} (${user.full_name || 'N/A'})`);
 
     res.json({ success: true, id: req.params.id });
@@ -584,7 +494,7 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
 });
 
 // POST /api/personnel/:id/archive - Archive terminated user
-router.post('/:id/archive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/:id/archive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = db.prepare('SELECT id, full_name, status, archived_at FROM users WHERE id = ?').get(req.params.id) as any;
@@ -597,7 +507,9 @@ router.post('/:id/archive', requireRole('admin', 'manager'), (req: Request, res:
     const now = localNow();
     db.prepare('UPDATE users SET archived_at = ? WHERE id = ?').run(now, user.id);
 
-    auditLog(req, 'user_archived', 'user', user.id, `Archived user: ${user.full_name}`);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'user_archived', 'user', ?, ?, ?)`).run(
+      req.user!.userId, user.id, `Archived user: ${user.full_name}`, req.ip || 'unknown');
 
     const updated = db.prepare(`
       SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, status, archived_at, created_at, updated_at
@@ -611,7 +523,7 @@ router.post('/:id/archive', requireRole('admin', 'manager'), (req: Request, res:
 });
 
 // POST /api/personnel/:id/unarchive
-router.post('/:id/unarchive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/:id/unarchive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = db.prepare('SELECT id, full_name, status, archived_at FROM users WHERE id = ?').get(req.params.id) as any;
@@ -620,7 +532,9 @@ router.post('/:id/unarchive', requireRole('admin', 'manager'), (req: Request, re
 
     db.prepare('UPDATE users SET archived_at = NULL WHERE id = ?').run(user.id);
 
-    auditLog(req, 'user_unarchived', 'user', user.id, `Unarchived user: ${user.full_name}`);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'user_unarchived', 'user', ?, ?, ?)`).run(
+      req.user!.userId, user.id, `Unarchived user: ${user.full_name}`, req.ip || 'unknown');
 
     const updated = db.prepare(`
       SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, status, archived_at, created_at, updated_at
@@ -638,7 +552,7 @@ router.post('/:id/unarchive', requireRole('admin', 'manager'), (req: Request, re
 // intercepts the path first. The blanket router.use() above handles token promotion
 // and authenticateToken, so no additional auth middleware needed here.
 
-router.get('/bodycam-videos/:videoId/stream', validateNumericParams('videoId'), (req: Request, res: Response) => {
+router.get('/bodycam-videos/:videoId/stream', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const video = db.prepare('SELECT * FROM bodycam_videos WHERE id = ?').get(req.params.videoId) as any;
@@ -657,38 +571,20 @@ router.get('/bodycam-videos/:videoId/stream', validateNumericParams('videoId'), 
     }
 
     // Serve processed (overlaid) file if available, otherwise original
-    // Security: validate EVERY candidate path against BODYCAM_DIR before filesystem access
-    // to prevent path traversal via compromised DB values
-    const isInsideBase = (p: string) => {
-      const rel = path.relative(BODYCAM_DIR, p);
-      return !rel.startsWith('..') && !path.isAbsolute(rel);
-    };
+    const servePath = (video.overlay_status === 'complete' && video.processed_file_path)
+      ? path.resolve(BODYCAM_DIR, video.processed_file_path)
+      : path.resolve(BODYCAM_DIR, video.file_path);
 
-    let filePath: string | null = null;
-    if (video.overlay_status === 'complete' && video.processed_file_path) {
-      const candidate = path.resolve(BODYCAM_DIR, video.processed_file_path);
-      if (isInsideBase(candidate) && fs.existsSync(candidate)) {
-        filePath = candidate;
-      }
-    }
-    if (!filePath && video.file_path) {
-      const candidate = path.resolve(BODYCAM_DIR, video.file_path);
-      if (isInsideBase(candidate) && fs.existsSync(candidate)) {
-        filePath = candidate;
-      }
-    }
+    const filePath = fs.existsSync(servePath) ? servePath : path.resolve(BODYCAM_DIR, video.file_path);
 
-    if (!filePath) {
+    if (path.relative(BODYCAM_DIR, filePath).startsWith('..') || !fs.existsSync(filePath)) {
       res.status(404).json({ error: 'Video file not found on disk' });
       return;
     }
 
     const stat = fs.statSync(filePath);
     const fileSize = stat.size;
-    // Only allow known safe video MIME types — prevents MIME-type confusion attacks
-    const ALLOWED_MIME_TYPES = new Set(['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime']);
-    const rawMime = filePath.endsWith('.mp4') ? 'video/mp4' : (video.mime_type || 'video/mp4');
-    const mimeType = ALLOWED_MIME_TYPES.has(rawMime) ? rawMime : 'video/mp4';
+    const mimeType = filePath.endsWith('.mp4') ? 'video/mp4' : (video.mime_type || 'video/mp4');
     const range = req.headers.range;
 
     if (range) {
@@ -709,7 +605,6 @@ router.get('/bodycam-videos/:videoId/stream', validateNumericParams('videoId'), 
         'Accept-Ranges': 'bytes',
         'Content-Length': chunkSize,
         'Content-Type': mimeType,
-        'Content-Disposition': 'inline',
         'X-Content-Type-Options': 'nosniff',
       });
 
@@ -721,7 +616,6 @@ router.get('/bodycam-videos/:videoId/stream', validateNumericParams('videoId'), 
       res.writeHead(200, {
         'Content-Length': fileSize,
         'Content-Type': mimeType,
-        'Content-Disposition': 'inline',
         'X-Content-Type-Options': 'nosniff',
       });
 
@@ -737,7 +631,7 @@ router.get('/bodycam-videos/:videoId/stream', validateNumericParams('videoId'), 
 });
 
 // ── GET /api/personnel/bodycam-videos/:videoId/download — Force-download with overlay ──
-router.get('/bodycam-videos/:videoId/download', validateNumericParams('videoId'), (req: Request, res: Response) => {
+router.get('/bodycam-videos/:videoId/download', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const video = db.prepare('SELECT * FROM bodycam_videos WHERE id = ?').get(req.params.videoId) as any;
@@ -755,32 +649,17 @@ router.get('/bodycam-videos/:videoId/download', validateNumericParams('videoId')
       return;
     }
 
-    // Security: validate EVERY candidate path against BODYCAM_DIR before filesystem access
-    const isInsideBodycam = (p: string) => {
-      const rel = path.relative(BODYCAM_DIR, p);
-      return !rel.startsWith('..') && !path.isAbsolute(rel);
-    };
+    const servePath = (video.overlay_status === 'complete' && video.processed_file_path)
+      ? path.resolve(BODYCAM_DIR, video.processed_file_path)
+      : path.resolve(BODYCAM_DIR, video.file_path);
 
-    let dlFilePath: string | null = null;
-    if (video.overlay_status === 'complete' && video.processed_file_path) {
-      const candidate = path.resolve(BODYCAM_DIR, video.processed_file_path);
-      if (isInsideBodycam(candidate) && fs.existsSync(candidate)) {
-        dlFilePath = candidate;
-      }
-    }
-    if (!dlFilePath && video.file_path) {
-      const candidate = path.resolve(BODYCAM_DIR, video.file_path);
-      if (isInsideBodycam(candidate) && fs.existsSync(candidate)) {
-        dlFilePath = candidate;
-      }
-    }
+    const filePath = fs.existsSync(servePath) ? servePath : path.resolve(BODYCAM_DIR, video.file_path);
 
-    if (!dlFilePath) {
+    if (path.relative(BODYCAM_DIR, filePath).startsWith('..') || !fs.existsSync(filePath)) {
       res.status(404).json({ error: 'Video file not found on disk' });
       return;
     }
 
-    const filePath = dlFilePath;
     const stat = fs.statSync(filePath);
     // Sanitize filename: strip non-alphanumeric chars and CRLF/null bytes to prevent header injection
     const safeTitle = (video.title || `bodycam_${video.id}`)
@@ -883,7 +762,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         LEFT JOIN users u ON s.officer_id = u.id
         LEFT JOIN properties p ON s.property_id = p.id
         WHERE s.id = ?
-      `).get(Number(result.lastInsertRowid));
+      `).get(result.lastInsertRowid);
 
       res.status(201).json(schedule);
     } catch (error: any) {
@@ -929,12 +808,15 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       }
 
       const officerName = (db.prepare('SELECT full_name FROM users WHERE id = ?').get(targetId) as any)?.full_name || targetId;
-      auditLog(req, 'clock_in', 'time_entry', Number(result.lastInsertRowid), isSelf ? 'Clocked in' : `Clocked in ${officerName}`);
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'clock_in', 'time_entry', ?, ?, ?)
+      `).run(req.user!.userId, result.lastInsertRowid, isSelf ? 'Clocked in' : `Clocked in ${officerName}`, req.ip || 'unknown');
 
       const entry = db.prepare(`
         SELECT t.*, u.full_name as officer_name, u.badge_number
         FROM time_entries t LEFT JOIN users u ON t.officer_id = u.id WHERE t.id = ?
-      `).get(Number(result.lastInsertRowid));
+      `).get(result.lastInsertRowid);
       res.status(201).json(entry);
     } catch (error: any) {
       console.error('Clock in error:', error?.message || 'Unknown error');
@@ -991,7 +873,10 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       }
 
       const officerName = (db.prepare('SELECT full_name FROM users WHERE id = ?').get(targetId) as any)?.full_name || targetId;
-      auditLog(req, 'clock_out', 'time_entry', activeEntry.id, isSelf ? `Clocked out. Total: ${totalHours}h` : `Clocked out ${officerName}. Total: ${totalHours}h`);
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'clock_out', 'time_entry', ?, ?, ?)
+      `).run(req.user!.userId, activeEntry.id, isSelf ? `Clocked out. Total: ${totalHours}h` : `Clocked out ${officerName}. Total: ${totalHours}h`, req.ip || 'unknown');
 
       const entry = db.prepare(`
         SELECT t.*, u.full_name as officer_name, u.badge_number
@@ -1028,7 +913,10 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const now = localNow();
       db.prepare(`UPDATE time_entries SET status = 'on_break', break_start = ? WHERE id = ?`).run(now, activeEntry.id);
 
-      auditLog(req, 'break_start', 'time_entry', activeEntry.id, 'Started break');
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'break_start', 'time_entry', ?, 'Started break', ?)
+      `).run(req.user!.userId, activeEntry.id, req.ip || 'unknown');
 
       const entry = db.prepare(`
         SELECT t.*, u.full_name as officer_name, u.badge_number
@@ -1074,7 +962,10 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       db.prepare(`UPDATE time_entries SET status = 'active', break_start = NULL, break_minutes = ? WHERE id = ?`).run(breakMins, breakEntry.id);
 
-      auditLog(req, 'break_end', 'time_entry', breakEntry.id, `Ended break. Break: ${(isNaN(breakMins) ? 0 : breakMins).toFixed(0)}min`);
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'break_end', 'time_entry', ?, ?, ?)
+      `).run(req.user!.userId, breakEntry.id, `Ended break. Break: ${(isNaN(breakMins) ? 0 : breakMins).toFixed(0)}min`, req.ip || 'unknown');
 
       const entry = db.prepare(`
         SELECT t.*, u.full_name as officer_name, u.badge_number
@@ -1088,11 +979,8 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   });
 
   // GET /api/personnel/credentials/:officerId
-  parentRouter.get('/personnel/credentials/:officerId', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  parentRouter.get('/personnel/credentials/:officerId', authenticateToken, (req: Request, res: Response) => {
     try {
-      const officerId = parseInt(String(req.params.officerId), 10);
-      if (isNaN(officerId) || officerId < 1) { res.status(400).json({ error: 'Invalid officerId parameter' }); return; }
-
       const db = getDb();
       const credentials = db.prepare(`
         SELECT c.*, u.full_name as officer_name
@@ -1100,7 +988,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         LEFT JOIN users u ON c.officer_id = u.id
         WHERE c.officer_id = ?
         ORDER BY c.credential_type
-      `).all(officerId);
+      `).all(req.params.officerId);
 
       res.json(credentials);
     } catch (error: any) {
@@ -1180,11 +1068,14 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const newStatus = clock_out ? 'completed' : 'active';
 
       db.prepare(`
-        UPDATE time_entries SET clock_in = ?, clock_out = ?, total_hours = ?, status = ?
+        UPDATE time_entries SET clock_in = ?, clock_out = ?, total_hours = ?, status = 'edited'
         WHERE id = ?
-      `).run(clock_in, clock_out || null, totalHours, newStatus, req.params.id);
+      `).run(clock_in, clock_out || null, totalHours, req.params.id);
 
-      auditLog(req, 'time_entry_edited', 'time_entry', req.params.id, `Edited time entry for officer ${entry.officer_id}`);
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'time_entry_edited', 'time_entry', ?, ?, ?)
+      `).run(req.user!.userId, req.params.id, `Edited time entry for officer ${entry.officer_id}`, req.ip || 'unknown');
 
       const updated = db.prepare(`
         SELECT t.*, u.full_name as officer_name, u.badge_number
@@ -1212,7 +1103,10 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       db.prepare('DELETE FROM time_entries WHERE id = ?').run(req.params.id);
 
-      auditLog(req, 'time_entry_deleted', 'time_entry', req.params.id, `Deleted time entry for officer ${entry.officer_id}`);
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'time_entry_deleted', 'time_entry', ?, ?, ?)
+      `).run(req.user!.userId, req.params.id, `Deleted time entry for officer ${entry.officer_id}`, req.ip || 'unknown');
 
       res.json({ success: true, id: req.params.id });
     } catch (error: any) {
@@ -1229,7 +1123,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         SELECT c.*, u.full_name as officer_name, u.badge_number
         FROM credentials c
         LEFT JOIN users u ON c.officer_id = u.id
-        ORDER BY COALESCE(c.expiry_date, '9999-12-31') ASC
+        ORDER BY c.expiry_date ASC
       `).all();
 
       res.json(credentials);
@@ -1255,7 +1149,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         VALUES (?, ?, ?, ?, ?, ?)
       `).run(officer_id, credential_type, credential_number || null, issued_date || null, expiry_date || null, notes || null);
 
-      const credential = db.prepare('SELECT * FROM credentials WHERE id = ?').get(Number(result.lastInsertRowid));
+      const credential = db.prepare('SELECT * FROM credentials WHERE id = ?').get(result.lastInsertRowid);
       res.status(201).json(credential);
     } catch (error: any) {
       console.error('Create credential error:', error?.message || 'Unknown error');
@@ -1315,7 +1209,10 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       db.prepare('DELETE FROM credentials WHERE id = ?').run(req.params.id);
 
-      auditLog(req, 'credential_deleted', 'credential', req.params.id, `Deleted credential: ${existing.credential_type} for officer ${existing.officer_id}`);
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'credential_deleted', 'credential', ?, ?, ?)
+      `).run(req.user!.userId, req.params.id, `Deleted credential: ${existing.credential_type} for officer ${existing.officer_id}`, req.ip || 'unknown');
 
       res.json({ message: 'Credential deleted' });
     } catch (error: any) {
@@ -1358,11 +1255,8 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   });
 
   // GET /api/personnel/activity/:userId - User-specific activity log
-  parentRouter.get('/personnel/activity/:userId', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  parentRouter.get('/personnel/activity/:userId', authenticateToken, (req: Request, res: Response) => {
     try {
-      const userId = parseInt(String(req.params.userId), 10);
-      if (isNaN(userId) || userId < 1) { res.status(400).json({ error: 'Invalid userId parameter' }); return; }
-
       const db = getDb();
       const limit = Math.min(500, Math.max(1, parseInt(req.query.limit as string, 10) || 50));
 
@@ -1529,7 +1423,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         description || null,
       );
 
-      const requirement = db.prepare('SELECT * FROM training_requirements WHERE id = ?').get(Number(result.lastInsertRowid)) as any;
+      const requirement = db.prepare('SELECT * FROM training_requirements WHERE id = ?').get(result.lastInsertRowid) as any;
       let parsedRoles: any = [];
       try { parsedRoles = typeof requirement.required_for_roles === 'string' ? JSON.parse(requirement.required_for_roles) : requirement.required_for_roles; } catch { parsedRoles = []; }
       res.status(201).json({
@@ -1638,7 +1532,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         FROM training_records t
         LEFT JOIN users u ON t.officer_id = u.id
         WHERE t.id = ?
-      `).get(Number(result.lastInsertRowid));
+      `).get(result.lastInsertRowid);
 
       res.status(201).json(record);
     } catch (error: any) {
@@ -1819,7 +1713,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         LEFT JOIN properties p ON d.property_id = p.id
         LEFT JOIN clients c ON p.client_id = c.id
         WHERE d.id = ?
-      `).get(Number(result.lastInsertRowid));
+      `).get(result.lastInsertRowid);
 
       res.status(201).json(deployment);
     } catch (error: any) {
@@ -2010,7 +1904,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         FROM officer_equipment e
         LEFT JOIN users u ON e.officer_id = u.id
         WHERE e.id = ?
-      `).get(Number(result.lastInsertRowid));
+      `).get(result.lastInsertRowid);
 
       res.status(201).json(equipment);
     } catch (error: any) {
@@ -2073,7 +1967,10 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       db.prepare('DELETE FROM officer_equipment WHERE id = ?').run(req.params.equipId);
 
-      auditLog(req, 'equipment_deleted', 'equipment', req.params.equipId, `Deleted equipment: ${existing.equipment_type} for officer ${existing.officer_id}`);
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'equipment_deleted', 'equipment', ?, ?, ?)
+      `).run(req.user!.userId, req.params.equipId, `Deleted equipment: ${existing.equipment_type} for officer ${existing.officer_id}`, req.ip || 'unknown');
 
       res.json({ message: 'Equipment record deleted' });
     } catch (error: any) {
@@ -2152,7 +2049,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         FROM body_cameras c
         LEFT JOIN users u ON c.officer_id = u.id
         WHERE c.id = ?
-      `).get(Number(result.lastInsertRowid));
+      `).get(result.lastInsertRowid);
 
       res.status(201).json(camera);
     } catch (error: any) {
@@ -2531,7 +2428,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       console.log(`[Bodycam] Reassembly complete: ${verifiedSize} bytes`);
 
       const relativePath = path.relative(BODYCAM_DIR, finalPath);
-      const user = req.user!;
+      const user = (req as any).user;
 
       const result = db.prepare(`
         INSERT INTO bodycam_videos (camera_id, officer_id, title, file_path, file_size, duration_seconds, mime_type, recorded_at, case_number, classification, notes, uploaded_by)
@@ -2543,7 +2440,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         classification || 'routine', notes || null, String(user?.userId || 'system')
       );
 
-      const videoId = Number(result.lastInsertRowid);
+      const videoId = result.lastInsertRowid;
 
       // Clean up chunk session
       try {
@@ -2659,7 +2556,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
             classification || 'routine', notes || null, String(req.user!.userId)
           );
 
-          const videoId = Number(result.lastInsertRowid);
+          const videoId = result.lastInsertRowid;
 
           const video = db.prepare(`
             SELECT v.*, u.full_name as officer_name, c.camera_id as camera_serial
@@ -2815,20 +2712,8 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   });
 
   // GET /api/personnel/bodycam-videos/:videoId/stream - Stream video with Range support
-  // Prefer HMAC signed access; legacy ?token= still accepted during migration
+  // Accept token from query string for <video> elements that can't set Authorization headers
   parentRouter.get('/personnel/bodycam-videos/:videoId/stream', (req: Request, res: Response, next) => {
-    if (!req.headers['authorization'] && typeof req.query.sig === 'string') {
-      const { verifyResourceAccess } = require('../utils/signedAccess');
-      const exp = parseInt(req.query.exp as string, 10);
-      const nonce = req.query.nonce as string | undefined;
-      if (verifyResourceAccess('bodycam', req.params.videoId, req.query.sig as string, exp, nonce)) {
-        req.user = { userId: 0, username: 'signed-access', role: 'viewer', fullName: 'Signed Access' };
-        next();
-        return;
-      }
-      res.status(403).json({ error: 'Invalid or expired signature' });
-      return;
-    }
     if (!req.headers['authorization'] && req.query.token) {
       req.headers['authorization'] = `Bearer ${req.query.token}`;
     }
@@ -3016,7 +2901,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         : 0;
 
       // New hires / terminations in last 30 days
-      const thirtyDaysAgo = dateToLocalYMD(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
       const newHires = (db.prepare('SELECT COUNT(*) as count FROM users WHERE hire_date >= ?').get(thirtyDaysAgo) as any)?.count || 0;
       const terminations = (db.prepare('SELECT COUNT(*) as count FROM users WHERE termination_date >= ?').get(thirtyDaysAgo) as any)?.count || 0;
 

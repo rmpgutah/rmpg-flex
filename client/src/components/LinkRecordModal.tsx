@@ -78,23 +78,21 @@ export default function LinkRecordModal({
       return;
     }
 
-    let cancelled = false;
     const timer = setTimeout(async () => {
       setSearching(true);
       try {
         const results = await apiFetch<any[]>(
           `/records/search?q=${encodeURIComponent(searchQuery.trim())}&type=${targetType}`
         );
-        if (cancelled) return;
         setSearchResults(results);
       } catch (err) {
-        if (!cancelled) setSearchResults([]);
+        setSearchResults([]);
       } finally {
-        if (!cancelled) setSearching(false);
+        setSearching(false);
       }
     }, 300);
 
-    return () => { cancelled = true; clearTimeout(timer); };
+    return () => clearTimeout(timer);
   }, [searchQuery, targetType]);
 
   const handleSubmit = useCallback(

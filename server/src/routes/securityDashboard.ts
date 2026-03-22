@@ -7,6 +7,7 @@ import { isPasswordExpired, isPasswordExpiringSoon } from '../utils/passwordExpi
 import { getBlockedIps, unblockIp } from '../middleware/rateLimiter';
 import { localNow } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
+import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 
@@ -251,25 +252,17 @@ router.post('/unblock-ip', authenticateToken, requireRole('admin'), (req: Reques
 router.get('/recent-threats', authenticateToken, requireRole('admin'), (_req: Request, res: Response) => {
   try {
     const db = getDb();
-    // Compute 24-hours-ago in local time with timezone offset (matching localNow() format)
-    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const offsetMin = cutoff.getTimezoneOffset();
-    const sign = offsetMin <= 0 ? '+' : '-';
-    const absOffset = Math.abs(offsetMin);
-    const cutoffStr = `${cutoff.getFullYear()}-${pad(cutoff.getMonth() + 1)}-${pad(cutoff.getDate())}T${pad(cutoff.getHours())}:${pad(cutoff.getMinutes())}:${pad(cutoff.getSeconds())}${sign}${pad(Math.floor(absOffset / 60))}:${pad(absOffset % 60)}`;
-
     const threats = db.prepare(`
       SELECT ip_address, COUNT(*) as attempts,
         GROUP_CONCAT(DISTINCT username) as targeted_accounts,
         MAX(created_at) as last_attempt
       FROM login_attempts
-      WHERE success = 0 AND created_at > ?
+      WHERE success = 0 AND created_at > datetime('now', 'localtime', '-24 hours')
       GROUP BY ip_address
       HAVING attempts >= 3
       ORDER BY attempts DESC
       LIMIT 50
-    `).all(cutoffStr);
+    `).all();
     res.json(threats);
   } catch (error: any) {
     console.error('Recent threats error:', error?.message || 'Unknown error');

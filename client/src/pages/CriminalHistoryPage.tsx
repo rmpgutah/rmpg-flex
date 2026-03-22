@@ -7,10 +7,10 @@
 import React, { useState, useCallback } from 'react';
 import { Search, AlertTriangle, User, Shield, Calendar, MapPin, FileText, ChevronRight, Scale } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
-import { useToast } from '../components/ToastProvider';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { toDisplayLabel } from '../utils/formatters';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useToast } from '../components/ToastProvider';
 
 interface PersonResult {
   id: string;
@@ -41,8 +41,8 @@ interface HistoryEntry {
 }
 
 export default function CriminalHistoryPage() {
-  const { addToast } = useToast();
   const isMobile = useIsMobile();
+  const { addToast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchType, setSearchType] = useState<'name' | 'dob' | 'dl'>('name');
   const [persons, setPersons] = useState<PersonResult[]>([]);
@@ -322,7 +322,7 @@ export default function CriminalHistoryPage() {
                     </div>
                     <div className="flex flex-wrap gap-1">
                       {cautionFlags.map((flag, i) => (
-                        <span key={flag} className="text-[9px] font-bold uppercase px-1.5 py-0.5 bg-red-900/50 text-red-300 border border-red-700/50">
+                        <span key={i} className="text-[9px] font-bold uppercase px-1.5 py-0.5 bg-red-900/50 text-red-300 border border-red-700/50">
                           {flag}
                         </span>
                       ))}

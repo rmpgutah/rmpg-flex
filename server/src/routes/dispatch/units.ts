@@ -3,8 +3,8 @@ import { getDb } from '../../models/database';
 import { requireRole } from '../../middleware/auth';
 import { validateParamId } from '../../middleware/sanitize';
 import { broadcastUnitUpdate } from '../../utils/websocket';
-import { auditLog } from '../../utils/auditLogger';
 import { localNow } from '../../utils/timeUtils';
+import { auditLog } from '../../utils/auditLogger';
 
 const router = Router();
 
@@ -28,25 +28,6 @@ router.get('/units', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
   }
 });
 
-// GET /api/dispatch/units/available - Get only available units
-router.get('/units/available', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const units = db.prepare(`
-      SELECT u.*, usr.full_name as officer_name, usr.badge_number, usr.phone as officer_phone
-      FROM units u
-      LEFT JOIN users usr ON u.officer_id = usr.id
-      WHERE u.status = 'available'
-      ORDER BY u.call_sign
-    `).all();
-
-    res.json(units);
-  } catch (error: any) {
-    console.error('Get available units error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
 // POST /api/dispatch/units - Create dispatch unit
 router.post('/units', requireRole('admin', 'manager', 'dispatcher'), (req: Request, res: Response) => {
   try {
@@ -64,22 +45,17 @@ router.post('/units', requireRole('admin', 'manager', 'dispatcher'), (req: Reque
       return;
     }
 
-    // Validate status enum on creation (same list as PUT endpoint)
-    const VALID_CREATE_STATUSES = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service'];
-    if (status && !VALID_CREATE_STATUSES.includes(status)) {
-      res.status(400).json({ error: 'Invalid unit status', valid: VALID_CREATE_STATUSES });
-      return;
-    }
-
     const result = db.prepare(`
       INSERT INTO units (call_sign, officer_id, status, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?)
     `).run(call_sign, officer_id || null, status || 'off_duty', localNow(), localNow());
 
-    const unit = db.prepare('SELECT u.*, usr.full_name as officer_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.id = ?').get(Number(result.lastInsertRowid));
+    const unit = db.prepare('SELECT u.*, usr.full_name as officer_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.id = ?').get(result.lastInsertRowid);
     if (!unit) { res.status(500).json({ error: 'Failed to retrieve created unit' }); return; }
 
-    auditLog(req, 'CREATE', 'unit', Number(result.lastInsertRowid) as number, `Created unit: ${call_sign}`);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'unit_created', 'unit', ?, ?, ?)`).run(
+      req.user!.userId, result.lastInsertRowid, `Created unit: ${call_sign}`, req.ip || 'unknown');
 
     broadcastUnitUpdate({ action: 'unit_created', unit });
     res.status(201).json(unit);
@@ -150,7 +126,9 @@ router.put('/units/:id', validateParamId, requireRole('admin', 'manager', 'dispa
 
     const updated = db.prepare('SELECT u.*, usr.full_name as officer_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.id = ?').get(req.params.id);
 
-    auditLog(req, 'UPDATE', 'unit', parseInt(String(req.params.id), 10), `Updated unit: ${(updated as any)?.call_sign || req.params.id}`);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'unit_updated', 'unit', ?, ?, ?)`).run(
+      req.user!.userId, req.params.id, `Updated unit: ${(updated as any)?.call_sign || req.params.id}`, req.ip || 'unknown');
 
     if (updated) broadcastUnitUpdate({ action: 'unit_updated', unit: updated });
     res.json(updated);
@@ -178,7 +156,9 @@ router.delete('/units/:id', validateParamId, requireRole('admin', 'manager'), (r
 
     db.prepare('DELETE FROM units WHERE id = ?').run(req.params.id);
 
-    auditLog(req, 'DELETE', 'unit', parseInt(String(req.params.id), 10), `Deleted unit: ${unit.call_sign}`);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'unit_deleted', 'unit', ?, ?, ?)`).run(
+      req.user!.userId, req.params.id, `Deleted unit: ${unit.call_sign}`, req.ip || 'unknown');
 
     broadcastUnitUpdate({ action: 'unit_deleted', unit_id: req.params.id });
     res.json({ success: true });
@@ -222,22 +202,12 @@ router.put('/units/:id/status', validateParamId, requireRole('admin', 'manager',
       }
     }
     if (latitude !== undefined) {
-      const lat = parseFloat(latitude);
-      if (isNaN(lat) || lat < -90 || lat > 90) {
-        res.status(400).json({ error: 'latitude must be between -90 and 90' });
-        return;
-      }
       updates.push('latitude = ?');
-      params.push(lat);
+      params.push(latitude);
     }
     if (longitude !== undefined) {
-      const lng = parseFloat(longitude);
-      if (isNaN(lng) || lng < -180 || lng > 180) {
-        res.status(400).json({ error: 'longitude must be between -180 and 180' });
-        return;
-      }
       updates.push('longitude = ?');
-      params.push(lng);
+      params.push(longitude);
     }
 
     if (updates.length === 0) {
@@ -248,7 +218,11 @@ router.put('/units/:id/status', validateParamId, requireRole('admin', 'manager',
     params.push(unit.id);
     db.prepare(`UPDATE units SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
-    auditLog(req, 'UPDATE', 'unit', unit.id, `${unit.call_sign} status: ${status || 'location update'}`);
+    // Log activity
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'status_change', 'unit', ?, ?, ?)
+    `).run(req.user!.userId, unit.id, `${unit.call_sign} status: ${status || 'location update'}`, req.ip || 'unknown');
 
     const updated = db.prepare(`
       SELECT u.*, usr.full_name as officer_name

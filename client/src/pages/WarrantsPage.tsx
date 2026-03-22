@@ -34,7 +34,6 @@ import ExportButton from '../components/ExportButton';
 import PrintRecordButton from '../components/PrintRecordButton';
 import ConfirmDialog from '../components/ConfirmDialog';
 import WarrantBadge from '../components/WarrantBadge';
-import PersonIntelPanel from '../components/PersonIntelPanel';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -240,13 +239,11 @@ const SEVERITY_COLORS: Record<string, string> = {
   civil: 'bg-purple-900/50 text-purple-400 border-purple-700/50',
 };
 
-type TabId = 'dashboard' | 'warrants' | 'person_intel' | 'watch_hits' | 'sources';
+type TabId = 'dashboard' | 'warrants' | 'sources';
 
 const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: string }>; roleGated?: boolean }[] = [
   { id: 'dashboard', label: 'DASHBOARD', icon: Activity },
   { id: 'warrants', label: 'WARRANTS', icon: Gavel },
-  { id: 'person_intel', label: 'PERSON INTEL', icon: Globe },
-  { id: 'watch_hits', label: 'WATCH HITS', icon: Radar },
   { id: 'sources', label: 'SOURCES', icon: Shield, roleGated: true },
 ];
 
@@ -440,28 +437,6 @@ export default function WarrantsPage() {
   const [scanRunning, setScanRunning] = useState(false);
 
   // ============================================================
-  // UTAH SEARCH TAB STATE
-  // ============================================================
-  const [utahSearchQuery, setUtahSearchQuery] = useState('');
-  const [utahSearchResults, setUtahSearchResults] = useState<any[]>([]);
-  const [utahSearching, setUtahSearching] = useState(false);
-  const [utahSource, setUtahSource] = useState<'live' | 'cache' | ''>('');
-  const [utahSyncStatus, setUtahSyncStatus] = useState<any>(null);
-
-  // ============================================================
-  // WATCH HITS TAB STATE
-  // ============================================================
-  const [watchHits, setWatchHits] = useState<any[]>([]);
-  const [watchActive, setWatchActive] = useState<any[]>([]);
-  const [watchLoading, setWatchLoading] = useState(false);
-
-  // Cleanup scan poll/timeout on unmount to prevent memory leaks
-  useEffect(() => () => {
-    if (scanPollRef.current) clearInterval(scanPollRef.current);
-    if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current);
-  }, []);
-
-  // ============================================================
   // DASHBOARD FETCHES
   // ============================================================
 
@@ -639,50 +614,6 @@ export default function WarrantsPage() {
     fetchCoverage();
     fetchWatchRuns();
   }, [activeTab, fetchCoverage, fetchWatchRuns]);
-
-  // ============================================================
-  // UTAH SEARCH FETCHES
-  // ============================================================
-
-  const searchUtah = useCallback(async () => {
-    if (!utahSearchQuery.trim()) return;
-    setUtahSearching(true);
-    try {
-      const res = await apiFetch<any>(`/warrants/utah?search=${encodeURIComponent(utahSearchQuery.trim())}`);
-      setUtahSearchResults(res.data || []);
-      setUtahSource(res.source || '');
-    } catch { setUtahSearchResults([]); }
-    finally { setUtahSearching(false); }
-  }, [utahSearchQuery]);
-
-  const fetchUtahSyncStatus = useCallback(async () => {
-    try {
-      const res = await apiFetch<any>('/warrants/utah/sync-status');
-      setUtahSyncStatus(res);
-    } catch {}
-  }, []);
-
-  const fetchWatchHitsData = useCallback(async () => {
-    setWatchLoading(true);
-    try {
-      const [hitsRes, activeRes] = await Promise.all([
-        apiFetch<any>('/warrants/watch/log?event=warrant_found&limit=100'),
-        apiFetch<any>('/warrants/watch/active'),
-      ]);
-      // Both endpoints return { data: [...] }, not plain arrays
-      setWatchHits(Array.isArray(hitsRes) ? hitsRes : (hitsRes?.data || []));
-      setWatchActive(Array.isArray(activeRes) ? activeRes : (activeRes?.data || []));
-    } catch {}
-    finally { setWatchLoading(false); }
-  }, []);
-
-  useEffect(() => {
-    if (activeTab === 'person_intel') fetchUtahSyncStatus();
-  }, [activeTab, fetchUtahSyncStatus]);
-
-  useEffect(() => {
-    if (activeTab === 'watch_hits') fetchWatchHitsData();
-  }, [activeTab, fetchWatchHitsData]);
 
   const handleTriggerScan = useCallback(async () => {
     if (scanPollRef.current) clearInterval(scanPollRef.current);
@@ -894,10 +825,8 @@ export default function WarrantsPage() {
   // ============================================================
 
   return (
-    <div className="absolute inset-0 flex flex-col overflow-hidden bg-surface-deep app-grid-bg">
-      {/* ══════════════════════════════════════════════════════════
-          TITLE BAR
-         ══════════════════════════════════════════════════════════ */}
+    <div className="absolute inset-0 flex flex-col overflow-hidden bg-surface-deep">
+      {/* ---- TITLE BAR ---- */}
       <PanelTitleBar title="WARRANTS" icon={AlertTriangle}>
         <RmpgLogo height={16} iconOnly />
         <span className="toolbar-separator" />
@@ -929,7 +858,7 @@ export default function WarrantsPage() {
                 : <><PlayCircle className="w-3 h-3" /> Run Scan Now</>
               }
             </button>
-            <button onClick={() => { fetchCoverage(); fetchWatchRuns(); }} className="toolbar-btn text-[9px]" title="Refresh" aria-label="Refresh">
+            <button onClick={() => { fetchCoverage(); fetchWatchRuns(); }} className="toolbar-btn text-[9px]" title="Refresh">
               <RotateCcw className="w-3 h-3" />
             </button>
           </>
@@ -956,11 +885,6 @@ export default function WarrantsPage() {
               {tab.id === 'dashboard' && dashStats && dashStats.activeWarrants > 0 && (
                 <span className="ml-1 px-1 rounded bg-red-600 text-white text-[8px] font-bold leading-tight">
                   {dashStats.activeWarrants}
-                </span>
-              )}
-              {tab.id === 'watch_hits' && watchActive.length > 0 && (
-                <span className="ml-1 px-1 rounded bg-red-600 text-white text-[8px] font-bold leading-tight">
-                  {watchActive.length}
                 </span>
               )}
             </button>
@@ -1027,7 +951,7 @@ export default function WarrantsPage() {
                 }}
               />
               {dashSearch && (
-                <button onClick={() => setDashSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white" aria-label="Clear search">
+                <button onClick={() => setDashSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white">
                   <X className="w-3.5 h-3.5" />
                 </button>
               )}
@@ -1261,7 +1185,7 @@ export default function WarrantsPage() {
             {error && (
               <div className="px-3 py-2 bg-red-900/30 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2">
                 <AlertTriangle className="w-3 h-3" /> {error}
-                <button onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300" aria-label="Dismiss error"><X className="w-3 h-3" /></button>
+                <button onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
               </div>
             )}
 
@@ -1435,7 +1359,7 @@ export default function WarrantsPage() {
             {selectedWarrant ? (
               <div className="flex-1 overflow-auto p-4 space-y-4">
                 {/* Header */}
-                <div className="panel-beveled card-glass p-4">
+                <div className="panel-beveled p-4">
                   <div className="flex items-start justify-between mb-3">
                     <div>
                       <h2 className="text-lg font-bold text-white font-mono">{selectedWarrant.warrant_number}</h2>
@@ -1633,135 +1557,6 @@ export default function WarrantsPage() {
                 </div>
               </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* ================================================================
-          TAB: PERSON INTELLIGENCE
-         ================================================================ */}
-      {activeTab === 'person_intel' && (
-        <div className="p-4">
-          <PersonIntelPanel />
-        </div>
-      )}
-
-      {/* ================================================================
-          TAB: WATCH HITS
-         ================================================================ */}
-      {activeTab === 'watch_hits' && (
-        <div className="p-4 space-y-4">
-          {/* Active persons with warrants */}
-          {watchActive.length > 0 && (
-            <div>
-              <h3 className="section-header mb-2">
-                <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
-                ACTIVE WARRANT ALERTS ({watchActive.length})
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                {watchActive.map((person: any) => (
-                  <div key={person.person_id || person.id} className="panel-beveled bg-surface-base p-3 border-l-3 border-l-red-500">
-                    <div className="flex items-center gap-2 mb-1">
-                      <User className="w-3.5 h-3.5 text-red-400" />
-                      <span className="font-bold text-white text-sm">{person.person_name || `${person.first_name || ''} ${person.last_name || ''}`}</span>
-                    </div>
-                    <div className="text-[10px] text-rmpg-400 space-y-0.5">
-                      {person.warrant_count && <div>Warrants: <span className="text-red-400 font-bold">{person.warrant_count}</span></div>}
-                      {person.last_checked && <div>Last checked: {formatDateTime(person.last_checked)}</div>}
-                      {person.court_name && <div>Court: {person.court_name}</div>}
-                      {person.charges && <div>Charges: <span className="text-amber-400">{person.charges}</span></div>}
-                    </div>
-                    <button
-                      className="toolbar-btn text-[9px] mt-2 w-full justify-center"
-                      onClick={async () => {
-                        try {
-                          await apiFetch(`/warrants/check/${person.person_id || person.id}`, { method: 'POST' });
-                          fetchWatchHitsData();
-                        } catch (err: any) { setError(err?.message || 'Check failed'); }
-                      }}
-                    >
-                      <Radar className="w-3 h-3" /> Re-check Now
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Recent scan hits log */}
-          <div>
-            <h3 className="section-header mb-2">
-              <History className="w-3.5 h-3.5" />
-              RECENT SCAN HITS
-            </h3>
-            {watchLoading ? (
-              <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-rmpg-400" /></div>
-            ) : watchHits.length === 0 ? (
-              <EmptyState icon={Radar} title="No warrant hits from automated scans" description="The system checks all persons against warrants.utah.gov every 6 hours" />
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="table-dark w-full">
-                  <thead>
-                    <tr>
-                      <th className="text-left">Person</th>
-                      <th className="text-left">Event</th>
-                      <th className="text-left">Severity</th>
-                      <th className="text-left">Warrant ID</th>
-                      <th className="text-left">Court</th>
-                      <th className="text-left">Charges</th>
-                      <th className="text-left">Found At</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {watchHits.map((hit: any, i: number) => {
-                      const charges = (() => {
-                        try { return JSON.parse(hit.charges || '[]'); } catch { return [hit.charges || '']; }
-                      })();
-                      return (
-                        <tr key={hit.id || i}>
-                          <td className="font-bold text-white">{hit.person_name}</td>
-                          <td>
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                              hit.event === 'warrant_found' ? 'bg-red-900/30 text-red-400 border border-red-800/30' : 'bg-green-900/30 text-green-400 border border-green-800/30'
-                            }`}>
-                              {hit.event === 'warrant_found' ? 'FOUND' : 'CLEARED'}
-                            </span>
-                          </td>
-                          <td>
-                            {hit.resolvedSeverity ? (
-                              <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${
-                                hit.resolvedSeverity === 'felony' ? 'bg-red-900/40 text-red-400 border-red-700/50' :
-                                hit.resolvedSeverity === 'misdemeanor' ? 'bg-amber-900/40 text-amber-400 border-amber-700/50' :
-                                hit.resolvedSeverity === 'bench' ? 'bg-orange-900/40 text-orange-400 border-orange-700/50' :
-                                'bg-blue-900/40 text-blue-400 border-blue-700/50'
-                              }`}>
-                                {hit.resolvedSeverity}
-                              </span>
-                            ) : <span className="text-rmpg-500 text-[9px]">—</span>}
-                          </td>
-                          <td className="font-mono text-[10px]">{hit.utah_warrant_id || '-'}</td>
-                          <td className="text-[11px]">{hit.court_name || '-'}</td>
-                          <td>
-                            {charges.filter(Boolean).map((c: string, ci: number) => (
-                              <span key={ci} className="inline-block bg-red-900/20 text-red-300 text-[10px] px-1 py-0.5 rounded mr-1 mb-0.5">
-                                {c}
-                              </span>
-                            ))}
-                          </td>
-                          <td className="text-[11px] font-mono">{formatDateTime(hit.created_at)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          <div className="flex justify-center">
-            <button onClick={fetchWatchHitsData} className="toolbar-btn text-[10px]">
-              <RotateCcw className="w-3 h-3" /> Refresh
-            </button>
           </div>
         </div>
       )}
@@ -2032,7 +1827,7 @@ export default function WarrantsPage() {
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
                 <User className="w-4 h-4 text-brand-400" /> Person Warrant Profile
               </h2>
-              <button onClick={() => setPersonProfileOpen(false)} className="text-rmpg-400 hover:text-white" aria-label="Close person profile">
+              <button onClick={() => setPersonProfileOpen(false)} className="text-rmpg-400 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -2183,7 +1978,7 @@ export default function WarrantsPage() {
           <div className={`panel-beveled ${isMobile ? 'w-full h-full' : 'w-[550px] max-h-[85vh]'} overflow-auto bg-surface-base`}>
             <div className="flex items-center justify-between p-4 border-b border-rmpg-600">
               <h2 id={warrantFormTitleId} className="text-sm font-bold text-white">{editingWarrant ? 'Edit Warrant' : 'New Warrant'}</h2>
-              <button onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white" aria-label="Close warrant form"><X className="w-4 h-4" /></button>
+              <button onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-4 space-y-4">
               {/* Type + Offense Level */}
@@ -2344,7 +2139,7 @@ export default function WarrantsPage() {
           <div className={`panel-beveled ${isMobile ? 'w-full mx-4' : 'w-[400px]'} bg-surface-base`}>
             <div className="flex items-center justify-between p-4 border-b border-rmpg-600">
               <h2 id={serveTitleId} className="text-sm font-bold text-white">Serve Warrant</h2>
-              <button onClick={() => setServeModalOpen(false)} className="text-rmpg-400 hover:text-white" aria-label="Close serve modal"><X className="w-4 h-4" /></button>
+              <button onClick={() => setServeModalOpen(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4 space-y-4">
               <p className="text-xs text-rmpg-300">

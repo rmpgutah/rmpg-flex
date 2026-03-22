@@ -10,6 +10,7 @@ import {
   Activity, ChevronRight, Loader2,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { useToast } from '../../../components/ToastProvider';
 
 interface DashboardData {
   total_active: number;
@@ -258,7 +259,7 @@ function OfficerDashboard({
 
   useEffect(() => {
     const year = new Date().getFullYear();
-    apiFetch<LeaveBalances>(`/hr/leave/balances?year=${year}`)
+    apiFetch<LeaveBalances>(`/api/hr/leave/balances?year=${year}`)
       .then(setBalances)
       .catch(() => setBalances(null))
       .finally(() => setLoading(false));
@@ -328,7 +329,7 @@ export default function HRDashboardTab({
 
   useEffect(() => {
     if (!isManager) return;
-    apiFetch<DashboardData>('/hr/dashboard')
+    apiFetch<DashboardData>('/api/hr/dashboard')
       .then(setData)
       .catch(() => setData(null))
       .finally(() => setLoading(false));

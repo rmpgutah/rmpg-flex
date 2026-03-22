@@ -8,6 +8,7 @@ import { getConnectedClientCount } from '../utils/websocket';
 import { createNotification } from './notifications';
 import { sendNotificationEmail } from '../utils/emailSender';
 import { auditLog } from '../utils/auditLogger';
+import { sendCsv } from '../utils/csvExport';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -591,11 +592,16 @@ router.post('/announcements', requireRole('admin', 'manager'), (req: Request, re
       now, now,
     );
 
-    const announcement = db.prepare('SELECT * FROM system_announcements WHERE id = ?').get(Number(result.lastInsertRowid));
+    const announcement = db.prepare('SELECT * FROM system_announcements WHERE id = ?').get(result.lastInsertRowid);
 
-    auditLog(req, 'CREATE', 'system_config', Number(result.lastInsertRowid), `Created announcement: ${title}`);
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'announcement_created', 'announcement', ?, ?, ?)
+    `).run(req.user!.userId, result.lastInsertRowid, `Created announcement: ${title}`, req.ip || 'unknown');
 
-    res.status(201).json(announcement || { id: Number(result.lastInsertRowid) });
+    auditLog(req, 'CREATE' as any, 'system_config' as any, Number(result.lastInsertRowid), `Created announcement: ${title}`);
+
+    res.status(201).json(announcement || { id: result.lastInsertRowid });
   } catch (error: any) {
     console.error('Create announcement error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -644,7 +650,7 @@ router.put('/announcements/:id', validateParamId, requireRole('admin', 'manager'
 
     const updated = db.prepare('SELECT * FROM system_announcements WHERE id = ?').get(req.params.id);
 
-    auditLog(req, 'UPDATE', 'system_config', req.params.id, `Updated announcement #${req.params.id}`);
+    auditLog(req, 'UPDATE' as any, 'system_config' as any, req.params.id, `Updated announcement #${req.params.id}`);
 
     res.json(updated);
   } catch (error: any) {
@@ -665,7 +671,12 @@ router.delete('/announcements/:id', validateParamId, requireRole('admin'), (req:
 
     db.prepare('DELETE FROM system_announcements WHERE id = ?').run(req.params.id);
 
-    auditLog(req, 'DELETE', 'system_config', existing.id, `Deleted announcement: ${existing.title}`);
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'announcement_deleted', 'announcement', ?, ?, ?)
+    `).run(req.user!.userId, existing.id, `Deleted announcement: ${existing.title}`, req.ip || 'unknown');
+
+    auditLog(req, 'DELETE' as any, 'system_config' as any, existing.id, `Deleted announcement: ${existing.title}`);
 
     res.json({ message: 'Announcement deleted' });
   } catch (error: any) {
@@ -729,7 +740,7 @@ router.put('/retention/:id', validateParamId, requireRole('admin', 'manager'), (
 
     const updated = db.prepare('SELECT * FROM retention_policies WHERE id = ?').get(req.params.id);
 
-    auditLog(req, 'UPDATE', 'system_config', req.params.id, `Updated retention policy #${req.params.id} for ${existing.entity_type}`);
+    auditLog(req, 'UPDATE' as any, 'system_config' as any, req.params.id, `Updated retention policy #${req.params.id} for ${existing.entity_type}`);
 
     res.json(updated);
   } catch (error: any) {
@@ -817,7 +828,12 @@ router.post('/retention/run', requireRole('admin'), (req: Request, res: Response
       }
     }
 
-    auditLog(req, 'UPDATE', 'system_config', 0, `Executed retention policies: ${results.length} actions`);
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'retention_run', 'system', 0, ?, ?)
+    `).run(req.user!.userId, `Retention policies executed: ${results.length} actions`, req.ip || 'unknown');
+
+    auditLog(req, 'UPDATE' as any, 'system_config' as any, 0, `Executed retention policies: ${results.length} actions`);
 
     res.json({ executed_at: now, results });
   } catch (error: any) {
@@ -947,11 +963,16 @@ router.post('/departments', requireRole('admin', 'manager'), (req: Request, res:
       FROM departments d
       LEFT JOIN users u ON d.manager_id = u.id
       WHERE d.id = ?
-    `).get(Number(result.lastInsertRowid));
+    `).get(result.lastInsertRowid);
 
-    auditLog(req, 'CREATE', 'system_config', Number(result.lastInsertRowid), `Created department: ${name}`);
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'department_created', 'department', ?, ?, ?)
+    `).run(req.user!.userId, result.lastInsertRowid, `Created department: ${name}`, req.ip || 'unknown');
 
-    res.status(201).json(department || { id: Number(result.lastInsertRowid) });
+    auditLog(req, 'CREATE' as any, 'system_config' as any, Number(result.lastInsertRowid), `Created department: ${name}`);
+
+    res.status(201).json(department || { id: result.lastInsertRowid });
   } catch (error: any) {
     if (error.message?.includes('UNIQUE constraint')) {
       res.status(409).json({ error: 'A department with this name or code already exists' });
@@ -1004,7 +1025,7 @@ router.put('/departments/:id', validateParamId, requireRole('admin', 'manager'),
       WHERE d.id = ?
     `).get(req.params.id);
 
-    auditLog(req, 'UPDATE', 'system_config', req.params.id, `Updated department #${req.params.id}`);
+    auditLog(req, 'UPDATE' as any, 'system_config' as any, req.params.id, `Updated department #${req.params.id}`);
 
     res.json(updated);
   } catch (error: any) {
@@ -1045,7 +1066,12 @@ router.delete('/departments/:id', validateParamId, requireRole('admin'), (req: R
 
     db.prepare('DELETE FROM departments WHERE id = ?').run(existing.id);
 
-    auditLog(req, 'DELETE', 'system_config', existing.id, `Deleted department: ${existing.name}`);
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'department_deleted', 'department', ?, ?, ?)
+    `).run(req.user!.userId, existing.id, `Deleted department: ${existing.name}`, req.ip || 'unknown');
+
+    auditLog(req, 'DELETE' as any, 'system_config' as any, existing.id, `Deleted department: ${existing.name}`);
 
     res.json({ message: 'Department deleted' });
   } catch (error: any) {
@@ -1119,9 +1145,14 @@ router.post('/notification-rules', requireRole('admin', 'manager'), (req: Reques
       FROM notification_rules nr
       LEFT JOIN users u ON nr.created_by = u.id
       WHERE nr.id = ?
-    `).get(Number(result.lastInsertRowid));
+    `).get(result.lastInsertRowid);
 
-    auditLog(req, 'CREATE', 'system_config', Number(result.lastInsertRowid), `Created notification rule: ${name}`);
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'notification_rule_created', 'notification_rule', ?, ?, ?)
+    `).run(req.user!.userId, result.lastInsertRowid, `Created notification rule: ${name}`, req.ip || 'unknown');
+
+    auditLog(req, 'CREATE' as any, 'system_config' as any, Number(result.lastInsertRowid), `Created notification rule: ${name}`);
 
     res.status(201).json(rule);
   } catch (error: any) {
@@ -1175,7 +1206,7 @@ router.put('/notification-rules/:id', validateParamId, requireRole('admin', 'man
       WHERE nr.id = ?
     `).get(req.params.id);
 
-    auditLog(req, 'UPDATE', 'system_config', req.params.id, `Updated notification rule #${req.params.id}`);
+    auditLog(req, 'UPDATE' as any, 'system_config' as any, req.params.id, `Updated notification rule #${req.params.id}`);
 
     res.json(updated);
   } catch (error: any) {
@@ -1196,7 +1227,12 @@ router.delete('/notification-rules/:id', validateParamId, requireRole('admin', '
 
     db.prepare('DELETE FROM notification_rules WHERE id = ?').run(existing.id);
 
-    auditLog(req, 'DELETE', 'system_config', existing.id, `Deleted notification rule: ${existing.name}`);
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'notification_rule_deleted', 'notification_rule', ?, ?, ?)
+    `).run(req.user!.userId, existing.id, `Deleted notification rule: ${existing.name}`, req.ip || 'unknown');
+
+    auditLog(req, 'DELETE' as any, 'system_config' as any, existing.id, `Deleted notification rule: ${existing.name}`);
 
     res.json({ message: 'Notification rule deleted' });
   } catch (error: any) {
@@ -1279,11 +1315,49 @@ router.post('/notification-rules/:id/test', validateParamId, requireRole('admin'
       } catch { /* skip failed sends */ }
     }
 
-    auditLog(req, 'CREATE', 'system_config', rule.id, `Tested notification rule: ${rule.name} — sent to ${sentCount} user(s)`);
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'notification_rule_tested', 'notification_rule', ?, ?, ?)
+    `).run(req.user!.userId, rule.id, `Test notification sent to ${sentCount} user(s) for rule: ${rule.name}`, req.ip || 'unknown');
+
+    auditLog(req, 'CREATE' as any, 'system_config' as any, rule.id, `Tested notification rule: ${rule.name} — sent to ${sentCount} user(s)`);
 
     res.json({ message: `Test notification sent to ${sentCount} user(s)`, sent_to: targetUserIds });
   } catch (error: any) {
     console.error('Test notification rule error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// GET /announcements/export/csv — Export announcements as CSV
+// ============================================================
+router.get('/announcements/export/csv', requireRole('admin', 'manager', 'supervisor'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT sa.*, u.full_name as created_by_name
+      FROM system_announcements sa
+      LEFT JOIN users u ON sa.created_by = u.id
+      ORDER BY sa.created_at DESC
+    `).all();
+
+    sendCsv(res, `announcements_export_${localNow().slice(0, 10)}.csv`, [
+      { key: 'id', header: 'ID' },
+      { key: 'title', header: 'Title' },
+      { key: 'body', header: 'Body' },
+      { key: 'type', header: 'Type' },
+      { key: 'priority', header: 'Priority' },
+      { key: 'target_roles', header: 'Target Roles' },
+      { key: 'is_active', header: 'Active' },
+      { key: 'starts_at', header: 'Starts At' },
+      { key: 'expires_at', header: 'Expires At' },
+      { key: 'created_by_name', header: 'Created By' },
+      { key: 'created_at', header: 'Created At' },
+      { key: 'updated_at', header: 'Updated At' },
+    ], rows);
+  } catch (error: any) {
+    console.error('Export announcements error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -145,7 +145,7 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
                   </div>
                   <div className="space-y-1.5">
                     {criminal.map((r, i) => (
-                      <div key={`record-${r.case_number || r.offense || i}`} className="bg-surface-sunken p-2.5 rounded-sm space-y-1 border-l-2 border-amber-500/50">
+                      <div key={i} className="bg-surface-sunken p-2.5 rounded-sm space-y-1 border-l-2 border-amber-500/50">
                         <div className="flex items-center justify-between">
                           <span className="text-[11px] font-medium text-rmpg-100">{r.offense || 'Unknown Offense'}</span>
                           {r.status && (
@@ -181,7 +181,7 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
                   </div>
                   <div className="space-y-1.5">
                     {court.map((r, i) => (
-                      <div key={`record-${r.case_number || r.offense || i}`} className="bg-surface-sunken p-2.5 rounded-sm space-y-1 border-l-2 border-blue-500/50">
+                      <div key={i} className="bg-surface-sunken p-2.5 rounded-sm space-y-1 border-l-2 border-blue-500/50">
                         <div className="text-[11px] font-medium text-rmpg-100">{r.offense || 'Court Record'}</div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-rmpg-400">
                           {r.offense_date && <div>Filed: <span className="text-rmpg-300">{r.offense_date}</span></div>}
@@ -206,7 +206,7 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
                   </div>
                   <div className="space-y-1.5">
                     {sexOffender.map((r, i) => (
-                      <div key={`record-${r.case_number || r.offense || i}`} className="bg-red-950/20 p-2.5 rounded-sm space-y-1 border-l-2 border-red-500/50">
+                      <div key={i} className="bg-red-950/20 p-2.5 rounded-sm space-y-1 border-l-2 border-red-500/50">
                         <div className="flex items-center justify-between">
                           <span className="text-[11px] font-medium text-red-300">{r.offense || 'Registered Sex Offender'}</span>
                           {r.tier && (

@@ -88,35 +88,11 @@ export async function generateQrCodeDataUrl(otpauthUrl: string): Promise<string>
   });
 }
 
-// ----------------------------------------------------------
-// TOTP Replay Protection
-// ----------------------------------------------------------
-// Track recently used codes per user to prevent replay attacks.
-// Key: `${userId}:${code}`, Value: expiry timestamp.
-// Codes are valid for at most 90s (window ±1), so we expire entries after 120s.
-const usedCodes = new Map<string, number>();
-const REPLAY_TTL_MS = 120_000; // 2 minutes — covers full TOTP window + buffer
-
-// Periodic cleanup to prevent memory growth (runs every 5 minutes)
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, expiry] of usedCodes) {
-    if (now > expiry) usedCodes.delete(key);
-  }
-}, 300_000).unref();
-
 /**
  * Verify a 6-digit TOTP code against a Base32 secret.
  * Allows a window of ±1 period (30s) to accommodate clock drift.
- * Includes replay protection: each code can only be used once per user within its validity window.
- * @param userId - User ID for replay tracking (pass 0 to skip replay check, e.g. during setup)
- * @param replayKey - Optional alternative key for replay tracking (e.g. username during login before userId is known)
  */
-export function verifyTotpCode(secret: string, code: string, userId: number = 0, replayKey?: string): boolean {
-  // Validate code format early — TOTP codes are exactly 6 digits.
-  // Rejecting malformed input prevents unnecessary crypto operations.
-  if (!/^\d{6}$/.test(code)) return false;
-
+export function verifyTotpCode(secret: string, code: string): boolean {
   const totp = new OTPAuth.TOTP({
     issuer: ISSUER,
     algorithm: 'SHA1',
@@ -128,37 +104,7 @@ export function verifyTotpCode(secret: string, code: string, userId: number = 0,
   // validate() returns the time step difference (0 = exact match, ±1 = drift)
   // or null if invalid
   const delta = totp.validate({ token: code, window: 1 });
-  if (delta === null) return false;
-
-  // Replay protection: reject if this exact code was already used by this user.
-  // When replayKey is provided (e.g. username during login), use it even if userId is 0.
-  const effectiveKey = replayKey || (userId > 0 ? `${userId}` : '');
-  if (effectiveKey) {
-    const mapKey = `${effectiveKey}:${code}`;
-    const now = Date.now();
-    if (usedCodes.has(mapKey) && now <= usedCodes.get(mapKey)!) {
-      return false; // Code already consumed — replay attempt
-    }
-    // Mark code as used
-    usedCodes.set(mapKey, now + REPLAY_TTL_MS);
-    // Cap map size to prevent memory exhaustion (10k entries max)
-    if (usedCodes.size > 10_000) {
-      // First pass: evict all expired entries
-      for (const [k, expiry] of usedCodes) {
-        if (now > expiry) usedCodes.delete(k);
-      }
-      // If still over limit after expiry cleanup, evict oldest 10%
-      if (usedCodes.size > 10_000) {
-        let toRemove = Math.ceil(usedCodes.size * 0.1);
-        for (const k of usedCodes.keys()) {
-          if (toRemove-- <= 0) break;
-          usedCodes.delete(k);
-        }
-      }
-    }
-  }
-
-  return true;
+  return delta !== null;
 }
 
 // ----------------------------------------------------------
@@ -178,7 +124,7 @@ export function generateBackupCodes(count: number = 10): {
     const raw = crypto.randomBytes(4).toString('hex').toUpperCase();
     const formatted = `${raw.slice(0, 4)}-${raw.slice(4)}`;
     plain.push(formatted);
-    hashed.push(bcryptjs.hashSync(formatted.replace('-', ''), config.security.bcryptRounds));
+    hashed.push(bcryptjs.hashSync(formatted.replace('-', ''), 12)); // Hash without dash
   }
 
   return { plain, hashed };
@@ -194,12 +140,6 @@ export function verifyBackupCode(
   hashedCodes: string[],
 ): { valid: boolean; remainingCodes: string[] } {
   const normalized = code.replace(/[-\s]/g, '').toUpperCase();
-
-  // Validate format before bcrypt — backup codes are always 8 hex chars (XXXX-XXXX).
-  // Rejecting malformed input early prevents bcrypt DoS with arbitrarily long strings.
-  if (!/^[A-F0-9]{8}$/.test(normalized)) {
-    return { valid: false, remainingCodes: hashedCodes };
-  }
 
   for (let i = 0; i < hashedCodes.length; i++) {
     if (bcryptjs.compareSync(normalized, hashedCodes[i])) {

@@ -24,21 +24,19 @@ import {
   Loader2,
   X,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import type { CallForService, Unit, CallStatus } from '../types';
 import { apiFetch } from '../hooks/useApi';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useWebSocket } from '../context/WebSocketContext';
-import WarrantAlertBanner, { type WarrantAlert } from '../components/WarrantAlertBanner';
 import { formatIncidentType } from '../utils/caseNumbers';
 import { formatTimer, getStatusElapsed, isActiveStatus } from '../utils/dispatchTimers';
 import { mapDbCall } from './dispatch/utils/dispatchMappers';
 import StatusBadge from '../components/StatusBadge';
 import PremiseHistory from '../components/PremiseHistory';
 import NcicQueryPanel from '../components/NcicQueryPanel';
-import { formatDateTime, localToday } from '../utils/dateUtils';
+import { formatDateTime } from '../utils/dateUtils';
 import { useToast } from '../components/ToastProvider';
 
 // ── Quick Status Buttons ────────────────────────────────────
@@ -67,7 +65,6 @@ interface MdtMessage {
 }
 
 function MdtMessagesPanel({ userId }: { userId?: string }) {
-  const { addToast } = useToast();
   const [messages, setMessages] = useState<MdtMessage[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [composeText, setComposeText] = useState('');
@@ -99,7 +96,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
       setComposeText('');
       fetchMessages();
     } catch (err) {
-      console.error('Send message failed:', err); addToast('Failed to send message', 'error');
+      console.error('Send message failed:', err);
     }
   };
 
@@ -236,7 +233,6 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
 // ── Component ──────────────────────────────────────────────
 
 export default function MdtPage() {
-  const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { addToast } = useToast();
   const gps = useGpsTracking();
@@ -254,7 +250,6 @@ export default function MdtPage() {
   const [showFiForm, setShowFiForm] = useState(false);
   const [fiData, setFiData] = useState({ subject_name: '', location: '', reason: '', narrative: '' });
   const [fiSubmitting, setFiSubmitting] = useState(false);
-  const [warrantAlerts, setWarrantAlerts] = useState<WarrantAlert[]>([]);
 
   // Error toast auto-dismiss
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -277,7 +272,7 @@ export default function MdtPage() {
     setGeneratingReport(true);
     try {
       const userId = localStorage.getItem('rmpg_user_id') || '';
-      const today = localToday();
+      const today = new Date().toISOString().slice(0, 10);
       const data = await apiFetch<any>(`/reports/shift-activity/${userId}?date=${today}`);
       // Generate a text-based report and download as PDF-like text file
       const lines: string[] = [
@@ -335,7 +330,7 @@ export default function MdtPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      console.error('Failed to generate shift report:', err); addToast('Failed to generate shift report', 'error');
+      console.error('Failed to generate shift report:', err);
       showError('Failed to generate shift report');
     }
     setGeneratingReport(false);
@@ -350,7 +345,7 @@ export default function MdtPage() {
         method: 'POST',
         body: JSON.stringify({
           ...fiData,
-          location: fiData.location || (gps.latitude && gps.longitude ? `${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)}` : ''),
+          location: fiData.location || (gps.latitude ? `${gps.latitude.toFixed(5)}, ${gps.longitude?.toFixed(5)}` : ''),
           officer_id: localStorage.getItem('rmpg_user_id') || '',
           call_id: selectedCall?.id || undefined,
         }),
@@ -358,7 +353,7 @@ export default function MdtPage() {
       setFiData({ subject_name: '', location: '', reason: '', narrative: '' });
       setShowFiForm(false);
     } catch (err) {
-      console.error('Failed to submit FI:', err); addToast('Failed to submit field interview', 'error');
+      console.error('Failed to submit FI:', err);
       showError('Failed to submit field interview');
     }
     setFiSubmitting(false);
@@ -431,22 +426,7 @@ export default function MdtPage() {
         fetchData();
       }
     });
-    // Listen for warrant alerts — persistent banner on MDT
-    const unsubWarrant = subscribe('call:warrant_alert', (msg: any) => {
-      const data = msg.data || msg;
-      const alert: WarrantAlert = {
-        id: `wa-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        callId: data.callId || data.call_id,
-        callNumber: data.callNumber || data.call_number,
-        personName: data.personName || 'Unknown',
-        severity: data.severity || null,
-        charge: data.charge || (data.warrantCount ? `${data.warrantCount} active warrant(s)` : undefined),
-        source: data.source,
-        receivedAt: Date.now(),
-      };
-      setWarrantAlerts(prev => [alert, ...prev].slice(0, 5));
-    });
-    return () => { unsubDispatch(); unsubUnit(); unsubWarrant(); };
+    return () => { unsubDispatch(); unsubUnit(); };
   }, [subscribe, fetchData, gps.unitId]);
 
   // ── Unit Status Change ──
@@ -459,7 +439,7 @@ export default function MdtPage() {
       });
       fetchData();
     } catch (err) {
-      console.error('Status change failed:', err); addToast('Failed to change status', 'error');
+      console.error('Status change failed:', err);
       showError('Failed to change unit status');
     }
   };
@@ -476,7 +456,7 @@ export default function MdtPage() {
       if (selectedCall?.id === callId) setSelectedCall(updated);
       fetchData();
     } catch (err) {
-      console.error('Call status update failed:', err); addToast('Failed to update call status', 'error');
+      console.error('Call status update failed:', err);
       showError('Failed to update call status');
     }
   };
@@ -492,7 +472,7 @@ export default function MdtPage() {
       });
       fetchData();
     } catch (err) {
-      console.error('Self-dispatch failed:', err); addToast('Failed to self-dispatch', 'error');
+      console.error('Self-dispatch failed:', err);
       showError('Failed to self-dispatch');
     } finally {
       setDispatchingCallId(null);
@@ -521,12 +501,7 @@ export default function MdtPage() {
   }
 
   return (
-    <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden app-grid-bg">
-      {/* ── Warrant Alert Banners ── */}
-      <WarrantAlertBanner
-        alerts={warrantAlerts}
-        onDismiss={(id) => setWarrantAlerts(prev => prev.filter(a => a.id !== id))}
-      />
+    <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
       {/* ── Error Toast ── */}
       {errorToast && (
         <div className="absolute top-2 right-2 z-50 flex items-center gap-2 px-3 py-2 bg-red-900/90 border border-red-700 text-red-200 text-[10px] font-bold shadow-lg"
@@ -559,7 +534,7 @@ export default function MdtPage() {
           </div>
           {!isMobile && (
             <span className="text-[8px] text-rmpg-500 font-mono">
-              {gps.latitude && gps.longitude ? `${gps.latitude.toFixed(4)}, ${gps.longitude.toFixed(4)}` : 'NO GPS'}
+              {gps.latitude ? `${gps.latitude.toFixed(4)}, ${gps.longitude?.toFixed(4)}` : 'NO GPS'}
             </span>
           )}
         </div>
@@ -600,76 +575,6 @@ export default function MdtPage() {
             </button>
           ))}
         </div>
-      </div>
-
-      {/* ── Quick-Action Bar: 10-Codes & Shortcuts ─────── */}
-      <div
-        className="flex-shrink-0 flex items-center gap-1.5 px-4 py-1.5 overflow-x-auto"
-        style={{ background: '#111b27', borderBottom: '1px solid #1e3048' }}
-      >
-        {/* 10-code status buttons */}
-        <button
-          onClick={() => handleUnitStatus('available')}
-          disabled={!myUnit}
-          className="px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors border"
-          style={{
-            background: myUnit?.status === 'available' ? '#22c55e' : 'transparent',
-            color: myUnit?.status === 'available' ? '#000' : '#22c55e',
-            borderColor: '#22c55e',
-            opacity: myUnit ? 1 : 0.4,
-          }}
-        >
-          10-8 In Service
-        </button>
-        <button
-          onClick={() => handleUnitStatus('off_duty')}
-          disabled={!myUnit}
-          className="px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors border"
-          style={{
-            background: myUnit?.status === 'off_duty' ? '#f59e0b' : 'transparent',
-            color: myUnit?.status === 'off_duty' ? '#000' : '#f59e0b',
-            borderColor: '#f59e0b',
-            opacity: myUnit ? 1 : 0.4,
-          }}
-        >
-          10-7 Out of Service
-        </button>
-        <button
-          onClick={() => handleUnitStatus('busy')}
-          disabled={!myUnit}
-          className="px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors border"
-          style={{
-            background: myUnit?.status === 'busy' ? '#ef4444' : 'transparent',
-            color: myUnit?.status === 'busy' ? '#000' : '#ef4444',
-            borderColor: '#ef4444',
-            opacity: myUnit ? 1 : 0.4,
-          }}
-        >
-          10-6 Busy
-        </button>
-
-        {/* Separator */}
-        <div className="w-px h-5 mx-1 flex-shrink-0" style={{ background: '#1e3048' }} />
-
-        {/* Navigation shortcuts */}
-        <button
-          onClick={() => navigate('/field-interviews?new=true')}
-          className="px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors border border-[#1e3048] bg-[#1a2636] hover:bg-[#243447] text-white"
-        >
-          New FI
-        </button>
-        <button
-          onClick={() => navigate('/citations?new=true')}
-          className="px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors border border-[#1e3048] bg-[#1a2636] hover:bg-[#243447] text-white"
-        >
-          New Citation
-        </button>
-        <button
-          onClick={() => navigate('/evidence?new=true')}
-          className="px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors border border-[#1e3048] bg-[#1a2636] hover:bg-[#243447] text-white"
-        >
-          Log Evidence
-        </button>
       </div>
 
       {/* ── Quick FI Form ── */}

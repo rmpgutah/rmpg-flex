@@ -42,6 +42,8 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import { usePersistedTab } from '../hooks/usePersistedState';
 import { formatShortTime, formatDateTime } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
+import { useIsMobile } from '../hooks/useIsMobile';
+import { useToast } from '../components/ToastProvider';
 
 // ============================================================
 // Backend -> Frontend Mappers
@@ -234,6 +236,7 @@ function groupMessagesIntoThreads(messages: Message[]): MessageThread[] {
 type Panel = 'messages' | 'bolos' | 'activity';
 
 export default function CommunicationsPage() {
+  const isMobile = useIsMobile();
   const { user } = useAuth();
 
   // --- Panel state ---
@@ -642,7 +645,7 @@ export default function CommunicationsPage() {
   // ============================================================
 
   return (
-    <div className="flex flex-col h-full animate-fade-in app-grid-bg">
+    <div className="flex flex-col h-full animate-fade-in">
       {/* Portal Header */}
       <div className="panel-beveled bg-surface-base overflow-hidden">
         <div className="flex items-center gap-4 px-4 py-2.5 relative">

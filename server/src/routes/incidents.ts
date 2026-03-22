@@ -7,8 +7,7 @@ import { localNow, localToday } from '../utils/timeUtils';
 import { identifyBeat } from '../utils/geofence';
 import { createNotificationForRoles } from './notifications';
 import { auditLog } from '../utils/auditLogger';
-import { validateParamId, validateNumericParams, escapeLike, validateCoordinates, validateDateField } from '../middleware/sanitize';
-import { exportRateLimit } from '../middleware/rateLimiter';
+import { validateParamId, escapeLike } from '../middleware/sanitize';
 import { universalWarrantCheck } from '../utils/universalWarrantScanner';
 
 const router = Router();
@@ -33,8 +32,8 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       params.push(priority);
     }
     if (officerId) {
-      const oid = parseInt(String(officerId), 10);
-      if (!isNaN(oid)) { whereClause += ' AND i.officer_id = ?'; params.push(oid); }
+      whereClause += ' AND i.officer_id = ?';
+      params.push(officerId);
     }
     if (startDate) {
       whereClause += ' AND i.created_at >= ?';
@@ -54,7 +53,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
 
     if (search) {
       whereClause += " AND (i.incident_number LIKE ? ESCAPE '\\' OR i.incident_type LIKE ? ESCAPE '\\' OR i.location_address LIKE ? ESCAPE '\\' OR i.summary LIKE ? ESCAPE '\\')";
-      const s = `%${escapeLike(String(search).trim())}%`;
+      const s = `%${escapeLike(String(search))}%`;
       params.push(s, s, s, s);
     }
 
@@ -64,7 +63,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       params.push(req.user!.userId);
     }
 
-    const pageNum = Math.min(1000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const limitNum = Math.max(1, Math.min(500, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
@@ -145,7 +144,7 @@ router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
 });
 
 // GET /api/incidents/export - Export incidents as CSV
-router.get('/export', requireRole('admin', 'manager', 'supervisor'), exportRateLimit, (req: Request, res: Response) => {
+router.get('/export', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { status, priority, officerId, startDate, endDate } = req.query;
@@ -162,8 +161,8 @@ router.get('/export', requireRole('admin', 'manager', 'supervisor'), exportRateL
       params.push(priority);
     }
     if (officerId) {
-      const oid = parseInt(String(officerId), 10);
-      if (!isNaN(oid)) { whereClause += ' AND i.officer_id = ?'; params.push(oid); }
+      whereClause += ' AND i.officer_id = ?';
+      params.push(officerId);
     }
     if (startDate) {
       whereClause += ' AND i.created_at >= ?';
@@ -338,12 +337,6 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       return;
     }
 
-    // Validate narrative length (max 100KB — large reports are common but must be bounded)
-    if (narrative && typeof narrative === 'string' && narrative.length > 100000) {
-      res.status(400).json({ error: 'Narrative exceeds 100,000 character limit. Please use supplemental reports for additional detail.' });
-      return;
-    }
-
     // Auto-resolve client_id from property if not provided
     let resolvedClientId = requestClientId || null;
     if (!resolvedClientId && property_id) {
@@ -429,7 +422,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
         force_type || null, force_justification || null, subject_injuries || null, officer_injuries || null, de_escalation_attempts || null,
       );
 
-      return db.prepare('SELECT * FROM incidents WHERE id = ?').get(Number(result.lastInsertRowid));
+      return db.prepare('SELECT * FROM incidents WHERE id = ?').get(result.lastInsertRowid);
     });
 
     const incident = createTx();
@@ -462,17 +455,6 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
       return;
     }
 
-    // Optimistic locking: if client sends updated_at, verify it matches
-    const clientUpdatedAt = req.body.updated_at;
-    if (clientUpdatedAt && clientUpdatedAt !== incident.updated_at) {
-      res.status(409).json({
-        error: 'This incident has been modified by another user. Please refresh and try again.',
-        code: 'CONFLICT',
-        server_updated_at: incident.updated_at,
-      });
-      return;
-    }
-
     // Permission checks:
     // - Admin/manager/supervisor can edit any incident in any status
     // - Officers can edit their own incidents in draft, returned, submitted, or approved
@@ -496,18 +478,6 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
       weapons_involved, alcohol_involved, drugs_involved, domestic_violence,
       disposition, zone_beat, section_id, zone_id, beat_id, responding_le_agency, le_case_number,
     } = req.body;
-
-    // Validate coordinates if provided
-    if (latitude !== undefined || longitude !== undefined) {
-      const coordErr = validateCoordinates(latitude, longitude);
-      if (coordErr) { res.status(400).json({ error: coordErr }); return; }
-    }
-
-    // Validate narrative length on updates
-    if (narrative && typeof narrative === 'string' && narrative.length > 100000) {
-      res.status(400).json({ error: 'Narrative exceeds 100,000 character limit. Use supplemental reports for additional detail.' });
-      return;
-    }
 
     // Build dynamic SET clause — only update fields explicitly provided
     const iFields: string[] = [];
@@ -789,12 +759,6 @@ router.post('/:id/persons', validateParamId, requireRole('admin', 'manager', 'su
       return;
     }
 
-    // Authorization: officers can only link persons to their own incidents
-    if (req.user!.role === 'officer' && incident.officer_id !== req.user!.userId) {
-      res.status(403).json({ error: 'You can only add persons to your own incidents' });
-      return;
-    }
-
     const { person_id, role, notes } = req.body;
     if (!person_id || !role) {
       res.status(400).json({ error: 'person_id and role are required' });
@@ -826,7 +790,7 @@ router.post('/:id/persons', validateParamId, requireRole('admin', 'manager', 'su
       LEFT JOIN persons p ON ip.person_id = p.id
       LEFT JOIN users u ON ip.added_by = u.id
       WHERE ip.id = ?
-    `).get(Number(result.lastInsertRowid));
+    `).get(result.lastInsertRowid);
     if (!linked) { res.status(500).json({ error: 'Failed to retrieve linked person' }); return; }
 
     auditLog(req, 'incident_updated', 'incident', incident.id, `Added person to incident #${incident.incident_number}`);
@@ -847,16 +811,6 @@ router.post('/:id/persons', validateParamId, requireRole('admin', 'manager', 'su
 router.put('/:id/persons/:personId', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-
-    // Authorization: officers can only modify person links on their own incidents
-    if (req.user!.role === 'officer') {
-      const incident = db.prepare('SELECT officer_id FROM incidents WHERE id = ?').get(req.params.id) as any;
-      if (!incident || incident.officer_id !== req.user!.userId) {
-        res.status(403).json({ error: 'You can only modify person links on your own incidents' });
-        return;
-      }
-    }
-
     const link = db.prepare('SELECT * FROM incident_persons WHERE incident_id = ? AND person_id = ?')
       .get(req.params.id, req.params.personId) as any;
     if (!link) {
@@ -934,12 +888,6 @@ router.post('/:id/vehicles', validateParamId, requireRole('admin', 'manager', 's
       return;
     }
 
-    // Authorization: officers can only link vehicles to their own incidents
-    if (req.user!.role === 'officer' && incident.officer_id !== req.user!.userId) {
-      res.status(403).json({ error: 'You can only add vehicles to your own incidents' });
-      return;
-    }
-
     const { vehicle_id, role, notes } = req.body;
     if (!vehicle_id || !role) {
       res.status(400).json({ error: 'vehicle_id and role are required' });
@@ -972,7 +920,7 @@ router.post('/:id/vehicles', validateParamId, requireRole('admin', 'manager', 's
       LEFT JOIN persons p ON v.owner_person_id = p.id
       LEFT JOIN users u ON iv.added_by = u.id
       WHERE iv.id = ?
-    `).get(Number(result.lastInsertRowid));
+    `).get(result.lastInsertRowid);
     if (!linked) { res.status(500).json({ error: 'Failed to retrieve linked vehicle' }); return; }
 
     auditLog(req, 'incident_updated', 'incident', incident.id, `Added vehicle to incident #${incident.incident_number}`);
@@ -1082,8 +1030,8 @@ router.post('/:id/evidence', validateParamId, requireRole('admin', 'manager', 's
     // Generate evidence number
     const currentYear = parseInt(localToday().slice(0, 4), 10);
     const lastEvidence = db.prepare(
-      `SELECT evidence_number FROM evidence WHERE evidence_number LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 1`
-    ).get(`${escapeLike(`EV-${currentYear}-`)}%`) as any;
+      `SELECT evidence_number FROM evidence WHERE evidence_number LIKE ? ORDER BY id DESC LIMIT 1`
+    ).get(`EV-${currentYear}-%`) as any;
 
     let nextNum = 1;
     if (lastEvidence) {
@@ -1111,7 +1059,7 @@ router.post('/:id/evidence', validateParamId, requireRole('admin', 'manager', 's
       serial_number || null, brand || null, model || null, estimated_value ?? null, category || null
     );
 
-    const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(Number(result.lastInsertRowid));
+    const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(result.lastInsertRowid);
     if (!evidence) { res.status(500).json({ error: 'Failed to retrieve created evidence' }); return; }
 
     auditLog(req, 'incident_updated', 'incident', incident.id, `Added evidence to incident #${incident.incident_number}`);
@@ -1170,17 +1118,11 @@ router.post('/:id/supplements', validateParamId, requireRole('admin', 'manager',
       return;
     }
 
-    // Validate supplemental narrative length
-    if (typeof narrative === 'string' && narrative.length > 100000) {
-      res.status(400).json({ error: 'Narrative exceeds 100,000 character limit' });
-      return;
-    }
-
     // Generate report number: SUP-YYYY-NNNNN
     const currentYearSup = parseInt(localToday().slice(0, 4), 10);
     const lastSup = db.prepare(
-      `SELECT report_number FROM supplemental_reports WHERE report_number LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 1`
-    ).get(`${escapeLike(`SUP-${currentYearSup}-`)}%`) as any;
+      `SELECT report_number FROM supplemental_reports WHERE report_number LIKE ? ORDER BY id DESC LIMIT 1`
+    ).get(`SUP-${currentYearSup}-%`) as any;
 
     let nextNum = 1;
     if (lastSup) {
@@ -1200,7 +1142,7 @@ router.post('/:id/supplements', validateParamId, requireRole('admin', 'manager',
       FROM supplemental_reports sr
       LEFT JOIN users u ON sr.author_id = u.id
       WHERE sr.id = ?
-    `).get(Number(result.lastInsertRowid));
+    `).get(result.lastInsertRowid);
     if (!supplement) { res.status(500).json({ error: 'Failed to retrieve created supplement' }); return; }
 
     auditLog(req, 'supplement_added', 'incident', incident.id, `Added supplement to incident #${incident.incident_number}`);
@@ -1213,7 +1155,7 @@ router.post('/:id/supplements', validateParamId, requireRole('admin', 'manager',
 });
 
 // PUT /api/incidents/:incidentId/supplements/:supId - Update a supplement
-router.put('/:incidentId/supplements/:supId', validateNumericParams('incidentId', 'supId'), requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:incidentId/supplements/:supId', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const sup = db.prepare('SELECT * FROM supplemental_reports WHERE id = ? AND incident_id = ?')
@@ -1269,7 +1211,7 @@ router.put('/:incidentId/supplements/:supId', validateNumericParams('incidentId'
 });
 
 // DELETE /api/incidents/:incidentId/supplements/:supId - Delete a draft supplement
-router.delete('/:incidentId/supplements/:supId', validateNumericParams('incidentId', 'supId'), requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:incidentId/supplements/:supId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const sup = db.prepare('SELECT * FROM supplemental_reports WHERE id = ? AND incident_id = ?')

@@ -139,7 +139,7 @@ export default function ServePage() {
   const fetchJobs = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiFetch<ServeJob[]>(`/process-server?date=${selectedDate}`);
+      const data = await apiFetch<ServeJob[]>(`/api/process-server?date=${selectedDate}`);
       const fetchedJobs = data || [];
       setJobs(fetchedJobs);
 
@@ -150,7 +150,7 @@ export default function ServePage() {
         await Promise.all(
           jobsWithCalls.map(async (j: any) => {
             try {
-              const call = await apiFetch(`/dispatch/calls/${j.call_id}`);
+              const call = await apiFetch(`/api/dispatch/calls/${j.call_id}`);
               if (call) callMap[j.id] = call;
             } catch {}
           })
@@ -168,7 +168,7 @@ export default function ServePage() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const data = await apiFetch<StatsSummary>(`/process-server/stats/summary?date=${selectedDate}`);
+      const data = await apiFetch<StatsSummary>(`/api/process-server/stats/summary?date=${selectedDate}`);
       setStats(data);
     } catch {
       // stats are non-critical
@@ -195,7 +195,7 @@ export default function ServePage() {
   const handleSyncFromSM = useCallback(async () => {
     setSyncing(true);
     try {
-      await apiFetch('/process-server/sync-from-sm', { method: 'POST' });
+      await apiFetch('/api/process-server/sync-from-sm', { method: 'POST' });
       refreshJobs();
     } catch {
       // sync failed
@@ -223,7 +223,7 @@ export default function ServePage() {
 
   const handleFlagAddress = useCallback(async (jobId: number) => {
     try {
-      await apiFetch(`/process-server/${jobId}`, {
+      await apiFetch(`/api/process-server/${jobId}`, {
         method: 'PUT',
         body: JSON.stringify({ notes: 'BAD ADDRESS \u2014 needs verification', status: 'skipped' }),
       });
@@ -254,7 +254,7 @@ export default function ServePage() {
     setRouteData({ orderedIds: orderedJobIds, ...data });
     // Persist sort order to server
     try {
-      await apiFetch('/process-server/reorder', {
+      await apiFetch('/api/process-server/reorder', {
         method: 'PUT',
         body: JSON.stringify({ orderedIds: orderedJobIds }),
       });
@@ -319,12 +319,12 @@ export default function ServePage() {
     setFormSubmitting(true);
     try {
       if (editJob) {
-        await apiFetch(`/process-server/${editJob.id}`, {
+        await apiFetch(`/api/process-server/${editJob.id}`, {
           method: 'PUT',
           body: JSON.stringify(formData),
         });
       } else {
-        await apiFetch('/process-server', {
+        await apiFetch('/api/process-server', {
           method: 'POST',
           body: JSON.stringify({ ...formData, serve_date: selectedDate }),
         });

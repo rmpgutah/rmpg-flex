@@ -396,7 +396,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
     try {
       await apiFetch(`/auth/sessions/${sessionId}`, { method: 'DELETE' });
       setSessions(prev => prev.filter(s => s.session_id !== sessionId));
-    } catch { setSecurityMsg({ type: 'error', text: 'Failed to revoke session' }); }
+    } catch { /* silent */ }
   };
 
   // ── 2FA Handlers ─────────────────────────────────
@@ -695,7 +695,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                         {imageUploading ? 'Uploading...' : 'Drop image here or click to browse'}
                       </div>
                       <div className="text-[9px] mt-0.5" style={{ color: '#3a4e60' }}>
-                        JPG, PNG, WebP — max 10MB
+                        JPG, PNG, WebP — max 2MB
                       </div>
                     </div>
                     {profileImage && (
@@ -794,8 +794,8 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   <div className="font-bold text-[9px] uppercase tracking-wider mb-1" style={{ color: '#8a9aaa' }}>
                     Password Requirements
                   </div>
-                  {pwPolicy.map((rule) => (
-                    <div key={rule}>• {rule}</div>
+                  {pwPolicy.map((rule, i) => (
+                    <div key={i}>• {rule}</div>
                   ))}
                 </div>
               )}
@@ -1297,7 +1297,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   <SecurityStatusCard />
 
                   {/* 2FA actions */}
-                  <div className="panel-beveled p-3" style={{ background: '#141e2b' }}>
+                  <div className="panel-beveled p-3" style={{ background: '#1a1a1a' }}>
                     <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">
                       Two-Factor Authentication
                     </h3>

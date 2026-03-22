@@ -26,7 +26,7 @@ const BASE_BLOCK_DURATION_MS = 5 * 60 * 1000; // 5 minute initial block
 const MAX_BLOCK_DURATION_MS = 60 * 60 * 1000; // 1 hour max block
 
 function recordViolation(ip: string): void {
-  if (!ip) return; // Still record violations for 'unknown' IPs
+  if (!ip || ip === 'unknown') return;
   const now = Date.now();
   let entry = ipBlocklist.get(ip);
   if (!entry) {
@@ -50,8 +50,7 @@ function recordViolation(ip: string): void {
 }
 
 function isIpBlocked(ip: string): { blocked: boolean; retryAfter: number } {
-  if (!ip) return { blocked: false, retryAfter: 0 };
-  // 'unknown' IPs are still checked — fail closed rather than bypassing rate limits
+  if (!ip || ip === 'unknown') return { blocked: false, retryAfter: 0 };
   const entry = ipBlocklist.get(ip);
   if (!entry) return { blocked: false, retryAfter: 0 };
   const now = Date.now();
@@ -175,10 +174,6 @@ export function rateLimit(options: RateLimitOptions = {}) {
       recordViolation(clientIp);
       const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
       res.set('Retry-After', String(retryAfter));
-      // Log rate limit violations for security monitoring (first hit only per window)
-      if (entry.count === maxRequests + 1) {
-        console.warn(`[RateLimit] Rate limit exceeded: ip=${clientIp} key=${key} count=${entry.count}/${maxRequests} path=${req.path}`);
-      }
       res.status(429).json({ error: message });
       return;
     }
@@ -191,19 +186,9 @@ export function rateLimit(options: RateLimitOptions = {}) {
 // Uses compound key (IP + username) to prevent distributed brute-force AND per-user targeting
 export const authRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  maxRequests: 10,           // 10 attempts per window per IP+username
+  maxRequests: 10,           // 10 attempts per window
   keyGenerator: (req) => `auth:${req.ip || 'unknown'}:${req.body?.username || ''}`,
   message: 'Too many authentication attempts. Please try again in 15 minutes.',
-});
-
-// IP-wide auth rate limit — catches credential stuffing attacks where the attacker
-// rotates through different usernames from the same IP address.
-// More generous than per-username limit (30 vs 10) to avoid blocking shared IPs.
-export const authIpRateLimit = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  maxRequests: 30,           // 30 total login attempts per IP regardless of username
-  keyGenerator: (req) => `auth-ip:${req.ip || 'unknown'}`,
-  message: 'Too many login attempts from this IP. Please try again later.',
 });
 
 // Rate limiter for 2FA verification — prevent brute-forcing TOTP codes
@@ -232,14 +217,6 @@ export const passwordRateLimit = rateLimit({
   message: 'Too many password change attempts. Please try again later.',
 });
 
-// Rate limiter for forgot-password requests — prevent enumeration and abuse
-export const forgotPasswordRateLimit = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  maxRequests: 3,            // 3 requests per window per IP
-  keyGenerator: (req) => `forgot:${req.ip || 'unknown'}`,
-  message: 'Too many password reset requests. Please try again later.',
-});
-
 // Rate limiter for webhook endpoints — prevent deploy DoS
 export const webhookRateLimit = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
@@ -254,14 +231,6 @@ export const publicEndpointRateLimit = rateLimit({
   maxRequests: 30,          // 30 requests per 5 min
   keyGenerator: (req) => `pub:${req.ip || 'unknown'}`,
   message: 'Too many requests. Please try again later.',
-});
-
-// Data export rate limiter — prevents bulk data exfiltration via CSV/export endpoints
-export const exportRateLimit = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  maxRequests: 10,           // 10 exports per 15 min per user
-  keyGenerator: (req) => `export:${req.user?.userId || req.ip || 'unknown'}`,
-  message: 'Too many export requests. Please wait before exporting again.',
 });
 
 // General API rate limiter

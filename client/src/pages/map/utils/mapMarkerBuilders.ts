@@ -5,125 +5,67 @@
 // ============================================================
 
 import type { UnitStatus } from '../../../types';
-import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, getIncidentCategory, getCategoryIconSvg, getUnitBadgeSvg } from './mapConstants';
+import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, getIncidentCategory } from './mapConstants';
 
 // ── AdvancedMarkerElement Content Builders ────────────────────
 
-/** Whether a unit status should animate (dispatched/enroute get pulse) */
-function isActiveStatus(status: UnitStatus): boolean {
-  return status === 'dispatched' || status === 'enroute';
-}
-
-// NOTE: Uses innerHTML with developer-controlled template strings only (no user input).
 export function buildUnitMarkerContent(callSign: string, status: UnitStatus, _gpsSource?: string): HTMLElement {
   const color = UNIT_STATUS_COLORS[status];
   const label = UNIT_STATUS_LABELS[status];
-  const shouldPulse = isActiveStatus(status);
 
   const wrapper = document.createElement('div');
-  wrapper.style.cssText =
-    'display:flex;flex-direction:column;align-items:center;cursor:pointer;' +
-    (shouldPulse ? 'animation:pulse-dispatch 2s ease-in-out infinite;' : '');
+  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7)) drop-shadow(0 0 1px rgba(0,0,0,0.5));';
 
-  // Main tag container with status ring glow
   const tag = document.createElement('div');
   tag.style.cssText =
-    `background:linear-gradient(135deg, #0d1520 0%, #141e2b 100%);` +
-    `color:#fff;font-size:9px;font-weight:900;` +
-    `padding:3px 7px 3px 5px;` +
-    `border:1.5px solid ${color};` +
-    `white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;` +
-    `display:flex;align-items:center;gap:4px;border-radius:2px;` +
-    `box-shadow:0 0 6px ${color}80, 0 0 12px ${color}30, inset 0 1px 0 rgba(255,255,255,0.05);` +
-    `filter:drop-shadow(0 2px 4px rgba(0,0,0,0.7));`;
+    `background:${color};color:#fff;font-size:9px;font-weight:900;` +
+    "padding:2px 6px;border:1.5px solid rgba(255,255,255,0.9);white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;" +
+    'display:flex;align-items:center;gap:3px;border-radius:1px;';
 
-  // Badge SVG icon — developer-controlled SVG, no user input
-  const badgeSpan = document.createElement('span');
-  badgeSpan.style.cssText = 'display:flex;align-items:center;';
-  badgeSpan.innerHTML = getUnitBadgeSvg(color);
-  tag.appendChild(badgeSpan);
-
-  // Call sign label
   const csSpan = document.createElement('span');
-  csSpan.style.cssText = `color:${color};font-size:10px;font-weight:900;letter-spacing:0.05em;`;
   csSpan.textContent = callSign;
+  const stSpan = document.createElement('span');
+  stSpan.style.cssText = 'font-size:6px;opacity:0.85;letter-spacing:0.5px;';
+  stSpan.textContent = label;
   tag.appendChild(csSpan);
+  tag.appendChild(stSpan);
 
-  // Status chip
-  const stChip = document.createElement('span');
-  stChip.style.cssText =
-    `font-size:6px;font-weight:800;letter-spacing:0.8px;text-transform:uppercase;` +
-    `padding:1px 4px;border-radius:1px;margin-left:2px;` +
-    `background:${color}25;color:${color};border:1px solid ${color}40;`;
-  stChip.textContent = label;
-  tag.appendChild(stChip);
-
-  // Downward caret
   const caret = document.createElement('div');
   caret.style.cssText =
-    `width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;` +
-    `border-top:7px solid ${color};filter:drop-shadow(0 1px 2px rgba(0,0,0,0.5));`;
+    `width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid ${color};`;
 
   wrapper.appendChild(tag);
   wrapper.appendChild(caret);
   return wrapper;
 }
 
-// NOTE: Uses innerHTML with developer-controlled template strings only (no user input).
 export function buildIncidentMarkerContent(priority: string, incidentType: string, callNumber?: string): HTMLElement {
   const color = PRIORITY_COLORS[priority] || '#6b7280';
   const { category } = getIncidentCategory(incidentType);
-  const isP1 = priority === 'P1';
-
-  // Lighter shade for gradient end
-  const colorLight = color + 'cc';
 
   const wrapper = document.createElement('div');
-  wrapper.style.cssText =
-    'display:flex;flex-direction:column;align-items:center;cursor:pointer;' +
-    'animation:marker-appear 0.3s ease-out;' +
-    (isP1 ? 'animation:marker-appear 0.3s ease-out, pulse-p1 1.5s ease-in-out infinite;' : '');
+  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 4px rgba(0,0,0,0.8)) drop-shadow(0 0 2px rgba(0,0,0,0.5));';
 
-  // Main tag with priority gradient
   const tag = document.createElement('div');
   tag.style.cssText =
-    `background:linear-gradient(135deg, ${color} 0%, ${colorLight} 100%);` +
-    `color:#fff;font-size:9px;font-weight:900;` +
-    `padding:3px 6px;` +
-    `border:1.5px solid rgba(255,255,255,0.85);` +
-    `white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;` +
-    `display:flex;align-items:center;gap:4px;border-radius:2px;` +
-    `box-shadow:0 0 8px ${color}60, 0 2px 6px rgba(0,0,0,0.5);` +
-    (isP1 ? `border-color:${color};box-shadow:0 0 10px ${color}80, 0 0 20px ${color}40;` : '');
+    `background:${color};color:#fff;font-size:9px;font-weight:900;` +
+    "padding:2px 6px;border:1.5px solid rgba(255,255,255,0.95);white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;" +
+    'display:flex;align-items:center;gap:3px;border-radius:1px;';
 
-  // Category SVG icon — developer-controlled SVG, no user input
-  const iconSpan = document.createElement('span');
-  iconSpan.style.cssText = 'display:flex;align-items:center;';
-  iconSpan.innerHTML = getCategoryIconSvg(category, '#fff');
-  tag.appendChild(iconSpan);
-
-  // Call number label
   if (callNumber) {
     const numSpan = document.createElement('span');
-    numSpan.style.cssText = 'font-size:9px;font-weight:900;letter-spacing:0.05em;';
     numSpan.textContent = callNumber;
     tag.appendChild(numSpan);
   }
 
-  // Category abbreviation chip
-  const catChip = document.createElement('span');
-  catChip.style.cssText =
-    `font-size:6px;font-weight:800;letter-spacing:0.6px;text-transform:uppercase;` +
-    `padding:1px 3px;border-radius:1px;` +
-    `background:rgba(0,0,0,0.25);color:rgba(255,255,255,0.9);`;
-  catChip.textContent = category;
-  tag.appendChild(catChip);
+  const catSpan = document.createElement('span');
+  catSpan.style.cssText = 'font-size:7px;opacity:0.85;letter-spacing:0.3px;';
+  catSpan.textContent = category;
+  tag.appendChild(catSpan);
 
-  // Downward caret
   const caret = document.createElement('div');
   caret.style.cssText =
-    `width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;` +
-    `border-top:7px solid ${color};filter:drop-shadow(0 1px 2px rgba(0,0,0,0.5));`;
+    `width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid ${color};`;
 
   wrapper.appendChild(tag);
   wrapper.appendChild(caret);
@@ -324,18 +266,6 @@ export function injectKeyframes() {
     @keyframes pulse-led { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
     @keyframes pulse-incident { 0%,100% { box-shadow:0 0 4px rgba(220,38,38,0.3); transform:scale(1); } 50% { box-shadow:0 0 14px rgba(220,38,38,0.7); transform:scale(1.05); } }
     @keyframes pulse-gps { 0%,100% { transform:scale(1); opacity:0.7; } 50% { transform:scale(2.5); opacity:0; } }
-    @keyframes pulse-dispatch {
-      0%, 100% { transform:scale(1); opacity:1; }
-      50% { transform:scale(1.05); opacity:0.92; }
-    }
-    @keyframes pulse-p1 {
-      0%, 100% { transform:scale(1); filter:drop-shadow(0 0 4px rgba(220,38,38,0.4)); }
-      50% { transform:scale(1.04); filter:drop-shadow(0 0 14px rgba(220,38,38,0.8)); }
-    }
-    @keyframes marker-appear {
-      0% { transform:scale(0.5); opacity:0; }
-      100% { transform:scale(1); opacity:1; }
-    }
     .gm-style-iw { background:#0d1520 !important; border:1px solid #1e3048 !important; border-radius:4px !important; color:#e5e7eb !important; }
     .gm-style-iw-d { overflow:auto !important; }
     .gm-style-iw button[aria-label="Close"] { filter: invert(1) !important; }

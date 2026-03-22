@@ -184,8 +184,6 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
   const [showVehicleDropdown, setShowVehicleDropdown] = useState(false);
   const personSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const vehicleSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const personSearchGenRef = useRef(0);
-  const vehicleSearchGenRef = useRef(0);
   const personDropdownRef = useRef<HTMLDivElement>(null);
   const vehicleDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -203,13 +201,11 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
     if (personSearchTimerRef.current) clearTimeout(personSearchTimerRef.current);
     if (query.length < 2) { setPersonSearchResults([]); setShowPersonDropdown(false); return; }
     personSearchTimerRef.current = setTimeout(async () => {
-      const gen = ++personSearchGenRef.current;
       try {
         const results = await apiFetch<any[]>(`/records/persons/search?q=${encodeURIComponent(query)}`);
-        if (gen !== personSearchGenRef.current) return;
         setPersonSearchResults(Array.isArray(results) ? results.slice(0, 10) : []);
         setShowPersonDropdown(true);
-      } catch { if (gen === personSearchGenRef.current) setPersonSearchResults([]); }
+      } catch { setPersonSearchResults([]); }
     }, 300);
   }, []);
 
@@ -217,13 +213,11 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
     if (vehicleSearchTimerRef.current) clearTimeout(vehicleSearchTimerRef.current);
     if (query.length < 2) { setVehicleSearchResults([]); setShowVehicleDropdown(false); return; }
     vehicleSearchTimerRef.current = setTimeout(async () => {
-      const gen = ++vehicleSearchGenRef.current;
       try {
         const results = await apiFetch<any[]>(`/records/vehicles/search?q=${encodeURIComponent(query)}`);
-        if (gen !== vehicleSearchGenRef.current) return;
         setVehicleSearchResults(Array.isArray(results) ? results.slice(0, 10) : []);
         setShowVehicleDropdown(true);
-      } catch { if (gen === vehicleSearchGenRef.current) setVehicleSearchResults([]); }
+      } catch { setVehicleSearchResults([]); }
     }, 300);
   }, []);
 

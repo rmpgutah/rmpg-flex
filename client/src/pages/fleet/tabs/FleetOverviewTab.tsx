@@ -114,7 +114,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
             { label: 'Plate', value: detail.plate_number ? `${detail.plate_state || ''} ${detail.plate_number}` : null, mono: true },
             { label: 'Mileage', value: detail.current_mileage?.toLocaleString(), mono: true },
           ].map((field, i) => (
-            <div key={field.label} className={field.span === 2 ? 'col-span-2' : ''}>
+            <div key={i} className={field.span === 2 ? 'col-span-2' : ''}>
               <div className="text-[9px] text-rmpg-500 uppercase font-semibold tracking-wider">{field.label}</div>
               <div className={`text-[11px] text-rmpg-200 ${field.mono ? 'font-mono' : ''}`}>
                 {field.value || <span className="text-rmpg-600">-</span>}
@@ -230,7 +230,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
           </h3>
           <div className="flex flex-wrap gap-1.5">
             {parseEquipment(detail.equipment).map((item, i) => (
-              <span key={item} className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium bg-brand-900/20 text-brand-300 border border-brand-700/30">
+              <span key={i} className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium bg-brand-900/20 text-brand-300 border border-brand-700/30">
                 <Tag className="w-2.5 h-2.5" />{item}
               </span>
             ))}

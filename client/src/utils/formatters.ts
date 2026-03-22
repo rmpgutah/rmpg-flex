@@ -150,23 +150,13 @@ export function formatAddress(
  */
 export function formatDOBWithAge(dob: string | null | undefined): string {
   if (!dob) return '';
-  // Normalize date input: handle both YYYY-MM-DD and MM/DD/YYYY formats
-  let d: Date;
-  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(dob);
-  if (isoMatch) {
-    // ISO format: parse as local date components to avoid UTC midnight shift
-    d = new Date(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]));
-  } else {
-    d = new Date(dob + 'T00:00:00');
-  }
+  const d = new Date(dob + 'T00:00:00');
   if (isNaN(d.getTime())) return dob;
   const formatted = d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
-  // Use local date for age comparison to avoid timezone offset issues
   const today = new Date();
   let age = today.getFullYear() - d.getFullYear();
   const mDiff = today.getMonth() - d.getMonth();
   if (mDiff < 0 || (mDiff === 0 && today.getDate() < d.getDate())) age--;
-  if (age < 0) return formatted; // Future DOB — don't show negative age
   return `${formatted} (${age})`;
 }
 

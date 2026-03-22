@@ -37,14 +37,14 @@ export default function AnalyticsTab({ analytics, loading }: Props) {
 
   const { headcount_summary: hc, credential_compliance: cc } = analytics;
 
-  const headcountCards: { label: string; value: string | number; icon: React.ElementType; color: string; topBorder: string; glow: string }[] = [
-    { label: 'Total Personnel', value: hc.total_personnel, icon: Users, color: 'text-rmpg-100', topBorder: 'border-t-rmpg-500', glow: 'rgba(255,255,255,0.06)' },
-    { label: 'Active', value: hc.active, icon: UserCheck, color: 'text-green-400', topBorder: 'border-t-green-500', glow: 'rgba(34,197,94,0.12)' },
-    { label: 'On Duty', value: hc.on_duty, icon: Radio, color: 'text-green-400', topBorder: 'border-t-green-500', glow: 'rgba(34,197,94,0.12)' },
-    { label: 'Clocked In', value: hc.clocked_in, icon: Clock, color: 'text-blue-400', topBorder: 'border-t-blue-500', glow: 'rgba(59,130,246,0.12)' },
-    { label: 'Avg Tenure', value: `${(Number.isFinite(Number(hc.avg_tenure_years)) ? Number(hc.avg_tenure_years) : 0).toFixed(1)}y`, icon: Calendar, color: 'text-rmpg-200', topBorder: 'border-t-rmpg-500', glow: 'rgba(255,255,255,0.06)' },
-    { label: 'New Hires (30d)', value: hc.new_hires_30d, icon: UserPlus, color: 'text-cyan-400', topBorder: 'border-t-cyan-500', glow: 'rgba(6,182,212,0.12)' },
-    { label: 'Terminations (30d)', value: hc.terminations_30d, icon: UserMinus, color: 'text-red-400', topBorder: 'border-t-red-500', glow: 'rgba(239,68,68,0.12)' },
+  const headcountCards: { label: string; value: string | number; icon: React.ElementType; color: string; topBorder: string }[] = [
+    { label: 'Total Personnel', value: hc.total_personnel, icon: Users, color: 'text-rmpg-100', topBorder: 'border-t-rmpg-500' },
+    { label: 'Active', value: hc.active, icon: UserCheck, color: 'text-green-400', topBorder: 'border-t-green-500' },
+    { label: 'On Duty', value: hc.on_duty, icon: Radio, color: 'text-green-400', topBorder: 'border-t-green-500' },
+    { label: 'Clocked In', value: hc.clocked_in, icon: Clock, color: 'text-blue-400', topBorder: 'border-t-blue-500' },
+    { label: 'Avg Tenure', value: `${(Number.isFinite(Number(hc.avg_tenure_years)) ? Number(hc.avg_tenure_years) : 0).toFixed(1)}y`, icon: Calendar, color: 'text-rmpg-200', topBorder: 'border-t-rmpg-500' },
+    { label: 'New Hires (30d)', value: hc.new_hires_30d, icon: UserPlus, color: 'text-cyan-400', topBorder: 'border-t-cyan-500' },
+    { label: 'Terminations (30d)', value: hc.terminations_30d, icon: UserMinus, color: 'text-red-400', topBorder: 'border-t-red-500' },
   ];
 
   const complianceRate = cc.compliance_rate;
@@ -54,43 +54,30 @@ export default function AnalyticsTab({ analytics, loading }: Props) {
   const expiredPct = complianceTotal > 0 ? (cc.expired / complianceTotal) * 100 : 0;
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-      {/* Fixed Header */}
-      <div className="flex-shrink-0 px-4 py-2.5 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}>
-        <div className="flex items-center gap-2">
-          <BarChart3 className="w-4 h-4 text-brand-400" />
-          <span className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">Analytics</span>
-        </div>
-      </div>
-      {/* Scrollable Content */}
-      <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-3">
+    <div className="flex-1 overflow-y-auto p-4 space-y-3">
       {/* Headcount Summary Row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
         {headcountCards.map((card) => {
           const Icon = card.icon;
           return (
-            <div
-              key={card.label}
-              className={`stat-pod summary-card-shimmer cascade-item panel-beveled p-2.5 text-center bg-surface-base border-t-2 ${card.topBorder}`}
-              style={{ '--pod-glow': card.glow } as React.CSSProperties}
-            >
-              <Icon className={`stat-icon w-3.5 h-3.5 mx-auto mb-1 ${card.color}`} />
-              <p className={`stat-value text-sm font-bold font-mono ${card.color}`}>{card.value}</p>
-              <p className="stat-label text-[7px] uppercase text-rmpg-400 font-bold tracking-wider">{card.label}</p>
+            <div key={card.label} className={`panel-beveled p-2.5 text-center bg-surface-base border-t-2 ${card.topBorder}`}>
+              <Icon className={`w-3.5 h-3.5 mx-auto mb-1 ${card.color}`} />
+              <p className={`text-sm font-bold font-mono ${card.color}`}>{card.value}</p>
+              <p className="text-[7px] uppercase text-rmpg-400 font-bold tracking-wider">{card.label}</p>
             </div>
           );
         })}
       </div>
 
       {/* Divider between headcount cards and charts */}
-      <div className="h-px w-full" style={{ background: 'linear-gradient(90deg, transparent, var(--border-default), transparent)' }} />
+      <div className="panel-inset h-px" />
 
       {/* Charts Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Hours Trend */}
-        <div className="profile-section panel-beveled p-4 bg-surface-base cascade-item">
-          <div className="section-header flex items-center gap-1.5 mb-3">
-            <TrendingUp className="w-3 h-3 text-brand-400 section-icon" />
+        <div className="panel-beveled p-4 bg-surface-base">
+          <div className="flex items-center gap-1.5 mb-3">
+            <TrendingUp className="w-3 h-3 text-brand-400" />
             <h3 className="text-[10px] uppercase text-rmpg-300 font-bold tracking-wider">Hours Trend</h3>
           </div>
           <ResponsiveContainer width="100%" height={200}>
@@ -120,9 +107,9 @@ export default function AnalyticsTab({ analytics, loading }: Props) {
         </div>
 
         {/* Attendance Patterns */}
-        <div className="profile-section panel-beveled p-4 bg-surface-base cascade-item">
-          <div className="section-header flex items-center gap-1.5 mb-3">
-            <BarChart3 className="w-3 h-3 text-brand-400 section-icon" />
+        <div className="panel-beveled p-4 bg-surface-base">
+          <div className="flex items-center gap-1.5 mb-3">
+            <BarChart3 className="w-3 h-3 text-brand-400" />
             <h3 className="text-[10px] uppercase text-rmpg-300 font-bold tracking-wider">Attendance Patterns</h3>
           </div>
           <ResponsiveContainer width="100%" height={200}>
@@ -137,9 +124,9 @@ export default function AnalyticsTab({ analytics, loading }: Props) {
         </div>
 
         {/* Role Distribution */}
-        <div className="profile-section panel-beveled p-4 bg-surface-base cascade-item">
-          <div className="section-header flex items-center gap-1.5 mb-3">
-            <PieChartIcon className="w-3 h-3 text-brand-400 section-icon" />
+        <div className="panel-beveled p-4 bg-surface-base">
+          <div className="flex items-center gap-1.5 mb-3">
+            <PieChartIcon className="w-3 h-3 text-brand-400" />
             <h3 className="text-[10px] uppercase text-rmpg-300 font-bold tracking-wider">Role Distribution</h3>
           </div>
           <ResponsiveContainer width="100%" height={200}>
@@ -174,9 +161,9 @@ export default function AnalyticsTab({ analytics, loading }: Props) {
         </div>
 
         {/* Credential Compliance */}
-        <div className="profile-section panel-beveled p-4 bg-surface-base cascade-item">
-          <div className="section-header flex items-center gap-1.5 mb-3">
-            <ShieldCheck className="w-3 h-3 text-brand-400 section-icon" />
+        <div className="panel-beveled p-4 bg-surface-base">
+          <div className="flex items-center gap-1.5 mb-3">
+            <ShieldCheck className="w-3 h-3 text-brand-400" />
             <h3 className="text-[10px] uppercase text-rmpg-300 font-bold tracking-wider">Credential Compliance</h3>
           </div>
 
@@ -188,7 +175,6 @@ export default function AnalyticsTab({ analytics, loading }: Props) {
                 <circle cx="60" cy="60" r="50" fill="none" stroke="#162236" strokeWidth="10" />
                 {/* Progress arc */}
                 <circle
-                  className="gauge-arc"
                   cx="60"
                   cy="60"
                   r="50"
@@ -209,31 +195,30 @@ export default function AnalyticsTab({ analytics, loading }: Props) {
 
           {/* Progress bar segments */}
           <div className="space-y-2 mt-2">
-            <div className="progress-bar-animated w-full h-2 rounded-full overflow-hidden flex" style={{ background: '#162236' }}>
-              <div className="h-full rounded-l-full bg-green-500" style={{ width: `${validPct}%` }} />
+            <div className="w-full h-2 rounded-full overflow-hidden flex" style={{ background: '#162236' }}>
+              <div className="h-full bg-green-500" style={{ width: `${validPct}%` }} />
               <div className="h-full bg-amber-500" style={{ width: `${expiringPct}%` }} />
-              <div className="h-full rounded-r-full bg-red-500" style={{ width: `${expiredPct}%` }} />
+              <div className="h-full bg-red-500" style={{ width: `${expiredPct}%` }} />
             </div>
             <div className="flex justify-between text-[9px]">
               <span className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_4px_rgba(34,197,94,0.6)]" />
+                <span className="w-2 h-2 rounded-full bg-green-500" />
                 <span className="text-rmpg-400">Valid</span>
                 <span className="text-rmpg-200 font-mono">{cc.valid}</span>
               </span>
               <span className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shadow-[0_0_4px_rgba(245,158,11,0.6)]" />
+                <span className="w-2 h-2 rounded-full bg-amber-500" />
                 <span className="text-rmpg-400">Expiring</span>
                 <span className="text-rmpg-200 font-mono">{cc.expiring_soon}</span>
               </span>
               <span className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_4px_rgba(239,68,68,0.6)]" />
+                <span className="w-2 h-2 rounded-full bg-red-500" />
                 <span className="text-rmpg-400">Expired</span>
                 <span className="text-rmpg-200 font-mono">{cc.expired}</span>
               </span>
             </div>
           </div>
         </div>
-      </div>
       </div>
     </div>
   );

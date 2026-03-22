@@ -10,8 +10,10 @@ import { Router, Request, Response } from 'express';
 import { authenticateToken as authenticate, requireRole } from '../middleware/auth';
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
-import { validateParamId, escapeLike } from '../middleware/sanitize';
+import { validateParamId } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
+import { broadcast } from '../utils/websocket';
+import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 router.use(authenticate);
@@ -22,8 +24,8 @@ function generateProposalNumber(db: ReturnType<typeof getDb>): string {
   const prefix = `PROP-${year}-`;
 
   const row = db.prepare(
-    "SELECT proposal_number FROM crm_proposals WHERE proposal_number LIKE ? ESCAPE '\\' ORDER BY proposal_number DESC LIMIT 1"
-  ).get(`${escapeLike(prefix)}%`) as { proposal_number: string } | undefined;
+    "SELECT proposal_number FROM crm_proposals WHERE proposal_number LIKE ? ORDER BY proposal_number DESC LIMIT 1"
+  ).get(`${prefix}%`) as { proposal_number: string } | undefined;
 
   let nextNum = 1;
   if (row) {
@@ -147,10 +149,10 @@ router.post('/proposals', requireRole('admin', 'manager', 'contract_manager'), (
       let finalScope = scope_of_work || null;
       let finalTerms = terms || null;
       let finalMonthly: number | null = monthly_value != null ? Number(monthly_value) : null;
-      if (finalMonthly != null && (isNaN(finalMonthly) || !isFinite(finalMonthly) || finalMonthly < 0)) finalMonthly = null;
+      if (finalMonthly != null && (isNaN(finalMonthly) || !isFinite(finalMonthly))) finalMonthly = null;
       let finalBilling = billing_frequency || 'monthly';
       let finalContractMonths: number | null = contract_length_months != null ? Number(contract_length_months) : null;
-      if (finalContractMonths != null && (isNaN(finalContractMonths) || !isFinite(finalContractMonths) || finalContractMonths < 1)) finalContractMonths = null;
+      if (finalContractMonths != null && (isNaN(finalContractMonths) || !isFinite(finalContractMonths))) finalContractMonths = null;
 
       if (template_type && !scope_of_work && !terms) {
         const template = db.prepare(
@@ -210,7 +212,7 @@ router.post('/proposals', requireRole('admin', 'manager', 'contract_manager'), (
         db.prepare('UPDATE crm_leads SET proposal_id = ?, updated_at = ? WHERE id = ?').run(proposalId, now, lead_id);
       }
 
-      auditLog(req, 'CREATE', 'crm_proposals', proposalId, `Created proposal ${proposalNumber}: ${title.trim()}`);
+      auditLog(req, 'CREATE', 'crm_proposals' as any, proposalId, `Created proposal ${proposalNumber}: ${title.trim()}`);
 
       const proposal = db.prepare(`
         SELECT p.*, l.business_name as lead_name, c.name as client_name
@@ -224,6 +226,7 @@ router.post('/proposals', requireRole('admin', 'manager', 'contract_manager'), (
     });
 
     const proposal = createProposal();
+    broadcast('admin', 'proposal:created', proposal);
     res.json(proposal);
   } catch (err: any) {
     console.error('CRM proposals error:', err?.message || err);
@@ -272,7 +275,7 @@ router.put('/proposals/:id', validateParamId, requireRole('admin', 'manager', 'c
     params.push(id);
 
     db.prepare(`UPDATE crm_proposals SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    auditLog(req, 'UPDATE', 'crm_proposals', String(id), `Updated proposal ${existing.proposal_number}`);
+    auditLog(req, 'UPDATE', 'crm_proposals' as any, String(id), `Updated proposal ${existing.proposal_number}`);
 
     const proposal = db.prepare(`
       SELECT p.*, l.business_name as lead_name, c.name as client_name
@@ -282,6 +285,7 @@ router.put('/proposals/:id', validateParamId, requireRole('admin', 'manager', 'c
       WHERE p.id = ?
     `).get(id);
 
+    broadcast('admin', 'proposal:updated', proposal);
     res.json(proposal);
   } catch (err: any) {
     console.error('CRM proposals error:', err?.message || err);
@@ -305,7 +309,8 @@ router.delete('/proposals/:id', validateParamId, requireRole('admin', 'manager')
     db.prepare('UPDATE crm_leads SET proposal_id = NULL WHERE proposal_id = ?').run(id);
 
     db.prepare('DELETE FROM crm_proposals WHERE id = ?').run(id);
-    auditLog(req, 'DELETE', 'crm_proposals', String(id), `Deleted proposal ${existing.proposal_number}`);
+    auditLog(req, 'DELETE', 'crm_proposals' as any, String(id), `Deleted proposal ${existing.proposal_number}`);
+    broadcast('admin', 'proposal:deleted', { id: Number(id) });
     res.json({ success: true });
   } catch (err: any) {
     console.error('CRM proposals error:', err?.message || err);
@@ -367,7 +372,7 @@ router.put('/proposals/:id/stage', validateParamId, requireRole('admin', 'manage
     params.push(id);
     db.prepare(`UPDATE crm_proposals SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
-    auditLog(req, 'UPDATE', 'crm_proposals', String(id),
+    auditLog(req, 'UPDATE', 'crm_proposals' as any, String(id),
       `Proposal ${existing.proposal_number} stage: ${existing.stage} → ${stage}`);
 
     // If accepted and linked to a lead, update lead stage
@@ -383,6 +388,7 @@ router.put('/proposals/:id/stage', validateParamId, requireRole('admin', 'manage
       WHERE p.id = ?
     `).get(id);
 
+    broadcast('admin', 'proposal:updated', proposal);
     res.json(proposal);
   } catch (err: any) {
     console.error('CRM proposals error:', err?.message || err);
@@ -431,7 +437,7 @@ router.post('/proposal-templates', requireRole('admin'), (req: Request, res: Res
     );
 
     const templateId = Number(result.lastInsertRowid);
-    auditLog(req, 'CREATE', 'crm_proposals', templateId, `Created proposal template: ${name.trim()}`);
+    auditLog(req, 'CREATE', 'crm_proposals' as any, templateId, `Created proposal template: ${name.trim()}`);
 
     const template = db.prepare('SELECT * FROM crm_proposal_templates WHERE id = ?').get(templateId);
     res.json(template);
@@ -478,7 +484,7 @@ router.put('/proposal-templates/:id', validateParamId, requireRole('admin'), (re
     params.push(id);
 
     db.prepare(`UPDATE crm_proposal_templates SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    auditLog(req, 'UPDATE', 'crm_proposals', String(id), `Updated proposal template: ${existing.name}`);
+    auditLog(req, 'UPDATE', 'crm_proposals' as any, String(id), `Updated proposal template: ${existing.name}`);
 
     const template = db.prepare('SELECT * FROM crm_proposal_templates WHERE id = ?').get(id);
     res.json(template);
@@ -502,11 +508,62 @@ router.delete('/proposal-templates/:id', validateParamId, requireRole('admin'), 
     // Soft delete
     const now = localNow();
     db.prepare('UPDATE crm_proposal_templates SET is_active = 0, updated_at = ? WHERE id = ?').run(now, id);
-    auditLog(req, 'DELETE', 'crm_proposals', String(id), `Soft-deleted proposal template: ${existing.name}`);
+    auditLog(req, 'DELETE', 'crm_proposals' as any, String(id), `Soft-deleted proposal template: ${existing.name}`);
     res.json({ success: true });
   } catch (err: any) {
     console.error('CRM proposals error:', err?.message || err);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── CSV EXPORT ──────────────────────────────────────────
+
+// GET /api/crm/proposals/export/csv — Export proposals
+router.get('/proposals/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT p.id, p.proposal_number, p.title, p.stage, p.template_type,
+        p.monthly_value, p.total_value, p.billing_frequency,
+        p.contract_length_months, p.valid_until,
+        p.proposed_start, p.proposed_end,
+        p.sent_at, p.viewed_at, p.accepted_at, p.rejected_at,
+        p.created_at, p.updated_at,
+        l.business_name as lead_name,
+        c.name as client_name,
+        u1.full_name as created_by_name,
+        u2.full_name as assigned_to_name
+      FROM crm_proposals p
+      LEFT JOIN crm_leads l ON l.id = p.lead_id
+      LEFT JOIN clients c ON c.id = p.client_id
+      LEFT JOIN users u1 ON u1.id = p.created_by
+      LEFT JOIN users u2 ON u2.id = p.assigned_to
+      ORDER BY p.created_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'crm_proposals_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'proposal_number', header: 'Proposal Number' },
+      { key: 'title', header: 'Title' },
+      { key: 'stage', header: 'Stage' },
+      { key: 'template_type', header: 'Template Type' },
+      { key: 'lead_name', header: 'Lead' },
+      { key: 'client_name', header: 'Client' },
+      { key: 'monthly_value', header: 'Monthly Value' },
+      { key: 'total_value', header: 'Total Value' },
+      { key: 'billing_frequency', header: 'Billing Frequency' },
+      { key: 'contract_length_months', header: 'Contract Months' },
+      { key: 'valid_until', header: 'Valid Until' },
+      { key: 'proposed_start', header: 'Proposed Start' },
+      { key: 'proposed_end', header: 'Proposed End' },
+      { key: 'assigned_to_name', header: 'Assigned To' },
+      { key: 'created_by_name', header: 'Created By' },
+      { key: 'sent_at', header: 'Sent At' },
+      { key: 'accepted_at', header: 'Accepted At' },
+      { key: 'rejected_at', header: 'Rejected At' },
+      { key: 'created_at', header: 'Created At' },
+    ], rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Export failed' });
   }
 });
 

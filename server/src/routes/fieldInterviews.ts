@@ -8,6 +8,7 @@ import { resolveDistrict } from '../utils/districtResolver';
 import { escapeLike, validateParamId } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 import { universalWarrantCheck } from '../utils/universalWarrantScanner';
+import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 router.use(authenticateToken);
@@ -30,8 +31,8 @@ function generateFiNumber(db: ReturnType<typeof getDb>): string {
   const prefix = `FI-${year}-`;
   return db.transaction(() => {
     const row = db.prepare(
-      `SELECT fi_number FROM field_interviews WHERE fi_number LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 1`
-    ).get(`${escapeLike(prefix)}%`) as { fi_number: string } | undefined;
+      `SELECT fi_number FROM field_interviews WHERE fi_number LIKE ? ORDER BY id DESC LIMIT 1`
+    ).get(`${prefix}%`) as { fi_number: string } | undefined;
 
     let seq = 1;
     if (row) {
@@ -56,7 +57,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     if (officer_id) { where += ' AND fi.officer_id = ?'; params.push(officer_id); }
     if (search) {
       where += ` AND ((fi.subject_first_name || ' ' || fi.subject_last_name) LIKE ? ESCAPE '\\' OR fi.fi_number LIKE ? ESCAPE '\\' OR fi.location LIKE ? ESCAPE '\\' OR fi.narrative LIKE ? ESCAPE '\\')`;
-      const s = `%${escapeLike(String(search).trim())}%`;
+      const s = `%${escapeLike(String(search))}%`;
       params.push(s, s, s, s);
     }
     if (archived === 'true') {
@@ -65,7 +66,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       where += ' AND fi.archived_at IS NULL';
     }
 
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 25));
     const offset = (pageNum - 1) * perPage;
 
@@ -88,7 +89,6 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       pagination: { page: pageNum, per_page: perPage, total, totalPages: Math.ceil(total / perPage) },
     });
   } catch (err: any) {
-    console.error('Field interview error:', err?.message || err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -109,7 +109,6 @@ router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     if (!row) return res.status(404).json({ error: 'Field interview not found' });
     res.json(row);
   } catch (err: any) {
-    console.error('Field interview error:', err?.message || err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -118,7 +117,7 @@ router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
 router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = req.user!;
+    const user = (req as any).user;
     const fi_number = generateFiNumber(db);
     const now = localNow();
 
@@ -172,43 +171,8 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       now
     );
 
-    const created = db.prepare('SELECT * FROM field_interviews WHERE id = ?').get(Number(result.lastInsertRowid)) as any;
+    const created = db.prepare('SELECT * FROM field_interviews WHERE id = ?').get(result.lastInsertRowid) as any;
     if (!created) { res.status(500).json({ error: 'Failed to retrieve created field interview' }); return; }
-
-    // FI → Person record auto-sync
-    let linkedPersonId = person_id || null;
-    if (linkedPersonId) {
-      // Person ID provided — update their updated_at as a "last contact" marker
-      db.prepare(`UPDATE persons SET updated_at = ? WHERE id = ?`).run(now, linkedPersonId);
-    } else if (subject_first_name && subject_last_name && subject_dob) {
-      // No person_id — try to find or create a matching person record
-      const existingPerson = db.prepare(
-        `SELECT id FROM persons WHERE first_name = ? AND last_name = ? AND dob = ? LIMIT 1`
-      ).get(subject_first_name, subject_last_name, subject_dob) as any;
-
-      if (existingPerson) {
-        linkedPersonId = existingPerson.id;
-        db.prepare(`UPDATE persons SET updated_at = ? WHERE id = ?`).run(now, linkedPersonId);
-      } else {
-        // Auto-create a basic person record from FI data
-        const personResult = db.prepare(`
-          INSERT INTO persons (first_name, last_name, dob, address, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).run(
-          subject_first_name, subject_last_name, subject_dob,
-          location || null,
-          now, now
-        );
-        linkedPersonId = personResult.lastInsertRowid;
-      }
-
-      // Link the person back to this FI
-      if (linkedPersonId) {
-        db.prepare(`UPDATE field_interviews SET person_id = ? WHERE id = ?`).run(linkedPersonId, created.id);
-        created.person_id = linkedPersonId;
-      }
-    }
-
     // Broadcast minimal payload — no subject PII over WebSocket
     if (created.fi_number) {
       broadcast('alerts', 'fi_created', {
@@ -239,7 +203,6 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
 
     res.status(201).json(created);
   } catch (err: any) {
-    console.error('Field interview error:', err?.message || err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -299,7 +262,6 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
 
     res.json(updated);
   } catch (err: any) {
-    console.error('Field interview error:', err?.message || err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -315,7 +277,6 @@ router.post('/:id/archive', validateParamId, requireRole('admin', 'manager', 'su
 
     res.json({ success: true });
   } catch (err: any) {
-    console.error('Field interview error:', err?.message || err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -331,7 +292,6 @@ router.post('/:id/unarchive', validateParamId, requireRole('admin', 'manager', '
 
     res.json({ success: true });
   } catch (err: any) {
-    console.error('Field interview error:', err?.message || err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -347,8 +307,51 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
 
     res.json({ success: true });
   } catch (err: any) {
-    console.error('Field interview error:', err?.message || err);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── CSV EXPORT ──────────────────────────────────────────
+
+// GET /api/field-interviews/export/csv — Export field interview records
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT fi.id, fi.fi_number, fi.status, fi.officer_name,
+        fi.subject_first_name, fi.subject_last_name, fi.subject_dob,
+        fi.subject_gender, fi.subject_race,
+        fi.location, fi.latitude, fi.longitude,
+        fi.contact_reason, fi.contact_type, fi.action_taken,
+        fi.narrative, fi.vehicle_plate, fi.vehicle_description,
+        fi.zone_beat, fi.created_at, fi.archived_at
+      FROM field_interviews fi
+      ORDER BY fi.created_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'field_interviews_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'fi_number', header: 'FI Number' },
+      { key: 'status', header: 'Status' },
+      { key: 'officer_name', header: 'Officer' },
+      { key: 'subject_first_name', header: 'Subject First Name' },
+      { key: 'subject_last_name', header: 'Subject Last Name' },
+      { key: 'subject_dob', header: 'Subject DOB' },
+      { key: 'subject_gender', header: 'Subject Gender' },
+      { key: 'subject_race', header: 'Subject Race' },
+      { key: 'location', header: 'Location' },
+      { key: 'latitude', header: 'Latitude' },
+      { key: 'longitude', header: 'Longitude' },
+      { key: 'contact_reason', header: 'Contact Reason' },
+      { key: 'contact_type', header: 'Contact Type' },
+      { key: 'action_taken', header: 'Action Taken' },
+      { key: 'narrative', header: 'Narrative' },
+      { key: 'vehicle_plate', header: 'Vehicle Plate' },
+      { key: 'vehicle_description', header: 'Vehicle Description' },
+      { key: 'zone_beat', header: 'Zone/Beat' },
+      { key: 'created_at', header: 'Created At' },
+    ], rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Export failed' });
   }
 });
 

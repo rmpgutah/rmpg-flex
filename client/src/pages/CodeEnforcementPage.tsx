@@ -5,7 +5,7 @@
 // tabbed interface, status workflows, and fine tracking.
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Construction, Search, Plus, Truck, MapPin, Clock, User,
   X, Save, Loader2, AlertTriangle, DollarSign, FileText,
@@ -118,7 +118,7 @@ export default function CodeEnforcementPage() {
       setViolations(res.data || []);
       setVTotalPages(res.pagination?.totalPages || 1);
       setVTotalCount(res.pagination?.total || 0);
-    } catch { addToast('Failed to load violations', 'error'); } finally { setVLoading(false); }
+    } catch { /* silent */ } finally { setVLoading(false); }
   }, [vPage, vSearch, vFilterStatus]);
 
   // Fetch tows
@@ -134,7 +134,7 @@ export default function CodeEnforcementPage() {
       setTows(res.data || []);
       setTTotalPages(res.pagination?.totalPages || 1);
       setTTotalCount(res.pagination?.total || 0);
-    } catch { addToast('Failed to load tow records', 'error'); } finally { setTLoading(false); }
+    } catch { /* silent */ } finally { setTLoading(false); }
   }, [tPage, tSearch, tFilterStatus]);
 
   const fetchStats = useCallback(async () => {

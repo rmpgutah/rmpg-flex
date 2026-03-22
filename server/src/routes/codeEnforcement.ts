@@ -22,8 +22,8 @@ router.use(requireRole('admin', 'manager', 'supervisor', 'officer'));
 
 // Whitelist of valid table/column pairs to prevent SQL injection via interpolation
 const SEQUENCE_TARGETS: Record<string, string> = {
-  'code_violations:violation_number': "SELECT violation_number FROM code_violations WHERE violation_number LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 1",
-  'vehicle_tows:tow_number': "SELECT tow_number FROM vehicle_tows WHERE tow_number LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 1",
+  'code_violations:violation_number': 'SELECT violation_number FROM code_violations WHERE violation_number LIKE ? ORDER BY id DESC LIMIT 1',
+  'vehicle_tows:tow_number': 'SELECT tow_number FROM vehicle_tows WHERE tow_number LIKE ? ORDER BY id DESC LIMIT 1',
 };
 
 function nextNumber(table: string, prefix: string, col: string): string {
@@ -34,7 +34,7 @@ function nextNumber(table: string, prefix: string, col: string): string {
 
   const yr = parseInt(localToday().slice(0, 4), 10);
   const pfx = `${prefix}-${yr}-`;
-  const last = db.prepare(sql).get(`${escapeLike(pfx)}%`) as any;
+  const last = db.prepare(sql).get(`${pfx}%`) as any;
   const parsed = last ? parseInt(last[col].replace(pfx, ''), 10) : 0;
   const seq = (isNaN(parsed) ? 0 : parsed) + 1;
   return `${pfx}${String(seq).padStart(4, '0')}`;
@@ -72,7 +72,7 @@ router.get('/violations', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { status, violation_type, severity, search, page = '1', limit = '50' } = req.query;
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
@@ -83,7 +83,7 @@ router.get('/violations', (req: Request, res: Response) => {
     if (severity) { where += ' AND severity = ?'; params.push(severity); }
     if (search) {
       where += " AND (violation_number LIKE ? ESCAPE '\\' OR location LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\' OR violator_name LIKE ? ESCAPE '\\')";
-      const s = `%${escapeLike(String(search).trim())}%`; params.push(s, s, s, s);
+      const s = `%${escapeLike(String(search))}%`; params.push(s, s, s, s);
     }
 
     const total = (db.prepare(`SELECT COUNT(*) as count FROM code_violations ${where}`).get(...params) as any)?.count || 0;
@@ -101,7 +101,7 @@ router.get('/violations/:id', validateParamId, (req: Request, res: Response) => 
     const row = db.prepare('SELECT * FROM code_violations WHERE id = ?').get(req.params.id);
     if (!row) return res.status(404).json({ error: 'Violation not found' });
     res.json({ data: row });
-  } catch (error: any) { console.error('Code enforcement error:', error?.message || error); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.post('/violations', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
@@ -148,8 +148,8 @@ router.post('/violations', requireRole('admin', 'manager', 'supervisor', 'office
     const { result, violation_number } = createViolation();
 
     auditLog(req, 'CREATE', 'code_violation', Number(result.lastInsertRowid), 'Created code enforcement violation');
-    broadcast('records', 'violation:created', { id: Number(result.lastInsertRowid), violation_number, violation_type, location });
-    res.status(201).json({ data: { id: Number(result.lastInsertRowid), violation_number } });
+    broadcast('records', 'violation:created', { id: result.lastInsertRowid, violation_number, violation_type, location });
+    res.status(201).json({ data: { id: result.lastInsertRowid, violation_number } });
   } catch (error: any) {
     console.error('Create violation error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -176,7 +176,7 @@ router.put('/violations/:id', validateParamId, requireRole('admin', 'manager', '
     auditLog(req, 'UPDATE', 'code_violation', String(req.params.id), `Updated code enforcement violation #${req.params.id}`);
     broadcast('records', 'violation:updated', { id: parseInt(req.params.id as string, 10) });
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
-  } catch (error: any) { console.error('Code enforcement error:', error?.message || error); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.put('/violations/:id/status', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
@@ -200,7 +200,7 @@ router.put('/violations/:id/status', validateParamId, requireRole('admin', 'mana
     auditLog(req, 'UPDATE', 'code_violation', String(req.params.id), `Changed violation #${req.params.id} status`);
     broadcast('records', 'violation:updated', { id: parseInt(req.params.id as string, 10), status });
     res.json({ data: { id: parseInt(req.params.id as string, 10), status } });
-  } catch (error: any) { console.error('Code enforcement error:', error?.message || error); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ════════════════════════════════════════════════════════
@@ -211,7 +211,7 @@ router.get('/tows', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { status, search, page = '1', limit = '50' } = req.query;
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
@@ -220,13 +220,13 @@ router.get('/tows', (req: Request, res: Response) => {
     if (status) { where += ' AND status = ?'; params.push(status); }
     if (search) {
       where += " AND (tow_number LIKE ? ESCAPE '\\' OR vehicle_plate LIKE ? ESCAPE '\\' OR tow_from LIKE ? ESCAPE '\\' OR tow_company LIKE ? ESCAPE '\\')";
-      const s = `%${escapeLike(String(search).trim())}%`; params.push(s, s, s, s);
+      const s = `%${escapeLike(String(search))}%`; params.push(s, s, s, s);
     }
 
     const total = (db.prepare(`SELECT COUNT(*) as count FROM vehicle_tows ${where}`).get(...params) as any)?.count || 0;
     const rows = db.prepare(`SELECT * FROM vehicle_tows ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...params, limitNum, offset);
     res.json({ data: rows, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
-  } catch (error: any) { console.error('Code enforcement error:', error?.message || error); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.get('/tows/:id', validateParamId, (req: Request, res: Response) => {
@@ -235,7 +235,7 @@ router.get('/tows/:id', validateParamId, (req: Request, res: Response) => {
     const row = db.prepare('SELECT * FROM vehicle_tows WHERE id = ?').get(req.params.id);
     if (!row) return res.status(404).json({ error: 'Tow not found' });
     res.json({ data: row });
-  } catch (error: any) { console.error('Code enforcement error:', error?.message || error); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.post('/tows', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
@@ -272,8 +272,8 @@ router.post('/tows', requireRole('admin', 'manager', 'supervisor', 'officer'), (
     const { result, tow_number } = createTow();
 
     auditLog(req, 'CREATE', 'vehicle_tow', Number(result.lastInsertRowid), 'Created tow record');
-    broadcast('records', 'tow:created', { id: Number(result.lastInsertRowid), tow_number, tow_from, tow_reason });
-    res.status(201).json({ data: { id: Number(result.lastInsertRowid), tow_number } });
+    broadcast('records', 'tow:created', { id: result.lastInsertRowid, tow_number, tow_from, tow_reason });
+    res.status(201).json({ data: { id: result.lastInsertRowid, tow_number } });
   } catch (error: any) {
     console.error('Create tow error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -300,7 +300,7 @@ router.put('/tows/:id', validateParamId, requireRole('admin', 'manager', 'superv
     auditLog(req, 'UPDATE', 'vehicle_tow', String(req.params.id), `Updated tow record #${req.params.id}`);
     broadcast('records', 'tow:updated', { id: parseInt(req.params.id as string, 10) });
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
-  } catch (error: any) { console.error('Code enforcement error:', error?.message || error); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.put('/tows/:id/status', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
@@ -324,7 +324,7 @@ router.put('/tows/:id/status', validateParamId, requireRole('admin', 'manager', 
     auditLog(req, 'UPDATE', 'vehicle_tow', String(req.params.id), `Changed tow #${req.params.id} status`);
     broadcast('records', 'tow:updated', { id: parseInt(req.params.id as string, 10), status });
     res.json({ data: { id: parseInt(req.params.id as string, 10), status } });
-  } catch (error: any) { console.error('Code enforcement error:', error?.message || error); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── GET /violations/export/csv ─────────────────────────

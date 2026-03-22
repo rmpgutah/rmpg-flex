@@ -6,6 +6,7 @@ import { localNow } from '../utils/timeUtils';
 import { sendNotificationEmail } from '../utils/emailSender';
 import { validateParamId } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
+import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 
@@ -110,7 +111,7 @@ export function createNotification(
 
     const notification = db.prepare(
       'SELECT * FROM notifications WHERE id = ?'
-    ).get(Number(result.lastInsertRowid));
+    ).get(result.lastInsertRowid);
 
     // Send directly to target user — not broadcast to all clients
     if (notification) sendToUser(userId, 'notification', notification);
@@ -232,7 +233,7 @@ router.get('/', (req: Request, res: Response) => {
       is_read,
     } = req.query;
 
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const perPageNum = Math.min(100, Math.max(1, parseInt(per_page as string, 10) || 25));
     const offset = (pageNum - 1) * perPageNum;
 

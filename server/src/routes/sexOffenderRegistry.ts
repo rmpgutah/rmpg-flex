@@ -10,9 +10,10 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { localNow, dateToLocalYMD } from '../utils/timeUtils';
+import { localNow } from '../utils/timeUtils';
 import { validateParamId, escapeLike } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
+import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 router.use(authenticateToken);
@@ -56,7 +57,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
   try {
     const db = getDb();
     const { search, tier, status, risk_level, page = '1', limit = '25' } = req.query;
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 25));
     const offset = (pageNum - 1) * limitNum;
 
@@ -67,7 +68,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     if (risk_level) { where += ' AND s.risk_level = ?'; params.push(risk_level); }
     if (search) {
       where += " AND (s.first_name LIKE ? ESCAPE '\\' OR s.last_name LIKE ? ESCAPE '\\' OR s.registry_id LIKE ? ESCAPE '\\' OR s.aliases LIKE ? ESCAPE '\\')";
-      const s2 = `%${escapeLike(String(search).trim())}%`; params.push(s2, s2, s2, s2);
+      const s2 = `%${escapeLike(String(search))}%`; params.push(s2, s2, s2, s2);
     }
 
     const total = (db.prepare(`SELECT COUNT(*) as count FROM sex_offender_registry s ${where}`).get(...params) as any)?.count || 0;
@@ -167,12 +168,15 @@ router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, r
       } catch { /* silent — person may not exist */ }
     }
 
-    auditLog(req, 'CREATE', 'person', Number(result.lastInsertRowid) as number,
-      JSON.stringify({ first_name, last_name, tier, registration_status: registration_status || 'compliant' }));
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'create', 'sex_offender_registry', ?, ?, ?)`).run(
+      req.user!.userId, result.lastInsertRowid,
+      JSON.stringify({ first_name, last_name, tier, registration_status: registration_status || 'compliant' }), now,
+    );
 
     auditLog(req, 'CREATE' as any, 'colorado_doc_offenders' as any, Number(result.lastInsertRowid), `Created SOR entry: ${first_name} ${last_name}`);
 
-    res.status(201).json({ data: { id: Number(result.lastInsertRowid) } });
+    res.status(201).json({ data: { id: result.lastInsertRowid } });
   } catch (error: any) {
     console.error('SOR create error:', error?.message || 'Unknown error');
     if (error.message?.includes('UNIQUE constraint')) {
@@ -214,7 +218,10 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     params.push(req.params.id);
     db.prepare(`UPDATE sex_offender_registry SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
-    auditLog(req, 'UPDATE', 'person', parseInt(String(req.params.id), 10), `Updated SOR record #${req.params.id}`);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'update', 'sex_offender_registry', ?, '{}', ?)`).run(req.user!.userId, req.params.id, now);
+
+    auditLog(req, 'UPDATE' as any, 'colorado_doc_offenders' as any, req.params.id, `Updated SOR record #${req.params.id}`);
 
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) {
@@ -239,7 +246,7 @@ router.put('/:id/verify', validateParamId, requireRole('admin', 'manager', 'supe
     const intervalDays = record.tier === 3 ? 90 : record.tier === 2 ? 180 : 365;
     const nextDue = new Date();
     nextDue.setDate(nextDue.getDate() + intervalDays);
-    const nextDueStr = dateToLocalYMD(nextDue);
+    const nextDueStr = nextDue.toISOString().split('T')[0];
 
     const updates: string[] = [
       'last_verification = ?',
@@ -254,7 +261,13 @@ router.put('/:id/verify', validateParamId, requireRole('admin', 'manager', 'supe
     params.push(req.params.id);
     db.prepare(`UPDATE sex_offender_registry SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
-    auditLog(req, 'UPDATE', 'person', parseInt(String(req.params.id), 10), `Verified SOR record #${req.params.id}, next due: ${nextDueStr}`);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'verify', 'sex_offender_registry', ?, ?, ?)`).run(
+      req.user!.userId, req.params.id,
+      JSON.stringify({ status: status || 'verified', next_due: nextDueStr }), now,
+    );
+
+    auditLog(req, 'UPDATE' as any, 'colorado_doc_offenders' as any, req.params.id, `Verified SOR record #${req.params.id}, next due: ${nextDueStr}`);
 
     res.json({ data: { id: parseInt(req.params.id as string, 10), last_verification: now, next_verification_due: nextDueStr } });
   } catch (error: any) {
@@ -315,7 +328,12 @@ router.post('/import', requireRole('admin'), (req: Request, res: Response) => {
     });
     tx();
 
-    auditLog(req, 'CREATE', 'person', 0, `Bulk imported SOR records: ${imported} imported, ${skipped} skipped of ${records.length} total`);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'import', 'sex_offender_registry', 0, ?, ?)`).run(
+      req.user!.userId, JSON.stringify({ imported, skipped, total: records.length }), now,
+    );
+
+    auditLog(req, 'CREATE' as any, 'colorado_doc_offenders' as any, 0, `Bulk imported SOR records: ${imported} imported, ${skipped} skipped of ${records.length} total`);
 
     res.json({ data: { imported, skipped, total: records.length } });
   } catch (error: any) {

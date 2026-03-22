@@ -16,7 +16,7 @@ interface PasswordRule {
 }
 
 export default function ForcePasswordChangeModal() {
-  const { user, logout, refreshUser } = useAuth();
+  const { user, logout } = useAuth();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -48,7 +48,7 @@ export default function ForcePasswordChangeModal() {
         if (data?.rules?.minLength) setMinLength(data.rules.minLength);
         if (data?.rules?.requireSpecial !== undefined) setRequireSpecial(data.rules.requireSpecial);
       })
-      .catch(err => console.warn("[API] Load failed:", err));
+      .catch(() => {});
   }, []);
 
   // Live policy validation — rules fetched dynamically from server
@@ -78,17 +78,12 @@ export default function ForcePasswordChangeModal() {
 
       setSuccess(true);
 
-      // Refresh user state so must_change_password is cleared and modal dismisses.
-      // Brief delay so the user can see the success message.
-      logoutTimerRef.current = setTimeout(async () => {
+      // The server invalidates all sessions on password change,
+      // so we log out after a brief delay to let the user read the message.
+      logoutTimerRef.current = setTimeout(() => {
         logoutTimerRef.current = null;
-        try {
-          await refreshUser();
-        } catch {
-          // If refresh fails (session invalidated), fall back to logout
-          logout();
-        }
-      }, 1500);
+        logout();
+      }, 2000);
     } catch (err: any) {
       setError(err?.message || 'Failed to change password');
     } finally {
@@ -195,28 +190,6 @@ export default function ForcePasswordChangeModal() {
                 autoComplete="new-password"
               />
             </div>
-
-            {/* Password Strength Indicator */}
-            {newPassword.length > 0 && (() => {
-              let score = 0;
-              if (newPassword.length >= 8) score++;
-              if (newPassword.length >= 12) score++;
-              if (/[A-Z]/.test(newPassword) && /[a-z]/.test(newPassword)) score++;
-              if (/[0-9]/.test(newPassword)) score++;
-              if (/[^A-Za-z0-9]/.test(newPassword)) score++;
-              const level = score <= 2 ? 'Weak' : score <= 3 ? 'Medium' : 'Strong';
-              const color = score <= 2 ? '#ef4444' : score <= 3 ? '#f59e0b' : '#22c55e';
-              return (
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px]" style={{ color }}>Strength: {level}</span>
-                  </div>
-                  <div className="h-1 bg-gray-700 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full transition-all duration-300" style={{ width: `${(score / 5) * 100}%`, background: color }} />
-                  </div>
-                </div>
-              );
-            })()}
 
             {/* Password Policy Rules */}
             <div className="space-y-1 px-1">

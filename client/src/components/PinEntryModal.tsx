@@ -100,7 +100,7 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
       if (emp?.role) {
         setConfig('current_user_role', emp.role).catch((err) => { console.warn('[PinEntryModal] set current_user_role config failed:', err); });
       }
-      try { localStorage.setItem('rmpg_offline_user_id', userId); } catch { /* ignore */ }
+      localStorage.setItem('rmpg_offline_user_id', userId);
     }
   }, [employees]);
 
@@ -147,18 +147,17 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
     }
   }, []);
 
+  const isSelectedAdmin = employees.find(em => String(em.id) === selectedUserId)?.role === 'admin';
+
   const handleSubmit = useCallback(async () => {
     if (!selectedUserId && employees.length > 0) {
       setError('Select your name from the dropdown');
       return;
     }
 
-    // Compute inside callback to avoid stale closure
-    const isAdmin = employees.find(em => String(em.id) === selectedUserId)?.role === 'admin';
-
     const pin = digits.join('');
     // Admin users don't need a PIN — the server-side validatePin() returns success for admins
-    if (!isAdmin && pin.length !== 6) {
+    if (!isSelectedAdmin && pin.length !== 6) {
       setError('Enter all 6 digits');
       return;
     }
@@ -168,7 +167,7 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
 
     try {
       // For admin: any PIN value works (validatePin returns success for admin role)
-      const result = await enterPin(isAdmin ? '000000' : pin);
+      const result = await enterPin(isSelectedAdmin ? '000000' : pin);
 
       if (result.success) {
         onSuccess?.();
@@ -187,16 +186,15 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
     } finally {
       setSubmitting(false);
     }
-  }, [digits, enterPin, onClose, onSuccess, selectedUserId, employees]);
+  }, [digits, enterPin, onClose, onSuccess, selectedUserId, employees.length]);
 
   // Auto-submit when all 6 digits entered
   useEffect(() => {
     if (digits.every(d => d !== '') && !submitting && (selectedUserId || employees.length === 0)) {
       handleSubmit();
     }
-  }, [digits, handleSubmit, submitting, selectedUserId, employees.length]);
-
-  const isSelectedAdmin = employees.find(em => String(em.id) === selectedUserId)?.role === 'admin';
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [digits]);
 
   if (!isOpen) return null;
 
@@ -301,7 +299,7 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
                 <input
                   key={i}
                   ref={el => { inputRefs.current[i] = el; }}
-                  type="password"
+                  type="text"
                   inputMode="numeric"
                   maxLength={1}
                   value={digit}

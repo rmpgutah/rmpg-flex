@@ -106,7 +106,15 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
       console.log(`[GPS] Auto-created unit "${unit.call_sign}" for user ${req.user!.userId}`);
 
       // Audit log: auto-created unit
-      auditLog(req, 'CREATE' as any, 'unit', unit.id, `Auto-created unit "${unit.call_sign}" via GPS tracking`);
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'unit_auto_created', 'unit', ?, ?, ?)
+      `).run(
+        req.user!.userId,
+        unit.id,
+        `Auto-created unit "${unit.call_sign}" via GPS tracking`,
+        req.ip || 'unknown',
+      );
     }
 
     // GPS tracking is mandatory for ALL logged-in users regardless of status.
@@ -221,30 +229,6 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
   }
 });
 
-// GET /api/dispatch/gps/latest - Get the most recent GPS position for each active unit
-router.get('/gps/latest', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const rows = db.prepare(`
-      SELECT u.id as unit_id, u.call_sign, u.status, u.latitude, u.longitude,
-        u.gps_source, u.gps_updated_at,
-        usr.full_name as officer_name, usr.badge_number,
-        c.call_number, c.incident_type as current_call_type, c.location_address as current_call_location
-      FROM units u
-      LEFT JOIN users usr ON u.officer_id = usr.id
-      LEFT JOIN calls_for_service c ON u.current_call_id = c.id
-      WHERE u.latitude IS NOT NULL AND u.longitude IS NOT NULL
-        AND u.status NOT IN ('off_duty', 'out_of_service')
-      ORDER BY u.call_sign
-    `).all();
-
-    res.json(rows);
-  } catch (error: any) {
-    console.error('GPS latest error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
 // GET /api/dispatch/gps/my-unit - Get current user's assigned unit
 router.get('/gps/my-unit', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
@@ -266,12 +250,8 @@ router.get('/gps/my-unit', requireRole('admin', 'manager', 'supervisor', 'office
 router.get('/gps/trail/:unitId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const rawUnitId = String(req.params.unitId);
-    const unitId = parseInt(rawUnitId, 10);
-    if (isNaN(unitId) || unitId < 1 || String(unitId) !== rawUnitId) {
-      res.status(400).json({ error: 'Invalid unit ID' });
-      return;
-    }
+    const unitId = parseInt(req.params.unitId as string, 10);
+    if (isNaN(unitId)) { res.status(400).json({ error: 'Invalid unit ID' }); return; }
     const hours = Math.min(Math.max(parseInt(req.query.hours as string, 10) || 8, 1), 72);
 
     const rows = db.prepare(`
@@ -433,131 +413,6 @@ router.get('/gps/trails', requireRole('admin', 'manager', 'supervisor', 'officer
   }
 });
 
-// GET /api/dispatch/gps/history - Historical GPS breadcrumb trail with date range
-// Query params: unit_id (required), from (ISO date/datetime), to (ISO date/datetime)
-// Returns filtered trail points for a specific unit within a date range.
-router.get('/gps/history', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const unitId = parseInt(req.query.unit_id as string, 10);
-    if (isNaN(unitId)) { res.status(400).json({ error: 'unit_id is required' }); return; }
-
-    const from = req.query.from as string;
-    const to = req.query.to as string;
-    if (!from || !to) { res.status(400).json({ error: 'from and to date params are required' }); return; }
-
-    // Validate date format (basic check)
-    if (isNaN(Date.parse(from)) || isNaN(Date.parse(to))) {
-      res.status(400).json({ error: 'Invalid date format. Use ISO 8601 (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)' });
-      return;
-    }
-
-    // Fetch unit metadata
-    const unit = db.prepare(`
-      SELECT u.id, u.call_sign, usr.full_name as officer_name, usr.badge_number
-      FROM units u
-      LEFT JOIN users usr ON u.officer_id = usr.id
-      WHERE u.id = ?
-    `).get(unitId) as any;
-
-    if (!unit) { res.status(404).json({ error: 'Unit not found' }); return; }
-
-    const rows = db.prepare(`
-      SELECT latitude, longitude, accuracy, heading, speed,
-        unit_status, call_sign, officer_name, badge_number,
-        current_call_id, current_call_number, current_call_type,
-        road_name, nearest_intersection, recorded_at
-      FROM gps_breadcrumbs
-      WHERE unit_id = ? AND recorded_at >= ? AND recorded_at <= ?
-      ORDER BY recorded_at ASC
-    `).all(unitId, from, to) as any[];
-
-    // Apply the same starburst-prevention filters
-    const haversineM = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
-      const R = 6_371_000;
-      const toRad = (d: number) => (d * Math.PI) / 180;
-      const dLat = toRad(lat2 - lat1);
-      const dLng = toRad(lng2 - lng1);
-      const a =
-        Math.sin(dLat / 2) ** 2 +
-        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    };
-
-    const MAX_ACCURACY = 150;
-    const MAX_SPEED    = 80;
-    const MIN_DISTANCE = 3;
-    const filtered: any[] = [];
-
-    for (const row of rows) {
-      if (row.accuracy != null && row.accuracy > MAX_ACCURACY) continue;
-
-      const pt = {
-        lat: row.latitude,
-        lng: row.longitude,
-        accuracy: row.accuracy,
-        heading: row.heading,
-        speed: row.speed,
-        status: row.unit_status,
-        call_number: row.current_call_number,
-        call_type: row.current_call_type,
-        time: row.recorded_at,
-        road_name: row.road_name || null,
-        intersection: row.nearest_intersection || null,
-      };
-
-      if (filtered.length === 0) { filtered.push(pt); continue; }
-
-      const prev = filtered[filtered.length - 1];
-      const dist = haversineM(prev.lat, prev.lng, pt.lat, pt.lng);
-      if (dist < MIN_DISTANCE) continue;
-
-      const prevTime = new Date(prev.time).getTime();
-      const curTime  = new Date(pt.time).getTime();
-      if (isNaN(prevTime) || isNaN(curTime)) continue;
-      const dtSec = Math.max((curTime - prevTime) / 1000, 0.5);
-      if (dist / dtSec > MAX_SPEED) continue;
-
-      filtered.push(pt);
-    }
-
-    res.json({
-      unit_id: unit.id,
-      call_sign: unit.call_sign,
-      officer_name: unit.officer_name || '',
-      badge_number: unit.badge_number || '',
-      points: filtered,
-      total_raw: rows.length,
-    });
-  } catch (error: any) {
-    console.error('GPS history error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// GET /api/dispatch/gps/units-with-trails - List units that have breadcrumb data
-// Used by the history panel to populate the unit selector dropdown.
-router.get('/gps/units-with-trails', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const rows = db.prepare(`
-      SELECT DISTINCT b.unit_id, b.call_sign,
-        MAX(b.officer_name) as officer_name,
-        MAX(b.badge_number) as badge_number,
-        MIN(b.recorded_at) as earliest,
-        MAX(b.recorded_at) as latest,
-        COUNT(*) as point_count
-      FROM gps_breadcrumbs b
-      GROUP BY b.unit_id, b.call_sign
-      ORDER BY latest DESC
-    `).all();
-    res.json(rows);
-  } catch (error: any) {
-    console.error('GPS units-with-trails error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
 // DELETE /api/dispatch/gps/breadcrumbs/cleanup - Purge old breadcrumb data
 router.delete('/gps/breadcrumbs/cleanup', requireRole('admin'), (req: Request, res: Response) => {
   try {
@@ -568,6 +423,7 @@ router.delete('/gps/breadcrumbs/cleanup', requireRole('admin'), (req: Request, r
     const result = db.prepare(
       `DELETE FROM gps_breadcrumbs WHERE recorded_at < datetime('now', 'localtime', '-' || ? || ' days')`
     ).run(days);
+    auditLog(req, 'DELETE' as any, 'unit' as any, 0, `Purged ${result.changes} GPS breadcrumbs older than ${days} days`);
     res.json({ deleted: result.changes });
   } catch (error: any) {
     console.error('Breadcrumb cleanup error:', error?.message || 'Unknown error');

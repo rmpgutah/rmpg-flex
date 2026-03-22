@@ -255,7 +255,7 @@ export default function ServeSkipTracePanel({
                 <div className="space-y-2">
                   {result.persons.map((person, i) => (
                     <div
-                      key={`person-${person.name || i}`}
+                      key={i}
                       className="px-3 py-2 bg-[#0d1520] border border-[#1e3048] rounded"
                     >
                       <div className="flex items-center gap-2">
@@ -286,7 +286,7 @@ export default function ServeSkipTracePanel({
                       const matches = addressMatchesJob(addr, job);
                       return (
                         <div
-                          key={`addr-${addr.address}-${addr.city || ''}-${i}`}
+                          key={i}
                           className={`px-3 py-2 bg-[#0d1520] border rounded text-sm ${
                             matches
                               ? 'border-green-700/50 bg-green-900/10'
@@ -337,7 +337,7 @@ export default function ServeSkipTracePanel({
                   <div className="space-y-1">
                     {result.phones.map((ph, i) => (
                       <div
-                        key={`phone-${ph.number || i}`}
+                        key={i}
                         className="px-3 py-1.5 bg-[#0d1520] border border-[#1e3048] rounded flex items-center justify-between"
                       >
                         <span className="text-xs text-white font-mono">{ph.number}</span>
@@ -364,7 +364,7 @@ export default function ServeSkipTracePanel({
                   <div className="space-y-1">
                     {result.employment.map((emp, i) => (
                       <div
-                        key={`emp-${emp.employer || i}`}
+                        key={i}
                         className="px-3 py-1.5 bg-[#0d1520] border border-[#1e3048] rounded"
                       >
                         <p className="text-xs text-white">{emp.employer}</p>

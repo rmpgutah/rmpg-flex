@@ -178,8 +178,8 @@ router.post('/events', requireRole('admin', 'manager', 'supervisor', 'officer'),
     const { result, event_number } = createEvent();
 
     auditLog(req, 'CREATE', 'court_event', Number(result.lastInsertRowid), 'Created court event');
-    broadcast('records', 'courtEvent:created', { id: Number(result.lastInsertRowid), event_number, event_type, event_date });
-    res.status(201).json({ data: { id: Number(result.lastInsertRowid), event_number } });
+    broadcast('records', 'courtEvent:created', { id: result.lastInsertRowid, event_number, event_type, event_date });
+    res.status(201).json({ data: { id: result.lastInsertRowid, event_number } });
   } catch (error: any) {
     console.error('Create court event error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });

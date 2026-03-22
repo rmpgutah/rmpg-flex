@@ -35,33 +35,12 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     'browsing-topics=()',  // Block Topics API (FLoC successor)
     'join-ad-interest-group=()', // Block FLEDGE/Protected Audience API
     'run-ad-auction=()',   // Block FLEDGE ad auctions
-    'attribution-reporting=()',   // Block Attribution Reporting API
-    'compute-pressure=()',        // Block Compute Pressure API
-    'local-fonts=()',             // Block local font enumeration (fingerprinting)
-    'storage-access=()',          // Block Storage Access API (cross-site tracking)
-    'window-management=(self)',   // Restrict window placement to same-origin
-    'xr-spatial-tracking=()',     // Block WebXR spatial tracking
-    'publickey-credentials-create=(self)',  // Restrict WebAuthn to same-origin
-    'publickey-credentials-get=(self)',     // Restrict WebAuthn to same-origin
-    'clipboard-read=(self)',               // Restrict clipboard read to same-origin
-    'clipboard-write=(self)',              // Restrict clipboard write to same-origin
-    'gamepad=()',                           // Block Gamepad API (fingerprinting vector)
-    'speaker-selection=(self)',            // Restrict audio output selection
-    'midi=()',                              // Block Web MIDI API
-    'otp-credentials=()',                  // Block OTP credential sharing API
-    'identity-credentials-get=()',         // Block FedCM identity credential API
-    'deferred-fetch=()',                   // Block deferred fetch API
   ].join(', '));
 
-  // Cross-Origin headers
-  // NOTE: Cross-Origin-Resource-Policy CANNOT be 'same-origin' because Google Maps
-  // loads tiles, scripts, fonts, and images from *.googleapis.com / *.gstatic.com
-  // which are cross-origin. 'same-origin' silently blocks those resources, causing
-  // blank maps. 'cross-origin' allows the required third-party resources to load.
-  // Cross-Origin-Opener-Policy uses 'same-origin-allow-popups' so Google Maps
-  // OAuth popups (if triggered) and window.open() from map links work correctly.
-  res.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
-  res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+  // Cross-Origin isolation headers — prevent cross-origin attacks
+  res.set('Cross-Origin-Opener-Policy', 'same-origin');
+  res.set('Cross-Origin-Resource-Policy', 'same-origin');
+  res.set('Cross-Origin-Embedder-Policy', 'credentialless');
   res.set('X-Permitted-Cross-Domain-Policies', 'none');
 
   // Prevent DNS prefetching — stops browsers from resolving domains in page content
@@ -107,21 +86,7 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     "base-uri 'self'",
     "object-src 'none'",
     "form-action 'self'",
-    // Auto-upgrade HTTP → HTTPS for mixed content in production
-    ...(config.isProduction ? ["upgrade-insecure-requests"] : []),
-    // CSP violation reporting — logs policy violations for security monitoring
-    // report-uri is deprecated but still needed for older browsers; report-to is the modern replacement
-    ...(config.isProduction ? ["report-uri /api/csp-report", "report-to csp-endpoint"] : []),
   ].join('; '));
-
-  // Report-To header for modern CSP reporting (Chrome 69+, Edge 79+)
-  if (config.isProduction) {
-    res.set('Report-To', JSON.stringify({
-      group: 'csp-endpoint',
-      max_age: 86400,
-      endpoints: [{ url: '/api/csp-report' }],
-    }));
-  }
 
   // Prevent IE from opening downloads directly in the browser context
   res.set('X-Download-Options', 'noopen');

@@ -4,17 +4,10 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 import { validateParamId } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
+import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 router.use(authenticateToken);
-
-/** Recalculate net_pay = gross_pay - total_deductions for a payroll entry */
-function recalculateNetPay(db: any, entryId: number): void {
-  const entry = db.prepare('SELECT gross_pay, total_deductions FROM hr_payroll_entries WHERE id = ?').get(entryId) as any;
-  if (!entry) return;
-  const netPay = Math.max(0, (entry.gross_pay || 0) - (entry.total_deductions || 0));
-  db.prepare('UPDATE hr_payroll_entries SET net_pay = ? WHERE id = ?').run(Math.round(netPay * 100) / 100, entryId);
-}
 
 const isManagerOrAbove = (role: string) => ['admin', 'manager', 'supervisor'].includes(role);
 
@@ -137,13 +130,6 @@ router.post('/leave', (req: Request, res: Response) => {
     if (!type || !start_date || !end_date) {
       return res.status(400).json({ error: 'type, start_date, and end_date are required' });
     }
-    const VALID_LEAVE_TYPES = ['vacation', 'sick', 'personal', 'bereavement', 'jury_duty', 'military', 'unpaid', 'other'];
-    if (!VALID_LEAVE_TYPES.includes(type)) {
-      return res.status(400).json({ error: `Invalid leave type. Must be one of: ${VALID_LEAVE_TYPES.join(', ')}` });
-    }
-    if (start_date > end_date) {
-      return res.status(400).json({ error: 'start_date must be on or before end_date' });
-    }
 
     const now = localNow();
     const result = db.prepare(
@@ -154,7 +140,7 @@ router.post('/leave', (req: Request, res: Response) => {
     auditLog(req, 'CREATE' as any, 'leave_request' as any, Number(result.lastInsertRowid),
       `Leave request created: ${type} ${start_date} to ${end_date}`);
 
-    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+    res.status(201).json({ success: true, id: result.lastInsertRowid });
   } catch (error: any) {
     console.error('[HR] Leave create error:', error?.message);
     res.status(500).json({ error: 'Failed to create leave request' });
@@ -510,11 +496,6 @@ router.post('/disciplinary', requireRole('admin', 'manager'), (req: Request, res
     if (!officer_id || !incident_date || !description) {
       return res.status(400).json({ error: 'officer_id, incident_date, and description are required' });
     }
-    // Must match database CHECK constraint on disciplinary_actions.type
-    const VALID_DISCIPLINARY_TYPES = ['verbal_warning', 'written_warning', 'suspension', 'termination', 'commendation', 'counseling'];
-    if (type && !VALID_DISCIPLINARY_TYPES.includes(type)) {
-      return res.status(400).json({ error: `Invalid disciplinary type. Must be one of: ${VALID_DISCIPLINARY_TYPES.join(', ')}` });
-    }
 
     const now = localNow();
     const result = db.prepare(
@@ -528,7 +509,7 @@ router.post('/disciplinary', requireRole('admin', 'manager'), (req: Request, res
     auditLog(req, 'CREATE' as any, 'disciplinary_record' as any, Number(result.lastInsertRowid),
       `Disciplinary record created for officer ${officer_id}: ${type || 'verbal_warning'}`);
 
-    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+    res.status(201).json({ success: true, id: result.lastInsertRowid });
   } catch (error: any) {
     console.error('[HR] Disciplinary create error:', error?.message);
     res.status(500).json({ error: 'Failed to create disciplinary record' });
@@ -628,17 +609,6 @@ router.post('/reviews', requireRole('admin', 'manager', 'supervisor'), (req: Req
     if (!officer_id || !review_period_start || !review_period_end) {
       return res.status(400).json({ error: 'officer_id, review_period_start, and review_period_end are required' });
     }
-    if (review_period_start > review_period_end) {
-      return res.status(400).json({ error: 'review_period_start must be on or before review_period_end' });
-    }
-
-    // Validate overall_rating range (1-5 scale)
-    if (overall_rating !== undefined && overall_rating !== null) {
-      const rating = parseFloat(overall_rating);
-      if (isNaN(rating) || rating < 1 || rating > 5) {
-        return res.status(400).json({ error: 'overall_rating must be between 1 and 5' });
-      }
-    }
 
     const now = localNow();
     const user = (req as any).user;
@@ -656,7 +626,7 @@ router.post('/reviews', requireRole('admin', 'manager', 'supervisor'), (req: Req
     auditLog(req, 'CREATE' as any, 'performance_review' as any, Number(result.lastInsertRowid),
       `Performance review created for officer ${officer_id}`);
 
-    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+    res.status(201).json({ success: true, id: result.lastInsertRowid });
   } catch (error: any) {
     console.error('[HR] Review create error:', error?.message);
     res.status(500).json({ error: 'Failed to create review' });
@@ -801,8 +771,8 @@ router.post('/payroll/periods', requireRole('admin', 'manager'), (req: Request, 
       `INSERT INTO hr_pay_periods (name, start_date, end_date, pay_date, status, created_by) VALUES (?, ?, ?, ?, 'open', ?)`
     ).run(name || `Pay Period ${start_date} - ${end_date}`, start_date, end_date, pay_date, userId);
 
-    const period = db.prepare('SELECT * FROM hr_pay_periods WHERE id = ?').get(Number(result.lastInsertRowid));
-    auditLog(req, 'CREATE' as any, 'hr_pay_period' as any, Number(result.lastInsertRowid), `Created pay period: ${start_date} to ${end_date}`);
+    const period = db.prepare('SELECT * FROM hr_pay_periods WHERE id = ?').get(result.lastInsertRowid);
+    auditLog(req, 'CREATE' as any, 'hr_pay_period' as any, result.lastInsertRowid, `Created pay period: ${start_date} to ${end_date}`);
     res.json(period);
   } catch (error: any) {
     console.error('[HR] Create pay period error:', error?.message);
@@ -902,8 +872,8 @@ router.post('/payroll/rates', requireRole('admin', 'manager'), (req: Request, re
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(user_id, pay_type, rate, overtime_rate ?? 1.5, holiday_rate ?? 1.5, effective_date, notes || null, userId);
 
-    const newRate = db.prepare('SELECT pr.*, u.full_name as officer_name FROM hr_pay_rates pr JOIN users u ON u.id = pr.user_id WHERE pr.id = ?').get(Number(result.lastInsertRowid));
-    auditLog(req, 'CREATE' as any, 'hr_pay_rate' as any, Number(result.lastInsertRowid), `Set pay rate for user ${user_id}: ${pay_type} $${rate}`);
+    const newRate = db.prepare('SELECT pr.*, u.full_name as officer_name FROM hr_pay_rates pr JOIN users u ON u.id = pr.user_id WHERE pr.id = ?').get(result.lastInsertRowid);
+    auditLog(req, 'CREATE' as any, 'hr_pay_rate' as any, result.lastInsertRowid, `Set pay rate for user ${user_id}: ${pay_type} $${rate}`);
     res.json(newRate);
   } catch (error: any) {
     console.error('[HR] Create pay rate error:', error?.message);
@@ -978,20 +948,15 @@ router.post('/payroll/entries', requireRole('admin', 'manager'), (req: Request, 
       user_id, pay_period_id, payRate?.id ?? null,
       regHrs, otHrs, holHrs,
       pto_hours ?? 0, sick_hours ?? 0, other_hours ?? 0, other_hours_description || null,
-      basePay, overtimePay, holidayPay, grossPay, grossPay, // net_pay = gross_pay when total_deductions = 0
+      basePay, overtimePay, holidayPay, grossPay, grossPay,
       notes || null, now, now
     );
 
-    const entryId = Number(result.lastInsertRowid);
-
-    // Recalculate net_pay after applying any deductions for this user
-    recalculateNetPay(db, entryId);
-
     const entry = db.prepare(`
       SELECT pe.*, u.full_name as officer_name FROM hr_payroll_entries pe JOIN users u ON u.id = pe.user_id WHERE pe.id = ?
-    `).get(entryId);
+    `).get(result.lastInsertRowid);
 
-    auditLog(req, 'CREATE' as any, 'hr_payroll_entry' as any, entryId, `Payroll entry for user ${user_id}, gross: $${grossPay.toFixed(2)}`);
+    auditLog(req, 'CREATE' as any, 'hr_payroll_entry' as any, result.lastInsertRowid, `Payroll entry for user ${user_id}, gross: $${grossPay.toFixed(2)}`);
     res.json(entry);
   } catch (error: any) {
     console.error('[HR] Create payroll entry error:', error?.message);
@@ -1048,9 +1013,6 @@ router.put('/payroll/entries/:id', validateParamId, requireRole('admin', 'manage
       status ?? existing.status, notes ?? existing.notes,
       status, userId, status, now, now, id
     );
-
-    // Recalculate net_pay after gross_pay change
-    recalculateNetPay(db, id);
 
     const updated = db.prepare(`
       SELECT pe.*, u.full_name as officer_name FROM hr_payroll_entries pe JOIN users u ON u.id = pe.user_id WHERE pe.id = ?
@@ -1109,6 +1071,118 @@ router.post('/payroll/periods/:id/populate', validateParamId, requireRole('admin
   } catch (error: any) {
     console.error('[HR] Populate pay period error:', error?.message);
     res.status(500).json({ error: 'Failed to populate pay period' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CSV Exports
+// ═══════════════════════════════════════════════════════════════════════════════
+
+router.get('/leave/export/csv', requireRole('admin', 'manager', 'supervisor'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT lr.*, u.full_name as officer_name, r.full_name as reviewer_name
+      FROM leave_requests lr JOIN users u ON u.id = lr.officer_id
+      LEFT JOIN users r ON r.id = lr.reviewed_by
+      ORDER BY lr.created_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'leave-requests.csv', [
+      { key: 'officer_name', header: 'Employee' },
+      { key: 'type', header: 'Leave Type' },
+      { key: 'start_date', header: 'Start Date' },
+      { key: 'end_date', header: 'End Date' },
+      { key: 'hours_requested', header: 'Hours' },
+      { key: 'reason', header: 'Reason' },
+      { key: 'status', header: 'Status' },
+      { key: 'reviewer_name', header: 'Reviewed By' },
+      { key: 'created_at', header: 'Submitted' },
+    ], rows);
+  } catch (error: any) {
+    console.error('[HR] Leave CSV export error:', error?.message);
+    res.status(500).json({ error: 'Export failed' });
+  }
+});
+
+router.get('/disciplinary/export/csv', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT dr.*, u.full_name as officer_name, ib.full_name as issued_by_name
+      FROM disciplinary_records dr JOIN users u ON u.id = dr.officer_id
+      LEFT JOIN users ib ON ib.id = dr.issued_by
+      ORDER BY dr.created_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'disciplinary-records.csv', [
+      { key: 'officer_name', header: 'Employee' },
+      { key: 'type', header: 'Type' },
+      { key: 'severity', header: 'Severity' },
+      { key: 'incident_date', header: 'Incident Date' },
+      { key: 'description', header: 'Description' },
+      { key: 'action_taken', header: 'Action Taken' },
+      { key: 'status', header: 'Status' },
+      { key: 'issued_by_name', header: 'Issued By' },
+      { key: 'created_at', header: 'Created' },
+    ], rows);
+  } catch (error: any) {
+    console.error('[HR] Disciplinary CSV export error:', error?.message);
+    res.status(500).json({ error: 'Export failed' });
+  }
+});
+
+router.get('/reviews/export/csv', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT pr.*, u.full_name as officer_name, rv.full_name as reviewer_name
+      FROM performance_reviews pr JOIN users u ON u.id = pr.officer_id
+      LEFT JOIN users rv ON rv.id = pr.reviewer_id
+      ORDER BY pr.created_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'performance-reviews.csv', [
+      { key: 'officer_name', header: 'Employee' },
+      { key: 'type', header: 'Review Type' },
+      { key: 'review_period_start', header: 'Period Start' },
+      { key: 'review_period_end', header: 'Period End' },
+      { key: 'overall_rating', header: 'Overall Rating' },
+      { key: 'status', header: 'Status' },
+      { key: 'reviewer_name', header: 'Reviewer' },
+      { key: 'review_date', header: 'Review Date' },
+    ], rows);
+  } catch (error: any) {
+    console.error('[HR] Reviews CSV export error:', error?.message);
+    res.status(500).json({ error: 'Export failed' });
+  }
+});
+
+router.get('/payroll/export/csv', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { pay_period_id } = req.query;
+    if (!pay_period_id) return res.status(400).json({ error: 'pay_period_id required' });
+    const rows = db.prepare(`
+      SELECT pe.*, u.full_name as officer_name, u.badge_number
+      FROM hr_payroll_entries pe JOIN users u ON u.id = pe.user_id
+      WHERE pe.pay_period_id = ? ORDER BY u.full_name
+    `).all(Number(pay_period_id));
+    sendCsv(res, 'payroll.csv', [
+      { key: 'officer_name', header: 'Employee' },
+      { key: 'badge_number', header: 'Badge' },
+      { key: 'regular_hours', header: 'Reg Hours' },
+      { key: 'overtime_hours', header: 'OT Hours' },
+      { key: 'holiday_hours', header: 'Holiday Hours' },
+      { key: 'pto_hours', header: 'PTO Hours' },
+      { key: 'sick_hours', header: 'Sick Hours' },
+      { key: 'base_pay', header: 'Base Pay' },
+      { key: 'overtime_pay', header: 'OT Pay' },
+      { key: 'holiday_pay', header: 'Holiday Pay' },
+      { key: 'gross_pay', header: 'Gross Pay' },
+      { key: 'net_pay', header: 'Net Pay' },
+      { key: 'status', header: 'Status' },
+    ], rows);
+  } catch (error: any) {
+    console.error('[HR] Payroll CSV export error:', error?.message);
+    res.status(500).json({ error: 'Export failed' });
   }
 });
 

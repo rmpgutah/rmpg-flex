@@ -1,399 +1,259 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import {
+  LayoutDashboard, Radio, Map, Monitor, Terminal, Database, FileText,
+  ClipboardList, Search, CreditCard, Package, Briefcase, AlertTriangle,
+  FileWarning, ShieldBan, Construction, Gavel, UserX, Users, Car, Video,
+  MessageSquare, QrCode, BarChart3, Calendar, TrendingUp, ClipboardCheck,
+  Settings, ScrollText, Network, ChevronLeft, ChevronRight, Camera, Mail,
+} from 'lucide-react';
 
-export interface SidebarNavItem {
+// ─── Sidebar Navigation Structure ──────────────────────────────
+interface SidebarItem {
   path: string;
   icon: React.ElementType;
   label: string;
-  group: string;
-  shortcut?: string;
   adminOnly?: boolean;
-  newWindow?: boolean;
-  children?: {
-    path: string;
-    icon: React.ElementType;
-    label: string;
-    adminOnly?: boolean;
-    newWindow?: boolean;
-  }[];
-  externalUrl?: string;
 }
+
+interface SidebarSection {
+  id: string;
+  label: string;
+  items: SidebarItem[];
+}
+
+const SIDEBAR_SECTIONS: SidebarSection[] = [
+  {
+    id: 'ops',
+    label: 'Operations',
+    items: [
+      { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
+      { path: '/dispatch', icon: Radio, label: 'Dispatch' },
+      { path: '/map', icon: Map, label: 'Tactical Map' },
+      { path: '/mdt', icon: Monitor, label: 'MDT' },
+      { path: '/ncic', icon: Terminal, label: 'NCIC' },
+      { path: '/patrol', icon: QrCode, label: 'Patrol' },
+    ],
+  },
+  {
+    id: 'records',
+    label: 'Records',
+    items: [
+      { path: '/incidents', icon: FileText, label: 'Incidents' },
+      { path: '/records', icon: Database, label: 'Records' },
+      { path: '/field-interviews', icon: ClipboardList, label: 'Field Interviews' },
+      { path: '/criminal-history', icon: Search, label: 'Criminal History' },
+      { path: '/dl-search', icon: CreditCard, label: 'DL Search' },
+      { path: '/evidence', icon: Package, label: 'Evidence' },
+      { path: '/cases', icon: Briefcase, label: 'Cases' },
+    ],
+  },
+  {
+    id: 'enforce',
+    label: 'Enforcement',
+    items: [
+      { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
+      { path: '/citations', icon: FileWarning, label: 'Citations' },
+      { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
+      { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
+      { path: '/court', icon: Gavel, label: 'Court Tracker' },
+      { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
+    ],
+  },
+  {
+    id: 'personnel',
+    label: 'Personnel & Fleet',
+    items: [
+      { path: '/personnel', icon: Users, label: 'Personnel' },
+      { path: '/fleet', icon: Car, label: 'Fleet' },
+      { path: '/body-cameras', icon: Video, label: 'Body Cameras' },
+      { path: '/dash-cameras', icon: Camera, label: 'Dash Cameras' },
+    ],
+  },
+  {
+    id: 'comms',
+    label: 'Communications',
+    items: [
+      { path: '/communications', icon: MessageSquare, label: 'Communications' },
+      { path: '/radio', icon: Radio, label: 'Radio' },
+      { path: '/email', icon: Mail, label: 'Email' },
+      { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
+    ],
+  },
+  {
+    id: 'analysis',
+    label: 'Analysis & Reports',
+    items: [
+      { path: '/reports', icon: BarChart3, label: 'Reports' },
+      { path: '/shift-plans', icon: Calendar, label: 'Shift Plans' },
+      { path: '/crime-analysis', icon: TrendingUp, label: 'Crime Analysis' },
+      { path: '/statute-analytics', icon: BarChart3, label: 'Statute Analytics' },
+      { path: '/reports/custom', icon: Database, label: 'Report Builder' },
+      { path: '/forensics', icon: Network, label: 'Connections', adminOnly: true },
+    ],
+  },
+  {
+    id: 'system',
+    label: 'System',
+    items: [
+      { path: '/audit', icon: ScrollText, label: 'Audit Log', adminOnly: true },
+      { path: '/admin', icon: Settings, label: 'Admin', adminOnly: true },
+    ],
+  },
+];
+
+// Paths blocked for contract_manager role
+const CONTRACT_MANAGER_BLOCKED = new Set([
+  '/admin', '/audit', '/personnel', '/fleet', '/ncic',
+  '/radio', '/patrol', '/shift-plans', '/statute-analytics',
+  '/reports/custom', '/crime-analysis', '/dar',
+]);
 
 interface SidebarProps {
-  items: SidebarNavItem[];
   isAdmin: boolean;
-  isClientViewer: boolean;
   isContractManager: boolean;
-  activeCallCount: number;
-  emailUnreadCount: number;
-  activeBOLOs: number;
 }
 
-const GROUP_LABELS: Record<string, string> = {
-  ops: 'OPERATIONS',
-  records: 'RECORDS & ENFORCEMENT',
-  comms: 'COMMUNICATIONS',
-  analysis: 'ANALYTICS & TOOLS',
-  system: 'SYSTEM',
-};
-
-const STORAGE_KEY = 'rmpg_sidebar_collapsed';
-
-export default function Sidebar({
-  items,
-  isAdmin,
-  isClientViewer,
-  isContractManager,
-  activeCallCount,
-  emailUnreadCount,
-  activeBOLOs,
-}: SidebarProps) {
+export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Persist collapsed state
   const [collapsed, setCollapsed] = useState(() => {
-    try {
-      return localStorage.getItem(STORAGE_KEY) === 'true';
-    } catch {
-      return false;
-    }
+    try { return localStorage.getItem('sidebar-collapsed') === 'true'; }
+    catch { return false; }
   });
-  const [expandedChildren, setExpandedChildren] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, String(collapsed));
-    } catch {
-      // localStorage unavailable
-    }
+    try { localStorage.setItem('sidebar-collapsed', String(collapsed)); } catch {}
   }, [collapsed]);
 
-  const toggleCollapse = useCallback(() => setCollapsed(prev => !prev), []);
+  // Track which section is hovered (for collapsed tooltip flyouts)
+  const [hoveredSection, setHoveredSection] = useState<string | null>(null);
 
-  const toggleChildren = useCallback((path: string) => {
-    setExpandedChildren(prev => {
-      const next = new Set(prev);
-      if (next.has(path)) {
-        next.delete(path);
-      } else {
-        next.add(path);
-      }
-      return next;
-    });
-  }, []);
+  const isActive = (path: string) =>
+    path === '/' ? location.pathname === '/' : location.pathname.startsWith(path);
 
-  const handleItemClick = useCallback(
-    (item: { path: string; newWindow?: boolean; externalUrl?: string }, hasChildren: boolean, parentPath?: string) => {
-      if (hasChildren) {
-        toggleChildren(item.path);
-        return;
-      }
-
-      if (item.externalUrl) {
-        window.open(item.externalUrl, '_blank', 'noopener,noreferrer');
-        return;
-      }
-
-      if (item.newWindow) {
-        window.open(item.path, '_blank');
-        return;
-      }
-
-      navigate(item.path);
-    },
-    [navigate, toggleChildren]
-  );
-
-  const isActive = useCallback(
-    (path: string): boolean => {
-      if (path === '/') return location.pathname === '/';
-      return location.pathname === path || location.pathname.startsWith(path + '/');
-    },
-    [location.pathname]
-  );
-
-  // Filter items based on role
-  const visibleItems = items.filter(item => {
+  const isVisible = (item: SidebarItem) => {
     if (item.adminOnly && !isAdmin) return false;
+    if (isContractManager && CONTRACT_MANAGER_BLOCKED.has(item.path)) return false;
     return true;
-  });
-
-  // Group items preserving insertion order
-  const groupedItems: { group: string; items: SidebarNavItem[] }[] = [];
-  const seenGroups = new Set<string>();
-  for (const item of visibleItems) {
-    if (!seenGroups.has(item.group)) {
-      seenGroups.add(item.group);
-      groupedItems.push({ group: item.group, items: [] });
-    }
-    groupedItems.find(g => g.group === item.group)!.items.push(item);
-  }
-
-  const getBadge = (item: SidebarNavItem): { count: number; pulse: boolean } | null => {
-    if (item.path === '/communications' && emailUnreadCount > 0) {
-      return { count: emailUnreadCount, pulse: false };
-    }
-    if (item.path === '/' && activeCallCount > 0) {
-      return { count: activeCallCount, pulse: false };
-    }
-    if (item.path === '/bolos' && activeBOLOs > 0) {
-      return { count: activeBOLOs, pulse: true };
-    }
-    return null;
   };
 
-  const sidebarWidth = collapsed ? 52 : 220;
+  const filteredSections = SIDEBAR_SECTIONS.map(section => ({
+    ...section,
+    items: section.items.filter(isVisible),
+  })).filter(section => section.items.length > 0);
 
   return (
-    <div
-      className="flex flex-col flex-shrink-0 select-none"
+    <nav
+      className="flex flex-col h-full flex-shrink-0 transition-[width] duration-200 ease-out select-none"
       style={{
-        width: sidebarWidth,
-        minWidth: sidebarWidth,
-        transition: 'width 200ms ease, min-width 200ms ease',
-        background: 'var(--surface-base)',
-        borderRight: '1px solid var(--border-default)',
-        overflow: 'hidden',
+        width: collapsed ? 56 : 220,
+        background: 'linear-gradient(180deg, #0f1a28 0%, #0d1520 100%)',
+        borderRight: '1px solid #1e3048',
       }}
     >
-      {/* Scrollable nav area */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden py-1" style={{ scrollbarWidth: 'thin' }}>
-        {groupedItems.map((group, gi) => (
-          <div key={group.group}>
-            {gi > 0 && (
-              <div
-                className="mx-2 my-1"
-                style={{ borderTop: '1px solid rgba(28,45,68,0.5)' }}
-              />
-            )}
-
+      {/* Scrollable nav sections */}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden py-2" style={{ scrollbarWidth: 'none' }}>
+        {filteredSections.map((section) => (
+          <div key={section.id} className="mb-1">
+            {/* Section label — visible only when expanded */}
             {!collapsed && (
               <div
-                className="font-bold uppercase tracking-wider px-3 py-2"
-                style={{ fontSize: 10, color: '#5a6e80' }}
+                className="px-4 py-1.5 text-[9px] font-bold uppercase tracking-[0.1em]"
+                style={{ color: '#5a6e80' }}
               >
-                {GROUP_LABELS[group.group] || group.group.toUpperCase()}
+                {section.label}
               </div>
             )}
 
-            {group.items.map(item => {
-              const active = isActive(item.path);
-              const hasChildren = !!(item.children && item.children.length > 0);
-              const childrenOpen = expandedChildren.has(item.path);
-              const badge = getBadge(item);
-              const Icon = item.icon;
+            {/* Collapsed: thin separator between groups */}
+            {collapsed && section.id !== 'ops' && (
+              <div className="mx-3 my-1" style={{ borderTop: '1px solid #1e3048' }} />
+            )}
 
-              const visibleChildren = hasChildren
-                ? item.children!.filter(c => !c.adminOnly || isAdmin)
-                : [];
+            {section.items.map((item) => {
+              const Icon = item.icon;
+              const active = isActive(item.path);
 
               return (
-                <div key={item.path}>
-                  <button
-                    onClick={() => handleItemClick(item, hasChildren)}
-                    title={collapsed ? `${item.label}${item.shortcut ? ` (${item.shortcut})` : ''}` : undefined}
-                    className="w-full flex items-center gap-2 relative"
+                <button
+                  key={item.path}
+                  onClick={() => navigate(item.path)}
+                  onMouseEnter={() => collapsed ? setHoveredSection(item.path) : undefined}
+                  onMouseLeave={() => setHoveredSection(null)}
+                  className={`relative w-full flex items-center gap-3 transition-all duration-100 ${!active ? 'hover:bg-white/[0.03]' : ''}`}
+                  style={{
+                    height: 34,
+                    padding: collapsed ? '0 0 0 18px' : '0 12px 0 16px',
+                    background: active ? 'rgba(26, 90, 158, 0.15)' : 'transparent',
+                    color: active ? '#ffffff' : '#8a9aaa',
+                    borderLeft: active ? '3px solid #1a5a9e' : '3px solid transparent',
+                  }}
+                  title={collapsed ? item.label : undefined}
+                >
+                  <Icon
                     style={{
-                      height: 32,
-                      paddingLeft: collapsed ? 0 : 12,
-                      paddingRight: collapsed ? 0 : 8,
-                      justifyContent: collapsed ? 'center' : 'flex-start',
-                      background: active ? 'rgba(26,90,158,0.15)' : 'transparent',
-                      cursor: 'pointer',
-                      border: 'none',
-                      outline: 'none',
-                      transition: 'background 120ms ease',
+                      width: 16,
+                      height: 16,
+                      flexShrink: 0,
+                      color: active ? '#3b8ad4' : '#5a6e80',
+                      transition: 'color 0.1s',
                     }}
-                    onMouseEnter={e => {
-                      if (!active) e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.background = active ? 'rgba(26,90,158,0.15)' : 'transparent';
-                    }}
-                  >
-                    {active && (
-                      <div
-                        style={{
-                          position: 'absolute',
-                          left: 0,
-                          top: 4,
-                          bottom: 4,
-                          width: 3,
-                          borderRadius: '0 2px 2px 0',
-                          background: '#3b8ad4',
-                        }}
-                      />
-                    )}
+                  />
+                  {!collapsed && (
+                    <span
+                      className="text-[11px] font-medium truncate"
+                      style={{ lineHeight: '16px' }}
+                    >
+                      {item.label}
+                    </span>
+                  )}
 
-                    <Icon
-                      size={16}
+                  {/* Collapsed tooltip */}
+                  {collapsed && hoveredSection === item.path && (
+                    <div
+                      className="absolute left-full ml-2 px-2.5 py-1.5 whitespace-nowrap z-50"
                       style={{
-                        color: active ? '#3b8ad4' : '#5a6e80',
-                        flexShrink: 0,
-                        transition: 'color 120ms ease',
+                        background: '#1a2636',
+                        border: '1px solid #2a3e58',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
                       }}
-                    />
-
-                    {!collapsed && (
-                      <>
-                        <span
-                          className="truncate"
-                          style={{
-                            fontSize: 11,
-                            color: active ? '#c9ddf0' : '#8a9bb0',
-                            flex: 1,
-                            textAlign: 'left',
-                            transition: 'color 120ms ease',
-                          }}
-                        >
-                          {item.label}
-                        </span>
-
-                        {item.shortcut && (
-                          <span
-                            style={{
-                              fontSize: 9,
-                              color: '#4a5568',
-                              flexShrink: 0,
-                              fontFamily: 'monospace',
-                            }}
-                          >
-                            {item.shortcut}
-                          </span>
-                        )}
-
-                        {hasChildren && (
-                          <ChevronRight
-                            size={12}
-                            style={{
-                              color: '#4a5568',
-                              flexShrink: 0,
-                              transition: 'transform 200ms ease',
-                              transform: childrenOpen ? 'rotate(90deg)' : 'rotate(0deg)',
-                            }}
-                          />
-                        )}
-                      </>
-                    )}
-
-                    {badge && (
-                      <span
-                        style={{
-                          position: collapsed ? 'absolute' : 'relative',
-                          top: collapsed ? 2 : undefined,
-                          right: collapsed ? 4 : undefined,
-                          minWidth: 16,
-                          height: 16,
-                          borderRadius: 8,
-                          background: '#dc2626',
-                          color: '#fff',
-                          fontSize: 9,
-                          fontWeight: 700,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          padding: '0 4px',
-                          lineHeight: 1,
-                          flexShrink: 0,
-                          animation: badge.pulse ? 'pulse 2s infinite' : undefined,
-                        }}
-                      >
-                        {badge.count}
-                      </span>
-                    )}
-                  </button>
-
-                  {hasChildren && childrenOpen && !collapsed && (
-                    <div>
-                      {visibleChildren.map(child => {
-                        const childActive = isActive(child.path);
-                        const ChildIcon = child.icon;
-
-                        return (
-                          <button
-                            key={child.path}
-                            onClick={() => handleItemClick(child, false)}
-                            className="w-full flex items-center gap-2 relative"
-                            style={{
-                              height: 28,
-                              paddingLeft: 24,
-                              paddingRight: 8,
-                              background: childActive ? 'rgba(26,90,158,0.12)' : 'transparent',
-                              cursor: 'pointer',
-                              border: 'none',
-                              outline: 'none',
-                              transition: 'background 120ms ease',
-                            }}
-                            onMouseEnter={e => {
-                              if (!childActive) e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
-                            }}
-                            onMouseLeave={e => {
-                              e.currentTarget.style.background = childActive ? 'rgba(26,90,158,0.12)' : 'transparent';
-                            }}
-                          >
-                            {childActive && (
-                              <div
-                                style={{
-                                  position: 'absolute',
-                                  left: 0,
-                                  top: 4,
-                                  bottom: 4,
-                                  width: 3,
-                                  borderRadius: '0 2px 2px 0',
-                                  background: '#3b8ad4',
-                                }}
-                              />
-                            )}
-                            <ChildIcon
-                              size={14}
-                              style={{
-                                color: childActive ? '#3b8ad4' : '#5a6e80',
-                                flexShrink: 0,
-                              }}
-                            />
-                            <span
-                              className="truncate"
-                              style={{
-                                fontSize: 10,
-                                color: childActive ? '#c9ddf0' : '#7a8b9e',
-                                textAlign: 'left',
-                              }}
-                            >
-                              {child.label}
-                            </span>
-                          </button>
-                        );
-                      })}
+                    >
+                      <span className="text-[10px] font-medium text-white">{item.label}</span>
                     </div>
                   )}
-                </div>
+                </button>
               );
             })}
           </div>
         ))}
       </div>
 
-      {/* Collapse/Expand toggle */}
+      {/* Collapse toggle at bottom */}
       <button
-        onClick={toggleCollapse}
-        className="flex items-center justify-center flex-shrink-0"
+        onClick={() => setCollapsed(!collapsed)}
+        className="flex items-center justify-center gap-2 py-2 transition-colors"
         style={{
-          height: 32,
-          background: 'var(--surface-raised)',
-          borderTop: '1px solid var(--border-default)',
-          borderLeft: 'none',
-          borderRight: 'none',
-          borderBottom: 'none',
-          cursor: 'pointer',
+          height: 36,
+          borderTop: '1px solid #1e3048',
+          background: '#0d1520',
           color: '#5a6e80',
-          transition: 'color 120ms ease',
         }}
-        onMouseEnter={e => { e.currentTarget.style.color = '#8a9bb0'; }}
-        onMouseLeave={e => { e.currentTarget.style.color = '#5a6e80'; }}
         title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
-        {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+        {collapsed ? (
+          <ChevronRight style={{ width: 14, height: 14 }} />
+        ) : (
+          <>
+            <ChevronLeft style={{ width: 14, height: 14 }} />
+            <span className="text-[9px] font-mono uppercase tracking-wider">Collapse</span>
+          </>
+        )}
       </button>
-    </div>
+    </nav>
   );
 }

@@ -7,7 +7,6 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import {
   FileWarning,
   Plus,
@@ -28,10 +27,8 @@ import {
   FileText,
   Ban,
   RefreshCw,
-  Download,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
-import { exportToCsv } from '../utils/csvExport';
 import { toDisplayLabel } from '../utils/formatters';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useAuth } from '../context/AuthContext';
@@ -236,9 +233,6 @@ export default function CitationsPage() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const { errors: formErrors, validate: runValidation, clearAllErrors: clearFormErrors } = useFormValidation();
 
-  // URL search params (prefill from dispatch call)
-  const [searchParams, setSearchParams] = useSearchParams();
-
   // Person search state
   const [personSearch, setPersonSearch] = useState('');
   const [personResults, setPersonResults] = useState<any[]>([]);
@@ -246,8 +240,6 @@ export default function CitationsPage() {
   const [showPersonDropdown, setShowPersonDropdown] = useState(false);
   const personDropdownRef = useRef<HTMLDivElement>(null);
   const personSearchTimer = useRef<ReturnType<typeof setTimeout>>();
-  const personSearchGenRef = useRef(0);
-  const saveSuccessTimer = useRef<ReturnType<typeof setTimeout>>();
 
   // ── Data fetching ────────────────────────────────────────
 
@@ -262,11 +254,8 @@ export default function CitationsPage() {
       if (searchQuery.trim()) params.set('q', searchQuery.trim());
 
       const res = await apiFetch<{ data: Citation[]; pagination: any }>(`/citations?${params}`);
-      const newCitations = res.data || [];
-      setCitations(newCitations);
+      setCitations(res.data || []);
       setTotalPages(res.pagination?.totalPages || 1);
-      // Keep selected citation in sync if viewing in list mode
-      setSelectedCitation(prev => prev ? newCitations.find((c: Citation) => c.id === prev.id) || null : null);
     } catch (err: any) {
       if (!options?.silent) setError(err.message || 'Failed to load citations');
     } finally {
@@ -295,37 +284,6 @@ export default function CitationsPage() {
   const silentRefreshCitations = useCallback(() => fetchCitations({ silent: true }), [fetchCitations]);
   useLiveSync('citations', silentRefreshCitations);
 
-  // ---------- Prefill from dispatch call (URL param) ----------
-  useEffect(() => {
-    const callId = searchParams.get('prefill_call_id');
-    if (!callId) return;
-    // Clear the param immediately so it doesn't re-trigger
-    setSearchParams((prev) => { const next = new URLSearchParams(prev); next.delete('prefill_call_id'); return next; }, { replace: true });
-    (async () => {
-      try {
-        const call = await apiFetch<any>(`/dispatch/calls/${callId}`);
-        if (!call) return;
-        setForm({
-          ...EMPTY_FORM,
-          violation_date: localToday(),
-          violation_time: new Date().toTimeString().slice(0, 5),
-          location: call.location_address || '',
-          issuing_officer_name: (user as any)?.full_name || (user as any)?.username || '',
-          badge_number: (user as any)?.badge_number || '',
-          notes: call.description ? `Call #${call.id}: ${call.description}` : '',
-        });
-        setPersonSearch('');
-        setSaveError('');
-        setSaveSuccess(false);
-        clearFormErrors();
-        setMode('create');
-        setSelectedCitation(null);
-      } catch (err) {
-        console.warn('[CitationsPage] Failed to fetch call for prefill:', err);
-      }
-    })();
-  }, [searchParams]);
-
   // Close person dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -349,16 +307,14 @@ export default function CitationsPage() {
     }
     setPersonSearching(true);
     personSearchTimer.current = setTimeout(async () => {
-      const gen = ++personSearchGenRef.current;
       try {
         const res = await apiFetch<{ data: any[] }>(`/records/persons/search?q=${encodeURIComponent(val)}&limit=10`);
-        if (gen !== personSearchGenRef.current) return;
         setPersonResults(res.data || []);
         setShowPersonDropdown(true);
       } catch {
-        if (gen === personSearchGenRef.current) setPersonResults([]);
+        setPersonResults([]);
       } finally {
-        if (gen === personSearchGenRef.current) setPersonSearching(false);
+        setPersonSearching(false);
       }
     }, 300);
   };
@@ -426,7 +382,6 @@ export default function CitationsPage() {
     setPersonSearch('');
     setSaveError('');
     setSaveSuccess(false);
-    if (saveSuccessTimer.current) clearTimeout(saveSuccessTimer.current);
     clearFormErrors();
     setMode('create');
     setSelectedCitation(null);
@@ -503,8 +458,7 @@ export default function CitationsPage() {
         const res = await apiFetch<{ data: Citation }>('/citations', { method: 'POST', body: JSON.stringify(payload) });
         setSelectedCitation(res.data);
         setSaveSuccess(true);
-        if (saveSuccessTimer.current) clearTimeout(saveSuccessTimer.current);
-        saveSuccessTimer.current = setTimeout(() => {
+        setTimeout(() => {
           setMode('list');
           setSaveSuccess(false);
           fetchCitations({ silent: true });
@@ -514,8 +468,7 @@ export default function CitationsPage() {
         const res = await apiFetch<{ data: Citation }>(`/citations/${selectedCitation.id}`, { method: 'PUT', body: JSON.stringify(payload) });
         setSelectedCitation(res.data);
         setSaveSuccess(true);
-        if (saveSuccessTimer.current) clearTimeout(saveSuccessTimer.current);
-        saveSuccessTimer.current = setTimeout(() => {
+        setTimeout(() => {
           setMode('list');
           setSaveSuccess(false);
           fetchCitations({ silent: true });
@@ -618,34 +571,6 @@ export default function CitationsPage() {
           <div className={`flex items-center gap-2 ${isMobile ? 'w-full' : ''}`}>
             <button onClick={handleNewCitation} className={`toolbar-btn toolbar-btn-primary ${isMobile ? 'flex-1 justify-center' : ''}`} title="New Citation" style={isMobile ? { minHeight: 48 } : undefined}>
               <Plus size={isMobile ? 16 : 12} /> New
-            </button>
-            <button
-              onClick={() => exportToCsv('citations_export.csv', citations, [
-                { key: 'citation_number', label: 'Citation #' },
-                { key: 'type', label: 'Type' },
-                { key: 'status', label: 'Status' },
-                { key: 'person_name', label: 'Person' },
-                { key: 'violation_description', label: 'Violation' },
-                { key: 'statute_citation', label: 'Statute' },
-                { key: 'offense_level', label: 'Offense Level' },
-                { key: 'fine_amount', label: 'Fine Amount' },
-                { key: 'violation_date', label: 'Violation Date' },
-                { key: 'violation_time', label: 'Violation Time' },
-                { key: 'location', label: 'Location' },
-                { key: 'vehicle_plate', label: 'Vehicle Plate' },
-                { key: 'vehicle_state', label: 'Plate State' },
-                { key: 'vehicle_description', label: 'Vehicle' },
-                { key: 'issuing_officer_name', label: 'Officer' },
-                { key: 'court_date', label: 'Court Date' },
-                { key: 'court_name', label: 'Court' },
-                { key: 'notes', label: 'Notes' },
-                { key: 'created_at', label: 'Created' },
-              ])}
-              className="toolbar-btn"
-              title="Export CSV"
-              disabled={citations.length === 0}
-            >
-              <Download size={isMobile ? 16 : 12} /> CSV
             </button>
             <button onClick={() => { fetchCitations(); fetchStats(); }} className="text-rmpg-400 hover:text-rmpg-200 p-1 transition-colors" title="Refresh" style={isMobile ? { minHeight: 48, minWidth: 48 } : undefined}>
               <RefreshCw size={isMobile ? 18 : 14} />
@@ -1288,7 +1213,7 @@ export default function CitationsPage() {
   const showRightOnMobile = !isMobile || mode !== 'list' || !!selectedCitation;
 
   return (
-    <div className="flex flex-col h-full overflow-hidden app-grid-bg">
+    <div className="flex flex-col h-full overflow-hidden">
       {/* Stats bar */}
       <div className={`${isMobile ? 'px-3 pt-3' : 'px-4 pt-4'} pb-0 shrink-0`}>
         {isMobile ? (
@@ -1304,14 +1229,14 @@ export default function CitationsPage() {
       <div className={`flex flex-1 overflow-hidden ${isMobile ? 'px-2 pb-2 flex-col' : 'px-4 pb-4 gap-4'}`}>
         {/* Left panel */}
         {showListOnMobile && (
-          <div className={`${isMobile ? 'flex-1' : 'w-[420px] min-w-[360px] shrink-0'} panel-beveled card-glass bg-surface-base border border-rmpg-700 flex flex-col overflow-hidden`}>
+          <div className={`${isMobile ? 'flex-1' : 'w-[420px] min-w-[360px] shrink-0'} panel-beveled bg-surface-base border border-rmpg-700 flex flex-col overflow-hidden`}>
             {renderListPanel()}
           </div>
         )}
 
         {/* Right panel */}
         {showRightOnMobile && (
-          <div className={`flex-1 panel-beveled card-glass bg-surface-base border border-rmpg-700 overflow-hidden flex flex-col ${isMobile && !showListOnMobile ? '' : ''}`}>
+          <div className={`flex-1 panel-beveled bg-surface-base border border-rmpg-700 overflow-hidden flex flex-col ${isMobile && !showListOnMobile ? '' : ''}`}>
             {isMobile && selectedCitation && mode === 'list' && (
               <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700">
                 <button onClick={() => setSelectedCitation(null)} className="toolbar-btn text-[10px]">← Back</button>

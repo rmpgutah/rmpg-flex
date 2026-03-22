@@ -42,6 +42,7 @@ import type { DashboardStats, ActivityLogEntry, BOLO } from '../types';
 import StatsCard from '../components/StatsCard';
 import ActivityFeed from '../components/ActivityFeed';
 import PanelTitleBar from '../components/PanelTitleBar';
+import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import { StatsCardSkeleton, CardSkeleton } from '../components/Skeleton';
 import { apiFetch } from '../hooks/useApi';
@@ -457,15 +458,35 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="p-4 space-y-4 animate-fade-in app-grid-bg">
-      {/* Dashboard status strip — compact, no duplicate title bar */}
-      <div className="flex items-center justify-between px-3 py-1.5" style={{ background: '#0d1520', borderBottom: '1px solid #1e3048' }}>
-        <div className="flex items-center gap-2">
-          <span className={`led-dot ${stats.active_calls > 0 ? 'led-green animate-led-pulse' : 'led-green'}`} />
-          <span className="text-[10px] font-mono font-bold text-green-500 uppercase">Operational</span>
-          <span className="text-[9px] font-mono text-rmpg-600">{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+    <div className="p-4 space-y-4 animate-fade-in">
+      {/* Portal Header — RMPG Logo + System Title */}
+      <div className="panel-beveled bg-surface-base overflow-hidden">
+        <div className={`flex items-center gap-4 ${isMobile ? 'px-3 py-2' : 'px-4 py-3'} relative`}>
+          {/* Blue accent line */}
+          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e 30%, #1a5a9e 70%, #0e3359)' }} />
+          {!isMobile && <RmpgLogo height={68} />}
+          {isMobile && <RmpgLogo height={36} iconOnly />}
+          <div className="flex-1">
+            <div className="flex items-center gap-3">
+              <h1 className={`${isMobile ? 'text-xs' : 'text-sm'} font-bold tracking-wider uppercase text-rmpg-200`}>
+                {isMobile ? 'C&C Dashboard' : 'Command & Control Dashboard'}
+              </h1>
+              <div className="hidden sm:flex items-center gap-1.5">
+                <span className={`led-dot ${stats.active_calls > 0 ? 'led-green animate-led-pulse' : 'led-green'}`} />
+                <span className="text-[9px] font-mono font-bold text-green-500">OPERATIONAL</span>
+              </div>
+            </div>
+            {!isMobile && (
+              <p className="text-[9px] tracking-wide mt-0.5 text-rmpg-600">
+                Rocky Mountain Protective Group, LLC &mdash; Resolving today&rsquo;s concerns, to ensure tomorrow&rsquo;s solutions.
+              </p>
+            )}
+          </div>
+          <div className="hidden md:flex items-center gap-2 text-[9px] font-mono text-rmpg-600">
+            <PrintButton />
+            <span>{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
+          </div>
         </div>
-        <PrintButton />
       </div>
 
       {/* Error Banner */}
@@ -485,7 +506,7 @@ export default function DashboardPage() {
       )}
 
       {/* Stats Cards Row */}
-      <div className={`grid animate-stagger-in ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3'}`}>
+      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3'}`}>
         <StatsCard
           icon={Phone}
           label="Active Calls"
@@ -529,7 +550,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Priority Breakdown — Clickable beveled panels with LED dots */}
-      <div className={`grid animate-stagger-in ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2'}`}>
+      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2'}`}>
         {[
           { key: 'P1', label: 'P1 Emergency', led: 'led-red', border: 'border-l-red-500', count: stats.calls_by_priority.P1 },
           { key: 'P2', label: 'P2 Urgent', led: 'led-amber', border: 'border-l-amber-500', count: stats.calls_by_priority.P2 },
@@ -539,13 +560,13 @@ export default function DashboardPage() {
           <div
             key={key}
             onClick={() => navigate('/dispatch')}
-            className={`flex items-center gap-3 ${isMobile ? 'p-3 min-h-[56px]' : 'p-2'} panel-beveled border-l-4 ${border} cursor-pointer hover:bg-surface-raised transition-all duration-150 group bg-surface-base card-glass`}
+            className={`flex items-center gap-3 ${isMobile ? 'p-3 min-h-[56px]' : 'p-2'} panel-beveled border-l-4 ${border} cursor-pointer hover:bg-surface-raised transition-all duration-150 group bg-surface-base`}
             title={`View ${key} calls in Dispatch`}
           >
             <span className={`led-dot ${led}`} />
             <div className="flex-1">
               <div className={`${isMobile ? 'text-2xl' : 'text-lg'} font-bold text-green-400 font-mono`}>{count}</div>
-              <div className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wide">{label}</div>
+              <div className={`${isMobile ? 'text-[10px]' : 'text-[9px]'} text-rmpg-400 uppercase font-bold tracking-wide`}>{label}</div>
             </div>
             <ArrowRight className="w-3 h-3 text-rmpg-500 opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
@@ -687,7 +708,7 @@ export default function DashboardPage() {
 
       {/* BOLO Ticker */}
       {bolos.length > 0 && (
-        <div className="bg-red-900/20 panel-beveled p-2 cursor-pointer hover:bg-red-900/30 transition-colors border-l-4 border-l-red-500 alert-banner alert-banner-critical" onClick={() => navigate('/communications')}>
+        <div className="bg-red-900/20 panel-beveled p-2 cursor-pointer hover:bg-red-900/30 transition-colors border-l-4 border-l-red-500" onClick={() => navigate('/communications')}>
           <div className="flex items-center gap-2 mb-1.5">
             <span className="led-dot led-red animate-led-pulse" />
             <AlertTriangle className="w-3.5 h-3.5 text-red-400 animate-emergency-blink" />
@@ -711,8 +732,8 @@ export default function DashboardPage() {
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Calls by Hour — Area Chart with Gradient */}
-        <div className="lg:col-span-2 panel-beveled bg-surface-base card-glass">
-          <PanelTitleBar title="CALLS BY HOUR — TODAY" icon={Activity} statusLed={stats.calls_today > 0 ? 'green' : 'off'} />
+        <div className="lg:col-span-2 panel-beveled bg-surface-base">
+          <PanelTitleBar title="CALLS BY HOUR — TODAY" icon={Activity} />
           <div className="p-3">
           <ResponsiveContainer width="100%" height={isMobile ? 160 : 220}>
             <AreaChart data={chartData}>
@@ -725,13 +746,13 @@ export default function DashboardPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="#162236" />
               <XAxis
                 dataKey="label"
-                tick={{ fill: '#5a6e80', fontSize: 10 }}
+                tick={{ fill: '#5a6e80', fontSize: 9 }}
                 tickLine={{ stroke: '#1e3048' }}
                 axisLine={{ stroke: '#1e3048' }}
                 interval={2}
               />
               <YAxis
-                tick={{ fill: '#5a6e80', fontSize: 10 }}
+                tick={{ fill: '#5a6e80', fontSize: 9 }}
                 tickLine={{ stroke: '#1e3048' }}
                 axisLine={{ stroke: '#1e3048' }}
                 allowDecimals={false}
@@ -740,7 +761,7 @@ export default function DashboardPage() {
                 contentStyle={{
                   backgroundColor: 'var(--surface-base)',
                   border: '1px solid #2a3e58',
-                  borderRadius: '4px',
+                  borderRadius: '0px',
                   color: '#d0d8e0',
                   fontSize: '11px',
                 }}
@@ -760,7 +781,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Priority Distribution Pie + Quick Actions */}
-        <div className="panel-beveled bg-surface-base flex flex-col card-glass">
+        <div className="panel-beveled bg-surface-base flex flex-col">
           <PanelTitleBar title="PRIORITY DISTRIBUTION" icon={Shield} />
           <div className="p-3 flex-1">
             {/* Pie Chart */}
@@ -794,7 +815,7 @@ export default function DashboardPage() {
                       contentStyle={{
                         backgroundColor: 'var(--surface-base)',
                         border: '1px solid #2a3e58',
-                        borderRadius: '4px',
+                        borderRadius: '0px',
                         color: '#d0d8e0',
                         fontSize: '11px',
                       }}
@@ -819,8 +840,8 @@ export default function DashboardPage() {
               ].map(({ key, label, color, count }) => (
                 <div key={key} className="flex items-center gap-1.5">
                   <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
-                  <span className="text-[10px] text-rmpg-400 truncate">{key} {label}</span>
-                  <span className="text-[10px] font-mono font-bold text-rmpg-200 ml-auto">{count}</span>
+                  <span className="text-[9px] text-rmpg-400 truncate">{key} {label}</span>
+                  <span className="text-[9px] font-mono font-bold text-rmpg-200 ml-auto">{count}</span>
                 </div>
               ))}
             </div>
@@ -828,18 +849,18 @@ export default function DashboardPage() {
 
           {/* Quick Actions — compact */}
           <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5">
-            <h4 className="text-[10px] font-bold text-rmpg-500 uppercase tracking-wider">Quick Actions</h4>
+            <h4 className="text-[9px] font-bold text-rmpg-500 uppercase tracking-wider">Quick Actions</h4>
             <div className="grid grid-cols-2 gap-1.5">
-              <button className={`toolbar-btn toolbar-btn-primary justify-center action-card ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/dispatch')}>
+              <button className={`toolbar-btn toolbar-btn-primary justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/dispatch')}>
                 <Plus style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> New Call
               </button>
-              <button className={`toolbar-btn justify-center action-card ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/incidents')}>
+              <button className={`toolbar-btn justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/incidents')}>
                 <FileText style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Incident
               </button>
-              <button className={`toolbar-btn justify-center action-card ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/map')}>
+              <button className={`toolbar-btn justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/map')}>
                 <MapPin style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Map
               </button>
-              <button className={`toolbar-btn justify-center action-card ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => window.open('/warrants', '_blank', 'noopener,noreferrer')}>
+              <button className={`toolbar-btn justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => window.open('/warrants', '_blank', 'noopener,noreferrer')}>
                 <Gavel style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Warrants
               </button>
             </div>
@@ -848,7 +869,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Shift Summary Row */}
-      <div className={`grid animate-stagger-in ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2'}`}>
+      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2'}`}>
         {[
           { icon: Phone, label: 'Calls Handled', value: stats.calls_today, color: '#3b82f6', path: '/dispatch' },
           { icon: FileText, label: 'Incidents Filed', value: stats.incidents_today, color: '#22c55e', path: '/incidents' },
@@ -860,11 +881,11 @@ export default function DashboardPage() {
           <div
             key={label}
             onClick={() => navigate(path)}
-            className={`panel-beveled bg-surface-sunken ${isMobile ? 'p-3 min-h-[64px]' : 'p-2.5'} cursor-pointer hover:bg-surface-raised transition-colors group card-glass stat-pod`}
+            className={`panel-beveled bg-surface-sunken ${isMobile ? 'p-3 min-h-[64px]' : 'p-2.5'} cursor-pointer hover:bg-surface-raised transition-colors group`}
           >
             <div className="flex items-center gap-2 mb-1">
               <Icon className={`${isMobile ? 'w-4 h-4' : 'w-3.5 h-3.5'}`} style={{ color }} />
-              <span className="text-[10px] text-rmpg-500 uppercase font-bold tracking-wide truncate">{label}</span>
+              <span className={`${isMobile ? 'text-[10px]' : 'text-[9px]'} text-rmpg-500 uppercase font-bold tracking-wide truncate`}>{label}</span>
             </div>
             <div className={`${isMobile ? 'text-2xl' : 'text-lg'} font-bold font-mono`} style={{ color }}>{value}</div>
           </div>
@@ -888,7 +909,7 @@ export default function DashboardPage() {
           other: 'Other',
         };
         return (
-          <div className="panel-beveled bg-surface-base card-glass">
+          <div className="panel-beveled bg-surface-base">
             <PanelTitleBar title="PSO OPERATIONS — THIS MONTH" icon={Briefcase} />
             <div className="p-3 space-y-3">
               {/* PSO Stats Cards */}
@@ -896,28 +917,28 @@ export default function DashboardPage() {
                 <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-brand-500">
                   <div className="flex items-center gap-1.5 mb-1">
                     <Briefcase className="w-3 h-3 text-brand-400" />
-                    <span className="text-[10px] text-rmpg-500 uppercase font-bold tracking-wide">Active PSO</span>
+                    <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Active PSO</span>
                   </div>
                   <div className="text-lg font-bold font-mono text-brand-400">{psoStats.activeCalls}</div>
                 </div>
                 <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-blue-500">
                   <div className="flex items-center gap-1.5 mb-1">
                     <Phone className="w-3 h-3 text-blue-400" />
-                    <span className="text-[10px] text-rmpg-500 uppercase font-bold tracking-wide">Today</span>
+                    <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Today</span>
                   </div>
                   <div className="text-lg font-bold font-mono text-blue-400">{psoStats.todayCalls}</div>
                 </div>
                 <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-green-500">
                   <div className="flex items-center gap-1.5 mb-1">
                     <CheckCircle className="w-3 h-3 text-green-400" />
-                    <span className="text-[10px] text-rmpg-500 uppercase font-bold tracking-wide">Completed</span>
+                    <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Completed</span>
                   </div>
                   <div className="text-lg font-bold font-mono text-green-400">{psoStats.monthCompleted}<span className="text-[10px] text-rmpg-500 ml-1">/ {psoStats.monthCalls}</span></div>
                 </div>
                 <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px]" style={{ borderLeftColor: serveRate !== null && serveRate >= 70 ? '#22c55e' : serveRate !== null ? '#f59e0b' : '#5a6e80' }}>
                   <div className="flex items-center gap-1.5 mb-1">
                     <Target className="w-3 h-3" style={{ color: serveRate !== null && serveRate >= 70 ? '#22c55e' : '#f59e0b' }} />
-                    <span className="text-[10px] text-rmpg-500 uppercase font-bold tracking-wide">Serve Rate</span>
+                    <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Serve Rate</span>
                   </div>
                   <div className="text-lg font-bold font-mono" style={{ color: serveRate !== null && serveRate >= 70 ? '#22c55e' : serveRate !== null ? '#f59e0b' : '#5a6e80' }}>
                     {serveRate !== null ? `${serveRate}%` : 'N/A'}
@@ -926,14 +947,14 @@ export default function DashboardPage() {
                 <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-amber-500">
                   <div className="flex items-center gap-1.5 mb-1">
                     <TrendingUp className="w-3 h-3 text-amber-400" />
-                    <span className="text-[10px] text-rmpg-500 uppercase font-bold tracking-wide">Avg Attempts</span>
+                    <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Avg Attempts</span>
                   </div>
                   <div className="text-lg font-bold font-mono text-amber-400">{psoStats.avgAttempts ?? 'N/A'}</div>
                 </div>
                 <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-brand-500">
                   <div className="flex items-center gap-1.5 mb-1">
                     <Clock className="w-3 h-3 text-brand-400" />
-                    <span className="text-[10px] text-rmpg-500 uppercase font-bold tracking-wide">PSO Response</span>
+                    <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">PSO Response</span>
                   </div>
                   <div className="text-lg font-bold font-mono text-brand-400">{psoStats.avgResponseMinutes ? `${psoStats.avgResponseMinutes}m` : 'N/A'}</div>
                 </div>
@@ -944,7 +965,7 @@ export default function DashboardPage() {
                 {/* Service Type Breakdown */}
                 {psoStats.byServiceType.length > 0 && (
                   <div className="panel-beveled bg-surface-sunken p-2.5">
-                    <div className="text-[10px] text-rmpg-500 uppercase font-bold tracking-wider mb-2">By Service Type</div>
+                    <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-2">By Service Type</div>
                     <div className="space-y-1.5">
                       {psoStats.byServiceType.map(st => {
                         const pct = psoStats.monthCalls > 0 ? Math.round((st.count / psoStats.monthCalls) * 100) : 0;
@@ -965,7 +986,7 @@ export default function DashboardPage() {
                 {/* Process Service Results */}
                 {psoStats.serveResults.total > 0 && (
                   <div className="panel-beveled bg-surface-sunken p-2.5">
-                    <div className="text-[10px] text-rmpg-500 uppercase font-bold tracking-wider mb-2">Process Service Results</div>
+                    <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-2">Process Service Results</div>
                     <div className="grid grid-cols-2 gap-2">
                       <div className="flex items-center gap-2">
                         <CheckCircle className="w-3 h-3 text-green-400" />
@@ -991,7 +1012,7 @@ export default function DashboardPage() {
                     {/* ServeManager Sync */}
                     {psoStats.serveManager.totalJobs > 0 && (
                       <div className="mt-2 pt-2 border-t border-rmpg-700/50">
-                        <div className="text-[10px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">ServeManager Sync</div>
+                        <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">ServeManager Sync</div>
                         <div className="flex items-center gap-3 text-[10px]">
                           <span className="text-rmpg-400">Total: <span className="font-mono text-rmpg-200">{psoStats.serveManager.totalJobs}</span></span>
                           <span className="text-rmpg-400">Pending: <span className="font-mono text-amber-400">{psoStats.serveManager.pendingJobs}</span></span>
@@ -1010,15 +1031,15 @@ export default function DashboardPage() {
       {/* Activity Feed + Operational Alerts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Activity Feed */}
-        <div className="lg:col-span-2 panel-beveled bg-surface-base card-glass">
-          <PanelTitleBar title="RECENT ACTIVITY" icon={Activity} statusLed="green" ledPulse>
+        <div className="lg:col-span-2 panel-beveled bg-surface-base">
+          <PanelTitleBar title="RECENT ACTIVITY" icon={Activity}>
             <button
               className="toolbar-btn flex items-center gap-1"
               onClick={() => navigate('/audit')}
               title="View full audit log"
             >
               <Eye style={{ width: 10, height: 10 }} />
-              <span className="text-[10px]">View All</span>
+              <span className="text-[9px]">View All</span>
             </button>
           </PanelTitleBar>
           <div className="p-3">
@@ -1027,8 +1048,8 @@ export default function DashboardPage() {
         </div>
 
         {/* Operational Summary */}
-        <div className="panel-beveled bg-surface-base card-glass">
-          <PanelTitleBar title="OPERATIONAL STATUS" icon={Radio} statusLed="green" />
+        <div className="panel-beveled bg-surface-base">
+          <PanelTitleBar title="OPERATIONAL STATUS" icon={Radio} />
           <div className="p-3 space-y-3">
             {/* Active Warrant Alerts */}
             <div
@@ -1085,7 +1106,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Credential Alerts */}
-      <div className="panel-beveled bg-surface-base card-glass">
+      <div className="panel-beveled bg-surface-base">
         <PanelTitleBar title="CREDENTIAL ALERTS" icon={Shield} />
         <div className="p-3">
           {expiringCredentials.length === 0 ? (
@@ -1165,7 +1186,7 @@ export default function DashboardPage() {
         }));
 
         return (
-          <div className="panel-beveled bg-surface-base card-glass">
+          <div className="panel-beveled bg-surface-base">
             <PanelTitleBar title="OFFICER ACTIVITY COMPARISON — LAST 30 DAYS" icon={Users} />
             <div className="p-3">
               {/* Role Legend */}
@@ -1191,7 +1212,7 @@ export default function DashboardPage() {
                     contentStyle={{
                       backgroundColor: 'var(--surface-base)',
                       border: '1px solid #2a3e58',
-                      borderRadius: '4px',
+                      borderRadius: '0px',
                       color: '#e0e0e0',
                       fontSize: '11px',
                     }}

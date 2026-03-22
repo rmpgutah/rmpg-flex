@@ -119,8 +119,8 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         group relative p-2 cursor-pointer transition-all duration-100
         priority-border-${call.priority}
         ${isSelected
-          ? 'bg-brand-900/30 panel-beveled card-glass'
-          : 'panel-beveled card-glass hover:bg-surface-raised'
+          ? 'bg-brand-900/30 panel-beveled'
+          : 'panel-beveled hover:bg-surface-raised'
         }
         ${isEmergency ? 'animate-emergency-pulse' : ''}
         ${isOverdue ? 'timer-overdue' : ''}
@@ -254,7 +254,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             {initState.label} {initState.formatted}
           </span>
         </div>
-        {call.assigned_units?.length > 0 && (
+        {call.assigned_units.length > 0 && (
           <div className="flex items-center gap-1">
             <Users className="w-3 h-3" />
             <span>{call.assigned_units.length} unit{call.assigned_units.length !== 1 ? 's' : ''}</span>

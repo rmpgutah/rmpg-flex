@@ -254,7 +254,6 @@ export default function ForensicLabPage() {
   const [cases, setCases] = useState<ForensicCase[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterType, setFilterType] = useState('');
@@ -305,10 +304,8 @@ export default function ForensicLabPage() {
       ]);
       setCases(casesRes.data || []);
       setStats(statsRes);
-      setFetchError(null);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Fetch forensic cases error:', err);
-      setFetchError(err?.message || 'Failed to load forensic cases');
     } finally {
       setLoading(false);
     }
@@ -339,6 +336,7 @@ export default function ForensicLabPage() {
     try {
       const caseRes = await apiFetch<ForensicCase>('/forensic-lab', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: wizardData.title,
           case_type: wizardData.case_type,
@@ -354,6 +352,7 @@ export default function ForensicLabPage() {
         if (exhibit.description.trim()) {
           await apiFetch(`/forensic-lab/${caseRes.id}/exhibits`, {
             method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(exhibit),
           });
         }
@@ -378,6 +377,7 @@ export default function ForensicLabPage() {
     try {
       await apiFetch(`/forensic-lab/${selectedCase.id}/analyses`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(analysisForm),
       });
       setShowAnalysisModal(false);
@@ -395,6 +395,7 @@ export default function ForensicLabPage() {
     try {
       await apiFetch(`/forensic-lab/${selectedCase.id}/exhibits`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(exhibitForm),
       });
       setShowExhibitModal(false);
@@ -412,6 +413,7 @@ export default function ForensicLabPage() {
     try {
       await apiFetch(`/forensic-lab/${selectedCase.id}`, {
         method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       });
       fetchCaseDetail(selectedCase.id);
@@ -440,6 +442,7 @@ export default function ForensicLabPage() {
     try {
       await apiFetch(`/forensic-lab/${selectedCase.id}`, {
         method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editForm),
       });
       setShowEditModal(false);
@@ -457,6 +460,7 @@ export default function ForensicLabPage() {
     try {
       await apiFetch(`/forensic-lab/${selectedCase.id}/analyses/${analysisId}`, {
         method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus, ...extras }),
       });
       fetchCaseDetail(selectedCase.id);
@@ -472,6 +476,7 @@ export default function ForensicLabPage() {
     try {
       await apiFetch(`/forensic-lab/${selectedCase.id}/exhibits/${exhibitId}`, {
         method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus, ...extras }),
       });
       fetchCaseDetail(selectedCase.id);
@@ -488,6 +493,7 @@ export default function ForensicLabPage() {
     try {
       await apiFetch(`/forensic-lab/${selectedCase.id}/timeline`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'note', description: timelineNote }),
       });
       setTimelineNote('');
@@ -520,6 +526,7 @@ export default function ForensicLabPage() {
     try {
       await apiFetch(`/forensic-lab/${selectedCase.id}/links`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ entity_type: entityType, entity_id: entityId, relationship }),
       });
       setLinkSearchResults([]);
@@ -1724,14 +1731,6 @@ export default function ForensicLabPage() {
             {loading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 size={20} className="animate-spin text-brand-400" />
-              </div>
-            ) : fetchError ? (
-              <div className="panel-beveled bg-surface-sunken p-8 text-center">
-                <AlertTriangle size={32} className="text-amber-400 mx-auto mb-3" />
-                <p className="text-sm text-rmpg-300">{fetchError}</p>
-                <button onClick={() => fetchCases()} className="mt-3 toolbar-btn text-xs">
-                  <RefreshCw size={12} /> Retry
-                </button>
               </div>
             ) : cases.length === 0 ? (
               <div className="panel-beveled bg-surface-sunken p-8 text-center">

@@ -16,7 +16,7 @@ interface TotpCodeInputProps {
 
 export default function TotpCodeInput({ value, onChange, onComplete, disabled, error }: TotpCodeInputProps) {
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
-  const digits = value.padEnd(6, ' ').slice(0, 6).split('');
+  const digits = value.padEnd(6, '').slice(0, 6).split('');
 
   // Focus first input on mount and when value is cleared (retry after error)
   useEffect(() => {

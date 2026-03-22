@@ -381,7 +381,7 @@ router.get('/messages', async (req: Request, res: Response) => {
 
     if (search) {
       conditions.push("(subject LIKE ? ESCAPE '\\' OR from_address LIKE ? ESCAPE '\\' OR from_name LIKE ? ESCAPE '\\' OR body_preview LIKE ? ESCAPE '\\')");
-      const term = `%${escapeLike(String(search).trim())}%`;
+      const term = `%${escapeLike(String(search))}%`;
       params.push(term, term, term, term);
     }
 
@@ -835,8 +835,8 @@ router.post('/templates', (req: Request, res: Response) => {
       VALUES (?, ?, ?, ?, ?)
     `).run(name, category || 'general', subject || '', body || '', req.user!.userId);
 
-    auditLog(req, 'CREATE', 'email_template', Number(result.lastInsertRowid) as number, `Created template: ${name}`);
-    res.json({ success: true, id: Number(result.lastInsertRowid) });
+    auditLog(req, 'CREATE', 'email_template', result.lastInsertRowid as number, `Created template: ${name}`);
+    res.json({ success: true, id: result.lastInsertRowid });
   } catch (err: any) {
     console.error('Email route error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
@@ -963,10 +963,10 @@ router.post('/link', (req: Request, res: Response) => {
     `).run(emailGraphId, incidentId || null, callId || null, warrantId || null, personId || null,
       linkType || 'related', notes || null, req.user!.userId);
 
-    auditLog(req, 'CREATE', 'email_link', Number(result.lastInsertRowid) as number,
+    auditLog(req, 'CREATE', 'email_link', result.lastInsertRowid as number,
       `Linked email to ${incidentId ? `incident #${incidentId}` : callId ? `call #${callId}` : warrantId ? `warrant #${warrantId}` : `person #${personId}`}`);
 
-    res.json({ success: true, id: Number(result.lastInsertRowid) });
+    res.json({ success: true, id: result.lastInsertRowid });
   } catch (err: any) {
     console.error('Email route error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
@@ -1058,10 +1058,10 @@ router.post('/schedule', (req: Request, res: Response) => {
       scheduledAt, req.user!.userId
     );
 
-    auditLog(req, 'SCHEDULE_EMAIL', 'email', Number(result.lastInsertRowid) as number,
+    auditLog(req, 'SCHEDULE_EMAIL', 'email', result.lastInsertRowid as number,
       JSON.stringify({ to: toList, subject, scheduledAt }));
 
-    res.json({ success: true, id: Number(result.lastInsertRowid) });
+    res.json({ success: true, id: result.lastInsertRowid });
   } catch (err: any) {
     console.error('Email route error:', err.message);
     res.status(500).json({ error: 'Internal server error' });

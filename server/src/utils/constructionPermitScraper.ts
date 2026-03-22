@@ -154,8 +154,7 @@ function normalizeDate(dateStr: string): string {
 
   // Unix timestamp in ms
   if (/^\d{13}$/.test(dateStr)) {
-    const ms = new Date(parseInt(dateStr, 10));
-    return `${ms.getFullYear()}-${String(ms.getMonth() + 1).padStart(2, '0')}-${String(ms.getDate()).padStart(2, '0')}`;
+    return new Date(parseInt(dateStr, 10)).toISOString().slice(0, 10);
   }
 
   // MM/DD/YYYY
@@ -185,7 +184,7 @@ export async function scrapeConstructionPermits(): Promise<ScrapeResult> {
   // Date filter: permits issued in the last N days
   const sinceDate = new Date();
   sinceDate.setDate(sinceDate.getDate() - daysBack);
-  const sinceDateStr = `${sinceDate.getFullYear()}-${String(sinceDate.getMonth() + 1).padStart(2, '0')}-${String(sinceDate.getDate()).padStart(2, '0')}`;
+  const sinceDateStr = sinceDate.toISOString().slice(0, 10);
 
   let fetched = false;
 

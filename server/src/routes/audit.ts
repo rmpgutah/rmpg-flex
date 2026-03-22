@@ -4,7 +4,6 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { sendCsv } from '../utils/csvExport';
 import { localNow } from '../utils/timeUtils';
 import { escapeLike } from '../middleware/sanitize';
-import { exportRateLimit } from '../middleware/rateLimiter';
 
 const router = Router();
 
@@ -25,7 +24,7 @@ router.get('/logs', (req: Request, res: Response) => {
       limit = '100'
     } = req.query;
 
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const limitNum = Math.min(500, Math.max(1, parseInt(limit as string, 10) || 100));
     const offset = (pageNum - 1) * limitNum;
 
@@ -62,7 +61,7 @@ router.get('/logs', (req: Request, res: Response) => {
 
     if (search) {
       conditions.push("al.details LIKE ? ESCAPE '\\'");
-      params.push(`%${escapeLike((search as string).trim())}%`);
+      params.push(`%${escapeLike(search as string)}%`);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -171,7 +170,7 @@ router.get('/stats', (req: Request, res: Response) => {
 });
 
 // GET /api/audit/export - Export audit log as CSV
-router.get('/export', exportRateLimit, (req: Request, res: Response) => {
+router.get('/export', (req: Request, res: Response) => {
   try {
     const {
       action,
@@ -209,7 +208,7 @@ router.get('/export', exportRateLimit, (req: Request, res: Response) => {
     }
     if (search) {
       conditions.push("al.details LIKE ? ESCAPE '\\'");
-      params.push(`%${escapeLike((search as string).trim())}%`);
+      params.push(`%${escapeLike(search as string)}%`);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';

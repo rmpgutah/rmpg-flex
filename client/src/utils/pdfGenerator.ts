@@ -17,7 +17,7 @@ import {
   COLOR, FONT, BORDER, SPACING, LAYOUT,
   getContentWidth, getHalfWidth, getFullFieldWidth,
   getLeftX, getRightColumnX, getHalfFieldWidth, getThirdWidth, getQuarterWidth,
-  getGridStartX, getGridContentWidth, getLineHeight, getCapHeight,
+  getGridStartX, getGridContentWidth,
 } from './pdfTokens';
 import {
   drawFormSection, drawFormGrid, drawFormCell, drawFormRow,
@@ -335,9 +335,8 @@ export function openAutoSection(doc: jsPDF, title: string, y: number): { content
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
-  // Vertically centered in header bar: baseline = midpoint + half cap-height
-  const capH = getCapHeight(FONT.SIZE_SECTION_TITLE);
-  const sectionTextY = y + (SPACING.SECTION_HEADER_H + capH) / 2;
+  // Vertically centered in header bar: baseline ≈ midpoint + half ascent
+  const sectionTextY = y + SPACING.SECTION_HEADER_H / 2 + FONT.SIZE_SECTION_TITLE * 0.14;
   doc.text(title.toUpperCase(), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, sectionTextY);
 
   // Reset text color to primary (black) — prevents white text leaking into content
@@ -378,11 +377,11 @@ export function closeAutoSection(doc: jsPDF, sectionY: number, contentEndY: numb
         doc.rect(LAYOUT.PAGE_MARGIN, sectionY, cw, bottomY - sectionY);
       } else if (p === currentPage) {
         // Last page: from below continuation header to contentEndY
-        const topY = SPACING.CONTINUATION_Y; // Just below continuation header (contY=4 + contH=4.5 + 5mm gap)
+        const topY = 13.5; // Just below continuation header (contY=4 + contH=4.5 + 5mm gap)
         doc.rect(LAYOUT.PAGE_MARGIN, topY, cw, Math.max((contentEndY + padding) - topY, 12));
       } else {
         // Middle pages: full page border
-        const topY = SPACING.CONTINUATION_Y;
+        const topY = 13.5;
         const bottomY = pageH - LAYOUT.FOOTER_HEIGHT - 2;
         doc.rect(LAYOUT.PAGE_MARGIN, topY, cw, bottomY - topY);
       }
@@ -416,20 +415,18 @@ export function addBoxedSection(doc: jsPDF, title: string, y: number, _height: n
 export function addFieldPair(doc: jsPDF, label: string, value: string, x: number, y: number, width: number): number {
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
-  const labelH = 3.2;         // Height reserved for floating label above box
-  const baseBoxH = 7;         // Minimum value box height
-  const innerPad = 1.5;       // Horizontal padding inside box
+  const labelH = 3;          // Height reserved for floating label above box
+  const baseBoxH = 7;        // Minimum value box height
+  const innerPad = 1.5;      // Horizontal padding inside box
   const maxW = width - 2 * innerPad;
-  const lineStep = 3.5;       // Y-step per extra line of value text
-  const maxLines = 4;         // Cap at 4 lines
-  const rowGap = 1.2;         // Gap between field rows
+  const lineStep = 3.5;      // Y-step per extra line of value text
+  const maxLines = 4;        // Cap at 4 lines
 
-  // Floating label above the box — baseline at ~70% of label zone height
+  // Floating label above the box
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
-  const labelBaseline = y + labelH * 0.7;
-  doc.text(label.toUpperCase(), x + innerPad, labelBaseline);
+  doc.text(label.toUpperCase(), x + innerPad, y + 2);
 
   // Determine value text and line count — Courier for values
   doc.setFont('courier', 'normal');
@@ -452,14 +449,12 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   doc.setLineWidth(BORDER.FIELD);
   doc.rect(x, boxY, width, boxH);
 
-  // Value text — vertically centered in box using cap-height baseline math
+  // Value text — vertically centered in box
   const valColor = isEmpty ? COLOR.TEXT_TERTIARY : COLOR.TEXT_PRIMARY;
   doc.setTextColor(valColor[0], valColor[1], valColor[2]);
 
-  const capH = getCapHeight(FONT.SIZE_FIELD_VALUE);
   const textBlockH = lines.length * lineStep;
-  // Center the text block in the box, offset by half cap-height for baseline
-  const textStartY = boxY + (boxH - textBlockH) / 2 + capH / 2 + lineStep * 0.5;
+  const textStartY = boxY + (boxH - textBlockH) / 2 + lineStep * 0.72;
   let lineY = textStartY;
   for (const line of lines) {
     doc.text(line, x + innerPad, lineY);
@@ -469,7 +464,7 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   // Reset text color
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
-  return y + labelH + boxH + rowGap; // label + box + gap between rows
+  return y + labelH + boxH + 1; // label + box + gap between rows
 }
 
 /**
@@ -616,8 +611,8 @@ export function addCautionBlock(
   const allLines = doc.splitTextToSize(cautionText, maxW);
   const lines = allLines.slice(0, 6);
   if (allLines.length > 6) lines[5] = lines[5].length > 3 ? lines[5].slice(0, -3) + '...' : '...';
-  const lineH = SPACING.CAUTION_LINE_H;
-  const boxH = Math.max(8, lines.length * lineH + SPACING.CAUTION_PAD);
+  const lineH = 3.5;
+  const boxH = Math.max(8, lines.length * lineH + 4);
 
   // Amber warning background
   doc.setFillColor(255, 248, 230);
@@ -630,18 +625,17 @@ export function addCautionBlock(
   doc.setLineWidth(0.3);
   doc.rect(x, y, width, boxH);
 
-  // Label — vertically positioned in upper portion
+  // Label
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   doc.setTextColor(180, 60, 0);
-  const cautionLabelY = y + getCapHeight(FONT.SIZE_FIELD_LABEL) + SPACING.MD;
-  doc.text('⚠ CAUTION / OFFICER SAFETY', x + innerPad + 2, cautionLabelY);
+  doc.text('⚠ CAUTION / OFFICER SAFETY', x + innerPad + 2, y + 3);
 
-  // Text content — starts below label with breathing room
+  // Text content
   doc.setFont('courier', 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   doc.setTextColor(80, 40, 0);
-  let textY = cautionLabelY + SPACING.CAUTION_LINE_H;
+  let textY = y + 6;
   for (const line of lines) {
     doc.text(line, x + innerPad + 2, textY);
     textY += lineH;
@@ -649,7 +643,7 @@ export function addCautionBlock(
 
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
-  return y + boxH + SPACING.MD;
+  return y + boxH + 1.5;
 }
 
 // ── Active Officer Signature (set per-generation, cleared after) ─
@@ -709,8 +703,7 @@ export function addSignatureBlock(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
-  const roleCap = getCapHeight(FONT.SIZE_FIELD_LABEL);
-  const roleTextY = y + (roleBarH + roleCap) / 2;
+  const roleTextY = y + roleBarH / 2 + FONT.SIZE_FIELD_LABEL * 0.14;
   doc.text(roleLabel.toUpperCase(), x + SPACING.CONTENT_INSET, roleTextY);
 
   // ── Signature area ──
@@ -750,22 +743,21 @@ export function addSignatureBlock(
   doc.line(x + colW, row2Y, x + colW, row2Y + infoRowH);
   doc.line(x + colW * 2, row2Y, x + colW * 2, row2Y + infoRowH);
 
-  // Labels — vertically centered in upper third of info row
+  // Labels
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
-  const labelY = row2Y + 2.8;
-  doc.text('PRINTED NAME', x + SPACING.MD, labelY);
-  doc.text('BADGE NUMBER', x + colW + SPACING.MD, labelY);
-  doc.text('DATE', x + colW * 2 + SPACING.MD, labelY);
+  doc.text('PRINTED NAME', x + SPACING.MD, row2Y + 2.2);
+  doc.text('BADGE NUMBER', x + colW + SPACING.MD, row2Y + 2.2);
+  doc.text('DATE', x + colW * 2 + SPACING.MD, row2Y + 2.2);
 
-  // Values — auto-fill from sigData, centered in lower portion of info row
+  // Values — auto-fill from sigData
   const hasSigData = sigData?.printedName || sigData?.badgeNumber || sigData?.date;
   if (hasSigData) {
     doc.setFont('courier', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    const valY = row2Y + infoRowH - 2;
+    const valY = row2Y + infoRowH - 1.5;
     if (sigData!.printedName) doc.text(sigData!.printedName, x + SPACING.MD, valY);
     if (sigData!.badgeNumber) doc.text(sigData!.badgeNumber, x + colW + SPACING.MD, valY);
     const now = new Date();
@@ -900,7 +892,7 @@ export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, m
   doc.setFont('courier', 'normal');
   doc.setFontSize(fontSize);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  const lineH = getLineHeight(fontSize);
+  const lineH = fontSize * 0.42 + 1.2;
   const paragraphGap = SPACING.MD;
 
   const paragraphs = text.split(/\n\n+/);
@@ -950,7 +942,7 @@ export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, m
  */
 export function addFormattedText(doc: jsPDF, text: string, x: number, y: number, maxWidth: number, fontSize: number = FONT.SIZE_FIELD_VALUE, onPageBreak?: (newY: number) => number): number {
   if (!text) return y;
-  const lineH = getLineHeight(fontSize);
+  const lineH = fontSize * 0.42 + 1.2;
   const paragraphGap = SPACING.MD;
   let lastPage = doc.getNumberOfPages();
   const stripMarkers = (s: string) => s.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1').replace(/__(.+?)__/g, '$1');
@@ -1086,7 +1078,7 @@ export function addNarrativeSection(
   const lx = getLeftX();
   const ffw = getFullFieldWidth(doc);
   const fontSize = FONT.SIZE_FIELD_VALUE;
-  const lineH = getLineHeight(fontSize);
+  const lineH = fontSize * 0.42 + 1.2;
   const paragraphGap = SPACING.MD;
 
   // Estimate total height by splitting text into lines (strip formatting markers for measurement)
@@ -1407,7 +1399,7 @@ export function addTableWithShading(
     doc.setFontSize(FONT.SIZE_TABLE_HEADER);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(...COLOR.TEXT_INVERTED);
-    const capH = getCapHeight(FONT.SIZE_TABLE_HEADER);
+    const capH = FONT.SIZE_TABLE_HEADER * 0.35;  // approximate cap-height in mm
     const textY = atY + (headerRowH + capH) / 2;
     for (const h of headers) {
       doc.text(h.label, h.x, textY);
@@ -1471,15 +1463,13 @@ export function addTableWithShading(
     doc.setLineWidth(BORDER.TABLE_ROW);
     doc.line(LAYOUT.PAGE_MARGIN + 1, y + rowH, LAYOUT.PAGE_MARGIN + cw - 1, y + rowH);
 
-    // Render cell text — each cell vertically centered within the shared row height
+    // Render cell text — vertically centered within row
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    const capH = getCapHeight(FONT.SIZE_TABLE_BODY);
+    const textBlockH = maxLines * cellLineH;
+    const textStartY = y + (rowH - textBlockH) / 2 + cellLineH * 0.7; // center block + baseline offset
     for (let c = 0; c < cellLines.length; c++) {
       const lines = cellLines[c];
-      const cellBlockH = lines.length * cellLineH;
-      // Center this cell's text block in the row, baseline-offset by half cap-height
-      const cellStartY = y + (rowH - cellBlockH) / 2 + capH / 2 + cellLineH * 0.5;
-      let cellY = cellStartY;
+      let cellY = textStartY;
       for (const line of lines) {
         doc.text(line, colPositions[c], cellY);
         cellY += cellLineH;
@@ -1534,16 +1524,16 @@ export function addThreeColumnFields(
 
   for (let i = 0; i < fields.length; i += 3) {
     y = checkPageBreak(doc, y, 12); // guard each row of 3 fields
-    let maxNextY = y;
+    let maxNextY = y + SPACING.FIELD_ROW_ADVANCE;
     for (let c = 0; c < 3; c++) {
       if (i + c < fields.length) {
         const x = lx + c * colW;
         const nextY = addFieldPair(doc, fields[i + c].label, fields[i + c].value, x, y, colW);
         if (nextY > maxNextY) maxNextY = nextY;
       }
+      // No empty placeholder boxes for partial rows
     }
-    // Ensure minimum row advance so fields never overlap
-    y = Math.max(maxNextY, y + SPACING.FIELD_ROW_ADVANCE);
+    y = maxNextY;
   }
   return y;
 }
@@ -2310,19 +2300,18 @@ function generateAccidentReport(doc: jsPDF, data: IncidentData) {
   { const sec = openAutoSection(doc, 'Accident Diagram', y); y = sec.contentY;
     doc.setDrawColor(...COLOR.BORDER_TABLE);
     doc.setLineWidth(BORDER.DIAGRAM_GRID);
-    const diagH = LAYOUT.DIAGRAM_AREA_H;
     for (let gx = LAYOUT.PAGE_MARGIN + LAYOUT.DIAGRAM_GRID_STEP; gx < pageWidth - LAYOUT.PAGE_MARGIN; gx += LAYOUT.DIAGRAM_GRID_STEP) {
-      doc.line(gx, y, gx, y + diagH);
+      doc.line(gx, y, gx, y + 55);
     }
-    for (let gy = y; gy < y + diagH; gy += LAYOUT.DIAGRAM_GRID_STEP) {
+    for (let gy = y; gy < y + 55; gy += LAYOUT.DIAGRAM_GRID_STEP) {
       doc.line(lx, gy, pageWidth - LAYOUT.PAGE_MARGIN - SPACING.MD, gy);
     }
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
     doc.setTextColor(...COLOR.TEXT_TERTIARY);
-    doc.text('(DRAW DIAGRAM \u2014 INDICATE NORTH, VEHICLES, DIRECTION OF TRAVEL, POINT OF IMPACT)', pageWidth / 2, y + diagH + 5, { align: 'center' });
+    doc.text('(DRAW DIAGRAM \u2014 INDICATE NORTH, VEHICLES, DIRECTION OF TRAVEL, POINT OF IMPACT)', pageWidth / 2, y + 60, { align: 'center' });
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setDrawColor(...COLOR.TEXT_PRIMARY);
-    y += diagH + 10;
+    y += 65;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 

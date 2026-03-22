@@ -106,7 +106,6 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
   const [currentTime, setCurrentTime] = useState(0);
   const [hudVisible, setHudVisible] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [playbackRate, setPlaybackRate] = useState(1);
   const containerRef = useRef<HTMLDivElement>(null);
   const [liveAddress, setLiveAddress] = useState<string | null>(null);
   const lastGeocodedPos = useRef<{ lat: number; lng: number } | null>(null);
@@ -185,12 +184,9 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
 
   // ── Derived values ──────────────────────────────────────────
 
-  // Use signed URL params (pre-fetched by parent) or fall back to legacy token
-  const signedQuery = (video as any)._signedQuery || (() => {
-    const token = getAuthHeaders()['Authorization']?.replace('Bearer ', '') || '';
-    return `token=${encodeURIComponent(token)}`;
-  })();
-  const streamUrl = `${apiBase}/fleet/dashcam-videos/${video.id}/stream?${signedQuery}`;
+  const headers = getAuthHeaders();
+  const token = headers['Authorization']?.replace('Bearer ', '') || '';
+  const streamUrl = `${apiBase}/fleet/dashcam-videos/${video.id}/stream?token=${encodeURIComponent(token)}`;
   const vehDesc = [video.vehicle_year, video.vehicle_make, video.vehicle_model].filter(Boolean).join(' ');
   const displaySpeed = liveTelemetry?.speedMph ?? video.speed_mph;
   const displayLat = liveTelemetry?.lat ?? video.latitude;
@@ -351,27 +347,6 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
                    }} />
             </div>
           )}
-        </div>
-
-        {/* ── Playback Speed Controls ── */}
-        <div className="flex items-center justify-center gap-1 py-1 bg-[var(--surface-sunken)] border-b border-[#1e3048]">
-          <span className="text-[8px] font-mono text-white/30 uppercase tracking-wider mr-1">Speed</span>
-          {[0.5, 1, 1.5, 2].map(rate => (
-            <button
-              key={rate}
-              onClick={() => {
-                setPlaybackRate(rate);
-                if (videoRef.current) videoRef.current.playbackRate = rate;
-              }}
-              className={`text-[9px] font-mono font-bold px-1.5 py-0.5 transition-colors ${
-                playbackRate === rate
-                  ? 'text-white bg-brand-500/30 border border-brand-400/50'
-                  : 'text-white/40 bg-transparent border border-[#1e3048] hover:text-white/70'
-              }`}
-            >
-              {rate}x
-            </button>
-          ))}
         </div>
 
         {/* ── Metadata Bar (below video) ── */}

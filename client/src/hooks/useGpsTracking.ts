@@ -69,27 +69,16 @@ interface UseGpsTrackingOptions {
  *  At ~1 position/second, each batch carries ~5 points. */
 const DEFAULT_BATCH_INTERVAL = 5000;
 
-/** Whether the user agent looks like a desktop/laptop (no "Mobi|Android" etc).
- *  NOTE: This does NOT mean "no GPS hardware" — the Panasonic Toughbook FZ-33
- *  runs Windows (desktop UA) but has a u-blox GPS chip delivering 2-5m accuracy.
- *  Use IS_DESKTOP only for non-GPS decisions (e.g., device_type label). */
+/** Whether the current device is likely a desktop/laptop (no GPS hardware).
+ *  Used to relax accuracy thresholds — WiFi positioning on desktops in moving
+ *  vehicles typically returns 100–500m accuracy. */
 const IS_DESKTOP = typeof window !== 'undefined' && !/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 
-/** Starting accuracy threshold for desktop UA devices (meters).
- *  Relaxed initially because WiFi positioning on desktops gives 100-500m.
- *  If hardware GPS is detected (readings <50m), this tightens automatically. */
-const DESKTOP_INITIAL_MAX_ACCURACY = 500;
-/** Accuracy threshold once hardware GPS is confirmed on a desktop-UA device. */
-const DESKTOP_GPS_MAX_ACCURACY = 100;
-/** Mobile devices always use the tight threshold (GPS hardware expected). */
-const MOBILE_MAX_ACCURACY = 100;
-/** Number of consecutive high-accuracy readings needed to confirm hardware GPS.
- *  Prevents a single lucky WiFi reading from triggering the tighter threshold. */
-const GPS_DETECTION_READINGS = 3;
-/** Accuracy (meters) below which a reading is considered from hardware GPS. */
-const GPS_DETECTION_THRESHOLD = 50;
-
-const DEFAULT_MAX_ACCURACY = IS_DESKTOP ? DESKTOP_INITIAL_MAX_ACCURACY : MOBILE_MAX_ACCURACY;
+/** Reject GPS readings less accurate than this (meters).
+ *  Mobile (GPS hardware): 100m — modern phones get 3-15m; 100m filters WiFi junk.
+ *  Desktop (WiFi only):   500m — WiFi triangulation in moving vehicles gives
+ *  100–300m typically; 500m cap rejects wild cell-tower estimates. */
+const DEFAULT_MAX_ACCURACY = IS_DESKTOP ? 500 : 100;
 /** Reject points that imply movement faster than this (m/s). 80 m/s ≈ 179 mph */
 const DEFAULT_MAX_SPEED = 80;
 /** Minimum distance (meters) between queued points — suppresses stationary jitter.
@@ -207,10 +196,8 @@ function clearFailoverQueue(): void {
 
 /** How long (ms) without a position callback before heartbeat restarts watchPosition */
 const HEARTBEAT_STALE_THRESHOLD = 30000; // 30 seconds
-/** Stale threshold on WiFi — vehicle WiFi can briefly drop during handoffs.
- *  20s is long enough to survive a brief WiFi dropout but short enough to
- *  restart tracking before the officer drives far with no breadcrumbs. */
-const HEARTBEAT_STALE_THRESHOLD_WIFI = 20000; // 20 seconds
+/** Shorter stale threshold on WiFi — vehicle WiFi is less reliable */
+const HEARTBEAT_STALE_THRESHOLD_WIFI = 15000; // 15 seconds
 /** How often to check for stale GPS (ms) */
 const HEARTBEAT_INTERVAL = 15000; // 15 seconds
 
@@ -276,18 +263,6 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   const MAX_HEARTBEAT_RESTARTS = 5;
   /** GPS source for unit — 'browser' (default) or 'clearpathgps' (external tracker) */
   const gpsSourceRef = useRef<string>('browser');
-
-  // ─── Adaptive GPS hardware detection (desktop devices) ───
-  // The Panasonic Toughbook FZ-33 runs Windows (IS_DESKTOP = true) but has a
-  // u-blox NEO-M8N GPS chip. We start with the relaxed 500m threshold, then
-  // tighten to 100m once we confirm hardware GPS is present (consecutive
-  // readings with <50m accuracy).
-  /** Whether hardware GPS has been detected on this desktop device */
-  const hasHardwareGpsRef = useRef(false);
-  /** Count of consecutive high-accuracy readings (for GPS detection) */
-  const gpsDetectionCountRef = useRef(0);
-  /** Current effective max accuracy — starts at DEFAULT_MAX_ACCURACY, may tighten */
-  const effectiveMaxAccuracyRef = useRef(maxAccuracyMeters);
 
   // Fetch the user's assigned unit on mount
   useEffect(() => {
@@ -395,10 +370,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     lat: number, lng: number, accuracy: number | null,
   ): boolean => {
     // 1. Accuracy gate — reject low-quality readings
-    //    Uses adaptive threshold: starts at 500m for desktop, tightens to 100m
-    //    once hardware GPS is confirmed (e.g., Toughbook FZ-33 with u-blox chip)
-    const threshold = effectiveMaxAccuracyRef.current;
-    if (accuracy !== null && accuracy > threshold) {
+    if (accuracy !== null && accuracy > maxAccuracyMeters) {
       return false;
     }
 
@@ -562,24 +534,6 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         const connType = getConnectionType();
         const source = inferPositionSource(accuracy, connType);
 
-        // ── Adaptive GPS hardware detection (Toughbook FZ-33 etc.) ──
-        // Desktop-UA devices start with a relaxed 500m accuracy threshold.
-        // If we see consecutive readings with <50m accuracy, hardware GPS
-        // is present → tighten the threshold to 100m for better data quality.
-        if (IS_DESKTOP && !hasHardwareGpsRef.current && accuracy != null) {
-          if (accuracy < GPS_DETECTION_THRESHOLD) {
-            gpsDetectionCountRef.current++;
-            if (gpsDetectionCountRef.current >= GPS_DETECTION_READINGS) {
-              hasHardwareGpsRef.current = true;
-              effectiveMaxAccuracyRef.current = DESKTOP_GPS_MAX_ACCURACY;
-              console.log(`[GPS] Hardware GPS detected on desktop device — tightening accuracy threshold to ${DESKTOP_GPS_MAX_ACCURACY}m`);
-            }
-          } else {
-            // Reset counter on a non-GPS reading
-            gpsDetectionCountRef.current = 0;
-          }
-        }
-
         // Update UI state (always, even if filtered from queue)
         setState((prev) => ({
           ...prev,
@@ -595,7 +549,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           positionSource: source,
         }));
 
-        // Filter — only queue good points (use adaptive threshold)
+        // Filter — only queue good points
         if (!shouldAcceptPoint(latitude, longitude, accuracy)) {
           return;
         }

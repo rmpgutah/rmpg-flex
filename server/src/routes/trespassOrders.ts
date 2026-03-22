@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { broadcast } from '../utils/websocket';
-import { localNow, localToday, dateToLocalYMD } from '../utils/timeUtils';
+import { localNow, localToday } from '../utils/timeUtils';
 import { createNotificationForRoles } from './notifications';
 import { resolveDistrict } from '../utils/districtResolver';
 import { escapeLike, validateParamId } from '../middleware/sanitize';
@@ -55,7 +55,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     if (property_id) { where += ' AND t.property_id = ?'; params.push(property_id); }
     if (search) {
       where += ` AND ((t.subject_first_name || ' ' || t.subject_last_name) LIKE ? ESCAPE '\\' OR t.order_number LIKE ? ESCAPE '\\' OR t.location LIKE ? ESCAPE '\\' OR t.property_name LIKE ? ESCAPE '\\')`;
-      const s = `%${escapeLike(String(search).trim())}%`;
+      const s = `%${escapeLike(String(search))}%`;
       params.push(s, s, s, s);
     }
     if (archived === 'true') {
@@ -64,7 +64,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       where += ' AND t.archived_at IS NULL';
     }
 
-    const pageNum = Math.min(1000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 25));
     const offset = (pageNum - 1) * perPage;
 
@@ -153,7 +153,7 @@ router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
 router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = req.user!;
+    const user = (req as any).user;
     const order_number = generateOrderNumber(db);
     const now = localNow();
 
@@ -168,12 +168,6 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
 
     if (!subject_first_name || !subject_last_name) return res.status(400).json({ error: 'Subject name is required' });
     if (!location) return res.status(400).json({ error: 'Location is required' });
-
-    // Validate order_type enum
-    const validOrderTypes = ['trespass_warning', 'trespass_order', 'criminal_trespass', 'ban_order'];
-    if (order_type && !validOrderTypes.includes(order_type)) {
-      return res.status(400).json({ error: `Invalid order_type. Must be one of: ${validOrderTypes.join(', ')}` });
-    }
 
     // Auto-fill Section/Zone/Beat from linked call, incident, or property
     let { section_id, zone_id, beat_id, zone_beat } = req.body;
@@ -203,21 +197,14 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       }
     }
 
-    // Validate and auto-calc expiration if duration_days provided
-    if (duration_days !== undefined && duration_days !== null) {
-      const dv = parseInt(String(duration_days), 10);
-      if (isNaN(dv) || dv < 1 || dv > 3650) {
-        res.status(400).json({ error: 'duration_days must be a positive integer between 1 and 3650 (10 years)' });
-        return;
-      }
-    }
+    // Auto-calc expiration if duration_days provided
     let exp = expiration_date || null;
     if (!exp && duration_days) {
       const parsedDays = parseInt(duration_days, 10);
       if (!isNaN(parsedDays) && parsedDays > 0 && parsedDays <= 3650) {
-        const eff = effective_date ? new Date(effective_date + 'T12:00:00') : new Date();
+        const eff = effective_date ? new Date(effective_date) : new Date();
         eff.setDate(eff.getDate() + parsedDays);
-        exp = dateToLocalYMD(eff);
+        exp = eff.toISOString().split('T')[0];
       }
     }
 
@@ -243,7 +230,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       now, now
     );
 
-    const created = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(Number(result.lastInsertRowid)) as any;
+    const created = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(result.lastInsertRowid) as any;
     if (!created) { res.status(500).json({ error: 'Failed to retrieve created trespass order' }); return; }
     // Broadcast minimal payload — no subject PII over WebSocket
     broadcast('alerts', 'trespass_order_created', {
@@ -313,7 +300,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
 router.put('/:id/serve', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = req.user!;
+    const user = (req as any).user;
     const now = localNow();
     const existing = db.prepare('SELECT id FROM trespass_orders WHERE id = ?').get(req.params.id);
     if (!existing) { res.status(404).json({ error: 'Trespass order not found' }); return; }

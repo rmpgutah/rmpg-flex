@@ -105,7 +105,7 @@ export default function ProposalsTab() {
       const params = new URLSearchParams();
       if (filterStage) params.set('stage', filterStage);
       const qs = params.toString();
-      const data = await apiFetch<CrmProposal[]>(`/crm/proposals${qs ? `?${qs}` : ''}`);
+      const data = await apiFetch<CrmProposal[]>(`/api/crm/proposals${qs ? `?${qs}` : ''}`);
       if (data) setProposals(data);
     } catch {
       addToast('Failed to load proposals', 'error');
@@ -116,21 +116,21 @@ export default function ProposalsTab() {
 
   const fetchTemplates = useCallback(async () => {
     try {
-      const data = await apiFetch<CrmProposalTemplate[]>('/crm/proposal-templates');
+      const data = await apiFetch<CrmProposalTemplate[]>('/api/crm/proposal-templates');
       if (data) setTemplates(data);
     } catch { /* silent */ }
   }, []);
 
   const fetchLeads = useCallback(async () => {
     try {
-      const data = await apiFetch<CrmLead[]>('/crm/leads?pipeline_stage=qualified');
+      const data = await apiFetch<CrmLead[]>('/api/crm/leads?pipeline_stage=qualified');
       if (data) setLeads(data);
     } catch { /* silent */ }
   }, []);
 
   const fetchClients = useCallback(async () => {
     try {
-      const data = await apiFetch<Client[]>('/clients');
+      const data = await apiFetch<Client[]>('/api/clients');
       if (data) setClients(data);
     } catch { /* silent */ }
   }, []);
@@ -161,8 +161,9 @@ export default function ProposalsTab() {
   // ── Stage change ────────────────────────────────────
   const handleStageChange = async (id: number | string, stage: ProposalStage) => {
     try {
-      await apiFetch(`/crm/proposals/${id}/stage`, {
+      await apiFetch(`/api/crm/proposals/${id}/stage`, {
         method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ stage }),
       });
       addToast(`Proposal ${toDisplayLabel(stage)}`, 'success');
@@ -180,15 +181,16 @@ export default function ProposalsTab() {
     if (!selectedProposal) return;
     setSaving(true);
     try {
-      await apiFetch(`/crm/proposals/${selectedProposal.id}`, {
+      await apiFetch(`/api/crm/proposals/${selectedProposal.id}`, {
         method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editForm),
       });
       addToast('Proposal updated', 'success');
       setEditMode(false);
       fetchProposals();
       // Refresh selected
-      const updated = await apiFetch<CrmProposal>(`/crm/proposals/${selectedProposal.id}`);
+      const updated = await apiFetch<CrmProposal>(`/api/crm/proposals/${selectedProposal.id}`);
       if (updated) setSelectedProposal(updated);
     } catch {
       addToast('Failed to update proposal', 'error');
@@ -203,8 +205,9 @@ export default function ProposalsTab() {
     if (!form.title.trim()) return;
     setSaving(true);
     try {
-      await apiFetch('/crm/proposals', {
+      await apiFetch('/api/crm/proposals', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...form,
           lead_id: form.lead_id ? Number(form.lead_id) : undefined,

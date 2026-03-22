@@ -488,8 +488,8 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
                 onClick={() => handleProfileChange(p.id)}
                 className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-left transition-colors hover:bg-rmpg-800/30"
                 style={{
-                  background: defaultProfile === p.id ? 'rgba(26, 90, 158, 0.12)' : undefined,
-                  border: defaultProfile === p.id ? '1px solid rgba(26, 90, 158, 0.3)' : '1px solid transparent',
+                  background: defaultProfile === p.id ? 'rgba(188, 16, 16, 0.08)' : undefined,
+                  border: defaultProfile === p.id ? '1px solid rgba(188, 16, 16, 0.25)' : '1px solid transparent',
                 }}
               >
                 <div className={`w-2 h-2 rounded-full shrink-0 ${defaultProfile === p.id ? 'bg-brand-400' : 'bg-rmpg-700'}`} />

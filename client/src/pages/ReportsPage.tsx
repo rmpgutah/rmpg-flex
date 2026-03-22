@@ -247,7 +247,6 @@ function exportToCSV(
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  URL.revokeObjectURL(url);
 }
 
 // ============================================================
@@ -362,7 +361,7 @@ export default function ReportsPage() {
   };
 
   return (
-    <div className={`${isMobile ? 'p-3 space-y-3' : 'p-6 space-y-6'} animate-fade-in overflow-auto app-grid-bg`}>
+    <div className={`${isMobile ? 'p-3 space-y-3' : 'p-6 space-y-6'} animate-fade-in overflow-auto`}>
       {/* Portal Header */}
       {!isMobile && (
         <div className="panel-beveled bg-surface-base overflow-hidden">
@@ -493,7 +492,7 @@ export default function ReportsPage() {
                   {/* Legend */}
                   <div className={`${isMobile ? 'mt-2' : 'mt-2 flex-1'} space-y-1.5`}>
                     {incidentsChartData.map((entry, i) => (
-                      <div key={entry.name} className="flex items-center gap-2">
+                      <div key={i} className="flex items-center gap-2">
                         <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: entry.fill }} />
                         <span className="text-[10px] text-rmpg-200 truncate flex-1">{entry.name}</span>
                         <span className="text-[10px] text-rmpg-400 font-mono font-bold">{entry.value}</span>

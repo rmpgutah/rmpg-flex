@@ -12,7 +12,9 @@ import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
 import { calculateLeadScore, runScraper, getRegisteredScraper } from '../utils/leadScraperBase';
-import { escapeLike, validateParamId, validateNumericParams } from '../middleware/sanitize';
+import { escapeLike, validateParamId } from '../middleware/sanitize';
+import { broadcast } from '../utils/websocket';
+import { sendCsv } from '../utils/csvExport';
 
 // Import scrapers so they register themselves
 import '../utils/utahBizScraper';
@@ -69,7 +71,7 @@ router.get('/leads', requireRole('admin', 'manager', 'contract_manager'), (req: 
     }
     if (search) {
       sql += " AND (l.business_name LIKE ? ESCAPE '\\' OR l.contact_name LIKE ? ESCAPE '\\' OR l.address LIKE ? ESCAPE '\\' OR l.city LIKE ? ESCAPE '\\')";
-      const q = `%${escapeLike(String(search).trim())}%`;
+      const q = `%${escapeLike(String(search))}%`;
       params.push(q, q, q, q);
     }
     if (date_from) {
@@ -146,22 +148,6 @@ router.post('/leads', requireRole('admin', 'manager', 'contract_manager'), (req:
       return;
     }
 
-    // Validate estimated_value if provided
-    if (estimated_value !== undefined && estimated_value !== null) {
-      const ev = parseFloat(estimated_value);
-      if (isNaN(ev) || ev < 0) {
-        res.status(400).json({ error: 'estimated_value must be a non-negative number' });
-        return;
-      }
-    }
-
-    // Validate pipeline_stage if provided
-    const VALID_STAGES = ['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost', 'dismissed'];
-    if (pipeline_stage && !VALID_STAGES.includes(pipeline_stage)) {
-      res.status(400).json({ error: `Invalid pipeline_stage. Must be one of: ${VALID_STAGES.join(', ')}` });
-      return;
-    }
-
     const now = localNow();
     const leadData = {
       source: source || 'manual',
@@ -195,7 +181,7 @@ router.post('/leads', requireRole('admin', 'manager', 'contract_manager'), (req:
     );
 
     const leadId = Number(result.lastInsertRowid);
-    auditLog(req, 'CREATE', 'crm_leads', leadId, `Created lead: ${business_name.trim()}`);
+    auditLog(req, 'CREATE', 'crm_leads' as any, leadId, `Created lead: ${business_name.trim()}`);
 
     // Log creation activity
     db.prepare(`
@@ -205,6 +191,7 @@ router.post('/leads', requireRole('admin', 'manager', 'contract_manager'), (req:
 
     const lead = db.prepare('SELECT * FROM crm_leads WHERE id = ?').get(leadId);
     if (!lead) return res.status(404).json({ error: 'Lead not found after creation' });
+    broadcast('admin', 'lead:created', lead);
     res.json(lead);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
@@ -261,7 +248,7 @@ router.put('/leads/:id', validateParamId, requireRole('admin', 'manager', 'contr
     params.push(id);
 
     db.prepare(`UPDATE crm_leads SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    auditLog(req, 'UPDATE', 'crm_leads', String(id), `Updated lead: ${existing.business_name}`);
+    auditLog(req, 'UPDATE', 'crm_leads' as any, String(id), `Updated lead: ${existing.business_name}`);
 
     const lead = db.prepare(`
       SELECT l.*, u.full_name as assigned_to_name
@@ -269,6 +256,7 @@ router.put('/leads/:id', validateParamId, requireRole('admin', 'manager', 'contr
       LEFT JOIN users u ON u.id = l.assigned_to
       WHERE l.id = ?
     `).get(id);
+    broadcast('admin', 'lead:updated', lead);
     res.json(lead);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
@@ -290,7 +278,8 @@ router.delete('/leads/:id', validateParamId, requireRole('admin', 'manager'), (r
     // Cascade: delete activity (handled by FK ON DELETE CASCADE, but be explicit)
     db.prepare('DELETE FROM crm_lead_activity WHERE lead_id = ?').run(id);
     db.prepare('DELETE FROM crm_leads WHERE id = ?').run(id);
-    auditLog(req, 'DELETE', 'crm_leads', String(id), `Deleted lead: ${existing.business_name}`);
+    auditLog(req, 'DELETE', 'crm_leads' as any, String(id), `Deleted lead: ${existing.business_name}`);
+    broadcast('admin', 'lead:deleted', { id: Number(id) });
     res.json({ success: true });
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
@@ -335,7 +324,7 @@ router.put('/leads/:id/stage', validateParamId, requireRole('admin', 'manager', 
       VALUES (?, 'stage_change', ?, ?, ?, ?, ?)
     `).run(id, `Pipeline: ${existing.pipeline_stage} → ${pipeline_stage}`, existing.pipeline_stage, pipeline_stage, req.user?.userId || null, now);
 
-    auditLog(req, 'UPDATE', 'crm_leads', String(id), `Stage: ${existing.pipeline_stage} → ${pipeline_stage}`);
+    auditLog(req, 'UPDATE', 'crm_leads' as any, String(id), `Stage: ${existing.pipeline_stage} → ${pipeline_stage}`);
 
     const lead = db.prepare(`
       SELECT l.*, u.full_name as assigned_to_name
@@ -343,6 +332,7 @@ router.put('/leads/:id/stage', validateParamId, requireRole('admin', 'manager', 
       LEFT JOIN users u ON u.id = l.assigned_to
       WHERE l.id = ?
     `).get(id);
+    broadcast('admin', 'lead:updated', lead);
     res.json(lead);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
@@ -378,7 +368,7 @@ router.put('/leads/:id/assign', validateParamId, requireRole('admin', 'manager',
       VALUES (?, 'assignment', ?, ?, ?, ?, ?)
     `).run(id, `Assigned to ${assigneeName}`, String(existing.assigned_to || ''), String(assigned_to || ''), req.user?.userId || null, now);
 
-    auditLog(req, 'UPDATE', 'crm_leads', String(id), `Assigned lead to ${assigneeName}`);
+    auditLog(req, 'UPDATE', 'crm_leads' as any, String(id), `Assigned lead to ${assigneeName}`);
 
     const lead = db.prepare(`
       SELECT l.*, u.full_name as assigned_to_name
@@ -386,6 +376,7 @@ router.put('/leads/:id/assign', validateParamId, requireRole('admin', 'manager',
       LEFT JOIN users u ON u.id = l.assigned_to
       WHERE l.id = ?
     `).get(id);
+    broadcast('admin', 'lead:updated', lead);
     res.json(lead);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
@@ -452,9 +443,10 @@ router.post('/leads/:id/convert', validateParamId, requireRole('admin', 'manager
     `).run(id, String(clientId), req.user?.userId || null, now);
 
     auditLog(req, 'CREATE', 'client', clientId, `Converted lead "${lead.business_name}" to client`);
-    auditLog(req, 'UPDATE', 'crm_leads', String(id), `Converted to client #${clientId}`);
+    auditLog(req, 'UPDATE', 'crm_leads' as any, String(id), `Converted to client #${clientId}`);
 
     const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(clientId);
+    broadcast('admin', 'lead:updated', { id: Number(id), converted: true, client_id: clientId });
     res.json({ success: true, client: client || null, lead_id: Number(id), client_id: clientId });
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
@@ -473,22 +465,15 @@ router.post('/leads/bulk-action', requireRole('admin', 'manager', 'contract_mana
       return;
     }
 
-    // Validate all IDs are positive integers to prevent type coercion issues
-    const validIds = lead_ids.map((id: any) => parseInt(String(id), 10)).filter((n: number) => !isNaN(n) && n > 0);
-    if (validIds.length === 0) {
-      res.status(400).json({ error: 'No valid lead IDs provided' });
-      return;
-    }
-
     const now = localNow();
-    const placeholders = validIds.map(() => '?').join(',');
+    const placeholders = lead_ids.map(() => '?').join(',');
     let updated = 0;
 
     switch (action) {
       case 'mark_contacted':
         updated = db.prepare(
           `UPDATE crm_leads SET pipeline_stage = 'contacted', updated_at = ? WHERE id IN (${placeholders}) AND pipeline_stage = 'new'`
-        ).run(now, ...validIds).changes;
+        ).run(now, ...lead_ids).changes;
         break;
 
       case 'assign':
@@ -498,13 +483,13 @@ router.post('/leads/bulk-action', requireRole('admin', 'manager', 'contract_mana
         }
         updated = db.prepare(
           `UPDATE crm_leads SET assigned_to = ?, updated_at = ? WHERE id IN (${placeholders})`
-        ).run(assigned_to, now, ...validIds).changes;
+        ).run(assigned_to, now, ...lead_ids).changes;
         break;
 
       case 'dismiss':
         updated = db.prepare(
           `UPDATE crm_leads SET pipeline_stage = 'dismissed', updated_at = ? WHERE id IN (${placeholders})`
-        ).run(now, ...validIds).changes;
+        ).run(now, ...lead_ids).changes;
         break;
 
       default:
@@ -512,7 +497,8 @@ router.post('/leads/bulk-action', requireRole('admin', 'manager', 'contract_mana
         return;
     }
 
-    auditLog(req, 'UPDATE', 'crm_leads', validIds.join(','), `Bulk ${action}: ${updated} leads`);
+    auditLog(req, 'UPDATE', 'crm_leads' as any, lead_ids.join(','), `Bulk ${action}: ${updated} leads`);
+    broadcast('admin', 'lead:updated', { action, updated, lead_ids });
     res.json({ success: true, updated });
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
@@ -540,7 +526,7 @@ router.get('/leads/pipeline-summary', requireRole('admin', 'manager', 'contract_
 });
 
 // ── Lead Activity Log ───────────────────────────────────────
-router.get('/lead-activity/:leadId', validateNumericParams('leadId'), requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.get('/lead-activity/:leadId', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { leadId } = req.params;
@@ -694,6 +680,48 @@ router.get('/scrape-log', requireRole('admin', 'manager', 'contract_manager'), (
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── CSV EXPORT ──────────────────────────────────────────
+
+// GET /api/crm/leads/export/csv — Export leads
+router.get('/leads/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT l.id, l.source, l.business_name, l.industry, l.business_type,
+        l.contact_name, l.contact_email, l.contact_phone,
+        l.address, l.city, l.state, l.zip,
+        l.estimated_value, l.pipeline_stage, l.lead_score,
+        l.created_at, l.updated_at,
+        u.full_name as assigned_to_name
+      FROM crm_leads l
+      LEFT JOIN users u ON u.id = l.assigned_to
+      ORDER BY l.created_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'crm_leads_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'source', header: 'Source' },
+      { key: 'business_name', header: 'Business Name' },
+      { key: 'industry', header: 'Industry' },
+      { key: 'business_type', header: 'Business Type' },
+      { key: 'contact_name', header: 'Contact Name' },
+      { key: 'contact_email', header: 'Contact Email' },
+      { key: 'contact_phone', header: 'Contact Phone' },
+      { key: 'address', header: 'Address' },
+      { key: 'city', header: 'City' },
+      { key: 'state', header: 'State' },
+      { key: 'zip', header: 'ZIP' },
+      { key: 'estimated_value', header: 'Estimated Value' },
+      { key: 'pipeline_stage', header: 'Pipeline Stage' },
+      { key: 'lead_score', header: 'Lead Score' },
+      { key: 'assigned_to_name', header: 'Assigned To' },
+      { key: 'created_at', header: 'Created At' },
+      { key: 'updated_at', header: 'Updated At' },
+    ], rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Export failed' });
   }
 });
 
