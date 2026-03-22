@@ -11,6 +11,8 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
 import { validateParamId, escapeLike } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
+import { broadcast } from '../utils/websocket';
+import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 
@@ -189,6 +191,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
     const statute = db.prepare('SELECT * FROM utah_statutes WHERE id = ?').get(result.lastInsertRowid);
     if (!statute) { res.status(500).json({ error: 'Failed to retrieve created statute' }); return; }
     auditLog(req, 'CREATE' as any, 'statute' as any, result.lastInsertRowid, `Created statute ${citation}: ${short_title}`);
+    broadcast('records', 'statute:created', statute);
     res.status(201).json(statute);
   } catch (error: any) {
     console.error('Create statute error:', error?.message || 'Unknown error');
@@ -228,6 +231,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Reque
 
     const statute = db.prepare('SELECT * FROM utah_statutes WHERE id = ?').get(req.params.id);
     auditLog(req, 'UPDATE' as any, 'statute' as any, req.params.id, `Updated statute ${req.params.id}`);
+    broadcast('records', 'statute:updated', statute);
     res.json(statute);
   } catch (error: any) {
     console.error('Update statute error:', error?.message || 'Unknown error');
@@ -241,6 +245,7 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
     const db = getDb();
     db.prepare('UPDATE utah_statutes SET is_active = 0 WHERE id = ?').run(req.params.id);
     auditLog(req, 'DELETE' as any, 'statute' as any, req.params.id, `Deactivated statute ${req.params.id}`);
+    broadcast('records', 'statute:deleted', { id: Number(req.params.id) });
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete statute error:', error?.message || 'Unknown error');
@@ -317,6 +322,46 @@ router.delete('/entity/:id', validateParamId, requireRole('admin', 'manager', 's
     res.json({ success: true });
   } catch (error: any) {
     console.error('Unlink statute error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── GET /api/statutes/export/csv — Export statute database as CSV ───
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const state = req.query.state as string | undefined;
+
+    let where = 'WHERE is_active = 1';
+    const params: any[] = [];
+    if (state) {
+      where += ' AND state = ?';
+      params.push(state.toUpperCase());
+    }
+
+    const rows = db.prepare(`
+      SELECT * FROM utah_statutes ${where}
+      ORDER BY state, title, chapter, section
+    `).all(...params);
+
+    sendCsv(res, `statutes_export_${localNow().slice(0, 10)}.csv`, [
+      { key: 'id', header: 'ID' },
+      { key: 'state', header: 'State' },
+      { key: 'state_name', header: 'State Name' },
+      { key: 'citation', header: 'Citation' },
+      { key: 'short_title', header: 'Short Title' },
+      { key: 'description', header: 'Description' },
+      { key: 'definition', header: 'Definition' },
+      { key: 'offense_level', header: 'Offense Level' },
+      { key: 'category', header: 'Category' },
+      { key: 'subcategory', header: 'Subcategory' },
+      { key: 'title', header: 'Title Number' },
+      { key: 'chapter', header: 'Chapter' },
+      { key: 'section', header: 'Section' },
+      { key: 'subsection', header: 'Subsection' },
+    ], rows);
+  } catch (error: any) {
+    console.error('Export statutes error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

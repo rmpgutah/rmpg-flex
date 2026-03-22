@@ -48,9 +48,15 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
       points = req.body.points.slice(0, 60); // Cap at 60 points per request
     } else if (req.body.latitude != null && req.body.longitude != null) {
       // Legacy single-point format
+      const lat = Number(req.body.latitude);
+      const lng = Number(req.body.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        res.status(400).json({ error: 'latitude and longitude must be valid numbers' });
+        return;
+      }
       points = [{
-        lat: req.body.latitude,
-        lng: req.body.longitude,
+        lat,
+        lng,
         accuracy: req.body.accuracy ?? null,
         heading: req.body.heading ?? null,
         speed: req.body.speed ?? null,
@@ -224,7 +230,7 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
       }
     })();
   } catch (error: any) {
-    console.error('GPS update error:', error?.message || 'Unknown error');
+    console.error('[GPS] update error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -240,7 +246,7 @@ router.get('/gps/my-unit', requireRole('admin', 'manager', 'supervisor', 'office
 
     res.json(unit || null);
   } catch (error: any) {
-    console.error('Get my unit error:', error?.message || 'Unknown error');
+    console.error('[GPS] get my unit error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -305,7 +311,7 @@ router.get('/gps/trail/:unitId', requireRole('admin', 'manager', 'supervisor', '
 
     res.json(filtered);
   } catch (error: any) {
-    console.error('GPS trail error:', error?.message || 'Unknown error');
+    console.error('[GPS] trail error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -408,7 +414,7 @@ router.get('/gps/trails', requireRole('admin', 'manager', 'supervisor', 'officer
 
     res.json(Object.values(trails));
   } catch (error: any) {
-    console.error('GPS trails error:', error?.message || 'Unknown error');
+    console.error('[GPS] trails error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -426,7 +432,7 @@ router.delete('/gps/breadcrumbs/cleanup', requireRole('admin'), (req: Request, r
     auditLog(req, 'DELETE' as any, 'unit' as any, 0, `Purged ${result.changes} GPS breadcrumbs older than ${days} days`);
     res.json({ deleted: result.changes });
   } catch (error: any) {
-    console.error('Breadcrumb cleanup error:', error?.message || 'Unknown error');
+    console.error('[GPS] breadcrumb cleanup error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

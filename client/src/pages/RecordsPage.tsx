@@ -48,6 +48,7 @@ type TabId = 'persons' | 'vehicles' | 'properties' | 'evidence';
 
 export default function RecordsPage() {
   const isMobile = useIsMobile();
+  const { addToast } = useToast();
   const [activeTab, setActiveTab] = usePersistedTab('rmpg_records_tab', 'persons' as TabId, ['persons', 'vehicles', 'properties', 'evidence'] as const);
   const [searchQuery, setSearchQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
@@ -193,8 +194,9 @@ export default function RecordsPage() {
       } else if (deleteTarget.type === 'evidence') {
         await fetchEvidence({ silent: true });
       }
+      addToast('Record deleted', 'success');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete record');
+      addToast(err instanceof Error ? err.message : 'Failed to delete record', 'error');
     } finally {
       setDeleting(false);
     }
@@ -209,8 +211,9 @@ export default function RecordsPage() {
       else if (type === 'vehicles') { await fetchVehicles(); }
       else if (type === 'properties') { await fetchProperties(); }
       else if (type === 'evidence') { await fetchEvidence(); }
+      addToast('Record archived', 'success');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to archive record');
+      addToast(err instanceof Error ? err.message : 'Failed to archive record', 'error');
     }
   };
 
@@ -221,8 +224,9 @@ export default function RecordsPage() {
       else if (type === 'vehicles') { await fetchVehicles(); }
       else if (type === 'properties') { await fetchProperties(); }
       else if (type === 'evidence') { await fetchEvidence(); }
+      addToast('Record unarchived', 'success');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to unarchive record');
+      addToast(err instanceof Error ? err.message : 'Failed to unarchive record', 'error');
     }
   };
 

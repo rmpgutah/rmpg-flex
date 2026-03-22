@@ -362,8 +362,12 @@ router.post('/hash/batch', requireRole('admin', 'manager'), async (req: Request,
   try {
     const { evidenceId } = req.body;
     if (!evidenceId) return res.status(400).json({ error: 'evidenceId required' });
+    if (isNaN(Number(evidenceId)) || Number(evidenceId) < 1) {
+      return res.status(400).json({ error: 'evidenceId must be a positive integer' });
+    }
 
     const result = await hashEvidenceAttachments(evidenceId);
+    auditLog(req, 'iped_hash_computed' as any, 'evidence' as any, Number(evidenceId), `Batch hashed evidence #${evidenceId}: ${result.hashed} files`);
     res.json({ success: true, ...result });
   } catch (err: any) {
     console.error('[IPED] operation error:', err?.message || err);
@@ -452,7 +456,11 @@ router.post('/hash-sets/import-iped', requireRole('admin'), async (req: Request,
     if (!filePath) {
       return res.status(400).json({ error: 'filePath required' });
     }
+    if (filePath.includes('..') || filePath.includes('\0')) {
+      return res.status(400).json({ error: 'Invalid file path' });
+    }
     const output = await importToIpedHashDb(filePath);
+    auditLog(req, 'iped_hashset_imported' as any, 'iped_hashset' as any, filePath, `Imported hash set from ${filePath} to IPED native DB`);
     res.json({ success: true, output });
   } catch (err: any) {
     console.error('[IPED] operation error:', err?.message || err);
@@ -488,8 +496,12 @@ router.get('/cases', async (_req: Request, res: Response) => {
 // Search within a case
 router.get('/cases/:caseId/search', async (req: Request, res: Response) => {
   try {
+    const caseId = req.params.caseId;
+    if (!caseId || !/^[a-zA-Z0-9_-]+$/.test(caseId)) {
+      return res.status(400).json({ error: 'Invalid case ID format' });
+    }
     const query = req.query.q as string || '';
-    const data = await proxyIpedApi(`/cases/${req.params.caseId}/search?q=${encodeURIComponent(query)}`);
+    const data = await proxyIpedApi(`/cases/${caseId}/search?q=${encodeURIComponent(query)}`);
     res.json(data);
   } catch (err: any) {
     console.error('[IPED] Search error:', err?.message || err);
@@ -500,7 +512,14 @@ router.get('/cases/:caseId/search', async (req: Request, res: Response) => {
 // Get file metadata
 router.get('/cases/:caseId/file/:fileId', async (req: Request, res: Response) => {
   try {
-    const data = await proxyIpedApi(`/cases/${req.params.caseId}/file/${req.params.fileId}`);
+    const { caseId, fileId } = req.params;
+    if (!caseId || !/^[a-zA-Z0-9_-]+$/.test(caseId)) {
+      return res.status(400).json({ error: 'Invalid case ID format' });
+    }
+    if (!fileId || !/^[a-zA-Z0-9_-]+$/.test(fileId)) {
+      return res.status(400).json({ error: 'Invalid file ID format' });
+    }
+    const data = await proxyIpedApi(`/cases/${caseId}/file/${fileId}`);
     res.json(data);
   } catch (err: any) {
     console.error('[IPED] File metadata error:', err?.message || err);
@@ -511,7 +530,14 @@ router.get('/cases/:caseId/file/:fileId', async (req: Request, res: Response) =>
 // Get file thumbnail
 router.get('/cases/:caseId/file/:fileId/thumb', async (req: Request, res: Response) => {
   try {
-    const data = await proxyIpedApi(`/cases/${req.params.caseId}/file/${req.params.fileId}/thumb`);
+    const { caseId, fileId } = req.params;
+    if (!caseId || !/^[a-zA-Z0-9_-]+$/.test(caseId)) {
+      return res.status(400).json({ error: 'Invalid case ID format' });
+    }
+    if (!fileId || !/^[a-zA-Z0-9_-]+$/.test(fileId)) {
+      return res.status(400).json({ error: 'Invalid file ID format' });
+    }
+    const data = await proxyIpedApi(`/cases/${caseId}/file/${fileId}/thumb`);
     res.json(data);
   } catch (err: any) {
     console.error('[IPED] File thumbnail error:', err?.message || err);
@@ -526,6 +552,51 @@ router.get('/usage', (_req: Request, res: Response) => {
   } catch (err: any) {
     console.error('[IPED] operation error:', err?.message || err);
     res.status(500).json({ error: 'IPED operation failed' });
+  }
+});
+
+// ── GET /export/csv — Export IPED jobs as CSV ────────────────
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const status = (req.query.status as string || '').trim();
+
+    let where = '';
+    const params: any[] = [];
+    if (status) {
+      where = 'WHERE j.status = ?';
+      params.push(status);
+    }
+
+    const rows = db.prepare(`
+      SELECT j.*, u.full_name as created_by_name
+      FROM iped_jobs j
+      LEFT JOIN users u ON j.created_by = u.id
+      ${where}
+      ORDER BY j.created_at DESC
+    `).all(...params);
+
+    sendCsv(res, `iped_jobs_export_${localNow().slice(0, 10)}.csv`, [
+      { key: 'id', header: 'Job ID' },
+      { key: 'evidence_id', header: 'Evidence ID' },
+      { key: 'job_type', header: 'Job Type' },
+      { key: 'status', header: 'Status' },
+      { key: 'profile', header: 'Profile' },
+      { key: 'input_path', header: 'Input Path' },
+      { key: 'output_path', header: 'Output Path' },
+      { key: 'progress_percent', header: 'Progress %' },
+      { key: 'items_found', header: 'Items Found' },
+      { key: 'items_processed', header: 'Items Processed' },
+      { key: 'result_summary', header: 'Result Summary' },
+      { key: 'error_message', header: 'Error Message' },
+      { key: 'created_by_name', header: 'Created By' },
+      { key: 'created_at', header: 'Created At' },
+      { key: 'started_at', header: 'Started At' },
+      { key: 'completed_at', header: 'Completed At' },
+    ], rows);
+  } catch (err: any) {
+    console.error('IPED export error:', err?.message || err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

@@ -24,6 +24,7 @@ interface TrendEntry { month: string; count: number; }
 
 export default function StatuteAnalyticsPage() {
   const isMobile = useIsMobile();
+  const { addToast } = useToast();
   const [days, setDays] = useState(90);
   const [topStatutes, setTopStatutes] = useState<StatuteEntry[]>([]);
   const [byLevel, setByLevel] = useState<LevelEntry[]>([]);
@@ -41,6 +42,7 @@ export default function StatuteAnalyticsPage() {
       setIncidentStatutes(data.incidentStatutes || []);
     } catch (err) {
       console.error('Statute analytics error:', err);
+      addToast('Failed to load statute analytics', 'error');
     }
     setLoading(false);
   }, [days]);

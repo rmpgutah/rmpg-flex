@@ -1450,6 +1450,7 @@ interface MessagesResponse { messages: EmailMessage[]; hasMore: boolean; }
 
 export default function EmailPage() {
   const { subscribe } = useWebSocket();
+  const { addToast } = useToast();
   const { snackbar, show: showSnackbar, dismiss: dismissSnackbar } = useSnackbar();
 
   // Status

@@ -7,6 +7,7 @@ import { localNow, localToday } from '../utils/timeUtils';
 import { searchUtahWarrants } from '../utils/utahWarrantScraper';
 import { searchOfacLocal } from '../utils/ofacScraper';
 import { auditLog } from '../utils/auditLogger';
+import { broadcast } from '../utils/websocket';
 import { universalWarrantCheck } from '../utils/universalWarrantScanner';
 
 const router = Router();
@@ -465,6 +466,7 @@ router.post('/persons', requireRole('admin', 'manager', 'supervisor', 'officer',
     // SELECT after screening so watchlist_match is included in response (safe column list excludes ssn_full)
     const person = db.prepare(`SELECT ${PERSON_COLUMNS}, watchlist_match, watchlist_checked_at FROM persons WHERE id = ?`).get(result.lastInsertRowid);
     if (!person) { res.status(500).json({ error: 'Failed to retrieve created person' }); return; }
+    broadcast('records', 'person:created', person);
     res.status(201).json(person);
   } catch (error: any) {
     console.error('Create person error:', error?.message || 'Unknown error');
@@ -559,6 +561,7 @@ router.put('/persons/:id', validateParamId, requireRole('admin', 'manager', 'sup
     auditLog(req, 'person_updated', 'person', String(req.params.id), `Updated person record #${req.params.id}`);
 
     const updated = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id);
+    broadcast('records', 'person:updated', updated);
     res.json(updated);
   } catch (error: any) {
     console.error('Update person error:', error?.message || 'Unknown error');
@@ -584,7 +587,7 @@ router.delete('/persons/:id', validateParamId, requireRole('admin', 'manager'), 
     deleteTx();
 
     auditLog(req, 'person_deleted', 'person', person.id, `Deleted person record #${person.id}`);
-
+    broadcast('records', 'person:deleted', { id: person.id });
     res.json({ message: 'Person deleted' });
   } catch (error: any) {
     console.error('Delete person error:', error?.message || 'Unknown error');

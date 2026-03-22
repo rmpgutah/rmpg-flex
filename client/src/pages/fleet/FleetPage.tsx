@@ -8,6 +8,7 @@ import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { useToast } from '../../components/ToastProvider';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import RmpgLogo from '../../components/RmpgLogo';
 import PrintButton from '../../components/PrintButton';
@@ -20,6 +21,7 @@ import MaintenanceFormModal, { type MaintenanceFormState, EMPTY_MAINT_FORM } fro
 import FuelLogModal, { type FuelFormState, EMPTY_FUEL_FORM } from './modals/FuelLogModal';
 import InspectionFormModal, { type InspectionFormState, EMPTY_INSPECTION_FORM } from './modals/InspectionFormModal';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import ExportButton from '../../components/ExportButton';
 import MaintenanceMonitor from './components/MaintenanceMonitor';
 import type {
   FleetVehicle, FleetMaintenance, FleetVehicleStatus,
@@ -68,6 +70,7 @@ function parseEquipment(eq: unknown): string[] {
 }
 
 export default function FleetPage() {
+  const isMobile = useIsMobile();
   const { addToast } = useToast();
 
   // Core state
@@ -670,6 +673,7 @@ export default function FleetPage() {
               <Plus className="w-3 h-3" /> New Vehicle
             </button>
           )}
+          <ExportButton exportUrl="/api/fleet/export/csv" exportFilename="fleet.csv" />
           <PrintButton />
         </PanelTitleBar>
 
@@ -758,7 +762,7 @@ export default function FleetPage() {
       <div className="flex flex-1 overflow-hidden">
 
         {/* ---- LEFT PANEL: Vehicle List ---- */}
-        <div className="flex flex-col" style={{ width: '36%', minWidth: 300, maxWidth: 440, background: '#1a2636' }}>
+        <div className={`flex flex-col ${isMobile ? (selectedId ? 'hidden' : 'w-full') : ''}`} style={isMobile ? { background: '#1a2636' } : { width: '36%', minWidth: 300, maxWidth: 440, background: '#1a2636' }}>
           <div className="flex items-center gap-2 px-2 py-1.5 border-b border-rmpg-700" style={{ background: '#141e2b' }}>
             <select
               className="select-dark text-[10px] py-1 px-2"
@@ -899,10 +903,10 @@ export default function FleetPage() {
         </div>
 
         {/* ---- DIVIDER ---- */}
-        <div className="flex-shrink-0 w-px bg-rmpg-600" />
+        {!isMobile && <div className="flex-shrink-0 w-px bg-rmpg-600" />}
 
         {/* ---- RIGHT PANEL ---- */}
-        <div className="flex-1 flex flex-col overflow-hidden" style={{ background: '#1a2636' }}>
+        <div className={`${isMobile ? (selectedId ? 'w-full' : 'hidden') : 'flex-1'} flex flex-col overflow-hidden`} style={{ background: '#1a2636' }}>
           {selectedId == null || !detail ? (
             // Fleet-wide: Maintenance Monitor + Analytics when no vehicle selected
             <div className="flex-1 overflow-y-auto">
@@ -922,6 +926,12 @@ export default function FleetPage() {
               )}
             </div>
           ) : (
+            <>
+            {isMobile && (
+              <button onClick={() => { setSelectedId(null); setDetail(null); }} className="text-rmpg-400 hover:text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 border-b border-rmpg-700/50" style={{ background: '#0d1520' }}>
+                ◀ Back to Vehicles
+              </button>
+            )}
             <FleetDetailPanel
               detail={detail}
               maintenance={maintenance}
@@ -956,6 +966,7 @@ export default function FleetPage() {
               isArchived={showArchived}
               onClose={() => { setSelectedId(null); setDetail(null); }}
             />
+            </>
           )}
         </div>
       </div>

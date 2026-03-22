@@ -17,6 +17,7 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
+import ExportButton from '../components/ExportButton';
 
 // Search modes
 type SearchMode = 'name' | 'address' | 'nameaddress' | 'phone' | 'email';
@@ -158,7 +159,9 @@ export default function SkipTracerPage() {
 
   return (
     <div className="flex flex-col h-full animate-fade-in">
-      <PanelTitleBar title="SKIP TRACER" icon={Search} />
+      <PanelTitleBar title="SKIP TRACER" icon={Search}>
+        <ExportButton exportUrl="/api/skiptracer/export/csv" exportFilename="skip-traces.csv" />
+      </PanelTitleBar>
 
       <div className={`flex-1 overflow-hidden ${isMobile ? 'flex flex-col' : 'flex'}`}>
         {/* ─── Left Panel: Search Form ──────────────────────── */}

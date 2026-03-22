@@ -12,6 +12,7 @@ import { localNow, localToday } from '../utils/timeUtils';
 import { queueOverlayProcessing, type DashCamOverlayConfig } from '../utils/videoOverlay';
 import { auditLog } from '../utils/auditLogger';
 import { validateParamId } from '../middleware/sanitize';
+import { broadcast } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
 
 const execFileAsync = promisify(execFile);
@@ -407,7 +408,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
     if (!created) { res.status(500).json({ error: 'Failed to retrieve created fleet vehicle' }); return; }
 
     auditLog(req, 'vehicle_fleet_created', 'fleet_vehicle', result.lastInsertRowid as number, `Created fleet vehicle ${vehicle_number}`);
-
+    broadcast('personnel', 'fleet:created', { id: result.lastInsertRowid, vehicle_number });
     res.status(201).json({
       ...created,
       equipment: safeParseJson(created.equipment, []),
@@ -497,7 +498,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Reque
     `).get(id) as any;
 
     auditLog(req, 'vehicle_fleet_updated', 'fleet_vehicle', String(id), `Updated fleet vehicle #${id}`);
-
+    broadcast('personnel', 'fleet:updated', { id: Number(id) });
     res.json({
       ...updated,
       equipment: safeParseJson(updated.equipment, []),
@@ -616,6 +617,7 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
     });
     delTx();
     auditLog(req, 'vehicle_fleet_updated', 'fleet_vehicle', vehicle.id, `Deleted fleet vehicle #${vehicle.id}`);
+    broadcast('personnel', 'fleet:deleted', { id: vehicle.id });
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete fleet vehicle error:', error?.message || 'Unknown error');
@@ -2044,5 +2046,47 @@ function safeParseJson(value: string | null | undefined, fallback: any): any {
     return fallback;
   }
 }
+
+// ─── CSV EXPORT ──────────────────────────────────────────
+
+// GET /api/fleet/export/csv — Export fleet vehicles
+router.get('/export/csv', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT fv.id, fv.vehicle_number, fv.year, fv.make, fv.model, fv.color,
+        fv.vin, fv.plate_number, fv.plate_state, fv.status,
+        fv.current_mileage, fv.fuel_type, fv.insurance_policy,
+        fv.insurance_expiry, fv.registration_expiry,
+        fv.created_at, fv.updated_at,
+        u.call_sign as assigned_unit
+      FROM fleet_vehicles fv
+      LEFT JOIN units u ON fv.assigned_unit_id = u.id
+      WHERE fv.archived_at IS NULL
+      ORDER BY fv.vehicle_number LIMIT 10000
+    `).all();
+    sendCsv(res, 'fleet_vehicles_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'vehicle_number', header: 'Vehicle Number' },
+      { key: 'year', header: 'Year' },
+      { key: 'make', header: 'Make' },
+      { key: 'model', header: 'Model' },
+      { key: 'color', header: 'Color' },
+      { key: 'vin', header: 'VIN' },
+      { key: 'plate_number', header: 'Plate Number' },
+      { key: 'plate_state', header: 'Plate State' },
+      { key: 'status', header: 'Status' },
+      { key: 'current_mileage', header: 'Current Mileage' },
+      { key: 'fuel_type', header: 'Fuel Type' },
+      { key: 'assigned_unit', header: 'Assigned Unit' },
+      { key: 'insurance_policy', header: 'Insurance Policy' },
+      { key: 'insurance_expiry', header: 'Insurance Expiry' },
+      { key: 'registration_expiry', header: 'Registration Expiry' },
+      { key: 'created_at', header: 'Created At' },
+    ], rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Export failed' });
+  }
+});
 
 export default router;

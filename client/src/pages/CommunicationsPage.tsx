@@ -44,6 +44,7 @@ import { formatShortTime, formatDateTime } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
+import ExportButton from '../components/ExportButton';
 
 // ============================================================
 // Backend -> Frontend Mappers
@@ -238,6 +239,7 @@ type Panel = 'messages' | 'bolos' | 'activity';
 export default function CommunicationsPage() {
   const isMobile = useIsMobile();
   const { user } = useAuth();
+  const { addToast } = useToast();
 
   // --- Panel state ---
   const [activePanel, setActivePanel] = usePersistedTab('rmpg_comms_tab', 'messages' as Panel, ['messages', 'bolos', 'activity'] as const);
@@ -455,8 +457,9 @@ export default function CommunicationsPage() {
       setComposeSubject('');
       setComposeContent('');
       fetchMessages({ silent: true });
+      addToast('Message sent', 'success');
     } catch {
-      setError('Failed to send message. Please try again.');
+      addToast('Failed to send message', 'error');
     } finally {
       setComposeSending(false);
     }
@@ -482,8 +485,9 @@ export default function CommunicationsPage() {
       });
       setReplyText('');
       fetchMessages({ silent: true });
+      addToast('Reply sent', 'success');
     } catch {
-      setError('Failed to send reply. Please try again.');
+      addToast('Failed to send reply', 'error');
     } finally {
       setReplySending(false);
     }
@@ -494,8 +498,9 @@ export default function CommunicationsPage() {
     try {
       await apiFetch(`/comms/messages/${msgId}`, { method: 'DELETE' });
       setMessages((prev) => prev.filter((m) => m.id !== msgId));
+      addToast('Message deleted', 'success');
     } catch {
-      setError('Failed to delete message. Please try again.');
+      addToast('Failed to delete message', 'error');
     }
   };
 
@@ -532,8 +537,9 @@ export default function CommunicationsPage() {
       setBoloPhotoFile(null);
       setBoloPhotoPreview(null);
       fetchBolos({ silent: true });
+      addToast('BOLO created', 'success');
     } catch {
-      setError('Failed to create BOLO. Please try again.');
+      addToast('Failed to create BOLO', 'error');
     } finally {
       setBoloSubmitting(false);
     }
@@ -554,8 +560,9 @@ export default function CommunicationsPage() {
     try {
       await apiFetch(`/comms/bolos/${boloId}`, { method: 'PUT', body: JSON.stringify({ status: 'resolved' }) });
       fetchBolos({ silent: true });
+      addToast('BOLO resolved', 'success');
     } catch {
-      setError('Failed to resolve BOLO. Please try again.');
+      addToast('Failed to resolve BOLO', 'error');
     } finally {
       setResolvingId(null);
     }
@@ -568,8 +575,9 @@ export default function CommunicationsPage() {
       await apiFetch(`/comms/bolos/${cancelTarget.id}`, { method: 'DELETE' });
       setCancelTarget(null);
       fetchBolos({ silent: true });
+      addToast('BOLO cancelled', 'success');
     } catch {
-      setError('Failed to cancel BOLO. Please try again.');
+      addToast('Failed to cancel BOLO', 'error');
     } finally {
       setCancelLoading(false);
     }
@@ -579,8 +587,9 @@ export default function CommunicationsPage() {
     try {
       await apiFetch(`/comms/bolos/${boloId}/archive`, { method: 'POST' });
       fetchBolos({ silent: true });
+      addToast('BOLO archived', 'success');
     } catch {
-      setError('Failed to archive BOLO. Please try again.');
+      addToast('Failed to archive BOLO', 'error');
     }
   };
 
@@ -588,8 +597,9 @@ export default function CommunicationsPage() {
     try {
       await apiFetch(`/comms/bolos/${boloId}/unarchive`, { method: 'POST' });
       fetchBolos({ silent: true });
+      addToast('BOLO unarchived', 'success');
     } catch {
-      setError('Failed to unarchive BOLO. Please try again.');
+      addToast('Failed to unarchive BOLO', 'error');
     }
   };
 
@@ -688,6 +698,7 @@ export default function CommunicationsPage() {
             <Plus className="w-3.5 h-3.5" /> New BOLO
           </button>
         )}
+        <ExportButton exportUrl="/api/comms/export/csv" exportFilename="communications.csv" />
         <PrintButton />
       </PanelTitleBar>
 
@@ -771,7 +782,7 @@ export default function CommunicationsPage() {
             ) : (
               <>
                 {/* Thread List (left pane) */}
-                <div className={`${selectedThread ? 'w-[340px] flex-shrink-0' : 'w-full'} border-r border-rmpg-600 overflow-y-auto`}>
+                <div className={`${selectedThread ? (isMobile ? 'hidden' : 'w-[340px] flex-shrink-0') : 'w-full'} border-r border-rmpg-600 overflow-y-auto`}>
                   {filteredThreads.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20 text-rmpg-400">
                       <Inbox className="w-8 h-8 mb-2" />
@@ -842,7 +853,7 @@ export default function CommunicationsPage() {
 
                 {/* Thread Detail (right pane) — email conversation view */}
                 {selectedThread && (
-                  <div className="flex-1 flex flex-col overflow-hidden animate-slide-in-right">
+                  <div className={`${isMobile ? 'w-full' : 'flex-1'} flex flex-col overflow-hidden animate-slide-in-right`}>
                     {/* Thread header */}
                     <div className="flex items-center gap-3 px-4 py-2.5 border-b border-rmpg-600 flex-shrink-0" style={{ background: '#0d1520' }}>
                       <button

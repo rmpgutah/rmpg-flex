@@ -11,6 +11,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
 import { escapeLike, validateParamId } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
+import { broadcast } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
@@ -154,6 +155,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, r
       req.user!.userId, result.lastInsertRowid, JSON.stringify({ person_id, alert_type, severity }), req.ip || 'unknown', now);
 
     auditLog(req, 'CREATE' as any, 'offender_alert' as any, result.lastInsertRowid, `Created ${severity} ${alert_type} alert for person ${person_id}`);
+    broadcast('records', 'offender:created', { id: result.lastInsertRowid, person_id, alert_type, severity });
     res.status(201).json({ data: { id: result.lastInsertRowid } });
   } catch (error: any) {
     console.error('Create offender alert error:', error?.message || 'Unknown error');
@@ -190,6 +192,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     params.push(id);
     db.prepare(`UPDATE offender_alerts SET ${updates.join(', ')} WHERE id = ?`).run(...params);
     auditLog(req, 'UPDATE' as any, 'offender_alert' as any, id, `Updated offender alert ${id}`);
+    broadcast('records', 'offender:updated', { id });
     res.json({ data: { id } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -211,8 +214,46 @@ router.put('/:id/clear', validateParamId, requireRole('admin', 'manager', 'super
       VALUES (?, 'clear', 'offender_alert', ?, '{}', ?, ?)`).run(req.user!.userId, id, req.ip || 'unknown', now);
 
     auditLog(req, 'UPDATE' as any, 'offender_alert' as any, id, `Cleared offender alert ${id}`);
+    broadcast('records', 'offender:updated', { id, status: 'cleared' });
     res.json({ data: { id, status: 'cleared' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ─── CSV EXPORT ──────────────────────────────────────────
+
+// GET /api/offender-registry/export/csv — Export offender alerts
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT oa.id, oa.alert_type, oa.status, oa.description, oa.severity,
+        oa.restriction_radius_ft, oa.effective_date, oa.expiration_date,
+        oa.notes, oa.created_at, oa.updated_at,
+        p.first_name, p.last_name, p.dob,
+        p.first_name || ' ' || p.last_name as person_name
+      FROM offender_alerts oa
+      LEFT JOIN persons p ON oa.person_id = p.id
+      ORDER BY oa.created_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'offender_alerts_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'person_name', header: 'Person' },
+      { key: 'first_name', header: 'First Name' },
+      { key: 'last_name', header: 'Last Name' },
+      { key: 'dob', header: 'DOB' },
+      { key: 'alert_type', header: 'Alert Type' },
+      { key: 'severity', header: 'Severity' },
+      { key: 'status', header: 'Status' },
+      { key: 'description', header: 'Description' },
+      { key: 'restriction_radius_ft', header: 'Restriction Radius (ft)' },
+      { key: 'effective_date', header: 'Effective Date' },
+      { key: 'expiration_date', header: 'Expiration Date' },
+      { key: 'notes', header: 'Notes' },
+      { key: 'created_at', header: 'Created At' },
+    ], rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Export failed' });
+  }
 });
 
 export default router;

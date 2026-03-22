@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { sendToUser } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
 import { sendNotificationEmail } from '../utils/emailSender';
@@ -394,6 +394,37 @@ router.delete('/:id', validateParamId, (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Delete notification error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── CSV EXPORT ──────────────────────────────────────────
+
+// GET /api/notifications/export/csv — Export notification history
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT n.id, n.type, n.title, n.body, n.entity_type, n.entity_id,
+        n.priority, n.is_read, n.created_at,
+        u.full_name as user_name
+      FROM notifications n
+      LEFT JOIN users u ON n.user_id = u.id
+      ORDER BY n.created_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'notifications_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'user_name', header: 'User' },
+      { key: 'type', header: 'Type' },
+      { key: 'title', header: 'Title' },
+      { key: 'body', header: 'Body' },
+      { key: 'entity_type', header: 'Entity Type' },
+      { key: 'entity_id', header: 'Entity ID' },
+      { key: 'priority', header: 'Priority' },
+      { key: 'is_read', header: 'Read' },
+      { key: 'created_at', header: 'Created At' },
+    ], rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Export failed' });
   }
 });
 

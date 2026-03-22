@@ -23,7 +23,7 @@ router.get('/units', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
 
     res.json(units);
   } catch (error: any) {
-    console.error('Get units error:', error?.message || 'Unknown error');
+    console.error('[Units] get units error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -60,7 +60,7 @@ router.post('/units', requireRole('admin', 'manager', 'dispatcher'), (req: Reque
     broadcastUnitUpdate({ action: 'unit_created', unit });
     res.status(201).json(unit);
   } catch (error: any) {
-    console.error('Create unit error:', error?.message || 'Unknown error');
+    console.error('[Units] create unit error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -133,7 +133,7 @@ router.put('/units/:id', validateParamId, requireRole('admin', 'manager', 'dispa
     if (updated) broadcastUnitUpdate({ action: 'unit_updated', unit: updated });
     res.json(updated);
   } catch (error: any) {
-    console.error('Update unit error:', error?.message || 'Unknown error');
+    console.error('[Units] update unit error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -163,7 +163,7 @@ router.delete('/units/:id', validateParamId, requireRole('admin', 'manager'), (r
     broadcastUnitUpdate({ action: 'unit_deleted', unit_id: req.params.id });
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Delete unit error:', error?.message || 'Unknown error');
+    console.error('[Units] delete unit error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -234,7 +234,7 @@ router.put('/units/:id/status', validateParamId, requireRole('admin', 'manager',
 
     res.json(updated);
   } catch (error: any) {
-    console.error('Unit status update error:', error?.message || 'Unknown error');
+    console.error('[Units] status update error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

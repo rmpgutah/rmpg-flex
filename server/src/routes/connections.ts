@@ -11,6 +11,7 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { escapeLike } from '../middleware/sanitize';
 import { sendCsv } from '../utils/csvExport';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 router.use(authenticateToken);
@@ -411,8 +412,14 @@ router.get('/graph', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       return res.status(400).json({ error: `Invalid type. Must be one of: ${VALID_TYPES.join(', ')}` });
     }
 
+    if (isNaN(Number(id)) || Number(id) < 1) {
+      return res.status(400).json({ error: 'id must be a positive integer' });
+    }
+
     const maxDepth = Math.min(Math.max(Number(depth) || 2, 1), 3);
     const graph = buildGraph(db, String(type), Number(id), maxDepth);
+
+    auditLog(req, 'SEARCH' as any, 'record_link' as any, Number(id), `Connection graph: ${type} #${id} (depth ${maxDepth}, ${graph.nodes.length} nodes)`);
 
     res.json(graph);
   } catch (error: any) {

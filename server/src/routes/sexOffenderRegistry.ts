@@ -342,4 +342,50 @@ router.post('/import', requireRole('admin'), (req: Request, res: Response) => {
   }
 });
 
+// ─── CSV EXPORT ──────────────────────────────────────────
+
+// GET /api/sex-offender-registry/export/csv — Export sex offender registry
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT id, registry_id, first_name, last_name, middle_name, aliases,
+        dob, gender, race, height, weight, hair_color, eye_color,
+        tier, risk_level, registration_status, registration_date, expiration_date,
+        last_verification, next_verification_due, registration_jurisdiction,
+        conviction_state, employer, employer_address, school, school_address,
+        restrictions, supervising_officer, source, notes, created_at
+      FROM sex_offender_registry
+      ORDER BY last_name, first_name LIMIT 10000
+    `).all();
+    sendCsv(res, 'sex_offender_registry_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'registry_id', header: 'Registry ID' },
+      { key: 'first_name', header: 'First Name' },
+      { key: 'last_name', header: 'Last Name' },
+      { key: 'middle_name', header: 'Middle Name' },
+      { key: 'aliases', header: 'Aliases' },
+      { key: 'dob', header: 'DOB' },
+      { key: 'gender', header: 'Gender' },
+      { key: 'race', header: 'Race' },
+      { key: 'tier', header: 'Tier' },
+      { key: 'risk_level', header: 'Risk Level' },
+      { key: 'registration_status', header: 'Registration Status' },
+      { key: 'registration_date', header: 'Registration Date' },
+      { key: 'expiration_date', header: 'Expiration Date' },
+      { key: 'last_verification', header: 'Last Verification' },
+      { key: 'next_verification_due', header: 'Next Verification Due' },
+      { key: 'registration_jurisdiction', header: 'Jurisdiction' },
+      { key: 'conviction_state', header: 'Conviction State' },
+      { key: 'employer', header: 'Employer' },
+      { key: 'supervising_officer', header: 'Supervising Officer' },
+      { key: 'source', header: 'Source' },
+      { key: 'notes', header: 'Notes' },
+      { key: 'created_at', header: 'Created At' },
+    ], rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Export failed' });
+  }
+});
+
 export default router;

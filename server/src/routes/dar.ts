@@ -298,6 +298,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     params.push(req.params.id);
     db.prepare(`UPDATE daily_activity_reports SET ${updates.join(', ')} WHERE id = ?`).run(...params);
     auditLog(req, 'UPDATE' as any, 'dar' as any, req.params.id, `Updated DAR ${req.params.id}`);
+    broadcast('records', 'dar:updated', { id: parseInt(req.params.id as string, 10) });
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -316,6 +317,7 @@ router.put('/:id/submit', validateParamId, requireRole('admin', 'manager', 'supe
       VALUES (?, 'submit', 'dar', ?, '{}', ?, ?)`).run(req.user!.userId, req.params.id, req.ip || 'unknown', now);
 
     auditLog(req, 'UPDATE' as any, 'dar' as any, req.params.id, `Submitted DAR ${req.params.id} for review`);
+    broadcast('records', 'dar:updated', { id: parseInt(req.params.id as string, 10), status: 'submitted' });
     res.json({ data: { id: parseInt(req.params.id as string, 10), status: 'submitted' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -337,6 +339,7 @@ router.put('/:id/approve', validateParamId, requireRole('admin', 'manager', 'sup
       VALUES (?, 'approve', 'dar', ?, '{}', ?, ?)`).run(req.user!.userId, req.params.id, req.ip || 'unknown', now);
 
     auditLog(req, 'UPDATE' as any, 'dar' as any, req.params.id, `Approved DAR ${req.params.id}`);
+    broadcast('records', 'dar:updated', { id: parseInt(req.params.id as string, 10), status: 'approved' });
     res.json({ data: { id: parseInt(req.params.id as string, 10), status: 'approved' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -357,6 +360,7 @@ router.put('/:id/return', validateParamId, requireRole('admin', 'manager', 'supe
       .run(req.user!.userId, user?.full_name || '', now, review_notes, now, req.params.id);
 
     auditLog(req, 'UPDATE' as any, 'dar' as any, req.params.id, `Returned DAR ${req.params.id} for revision`);
+    broadcast('records', 'dar:updated', { id: parseInt(req.params.id as string, 10), status: 'returned' });
     res.json({ data: { id: parseInt(req.params.id as string, 10), status: 'returned' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });

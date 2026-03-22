@@ -14,6 +14,7 @@ import { useToast } from '../../../components/ToastProvider';
 import type { DisciplinaryRecord, DisciplinaryType, DisciplinarySeverity, DisciplinaryStatus } from '../../../types';
 import { SEVERITY_COLORS, DISCIPLINARY_TYPE_LABELS } from '../utils/hrConstants';
 import DisciplinaryFormModal from '../modals/DisciplinaryFormModal';
+import ExportButton from '../../../components/ExportButton';
 
 interface DisciplinaryTabProps {
   userRole: string;
@@ -291,6 +292,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
               <Clock size={12} /> Timeline
             </button>
           </div>
+          <ExportButton exportUrl="/api/hr/disciplinary/export/csv" exportFilename="disciplinary.csv" />
           <button
             onClick={handleCreate}
             className="px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded flex items-center gap-1.5"

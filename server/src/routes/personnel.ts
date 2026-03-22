@@ -14,6 +14,7 @@ import { queueOverlayProcessing, type BodyCamOverlayConfig } from '../utils/vide
 import { validateEmail, validatePhone, validateBadgeNumber, validateAll } from '../utils/inputValidation';
 import { validateParamId } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
+import { broadcast } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
 
 const execFileAsync = promisify(execFile);
@@ -338,6 +339,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       VALUES (?, 'user_created', 'user', ?, ?, ?)
     `).run(req.user!.userId, result.lastInsertRowid, `Created user: ${username} (${role})`, req.ip || 'unknown');
 
+    broadcast('personnel', 'user:created', user);
     res.status(201).json(user);
   } catch (error: any) {
     console.error('Create user error:', error?.message || 'Unknown error');
@@ -444,6 +446,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Reque
       FROM users WHERE id = ?
     `).get(req.params.id);
 
+    broadcast('personnel', 'user:updated', updated);
     res.json(updated);
   } catch (error: any) {
     console.error('Update user error:', error?.message || 'Unknown error');
@@ -485,7 +488,7 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
 
     auditLog(req, 'TERMINATE' as any, 'user' as any, Number(req.params.id),
       `Terminated user: ${user.username} (${user.full_name || 'N/A'})`);
-
+    broadcast('personnel', 'user:updated', { id: Number(req.params.id), status: 'terminated' });
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete user error:', error?.message || 'Unknown error');
@@ -683,6 +686,45 @@ router.get('/bodycam-videos/:videoId/download', (req: Request, res: Response) =>
 // ─── SCHEDULES / TIME / CREDENTIALS ──────────────────
 // These routes are handled via mountScheduleRoutes() in index.ts
 // to avoid /:id route conflicts in this sub-router.
+
+// ─── CSV EXPORT ──────────────────────────────────────────
+
+// GET /api/personnel/export/csv — Export personnel roster
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT id, username, full_name, first_name, last_name, email, role,
+        badge_number, phone, status, rank, department,
+        hire_date, termination_date, shift_preference,
+        employee_id, created_at
+      FROM users
+      WHERE archived_at IS NULL
+      ORDER BY full_name LIMIT 10000
+    `).all();
+    sendCsv(res, 'personnel_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'username', header: 'Username' },
+      { key: 'full_name', header: 'Full Name' },
+      { key: 'first_name', header: 'First Name' },
+      { key: 'last_name', header: 'Last Name' },
+      { key: 'email', header: 'Email' },
+      { key: 'role', header: 'Role' },
+      { key: 'badge_number', header: 'Badge Number' },
+      { key: 'phone', header: 'Phone' },
+      { key: 'status', header: 'Status' },
+      { key: 'rank', header: 'Rank' },
+      { key: 'department', header: 'Department' },
+      { key: 'employee_id', header: 'Employee ID' },
+      { key: 'hire_date', header: 'Hire Date' },
+      { key: 'termination_date', header: 'Termination Date' },
+      { key: 'shift_preference', header: 'Shift Preference' },
+      { key: 'created_at', header: 'Created At' },
+    ], rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Export failed' });
+  }
+});
 
 export default router;
 

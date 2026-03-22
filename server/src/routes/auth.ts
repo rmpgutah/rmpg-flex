@@ -508,7 +508,8 @@ router.post('/refresh', refreshRateLimit, (req: Request, res: Response) => {
     let decoded: JwtPayload;
     try {
       decoded = verifyRefreshToken(refreshToken);
-    } catch {
+    } catch (err: any) {
+      console.error('[Auth] refresh token verification failed:', err?.message);
       res.status(401).json({ error: 'Invalid or expired refresh token', code: 'REFRESH_EXPIRED' });
       return;
     }
@@ -1141,7 +1142,8 @@ router.post('/verify-2fa', mfaRateLimit, (req: Request, res: Response) => {
     try {
       decoded = jwt.verify(tempToken, config.jwt.secret) as JwtPayload;
       if (!decoded || typeof decoded !== 'object') throw new Error('Invalid token payload');
-    } catch {
+    } catch (err: any) {
+      console.error('[Auth] MFA temp token verification failed:', err?.message);
       res.status(401).json({ error: 'Verification session expired. Please log in again.' });
       return;
     }

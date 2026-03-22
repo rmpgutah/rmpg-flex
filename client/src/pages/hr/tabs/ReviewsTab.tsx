@@ -13,6 +13,7 @@ import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { REVIEW_CATEGORIES, RATING_LABELS } from '../utils/hrConstants';
 import ReviewFormModal from '../modals/ReviewFormModal';
+import ExportButton from '../../../components/ExportButton';
 import type { PerformanceReview, ReviewType, ReviewStatus } from '../../../types';
 
 const MANAGER_ROLES = ['admin', 'manager', 'supervisor'];
@@ -430,6 +431,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
 
         <div className="flex-1" />
 
+        <ExportButton exportUrl="/api/hr/reviews/export/csv" exportFilename="reviews.csv" />
         <button
           onClick={() => {
             setEditReview(null);

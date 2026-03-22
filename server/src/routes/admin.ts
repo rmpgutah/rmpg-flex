@@ -1221,4 +1221,76 @@ router.put('/users/:id/status', requireRole('admin', 'manager'), (req: Request, 
   }
 });
 
+// ─── CSV EXPORTS ─────────────────────────────────────────
+
+// GET /api/admin/clients/export/csv — Export clients
+router.get('/clients/export/csv', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT id, name, status, contact_name, contact_email, contact_phone,
+        address, city, state, zip, industry, source,
+        contract_start, contract_end, contract_type, contract_value,
+        auto_renew, account_manager, client_since,
+        total_invoiced, total_paid, outstanding_balance,
+        created_at, updated_at
+      FROM clients
+      ORDER BY name LIMIT 10000
+    `).all();
+    sendCsv(res, 'clients_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'name', header: 'Name' },
+      { key: 'status', header: 'Status' },
+      { key: 'contact_name', header: 'Contact Name' },
+      { key: 'contact_email', header: 'Contact Email' },
+      { key: 'contact_phone', header: 'Contact Phone' },
+      { key: 'address', header: 'Address' },
+      { key: 'city', header: 'City' },
+      { key: 'state', header: 'State' },
+      { key: 'zip', header: 'ZIP' },
+      { key: 'industry', header: 'Industry' },
+      { key: 'contract_start', header: 'Contract Start' },
+      { key: 'contract_end', header: 'Contract End' },
+      { key: 'contract_type', header: 'Contract Type' },
+      { key: 'contract_value', header: 'Contract Value' },
+      { key: 'total_invoiced', header: 'Total Invoiced' },
+      { key: 'total_paid', header: 'Total Paid' },
+      { key: 'outstanding_balance', header: 'Outstanding Balance' },
+      { key: 'client_since', header: 'Client Since' },
+      { key: 'created_at', header: 'Created At' },
+    ], rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Export failed' });
+  }
+});
+
+// GET /api/admin/properties/export/csv — Export properties
+router.get('/properties/export/csv', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT p.id, p.name, p.address, p.property_type, p.status,
+        p.latitude, p.longitude, p.notes, p.created_at,
+        c.name as client_name
+      FROM properties p
+      LEFT JOIN clients c ON c.id = p.client_id
+      ORDER BY p.name LIMIT 10000
+    `).all();
+    sendCsv(res, 'properties_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'name', header: 'Name' },
+      { key: 'client_name', header: 'Client' },
+      { key: 'address', header: 'Address' },
+      { key: 'property_type', header: 'Type' },
+      { key: 'status', header: 'Status' },
+      { key: 'latitude', header: 'Latitude' },
+      { key: 'longitude', header: 'Longitude' },
+      { key: 'notes', header: 'Notes' },
+      { key: 'created_at', header: 'Created At' },
+    ], rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Export failed' });
+  }
+});
+
 export default router;

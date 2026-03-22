@@ -13,6 +13,7 @@ import { localNow, localToday } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
 import { computeFileHashes, computeContentFingerprint } from '../utils/ipedManager';
 import { validateParamId, escapeLike } from '../middleware/sanitize';
+import { broadcast } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
 import path from 'path';
 import fs from 'fs';
@@ -202,6 +203,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
 
     const created = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(result.lastInsertRowid);
     if (!created) { res.status(500).json({ error: 'Failed to retrieve created forensic case' }); return; }
+    broadcast('records', 'forensic:created', created);
     res.status(201).json(created);
   } catch (error: any) {
     console.error('Create forensic case error:', error?.message || 'Unknown error');
@@ -305,6 +307,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
       `Forensic case ${existing.lab_case_number} updated${status && status !== existing.status ? ` (status: ${existing.status} → ${status})` : ''}`);
 
     const updated = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id);
+    broadcast('records', 'forensic:updated', updated);
     res.json(updated);
   } catch (error: any) {
     console.error('Update forensic case error:', error?.message || 'Unknown error');
@@ -322,6 +325,7 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
     db.prepare('DELETE FROM forensic_cases WHERE id = ?').run(req.params.id);
     auditLog(req, 'forensic_case_deleted', 'forensic_case', (existing as any).id,
       `Forensic case ${(existing as any).lab_case_number} deleted`);
+    broadcast('records', 'forensic:deleted', { id: (existing as any).id });
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete forensic case error:', error?.message || 'Unknown error');
@@ -1431,6 +1435,44 @@ router.delete('/tools/:id', validateParamId, requireRole('admin'), (req: Request
   } catch (error: any) {
     console.error('Delete tool error:', error?.message);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── CSV EXPORT ──────────────────────────────────────────
+
+// GET /api/forensics/export/csv — Export forensic lab cases
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT fc.id, fc.lab_case_number, fc.title, fc.case_type, fc.status, fc.priority,
+        fc.synopsis, fc.requesting_officer_name, fc.requesting_agency,
+        fc.linked_incident_number, fc.linked_case_number,
+        fc.received_date, fc.due_date, fc.completed_date,
+        fc.assigned_examiner_id, fc.created_at, fc.updated_at
+      FROM forensic_cases fc
+      WHERE fc.archived_at IS NULL
+      ORDER BY fc.created_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'forensic_cases_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'lab_case_number', header: 'Lab Case Number' },
+      { key: 'title', header: 'Title' },
+      { key: 'case_type', header: 'Case Type' },
+      { key: 'status', header: 'Status' },
+      { key: 'priority', header: 'Priority' },
+      { key: 'synopsis', header: 'Synopsis' },
+      { key: 'requesting_officer_name', header: 'Requesting Officer' },
+      { key: 'requesting_agency', header: 'Requesting Agency' },
+      { key: 'linked_incident_number', header: 'Linked Incident' },
+      { key: 'linked_case_number', header: 'Linked Case' },
+      { key: 'received_date', header: 'Received Date' },
+      { key: 'due_date', header: 'Due Date' },
+      { key: 'completed_date', header: 'Completed Date' },
+      { key: 'created_at', header: 'Created At' },
+    ], rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Export failed' });
   }
 });
 

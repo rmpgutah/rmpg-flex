@@ -15,6 +15,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { LEAVE_TYPE_COLORS, LEAVE_STATUS_COLORS } from '../utils/hrConstants';
 import type { LeaveRequest, LeaveBalance } from '../../../types';
 import LeaveRequestModal, { type LeaveFormData } from '../modals/LeaveRequestModal';
+import ExportButton from '../../../components/ExportButton';
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -480,6 +481,7 @@ export default function LeaveTab() {
             <Filter size={14} className="text-rmpg-400" />
             All Leave Requests
           </h3>
+          <ExportButton exportUrl="/api/hr/leave/export/csv" exportFilename="leave-requests.csv" />
           <button
             onClick={() => { setEditRequest(null); setModalOpen(true); }}
             className="toolbar-btn toolbar-btn-primary flex items-center gap-1.5"

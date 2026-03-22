@@ -7,6 +7,7 @@ import { isPasswordExpired, isPasswordExpiringSoon } from '../utils/passwordExpi
 import { getBlockedIps, unblockIp } from '../middleware/rateLimiter';
 import { localNow } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
+import { broadcast } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
@@ -142,7 +143,7 @@ router.delete('/trusted-devices/:id', validateParamId, authenticateToken, (req: 
     );
 
     auditLog(req, 'DELETE' as any, 'user' as any, deviceId, `Removed trusted device #${deviceId}`);
-
+    broadcast('admin', 'security:updated', { action: 'device_removed', deviceId });
     res.json({ message: 'Trusted device removed' });
   } catch (error: any) {
     console.error('Remove device error:', error?.message || 'Unknown error');
@@ -239,7 +240,7 @@ router.post('/unblock-ip', authenticateToken, requireRole('admin'), (req: Reques
     console.log(`[Security] ${msg} — by ${req.user!.username}`);
 
     auditLog(req, 'UPDATE' as any, 'user' as any, 0, msg);
-
+    broadcast('admin', 'security:updated', { action: 'ip_unblocked', ip, count });
     res.json({ success: true, message: msg, unblocked: count });
   } catch (error: any) {
     console.error('Unblock IP error:', error?.message || 'Unknown error');
@@ -267,6 +268,33 @@ router.get('/recent-threats', authenticateToken, requireRole('admin'), (_req: Re
   } catch (error: any) {
     console.error('Recent threats error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── CSV EXPORT ──────────────────────────────────────────
+
+// GET /api/auth/security/export/csv — Export security events (login attempts)
+router.get('/export/csv', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT id, username, ip_address, user_agent, device_fingerprint,
+        success, failure_reason, created_at
+      FROM login_attempts
+      ORDER BY created_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'security_events_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'username', header: 'Username' },
+      { key: 'ip_address', header: 'IP Address' },
+      { key: 'user_agent', header: 'User Agent' },
+      { key: 'device_fingerprint', header: 'Device Fingerprint' },
+      { key: 'success', header: 'Success' },
+      { key: 'failure_reason', header: 'Failure Reason' },
+      { key: 'created_at', header: 'Created At' },
+    ], rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Export failed' });
   }
 });
 

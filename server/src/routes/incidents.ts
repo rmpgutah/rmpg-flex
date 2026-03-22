@@ -8,6 +8,7 @@ import { identifyBeat } from '../utils/geofence';
 import { createNotificationForRoles } from './notifications';
 import { auditLog } from '../utils/auditLogger';
 import { validateParamId, escapeLike } from '../middleware/sanitize';
+import { broadcast } from '../utils/websocket';
 import { universalWarrantCheck } from '../utils/universalWarrantScanner';
 
 const router = Router();
@@ -438,6 +439,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       'incident', Number((incident as any).id), 'normal', 'incident.created', req.user!.userId,
     );
 
+    broadcast('records', 'incident:created', incident);
     res.status(201).json(incident);
   } catch (error: any) {
     console.error('Create incident error:', error?.message || 'Unknown error');
@@ -566,6 +568,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     auditLog(req, 'incident_updated', 'incident', String(req.params.id), `Updated incident #${incident.incident_number}`);
 
     const updated = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id);
+    broadcast('records', 'incident:updated', updated);
     res.json(updated);
   } catch (error: any) {
     console.error('Update incident error:', error?.message || 'Unknown error');
@@ -603,7 +606,7 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
     deleteIncTx();
 
     auditLog(req, 'incident_deleted', 'incident', incident.id, `Deleted incident #${incident.incident_number}`);
-
+    broadcast('records', 'incident:deleted', { id: incident.id });
     res.json({ message: 'Incident deleted' });
   } catch (error: any) {
     console.error('Delete incident error:', error?.message || 'Unknown error');

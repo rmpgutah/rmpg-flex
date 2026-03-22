@@ -74,7 +74,7 @@ router.post('/calls/archive-bulk', requireRole('admin', 'manager', 'dispatcher')
 
     res.json({ archived_count: callsToArchive.length, message: `${callsToArchive.length} call(s) archived` });
   } catch (error: any) {
-    console.error('Bulk archive error:', error?.message || 'Unknown error');
+    console.error('[CallLifecycle] bulk archive error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -123,7 +123,7 @@ router.post('/calls/:id/archive', validateParamId, requireRole('admin', 'manager
     broadcastDispatchUpdate({ action: 'call_archived', call: updated });
     res.json(updated);
   } catch (error: any) {
-    console.error('Archive call error:', error?.message || 'Unknown error');
+    console.error('[CallLifecycle] archive call error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -156,7 +156,7 @@ router.post('/calls/:id/unarchive', validateParamId, requireRole('admin', 'manag
     broadcastDispatchUpdate({ action: 'call_unarchived', call: updated });
     res.json(updated);
   } catch (error: any) {
-    console.error('Unarchive call error:', error?.message || 'Unknown error');
+    console.error('[CallLifecycle] unarchive call error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -200,7 +200,7 @@ router.delete('/calls/:id', validateParamId, requireRole('admin', 'manager'), (r
     broadcastDispatchUpdate({ action: 'call_deleted', call_id: call.id });
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
-    console.error('Delete call error:', error?.message || 'Unknown error');
+    console.error('[CallLifecycle] delete call error:', error?.message || 'Unknown error');
     const msg = error?.code === 'SQLITE_CONSTRAINT_FOREIGNKEY'
       ? 'Cannot delete: this call has linked records. Unlink them first.'
       : 'Failed to delete call';
@@ -364,7 +364,7 @@ router.post('/calls/:id/generate-incident', validateParamId, requireRole('admin'
 
     res.status(201).json(incident);
   } catch (error: any) {
-    console.error('Generate incident error:', error?.message || 'Unknown error');
+    console.error('[CallLifecycle] generate incident error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -399,7 +399,7 @@ router.put('/calls/:id/timeline/:entryId', validateParamId, requireRole('admin',
     const updated = db.prepare('SELECT al.*, u.full_name as user_name FROM activity_log al LEFT JOIN users u ON al.user_id = u.id WHERE al.id = ?').get(entry.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Update timeline entry error:', error?.message || 'Unknown error');
+    console.error('[CallLifecycle] update timeline entry error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -419,7 +419,7 @@ router.delete('/calls/:id/timeline/:entryId', validateParamId, requireRole('admi
     auditLog(req, 'DELETE' as any, 'call' as any, Number(req.params.id), `Deleted timeline entry #${entry.id} from call #${req.params.id}`);
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Delete timeline entry error:', error?.message || 'Unknown error');
+    console.error('[CallLifecycle] delete timeline entry error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -450,7 +450,7 @@ router.post('/calls/:id/timeline', validateParamId, requireRole('admin', 'manage
     if (!entry) { res.status(500).json({ error: 'Failed to retrieve created entry' }); return; }
     res.status(201).json(entry);
   } catch (error: any) {
-    console.error('Add timeline entry error:', error?.message || 'Unknown error');
+    console.error('[CallLifecycle] add timeline entry error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -574,7 +574,7 @@ router.get('/calls/:id/warnings', validateParamId, requireRole('admin', 'manager
 
     res.json(warnings);
   } catch (error: any) {
-    console.error('Get warnings error:', error?.message || 'Unknown error');
+    console.error('[CallLifecycle] get warnings error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -628,7 +628,7 @@ router.put('/calls/:id/mileage', validateParamId, requireRole('admin', 'manager'
 
     res.json(updated);
   } catch (error: any) {
-    console.error('Mileage update error:', error?.message || 'Unknown error');
+    console.error('[CallLifecycle] mileage update error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

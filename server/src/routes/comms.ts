@@ -189,6 +189,8 @@ router.post('/messages/mark-all-read', (req: Request, res: Response) => {
       UPDATE messages SET read_at = ? WHERE to_user_id = ? AND read_at IS NULL
     `).run(now, req.user!.userId);
 
+    auditLog(req, 'UPDATE' as any, 'message' as any, 0, `Marked ${result.changes} messages as read`);
+
     res.json({ message: 'All messages marked as read', count: result.changes });
   } catch (error: any) {
     console.error('Mark all read error:', error?.message || 'Unknown error');

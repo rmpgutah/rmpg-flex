@@ -89,7 +89,8 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       pagination: { page: pageNum, per_page: perPage, total, totalPages: Math.ceil(total / perPage) },
     });
   } catch (err: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[FieldInterviews] list error:', err?.message);
+    res.status(500).json({ error: 'Failed to list field interviews' });
   }
 });
 
@@ -109,7 +110,8 @@ router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     if (!row) return res.status(404).json({ error: 'Field interview not found' });
     res.json(row);
   } catch (err: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[FieldInterviews] get detail error:', err?.message);
+    res.status(500).json({ error: 'Failed to get field interview' });
   }
 });
 
@@ -203,7 +205,8 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
 
     res.status(201).json(created);
   } catch (err: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[FieldInterviews] create error:', err?.message);
+    res.status(500).json({ error: 'Failed to create field interview' });
   }
 });
 
@@ -262,7 +265,8 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
 
     res.json(updated);
   } catch (err: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[FieldInterviews] update error:', err?.message);
+    res.status(500).json({ error: 'Failed to update field interview' });
   }
 });
 
@@ -277,7 +281,8 @@ router.post('/:id/archive', validateParamId, requireRole('admin', 'manager', 'su
 
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[FieldInterviews] archive error:', err?.message);
+    res.status(500).json({ error: 'Failed to archive field interview' });
   }
 });
 
@@ -292,7 +297,8 @@ router.post('/:id/unarchive', validateParamId, requireRole('admin', 'manager', '
 
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[FieldInterviews] unarchive error:', err?.message);
+    res.status(500).json({ error: 'Failed to unarchive field interview' });
   }
 });
 
@@ -307,7 +313,8 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
 
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[FieldInterviews] delete error:', err?.message);
+    res.status(500).json({ error: 'Failed to delete field interview' });
   }
 });
 

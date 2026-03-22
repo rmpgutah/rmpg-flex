@@ -4,6 +4,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 import { validateParamId } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
+import { broadcast } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
@@ -139,7 +140,7 @@ router.post('/leave', (req: Request, res: Response) => {
 
     auditLog(req, 'CREATE' as any, 'leave_request' as any, Number(result.lastInsertRowid),
       `Leave request created: ${type} ${start_date} to ${end_date}`);
-
+    broadcast('admin', 'hr:updated', { entity: 'leave', action: 'created', id: Number(result.lastInsertRowid) });
     res.status(201).json({ success: true, id: result.lastInsertRowid });
   } catch (error: any) {
     console.error('[HR] Leave create error:', error?.message);
@@ -168,6 +169,7 @@ router.put('/leave/:id', validateParamId, (req: Request, res: Response) => {
     ).run(type || null, start_date || null, end_date || null, hours_requested ?? null, reason ?? null, now, id);
 
     auditLog(req, 'UPDATE' as any, 'leave_request' as any, id, `Leave request updated`);
+    broadcast('admin', 'hr:updated', { entity: 'leave', action: 'updated', id });
     res.json({ success: true });
   } catch (error: any) {
     console.error('[HR] Leave update error:', error?.message);
@@ -211,6 +213,7 @@ router.post('/leave/:id/approve', validateParamId, requireRole('admin', 'manager
     }
 
     auditLog(req, 'UPDATE' as any, 'leave_request' as any, id, `Leave request approved`);
+    broadcast('admin', 'hr:updated', { entity: 'leave', action: 'approved', id });
     res.json({ success: true });
   } catch (error: any) {
     console.error('[HR] Leave approve error:', error?.message);
@@ -508,7 +511,7 @@ router.post('/disciplinary', requireRole('admin', 'manager'), (req: Request, res
 
     auditLog(req, 'CREATE' as any, 'disciplinary_record' as any, Number(result.lastInsertRowid),
       `Disciplinary record created for officer ${officer_id}: ${type || 'verbal_warning'}`);
-
+    broadcast('admin', 'hr:updated', { entity: 'disciplinary', action: 'created', id: Number(result.lastInsertRowid) });
     res.status(201).json({ success: true, id: result.lastInsertRowid });
   } catch (error: any) {
     console.error('[HR] Disciplinary create error:', error?.message);
@@ -541,6 +544,7 @@ router.put('/disciplinary/:id', validateParamId, requireRole('admin', 'manager')
       status || null, witness ?? null, attachments ?? null, now, id);
 
     auditLog(req, 'UPDATE' as any, 'disciplinary_record' as any, id, `Disciplinary record updated`);
+    broadcast('admin', 'hr:updated', { entity: 'disciplinary', action: 'updated', id });
     res.json({ success: true });
   } catch (error: any) {
     console.error('[HR] Disciplinary update error:', error?.message);
@@ -625,7 +629,7 @@ router.post('/reviews', requireRole('admin', 'manager', 'supervisor'), (req: Req
 
     auditLog(req, 'CREATE' as any, 'performance_review' as any, Number(result.lastInsertRowid),
       `Performance review created for officer ${officer_id}`);
-
+    broadcast('admin', 'hr:updated', { entity: 'review', action: 'created', id: Number(result.lastInsertRowid) });
     res.status(201).json({ success: true, id: result.lastInsertRowid });
   } catch (error: any) {
     console.error('[HR] Review create error:', error?.message);

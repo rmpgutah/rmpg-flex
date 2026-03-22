@@ -167,7 +167,7 @@ router.get('/dashboard', (req: Request, res: Response) => {
       const smPending = db.prepare(`SELECT COUNT(*) as count FROM sm_jobs WHERE status IN ('pending', 'assigned', 'in_progress')`).get() as any;
       const smCompleted = db.prepare(`SELECT COUNT(*) as count FROM sm_jobs WHERE status IN ('completed', 'served')`).get() as any;
       smStats = { totalJobs: smTotal?.count ?? 0, pendingJobs: smPending?.count ?? 0, completedJobs: smCompleted?.count ?? 0 };
-    } catch { /* sm_jobs table may not exist */ }
+    } catch (err: any) { /* sm_jobs table may not exist */ console.error('[Reports] sm_jobs query error:', err?.message); }
 
     // PSO avg response time (separate from general)
     const psoAvgResponse = db.prepare(`
@@ -215,7 +215,7 @@ router.get('/dashboard', (req: Request, res: Response) => {
       pso,
     });
   } catch (error: any) {
-    console.error('Get dashboard error:', error?.message || 'Unknown error');
+    console.error('[Reports] get dashboard error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -277,7 +277,7 @@ router.get('/incidents-summary', (req: Request, res: Response) => {
       total: total.count,
     });
   } catch (error: any) {
-    console.error('Get incidents summary error:', error?.message || 'Unknown error');
+    console.error('[Reports] get incidents summary error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -384,7 +384,7 @@ router.get('/response-times', (req: Request, res: Response) => {
       })),
     });
   } catch (error: any) {
-    console.error('Get response times error:', error?.message || 'Unknown error');
+    console.error('[Reports] get response times error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -459,7 +459,7 @@ router.get('/officer-activity', (req: Request, res: Response) => {
 
     res.json(metrics);
   } catch (error: any) {
-    console.error('Get officer activity error:', error?.message || 'Unknown error');
+    console.error('[Reports] get officer activity error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -578,7 +578,7 @@ router.get('/client/:clientId', (req: Request, res: Response) => {
       slaTargetMinutes: client.sla_response_minutes,
     });
   } catch (error: any) {
-    console.error('Get client report error:', error?.message || 'Unknown error');
+    console.error('[Reports] get client report error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -664,7 +664,7 @@ router.get('/shift-activity/:officerId', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Get shift activity error:', error?.message || 'Unknown error');
+    console.error('[Reports] get shift activity error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -678,7 +678,7 @@ router.get('/training-compliance', requireRole('admin', 'manager'), (req: Reques
     const records = db.prepare('SELECT * FROM training_records ORDER BY completed_date DESC LIMIT 10000').all() as any[];
     res.json({ users, requirements, records });
   } catch (error: any) {
-    console.error('Training compliance error:', error?.message || 'Unknown error');
+    console.error('[Reports] training compliance error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -706,7 +706,7 @@ router.get('/call-density', (req: Request, res: Response) => {
     const points = db.prepare(sql).all(...params) as any[];
     res.json({ points, count: points.length });
   } catch (error: any) {
-    console.error('Call density error:', error?.message || 'Unknown error');
+    console.error('[Reports] call density error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -761,7 +761,7 @@ router.get('/statute-analytics', (req: Request, res: Response) => {
 
     res.json({ topStatutes, byLevel, trend, incidentStatutes });
   } catch (error: any) {
-    console.error('Statute analytics error:', error?.message || 'Unknown error');
+    console.error('[Reports] statute analytics error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -822,7 +822,7 @@ router.get('/patrol-compliance', (req: Request, res: Response) => {
       byHour,
     });
   } catch (error: any) {
-    console.error('Patrol compliance error:', error?.message || 'Unknown error');
+    console.error('[Reports] patrol compliance error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -887,7 +887,7 @@ router.post('/custom', requireRole('admin', 'manager'), (req: Request, res: Resp
     auditLog(req, 'CREATE' as any, 'report' as any, 0, `Ran custom report on ${source} (${rows.length} rows)`);
     res.json({ data: rows, columns: selectedCols, count: rows.length, sql: sql.replace(/\?/g, '…') });
   } catch (error: any) {
-    console.error('Custom report error:', error?.message || 'Unknown error');
+    console.error('[Reports] custom report error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -991,7 +991,7 @@ router.get('/crime-analysis', requireRole('admin', 'manager', 'supervisor'), (re
       },
     });
   } catch (error: any) {
-    console.error('Crime analysis error:', error?.message || 'Unknown error');
+    console.error('[Reports] crime analysis error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1401,7 +1401,7 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
       total_points: trails.reduce((s, t) => s + t.points.length, 0),
     });
   } catch (error: any) {
-    console.error('Patrol tracking report error:', error?.message || 'Unknown error');
+    console.error('[Reports] patrol tracking report error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1414,7 +1414,7 @@ router.get('/daily-reports', requireRole('admin', 'manager', 'supervisor'), (req
     const reports = listDailyReports();
     res.json({ reports });
   } catch (error: any) {
-    console.error('List daily reports error:', error?.message || 'Unknown error');
+    console.error('[Reports] list daily reports error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1435,7 +1435,7 @@ router.get('/daily-reports/:filename', requireRole('admin', 'manager', 'supervis
     res.setHeader('Content-Disposition', `inline; filename="${safeName}"`);
     res.sendFile(filepath);
   } catch (error: any) {
-    console.error('Download daily report error:', error?.message || 'Unknown error');
+    console.error('[Reports] download daily report error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1454,7 +1454,7 @@ router.post('/daily-reports/generate', requireRole('admin'), async (req: Request
     auditLog(req, 'CREATE' as any, 'report' as any, 0, `Generated daily report: ${filename}`);
     res.json({ ok: true, filename });
   } catch (error: any) {
-    console.error('Generate daily report error:', error?.message || 'Unknown error');
+    console.error('[Reports] generate daily report error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

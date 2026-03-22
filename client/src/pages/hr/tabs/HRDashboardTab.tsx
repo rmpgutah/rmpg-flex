@@ -324,6 +324,7 @@ export default function HRDashboardTab({
   onNavigateToLeave: () => void;
 }) {
   const isManager = MANAGER_ROLES.includes(userRole);
+  const { addToast } = useToast();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(isManager);
 
@@ -331,7 +332,7 @@ export default function HRDashboardTab({
     if (!isManager) return;
     apiFetch<DashboardData>('/api/hr/dashboard')
       .then(setData)
-      .catch(() => setData(null))
+      .catch(() => { setData(null); addToast('Failed to load HR dashboard', 'error'); })
       .finally(() => setLoading(false));
   }, [isManager]);
 

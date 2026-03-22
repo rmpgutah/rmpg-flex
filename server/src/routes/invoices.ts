@@ -12,6 +12,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { escapeLike, validateParamId } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
+import { broadcast } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
@@ -327,6 +328,7 @@ router.post('/', requireRole('admin', 'manager', 'contract_manager'), (req: Requ
     auditLog(req, 'CREATE' as any, 'invoice' as any, result.lastInsertRowid, `Created invoice ${invoice_number} for client ${client.name}`);
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(result.lastInsertRowid);
     if (!invoice) { res.status(500).json({ error: 'Failed to retrieve created invoice' }); return; }
+    broadcast('admin', 'invoice:created', invoice);
     res.status(201).json({ data: invoice });
   } catch (error: any) {
     console.error('Invoice create error:', error?.message || 'Unknown error');
@@ -607,6 +609,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'contract_ma
       SELECT i.*, c.name as client_name FROM invoices i
       LEFT JOIN clients c ON i.client_id = c.id WHERE i.id = ?
     `).get(req.params.id);
+    broadcast('admin', 'invoice:updated', updated);
     res.json({ data: updated });
   } catch (error: any) {
     console.error('Invoice update error:', error?.message || 'Unknown error');
@@ -669,6 +672,7 @@ router.put('/:id/status', validateParamId, requireRole('admin', 'manager'), (req
 
     auditLog(req, 'UPDATE' as any, 'invoice' as any, req.params.id, `Invoice status changed from ${invoice.status} to ${status}`);
     const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
+    broadcast('admin', 'invoice:updated', updated);
     res.json({ data: updated });
   } catch (error: any) {
     console.error('Invoice status error:', error?.message || 'Unknown error');
@@ -981,6 +985,45 @@ router.get('/:id/person-chain', validateParamId, requireRole('admin', 'manager',
   } catch (error: any) {
     console.error('Invoice person-chain error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── CSV EXPORT ──────────────────────────────────────────
+
+// GET /api/invoices/export/csv — Export invoices
+router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT i.id, i.invoice_number, i.status, i.issue_date, i.due_date, i.paid_date,
+        i.subtotal, i.discount_amount, i.late_fee_amount, i.total,
+        i.amount_paid, i.balance_due, i.payment_terms, i.notes,
+        i.created_at, i.updated_at,
+        c.name as client_name
+      FROM invoices i
+      LEFT JOIN clients c ON c.id = i.client_id
+      ORDER BY i.created_at DESC LIMIT 10000
+    `).all();
+    sendCsv(res, 'invoices_export.csv', [
+      { key: 'id', header: 'ID' },
+      { key: 'invoice_number', header: 'Invoice Number' },
+      { key: 'client_name', header: 'Client' },
+      { key: 'status', header: 'Status' },
+      { key: 'issue_date', header: 'Issue Date' },
+      { key: 'due_date', header: 'Due Date' },
+      { key: 'paid_date', header: 'Paid Date' },
+      { key: 'subtotal', header: 'Subtotal' },
+      { key: 'discount_amount', header: 'Discount' },
+      { key: 'late_fee_amount', header: 'Late Fee' },
+      { key: 'total', header: 'Total' },
+      { key: 'amount_paid', header: 'Amount Paid' },
+      { key: 'balance_due', header: 'Balance Due' },
+      { key: 'payment_terms', header: 'Payment Terms' },
+      { key: 'notes', header: 'Notes' },
+      { key: 'created_at', header: 'Created At' },
+    ], rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Export failed' });
   }
 });
 

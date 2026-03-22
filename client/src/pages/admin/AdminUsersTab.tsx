@@ -113,6 +113,7 @@ export default function AdminUsersTab({
   onStatusChange,
   LoadingSpinner,
 }: AdminUsersTabProps) {
+  const { addToast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [userDetailTab, setUserDetailTab] = useState<'profile' | 'personal' | 'credentials' | 'security' | 'activity' | 'email'>('profile');
   const [securityActionLoading, setSecurityActionLoading] = useState<string | null>(null);
@@ -128,8 +129,10 @@ export default function AdminUsersTab({
     try {
       await apiFetch(`/admin/users/${userId}/reset-2fa`, { method: 'POST' });
       setSecurityMsg({ type: 'success', text: '2FA has been reset. User will be prompted to set up 2FA on next login.' });
+      addToast('2FA reset successfully', 'success');
     } catch (err: any) {
       setSecurityMsg({ type: 'error', text: err.message || 'Failed to reset 2FA' });
+      addToast(err.message || 'Failed to reset 2FA', 'error');
     }
     setSecurityActionLoading(null);
   };
@@ -160,8 +163,10 @@ export default function AdminUsersTab({
       const result = await apiFetch<{ message: string; count: number }>(`/admin/users/${userId}/revoke-sessions`, { method: 'POST' });
       setSecurityMsg({ type: 'success', text: result.message || `All sessions revoked.` });
       setUserSessions([]);
+      addToast('All sessions revoked', 'success');
     } catch (err: any) {
       setSecurityMsg({ type: 'error', text: err.message || 'Failed to revoke sessions' });
+      addToast(err.message || 'Failed to revoke sessions', 'error');
     }
     setSecurityActionLoading(null);
   };
@@ -177,12 +182,14 @@ export default function AdminUsersTab({
       setSecurityMsg({ type: 'success', text: result.message || `Role changed to ${newRole}` });
       setRoleEditing(false);
       setPendingRole(null);
+      addToast(`Role changed to ${newRole}`, 'success');
       // Update local state
       if (selectedUser) {
         setSelectedUser({ ...selectedUser, role: newRole } as any);
       }
     } catch (err: any) {
       setSecurityMsg({ type: 'error', text: err.message || 'Failed to change role' });
+      addToast(err.message || 'Failed to change role', 'error');
     }
     setSecurityActionLoading(null);
   };
@@ -193,8 +200,10 @@ export default function AdminUsersTab({
     try {
       await apiFetch(`/admin/users/${userId}/force-password-change`, { method: 'POST' });
       setSecurityMsg({ type: 'success', text: 'User will be required to change their password on next login.' });
+      addToast('Password change required on next login', 'success');
     } catch (err: any) {
       setSecurityMsg({ type: 'error', text: err.message || 'Failed to force password change' });
+      addToast(err.message || 'Failed to force password change', 'error');
     }
     setSecurityActionLoading(null);
   };
