@@ -124,11 +124,21 @@ router.post(
   '/firecrawl/import',
   requireRole('admin', 'manager'),
   async (req: Request, res: Response) => {
-    const body = req.body as Partial<LeadUpsertData> & { business_name?: string };
+    const body = req.body as Partial<LeadUpsertData> & { business_name?: string; name?: string; title?: string };
 
-    if (!body.business_name || typeof body.business_name !== 'string' || !body.business_name.trim()) {
-      res.status(400).json({ error: 'business_name is required' });
-      return;
+    // Derive business_name from multiple possible fields
+    const businessName = (body.business_name || body.name || body.title || '').toString().trim();
+    if (!businessName) {
+      // Fall back to domain from source_url if available
+      let fallbackName = 'Unknown Business';
+      if (body.source_url) {
+        try {
+          fallbackName = new URL(body.source_url).hostname.replace(/^www\./, '');
+        } catch { /* keep fallback */ }
+      }
+      body.business_name = fallbackName;
+    } else {
+      body.business_name = businessName;
     }
 
     try {
@@ -136,7 +146,7 @@ router.post(
         source: 'firecrawl_manual',
         source_id: body.source_id || `fc_${Date.now()}`,
         source_url: body.source_url,
-        business_name: body.business_name.trim(),
+        business_name: body.business_name,
         industry: body.industry,
         sic_code: body.sic_code,
         business_type: body.business_type,
@@ -198,9 +208,13 @@ router.post(
     for (let i = 0; i < results.length; i++) {
       const item = results[i];
 
-      if (!item.business_name || typeof item.business_name !== 'string' || !item.business_name.trim()) {
-        errors.push({ index: i, business_name: item.business_name, error: 'business_name is required' });
-        continue;
+      // Derive business_name from multiple possible fields
+      const itemName = (item.business_name || (item as any).name || (item as any).title || '').toString().trim();
+      if (!itemName) {
+        const fallback = item.source_url ? (() => { try { return new URL(item.source_url).hostname.replace(/^www\./, ''); } catch { return 'Unknown'; } })() : 'Unknown';
+        item.business_name = fallback;
+      } else {
+        item.business_name = itemName;
       }
 
       try {
