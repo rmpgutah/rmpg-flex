@@ -65,6 +65,13 @@ function routeButton(unitCallSign: string, callNumber: string, uLat: number, uLn
   </button>`;
 }
 
+function findClosestButton(callId: string): string {
+  return `<button data-find-closest="${escapeHtml(callId)}"
+    style="display:block;width:100%;margin-top:8px;padding:4px 8px;background:${C_BRAND}30;border:1px solid ${C_BRAND}80;color:${C_BLUE};font-size:8px;font-weight:900;font-family:${FONT_MONO};cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;border-radius:2px;text-align:center;">
+    &#9737; FIND CLOSEST UNIT
+  </button>`;
+}
+
 function dataRow(label: string, value: string, valueColor = C_TEXT): string {
   if (!value) return '';
   return `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:2px 0;">
@@ -213,6 +220,7 @@ export function buildCallInfoWindow(
     ${dataRow('Status', call.status.replace(/_/g, ' '), C_TEXT_DIM)}
     ${call.source ? dataRow('Source', call.source, C_TEXT_DIM) : ''}
     ${call.disposition ? dataRow('Disposition', call.disposition, C_TEXT_DIM) : ''}
+    ${call.latitude != null && call.longitude != null ? findClosestButton(String(call.id)) : ''}
   `;
 
   // Units tab

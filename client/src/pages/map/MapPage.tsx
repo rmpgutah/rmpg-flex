@@ -27,15 +27,22 @@ import { useMapBreadcrumbs } from './hooks/useMapBreadcrumbs';
 import { useMapTrackingLines } from './hooks/useMapTrackingLines';
 import { useMapAddressSearch } from './hooks/useMapAddressSearch';
 import { useMapScreenshot } from './hooks/useMapScreenshot';
+import { useMapTrafficLayer } from './hooks/useMapTrafficLayer';
+import { useMapMeasurement } from './hooks/useMapMeasurement';
+import { useWeatherOverlay } from './hooks/useWeatherOverlay';
+import { useClosestUnit } from './hooks/useClosestUnit';
 
 // Components
 import MapLayersPanel from './components/MapLayersPanel';
+import ClosestUnitPanel from './components/ClosestUnitPanel';
+import MeasurementOverlay from './components/MeasurementOverlay';
 import MapSidebar from './components/MapSidebar';
 import MapOverlays from './components/MapOverlays';
 import MapMobileSheet from './components/MapMobileSheet';
 import MapLegend from './components/MapLegend';
 import MapScaleBar from './components/MapScaleBar';
 import MapCompassRose from './components/MapCompassRose';
+import WeatherWidget from './components/WeatherWidget';
 
 // ============================================================
 // Main Component
@@ -77,6 +84,7 @@ export default function MapPage() {
 
   // GPS own-position
   const gps = useGpsTracking();
+  const weather = useWeatherOverlay();
 
   // WebSocket
   const { isConnected, subscribe } = useWebSocket();
@@ -260,6 +268,22 @@ export default function MapPage() {
   // Map Feature Hooks
   // ============================================================
 
+  // Traffic layer
+  const traffic = useMapTrafficLayer();
+
+  // Measurement tool
+  const measurement = useMapMeasurement();
+
+  // Closest unit finder — must be defined before useMapMarkers (which uses handleFindClosest)
+  const closestUnit = useClosestUnit();
+
+  const handleFindClosest = useCallback((callId: string) => {
+    const call = calls.find(c => String(c.id) === callId);
+    if (call) {
+      closestUnit.openClosestPanel(call, units);
+    }
+  }, [calls, units, closestUnit.openClosestPanel]);
+
   const { createMarker, removeMarker } = useMapMarkers({
     mapInstanceRef,
     markersRef,
@@ -271,6 +295,7 @@ export default function MapPage() {
     calls,
     properties,
     showRoute,
+    onFindClosest: handleFindClosest,
     gps,
   });
 
@@ -403,6 +428,13 @@ export default function MapPage() {
           <RmpgLogo height={20} iconOnly />
         </div>
 
+        {/* Weather Widget - Top Left below logo (desktop only) */}
+        {!isMobile && (
+          <div className="absolute left-2 top-8 z-[999]">
+            <WeatherWidget weather={weather} />
+          </div>
+        )}
+
         {/* GPS History Playback Panel */}
         {!isMobile && (
           <GpsBreadcrumbPanel
@@ -410,6 +442,18 @@ export default function MapPage() {
             mapLoaded={mapLoaded}
             isOpen={historyPanelOpen}
             onToggle={() => setHistoryPanelOpen(!historyPanelOpen)}
+          />
+        )}
+
+        {/* Closest Unit Panel */}
+        {closestUnit.showClosestPanel && closestUnit.selectedCall && (
+          <ClosestUnitPanel
+            call={closestUnit.selectedCall}
+            results={closestUnit.closestResults}
+            onClose={closestUnit.closeClosestPanel}
+            onDispatchSuccess={() => {
+              fetchAllData({ silent: true });
+            }}
           />
         )}
 
@@ -688,8 +732,27 @@ export default function MapPage() {
             beatDistrictMap={beatDistrictMap}
             shiftPlanning={shiftPlanning}
             eventPlanning={eventPlanning}
+            showTraffic={traffic.showTraffic}
+            onToggleTraffic={() => traffic.toggleTraffic(mapInstanceRef.current)}
+            measuring={measurement.measuring}
+            measureMode={measurement.measureMode}
+            onStartMeasure={(mode) => {
+              if (mapInstanceRef.current) measurement.startMeasure(mapInstanceRef.current, mode);
+            }}
+            onClearMeasurement={measurement.clearMeasurement}
           />
         </div>}
+
+        {/* Measurement overlay */}
+        {measurement.measureMode && (
+          <MeasurementOverlay
+            measuring={measurement.measuring}
+            measureMode={measurement.measureMode}
+            measureDisplay={measurement.measureDisplay}
+            onFinish={measurement.finishMeasurement}
+            onClear={measurement.clearMeasurement}
+          />
+        )}
 
         {/* Floating overlays */}
         <MapOverlays

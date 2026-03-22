@@ -29,6 +29,7 @@ interface UseMapMarkersParams {
   calls: ActiveCall[];
   properties: Property[];
   showRoute: (unitCallSign: string, callNumber: string, uLat: number, uLng: number, cLat: number, cLng: number) => void;
+  onFindClosest?: (callId: string) => void;
   gps: {
     isTracking: boolean;
     latitude: number | null;
@@ -50,6 +51,7 @@ export function useMapMarkers({
   calls,
   properties,
   showRoute,
+  onFindClosest,
   gps,
 }: UseMapMarkersParams) {
   const selfMarkerRef = useRef<any>(null);
@@ -263,6 +265,21 @@ export function useMapMarkers({
     document.addEventListener('click', handleRouteClick);
     return () => document.removeEventListener('click', handleRouteClick);
   }, [showRoute, infoWindowRef]);
+
+  // Find Closest Unit Button Click Handler (delegated from info window HTML)
+  useEffect(() => {
+    function handleFindClosestClick(e: MouseEvent) {
+      const btn = (e.target as HTMLElement).closest('[data-find-closest]') as HTMLElement | null;
+      if (!btn) return;
+      const callId = btn.getAttribute('data-find-closest') || '';
+      if (callId && onFindClosest) {
+        onFindClosest(callId);
+        infoWindowRef.current?.close();
+      }
+    }
+    document.addEventListener('click', handleFindClosestClick);
+    return () => document.removeEventListener('click', handleFindClosestClick);
+  }, [onFindClosest, infoWindowRef]);
 
   // GPS Self-Position Marker
   useEffect(() => {

@@ -11,6 +11,7 @@ import { sendNotificationEmail } from '../utils/emailSender';
 import { setPasswordExpiry } from '../utils/passwordExpiry';
 import { rateLimit } from '../middleware/rateLimiter';
 import { validatePassword, getPasswordPolicyDescription } from '../middleware/validatePassword';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 
@@ -137,10 +138,7 @@ router.post('/clients', (req: Request, res: Response) => {
     const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(result.lastInsertRowid);
     if (!client) { res.status(500).json({ error: 'Failed to retrieve created client' }); return; }
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'client_created', 'client', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Created client: ${name}`, req.ip || 'unknown');
+    auditLog(req, 'client_created', 'client', Number(result.lastInsertRowid), `Created client: ${name}`);
 
     res.status(201).json(client);
   } catch (error: any) {
@@ -213,10 +211,7 @@ router.put('/clients/:id', (req: Request, res: Response) => {
     }
 
     // Activity log
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'client_updated', 'client', ?, ?, ?)
-    `).run(req.user!.userId, req.params.id, `Updated client: ${client.name}`, req.ip || 'unknown');
+    auditLog(req, 'client_updated', 'client', parseInt(String(req.params.id), 10), `Updated client: ${client.name}`);
 
     const updated = db.prepare('SELECT * FROM clients WHERE id = ?').get(req.params.id);
     res.json(updated);
@@ -246,10 +241,7 @@ router.delete('/clients/:id', (req: Request, res: Response) => {
 
     db.prepare('DELETE FROM clients WHERE id = ?').run(client.id);
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'client_deleted', 'client', ?, ?, ?)
-    `).run(req.user!.userId, client.id, `Deleted client: ${client.name}`, req.ip || 'unknown');
+    auditLog(req, 'DELETE', 'client', Number(client.id), `Deleted client: ${client.name}`);
 
     res.json({ message: 'Client deleted' });
   } catch (error: any) {
@@ -269,9 +261,7 @@ router.post('/clients/:id/archive', (req: Request, res: Response) => {
     const now = localNow();
     db.prepare('UPDATE clients SET archived_at = ? WHERE id = ?').run(now, client.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'client_archived', 'client', ?, ?, ?)`).run(
-      req.user!.userId, client.id, `Archived client: ${client.name}`, req.ip || 'unknown');
+    auditLog(req, 'UPDATE', 'client', Number(client.id), `Archived client: ${client.name}`);
 
     const updated = db.prepare('SELECT * FROM clients WHERE id = ?').get(client.id);
     res.json(updated);
@@ -291,9 +281,7 @@ router.post('/clients/:id/unarchive', (req: Request, res: Response) => {
 
     db.prepare('UPDATE clients SET archived_at = NULL WHERE id = ?').run(client.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'client_unarchived', 'client', ?, ?, ?)`).run(
-      req.user!.userId, client.id, `Unarchived client: ${client.name}`, req.ip || 'unknown');
+    auditLog(req, 'UPDATE', 'client', Number(client.id), `Unarchived client: ${client.name}`);
 
     const updated = db.prepare('SELECT * FROM clients WHERE id = ?').get(client.id);
     res.json(updated);
@@ -349,10 +337,7 @@ router.post('/call-templates', (req: Request, res: Response) => {
 
     const template = db.prepare('SELECT * FROM call_templates WHERE id = ?').get(result.lastInsertRowid) || { id: result.lastInsertRowid };
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'template_created', 'call_template', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Created call template: ${name}`, req.ip || 'unknown');
+    auditLog(req, 'CREATE', 'config', Number(result.lastInsertRowid), `Created call template: ${name}`);
 
     res.status(201).json(template);
   } catch (error: any) {
@@ -412,10 +397,7 @@ router.delete('/call-templates/:id', (req: Request, res: Response) => {
 
     db.prepare('UPDATE call_templates SET is_active = 0 WHERE id = ?').run(req.params.id);
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'template_deleted', 'call_template', ?, ?, ?)
-    `).run(req.user!.userId, existing.id, `Removed call template: ${existing.name}`, req.ip || 'unknown');
+    auditLog(req, 'DELETE', 'config', Number(existing.id), `Removed call template: ${existing.name}`);
 
     res.json({ message: 'Call template removed' });
   } catch (error: any) {
@@ -471,10 +453,7 @@ router.put('/system-settings', (req: Request, res: Response) => {
       "SELECT * FROM system_config WHERE category = 'system_settings' AND is_active = 1"
     ).all();
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'settings_updated', 'system_config', 0, ?, ?)
-    `).run(req.user!.userId, `Updated system settings: ${Object.keys(settings).join(', ')}`, req.ip || 'unknown');
+    auditLog(req, 'config_updated', 'config', 0, `Updated system settings: ${Object.keys(settings).join(', ')}`);
 
     res.json(all);
   } catch (error: any) {
@@ -685,9 +664,7 @@ router.post('/radio-channels', (req: Request, res: Response) => {
       "INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at) VALUES (?, ?, 'radio_channel', ?, 1, ?, ?)"
     ).run(id, value, sortOrder, now, now);
 
-    db.prepare(
-      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'radio_channel_created', 'radio_channel', 0, ?, ?)"
-    ).run(req.user!.userId, `Created radio channel: ${label} (${id})`, req.ip || 'unknown');
+    auditLog(req, 'CREATE', 'system_config', 0, `Created radio channel: ${label} (${id})`);
 
     res.status(201).json({ id, label, freq: freq || '0.000', sort_order: sortOrder, is_active: true });
   } catch (error: any) {
@@ -742,9 +719,7 @@ router.put('/radio-channels/:key', (req: Request, res: Response) => {
       `UPDATE system_config SET ${sets.join(', ')} WHERE category = 'radio_channel' AND config_key = ?`
     ).run(...vals);
 
-    db.prepare(
-      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'radio_channel_updated', 'radio_channel', 0, ?, ?)"
-    ).run(req.user!.userId, `Updated radio channel: ${key}`, req.ip || 'unknown');
+    auditLog(req, 'UPDATE', 'system_config', 0, `Updated radio channel: ${key}`);
 
     res.json({ id: key, label: meta.label, freq: meta.freq, is_active: is_active !== undefined ? !!is_active : true, sort_order });
   } catch (error: any) {
@@ -769,9 +744,7 @@ router.delete('/radio-channels/:key', (req: Request, res: Response) => {
 
     db.prepare("DELETE FROM system_config WHERE category = 'radio_channel' AND config_key = ?").run(key);
 
-    db.prepare(
-      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'radio_channel_deleted', 'radio_channel', 0, ?, ?)"
-    ).run(req.user!.userId, `Deleted radio channel: ${key}`, req.ip || 'unknown');
+    auditLog(req, 'DELETE', 'system_config', 0, `Deleted radio channel: ${key}`);
 
     res.json({ message: 'Radio channel deleted' });
   } catch (error: any) {
@@ -914,10 +887,7 @@ router.post('/users/:id/reset-2fa', rateLimit({ maxRequests: 5, windowMs: 60000 
     } catch { /* legacy columns may not exist */ }
 
     // Log
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, '2fa_reset', 'user', ?, ?, ?)
-    `).run(req.user!.userId, targetId, `Admin reset 2FA for ${user.username}`, reqIp);
+    auditLog(req, 'UPDATE', 'user', targetId, `Admin reset 2FA for ${user.username}`);
 
     createSecurityNotification(
       targetId,
@@ -962,10 +932,7 @@ router.post('/users/:id/force-password-change', rateLimit({ maxRequests: 5, wind
     db.prepare('UPDATE users SET force_password_change = 1, updated_at = ? WHERE id = ?')
       .run(localNow(), userId);
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'force_password_change', 'user', ?, ?, ?)
-    `).run(req.user!.userId, userId, `Admin forced password change for ${user.username}`, ip);
+    auditLog(req, 'UPDATE', 'user', userId, `Admin forced password change for ${user.username}`);
 
     createSecurityNotification(
       userId,
@@ -1083,10 +1050,7 @@ router.post('/users/:id/reset-password', requireRole('admin'), (req: Request, re
     // Clear any login lockout for this user
     db.prepare('DELETE FROM login_attempts WHERE username = ? AND success = 0').run(user.username);
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'admin_password_reset', 'user', ?, ?, ?)
-    `).run(req.user!.userId, userId, `Admin reset password for ${user.username}`, ip);
+    auditLog(req, 'ADMIN_PASSWORD_RESET', 'user', userId, `Admin reset password for ${user.username}`);
 
     const changeMsg = forceChange
       ? `Password reset for ${user.full_name}. They must change it on next login.`
@@ -1128,10 +1092,7 @@ router.post('/users/:id/revoke-sessions', rateLimit({ maxRequests: 5, windowMs: 
 
     const result = db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(userId);
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'admin_revoke_sessions', 'user', ?, ?, ?)
-    `).run(req.user!.userId, userId, `Admin revoked ${result.changes} sessions for ${user.username}`, ip);
+    auditLog(req, 'UPDATE', 'user', userId, `Admin revoked ${result.changes} sessions for ${user.username}`);
 
     createSecurityNotification(
       userId,
