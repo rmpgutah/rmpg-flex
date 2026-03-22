@@ -1054,4 +1054,63 @@ router.get('/capacity/planning', (_req: Request, res: Response) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// Case Links & Hash Results
+// ════════════════════════════════════════════════════════════
+
+// GET /api/forensic-lab/:caseId/links — Get linked records for a case
+router.get('/:caseId/links', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const links = db.prepare(`
+      SELECT * FROM forensic_case_links WHERE case_id = ? ORDER BY created_at DESC
+    `).all(req.params.caseId);
+    res.json(links);
+  } catch (error: any) {
+    console.error('Forensic case links error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/forensic-lab/:caseId/links — Add a linked record
+router.post('/:caseId/links', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { linked_type, linked_id, linked_label } = req.body;
+    if (!linked_type || !linked_id) {
+      res.status(400).json({ error: 'linked_type and linked_id required' });
+      return;
+    }
+    const result = db.prepare(`
+      INSERT INTO forensic_case_links (case_id, linked_type, linked_id, linked_label)
+      VALUES (?, ?, ?, ?)
+    `).run(req.params.caseId, linked_type, linked_id, linked_label || null);
+    res.status(201).json({ id: result.lastInsertRowid });
+  } catch (error: any) {
+    console.error('Forensic case add link error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/forensic-lab/:caseId/hashes — Get hash check results for a case
+router.get('/:caseId/hashes', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const hashes = db.prepare(`
+      SELECT * FROM forensic_hash_results WHERE case_id = ? ORDER BY created_at DESC
+    `).all(req.params.caseId);
+
+    const stats = {
+      total: hashes.length,
+      matches: (hashes as any[]).filter((h: any) => h.match_found).length,
+      clean: (hashes as any[]).filter((h: any) => !h.match_found).length,
+    };
+
+    res.json({ hashes, stats });
+  } catch (error: any) {
+    console.error('Forensic case hashes error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

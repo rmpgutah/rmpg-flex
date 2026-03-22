@@ -876,9 +876,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Tracks user activity (mouse, keyboard, touch) and auto-logs out
   // after the configured inactivity period.
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const idleTimeoutMsRef = useRef(60 * 60 * 1000); // default 1 hour inactivity, updated from server
+  const idleTimeoutMsRef = useRef(60 * 60 * 1000); // 1 hour of inactivity before auto-logout
   const sessionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const maxSessionMsRef = useRef(8 * 60 * 60 * 1000); // default 8 hours absolute max
+  const maxSessionMsRef = useRef(12 * 60 * 60 * 1000); // 12 hours of continuous use before auto-logout
 
   // Fetch session timeout config from server once authenticated
   useEffect(() => {

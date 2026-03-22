@@ -95,6 +95,7 @@ import securityDashboardRoutes from './routes/securityDashboard';
 import webauthnRoutes from './routes/webauthn';
 import jailRosterRoutes from './routes/jailRoster';
 import mapSafetyRoutes from './routes/mapSafety';
+import mapGeofenceRoutes from './routes/mapGeofences';
 import { authenticateToken } from './middleware/auth';
 
 const app = express();
@@ -257,6 +258,7 @@ app.use('/api/auth/security', securityDashboardRoutes);
 app.use('/api/auth/webauthn', webauthnRoutes);
 app.use('/api/jail-roster', jailRosterRoutes);
 app.use('/api/map/safety', mapSafetyRoutes);
+app.use('/api/map/geofences', mapGeofenceRoutes);
 app.use('/dispatch', intakeRoutes);        // Public dispatch endpoint (called by rmpgutahps.us)
 app.use('/intake', intakeRoutes);          // Legacy alias
 app.use('/api/intake', intakeRoutes);      // Also available under /api prefix

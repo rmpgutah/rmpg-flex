@@ -341,28 +341,11 @@ export default function Layout() {
     }
   }, [user?.last_password_change, user?.passwordChangedAt]);
 
-  // ── Feature 22: Session timeout warning ──
-  const [showSessionWarning, setShowSessionWarning] = useState(false);
-  const sessionWarningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    // Check JWT expiry and warn 5 minutes before
-    const token = localStorage.getItem('rmpg_token');
-    if (!token) return;
-    try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      if (!payload.exp) return;
-      const expiresMs = payload.exp * 1000;
-      const warnAtMs = expiresMs - 5 * 60 * 1000; // 5 min before expiry
-      const delay = warnAtMs - Date.now();
-      if (delay > 0) {
-        sessionWarningTimerRef.current = setTimeout(() => {
-          setShowSessionWarning(true);
-        }, delay);
-      }
-    } catch { /* ignore */ }
-    return () => { if (sessionWarningTimerRef.current) clearTimeout(sessionWarningTimerRef.current); };
-  }, [user]);
+  // ── Feature 22: Session timeout warning — DISABLED ──
+  // Access tokens auto-refresh via AuthContext, so JWT expiry warnings
+  // are misleading. Real session timeouts (1hr idle / 12hr max) are
+  // handled by AuthContext and show messages on the login page.
+  const showSessionWarning = false;
 
   // ── Feature 24: Auto-logout on idle ──
   const lastActivityRef = useRef(Date.now());
@@ -1352,16 +1335,7 @@ export default function Layout() {
             </div>
           )}
 
-          {/* Feature 22: Session timeout warning */}
-          {showSessionWarning && (
-            <div className="bg-red-900/40 border-b border-red-700/50 px-4 py-1.5 flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-red-400 animate-pulse" />
-              <span className="text-xs text-red-200">
-                Your session expires in less than <strong>5 minutes</strong>. Save your work.
-              </span>
-              <button onClick={() => setShowSessionWarning(false)} className="ml-auto text-red-500 hover:text-red-300"><X className="w-3 h-3" /></button>
-            </div>
-          )}
+          {/* Feature 22: Session timeout warning — removed (tokens auto-refresh) */}
 
           <ErrorBoundary>
             <Outlet />

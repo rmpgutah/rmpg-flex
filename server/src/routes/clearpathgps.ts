@@ -549,4 +549,320 @@ router.get('/sync/status', (req: Request, res: Response) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════
+// Admin Panel Endpoints (match AdminClearPathGpsTab.tsx)
+// ═══════════════════════════════════════════════════════════════
+
+// POST /api/clearpathgps/credentials — Save credentials (alias for /configure)
+router.post('/credentials', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const { account, username, password, base_url } = req.body;
+    if (!account || !username || !password) {
+      res.status(400).json({ error: 'account, username, and password are required' });
+      return;
+    }
+    setConfigValue('clearpathgps_account', account, true);
+    setConfigValue('clearpathgps_user', username, true);
+    setConfigValue('clearpathgps_password', password, true);
+    if (base_url) setConfigValue('clearpathgps_base_url', base_url, false);
+
+    const db = getDb();
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, details, ip_address)
+      VALUES (?, 'configure_clearpathgps', 'integration', 'ClearPathGPS credentials configured', ?)
+    `).run(req.user!.userId, req.ip || 'unknown');
+
+    res.json({ success: true, message: 'ClearPathGPS credentials saved' });
+  } catch (error: any) {
+    console.error('ClearPathGPS save credentials error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/clearpathgps/credentials — Remove credentials
+router.delete('/credentials', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    removeConfigValues(['clearpathgps_account', 'clearpathgps_user', 'clearpathgps_password', 'clearpathgps_base_url']);
+    res.json({ success: true, message: 'ClearPathGPS credentials removed' });
+  } catch (error: any) {
+    console.error('ClearPathGPS remove credentials error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/clearpathgps/test-connection — Test connection
+router.post('/test-connection', requireRole('admin'), async (req: Request, res: Response) => {
+  try {
+    let creds: ClearPathGpsCredentials | null = null;
+    if (req.body.account && req.body.username && req.body.password) {
+      creds = {
+        account: req.body.account,
+        user: req.body.username,
+        password: req.body.password,
+        baseUrl: req.body.base_url || 'https://api.clearpathgps.com:8443',
+      };
+    } else {
+      creds = getCredentials();
+    }
+    if (!creds) { res.status(400).json({ success: false, error: 'No credentials configured' }); return; }
+
+    const success = await testConnection(creds);
+    if (success) {
+      const vehicles = await getVehicles(creds);
+      res.json({ success: true, deviceCount: vehicles.length });
+    } else {
+      res.json({ success: false, error: 'Connection failed — check credentials' });
+    }
+  } catch (error: any) {
+    res.json({ success: false, error: error?.message || 'Connection failed' });
+  }
+});
+
+// POST /api/clearpathgps/discover-accounts — Discover available accounts
+router.post('/discover-accounts', requireRole('admin'), async (req: Request, res: Response) => {
+  try {
+    const creds = getCredentials();
+    if (!creds) { res.status(400).json({ error: 'Not configured' }); return; }
+
+    // ClearPathGPS typically has a single account — return the configured one
+    res.json({
+      accounts: [{ accountId: creds.account, accountName: creds.account, description: 'Primary Account' }],
+    });
+  } catch (error: any) {
+    res.json({ accounts: [], error: error?.message || 'Failed to discover accounts' });
+  }
+});
+
+// POST /api/clearpathgps/enable — Enable/disable integration
+router.post('/enable', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const { enabled, accountId } = req.body;
+    const db = getDb();
+
+    const existing = db.prepare(
+      "SELECT id FROM system_config WHERE config_key = 'clearpathgps_enabled' AND category = 'integrations'"
+    ).get() as any;
+
+    if (existing) {
+      db.prepare("UPDATE system_config SET config_value = ? WHERE id = ?").run(enabled ? '1' : '0', existing.id);
+    } else {
+      db.prepare("INSERT INTO system_config (config_key, config_value, category, is_active) VALUES ('clearpathgps_enabled', ?, 'integrations', 1)").run(enabled ? '1' : '0');
+    }
+
+    if (accountId) {
+      setConfigValue('clearpathgps_active_account', String(accountId), false);
+    }
+
+    res.json({ success: true, enabled });
+  } catch (error: any) {
+    console.error('ClearPathGPS enable error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/clearpathgps/devices — List ClearPathGPS devices
+router.get('/devices', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const devices = db.prepare(`
+      SELECT cv.*, fv.vehicle_number as fleet_vehicle_number, fv.unit_label as fleet_unit_label
+      FROM cpgps_vehicles cv
+      LEFT JOIN fleet_vehicles fv ON cv.vehicle_id = fv.id
+      ORDER BY cv.name
+    `).all();
+    res.json({ devices });
+  } catch (error: any) {
+    console.error('ClearPathGPS devices error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/clearpathgps/mappings — Officer-vehicle mappings
+router.get('/mappings', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const mappings = db.prepare(`
+      SELECT m.*, u.full_name as officer_name, u.badge_number,
+        cv.name as vehicle_name, cv.cpgps_id
+      FROM cpgps_officer_mappings m
+      LEFT JOIN users u ON m.officer_id = u.id
+      LEFT JOIN cpgps_vehicles cv ON m.cpgps_vehicle_id = cv.cpgps_id
+      WHERE m.active = 1
+      ORDER BY u.full_name
+    `).all();
+    res.json({ mappings });
+  } catch (error: any) {
+    console.error('ClearPathGPS mappings error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/clearpathgps/mappings — Create officer-vehicle mapping
+router.post('/mappings', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { officer_id, cpgps_vehicle_id, call_sign } = req.body;
+    if (!officer_id || !cpgps_vehicle_id) {
+      res.status(400).json({ error: 'officer_id and cpgps_vehicle_id required' });
+      return;
+    }
+    db.prepare(`
+      INSERT OR REPLACE INTO cpgps_officer_mappings (officer_id, cpgps_vehicle_id, call_sign, active)
+      VALUES (?, ?, ?, 1)
+    `).run(officer_id, cpgps_vehicle_id, call_sign || null);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('ClearPathGPS create mapping error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/clearpathgps/mappings/:id — Remove mapping
+router.delete('/mappings/:id', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare('UPDATE cpgps_officer_mappings SET active = 0 WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('ClearPathGPS delete mapping error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/clearpathgps/settings — Integration settings
+router.get('/settings', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const historyBackfill = db.prepare(
+      "SELECT config_value FROM system_config WHERE config_key = 'clearpathgps_history_backfill' AND category = 'integrations'"
+    ).get() as any;
+    res.json({ history_backfill: historyBackfill?.config_value === '1' });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/clearpathgps/settings — Update settings
+router.post('/settings', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const { history_backfill } = req.body;
+    setConfigValue('clearpathgps_history_backfill', history_backfill ? '1' : '0');
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/clearpathgps/dashcam-events — List dashcam events
+router.get('/dashcam-events', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const limit = parseInt(req.query.limit as string, 10) || 50;
+    const offset = parseInt(req.query.offset as string, 10) || 0;
+
+    const events = db.prepare(`
+      SELECT de.*, u.full_name as officer_name, cv.name as vehicle_name
+      FROM cpgps_dashcam_events de
+      LEFT JOIN users u ON de.officer_id = u.id
+      LEFT JOIN cpgps_vehicles cv ON de.cpgps_vehicle_id = cv.cpgps_id
+      ORDER BY de.event_at DESC
+      LIMIT ? OFFSET ?
+    `).all(limit, offset);
+
+    const total = (db.prepare('SELECT COUNT(*) as cnt FROM cpgps_dashcam_events').get() as any).cnt;
+
+    res.json({ events, total });
+  } catch (error: any) {
+    console.error('ClearPathGPS dashcam events error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/clearpathgps/dashcam-events/by-officer/:officerId — Events for specific officer
+router.get('/dashcam-events/by-officer/:officerId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const events = db.prepare(`
+      SELECT de.*, cv.name as vehicle_name
+      FROM cpgps_dashcam_events de
+      LEFT JOIN cpgps_vehicles cv ON de.cpgps_vehicle_id = cv.cpgps_id
+      WHERE de.officer_id = ?
+      ORDER BY de.event_at DESC
+      LIMIT 100
+    `).all(req.params.officerId);
+    res.json(events);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/clearpathgps/dashcam-events/export — Export dashcam events CSV
+router.get('/dashcam-events/export', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const events = db.prepare(`
+      SELECT de.*, u.full_name as officer_name, cv.name as vehicle_name
+      FROM cpgps_dashcam_events de
+      LEFT JOIN users u ON de.officer_id = u.id
+      LEFT JOIN cpgps_vehicles cv ON de.cpgps_vehicle_id = cv.cpgps_id
+      ORDER BY de.event_at DESC
+    `).all() as any[];
+
+    const headers = ['Event Type', 'Severity', 'Description', 'Officer', 'Vehicle', 'Speed', 'Lat', 'Lon', 'Event Time'];
+    const rows = events.map((e: any) => [
+      e.event_type, e.severity, (e.description || '').replace(/"/g, '""'),
+      e.officer_name || '', e.vehicle_name || '', e.speed || '', e.lat || '', e.lon || '', e.event_at || '',
+    ]);
+    const csv = [headers.join(','), ...rows.map(r => r.map((v: any) => `"${v}"`).join(','))].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="dashcam-events.csv"');
+    res.send(csv);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/clearpathgps/media-status — Media sync status
+router.get('/media-status', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const totalEvents = (db.prepare('SELECT COUNT(*) as cnt FROM cpgps_dashcam_events WHERE media_url IS NOT NULL').get() as any).cnt;
+    const syncedEvents = (db.prepare('SELECT COUNT(*) as cnt FROM cpgps_dashcam_events WHERE media_synced = 1').get() as any).cnt;
+    const pendingEvents = totalEvents - syncedEvents;
+
+    res.json({
+      total: totalEvents,
+      synced: syncedEvents,
+      pending: pendingEvents,
+      lastSyncAt: null,
+      enabled: false,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/clearpathgps/media-settings — Update media sync settings
+router.post('/media-settings', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const { enabled, syncInterval, downloadPath } = req.body;
+    if (enabled !== undefined) setConfigValue('clearpathgps_media_enabled', enabled ? '1' : '0');
+    if (syncInterval) setConfigValue('clearpathgps_media_interval', String(syncInterval));
+    if (downloadPath) setConfigValue('clearpathgps_media_path', downloadPath);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/clearpathgps/media-sync-now — Trigger manual media sync
+router.post('/media-sync-now', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    // Placeholder — media sync would download dashcam clips from ClearPathGPS
+    res.json({ synced: 0, errors: 0, message: 'Media sync not yet configured — add ClearPathGPS media credentials first' });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

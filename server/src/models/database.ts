@@ -3497,6 +3497,71 @@ function migrateSchema(): void {
   addCol('warrants', 'external_source_key', 'TEXT');
   addCol('warrants', 'auto_created', 'INTEGER DEFAULT 0');
 
+  // ── warrant_scraper_config missing columns ──
+  addCol('warrant_scraper_config', 'source_name', 'TEXT');
+  addCol('warrant_scraper_config', 'last_run_at', 'TEXT');
+  addCol('warrant_scraper_config', 'last_error', 'TEXT');
+
+  // ── ClearPathGPS dashcam events + officer mappings ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS cpgps_dashcam_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cpgps_vehicle_id TEXT,
+      vehicle_id INTEGER,
+      officer_id INTEGER,
+      event_type TEXT NOT NULL DEFAULT 'unknown',
+      severity TEXT DEFAULT 'info',
+      description TEXT,
+      lat REAL,
+      lon REAL,
+      speed REAL,
+      media_url TEXT,
+      media_local_path TEXT,
+      media_synced INTEGER DEFAULT 0,
+      event_at TEXT,
+      raw_json TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_cpgps_dashcam_events_vehicle ON cpgps_dashcam_events(cpgps_vehicle_id);
+    CREATE INDEX IF NOT EXISTS idx_cpgps_dashcam_events_officer ON cpgps_dashcam_events(officer_id);
+    CREATE INDEX IF NOT EXISTS idx_cpgps_dashcam_events_time ON cpgps_dashcam_events(event_at);
+
+    CREATE TABLE IF NOT EXISTS cpgps_officer_mappings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      officer_id INTEGER NOT NULL,
+      cpgps_vehicle_id TEXT NOT NULL,
+      call_sign TEXT,
+      active INTEGER DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      UNIQUE(officer_id, cpgps_vehicle_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_cpgps_mappings_officer ON cpgps_officer_mappings(officer_id);
+
+    CREATE TABLE IF NOT EXISTS forensic_case_links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      case_id INTEGER NOT NULL,
+      linked_type TEXT NOT NULL,
+      linked_id INTEGER NOT NULL,
+      linked_label TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (case_id) REFERENCES forensic_cases(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS forensic_hash_results (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      case_id INTEGER NOT NULL,
+      file_name TEXT,
+      file_hash TEXT,
+      hash_type TEXT DEFAULT 'md5',
+      match_found INTEGER DEFAULT 0,
+      match_set_name TEXT,
+      match_category TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (case_id) REFERENCES forensic_cases(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_forensic_hash_results_case ON forensic_hash_results(case_id);
+  `);
+
   console.log('Schema migration completed.');
 }
 
