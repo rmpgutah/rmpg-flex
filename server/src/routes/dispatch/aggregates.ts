@@ -129,6 +129,264 @@ router.get('/heatmap/types', requireRole('admin', 'manager', 'supervisor', 'offi
   }
 });
 
+// GET /api/dispatch/heatmap/advanced - Enhanced heatmap with filtering, clustering, comparison
+router.get('/heatmap/advanced', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+    const mode = (req.query.mode as string) || 'density'; // density | risk | temporal | comparison
+    const typesRaw = req.query.types as string | undefined; // comma-separated
+    const hourStart = parseInt(req.query.hourStart as string, 10);
+    const hourEnd = parseInt(req.query.hourEnd as string, 10);
+    const dayFilterRaw = req.query.dayFilter as string | undefined; // comma-separated 0-6
+    const resolution = (req.query.resolution as string) || 'medium'; // fine=0.001, medium=0.003, coarse=0.005
+    const comparisonDays = parseInt(req.query.comparisonDays as string, 10) || days;
+    const temporalHour = parseInt(req.query.temporalHour as string, 10); // for temporal mode single-hour
+
+    // Resolution mapping
+    const resMap: Record<string, number> = { fine: 1, medium: 3, coarse: 5 };
+    const roundDigits = resMap[resolution] || 3;
+
+    // Parse multi-type filter
+    const types = typesRaw ? typesRaw.split(',').filter(t => t.length > 0 && t.length < 100).slice(0, 20) : [];
+
+    // Parse day-of-week filter (0=Sun, 6=Sat)
+    const dayFilter = dayFilterRaw ? dayFilterRaw.split(',').map(Number).filter(n => n >= 0 && n <= 6) : [];
+
+    // Build WHERE clauses
+    const cutoff = `-${days}`;
+    const conditions: string[] = [
+      'latitude IS NOT NULL',
+      'longitude IS NOT NULL',
+      `created_at >= datetime('now', 'localtime', '${cutoff} days')`,
+    ];
+    const params: any[] = [];
+
+    // Hour range filter
+    const hasHourFilter = !isNaN(hourStart) && !isNaN(hourEnd) && hourStart >= 0 && hourStart <= 23 && hourEnd >= 0 && hourEnd <= 23;
+    if (hasHourFilter) {
+      if (hourStart <= hourEnd) {
+        conditions.push(`CAST(strftime('%H', created_at) AS INTEGER) >= ? AND CAST(strftime('%H', created_at) AS INTEGER) <= ?`);
+        params.push(hourStart, hourEnd);
+      } else {
+        // Wrapping range e.g. 18-2 means 18,19,20,21,22,23,0,1,2
+        conditions.push(`(CAST(strftime('%H', created_at) AS INTEGER) >= ? OR CAST(strftime('%H', created_at) AS INTEGER) <= ?)`);
+        params.push(hourStart, hourEnd);
+      }
+    }
+
+    // Day-of-week filter (SQLite: %w gives 0=Sunday)
+    if (dayFilter.length > 0 && dayFilter.length < 7) {
+      const placeholders = dayFilter.map(() => '?').join(',');
+      conditions.push(`CAST(strftime('%w', created_at) AS INTEGER) IN (${placeholders})`);
+      params.push(...dayFilter);
+    }
+
+    // Type filter
+    if (types.length > 0) {
+      const placeholders = types.map(() => '?').join(',');
+      conditions.push(`incident_type IN (${placeholders})`);
+      params.push(...types);
+    }
+
+    const whereClause = conditions.join(' AND ');
+
+    // --- Main query ---
+    const roundExpr = roundDigits === 1 ? 'ROUND(latitude, 3)' : roundDigits === 5 ? 'ROUND(latitude, 2)' : 'ROUND(latitude, 3)';
+    const roundExprLng = roundDigits === 1 ? 'ROUND(longitude, 3)' : roundDigits === 5 ? 'ROUND(longitude, 2)' : 'ROUND(longitude, 3)';
+    // For fine resolution, use 3 decimal places; for medium 3; for coarse 2
+    const latRound = resolution === 'coarse' ? 2 : 3;
+    const lngRound = resolution === 'coarse' ? 2 : 3;
+
+    // For temporal mode with a specific hour, add extra filter
+    let temporalConditions = '';
+    const temporalParams: any[] = [];
+    if (mode === 'temporal' && !isNaN(temporalHour) && temporalHour >= 0 && temporalHour <= 23) {
+      temporalConditions = ` AND CAST(strftime('%H', created_at) AS INTEGER) = ?`;
+      temporalParams.push(temporalHour);
+    }
+
+    const pointsQuery = `
+      SELECT
+        ROUND(latitude, ${latRound}) as latitude,
+        ROUND(longitude, ${lngRound}) as longitude,
+        COUNT(*) as count,
+        GROUP_CONCAT(DISTINCT incident_type) as types,
+        SUM(CASE WHEN weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0' THEN 3 ELSE 0 END
+          + CASE WHEN domestic_violence = 1 THEN 2 ELSE 0 END
+          + CASE WHEN injuries_reported = 1 THEN 2 ELSE 0 END
+          + CASE WHEN alcohol_involved = 1 THEN 1 ELSE 0 END
+          + CASE WHEN drugs_involved = 1 THEN 1 ELSE 0 END
+        ) as riskScore
+      FROM calls_for_service
+      WHERE ${whereClause}${temporalConditions}
+      GROUP BY ROUND(latitude, ${latRound}), ROUND(longitude, ${lngRound})
+      ORDER BY ${mode === 'risk' ? 'riskScore' : 'count'} DESC
+      LIMIT 500
+    `;
+
+    const points = db.prepare(pointsQuery).all(...params, ...temporalParams) as any[];
+
+    // Format points with weight based on mode
+    const formattedPoints = points.map((p: any) => ({
+      lat: p.latitude,
+      lng: p.longitude,
+      weight: mode === 'risk' ? Math.max(p.riskScore || 1, p.count) : (p.count || 1),
+      count: p.count,
+      types: p.types || '',
+      riskScore: p.riskScore || 0,
+    }));
+
+    // --- Cluster detection (DBSCAN-like grouping) ---
+    const clusters: any[] = [];
+    const clusterThreshold = resolution === 'fine' ? 0.003 : resolution === 'coarse' ? 0.01 : 0.005;
+    const minClusterPoints = 3;
+    const visited = new Set<number>();
+
+    for (let i = 0; i < formattedPoints.length; i++) {
+      if (visited.has(i)) continue;
+      const cluster: number[] = [i];
+      visited.add(i);
+
+      for (let j = i + 1; j < formattedPoints.length; j++) {
+        if (visited.has(j)) continue;
+        const dist = Math.sqrt(
+          Math.pow(formattedPoints[i].lat - formattedPoints[j].lat, 2) +
+          Math.pow(formattedPoints[i].lng - formattedPoints[j].lng, 2)
+        );
+        if (dist <= clusterThreshold) {
+          cluster.push(j);
+          visited.add(j);
+        }
+      }
+
+      if (cluster.length >= minClusterPoints) {
+        const clusterPoints = cluster.map(idx => formattedPoints[idx]);
+        const centerLat = clusterPoints.reduce((s, p) => s + p.lat, 0) / clusterPoints.length;
+        const centerLng = clusterPoints.reduce((s, p) => s + p.lng, 0) / clusterPoints.length;
+        const totalCount = clusterPoints.reduce((s, p) => s + p.count, 0);
+        const avgRisk = clusterPoints.reduce((s, p) => s + p.riskScore, 0) / clusterPoints.length;
+        const maxDist = clusterPoints.reduce((max, p) => {
+          const d = Math.sqrt(Math.pow(p.lat - centerLat, 2) + Math.pow(p.lng - centerLng, 2));
+          return Math.max(max, d);
+        }, 0);
+
+        clusters.push({
+          center: { lat: centerLat, lng: centerLng },
+          radius: Math.max(maxDist * 111000, 200), // Convert degrees to meters, min 200m
+          count: totalCount,
+          avgRisk: Math.round(avgRisk * 10) / 10,
+        });
+      }
+    }
+
+    // --- Statistics ---
+    const statsQuery = `
+      SELECT
+        COUNT(*) as total,
+        CAST(strftime('%H', created_at) AS INTEGER) as hour,
+        CAST(strftime('%w', created_at) AS INTEGER) as dow,
+        incident_type
+      FROM calls_for_service
+      WHERE ${whereClause}${temporalConditions}
+    `;
+
+    // Get total
+    const totalRow = db.prepare(`SELECT COUNT(*) as total FROM calls_for_service WHERE ${whereClause}${temporalConditions}`).get(...params, ...temporalParams) as any;
+
+    // Get top types
+    const topTypes = db.prepare(`
+      SELECT incident_type, COUNT(*) as count
+      FROM calls_for_service
+      WHERE ${whereClause}${temporalConditions} AND incident_type IS NOT NULL AND incident_type != ''
+      GROUP BY incident_type
+      ORDER BY count DESC
+      LIMIT 5
+    `).all(...params, ...temporalParams) as any[];
+
+    // Get peak hour
+    const peakHourRow = db.prepare(`
+      SELECT CAST(strftime('%H', created_at) AS INTEGER) as hour, COUNT(*) as count
+      FROM calls_for_service
+      WHERE ${whereClause}${temporalConditions}
+      GROUP BY hour
+      ORDER BY count DESC
+      LIMIT 1
+    `).get(...params, ...temporalParams) as any;
+
+    // Get peak day
+    const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const peakDayRow = db.prepare(`
+      SELECT CAST(strftime('%w', created_at) AS INTEGER) as dow, COUNT(*) as count
+      FROM calls_for_service
+      WHERE ${whereClause}${temporalConditions}
+      GROUP BY dow
+      ORDER BY count DESC
+      LIMIT 1
+    `).get(...params, ...temporalParams) as any;
+
+    const stats = {
+      total: totalRow?.total || 0,
+      topTypes: topTypes.map((t: any) => ({ type: t.incident_type, count: t.count })),
+      peakHour: peakHourRow?.hour ?? null,
+      peakDay: peakDayRow ? DAY_NAMES[peakDayRow.dow] : null,
+    };
+
+    // --- Comparison mode: fetch previous period ---
+    let comparisonPoints: any[] = [];
+    if (mode === 'comparison') {
+      const compCutoffStart = `-${days + comparisonDays}`;
+      const compCutoffEnd = `-${days}`;
+
+      // Build comparison conditions (same filters but different date range)
+      const compConditions = conditions.map(c => {
+        if (c.includes('created_at >=')) {
+          return `created_at >= datetime('now', 'localtime', '${compCutoffStart} days') AND created_at < datetime('now', 'localtime', '${compCutoffEnd} days')`;
+        }
+        return c;
+      });
+
+      const compWhere = compConditions.join(' AND ');
+      // Params are the same minus the date param (which is inlined)
+      const compPoints = db.prepare(`
+        SELECT
+          ROUND(latitude, ${latRound}) as latitude,
+          ROUND(longitude, ${lngRound}) as longitude,
+          COUNT(*) as count,
+          GROUP_CONCAT(DISTINCT incident_type) as types,
+          SUM(CASE WHEN weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0' THEN 3 ELSE 0 END
+            + CASE WHEN domestic_violence = 1 THEN 2 ELSE 0 END
+            + CASE WHEN injuries_reported = 1 THEN 2 ELSE 0 END
+          ) as riskScore
+        FROM calls_for_service
+        WHERE ${compWhere}
+        GROUP BY ROUND(latitude, ${latRound}), ROUND(longitude, ${lngRound})
+        ORDER BY count DESC
+        LIMIT 500
+      `).all(...params) as any[];
+
+      comparisonPoints = compPoints.map((p: any) => ({
+        lat: p.latitude,
+        lng: p.longitude,
+        weight: p.count || 1,
+        count: p.count,
+        types: p.types || '',
+        riskScore: p.riskScore || 0,
+      }));
+    }
+
+    res.json({
+      points: formattedPoints,
+      comparisonPoints: mode === 'comparison' ? comparisonPoints : undefined,
+      clusters,
+      stats,
+    });
+  } catch (error: any) {
+    console.error('[Dispatch] advanced heatmap error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // GET /api/dispatch/queue - Active dispatch queue
 router.get('/queue', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {

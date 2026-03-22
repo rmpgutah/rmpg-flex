@@ -53,6 +53,11 @@ import {
   AlertOctagon,
   Sun,
   TreePine,
+  SlidersHorizontal,
+  BarChart3,
+  Clock,
+  RefreshCw,
+  CircleDot,
 } from 'lucide-react';
 import type { UnitStatus } from '../../types';
 import RmpgLogo from '../../components/RmpgLogo';
@@ -78,6 +83,7 @@ import type { MapUnit as Unit, ActiveCall, MapProperty as Property, MapStyleId }
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, MAP_STYLE_LABELS, MAP_STYLE_DESCRIPTIONS, getIncidentCategory, isLightMapStyle, isSatelliteStyle } from './utils/mapConstants';
 import { buildUnitMarkerContent, buildIncidentMarkerContent, buildPropertyMarkerContent, buildSelfPositionMarker, getOverlayMarkerClass, injectKeyframes, type OverlayMarker } from './utils/mapMarkerBuilders';
 import { useMapHeatmapTimelapse } from './hooks/useMapHeatmapTimelapse';
+import { useMapHeatmapAdvanced, type HeatmapAdvancedMode, type HeatmapColorScheme, type HeatmapResolution, type HeatmapAdvancedOptions } from './hooks/useMapHeatmapAdvanced';
 import { useMapPredictions } from './hooks/useMapPredictions';
 import { useMapIntelLayers } from './hooks/useMapIntelLayers';
 import { useMapSafetyZones } from './hooks/useMapSafetyZones';
@@ -183,6 +189,35 @@ export default function MapPage() {
   const [heatmapMode, setHeatmapMode] = useState<'all' | 'risk' | 'type'>('all');
   const [heatmapTypeFilter, setHeatmapTypeFilter] = useState('');
   const [heatmapTypes, setHeatmapTypes] = useState<{ incident_type: string; count: number }[]>([]);
+
+  // Advanced heatmap state
+  const [advancedHeatmapEnabled, setAdvancedHeatmapEnabled] = useState(false);
+  const [advHeatmapMode, setAdvHeatmapMode] = useState<HeatmapAdvancedMode>('density');
+  const [advHeatmapTypes, setAdvHeatmapTypes] = useState<string[]>([]);
+  const [advHeatmapHourRange, setAdvHeatmapHourRange] = useState<[number, number]>([0, 23]);
+  const [advHeatmapDayFilter, setAdvHeatmapDayFilter] = useState<number[]>([]);
+  const [advHeatmapResolution, setAdvHeatmapResolution] = useState<HeatmapResolution>('medium');
+  const [advHeatmapColorScheme, setAdvHeatmapColorScheme] = useState<HeatmapColorScheme>('heat');
+  const [advHeatmapOpacity, setAdvHeatmapOpacity] = useState(70);
+  const [advHeatmapRadius, setAdvHeatmapRadius] = useState(30);
+  const [advHeatmapShowClusters, setAdvHeatmapShowClusters] = useState(true);
+  const [advHeatmapComparisonDays, setAdvHeatmapComparisonDays] = useState(30);
+  const [showAdvHeatmapPanel, setShowAdvHeatmapPanel] = useState(false);
+
+  const advHeatmapOptions: HeatmapAdvancedOptions = {
+    enabled: advancedHeatmapEnabled && showHeatmap,
+    days: heatmapDays,
+    mode: advHeatmapMode,
+    types: advHeatmapTypes,
+    hourRange: advHeatmapHourRange,
+    dayFilter: advHeatmapDayFilter,
+    resolution: advHeatmapResolution,
+    colorScheme: advHeatmapColorScheme,
+    opacity: advHeatmapOpacity,
+    radius: advHeatmapRadius,
+    showClusters: advHeatmapShowClusters,
+    comparisonDays: advHeatmapComparisonDays,
+  };
 
   // Breadcrumb trail state
   const [showBreadcrumbs, setShowBreadcrumbs] = useState(true);
@@ -345,7 +380,8 @@ export default function MapPage() {
   const [showAlertSystem, setShowAlertSystem] = useState(false);
 
   // Tactical map hooks
-  const timelapse = useMapHeatmapTimelapse(mapInstanceRef.current, showTimelapse && showHeatmap, heatmapDays, heatmapMode as 'all' | 'risk');
+  const timelapse = useMapHeatmapTimelapse(mapInstanceRef.current, showTimelapse && showHeatmap && !advancedHeatmapEnabled, heatmapDays, heatmapMode as 'all' | 'risk');
+  const advancedHeatmap = useMapHeatmapAdvanced(mapInstanceRef.current, advHeatmapOptions);
   const predictions = useMapPredictions(mapInstanceRef.current, showPredictions);
   const intelLayerData = useMapIntelLayers(mapInstanceRef.current, intelLayers);
   const safetyZones = useMapSafetyZones(mapInstanceRef.current, showSafetyZones);
@@ -519,7 +555,7 @@ export default function MapPage() {
   // ============================================================
 
   useEffect(() => {
-    if (!showHeatmap) { setHeatmapData([]); return; }
+    if (!showHeatmap || advancedHeatmapEnabled) { setHeatmapData([]); return; }
     let cancelled = false;
     let url = `/dispatch/heatmap?days=${heatmapDays}&mode=${heatmapMode}`;
     if (heatmapMode === 'type' && heatmapTypeFilter) url += `&type=${encodeURIComponent(heatmapTypeFilter)}`;
@@ -527,7 +563,7 @@ export default function MapPage() {
       .then((data) => { if (!cancelled) setHeatmapData(data || []); })
       .catch(() => { if (!cancelled) setHeatmapData([]); });
     return () => { cancelled = true; };
-  }, [showHeatmap, heatmapDays, heatmapMode, heatmapTypeFilter]);
+  }, [showHeatmap, heatmapDays, heatmapMode, heatmapTypeFilter, advancedHeatmapEnabled]);
 
   // Fetch available incident types for heatmap type filter
   useEffect(() => {
@@ -1157,7 +1193,8 @@ export default function MapPage() {
       heatmapLayerRef.current = null;
     }
 
-    if (!showHeatmap || heatmapData.length === 0) return;
+    // Skip basic heatmap rendering when advanced heatmap is active (it manages its own layers)
+    if (!showHeatmap || heatmapData.length === 0 || advancedHeatmapEnabled) return;
 
     // Build weighted data points for HeatmapLayer
     const weightedData = heatmapData
@@ -1203,7 +1240,7 @@ export default function MapPage() {
         heatmapLayerRef.current = null;
       }
     };
-  }, [showHeatmap, heatmapData, heatmapMode, mapLoaded]);
+  }, [showHeatmap, heatmapData, heatmapMode, mapLoaded, advancedHeatmapEnabled]);
 
   // ============================================================
   // Unit-to-Call Tracking Lines
@@ -2078,14 +2115,16 @@ export default function MapPage() {
                 <Thermometer className="w-3 h-3 text-red-400" />
                 <span className="text-[10px] text-rmpg-200 flex-1">Heat Map</span>
                 {showHeatmap && (
-                  <span className="text-[8px] text-red-400 font-mono font-bold">{heatmapData.length} pts</span>
+                  <span className="text-[8px] text-red-400 font-mono font-bold">
+                    {advancedHeatmapEnabled ? `${advancedHeatmap.pointCount} pts` : `${heatmapData.length} pts`}
+                  </span>
                 )}
               </button>
               {showHeatmap && (
                 <div className="px-3 py-1 space-y-1">
                   {/* Days selector */}
                   <div className="flex items-center gap-1">
-                    {[7, 14, 30, 90].map((days) => (
+                    {[7, 14, 30, 90, 180, 365].map((days) => (
                       <button
                         key={days}
                         onClick={() => setHeatmapDays(days)}
@@ -2095,93 +2134,464 @@ export default function MapPage() {
                             : 'text-rmpg-500 hover:text-rmpg-300'
                         }`}
                       >
-                        {days}d
+                        {days < 365 ? `${days}d` : '1y'}
                       </button>
                     ))}
                   </div>
-                  {/* Mode selector */}
-                  <div className="flex items-center gap-1">
-                    {([['all', 'All'], ['risk', 'Risk'], ['type', 'Type']] as const).map(([mode, label]) => (
-                      <button
-                        key={mode}
-                        onClick={() => { setHeatmapMode(mode); if (mode !== 'type') setHeatmapTypeFilter(''); }}
-                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
-                          heatmapMode === mode
-                            ? mode === 'risk' ? 'bg-orange-900/50 text-orange-400 border border-orange-700/50'
-                            : 'bg-red-900/50 text-red-400 border border-red-700/50'
-                            : 'text-rmpg-500 hover:text-rmpg-300'
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  {/* Type filter dropdown */}
-                  {heatmapMode === 'type' && (
-                    <select
-                      value={heatmapTypeFilter}
-                      onChange={(e) => setHeatmapTypeFilter(e.target.value)}
-                      className="w-full bg-surface-deep border border-rmpg-600 text-[9px] text-rmpg-200 px-1.5 py-0.5 font-mono focus:outline-none focus:border-red-600"
-                      style={{ borderRadius: 2 }}
-                    >
-                      <option value="">Select type...</option>
-                      {heatmapTypes.map((t) => (
-                        <option key={t.incident_type} value={t.incident_type}>
-                          {formatIncidentType(t.incident_type)} ({t.count})
-                        </option>
-                      ))}
-                    </select>
-                  )}
 
-                  {/* Timelapse controls */}
+                  {/* Advanced mode toggle */}
                   <div className="border-t border-rmpg-700/50 pt-1 mt-1">
                     <button
-                      onClick={() => setShowTimelapse(!showTimelapse)}
+                      onClick={() => { setAdvancedHeatmapEnabled(!advancedHeatmapEnabled); if (!advancedHeatmapEnabled) setShowAdvHeatmapPanel(true); }}
                       className={`flex items-center gap-1.5 w-full text-[9px] font-bold transition-colors ${
-                        showTimelapse ? 'text-orange-400' : 'text-rmpg-500 hover:text-rmpg-300'
+                        advancedHeatmapEnabled ? 'text-brand-400' : 'text-rmpg-500 hover:text-rmpg-300'
                       }`}
                     >
-                      <SkipForward className="w-2.5 h-2.5" />
-                      <span className="flex-1 text-left">Time-Lapse</span>
-                      {showTimelapse && <span className="led-dot led-orange" style={{ width: 5, height: 5 }} />}
+                      <SlidersHorizontal className="w-2.5 h-2.5" />
+                      <span className="flex-1 text-left">Advanced Mode</span>
+                      {advancedHeatmapEnabled && <span className="led-dot led-blue" style={{ width: 5, height: 5 }} />}
                     </button>
-                    {showTimelapse && (
-                      <div className="mt-1 space-y-1">
-                        <div className="flex items-center gap-1">
+                  </div>
+
+                  {/* ── Basic mode controls (when advanced is OFF) ── */}
+                  {!advancedHeatmapEnabled && (
+                    <>
+                      {/* Mode selector */}
+                      <div className="flex items-center gap-1">
+                        {([['all', 'All'], ['risk', 'Risk'], ['type', 'Type']] as const).map(([mode, label]) => (
                           <button
-                            onClick={() => timelapse.setIsPlaying(!timelapse.isPlaying)}
-                            className="p-0.5 rounded-sm hover:bg-orange-900/40 transition-colors"
+                            key={mode}
+                            onClick={() => { setHeatmapMode(mode); if (mode !== 'type') setHeatmapTypeFilter(''); }}
+                            className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
+                              heatmapMode === mode
+                                ? mode === 'risk' ? 'bg-orange-900/50 text-orange-400 border border-orange-700/50'
+                                : 'bg-red-900/50 text-red-400 border border-red-700/50'
+                                : 'text-rmpg-500 hover:text-rmpg-300'
+                            }`}
                           >
-                            {timelapse.isPlaying ? <Pause className="w-3 h-3 text-amber-400" /> : <Play className="w-3 h-3 text-green-400" />}
+                            {label}
                           </button>
+                        ))}
+                      </div>
+                      {/* Type filter dropdown */}
+                      {heatmapMode === 'type' && (
+                        <select
+                          value={heatmapTypeFilter}
+                          onChange={(e) => setHeatmapTypeFilter(e.target.value)}
+                          className="w-full bg-surface-deep border border-rmpg-600 text-[9px] text-rmpg-200 px-1.5 py-0.5 font-mono focus:outline-none focus:border-red-600"
+                          style={{ borderRadius: 2 }}
+                        >
+                          <option value="">Select type...</option>
+                          {heatmapTypes.map((t) => (
+                            <option key={t.incident_type} value={t.incident_type}>
+                              {formatIncidentType(t.incident_type)} ({t.count})
+                            </option>
+                          ))}
+                        </select>
+                      )}
+
+                      {/* Timelapse controls */}
+                      <div className="border-t border-rmpg-700/50 pt-1 mt-1">
+                        <button
+                          onClick={() => setShowTimelapse(!showTimelapse)}
+                          className={`flex items-center gap-1.5 w-full text-[9px] font-bold transition-colors ${
+                            showTimelapse ? 'text-orange-400' : 'text-rmpg-500 hover:text-rmpg-300'
+                          }`}
+                        >
+                          <SkipForward className="w-2.5 h-2.5" />
+                          <span className="flex-1 text-left">Time-Lapse</span>
+                          {showTimelapse && <span className="led-dot led-orange" style={{ width: 5, height: 5 }} />}
+                        </button>
+                        {showTimelapse && (
+                          <div className="mt-1 space-y-1">
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => timelapse.setIsPlaying(!timelapse.isPlaying)}
+                                className="p-0.5 rounded-sm hover:bg-orange-900/40 transition-colors"
+                              >
+                                {timelapse.isPlaying ? <Pause className="w-3 h-3 text-amber-400" /> : <Play className="w-3 h-3 text-green-400" />}
+                              </button>
+                              <input
+                                type="range"
+                                min={0}
+                                max={Math.max(timelapse.totalSlices - 1, 0)}
+                                value={timelapse.currentIndex}
+                                onChange={(e) => { timelapse.setCurrentIndex(Number(e.target.value)); timelapse.setIsPlaying(false); }}
+                                className="flex-1 h-1 accent-orange-400"
+                              />
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-[7px] font-mono text-orange-300">{timelapse.currentLabel}</span>
+                              <div className="flex items-center gap-0.5">
+                                {([1, 2, 4] as const).map((s) => (
+                                  <button
+                                    key={s}
+                                    onClick={() => timelapse.setSpeed(s)}
+                                    className={`px-1 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
+                                      timelapse.speed === s ? 'bg-orange-900/50 text-orange-400 border border-orange-700/50' : 'text-rmpg-500 hover:text-rmpg-300'
+                                    }`}
+                                  >
+                                    {s}x
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  {/* ── Advanced mode controls ── */}
+                  {advancedHeatmapEnabled && (
+                    <div className="space-y-1.5">
+                      {/* Mode selector: Density | Risk | Temporal | Comparison */}
+                      <div className="flex items-center gap-0.5">
+                        {([['density', 'Density'], ['risk', 'Risk'], ['temporal', 'Temporal'], ['comparison', 'Compare']] as [HeatmapAdvancedMode, string][]).map(([mode, label]) => (
+                          <button
+                            key={mode}
+                            onClick={() => setAdvHeatmapMode(mode)}
+                            className={`px-1 py-0.5 text-[7px] font-mono font-bold rounded-sm transition-colors ${
+                              advHeatmapMode === mode
+                                ? 'bg-brand-900/50 text-brand-400 border border-brand-700/50'
+                                : 'text-rmpg-500 hover:text-rmpg-300'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Hour range filter */}
+                      <div>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-[7px] text-rmpg-400 font-mono">HOURS</span>
+                          <span className="text-[7px] text-rmpg-300 font-mono">
+                            {advHeatmapHourRange[0] === 0 && advHeatmapHourRange[1] === 23
+                              ? 'All day'
+                              : `${advHeatmapHourRange[0].toString().padStart(2, '0')}:00 - ${advHeatmapHourRange[1].toString().padStart(2, '0')}:59`
+                            }
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
                           <input
                             type="range"
-                            min={0}
-                            max={Math.max(timelapse.totalSlices - 1, 0)}
-                            value={timelapse.currentIndex}
-                            onChange={(e) => { timelapse.setCurrentIndex(Number(e.target.value)); timelapse.setIsPlaying(false); }}
-                            className="flex-1 h-1 accent-orange-400"
+                            min={0} max={23}
+                            value={advHeatmapHourRange[0]}
+                            onChange={(e) => setAdvHeatmapHourRange([Number(e.target.value), advHeatmapHourRange[1]])}
+                            className="flex-1 h-1 accent-red-400"
+                          />
+                          <input
+                            type="range"
+                            min={0} max={23}
+                            value={advHeatmapHourRange[1]}
+                            onChange={(e) => setAdvHeatmapHourRange([advHeatmapHourRange[0], Number(e.target.value)])}
+                            className="flex-1 h-1 accent-red-400"
                           />
                         </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-[7px] font-mono text-orange-300">{timelapse.currentLabel}</span>
-                          <div className="flex items-center gap-0.5">
-                            {([1, 2, 4] as const).map((s) => (
+                      </div>
+
+                      {/* Day-of-week filter */}
+                      <div>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-[7px] text-rmpg-400 font-mono">DAYS</span>
+                          <div className="flex gap-0.5">
+                            <button
+                              onClick={() => setAdvHeatmapDayFilter([1, 2, 3, 4, 5])}
+                              className="text-[6px] text-rmpg-400 hover:text-rmpg-200 font-mono"
+                            >Wkdays</button>
+                            <button
+                              onClick={() => setAdvHeatmapDayFilter([0, 6])}
+                              className="text-[6px] text-rmpg-400 hover:text-rmpg-200 font-mono"
+                            >Wkends</button>
+                            <button
+                              onClick={() => setAdvHeatmapDayFilter([])}
+                              className="text-[6px] text-rmpg-400 hover:text-rmpg-200 font-mono"
+                            >All</button>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-0.5">
+                          {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((day, i) => (
+                            <button
+                              key={i}
+                              onClick={() => {
+                                setAdvHeatmapDayFilter(prev =>
+                                  prev.includes(i) ? prev.filter(d => d !== i) : [...prev, i]
+                                );
+                              }}
+                              className={`px-1 py-0.5 text-[7px] font-mono font-bold rounded-sm transition-colors ${
+                                advHeatmapDayFilter.length === 0 || advHeatmapDayFilter.includes(i)
+                                  ? 'bg-red-900/40 text-red-400 border border-red-800/50'
+                                  : 'text-rmpg-600 border border-transparent'
+                              }`}
+                            >
+                              {day}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Color scheme */}
+                      <div>
+                        <span className="text-[7px] text-rmpg-400 font-mono block mb-0.5">COLOR SCHEME</span>
+                        <div className="flex items-center gap-0.5">
+                          {([
+                            ['heat', ['#0080ff', '#00c864', '#c8c800', '#ff8c00', '#ff3200']],
+                            ['risk', ['#4caf50', '#ffeb3b', '#ff9800', '#f44336', '#b71c1c']],
+                            ['blue', ['#add8e6', '#6495ed', '#4169e1', '#0000cd', '#00008b']],
+                            ['green', ['#90ee90', '#3cb371', '#228b22', '#006400', '#003c00']],
+                            ['purple', ['#d8bfd8', '#ba55d3', '#9467bd', '#6a0dad', '#4b0082']],
+                          ] as [HeatmapColorScheme, string[]][]).map(([scheme, colors]) => (
+                            <button
+                              key={scheme}
+                              onClick={() => setAdvHeatmapColorScheme(scheme)}
+                              className={`p-0.5 rounded-sm transition-all ${
+                                advHeatmapColorScheme === scheme ? 'ring-1 ring-white/50 scale-110' : 'opacity-60 hover:opacity-100'
+                              }`}
+                              title={scheme}
+                            >
+                              <div className="flex h-2" style={{ width: 20, borderRadius: 1, overflow: 'hidden' }}>
+                                {colors.map((c, i) => (
+                                  <div key={i} style={{ flex: 1, backgroundColor: c }} />
+                                ))}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Opacity slider */}
+                      <div>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-[7px] text-rmpg-400 font-mono">OPACITY</span>
+                          <span className="text-[7px] text-rmpg-300 font-mono">{advHeatmapOpacity}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={10} max={100} step={5}
+                          value={advHeatmapOpacity}
+                          onChange={(e) => setAdvHeatmapOpacity(Number(e.target.value))}
+                          className="w-full h-1 accent-red-400"
+                        />
+                      </div>
+
+                      {/* Radius slider */}
+                      <div>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-[7px] text-rmpg-400 font-mono">RADIUS</span>
+                          <span className="text-[7px] text-rmpg-300 font-mono">{advHeatmapRadius}px</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={10} max={50} step={2}
+                          value={advHeatmapRadius}
+                          onChange={(e) => setAdvHeatmapRadius(Number(e.target.value))}
+                          className="w-full h-1 accent-red-400"
+                        />
+                      </div>
+
+                      {/* Resolution */}
+                      <div>
+                        <span className="text-[7px] text-rmpg-400 font-mono block mb-0.5">RESOLUTION</span>
+                        <div className="flex items-center gap-1">
+                          {([['fine', 'Fine'], ['medium', 'Med'], ['coarse', 'Coarse']] as [HeatmapResolution, string][]).map(([res, label]) => (
+                            <button
+                              key={res}
+                              onClick={() => setAdvHeatmapResolution(res)}
+                              className={`px-1.5 py-0.5 text-[7px] font-mono font-bold rounded-sm transition-colors ${
+                                advHeatmapResolution === res
+                                  ? 'bg-red-900/50 text-red-400 border border-red-700/50'
+                                  : 'text-rmpg-500 hover:text-rmpg-300'
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Show clusters toggle */}
+                      <button
+                        onClick={() => setAdvHeatmapShowClusters(!advHeatmapShowClusters)}
+                        className={`flex items-center gap-1.5 w-full text-[8px] font-bold transition-colors ${
+                          advHeatmapShowClusters ? 'text-blue-400' : 'text-rmpg-500 hover:text-rmpg-300'
+                        }`}
+                      >
+                        <CircleDot className="w-2.5 h-2.5" />
+                        <span className="flex-1 text-left">Hotspot Clusters</span>
+                        {advHeatmapShowClusters && (
+                          <span className="text-[7px] font-mono text-blue-400">{advancedHeatmap.clusters.length}</span>
+                        )}
+                      </button>
+
+                      {/* Incident type multi-select */}
+                      <div>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-[7px] text-rmpg-400 font-mono">INCIDENT TYPES</span>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => setAdvHeatmapTypes(heatmapTypes.map(t => t.incident_type))}
+                              className="text-[6px] text-rmpg-400 hover:text-rmpg-200 font-mono"
+                            >All</button>
+                            <button
+                              onClick={() => setAdvHeatmapTypes([])}
+                              className="text-[6px] text-rmpg-400 hover:text-rmpg-200 font-mono"
+                            >Clear</button>
+                          </div>
+                        </div>
+                        <div className="max-h-[60px] overflow-y-auto space-y-0" style={{ scrollbarWidth: 'thin' }}>
+                          {heatmapTypes.slice(0, 15).map((t) => (
+                            <label
+                              key={t.incident_type}
+                              className="flex items-center gap-1 px-0.5 py-0 cursor-pointer hover:bg-rmpg-800/30"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={advHeatmapTypes.length === 0 || advHeatmapTypes.includes(t.incident_type)}
+                                onChange={() => {
+                                  setAdvHeatmapTypes(prev =>
+                                    prev.includes(t.incident_type)
+                                      ? prev.filter(x => x !== t.incident_type)
+                                      : [...prev, t.incident_type]
+                                  );
+                                }}
+                                className="w-2 h-2 accent-red-500"
+                              />
+                              <span className="text-[7px] text-rmpg-300 font-mono flex-1 truncate">{formatIncidentType(t.incident_type)}</span>
+                              <span className="text-[6px] text-rmpg-500 font-mono">{t.count}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Comparison mode options */}
+                      {advHeatmapMode === 'comparison' && (
+                        <div className="border-t border-rmpg-700/50 pt-1">
+                          <div className="flex items-center justify-between mb-0.5">
+                            <span className="text-[7px] text-rmpg-400 font-mono">COMPARE VS</span>
+                            <span className="text-[7px] text-rmpg-300 font-mono">Previous {advHeatmapComparisonDays}d</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            {[7, 14, 30, 90].map((d) => (
                               <button
-                                key={s}
-                                onClick={() => timelapse.setSpeed(s)}
-                                className={`px-1 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
-                                  timelapse.speed === s ? 'bg-orange-900/50 text-orange-400 border border-orange-700/50' : 'text-rmpg-500 hover:text-rmpg-300'
+                                key={d}
+                                onClick={() => setAdvHeatmapComparisonDays(d)}
+                                className={`px-1 py-0.5 text-[7px] font-mono font-bold rounded-sm transition-colors ${
+                                  advHeatmapComparisonDays === d
+                                    ? 'bg-blue-900/50 text-blue-400 border border-blue-700/50'
+                                    : 'text-rmpg-500 hover:text-rmpg-300'
                                 }`}
                               >
-                                {s}x
+                                {d}d
                               </button>
                             ))}
                           </div>
+                          <div className="flex items-center gap-2 mt-1">
+                            <div className="flex items-center gap-1">
+                              <div className="w-2 h-2 rounded-full bg-red-500" />
+                              <span className="text-[6px] text-rmpg-400 font-mono">Current</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <div className="w-2 h-2 rounded-full bg-blue-500" />
+                              <span className="text-[6px] text-rmpg-400 font-mono">Previous</span>
+                            </div>
+                          </div>
                         </div>
+                      )}
+
+                      {/* Temporal animation controls */}
+                      {advHeatmapMode === 'temporal' && (
+                        <div className="border-t border-rmpg-700/50 pt-1">
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => advancedHeatmap.setTemporalPlaying(!advancedHeatmap.temporalPlaying)}
+                              className="p-0.5 rounded-sm hover:bg-orange-900/40 transition-colors"
+                            >
+                              {advancedHeatmap.temporalPlaying
+                                ? <Pause className="w-3 h-3 text-amber-400" />
+                                : <Play className="w-3 h-3 text-green-400" />
+                              }
+                            </button>
+                            <input
+                              type="range"
+                              min={0} max={23}
+                              value={advancedHeatmap.temporalHour}
+                              onChange={(e) => { advancedHeatmap.setTemporalHour(Number(e.target.value)); advancedHeatmap.setTemporalPlaying(false); }}
+                              className="flex-1 h-1 accent-orange-400"
+                            />
+                          </div>
+                          <div className="flex items-center justify-between mt-0.5">
+                            <span className="text-[7px] font-mono text-orange-300">
+                              <Clock className="w-2 h-2 inline mr-0.5" />
+                              {advancedHeatmap.temporalHour.toString().padStart(2, '0')}:00 - {advancedHeatmap.temporalHour.toString().padStart(2, '0')}:59
+                            </span>
+                            <div className="flex items-center gap-0.5">
+                              {([1, 2, 4] as const).map((s) => (
+                                <button
+                                  key={s}
+                                  onClick={() => advancedHeatmap.setTemporalSpeed(s)}
+                                  className={`px-1 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
+                                    advancedHeatmap.temporalSpeed === s ? 'bg-orange-900/50 text-orange-400 border border-orange-700/50' : 'text-rmpg-500 hover:text-rmpg-300'
+                                  }`}
+                                >
+                                  {s}x
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Refresh + loading */}
+                      <div className="flex items-center justify-between pt-1 border-t border-rmpg-700/50">
+                        <button
+                          onClick={() => advancedHeatmap.refreshHeatmap()}
+                          className="flex items-center gap-1 text-[7px] text-rmpg-400 hover:text-rmpg-200 font-mono"
+                        >
+                          <RefreshCw className={`w-2.5 h-2.5 ${advancedHeatmap.loading ? 'animate-spin' : ''}`} />
+                          Refresh
+                        </button>
+                        {advancedHeatmap.loading && (
+                          <Loader2 className="w-2.5 h-2.5 text-brand-400 animate-spin" />
+                        )}
                       </div>
-                    )}
-                  </div>
+
+                      {/* Stats summary */}
+                      {advancedHeatmap.stats && (
+                        <div className="border-t border-rmpg-700/50 pt-1 space-y-0.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[7px] text-rmpg-400 font-mono">TOTAL</span>
+                            <span className="text-[8px] text-red-400 font-mono font-bold">{advancedHeatmap.stats.total.toLocaleString()}</span>
+                          </div>
+                          {advancedHeatmap.stats.topTypes.slice(0, 3).map((t, i) => (
+                            <div key={i} className="flex items-center gap-1">
+                              <div
+                                className="h-1 rounded-full"
+                                style={{
+                                  width: `${Math.max(10, (t.count / (advancedHeatmap.stats?.topTypes[0]?.count || 1)) * 50)}%`,
+                                  backgroundColor: i === 0 ? '#ef4444' : i === 1 ? '#f59e0b' : '#3b82f6',
+                                }}
+                              />
+                              <span className="text-[6px] text-rmpg-400 font-mono truncate flex-1">{formatIncidentType(t.type)}</span>
+                              <span className="text-[6px] text-rmpg-500 font-mono">{t.count}</span>
+                            </div>
+                          ))}
+                          <div className="flex items-center gap-2 mt-0.5">
+                            {advancedHeatmap.stats.peakHour !== null && (
+                              <span className="text-[6px] font-mono px-1 py-0.5 bg-orange-900/30 text-orange-400 rounded-sm">
+                                Peak: {advancedHeatmap.stats.peakHour.toString().padStart(2, '0')}:00
+                              </span>
+                            )}
+                            {advancedHeatmap.stats.peakDay && (
+                              <span className="text-[6px] font-mono px-1 py-0.5 bg-purple-900/30 text-purple-400 rounded-sm">
+                                {advancedHeatmap.stats.peakDay}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
