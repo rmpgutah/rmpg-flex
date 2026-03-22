@@ -76,6 +76,24 @@ import ipedRoutes from './routes/iped';
 import clearpathgpsRoutes from './routes/clearpathgps';
 import integrationsRoutes from './routes/integrations';
 import intakeRoutes from './routes/intake';
+import emailRoutes from './routes/email';
+import skiptracerRoutes from './routes/skiptracer';
+import arrestRoutes from './routes/arrests';
+import connectionsRoutes from './routes/connections';
+import dashcamVideoRoutes from './routes/dashcamVideos';
+import coloradoDocRoutes from './routes/coloradoDoc';
+import sexOffenderRegistryRoutes from './routes/sexOffenderRegistry';
+import crmRoutes from './routes/crm';
+import crmLeadsRoutes from './routes/crmLeads';
+import crmProposalsRoutes from './routes/crmProposals';
+import crmFirecrawlRoutes from './routes/crmFirecrawl';
+import userPreferencesRoutes from './routes/userPreferences';
+import serveRoutes from './routes/serve';
+import hrRoutes from './routes/hr';
+import securityDashboardRoutes from './routes/securityDashboard';
+import webauthnRoutes from './routes/webauthn';
+import jailRosterRoutes from './routes/jailRoster';
+import { authenticateToken } from './middleware/auth';
 
 const app = express();
 
@@ -180,11 +198,30 @@ app.use('/api/dar', darRoutes);
 app.use('/api/offender-registry', offenderRegistryRoutes);
 app.use('/api/offline', offlineRoutes);
 app.use('/api/company-documents', companyDocumentsRoutes);
+app.use('/api/forensic-lab', forensicsRoutes);
 app.use('/api/forensics', forensicsRoutes);
 app.use('/api/iped', ipedRoutes);
 app.use('/api/clearpathgps', clearpathgpsRoutes);
 app.use('/api/integrations', integrationsRoutes);
-app.use('/intake', intakeRoutes);          // Public intake endpoint (called by rmpgutahps.us)
+app.use('/api/email', emailRoutes);
+app.use('/api/skiptracer', skiptracerRoutes);
+app.use('/api/arrests', arrestRoutes);
+app.use('/api/connections', connectionsRoutes);
+app.use('/api/fleet/dashcam-videos', dashcamVideoRoutes);
+app.use('/api/colorado-doc', coloradoDocRoutes);
+app.use('/api/sex-offender-registry', sexOffenderRegistryRoutes);
+app.use('/api/crm', crmRoutes);
+app.use('/api/crm', crmLeadsRoutes);
+app.use('/api/crm', crmProposalsRoutes);
+app.use('/api/crm', crmFirecrawlRoutes);
+app.use('/api/user/preferences', authenticateToken, userPreferencesRoutes);
+app.use('/api/process-server', serveRoutes);
+app.use('/api/hr', hrRoutes);
+app.use('/api/auth/security', securityDashboardRoutes);
+app.use('/api/auth/webauthn', webauthnRoutes);
+app.use('/api/jail-roster', jailRosterRoutes);
+app.use('/dispatch', intakeRoutes);        // Public dispatch endpoint (called by rmpgutahps.us)
+app.use('/intake', intakeRoutes);          // Legacy alias
 app.use('/api/intake', intakeRoutes);      // Also available under /api prefix
 
 // Mount download page and file serving routes (outside /api)
