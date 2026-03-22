@@ -688,6 +688,24 @@ export default function CommunicationsPage() {
             <button onClick={() => setShowCompose(true)} className="toolbar-btn toolbar-btn-primary">
               <Plus className="w-3.5 h-3.5" /> Compose
             </button>
+            {/* Feature 30: Emergency broadcast button */}
+            <button
+              onClick={async () => {
+                const msg = prompt('Emergency broadcast message to ALL units:');
+                if (!msg) return;
+                try {
+                  await apiFetch('/comms/emergency-broadcast', {
+                    method: 'POST',
+                    body: JSON.stringify({ content: msg, subject: 'EMERGENCY BROADCAST' }),
+                  });
+                  addToast('Emergency broadcast sent to all units', 'success');
+                } catch (err: any) { addToast(err?.message || 'Failed to send emergency broadcast', 'error'); }
+              }}
+              className="toolbar-btn text-red-400 border-red-700/50 hover:bg-red-900/30"
+              title="Emergency Broadcast to ALL units"
+            >
+              <AlertTriangle className="w-3.5 h-3.5" /> Emergency
+            </button>
           </>
         )}
         {activePanel === 'bolos' && (
@@ -1242,6 +1260,30 @@ export default function CommunicationsPage() {
           <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Message:</label>
           <textarea className="textarea-dark" rows={5} placeholder="Type your message..." value={composeContent} onChange={(e) => setComposeContent(e.target.value)} required />
         </div>
+        {/* Feature 26: Save as Draft button */}
+        <button
+          type="button"
+          onClick={async () => {
+            if (!composeContent.trim()) { addToast('Cannot save empty draft', 'error'); return; }
+            try {
+              await apiFetch('/comms/drafts', {
+                method: 'POST',
+                body: JSON.stringify({
+                  to_user_id: composeTo === 'broadcast' ? null : composeTo || null,
+                  channel: composeTo === 'broadcast' ? 'broadcast' : 'direct',
+                  content: composeContent,
+                  subject: composeSubject,
+                  priority: composePriority,
+                }),
+              });
+              addToast('Draft saved', 'success');
+              setShowCompose(false);
+            } catch (err: any) { addToast(err?.message || 'Failed to save draft', 'error'); }
+          }}
+          className="toolbar-btn text-rmpg-400 hover:text-white"
+        >
+          Save as Draft
+        </button>
       </FormModal>
 
       {/* Cancel BOLO Confirm Dialog */}

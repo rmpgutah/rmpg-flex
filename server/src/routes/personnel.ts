@@ -1853,6 +1853,320 @@ export function mountScheduleRoutes(parentRouter: Router): void {
     }
   });
 
+  // ════════════════════════════════════════════════════════
+  // FEATURE 16: Training Calendar — events by month
+  // ════════════════════════════════════════════════════════
+
+  parentRouter.get('/personnel/training-calendar', authenticateToken, (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const { month, year } = req.query;
+      const y = parseInt(year as string, 10) || new Date().getFullYear();
+      const m = parseInt(month as string, 10) || (new Date().getMonth() + 1);
+      const startDate = `${y}-${String(m).padStart(2, '0')}-01`;
+      const endDate = `${y}-${String(m).padStart(2, '0')}-31`;
+
+      const records = db.prepare(`
+        SELECT t.*, u.full_name as officer_name
+        FROM training_records t
+        LEFT JOIN users u ON t.officer_id = u.id
+        WHERE (t.completed_date BETWEEN ? AND ?)
+          OR (t.status = 'scheduled' AND t.completed_date BETWEEN ? AND ?)
+        ORDER BY t.completed_date ASC
+      `).all(startDate, endDate, startDate, endDate);
+
+      // Group by date
+      const calendar: Record<string, any[]> = {};
+      for (const rec of records as any[]) {
+        const date = rec.completed_date || 'unscheduled';
+        if (!calendar[date]) calendar[date] = [];
+        calendar[date].push(rec);
+      }
+
+      // Include upcoming requirements
+      const requirements = db.prepare(`
+        SELECT * FROM training_requirements WHERE is_mandatory = 1
+      `).all();
+
+      res.json({ calendar, requirements, month: m, year: y });
+    } catch (error: any) {
+      console.error('Training calendar error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════
+  // FEATURE 17: Training Attendance Tracking
+  // ════════════════════════════════════════════════════════
+
+  parentRouter.get('/personnel/training/:id/attendance', authenticateToken, (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const record = db.prepare('SELECT * FROM training_records WHERE id = ?').get(req.params.id) as any;
+      if (!record) { res.status(404).json({ error: 'Training record not found' }); return; }
+      const attendance = JSON.parse(record.attendance || '[]');
+      res.json({ data: attendance });
+    } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  });
+
+  parentRouter.put('/personnel/training/:id/attendance', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const { attendance } = req.body;
+      // attendance: [{ officer_id, officer_name, present: boolean, arrived_at, left_at, notes }]
+      if (!Array.isArray(attendance)) { res.status(400).json({ error: 'attendance must be an array' }); return; }
+
+      const record = db.prepare('SELECT * FROM training_records WHERE id = ?').get(req.params.id) as any;
+      if (!record) { res.status(404).json({ error: 'Training record not found' }); return; }
+
+      const sanitized = attendance.slice(0, 100).map((a: any) => ({
+        officer_id: a.officer_id,
+        officer_name: String(a.officer_name || '').slice(0, 200),
+        present: !!a.present,
+        arrived_at: a.arrived_at || null,
+        left_at: a.left_at || null,
+        notes: String(a.notes || '').slice(0, 500),
+      }));
+
+      db.prepare('UPDATE training_records SET attendance = ?, updated_at = ? WHERE id = ?')
+        .run(JSON.stringify(sanitized), localNow(), req.params.id);
+
+      res.json({ data: sanitized });
+    } catch (error: any) {
+      console.error('Training attendance error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════
+  // FEATURE 18: Training Material Library
+  // ════════════════════════════════════════════════════════
+
+  parentRouter.get('/personnel/training-materials', authenticateToken, (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const { category, search } = req.query;
+      let sql = `
+        SELECT tm.*, u.full_name as uploaded_by_name
+        FROM training_materials tm
+        LEFT JOIN users u ON tm.uploaded_by = u.id
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+      if (category) { sql += ' AND tm.category = ?'; params.push(category); }
+      if (search) { sql += ' AND (tm.title LIKE ? OR tm.description LIKE ?)'; const s = `%${search}%`; params.push(s, s); }
+      sql += ' ORDER BY tm.created_at DESC';
+
+      // Try the table — if it doesn't exist, return empty
+      try {
+        const rows = db.prepare(sql).all(...params);
+        res.json({ data: rows });
+      } catch {
+        // Table doesn't exist yet — create it
+        db.exec(`CREATE TABLE IF NOT EXISTS training_materials (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          title TEXT NOT NULL,
+          description TEXT,
+          category TEXT DEFAULT 'other',
+          file_url TEXT,
+          file_type TEXT,
+          file_size INTEGER DEFAULT 0,
+          course_name TEXT,
+          uploaded_by INTEGER,
+          created_at TEXT DEFAULT (datetime('now')),
+          updated_at TEXT DEFAULT (datetime('now'))
+        )`);
+        res.json({ data: [] });
+      }
+    } catch (error: any) {
+      console.error('Training materials error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  parentRouter.post('/personnel/training-materials', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const { title, description, category, file_url, file_type, file_size, course_name } = req.body;
+      if (!title) { res.status(400).json({ error: 'Title is required' }); return; }
+
+      db.exec(`CREATE TABLE IF NOT EXISTS training_materials (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        description TEXT,
+        category TEXT DEFAULT 'other',
+        file_url TEXT,
+        file_type TEXT,
+        file_size INTEGER DEFAULT 0,
+        course_name TEXT,
+        uploaded_by INTEGER,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )`);
+
+      const now = localNow();
+      const result = db.prepare(`
+        INSERT INTO training_materials (title, description, category, file_url, file_type, file_size, course_name, uploaded_by, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(title, description || null, category || 'other', file_url || null, file_type || null, file_size || 0, course_name || null, req.user!.userId, now, now);
+
+      const material = db.prepare('SELECT * FROM training_materials WHERE id = ?').get(result.lastInsertRowid);
+      res.status(201).json(material);
+    } catch (error: any) {
+      console.error('Create training material error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  parentRouter.delete('/personnel/training-materials/:id', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      db.prepare('DELETE FROM training_materials WHERE id = ?').run(req.params.id);
+      res.json({ success: true });
+    } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  });
+
+  // ════════════════════════════════════════════════════════
+  // FEATURE 19: Training Quiz/Assessment
+  // ════════════════════════════════════════════════════════
+
+  parentRouter.post('/personnel/training/:id/assessment', authenticateToken, (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const { score, total_questions, passed, answers } = req.body;
+
+      const record = db.prepare('SELECT * FROM training_records WHERE id = ?').get(req.params.id) as any;
+      if (!record) { res.status(404).json({ error: 'Training record not found' }); return; }
+
+      const assessments = JSON.parse(record.assessments || '[]');
+      const now = localNow();
+      assessments.push({
+        officer_id: req.user!.userId,
+        score: score || 0,
+        total_questions: total_questions || 0,
+        percentage: total_questions > 0 ? Math.round((score / total_questions) * 100) : 0,
+        passed: !!passed,
+        answers: answers || [],
+        taken_at: now,
+      });
+
+      // Update record status if passed
+      const updates: string[] = ['assessments = ?', 'updated_at = ?'];
+      const params: any[] = [JSON.stringify(assessments), now];
+      if (passed && record.status !== 'completed') {
+        updates.push("status = 'completed'");
+        updates.push('score = ?');
+        params.push(score);
+      }
+      params.push(req.params.id);
+
+      db.prepare(`UPDATE training_records SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+
+      res.json({ data: assessments[assessments.length - 1] });
+    } catch (error: any) {
+      console.error('Training assessment error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  parentRouter.get('/personnel/training/:id/assessments', authenticateToken, (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const record = db.prepare('SELECT assessments FROM training_records WHERE id = ?').get(req.params.id) as any;
+      if (!record) { res.status(404).json({ error: 'Training record not found' }); return; }
+      res.json({ data: JSON.parse(record.assessments || '[]') });
+    } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  });
+
+  // ════════════════════════════════════════════════════════
+  // FEATURE 20: Mandatory Training Alerts
+  // Alert when officer is overdue on required annual training
+  // ════════════════════════════════════════════════════════
+
+  parentRouter.get('/personnel/training-alerts', authenticateToken, (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const today = localNow().slice(0, 10);
+
+      const requirements = db.prepare(
+        'SELECT * FROM training_requirements WHERE is_mandatory = 1'
+      ).all() as any[];
+
+      const officers = db.prepare(
+        "SELECT id, full_name, badge_number, role FROM users WHERE active = 1 AND role IN ('admin','manager','supervisor','officer','dispatcher')"
+      ).all() as any[];
+
+      const alerts: any[] = [];
+
+      for (const officer of officers) {
+        for (const req of requirements) {
+          const roles = JSON.parse(req.required_for_roles || '[]');
+          if (roles.length > 0 && !roles.includes(officer.role)) continue;
+
+          // Find most recent completed record for this course
+          const latest = db.prepare(`
+            SELECT * FROM training_records
+            WHERE officer_id = ? AND course_name = ? AND status = 'completed'
+            ORDER BY completed_date DESC LIMIT 1
+          `).get(officer.id, req.course_name) as any;
+
+          let alertType: string | null = null;
+          let daysOverdue = 0;
+
+          if (!latest) {
+            alertType = 'never_completed';
+          } else if (latest.expiry_date && latest.expiry_date < today) {
+            alertType = 'expired';
+            daysOverdue = Math.round((new Date(today).getTime() - new Date(latest.expiry_date).getTime()) / (1000 * 60 * 60 * 24));
+          } else if (latest.expiry_date) {
+            const daysUntilExpiry = Math.round((new Date(latest.expiry_date).getTime() - new Date(today).getTime()) / (1000 * 60 * 60 * 24));
+            if (daysUntilExpiry <= 30) {
+              alertType = 'expiring_soon';
+              daysOverdue = -daysUntilExpiry; // negative = days until expiry
+            }
+          }
+
+          if (alertType) {
+            alerts.push({
+              officer_id: officer.id,
+              officer_name: officer.full_name,
+              badge_number: officer.badge_number,
+              role: officer.role,
+              course_name: req.course_name,
+              category: req.category,
+              alert_type: alertType,
+              days_overdue: daysOverdue,
+              last_completed: latest?.completed_date || null,
+              expiry_date: latest?.expiry_date || null,
+              frequency_months: req.frequency_months,
+            });
+          }
+        }
+      }
+
+      // Sort: expired first, then expiring soon, then never completed
+      alerts.sort((a, b) => {
+        const order: Record<string, number> = { expired: 0, expiring_soon: 1, never_completed: 2 };
+        return (order[a.alert_type] || 3) - (order[b.alert_type] || 3) || b.days_overdue - a.days_overdue;
+      });
+
+      const expired = alerts.filter(a => a.alert_type === 'expired');
+      const expiringSoon = alerts.filter(a => a.alert_type === 'expiring_soon');
+      const neverCompleted = alerts.filter(a => a.alert_type === 'never_completed');
+
+      res.json({
+        total_alerts: alerts.length,
+        expired: expired.length,
+        expiring_soon: expiringSoon.length,
+        never_completed: neverCompleted.length,
+        alerts,
+      });
+    } catch (error: any) {
+      console.error('Training alerts error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   // ─── DEPLOYMENTS ─────────────────────────────────────
 
   // GET /api/personnel/deployments - List all deployments

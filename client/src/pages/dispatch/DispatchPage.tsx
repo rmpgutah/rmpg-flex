@@ -153,6 +153,39 @@ export default function DispatchPage() {
   const [serveLink, setServeLink] = useState<any>(null);
   const [sendingToServe, setSendingToServe] = useState(false);
 
+  // ── Feature 1: Call priority sound alerts ──
+  const [soundAlertsMuted, setSoundAlertsMuted] = useState(() => localStorage.getItem('rmpg_sound_alerts_muted') === 'true');
+  const toggleSoundAlerts = useCallback(() => {
+    setSoundAlertsMuted(prev => {
+      const next = !prev;
+      localStorage.setItem('rmpg_sound_alerts_muted', String(next));
+      return next;
+    });
+  }, []);
+
+  // ── Feature 5: Shift handoff notes ──
+  const [showHandoffNotes, setShowHandoffNotes] = useState(false);
+  const [handoffNotes, setHandoffNotes] = useState('');
+  const [handoffMeta, setHandoffMeta] = useState<{ updated_by?: string; updated_at?: string }>({});
+  const [savingHandoff, setSavingHandoff] = useState(false);
+
+  const fetchHandoffNotes = useCallback(async () => {
+    try {
+      const data = await apiFetch<any>('/dispatch/shift-handoff');
+      setHandoffNotes(data?.text || '');
+      setHandoffMeta({ updated_by: data?.updated_by, updated_at: data?.updated_at });
+    } catch { /* ignore */ }
+  }, []);
+
+  const saveHandoffNotes = useCallback(async () => {
+    setSavingHandoff(true);
+    try {
+      await apiFetch('/dispatch/shift-handoff', { method: 'PUT', body: JSON.stringify({ text: handoffNotes }) });
+      addToast('Handoff notes saved', 'success');
+    } catch { addToast('Failed to save handoff notes', 'error'); }
+    finally { setSavingHandoff(false); }
+  }, [handoffNotes, addToast]);
+
   // Clean up search timers and abort controllers on unmount
   useEffect(() => {
     return () => {
@@ -566,6 +599,12 @@ export default function DispatchPage() {
             if (prev.some((c) => c.id === mapped.id)) return prev;
             return [mapped, ...prev];
           });
+        }
+        // Feature 1: Priority-based sound alerts (unless muted)
+        if (!soundAlertsMuted) {
+          if (mapped.priority === 'P1') playTone('alarm');
+          else if (mapped.priority === 'P2') playTone('warning');
+          else playTone('info');
         }
         // Voice alerts: announce new call with details + safety flags
         announceNewCall(mapped);
@@ -2486,6 +2525,24 @@ export default function DispatchPage() {
         {/* Header — PanelTitleBar + TabBar */}
         <PanelTitleBar title="DISPATCH QUEUE" icon={Radio}>
           <RmpgLogo height={16} iconOnly />
+          {/* Feature 1: Sound alert mute toggle */}
+          <button
+            onClick={toggleSoundAlerts}
+            className={`toolbar-btn ${soundAlertsMuted ? 'text-red-400' : 'text-green-400'}`}
+            title={soundAlertsMuted ? 'Sound alerts: MUTED' : 'Sound alerts: ON'}
+          >
+            {soundAlertsMuted ? <XCircle style={{ width: 10, height: 10 }} /> : <Radio style={{ width: 10, height: 10 }} />}
+            {soundAlertsMuted ? 'Muted' : 'Sound'}
+          </button>
+          {/* Feature 5: Shift handoff notes */}
+          <button
+            onClick={() => { setShowHandoffNotes(true); fetchHandoffNotes(); }}
+            className="toolbar-btn"
+            title="Shift Handoff Notes"
+          >
+            <Briefcase style={{ width: 10, height: 10 }} />
+            Handoff
+          </button>
           <ExportButton exportUrl="/dispatch/calls/export?format=csv" exportFilename="dispatch_calls_export.csv" />
           <PrintButton />
           {tabCounts.cleared > 0 && (
@@ -4791,6 +4848,39 @@ export default function DispatchPage() {
         onSubmit={handleCreateVehicleFromDispatch}
         isSubmitting={isCreatingRecord}
       />
+
+      {/* Feature 5: Shift Handoff Notes Modal */}
+      {showHandoffNotes && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowHandoffNotes(false)}>
+          <div className="bg-surface-raised border border-rmpg-600 rounded w-[500px] max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-3 border-b border-rmpg-600">
+              <h3 className="text-sm font-bold text-white">Shift Handoff Notes</h3>
+              <button onClick={() => setShowHandoffNotes(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-3 flex-1 overflow-auto">
+              {handoffMeta.updated_by && (
+                <p className="text-[10px] text-rmpg-400 mb-2">
+                  Last updated by <span className="text-amber-400">{handoffMeta.updated_by}</span>
+                  {handoffMeta.updated_at && ` at ${new Date(handoffMeta.updated_at).toLocaleString()}`}
+                </p>
+              )}
+              <textarea
+                value={handoffNotes}
+                onChange={e => setHandoffNotes(e.target.value)}
+                className="input-dark w-full h-48 text-sm resize-none"
+                placeholder="Leave notes for the incoming shift dispatcher..."
+              />
+            </div>
+            <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
+              <button onClick={() => setShowHandoffNotes(false)} className="toolbar-btn">Cancel</button>
+              <button onClick={saveHandoffNotes} disabled={savingHandoff} className="toolbar-btn toolbar-btn-primary">
+                {savingHandoff ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                Save Notes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

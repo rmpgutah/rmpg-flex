@@ -3307,4 +3307,145 @@ router.get('/vehicles/auto-link-suggestions', (_req: Request, res: Response) => 
   }
 });
 
+// ── Feature 6: Person known associates ─────────────────────────────
+// GET /api/records/persons/:id/associates - Get known associates
+router.get('/persons/:id/associates', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const associates = db.prepare(`
+      SELECT pa.id as link_id, pa.relationship_type, pa.notes, pa.created_at,
+        p.id, p.first_name, p.last_name, p.dob, p.photo_url, p.flags,
+        u.full_name as added_by_name
+      FROM person_associates pa
+      JOIN persons p ON pa.associate_id = p.id
+      LEFT JOIN users u ON pa.created_by = u.id
+      WHERE pa.person_id = ?
+      UNION
+      SELECT pa.id as link_id, pa.relationship_type, pa.notes, pa.created_at,
+        p.id, p.first_name, p.last_name, p.dob, p.photo_url, p.flags,
+        u.full_name as added_by_name
+      FROM person_associates pa
+      JOIN persons p ON pa.person_id = p.id
+      LEFT JOIN users u ON pa.created_by = u.id
+      WHERE pa.associate_id = ?
+      ORDER BY created_at DESC
+    `).all(req.params.id, req.params.id);
+    res.json(associates);
+  } catch (error: any) {
+    console.error('Get associates error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/records/persons/:id/associates - Link known associate
+router.post('/persons/:id/associates', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { associate_id, relationship_type, notes } = req.body;
+    if (!associate_id) { res.status(400).json({ error: 'associate_id is required' }); return; }
+    if (String(associate_id) === String(req.params.id)) { res.status(400).json({ error: 'Cannot associate a person with themselves' }); return; }
+
+    const validTypes = ['family', 'friend', 'gang', 'associate', 'coworker', 'neighbor', 'romantic', 'other'];
+    const relType = validTypes.includes(relationship_type) ? relationship_type : 'associate';
+
+    const result = db.prepare(`
+      INSERT OR IGNORE INTO person_associates (person_id, associate_id, relationship_type, notes, created_by)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(req.params.id, associate_id, relType, notes || null, req.user!.userId);
+
+    res.status(201).json({ success: true, id: result.lastInsertRowid });
+  } catch (error: any) {
+    console.error('Link associate error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/records/persons/:id/associates/:linkId - Remove associate link
+router.delete('/persons/:id/associates/:linkId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM person_associates WHERE id = ?').run(req.params.linkId);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Remove associate error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Feature 7: Vehicle tow tracking ───────────────────────────────
+// PUT /api/records/vehicles/:id/tow - Update tow info on a vehicle
+router.put('/vehicles/:id/tow', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
+    if (!vehicle) { res.status(404).json({ error: 'Vehicle not found' }); return; }
+
+    const { tow_status, tow_company, tow_lot_location, tow_date, tow_release_date, tow_release_to, tow_reason } = req.body;
+    const now = localNow();
+
+    db.prepare(`
+      UPDATE vehicles_records SET
+        tow_status = COALESCE(?, tow_status),
+        tow_company = COALESCE(?, tow_company),
+        tow_lot_location = COALESCE(?, tow_lot_location),
+        tow_date = COALESCE(?, tow_date),
+        tow_release_date = COALESCE(?, tow_release_date),
+        tow_release_to = COALESCE(?, tow_release_to),
+        tow_reason = COALESCE(?, tow_reason)
+      WHERE id = ?
+    `).run(tow_status, tow_company, tow_lot_location, tow_date, tow_release_date, tow_release_to, tow_reason, req.params.id);
+
+    const updated = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id);
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Update tow info error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Feature 8: Evidence temperature tracking ──────────────────────
+// POST /api/records/evidence/:id/temperature - Log temperature reading
+router.post('/evidence/:id/temperature', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
+    if (!evidence) { res.status(404).json({ error: 'Evidence not found' }); return; }
+
+    const { temperature } = req.body;
+    if (temperature == null || isNaN(Number(temperature))) { res.status(400).json({ error: 'temperature is required (numeric)' }); return; }
+
+    const result = db.prepare(`
+      INSERT INTO evidence_temperature_logs (evidence_id, temperature, recorded_by)
+      VALUES (?, ?, ?)
+    `).run(req.params.id, temperature, req.user!.userId);
+
+    // Update current temp on evidence record
+    db.prepare('UPDATE evidence SET storage_temperature = ? WHERE id = ?').run(temperature, req.params.id);
+
+    res.status(201).json({ success: true, id: result.lastInsertRowid });
+  } catch (error: any) {
+    console.error('Log temperature error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/records/evidence/:id/temperature - Get temperature history
+router.get('/evidence/:id/temperature', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const logs = db.prepare(`
+      SELECT etl.*, u.full_name as recorded_by_name
+      FROM evidence_temperature_logs etl
+      LEFT JOIN users u ON etl.recorded_by = u.id
+      WHERE etl.evidence_id = ?
+      ORDER BY etl.recorded_at DESC
+      LIMIT 100
+    `).all(req.params.id);
+    res.json(logs);
+  } catch (error: any) {
+    console.error('Get temperature logs error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

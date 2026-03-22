@@ -1006,4 +1006,260 @@ router.post('/scan/:scanId/weather', (req: Request, res: Response) => {
   }
 });
 
+// ── Feature 11: Patrol shift summary ──────────────────────────────
+// GET /api/patrol/shift-summary - Auto-generate end-of-shift summary
+router.get('/shift-summary', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { date, officer_id } = req.query;
+    const targetDate = date || localNow().split('T')[0];
+    const officerId = officer_id || req.user!.userId;
+
+    // Scans today
+    const scans = db.prepare(`
+      SELECT ps.*, pc.name as checkpoint_name, p.name as property_name
+      FROM patrol_scans ps
+      JOIN patrol_checkpoints pc ON ps.checkpoint_id = pc.id
+      LEFT JOIN properties p ON pc.property_id = p.id
+      WHERE ps.officer_id = ? AND DATE(ps.scanned_at) = ?
+      ORDER BY ps.scanned_at ASC
+    `).all(officerId, targetDate) as any[];
+
+    const onTime = scans.filter((s: any) => s.status === 'on_time').length;
+    const late = scans.filter((s: any) => s.status === 'late').length;
+
+    // Incidents created today
+    const incidents = db.prepare(`
+      SELECT id, incident_number, incident_type, status
+      FROM incidents WHERE officer_id = ? AND DATE(created_at) = ?
+    `).all(officerId, targetDate) as any[];
+
+    // Mileage from GPS breadcrumbs (rough calculation from distance between consecutive points)
+    let totalMileage = 0;
+    try {
+      const breadcrumbs = db.prepare(`
+        SELECT latitude, longitude FROM gps_breadcrumbs
+        WHERE officer_id = ? AND DATE(recorded_at) = ?
+        ORDER BY recorded_at ASC
+      `).all(officerId, targetDate) as any[];
+
+      for (let i = 1; i < breadcrumbs.length; i++) {
+        const prev = breadcrumbs[i - 1];
+        const curr = breadcrumbs[i];
+        const R = 3959; // miles
+        const dLat = (curr.latitude - prev.latitude) * Math.PI / 180;
+        const dLon = (curr.longitude - prev.longitude) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos(prev.latitude * Math.PI / 180) * Math.cos(curr.latitude * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+        totalMileage += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      }
+    } catch { /* breadcrumbs may not exist */ }
+
+    // Breaks today
+    let breaks: any[] = [];
+    try {
+      breaks = db.prepare(`
+        SELECT * FROM patrol_breaks WHERE officer_id = ? AND shift_date = ?
+      `).all(officerId, targetDate) as any[];
+    } catch { /* table may not exist */ }
+
+    res.json({
+      date: targetDate,
+      officer_id: officerId,
+      scans_total: scans.length,
+      scans_on_time: onTime,
+      scans_late: late,
+      incidents_count: incidents.length,
+      incidents,
+      estimated_mileage: Math.round(totalMileage * 10) / 10,
+      breaks_count: breaks.length,
+      total_break_minutes: breaks.reduce((sum: number, b: any) => sum + (b.duration_minutes || 0), 0),
+      properties_visited: [...new Set(scans.map((s: any) => s.property_name))],
+    });
+  } catch (error: any) {
+    console.error('Shift summary error:', error);
+    res.status(500).json({ error: 'Failed to generate shift summary' });
+  }
+});
+
+// ── Feature 12: Property special instructions ─────────────────────
+// GET /api/patrol/checkpoints/:id/instructions - Get special instructions
+router.get('/checkpoints/:id/instructions', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const checkpoint = db.prepare(`
+      SELECT pc.special_instructions, pc.name, pc.description,
+        p.gate_code, p.alarm_code, p.hazard_notes, p.post_orders, p.emergency_contact, p.access_instructions
+      FROM patrol_checkpoints pc
+      LEFT JOIN properties p ON pc.property_id = p.id
+      WHERE pc.id = ?
+    `).get(req.params.id) as any;
+
+    if (!checkpoint) { res.status(404).json({ error: 'Checkpoint not found' }); return; }
+
+    res.json({
+      checkpoint_name: checkpoint.name,
+      checkpoint_description: checkpoint.description,
+      special_instructions: checkpoint.special_instructions,
+      gate_code: checkpoint.gate_code,
+      alarm_code: checkpoint.alarm_code,
+      hazard_notes: checkpoint.hazard_notes,
+      post_orders: checkpoint.post_orders,
+      emergency_contact: checkpoint.emergency_contact,
+      access_instructions: checkpoint.access_instructions,
+    });
+  } catch (error: any) {
+    console.error('Get instructions error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Feature 13: Patrol break tracking ─────────────────────────────
+// POST /api/patrol/breaks/start - Start a break
+router.post('/breaks/start', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { break_type } = req.body;
+    const now = localNow();
+    const today = now.split('T')[0];
+
+    // Check for active break
+    const active = db.prepare('SELECT * FROM patrol_breaks WHERE officer_id = ? AND shift_date = ? AND break_end IS NULL').get(req.user!.userId, today) as any;
+    if (active) { res.status(400).json({ error: 'Already on a break. End current break first.' }); return; }
+
+    const result = db.prepare(`
+      INSERT INTO patrol_breaks (officer_id, shift_date, break_start, break_type)
+      VALUES (?, ?, ?, ?)
+    `).run(req.user!.userId, today, now, break_type || 'break');
+
+    res.status(201).json({ id: result.lastInsertRowid, break_start: now });
+  } catch (error: any) {
+    console.error('Start break error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/patrol/breaks/end - End current break
+router.post('/breaks/end', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const today = now.split('T')[0];
+
+    const active = db.prepare('SELECT * FROM patrol_breaks WHERE officer_id = ? AND shift_date = ? AND break_end IS NULL').get(req.user!.userId, today) as any;
+    if (!active) { res.status(400).json({ error: 'No active break to end' }); return; }
+
+    const startTime = new Date(active.break_start).getTime();
+    const endTime = new Date(now).getTime();
+    const durationMinutes = Math.round((endTime - startTime) / 60000 * 10) / 10;
+
+    db.prepare('UPDATE patrol_breaks SET break_end = ?, duration_minutes = ? WHERE id = ?').run(now, durationMinutes, active.id);
+
+    res.json({ success: true, duration_minutes: durationMinutes });
+  } catch (error: any) {
+    console.error('End break error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/patrol/breaks - Get breaks for current shift
+router.get('/breaks', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { date, officer_id } = req.query;
+    const targetDate = date || localNow().split('T')[0];
+    const officerId = officer_id || req.user!.userId;
+
+    const breaks = db.prepare(`
+      SELECT pb.*, u.full_name as officer_name
+      FROM patrol_breaks pb
+      LEFT JOIN users u ON pb.officer_id = u.id
+      WHERE pb.officer_id = ? AND pb.shift_date = ?
+      ORDER BY pb.break_start ASC
+    `).all(officerId, targetDate);
+
+    res.json(breaks);
+  } catch (error: any) {
+    console.error('Get breaks error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Feature 14: Incident proximity alert ──────────────────────────
+// POST /api/patrol/proximity-check - Check if active calls are near a location
+router.post('/proximity-check', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { latitude, longitude, radius_miles } = req.body;
+    if (!latitude || !longitude) { res.status(400).json({ error: 'latitude and longitude required' }); return; }
+
+    const radiusMi = radius_miles || 0.5; // default 0.5 miles
+    // Approximate: 1 degree lat ~= 69 miles
+    const latDelta = radiusMi / 69;
+    const lngDelta = radiusMi / (69 * Math.cos(latitude * Math.PI / 180));
+
+    const activeCalls = db.prepare(`
+      SELECT id, call_number, incident_type, priority, status, location_address, latitude, longitude
+      FROM calls_for_service
+      WHERE status IN ('pending', 'dispatched', 'enroute', 'onscene')
+        AND latitude IS NOT NULL AND longitude IS NOT NULL
+        AND latitude BETWEEN ? AND ?
+        AND longitude BETWEEN ? AND ?
+    `).all(
+      latitude - latDelta, latitude + latDelta,
+      longitude - lngDelta, longitude + lngDelta
+    );
+
+    res.json({ nearby_calls: activeCalls, count: activeCalls.length });
+  } catch (error: any) {
+    console.error('Proximity check error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Feature 15: Patrol efficiency score ───────────────────────────
+// GET /api/patrol/efficiency - Calculate patrol efficiency score
+router.get('/efficiency', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { date, officer_id } = req.query;
+    const targetDate = date || localNow().split('T')[0];
+    const officerId = officer_id || req.user!.userId;
+
+    // Total assigned checkpoints (active ones at properties officer patrols)
+    const totalCheckpoints = db.prepare(`
+      SELECT COUNT(*) as total FROM patrol_checkpoints WHERE is_active = 1 AND archived_at IS NULL
+    `).get() as any;
+
+    // Scans made today
+    const scansToday = db.prepare(`
+      SELECT ps.status, COUNT(*) as count
+      FROM patrol_scans ps
+      WHERE ps.officer_id = ? AND DATE(ps.scanned_at) = ?
+      GROUP BY ps.status
+    `).all(officerId, targetDate) as any[];
+
+    const onTime = scansToday.find((s: any) => s.status === 'on_time')?.count || 0;
+    const late = scansToday.find((s: any) => s.status === 'late')?.count || 0;
+    const totalScans = onTime + late;
+    const totalAssigned = totalCheckpoints.total || 1;
+
+    const efficiency = {
+      officer_id: officerId,
+      date: targetDate,
+      total_assigned: totalAssigned,
+      scans_completed: totalScans,
+      scans_on_time: onTime,
+      scans_late: late,
+      completion_rate: Math.round((totalScans / totalAssigned) * 100),
+      on_time_rate: totalScans > 0 ? Math.round((onTime / totalScans) * 100) : 0,
+      efficiency_score: Math.round(((onTime * 1.0 + late * 0.5) / totalAssigned) * 100),
+    };
+
+    res.json(efficiency);
+  } catch (error: any) {
+    console.error('Efficiency score error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

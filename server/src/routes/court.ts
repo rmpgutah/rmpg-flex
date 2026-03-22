@@ -489,4 +489,210 @@ router.get('/statistics', (req: Request, res: Response) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// FEATURE 6: Court Event Reminders — 24hr before court date
+// ════════════════════════════════════════════════════════════
+
+router.post('/events/generate-reminders', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = new Date();
+    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+
+    const events = db.prepare(`
+      SELECT * FROM court_events
+      WHERE event_date = ? AND status = 'scheduled'
+    `).all(tomorrowStr) as any[];
+
+    let notificationsCreated = 0;
+    for (const evt of events) {
+      const officers = JSON.parse(evt.officers_required || '[]');
+      for (const officerId of officers) {
+        const id = typeof officerId === 'number' ? officerId : parseInt(officerId, 10);
+        if (isNaN(id)) continue;
+
+        // Check if reminder already sent
+        const existing = db.prepare(
+          "SELECT id FROM notifications WHERE user_id = ? AND entity_type = 'court_event' AND entity_id = ? AND type = 'court_reminder'"
+        ).get(id, evt.id);
+        if (existing) continue;
+
+        createNotification(
+          id,
+          'court_reminder',
+          `Court Reminder: ${evt.event_number} Tomorrow`,
+          `You have a ${evt.event_type || 'court event'} scheduled tomorrow (${evt.event_date}) at ${evt.event_time || 'TBD'}${evt.court_name ? ` — ${evt.court_name}` : ''}${evt.courtroom ? ` Room ${evt.courtroom}` : ''}. Defendant: ${evt.defendant_name || 'N/A'}`,
+          'court_event',
+          evt.id,
+          'high'
+        );
+        notificationsCreated++;
+      }
+    }
+
+    res.json({ reminders_sent: notificationsCreated, events_tomorrow: events.length });
+  } catch (error: any) {
+    console.error('Court reminders error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 7: Prosecutor Contact Info
+// ════════════════════════════════════════════════════════════
+
+router.put('/events/:id/prosecutor', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const { prosecutor_name, prosecutor_phone, prosecutor_email } = req.body;
+
+    const evt = db.prepare('SELECT id FROM court_events WHERE id = ?').get(req.params.id);
+    if (!evt) return res.status(404).json({ error: 'Court event not found' });
+
+    // Store prosecutor contact as JSON in the prosecutor field
+    const prosecutorInfo = JSON.stringify({
+      name: prosecutor_name || '',
+      phone: prosecutor_phone || '',
+      email: prosecutor_email || '',
+    });
+
+    db.prepare('UPDATE court_events SET prosecutor = ?, updated_at = ? WHERE id = ?')
+      .run(prosecutorInfo, now, req.params.id);
+
+    res.json({ data: { id: parseInt(req.params.id), prosecutor: JSON.parse(prosecutorInfo) } });
+  } catch (error: any) {
+    console.error('Prosecutor update error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 8: Court Fee Tracking
+// ════════════════════════════════════════════════════════════
+
+router.put('/events/:id/fees', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const { filing_fee, service_fee, other_fees, fee_notes } = req.body;
+
+    const evt = db.prepare('SELECT * FROM court_events WHERE id = ?').get(req.params.id) as any;
+    if (!evt) return res.status(404).json({ error: 'Court event not found' });
+
+    const fees = JSON.parse(evt.court_fees || '{}');
+    if (filing_fee !== undefined) fees.filing_fee = parseFloat(filing_fee) || 0;
+    if (service_fee !== undefined) fees.service_fee = parseFloat(service_fee) || 0;
+    if (other_fees !== undefined) fees.other_fees = parseFloat(other_fees) || 0;
+    if (fee_notes !== undefined) fees.fee_notes = fee_notes;
+    fees.total = (fees.filing_fee || 0) + (fees.service_fee || 0) + (fees.other_fees || 0);
+    fees.updated_at = now;
+
+    db.prepare('UPDATE court_events SET court_fees = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(fees), now, req.params.id);
+
+    res.json({ data: { id: parseInt(req.params.id), fees } });
+  } catch (error: any) {
+    console.error('Court fees error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 9: Witness List Management
+// ════════════════════════════════════════════════════════════
+
+router.get('/events/:id/witnesses', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const evt = db.prepare('SELECT witnesses FROM court_events WHERE id = ?').get(req.params.id) as any;
+    if (!evt) return res.status(404).json({ error: 'Court event not found' });
+    res.json({ data: JSON.parse(evt.witnesses || '[]') });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+router.put('/events/:id/witnesses', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const { witnesses } = req.body;
+
+    const evt = db.prepare('SELECT id FROM court_events WHERE id = ?').get(req.params.id);
+    if (!evt) return res.status(404).json({ error: 'Court event not found' });
+
+    // witnesses should be array of { name, phone, email, role, contact_status, notes }
+    if (!Array.isArray(witnesses)) return res.status(400).json({ error: 'witnesses must be an array' });
+
+    const sanitized = witnesses.slice(0, 50).map((w: any) => ({
+      name: String(w.name || '').slice(0, 200),
+      phone: String(w.phone || '').slice(0, 30),
+      email: String(w.email || '').slice(0, 200),
+      role: String(w.role || 'witness').slice(0, 50),
+      contact_status: String(w.contact_status || 'pending').slice(0, 30),
+      notes: String(w.notes || '').slice(0, 500),
+    }));
+
+    db.prepare('UPDATE court_events SET witnesses = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(sanitized), now, req.params.id);
+
+    res.json({ data: sanitized });
+  } catch (error: any) {
+    console.error('Witnesses update error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 10: Court Event Cloning (for continuance)
+// ════════════════════════════════════════════════════════════
+
+router.post('/events/:id/clone', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const { new_date, new_time, notes_prefix } = req.body;
+
+    if (!new_date) return res.status(400).json({ error: 'new_date is required for cloning' });
+
+    const evt = db.prepare('SELECT * FROM court_events WHERE id = ?').get(req.params.id) as any;
+    if (!evt) return res.status(404).json({ error: 'Court event not found' });
+
+    const event_number = nextEventNumber();
+    const cloneNotes = `${notes_prefix || 'Continued from'} ${evt.event_number}. ${evt.notes || ''}`.trim();
+
+    const result = db.prepare(`
+      INSERT INTO court_events (event_number, event_type, status, event_date, event_time,
+        court_name, courtroom, judge_name, court_case_number,
+        citation_id, incident_id, case_id, defendant_person_id, defendant_name,
+        prosecutor, defense_attorney, officers_required, notes,
+        created_by, created_at, updated_at)
+      VALUES (?, ?, 'scheduled', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      event_number, evt.event_type, new_date, new_time || evt.event_time,
+      evt.court_name, evt.courtroom, evt.judge_name, evt.court_case_number,
+      evt.citation_id, evt.incident_id, evt.case_id,
+      evt.defendant_person_id, evt.defendant_name,
+      evt.prosecutor, evt.defense_attorney, evt.officers_required,
+      cloneNotes, req.user!.userId, now, now
+    );
+
+    // Mark original as continued
+    db.prepare("UPDATE court_events SET status = 'continued', updated_at = ? WHERE id = ? AND status = 'scheduled'")
+      .run(now, req.params.id);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'clone', 'court_event', ?, ?, ?)`).run(
+      req.user!.userId, result.lastInsertRowid,
+      JSON.stringify({ event_number, cloned_from: evt.event_number }),
+      now
+    );
+
+    res.status(201).json({ data: { id: result.lastInsertRowid, event_number, cloned_from: evt.event_number } });
+  } catch (error: any) {
+    console.error('Court clone error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

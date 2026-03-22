@@ -750,4 +750,323 @@ router.get('/leads/export/csv', requireRole('admin', 'manager', 'supervisor'), (
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// FEATURE 11: Enhanced Lead Scoring
+// Score leads based on engagement (website visits, emails, form fills)
+// ════════════════════════════════════════════════════════════
+
+router.get('/leads/:id/score-breakdown', validateParamIdMiddleware, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const lead = db.prepare('SELECT * FROM crm_leads WHERE id = ?').get(req.params.id) as any;
+    if (!lead) { res.status(404).json({ error: 'Lead not found' }); return; }
+
+    const activity = db.prepare(
+      'SELECT * FROM crm_lead_activity WHERE lead_id = ? ORDER BY created_at DESC'
+    ).all(req.params.id) as any[];
+
+    // Engagement-based scoring
+    const emailEngagements = activity.filter((a: any) => a.activity_type === 'email').length;
+    const callEngagements = activity.filter((a: any) => a.activity_type === 'call').length;
+    const meetingEngagements = activity.filter((a: any) => a.activity_type === 'meeting').length;
+    const webVisits = activity.filter((a: any) => a.activity_type === 'web_visit').length;
+    const formFills = activity.filter((a: any) => a.activity_type === 'form_fill').length;
+
+    const baseScore = lead.lead_score || 0;
+    const engagementScore = Math.min(30,
+      (emailEngagements * 3) +
+      (callEngagements * 5) +
+      (meetingEngagements * 10) +
+      (webVisits * 2) +
+      (formFills * 8)
+    );
+
+    // Recency bonus: more recent activity = higher score
+    const lastActivity = activity[0];
+    let recencyBonus = 0;
+    if (lastActivity) {
+      const daysSinceLastActivity = (Date.now() - new Date(lastActivity.created_at).getTime()) / (1000 * 60 * 60 * 24);
+      if (daysSinceLastActivity <= 7) recencyBonus = 15;
+      else if (daysSinceLastActivity <= 14) recencyBonus = 10;
+      else if (daysSinceLastActivity <= 30) recencyBonus = 5;
+    }
+
+    const totalScore = Math.min(100, baseScore + engagementScore + recencyBonus);
+
+    // Update the lead score
+    db.prepare('UPDATE crm_leads SET lead_score = ?, updated_at = ? WHERE id = ?')
+      .run(totalScore, localNow(), req.params.id);
+
+    res.json({
+      lead_id: lead.id,
+      business_name: lead.business_name,
+      base_score: baseScore,
+      engagement_score: engagementScore,
+      recency_bonus: recencyBonus,
+      total_score: totalScore,
+      breakdown: {
+        emails: emailEngagements,
+        calls: callEngagements,
+        meetings: meetingEngagements,
+        web_visits: webVisits,
+        form_fills: formFills,
+      },
+      last_activity: lastActivity?.created_at || null,
+    });
+  } catch (err: any) {
+    console.error('Lead score breakdown error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 12: Sales Pipeline Stages Summary
+// Track leads through: Prospect → Qualified → Proposal → Won/Lost
+// ════════════════════════════════════════════════════════════
+
+router.get('/pipeline-summary', requireRole('admin', 'manager', 'contract_manager'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    const stages = db.prepare(`
+      SELECT
+        pipeline_stage,
+        COUNT(*) as count,
+        COALESCE(SUM(estimated_value), 0) as total_value,
+        COALESCE(AVG(estimated_value), 0) as avg_value,
+        COALESCE(AVG(lead_score), 0) as avg_score
+      FROM crm_leads
+      WHERE pipeline_stage NOT IN ('dismissed')
+      GROUP BY pipeline_stage
+      ORDER BY CASE pipeline_stage
+        WHEN 'new' THEN 1
+        WHEN 'contacted' THEN 2
+        WHEN 'qualified' THEN 3
+        WHEN 'proposal' THEN 4
+        WHEN 'negotiation' THEN 5
+        WHEN 'won' THEN 6
+        WHEN 'lost' THEN 7
+        ELSE 8
+      END
+    `).all();
+
+    // Conversion rates between stages
+    const allLeads = db.prepare('SELECT pipeline_stage FROM crm_leads').all() as any[];
+    const stageOrder = ['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won'];
+    const conversions: any[] = [];
+    for (let i = 0; i < stageOrder.length - 1; i++) {
+      const fromStageIdx = stageOrder.indexOf(stageOrder[i]);
+      const fromCount = allLeads.filter((l: any) => stageOrder.indexOf(l.pipeline_stage) >= fromStageIdx).length;
+      const toCount = allLeads.filter((l: any) => stageOrder.indexOf(l.pipeline_stage) >= fromStageIdx + 1).length;
+      conversions.push({
+        from: stageOrder[i],
+        to: stageOrder[i + 1],
+        rate: fromCount > 0 ? Math.round((toCount / fromCount) * 100) : 0,
+      });
+    }
+
+    res.json({ stages, conversions });
+  } catch (err: any) {
+    console.error('Pipeline summary error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 13: Follow-up Reminders
+// Set follow-up date on leads, show overdue reminders
+// ════════════════════════════════════════════════════════════
+
+router.get('/leads/follow-ups', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localNow().slice(0, 10);
+
+    const overdue = db.prepare(`
+      SELECT l.*, u.full_name as assigned_to_name
+      FROM crm_leads l
+      LEFT JOIN users u ON u.id = l.assigned_to
+      WHERE l.next_follow_up IS NOT NULL
+        AND l.next_follow_up < ?
+        AND l.pipeline_stage NOT IN ('won', 'lost', 'dismissed')
+      ORDER BY l.next_follow_up ASC
+    `).all(today);
+
+    const todayFollowUps = db.prepare(`
+      SELECT l.*, u.full_name as assigned_to_name
+      FROM crm_leads l
+      LEFT JOIN users u ON u.id = l.assigned_to
+      WHERE l.next_follow_up = ?
+        AND l.pipeline_stage NOT IN ('won', 'lost', 'dismissed')
+      ORDER BY l.lead_score DESC
+    `).all(today);
+
+    const upcoming = db.prepare(`
+      SELECT l.*, u.full_name as assigned_to_name
+      FROM crm_leads l
+      LEFT JOIN users u ON u.id = l.assigned_to
+      WHERE l.next_follow_up > ?
+        AND l.next_follow_up <= date(?, '+7 days')
+        AND l.pipeline_stage NOT IN ('won', 'lost', 'dismissed')
+      ORDER BY l.next_follow_up ASC
+    `).all(today, today);
+
+    res.json({ overdue, today: todayFollowUps, upcoming });
+  } catch (err: any) {
+    console.error('Follow-ups error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.put('/leads/:id/follow-up', validateParamIdMiddleware, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { next_follow_up, follow_up_notes } = req.body;
+    const now = localNow();
+
+    const existing = db.prepare('SELECT * FROM crm_leads WHERE id = ?').get(req.params.id) as any;
+    if (!existing) { res.status(404).json({ error: 'Lead not found' }); return; }
+
+    db.prepare('UPDATE crm_leads SET next_follow_up = ?, updated_at = ? WHERE id = ?')
+      .run(next_follow_up || null, now, req.params.id);
+
+    // Log activity
+    db.prepare(`
+      INSERT INTO crm_lead_activity (lead_id, activity_type, subject, details, created_by, created_at)
+      VALUES (?, 'follow_up_set', ?, ?, ?, ?)
+    `).run(
+      req.params.id,
+      `Follow-up ${next_follow_up ? `set for ${next_follow_up}` : 'cleared'}`,
+      follow_up_notes || null,
+      req.user?.userId || null,
+      now
+    );
+
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('Set follow-up error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 14: Lead Source Tracking
+// Track where leads come from (website, referral, cold call, etc.)
+// ════════════════════════════════════════════════════════════
+
+router.get('/leads/source-analytics', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { days = '90' } = req.query;
+    const cutoff = new Date(Date.now() - parseInt(days as string, 10) * 24 * 60 * 60 * 1000).toISOString();
+
+    const bySource = db.prepare(`
+      SELECT
+        COALESCE(source, 'unknown') as source,
+        COUNT(*) as total_leads,
+        SUM(CASE WHEN pipeline_stage = 'won' THEN 1 ELSE 0 END) as won,
+        SUM(CASE WHEN pipeline_stage = 'lost' THEN 1 ELSE 0 END) as lost,
+        COALESCE(SUM(estimated_value), 0) as total_value,
+        COALESCE(AVG(lead_score), 0) as avg_score,
+        COALESCE(AVG(CASE WHEN pipeline_stage = 'won' THEN estimated_value END), 0) as avg_won_value
+      FROM crm_leads
+      WHERE created_at >= ?
+      GROUP BY source
+      ORDER BY total_leads DESC
+    `).all(cutoff);
+
+    // Conversion rate by source
+    const enriched = bySource.map((s: any) => ({
+      ...s,
+      conversion_rate: s.total_leads > 0 ? Math.round((s.won / s.total_leads) * 100) : 0,
+      active: s.total_leads - s.won - s.lost,
+    }));
+
+    res.json({ data: enriched, period_days: parseInt(days as string, 10) });
+  } catch (err: any) {
+    console.error('Source analytics error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 15: Revenue Forecast
+// Expected revenue = sum(deal_value * probability)
+// ════════════════════════════════════════════════════════════
+
+router.get('/revenue-forecast', requireRole('admin', 'manager', 'contract_manager'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    // Probability by stage
+    const stageProbability: Record<string, number> = {
+      new: 0.05,
+      contacted: 0.10,
+      qualified: 0.25,
+      proposal: 0.50,
+      negotiation: 0.75,
+      won: 1.0,
+      lost: 0,
+      dismissed: 0,
+    };
+
+    const leads = db.prepare(`
+      SELECT id, business_name, pipeline_stage, estimated_value, assigned_to, next_follow_up
+      FROM crm_leads
+      WHERE pipeline_stage NOT IN ('won', 'lost', 'dismissed')
+        AND estimated_value IS NOT NULL AND estimated_value > 0
+      ORDER BY estimated_value DESC
+    `).all() as any[];
+
+    let totalExpected = 0;
+    let totalPipeline = 0;
+    const forecast = leads.map((l: any) => {
+      const probability = stageProbability[l.pipeline_stage] || 0;
+      const expected = (l.estimated_value || 0) * probability;
+      totalExpected += expected;
+      totalPipeline += l.estimated_value || 0;
+      return {
+        ...l,
+        probability: Math.round(probability * 100),
+        expected_revenue: Math.round(expected * 100) / 100,
+      };
+    });
+
+    // Won revenue (actual)
+    const wonRevenue = (db.prepare(`
+      SELECT COALESCE(SUM(estimated_value), 0) as total
+      FROM crm_leads WHERE pipeline_stage = 'won' AND estimated_value IS NOT NULL
+    `).get() as any)?.total || 0;
+
+    // By stage breakdown
+    const byStage = db.prepare(`
+      SELECT pipeline_stage,
+        COUNT(*) as count,
+        COALESCE(SUM(estimated_value), 0) as total_value
+      FROM crm_leads
+      WHERE pipeline_stage NOT IN ('won', 'lost', 'dismissed')
+        AND estimated_value IS NOT NULL AND estimated_value > 0
+      GROUP BY pipeline_stage
+    `).all() as any[];
+
+    const stageBreakdown = byStage.map((s: any) => ({
+      ...s,
+      probability: Math.round((stageProbability[s.pipeline_stage] || 0) * 100),
+      expected: Math.round(s.total_value * (stageProbability[s.pipeline_stage] || 0) * 100) / 100,
+    }));
+
+    res.json({
+      total_pipeline: Math.round(totalPipeline * 100) / 100,
+      total_expected: Math.round(totalExpected * 100) / 100,
+      won_revenue: wonRevenue,
+      active_deals: leads.length,
+      by_stage: stageBreakdown,
+      deals: forecast.slice(0, 50),
+    });
+  } catch (err: any) {
+    console.error('Revenue forecast error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

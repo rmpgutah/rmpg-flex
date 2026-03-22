@@ -1022,4 +1022,73 @@ router.get('/calls/:id/pso-compliance', validateParamIdMiddleware, requireRole('
   }
 });
 
+// ── Feature 3: Call tag system ──────────────────────────────────────
+const VALID_CALL_TAGS = ['domestic', 'weapons', 'officer_safety', 'juvenile', 'mental_health', 'gang', 'drugs', 'dv_restraining_order', 'hazmat', 'barricade'];
+
+// PUT /api/dispatch/calls/:id/tags - Update tags on a call
+router.put('/calls/:id/tags', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+
+    const { tags } = req.body;
+    if (!Array.isArray(tags)) { res.status(400).json({ error: 'tags must be an array' }); return; }
+
+    // Validate each tag
+    const validTags = tags.filter((t: string) => VALID_CALL_TAGS.includes(t));
+
+    db.prepare('UPDATE calls_for_service SET tags = ? WHERE id = ?').run(JSON.stringify(validTags), call.id);
+    broadcastDispatchUpdate({ action: 'call_updated', call: { ...call, tags: JSON.stringify(validTags) } });
+
+    res.json({ success: true, tags: validTags });
+  } catch (error: any) {
+    console.error('Update call tags error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Feature 5: Shift handoff notes ─────────────────────────────────
+// GET /api/dispatch/shift-handoff - Get current handoff notes
+router.get('/shift-handoff', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const row = db.prepare("SELECT config_value FROM system_config WHERE config_key = 'shift_handoff_notes' ORDER BY updated_at DESC LIMIT 1").get() as any;
+    const notes = row ? JSON.parse(row.config_value) : { text: '', updated_by: '', updated_at: '' };
+    res.json(notes);
+  } catch (error: any) {
+    console.error('Get shift handoff error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/dispatch/shift-handoff - Save handoff notes
+router.put('/shift-handoff', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { text } = req.body;
+    const now = localNow();
+    const value = JSON.stringify({
+      text: text || '',
+      updated_by: req.user?.fullName || 'Unknown',
+      updated_by_id: req.user?.userId,
+      updated_at: now,
+    });
+
+    // Upsert
+    const existing = db.prepare("SELECT id FROM system_config WHERE config_key = 'shift_handoff_notes'").get() as any;
+    if (existing) {
+      db.prepare("UPDATE system_config SET config_value = ?, updated_at = ? WHERE id = ?").run(value, now, existing.id);
+    } else {
+      db.prepare("INSERT INTO system_config (config_key, config_value, category, updated_at) VALUES ('shift_handoff_notes', ?, 'dispatch', ?)").run(value, now);
+    }
+
+    broadcastDispatchUpdate({ action: 'shift_handoff_updated', notes: JSON.parse(value) });
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Save shift handoff error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

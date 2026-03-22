@@ -870,6 +870,26 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                     </div>
                   </div>
 
+                  {/* Feature 23: Notification sound toggle */}
+                  <div className="mt-3" style={{ background: '#0d1520', border: '1px solid #162236', padding: '8px 10px' }}>
+                    <label className="flex items-center justify-between cursor-pointer">
+                      <span className="text-[11px] text-rmpg-200">Enable Notification Sounds</span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={localStorage.getItem('rmpg_notification_sounds') !== 'false'}
+                          onChange={(e) => {
+                            localStorage.setItem('rmpg_notification_sounds', String(e.target.checked));
+                          }}
+                          className="w-4 h-4 accent-green-500"
+                        />
+                        <span className="text-[9px] font-mono" style={{ color: localStorage.getItem('rmpg_notification_sounds') !== 'false' ? '#22c55e' : '#ef4444' }}>
+                          {localStorage.getItem('rmpg_notification_sounds') !== 'false' ? 'ON' : 'OFF'}
+                        </span>
+                      </div>
+                    </label>
+                  </div>
+
                   {/* Quiet Hours */}
                   <div className="mt-3">
                     <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#8a9aaa' }}>

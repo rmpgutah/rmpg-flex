@@ -393,10 +393,46 @@ export default function ServePage() {
   // Filtered Jobs
   // ══════════════════════════════════════════════════════════════════════
 
+  // ── Feature 1: Priority Queue Sort ──
+  const [sortByUrgency, setSortByUrgency] = useState(false);
+  // ── Feature 5: Cost Calculator ──
+  const [costEstimate, setCostEstimate] = useState<any>(null);
+  const [costJobId, setCostJobId] = useState<number | null>(null);
+
+  const handleLoadCostEstimate = async (jobId: number) => {
+    setCostJobId(jobId);
+    try {
+      const data = await apiFetch<any>(`/process-server/${jobId}/cost-estimate`);
+      setCostEstimate(data);
+    } catch { setCostEstimate(null); }
+  };
+
+  // ── Feature 3: Serve Completion Notification ──
+  const handleNotifyCompletion = async (jobId: number) => {
+    try {
+      await apiFetch(`/process-server/${jobId}/notify-completion`, { method: 'POST' });
+    } catch { /* ignore */ }
+  };
+
   const filteredJobs = useMemo(() => {
-    if (statusFilter === 'all') return jobs;
-    return jobs.filter(j => j.status === statusFilter);
-  }, [jobs, statusFilter]);
+    let result = statusFilter === 'all' ? jobs : jobs.filter(j => j.status === statusFilter);
+
+    // Feature 1: Sort by deadline urgency
+    if (sortByUrgency) {
+      result = [...result].sort((a, b) => {
+        // Priority: overdue > no deadline is last
+        const getUrgencyScore = (j: ServeJob) => {
+          if (!j.deadline) return 999;
+          const daysLeft = (new Date(j.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+          if (daysLeft < 0) return -100 + daysLeft; // overdue: most negative first
+          return daysLeft;
+        };
+        return getUrgencyScore(a) - getUrgencyScore(b);
+      });
+    }
+
+    return result;
+  }, [jobs, statusFilter, sortByUrgency]);
 
   // ══════════════════════════════════════════════════════════════════════
   // Map Tab
@@ -627,7 +663,30 @@ export default function ServePage() {
                   )}
                 </button>
               ))}
+              {/* Feature 1: Priority Sort Toggle */}
+              <button
+                onClick={() => setSortByUrgency(prev => !prev)}
+                className={`px-2.5 py-1 text-[11px] font-medium rounded-sm border transition-colors whitespace-nowrap ml-auto ${
+                  sortByUrgency
+                    ? 'text-amber-400 bg-amber-900/30 border-amber-600'
+                    : 'text-rmpg-400 bg-transparent border-rmpg-600 hover:border-rmpg-400'
+                }`}
+                title="Sort by deadline urgency"
+              >
+                {sortByUrgency ? '⚡ Urgent First' : '↕ Priority Sort'}
+              </button>
             </div>
+
+            {/* Feature 1: Urgency color indicators */}
+            {sortByUrgency && filteredJobs.length > 0 && (
+              <div className="px-3 py-1 border-b border-[#1e3048] flex items-center gap-3 text-[9px] text-rmpg-500">
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> Overdue</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500 inline-block" /> {'<'}24h</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500 inline-block" /> {'<'}3d</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block" /> {'<'}7d</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> 7d+</span>
+              </div>
+            )}
 
             {/* Job list */}
             <div className="flex-1 overflow-y-auto p-3 space-y-2">
@@ -765,6 +824,41 @@ export default function ServePage() {
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* Feature 5: Cost Calculator */}
+            <div className="p-3 bg-[#141e2b] border border-[#1e3048] rounded-sm">
+              <div className="text-[10px] text-rmpg-400 uppercase font-semibold mb-2">Job Cost Calculator</div>
+              <div className="flex items-center gap-2">
+                <select
+                  value={costJobId || ''}
+                  onChange={e => { const v = parseInt(e.target.value, 10); if (v) handleLoadCostEstimate(v); }}
+                  className="flex-1 px-2 py-1 text-xs bg-[#0d1520] border border-[#1e3048] rounded-sm text-white"
+                >
+                  <option value="">Select a job...</option>
+                  {jobs.map(j => (
+                    <option key={j.id} value={j.id}>{j.recipient_name} - {j.document_type || 'N/A'}</option>
+                  ))}
+                </select>
+              </div>
+              {costEstimate && (
+                <div className="mt-2 space-y-1 text-[10px]">
+                  <div className="flex justify-between"><span className="text-rmpg-400">Base Fee:</span><span className="text-white">${costEstimate.costs.base_fee.toFixed(2)}</span></div>
+                  {costEstimate.costs.extra_attempts > 0 && (
+                    <div className="flex justify-between"><span className="text-rmpg-400">Extra Attempts ({costEstimate.costs.extra_attempts}):</span><span className="text-white">${costEstimate.costs.extra_attempt_fee.toFixed(2)}</span></div>
+                  )}
+                  {costEstimate.costs.rush_surcharge > 0 && (
+                    <div className="flex justify-between"><span className="text-amber-400">Rush Surcharge:</span><span className="text-white">${costEstimate.costs.rush_surcharge.toFixed(2)}</span></div>
+                  )}
+                  {costEstimate.costs.skip_trace_count > 0 && (
+                    <div className="flex justify-between"><span className="text-rmpg-400">Skip Traces ({costEstimate.costs.skip_trace_count}):</span><span className="text-white">${costEstimate.costs.skip_trace_fee.toFixed(2)}</span></div>
+                  )}
+                  {costEstimate.costs.mileage > 0 && (
+                    <div className="flex justify-between"><span className="text-rmpg-400">Mileage ({costEstimate.costs.mileage.toFixed(1)} mi):</span><span className="text-white">${costEstimate.costs.mileage_fee.toFixed(2)}</span></div>
+                  )}
+                  <div className="flex justify-between border-t border-rmpg-700 pt-1 font-bold"><span className="text-brand-400">Total:</span><span className="text-brand-300">${costEstimate.costs.total.toFixed(2)}</span></div>
+                </div>
+              )}
             </div>
 
             {/* Feature 12: Deadline Tracking + Feature 14: Success Rates */}

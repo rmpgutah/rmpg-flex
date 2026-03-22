@@ -119,6 +119,40 @@ export default function FleetPage() {
   const [deletingMaintenance, setDeletingMaintenance] = useState<FleetMaintenance | null>(null);
   const [deletingInspection, setDeletingInspection] = useState<FleetInspection | null>(null);
 
+  // ── Feature 16/19/20: Pre-trip, vehicle swaps, cost-per-mile ──
+  const [costPerMile, setCostPerMile] = useState<any>(null);
+  const [pretripHistory, setPretripHistory] = useState<any[]>([]);
+  const [showPretripModal, setShowPretripModal] = useState(false);
+  const [pretripForm, setPretripForm] = useState({
+    lights_ok: true, brakes_ok: true, radio_ok: true, mdt_ok: true, camera_ok: true,
+    tires_ok: true, fluids_ok: true, exterior_ok: true, interior_ok: true, emergency_equipment_ok: true,
+    notes: '',
+  });
+  const [pretripSaving, setPretripSaving] = useState(false);
+
+  const loadCostPerMile = useCallback(async (vehicleId: string | number) => {
+    try {
+      const data = await apiFetch<any>(`/fleet/cost-per-mile/${vehicleId}`);
+      setCostPerMile(data);
+    } catch { setCostPerMile(null); }
+  }, []);
+
+  const selectedVehicle = detail; // alias for clarity
+
+  const submitPretrip = useCallback(async () => {
+    if (!detail) return;
+    setPretripSaving(true);
+    try {
+      const result = await apiFetch<any>('/fleet/pretrip', {
+        method: 'POST',
+        body: JSON.stringify({ vehicle_id: detail.id, ...pretripForm }),
+      });
+      addToast(result.overall_pass ? 'Pre-trip PASSED' : 'Pre-trip FAILED - check items', result.overall_pass ? 'success' : 'error');
+      setShowPretripModal(false);
+    } catch (err: any) { addToast(err?.message || 'Failed to submit pre-trip', 'error'); }
+    finally { setPretripSaving(false); }
+  }, [detail, pretripForm, addToast]);
+
   useUnsavedChanges(modal !== 'none');
 
   // ----------------------------------------------------------
@@ -671,9 +705,23 @@ export default function FleetPage() {
             <Archive className="w-3 h-3" /> {showArchived ? 'Viewing Archives' : 'Show Archives'}
           </button>
           {!showArchived && (
-            <button className="toolbar-btn toolbar-btn-primary" onClick={openNewVehicle}>
-              <Plus className="w-3 h-3" /> New Vehicle
-            </button>
+            <>
+              <button className="toolbar-btn toolbar-btn-primary" onClick={openNewVehicle}>
+                <Plus className="w-3 h-3" /> New Vehicle
+              </button>
+              {/* Feature 16: Pre-trip checklist button */}
+              {selectedVehicle && (
+                <button className="toolbar-btn" onClick={() => setShowPretripModal(true)}>
+                  <CheckCircle className="w-3 h-3" /> Pre-Trip
+                </button>
+              )}
+              {/* Feature 20: Cost per mile button */}
+              {selectedVehicle && (
+                <button className="toolbar-btn" onClick={() => loadCostPerMile(selectedVehicle.id)}>
+                  <Gauge className="w-3 h-3" /> Cost/Mi
+                </button>
+              )}
+            </>
           )}
           <ExportButton exportUrl="/api/fleet/export/csv" exportFilename="fleet.csv" />
           <PrintButton />
@@ -1055,6 +1103,83 @@ export default function FleetPage() {
         confirmVariant="danger"
         isLoading={isDeleting}
       />
+
+      {/* Feature 16: Pre-Trip Checklist Modal */}
+      {showPretripModal && selectedVehicle && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowPretripModal(false)}>
+          <div className="bg-surface-raised border border-rmpg-600 rounded w-[450px] max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-3 border-b border-rmpg-600">
+              <h3 className="text-sm font-bold text-white">Pre-Trip Inspection: {selectedVehicle.vehicle_number}</h3>
+              <button onClick={() => setShowPretripModal(false)} className="text-rmpg-400 hover:text-white text-lg">&times;</button>
+            </div>
+            <div className="p-3 flex-1 overflow-auto space-y-2">
+              {[
+                { key: 'lights_ok', label: 'Lights & Signals' },
+                { key: 'brakes_ok', label: 'Brakes' },
+                { key: 'radio_ok', label: 'Radio/Comms' },
+                { key: 'mdt_ok', label: 'MDT/Computer' },
+                { key: 'camera_ok', label: 'Dash Camera' },
+                { key: 'tires_ok', label: 'Tires' },
+                { key: 'fluids_ok', label: 'Fluids (Oil/Coolant)' },
+                { key: 'exterior_ok', label: 'Exterior Condition' },
+                { key: 'interior_ok', label: 'Interior Condition' },
+                { key: 'emergency_equipment_ok', label: 'Emergency Equipment' },
+              ].map(item => (
+                <label key={item.key} className="flex items-center gap-3 p-2 bg-surface-base rounded cursor-pointer hover:bg-surface-raised">
+                  <input
+                    type="checkbox"
+                    checked={(pretripForm as any)[item.key]}
+                    onChange={e => setPretripForm(prev => ({ ...prev, [item.key]: e.target.checked }))}
+                    className="w-4 h-4 accent-green-500"
+                  />
+                  <span className={`text-sm ${(pretripForm as any)[item.key] ? 'text-green-300' : 'text-red-300'}`}>{item.label}</span>
+                  <span className="ml-auto text-[10px] font-mono">{(pretripForm as any)[item.key] ? 'PASS' : 'FAIL'}</span>
+                </label>
+              ))}
+              <textarea
+                value={pretripForm.notes}
+                onChange={e => setPretripForm(prev => ({ ...prev, notes: e.target.value }))}
+                className="input-dark w-full h-16 text-sm mt-2"
+                placeholder="Notes (defects, damage, etc.)..."
+              />
+            </div>
+            <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
+              <button onClick={() => setShowPretripModal(false)} className="toolbar-btn">Cancel</button>
+              <button onClick={submitPretrip} disabled={pretripSaving} className="toolbar-btn toolbar-btn-primary">
+                {pretripSaving ? 'Saving...' : 'Submit Pre-Trip'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Feature 20: Cost Per Mile Display */}
+      {costPerMile && (
+        <div className="fixed bottom-16 right-4 z-40 bg-surface-raised border border-rmpg-600 rounded p-4 w-[300px] shadow-xl">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-sm font-bold text-white">Cost Analysis: {costPerMile.vehicle_number}</h4>
+            <button onClick={() => setCostPerMile(null)} className="text-rmpg-400 hover:text-white">&times;</button>
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <div>
+              <div className="text-rmpg-400">Fuel Cost</div>
+              <div className="text-white font-mono">${costPerMile.total_fuel_cost?.toFixed(2)}</div>
+            </div>
+            <div>
+              <div className="text-rmpg-400">Maint Cost</div>
+              <div className="text-white font-mono">${costPerMile.total_maintenance_cost?.toFixed(2)}</div>
+            </div>
+            <div>
+              <div className="text-rmpg-400">Total Cost</div>
+              <div className="text-green-400 font-mono font-bold">${costPerMile.total_cost?.toFixed(2)}</div>
+            </div>
+            <div>
+              <div className="text-rmpg-400">Cost/Mile</div>
+              <div className="text-amber-400 font-mono font-bold">{costPerMile.cost_per_mile != null ? `$${costPerMile.cost_per_mile.toFixed(2)}` : 'N/A'}</div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

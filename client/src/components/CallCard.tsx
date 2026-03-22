@@ -360,6 +360,34 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         </p>
       )}
 
+      {/* Feature 3: Call tags (color-coded chips) */}
+      {(() => {
+        const tags: string[] = (() => {
+          try { return JSON.parse((call as any).tags || '[]'); } catch { return []; }
+        })();
+        if (tags.length === 0) return null;
+        const TAG_COLORS: Record<string, string> = {
+          domestic: 'bg-red-900/40 text-red-300 border-red-700/50',
+          weapons: 'bg-orange-900/40 text-orange-300 border-orange-700/50',
+          officer_safety: 'bg-yellow-900/40 text-yellow-300 border-yellow-700/50',
+          juvenile: 'bg-blue-900/40 text-blue-300 border-blue-700/50',
+          mental_health: 'bg-purple-900/40 text-purple-300 border-purple-700/50',
+          gang: 'bg-red-900/40 text-red-400 border-red-600/50',
+          drugs: 'bg-green-900/40 text-green-300 border-green-700/50',
+          hazmat: 'bg-amber-900/40 text-amber-300 border-amber-700/50',
+          barricade: 'bg-pink-900/40 text-pink-300 border-pink-700/50',
+        };
+        return (
+          <div className="flex flex-wrap gap-0.5 mt-1">
+            {tags.map((tag: string) => (
+              <span key={tag} className={`text-[7px] font-bold uppercase px-1 py-0 border ${TAG_COLORS[tag] || 'bg-rmpg-800 text-rmpg-300 border-rmpg-600'}`}>
+                {tag.replace(/_/g, ' ')}
+              </span>
+            ))}
+          </div>
+        );
+      })()}
+
       {/* Warning indicators */}
       {warnings && warnings.length > 0 && (
         <div className="mt-1.5 pt-1 border-t border-red-900/40">

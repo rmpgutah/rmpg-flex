@@ -1511,6 +1511,33 @@ export default function EmailPage() {
   // Scheduled emails panel
   const [showScheduledPanel, setShowScheduledPanel] = useState(false);
 
+  // Feature 23: Auto-categorization
+  const [categorizing, setCategorizing] = useState(false);
+
+  // Feature 25: Thread view mode
+  const [viewMode, setViewMode] = useState<'messages' | 'threads'>('messages');
+  const [apiThreads, setApiThreads] = useState<any[]>([]);
+  const [loadingThreads, setLoadingThreads] = useState(false);
+
+  const handleAutoCategorize = useCallback(async () => {
+    setCategorizing(true);
+    try {
+      const res = await apiFetch<{ processed: number; categorized: number }>('/email/categorize/batch', { method: 'POST' });
+      addToast(`Categorized ${res.categorized} of ${res.processed} messages`, 'success');
+    } catch { addToast('Auto-categorization failed', 'error'); }
+    finally { setCategorizing(false); }
+  }, [addToast]);
+
+  const fetchThreads = useCallback(async () => {
+    setLoadingThreads(true);
+    try {
+      const params = new URLSearchParams({ folder: selectedFolder, page: '1', per_page: '25' });
+      const data = await apiFetch<{ threads: any[]; hasMore: boolean }>(`/email/threads?${params}`);
+      setApiThreads(data.threads || []);
+    } catch { setApiThreads([]); }
+    finally { setLoadingThreads(false); }
+  }, [selectedFolder]);
+
   // Resizable list panel
   const [listWidth, setListWidth] = useState(() => {
     const saved = localStorage.getItem('email_list_width');
@@ -2142,6 +2169,23 @@ export default function EmailPage() {
               <button onClick={handleRefresh} className="p-1 text-rmpg-500 hover:text-white rounded-sm" title="Refresh">
                 <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
               </button>
+              {/* Feature 25: Thread View Toggle */}
+              <button
+                onClick={() => { const next = viewMode === 'messages' ? 'threads' : 'messages'; setViewMode(next); if (next === 'threads') fetchThreads(); }}
+                className={`p-1 rounded-sm transition-colors ${viewMode === 'threads' ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-white'}`}
+                title={viewMode === 'threads' ? 'Switch to messages view' : 'Switch to thread view'}
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+              </button>
+              {/* Feature 23: Auto-categorize */}
+              <button
+                onClick={handleAutoCategorize}
+                disabled={categorizing}
+                className="p-1 text-rmpg-500 hover:text-white rounded-sm"
+                title="Auto-categorize emails"
+              >
+                {categorizing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Hash className="w-3.5 h-3.5" />}
+              </button>
               <button onClick={() => setComposing('new')} className="p-1 text-brand-400 hover:text-brand-300 rounded-sm md:hidden" title="Compose"><Plus className="w-3.5 h-3.5" /></button>
             </div>
             {/* Active filter indicators */}
@@ -2157,6 +2201,16 @@ export default function EmailPage() {
                 <button onClick={() => setSearchFilters(EMPTY_FILTERS)} className="text-[8px] text-rmpg-500 hover:text-white ml-1">clear</button>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Feature 25: Thread View Mode Indicator */}
+        {viewMode === 'threads' && (
+          <div className="px-2 py-1 border-b border-border-subtle bg-brand-500/5 flex items-center gap-1.5 text-[9px] text-brand-400">
+            <MessageSquare className="w-3 h-3" />
+            <span>Thread View</span>
+            <span className="text-rmpg-500">— emails grouped by conversation</span>
+            {loadingThreads && <Loader2 className="w-3 h-3 animate-spin ml-auto" />}
           </div>
         )}
 

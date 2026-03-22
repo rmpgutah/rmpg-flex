@@ -516,6 +516,147 @@ function DashboardTab({ records, requirements, officers }: {
           </div>
         </div>
       )}
+
+      {/* Feature 18: Training Materials Library */}
+      <TrainingMaterialsPanel />
+
+      {/* Feature 20: Mandatory Training Alerts */}
+      <MandatoryTrainingAlerts />
+    </div>
+  );
+}
+
+// ── Feature 18: Training Materials Library Component ──
+function TrainingMaterialsPanel() {
+  const [materials, setMaterials] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  const fetchMaterials = async () => {
+    setLoading(true);
+    try {
+      const res = await apiFetch<{ data: any[] }>('/personnel/training-materials');
+      setMaterials(res.data || []);
+    } catch { setMaterials([]); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { if (expanded) fetchMaterials(); }, [expanded]);
+
+  return (
+    <div className="panel-beveled p-3">
+      <div className="flex items-center justify-between cursor-pointer" onClick={() => setExpanded(!expanded)}>
+        <div className="flex items-center gap-2">
+          <BookOpen className="w-3.5 h-3.5 text-brand-400" />
+          <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Training Materials Library</span>
+        </div>
+        <ChevronRight className={`w-3 h-3 text-rmpg-500 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+      </div>
+      {expanded && (
+        <div className="mt-2">
+          {loading ? (
+            <div className="text-center py-4"><Loader2 className="w-4 h-4 animate-spin text-brand-400 mx-auto" /></div>
+          ) : materials.length === 0 ? (
+            <p className="text-[11px] text-rmpg-500 text-center py-4">No training materials uploaded yet.</p>
+          ) : (
+            <div className="space-y-1 max-h-[200px] overflow-y-auto">
+              {materials.map((m: any) => (
+                <div key={m.id} className="flex items-center gap-2 py-1 px-2 border border-rmpg-800/30 bg-surface-sunken">
+                  <FileText className="w-3 h-3 text-brand-400 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[11px] text-rmpg-100 truncate">{m.title}</div>
+                    {m.description && <div className="text-[9px] text-rmpg-500 truncate">{m.description}</div>}
+                  </div>
+                  <span className={`text-[8px] uppercase border px-1.5 py-0.5 ${CATEGORY_COLORS[m.category] || CATEGORY_COLORS.other}`}>
+                    {m.category}
+                  </span>
+                  {m.file_url && (
+                    <a href={m.file_url} target="_blank" rel="noopener noreferrer" className="text-brand-400 hover:text-brand-300">
+                      <Archive className="w-3 h-3" />
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Feature 20: Mandatory Training Alerts ──
+function MandatoryTrainingAlerts() {
+  const [alerts, setAlerts] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  const fetchAlerts = async () => {
+    setLoading(true);
+    try {
+      const res = await apiFetch<any>('/personnel/training-alerts');
+      setAlerts(res);
+    } catch { setAlerts(null); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { if (expanded) fetchAlerts(); }, [expanded]);
+
+  return (
+    <div className="panel-beveled p-3 border-l-2 border-l-amber-500">
+      <div className="flex items-center justify-between cursor-pointer" onClick={() => setExpanded(!expanded)}>
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+          <span className="text-[9px] text-amber-400 uppercase font-bold tracking-wider">
+            Mandatory Training Alerts {alerts ? `(${alerts.total_alerts})` : ''}
+          </span>
+        </div>
+        <ChevronRight className={`w-3 h-3 text-rmpg-500 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+      </div>
+      {expanded && (
+        <div className="mt-2">
+          {loading ? (
+            <div className="text-center py-4"><Loader2 className="w-4 h-4 animate-spin text-brand-400 mx-auto" /></div>
+          ) : !alerts || alerts.total_alerts === 0 ? (
+            <p className="text-[11px] text-green-400 text-center py-4">All officers are current on mandatory training!</p>
+          ) : (
+            <div className="space-y-2">
+              <div className="grid grid-cols-3 gap-2 text-center text-[10px]">
+                <div className="bg-red-900/20 border border-red-700/30 p-1.5 rounded-sm">
+                  <div className="font-bold text-red-400">{alerts.expired}</div>
+                  <div className="text-rmpg-400">Expired</div>
+                </div>
+                <div className="bg-amber-900/20 border border-amber-700/30 p-1.5 rounded-sm">
+                  <div className="font-bold text-amber-400">{alerts.expiring_soon}</div>
+                  <div className="text-rmpg-400">Expiring Soon</div>
+                </div>
+                <div className="bg-rmpg-800/20 border border-rmpg-700/30 p-1.5 rounded-sm">
+                  <div className="font-bold text-rmpg-300">{alerts.never_completed}</div>
+                  <div className="text-rmpg-400">Never Completed</div>
+                </div>
+              </div>
+              <div className="max-h-[200px] overflow-y-auto space-y-1">
+                {alerts.alerts.slice(0, 20).map((a: any, i: number) => (
+                  <div key={i} className="flex items-center gap-2 text-[10px] py-0.5">
+                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                      a.alert_type === 'expired' ? 'bg-red-500' : a.alert_type === 'expiring_soon' ? 'bg-amber-500' : 'bg-rmpg-500'
+                    }`} />
+                    <span className="text-rmpg-200 w-28 truncate">{a.officer_name}</span>
+                    <span className="text-rmpg-400 flex-1 truncate">{a.course_name}</span>
+                    <span className={`text-[9px] font-bold ${
+                      a.alert_type === 'expired' ? 'text-red-400' : a.alert_type === 'expiring_soon' ? 'text-amber-400' : 'text-rmpg-500'
+                    }`}>
+                      {a.alert_type === 'expired' ? `${a.days_overdue}d overdue` :
+                       a.alert_type === 'expiring_soon' ? `${Math.abs(a.days_overdue)}d left` :
+                       'Never done'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

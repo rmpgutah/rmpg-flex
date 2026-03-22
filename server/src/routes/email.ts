@@ -1322,4 +1322,328 @@ router.post('/admin/sync-now', requireRole('admin'), async (req: Request, res: R
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// FEATURE 22: Email Flag/Star — Flag important emails for follow-up
+// (Already exists via PATCH /messages/:id with isFlagged)
+// Additional: Bulk flag endpoint and flagged list
+// ════════════════════════════════════════════════════════════
+
+router.get('/flagged', async (req: Request, res: Response) => {
+  try {
+    if (isAuthorized()) {
+      try {
+        const client = await getGraphClient();
+        const result = await client
+          .api('/me/messages')
+          .filter("flag/flagStatus eq 'flagged'")
+          .select('id,conversationId,subject,from,toRecipients,bodyPreview,hasAttachments,isRead,flag,importance,receivedDateTime')
+          .orderby('receivedDateTime desc')
+          .top(50)
+          .get();
+
+        res.json({
+          messages: (result.value || []).map((msg: any) => ({
+            id: msg.id,
+            conversationId: msg.conversationId,
+            subject: msg.subject || '(No subject)',
+            fromAddress: msg.from?.emailAddress?.address || '',
+            fromName: msg.from?.emailAddress?.name || '',
+            bodyPreview: msg.bodyPreview || '',
+            hasAttachments: msg.hasAttachments || false,
+            isRead: msg.isRead || false,
+            isFlagged: true,
+            importance: msg.importance || 'normal',
+            receivedAt: msg.receivedDateTime,
+          })),
+        });
+        return;
+      } catch { /* fall through to cache */ }
+    }
+
+    // Fallback to cache
+    const db = getDb();
+    const rows = db.prepare(
+      'SELECT * FROM email_cache WHERE is_flagged = 1 ORDER BY received_at DESC LIMIT 50'
+    ).all() as any[];
+
+    res.json({
+      messages: rows.map((r: any) => ({
+        id: r.graph_id,
+        conversationId: r.conversation_id,
+        subject: r.subject,
+        fromAddress: r.from_address,
+        fromName: r.from_name,
+        bodyPreview: r.body_preview,
+        hasAttachments: !!r.has_attachments,
+        isRead: !!r.is_read,
+        isFlagged: true,
+        importance: r.importance,
+        receivedAt: r.received_at,
+      })),
+    });
+  } catch (err: any) {
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 23: Email Auto-Categorization
+// Auto-tag emails based on keywords (incident, court, admin)
+// ════════════════════════════════════════════════════════════
+
+router.post('/categorize', (req: Request, res: Response) => {
+  try {
+    const { messageId, subject, bodyPreview } = req.body;
+    if (!messageId) { res.status(400).json({ error: 'messageId is required' }); return; }
+
+    const text = `${subject || ''} ${bodyPreview || ''}`.toLowerCase();
+
+    const categories: string[] = [];
+    const KEYWORD_MAP: Record<string, string[]> = {
+      'incident': ['incident', 'report', 'crime', 'theft', 'assault', 'trespass', 'vandalism', 'burglary'],
+      'court': ['court', 'subpoena', 'hearing', 'trial', 'arraignment', 'judge', 'prosecutor', 'defendant', 'verdict'],
+      'admin': ['invoice', 'billing', 'payment', 'contract', 'renewal', 'schedule', 'payroll', 'hr', 'human resources'],
+      'dispatch': ['dispatch', 'call', 'unit', 'respond', 'emergency', 'priority', 'code'],
+      'serve': ['serve', 'process server', 'service of process', 'summons', 'writ', 'garnishment'],
+      'training': ['training', 'certification', 'course', 'exam', 'qualification', 'continuing education'],
+      'fleet': ['vehicle', 'fleet', 'maintenance', 'inspection', 'mileage', 'fuel'],
+    };
+
+    for (const [category, keywords] of Object.entries(KEYWORD_MAP)) {
+      if (keywords.some(kw => text.includes(kw))) {
+        categories.push(category);
+      }
+    }
+
+    // Store categorization in cache
+    if (categories.length > 0) {
+      const db = getDb();
+      db.prepare('UPDATE email_cache SET categories = ? WHERE graph_id = ?')
+        .run(JSON.stringify(categories), messageId);
+    }
+
+    res.json({ messageId, categories });
+  } catch (err: any) {
+    console.error('Email categorize error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/categorize/batch', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    // Auto-categorize all uncategorized cached messages
+    const uncategorized = db.prepare(
+      "SELECT graph_id, subject, body_preview FROM email_cache WHERE categories IS NULL OR categories = '[]' LIMIT 200"
+    ).all() as any[];
+
+    const KEYWORD_MAP: Record<string, string[]> = {
+      'incident': ['incident', 'report', 'crime', 'theft', 'assault', 'trespass'],
+      'court': ['court', 'subpoena', 'hearing', 'trial', 'arraignment', 'judge'],
+      'admin': ['invoice', 'billing', 'payment', 'contract', 'renewal', 'payroll'],
+      'dispatch': ['dispatch', 'call', 'unit', 'respond', 'emergency'],
+      'serve': ['serve', 'process server', 'summons', 'writ'],
+      'training': ['training', 'certification', 'course', 'exam'],
+      'fleet': ['vehicle', 'fleet', 'maintenance', 'inspection'],
+    };
+
+    let categorized = 0;
+    for (const msg of uncategorized) {
+      const text = `${msg.subject || ''} ${msg.body_preview || ''}`.toLowerCase();
+      const categories: string[] = [];
+      for (const [category, keywords] of Object.entries(KEYWORD_MAP)) {
+        if (keywords.some(kw => text.includes(kw))) categories.push(category);
+      }
+      if (categories.length > 0) {
+        db.prepare('UPDATE email_cache SET categories = ? WHERE graph_id = ?')
+          .run(JSON.stringify(categories), msg.graph_id);
+        categorized++;
+      }
+    }
+
+    res.json({ processed: uncategorized.length, categorized });
+  } catch (err: any) {
+    console.error('Email batch categorize error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 25: Email Thread View
+// Group emails by conversation thread
+// ════════════════════════════════════════════════════════════
+
+router.get('/threads', async (req: Request, res: Response) => {
+  try {
+    const { folder = 'inbox', page = '1', per_page = '25' } = req.query;
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const perPage = Math.min(50, Math.max(1, parseInt(per_page as string, 10) || 25));
+
+    if (isAuthorized()) {
+      try {
+        const client = await getGraphClient();
+        const safeFolder = String(folder).replace(/[^a-zA-Z0-9_-]/g, '');
+        const apiPath = safeFolder === 'inbox'
+          ? '/me/mailFolders/inbox/messages'
+          : `/me/mailFolders/${safeFolder}/messages`;
+
+        const result = await client
+          .api(apiPath)
+          .select('id,conversationId,subject,from,toRecipients,bodyPreview,hasAttachments,isRead,flag,importance,receivedDateTime')
+          .orderby('receivedDateTime desc')
+          .top(perPage * 3) // Fetch more to group
+          .skip((pageNum - 1) * perPage)
+          .get();
+
+        // Group by conversationId
+        const threads: Record<string, any> = {};
+        for (const msg of result.value || []) {
+          const convId = msg.conversationId || msg.id;
+          if (!threads[convId]) {
+            threads[convId] = {
+              conversationId: convId,
+              subject: msg.subject || '(No subject)',
+              messages: [],
+              latestDate: msg.receivedDateTime,
+              hasUnread: false,
+              messageCount: 0,
+            };
+          }
+          threads[convId].messages.push({
+            id: msg.id,
+            fromAddress: msg.from?.emailAddress?.address || '',
+            fromName: msg.from?.emailAddress?.name || '',
+            bodyPreview: msg.bodyPreview || '',
+            isRead: msg.isRead || false,
+            receivedAt: msg.receivedDateTime,
+          });
+          threads[convId].messageCount++;
+          if (!msg.isRead) threads[convId].hasUnread = true;
+          if (msg.receivedDateTime > threads[convId].latestDate) {
+            threads[convId].latestDate = msg.receivedDateTime;
+          }
+        }
+
+        const threadList = Object.values(threads)
+          .sort((a: any, b: any) => new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime())
+          .slice(0, perPage);
+
+        res.json({ threads: threadList, hasMore: Object.keys(threads).length > perPage });
+        return;
+      } catch { /* fall through */ }
+    }
+
+    // Fallback: group cached messages by conversation_id
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT graph_id, conversation_id, subject, from_address, from_name,
+        body_preview, is_read, is_flagged, received_at
+      FROM email_cache
+      WHERE folder_id = ?
+      ORDER BY received_at DESC
+      LIMIT ?
+    `).all(folder, perPage * 3) as any[];
+
+    const threads: Record<string, any> = {};
+    for (const r of rows) {
+      const convId = r.conversation_id || r.graph_id;
+      if (!threads[convId]) {
+        threads[convId] = {
+          conversationId: convId,
+          subject: r.subject || '(No subject)',
+          messages: [],
+          latestDate: r.received_at,
+          hasUnread: false,
+          messageCount: 0,
+        };
+      }
+      threads[convId].messages.push({
+        id: r.graph_id,
+        fromAddress: r.from_address,
+        fromName: r.from_name,
+        bodyPreview: r.body_preview,
+        isRead: !!r.is_read,
+        receivedAt: r.received_at,
+      });
+      threads[convId].messageCount++;
+      if (!r.is_read) threads[convId].hasUnread = true;
+    }
+
+    const threadList = Object.values(threads)
+      .sort((a: any, b: any) => new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime())
+      .slice(0, perPage);
+
+    res.json({ threads: threadList, hasMore: Object.keys(threads).length > perPage });
+  } catch (err: any) {
+    console.error('Email threads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/email/thread/:conversationId — Get all messages in a thread
+router.get('/thread/:conversationId', async (req: Request, res: Response) => {
+  try {
+    const convId = req.params.conversationId;
+    if (!convId || convId.length > 250) { res.status(400).json({ error: 'Invalid conversation ID' }); return; }
+
+    if (isAuthorized()) {
+      try {
+        const client = await getGraphClient();
+        const result = await client
+          .api('/me/messages')
+          .filter(`conversationId eq '${convId.replace(/'/g, "''")}'`)
+          .select('id,conversationId,subject,from,toRecipients,ccRecipients,body,bodyPreview,hasAttachments,isRead,flag,importance,receivedDateTime,sentDateTime')
+          .orderby('receivedDateTime asc')
+          .top(50)
+          .get();
+
+        res.json({
+          conversationId: convId,
+          messages: (result.value || []).map((msg: any) => ({
+            id: msg.id,
+            subject: msg.subject || '(No subject)',
+            fromAddress: msg.from?.emailAddress?.address || '',
+            fromName: msg.from?.emailAddress?.name || '',
+            toAddresses: (msg.toRecipients || []).map((r: any) => ({
+              email: r.emailAddress?.address,
+              name: r.emailAddress?.name,
+            })),
+            bodyHtml: msg.body?.content || '',
+            bodyPreview: msg.bodyPreview || '',
+            hasAttachments: msg.hasAttachments || false,
+            isRead: msg.isRead || false,
+            receivedAt: msg.receivedDateTime,
+            sentAt: msg.sentDateTime,
+          })),
+        });
+        return;
+      } catch { /* fall through */ }
+    }
+
+    // Fallback to cache
+    const db = getDb();
+    const rows = db.prepare(
+      'SELECT * FROM email_cache WHERE conversation_id = ? ORDER BY received_at ASC'
+    ).all(convId) as any[];
+
+    res.json({
+      conversationId: convId,
+      messages: rows.map((r: any) => ({
+        id: r.graph_id,
+        subject: r.subject,
+        fromAddress: r.from_address,
+        fromName: r.from_name,
+        bodyPreview: r.body_preview,
+        hasAttachments: !!r.has_attachments,
+        isRead: !!r.is_read,
+        receivedAt: r.received_at,
+      })),
+    });
+  } catch (err: any) {
+    console.error('Email thread error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

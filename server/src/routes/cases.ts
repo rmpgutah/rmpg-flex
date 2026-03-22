@@ -106,8 +106,20 @@ router.post('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
-    const { title, case_type = 'general', priority = 'normal', summary, lead_investigator_id, linked_call_id } = req.body;
+    const { title, case_type = 'general', priority: requestedPriority, summary, lead_investigator_id, linked_call_id } = req.body;
     if (!title) return res.status(400).json({ error: 'Title is required' });
+
+    // Feature 10: Auto-calculate case priority based on incident type severity
+    let priority = requestedPriority || 'normal';
+    if (!requestedPriority && case_type) {
+      const HIGH_SEVERITY_TYPES = ['homicide', 'sexual_assault', 'use_of_force', 'death', 'assault', 'kidnapping'];
+      const ELEVATED_TYPES = ['burglary', 'robbery', 'narcotics', 'arson', 'domestic', 'missing_person'];
+      const LOW_TYPES = ['admin', 'civil', 'property', 'other'];
+      if (HIGH_SEVERITY_TYPES.includes(case_type)) priority = 'critical';
+      else if (ELEVATED_TYPES.includes(case_type)) priority = 'high';
+      else if (LOW_TYPES.includes(case_type)) priority = 'low';
+      else priority = 'normal';
+    }
 
     const case_number = generateCaseNumber(db, case_type);
     const result = db.prepare(`

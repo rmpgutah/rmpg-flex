@@ -869,4 +869,227 @@ router.get('/messages/archive', (req: Request, res: Response) => {
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// ── Feature 26: Message drafts ────────────────────────────────────
+// POST /api/comms/drafts - Save a draft message
+router.post('/drafts', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { to_user_id, channel, content, subject, priority } = req.body;
+    if (!content) { res.status(400).json({ error: 'content is required' }); return; }
+
+    const now = localNow();
+    const result = db.prepare(`
+      INSERT INTO messages (from_user_id, to_user_id, channel, content, subject, priority, is_draft, draft_updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+    `).run(req.user!.userId, to_user_id || null, channel || 'direct', content, subject || null, priority || 'routine', now);
+
+    res.status(201).json({ id: Number(result.lastInsertRowid), is_draft: true });
+  } catch (error: any) {
+    console.error('Save draft error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/comms/drafts - Get user's draft messages
+router.get('/drafts', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const drafts = db.prepare(`
+      SELECT m.*, t.full_name as to_name
+      FROM messages m
+      LEFT JOIN users t ON m.to_user_id = t.id
+      WHERE m.from_user_id = ? AND m.is_draft = 1
+      ORDER BY m.draft_updated_at DESC
+    `).all(req.user!.userId);
+    res.json(drafts);
+  } catch (error: any) {
+    console.error('Get drafts error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/comms/drafts/:id - Update a draft
+router.put('/drafts/:id', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const draft = db.prepare('SELECT * FROM messages WHERE id = ? AND from_user_id = ? AND is_draft = 1').get(req.params.id, req.user!.userId) as any;
+    if (!draft) { res.status(404).json({ error: 'Draft not found' }); return; }
+
+    const { to_user_id, content, subject, priority } = req.body;
+    const now = localNow();
+
+    db.prepare(`
+      UPDATE messages SET to_user_id = COALESCE(?, to_user_id), content = COALESCE(?, content),
+        subject = COALESCE(?, subject), priority = COALESCE(?, priority), draft_updated_at = ?
+      WHERE id = ?
+    `).run(to_user_id, content, subject, priority, now, req.params.id);
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Update draft error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/comms/drafts/:id/send - Send a draft
+router.post('/drafts/:id/send', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const draft = db.prepare('SELECT * FROM messages WHERE id = ? AND from_user_id = ? AND is_draft = 1').get(req.params.id, req.user!.userId) as any;
+    if (!draft) { res.status(404).json({ error: 'Draft not found' }); return; }
+
+    const now = localNow();
+    db.prepare('UPDATE messages SET is_draft = 0, created_at = ?, delivery_status = ? WHERE id = ?').run(now, 'sent', draft.id);
+
+    const message = db.prepare(`
+      SELECT m.*, u.full_name as from_name FROM messages m LEFT JOIN users u ON m.from_user_id = u.id WHERE m.id = ?
+    `).get(draft.id) as any;
+
+    // Send via WebSocket
+    if (draft.channel === 'direct' && draft.to_user_id) {
+      sendToUser(draft.to_user_id, 'new_message', message);
+    } else {
+      broadcastNewMessage(message);
+    }
+
+    if (draft.priority === 'emergency') {
+      broadcastAlert({ type: 'emergency_message', message: draft.content, from: req.user?.fullName || 'Unknown' });
+    }
+
+    res.json(message);
+  } catch (error: any) {
+    console.error('Send draft error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Feature 27: BOLO photo attachment ─────────────────────────────
+// PUT /api/comms/bolos/:id/photos - Update BOLO photos
+router.put('/bolos/:id/photos', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const bolo = db.prepare('SELECT * FROM bolos WHERE id = ?').get(req.params.id) as any;
+    if (!bolo) { res.status(404).json({ error: 'BOLO not found' }); return; }
+
+    const { photos } = req.body; // Array of photo URLs
+    if (!Array.isArray(photos)) { res.status(400).json({ error: 'photos must be an array' }); return; }
+
+    db.prepare('UPDATE bolos SET photos = ? WHERE id = ?').run(JSON.stringify(photos), req.params.id);
+    res.json({ success: true, photos });
+  } catch (error: any) {
+    console.error('Update BOLO photos error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Feature 28: Broadcast channel groups ──────────────────────────
+// POST /api/comms/broadcast-group - Send to a group by role
+router.post('/broadcast-group', requireRole('admin', 'manager', 'dispatcher', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { roles, content, subject, priority } = req.body;
+    if (!content) { res.status(400).json({ error: 'content is required' }); return; }
+    if (!roles || !Array.isArray(roles) || roles.length === 0) {
+      res.status(400).json({ error: 'roles must be a non-empty array' }); return;
+    }
+
+    const now = localNow();
+    const placeholders = roles.map(() => '?').join(',');
+    const recipients = db.prepare(`SELECT id FROM users WHERE role IN (${placeholders}) AND status = 'active'`).all(...roles) as any[];
+
+    const insertStmt = db.prepare(`
+      INSERT INTO messages (from_user_id, to_user_id, channel, content, subject, priority, delivery_status, created_at)
+      VALUES (?, ?, 'broadcast', ?, ?, ?, 'sent', ?)
+    `);
+
+    const results: number[] = [];
+    const tx = db.transaction(() => {
+      for (const recipient of recipients) {
+        const result = insertStmt.run(req.user!.userId, recipient.id, content, subject || null, priority || 'routine', now);
+        results.push(Number(result.lastInsertRowid));
+        sendToUser(recipient.id, 'new_message', { id: result.lastInsertRowid, content, subject, priority, from_name: req.user?.fullName });
+      }
+    });
+    tx();
+
+    res.status(201).json({ success: true, recipients_count: recipients.length, message_ids: results });
+  } catch (error: any) {
+    console.error('Broadcast group error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Feature 29: Message delivery confirmation ─────────────────────
+// POST /api/comms/messages/:id/delivered - Confirm delivery
+router.post('/messages/:id/delivered', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    db.prepare(`UPDATE messages SET delivered_at = ?, delivery_status = 'delivered' WHERE id = ? AND to_user_id = ? AND delivered_at IS NULL`)
+      .run(now, req.params.id, req.user!.userId);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Delivery confirm error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/comms/messages/:id/delivery-status - Get delivery status
+router.get('/messages/:id/delivery-status', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const msg = db.prepare('SELECT delivery_status, delivered_at, read_at FROM messages WHERE id = ?').get(req.params.id) as any;
+    if (!msg) { res.status(404).json({ error: 'Message not found' }); return; }
+    res.json(msg);
+  } catch (error: any) {
+    console.error('Delivery status error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Feature 30: Emergency broadcast mode ──────────────────────────
+// POST /api/comms/emergency-broadcast - Send to ALL active units/users
+router.post('/emergency-broadcast', requireRole('admin', 'manager', 'dispatcher', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { content, subject } = req.body;
+    if (!content) { res.status(400).json({ error: 'content is required' }); return; }
+
+    const now = localNow();
+
+    // Insert a single broadcast message (no to_user_id = broadcast to all)
+    const result = db.prepare(`
+      INSERT INTO messages (from_user_id, to_user_id, channel, content, subject, priority, delivery_status, created_at)
+      VALUES (?, NULL, 'broadcast', ?, ?, 'emergency', 'sent', ?)
+    `).run(req.user!.userId, content, subject || 'EMERGENCY BROADCAST', now);
+
+    const message = db.prepare(`
+      SELECT m.*, u.full_name as from_name FROM messages m LEFT JOIN users u ON m.from_user_id = u.id WHERE m.id = ?
+    `).get(result.lastInsertRowid) as any;
+
+    // Broadcast to ALL connected clients
+    broadcastAlert({
+      type: 'emergency_broadcast',
+      message: content,
+      subject: subject || 'EMERGENCY BROADCAST',
+      from: req.user?.fullName || 'Unknown',
+      timestamp: now,
+    });
+    broadcastNewMessage(message);
+
+    // Also create high-priority notification
+    try {
+      db.prepare(`
+        INSERT INTO notifications (type, priority, title, message, created_at)
+        VALUES ('system', 'critical', ?, ?, ?)
+      `).run(`EMERGENCY: ${subject || 'Emergency Broadcast'}`, content, now);
+    } catch { /* notifications table may not exist */ }
+
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+  } catch (error: any) {
+    console.error('Emergency broadcast error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

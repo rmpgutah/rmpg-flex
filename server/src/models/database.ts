@@ -2873,6 +2873,17 @@ function migrateSchema(): void {
   addCol('court_events', 'officer_confirmations', "TEXT DEFAULT '{}'");
   addCol('court_events', 'judge_notes', 'TEXT');
   addCol('court_events', 'documents', "TEXT DEFAULT '[]'");
+  addCol('court_events', 'witnesses', "TEXT DEFAULT '[]'");
+  addCol('court_events', 'court_fees', "TEXT DEFAULT '{}'");
+  addCol('court_events', 'prosecutor_phone', 'TEXT');
+  addCol('court_events', 'prosecutor_email', 'TEXT');
+
+  // ── EMAIL_CACHE — categories for auto-tagging ──
+  addCol('email_cache', 'categories', "TEXT DEFAULT '[]'");
+
+  // ── TRAINING_RECORDS — attendance, assessments ──
+  addCol('training_records', 'attendance', "TEXT DEFAULT '[]'");
+  addCol('training_records', 'assessments', "TEXT DEFAULT '[]'");
 
   // ── MESSAGES — read receipts, acknowledgments, scheduling, attachments, priority ──
   addCol('messages', 'read_receipts', "TEXT DEFAULT '{}'");
@@ -3247,6 +3258,133 @@ function migrateSchema(): void {
   addCol('vehicles_records', 'insurance_verified_at', 'TEXT');
   addCol('vehicles_records', 'insurance_verified_by', 'INTEGER');
   addCol('vehicles_records', 'is_stolen', 'INTEGER DEFAULT 0');
+
+  // ── Feature 3: Call tag system ──
+  addCol('calls_for_service', 'tags', "TEXT DEFAULT '[]'");
+
+  // ── Feature 5: Shift handoff notes ──
+  // Stored in system_config table with config_key='shift_handoff_notes'
+
+  // ── Feature 6: Person known associates ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS person_associates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      person_id INTEGER NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+      associate_id INTEGER NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+      relationship_type TEXT NOT NULL DEFAULT 'associate' CHECK(relationship_type IN ('family','friend','gang','associate','coworker','neighbor','romantic','other')),
+      notes TEXT,
+      created_by INTEGER REFERENCES users(id),
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      UNIQUE(person_id, associate_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_person_associates_person ON person_associates(person_id);
+    CREATE INDEX IF NOT EXISTS idx_person_associates_associate ON person_associates(associate_id);
+  `);
+
+  // ── Feature 7: Vehicle tow tracking ──
+  addCol('vehicles_records', 'tow_status', 'TEXT');
+  addCol('vehicles_records', 'tow_company', 'TEXT');
+  addCol('vehicles_records', 'tow_lot_location', 'TEXT');
+  addCol('vehicles_records', 'tow_date', 'TEXT');
+  addCol('vehicles_records', 'tow_release_date', 'TEXT');
+  addCol('vehicles_records', 'tow_release_to', 'TEXT');
+  addCol('vehicles_records', 'tow_reason', 'TEXT');
+
+  // ── Feature 8: Evidence temperature tracking ──
+  addCol('evidence', 'storage_temperature', 'REAL');
+  addCol('evidence', 'is_biological', 'INTEGER DEFAULT 0');
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS evidence_temperature_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      evidence_id INTEGER NOT NULL REFERENCES evidence(id) ON DELETE CASCADE,
+      temperature REAL NOT NULL,
+      recorded_by INTEGER REFERENCES users(id),
+      recorded_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_evidence_temp_logs ON evidence_temperature_logs(evidence_id);
+  `);
+
+  // ── Feature 9: Incident weather at time ──
+  addCol('incidents', 'weather_conditions', 'TEXT');
+  addCol('incidents', 'weather_temperature', 'REAL');
+  addCol('incidents', 'weather_recorded_at', 'TEXT');
+
+  // ── Feature 10: Case priority auto-calculation (uses existing priority field on cases) ──
+  // No schema change needed - logic is in backend route
+
+  // ── Feature 12: Property special instructions ──
+  addCol('patrol_checkpoints', 'special_instructions', 'TEXT');
+
+  // ── Feature 13: Patrol break tracking ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS patrol_breaks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      officer_id INTEGER NOT NULL REFERENCES users(id),
+      shift_date TEXT NOT NULL,
+      break_start TEXT NOT NULL,
+      break_end TEXT,
+      break_type TEXT DEFAULT 'break' CHECK(break_type IN ('break','meal','rest')),
+      duration_minutes REAL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_patrol_breaks_officer ON patrol_breaks(officer_id, shift_date);
+  `);
+
+  // ── Feature 16: Vehicle pre-trip checklist ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS fleet_pretrip_checklists (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      vehicle_id INTEGER NOT NULL REFERENCES fleet_vehicles(id),
+      officer_id INTEGER NOT NULL REFERENCES users(id),
+      shift_date TEXT NOT NULL,
+      lights_ok INTEGER DEFAULT 0,
+      brakes_ok INTEGER DEFAULT 0,
+      radio_ok INTEGER DEFAULT 0,
+      mdt_ok INTEGER DEFAULT 0,
+      camera_ok INTEGER DEFAULT 0,
+      tires_ok INTEGER DEFAULT 0,
+      fluids_ok INTEGER DEFAULT 0,
+      exterior_ok INTEGER DEFAULT 0,
+      interior_ok INTEGER DEFAULT 0,
+      emergency_equipment_ok INTEGER DEFAULT 0,
+      notes TEXT,
+      overall_pass INTEGER DEFAULT 0,
+      completed_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_fleet_pretrip_vehicle ON fleet_pretrip_checklists(vehicle_id, shift_date);
+  `);
+
+  // ── Feature 19: Vehicle swap logging ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS fleet_vehicle_swaps (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      officer_id INTEGER NOT NULL REFERENCES users(id),
+      from_vehicle_id INTEGER REFERENCES fleet_vehicles(id),
+      to_vehicle_id INTEGER NOT NULL REFERENCES fleet_vehicles(id),
+      reason TEXT,
+      swapped_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_fleet_swaps_officer ON fleet_vehicle_swaps(officer_id);
+  `);
+
+  // ── Feature 26: Message drafts ──
+  addCol('messages', 'is_draft', 'INTEGER DEFAULT 0');
+  addCol('messages', 'draft_updated_at', 'TEXT');
+
+  // ── Feature 27: BOLO photo attachment ──
+  addCol('bolos', 'photos', "TEXT DEFAULT '[]'");
+
+  // ── Feature 29: Message delivery confirmation ──
+  addCol('messages', 'delivered_at', 'TEXT');
+  addCol('messages', 'delivery_status', "TEXT DEFAULT 'sent'");
+
+  // ── Feature 21: Password expiry tracking (already have password_changed_at on users) ──
+  // No schema change needed — use existing password_changed_at + config for expiry days
+
+  // ── Feature 23: Per-user notification sound toggle ──
+  // Stored in user_preferences table with pref_key='notification_sounds_enabled'
 
   console.log('Schema migration completed.');
 }

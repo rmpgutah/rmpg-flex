@@ -388,6 +388,8 @@ export interface Unit {
   longitude?: number;
   vehicle?: string;
   last_status_change: string;
+  /** Feature 2: GPS timestamp for stale indicator */
+  gps_updated_at?: string;
   created_at: string;
   updated_at: string;
 }

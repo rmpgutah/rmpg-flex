@@ -225,7 +225,7 @@ const PatrolPage: React.FC = () => {
   const { addToast } = useToast();
   const checkpointModalTitleId = useId();
   const qrModalTitleId = useId();
-  const [activeTab, setActiveTab] = usePersistedTab('rmpg_patrol_tab', 'checkpoints', ['checkpoints', 'scans', 'compliance', 'map'] as const);
+  const [activeTab, setActiveTab] = usePersistedTab('rmpg_patrol_tab', 'checkpoints', ['checkpoints', 'scans', 'compliance', 'map', 'summary'] as const);
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
   const [scans, setScans] = useState<Scan[]>([]);
   const [compliance, setCompliance] = useState<Compliance[]>([]);
@@ -247,6 +247,41 @@ const PatrolPage: React.FC = () => {
     scan_required_interval_minutes: '',
     is_active: true
   });
+
+  // ── Feature 11/13/15: Shift summary, break tracking, efficiency ──
+  const [shiftSummary, setShiftSummary] = useState<any>(null);
+  const [isOnBreak, setIsOnBreak] = useState(false);
+  const [efficiency, setEfficiency] = useState<any>(null);
+
+  const loadShiftSummary = async () => {
+    try {
+      const data = await apiFetch<any>('/patrol/shift-summary');
+      setShiftSummary(data);
+    } catch { /* ignore */ }
+  };
+
+  const loadEfficiency = async () => {
+    try {
+      const data = await apiFetch<any>('/patrol/efficiency');
+      setEfficiency(data);
+    } catch { /* ignore */ }
+  };
+
+  const startBreak = async (breakType = 'break') => {
+    try {
+      await apiFetch('/patrol/breaks/start', { method: 'POST', body: JSON.stringify({ break_type: breakType }) });
+      setIsOnBreak(true);
+      addToast('Break started', 'success');
+    } catch (err: any) { addToast(err?.message || 'Failed to start break', 'error'); }
+  };
+
+  const endBreak = async () => {
+    try {
+      const data = await apiFetch<any>('/patrol/breaks/end', { method: 'POST' });
+      setIsOnBreak(false);
+      addToast(`Break ended (${data?.duration_minutes || 0} min)`, 'success');
+    } catch (err: any) { addToast(err?.message || 'Failed to end break', 'error'); }
+  };
 
   // Scan filters
   const [scanFilters, setScanFilters] = useState({
@@ -569,6 +604,7 @@ const PatrolPage: React.FC = () => {
     { id: 'scans' as const, label: 'Scan Log', icon: Clock },
     { id: 'compliance' as const, label: 'Compliance', icon: CheckCircle },
     { id: 'map' as const, label: 'Map', icon: MapIcon },
+    { id: 'summary' as const, label: 'Shift Summary', icon: CheckCircle },
   ];
 
   return (
@@ -997,6 +1033,103 @@ const PatrolPage: React.FC = () => {
           {/* Map Tab */}
           {activeTab === 'map' && (
             <PatrolMapView checkpoints={checkpoints} scans={scans} />
+          )}
+
+          {/* Feature 11/13/15: Shift Summary Tab */}
+          {activeTab === 'summary' && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 mb-4">
+                <button onClick={loadShiftSummary} className="toolbar-btn toolbar-btn-primary">
+                  <RefreshCw className="w-3 h-3" /> Load Summary
+                </button>
+                <button onClick={loadEfficiency} className="toolbar-btn">
+                  <CheckCircle className="w-3 h-3" /> Efficiency Score
+                </button>
+                <div className="ml-auto flex items-center gap-2">
+                  {/* Feature 13: Break tracking */}
+                  {isOnBreak ? (
+                    <button onClick={endBreak} className="toolbar-btn text-red-400 border-red-700/50">
+                      <Clock className="w-3 h-3" /> End Break
+                    </button>
+                  ) : (
+                    <div className="flex gap-1">
+                      <button onClick={() => startBreak('break')} className="toolbar-btn">Break</button>
+                      <button onClick={() => startBreak('meal')} className="toolbar-btn">Meal</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Shift Summary Card */}
+              {shiftSummary && (
+                <div className="panel-beveled p-4 bg-surface-base space-y-3">
+                  <h3 className="text-sm font-bold text-white mb-3">Shift Summary - {shiftSummary.date}</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-green-400 font-mono">{shiftSummary.scans_total}</div>
+                      <div className="text-[10px] text-rmpg-400">Total Scans</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-cyan-400 font-mono">{shiftSummary.scans_on_time}</div>
+                      <div className="text-[10px] text-rmpg-400">On Time</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-amber-400 font-mono">{shiftSummary.scans_late}</div>
+                      <div className="text-[10px] text-rmpg-400">Late</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-purple-400 font-mono">{shiftSummary.incidents_count}</div>
+                      <div className="text-[10px] text-rmpg-400">Incidents</div>
+                    </div>
+                  </div>
+                  <div className="border-t border-rmpg-600 pt-3 grid grid-cols-3 gap-4">
+                    <div>
+                      <span className="text-[10px] text-rmpg-400">Est. Mileage</span>
+                      <div className="text-sm font-mono text-white">{shiftSummary.estimated_mileage} mi</div>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-rmpg-400">Break Time</span>
+                      <div className="text-sm font-mono text-white">{shiftSummary.total_break_minutes} min</div>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-rmpg-400">Properties</span>
+                      <div className="text-sm font-mono text-white">{shiftSummary.properties_visited?.length || 0}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Feature 15: Efficiency Score Card */}
+              {efficiency && (
+                <div className="panel-beveled p-4 bg-surface-base">
+                  <h3 className="text-sm font-bold text-white mb-3">Patrol Efficiency</h3>
+                  <div className="flex items-center gap-6">
+                    <div className="text-center">
+                      <div className={`text-4xl font-bold font-mono ${efficiency.efficiency_score >= 80 ? 'text-green-400' : efficiency.efficiency_score >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
+                        {efficiency.efficiency_score}%
+                      </div>
+                      <div className="text-[10px] text-rmpg-400">Efficiency Score</div>
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-rmpg-400">Completion</span>
+                        <span className="text-white font-mono">{efficiency.completion_rate}%</span>
+                      </div>
+                      <div className="h-2 bg-rmpg-700 rounded-full overflow-hidden">
+                        <div className="h-full bg-brand-500 rounded-full" style={{ width: `${Math.min(efficiency.completion_rate, 100)}%` }} />
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-rmpg-400">On-Time Rate</span>
+                        <span className="text-white font-mono">{efficiency.on_time_rate}%</span>
+                      </div>
+                      <div className="h-2 bg-rmpg-700 rounded-full overflow-hidden">
+                        <div className="h-full bg-green-500 rounded-full" style={{ width: `${Math.min(efficiency.on_time_rate, 100)}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
 
           {/* Compliance Tab */}

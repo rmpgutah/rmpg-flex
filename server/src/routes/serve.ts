@@ -1221,4 +1221,244 @@ router.post('/:id/substitute-service', validateParamIdMiddleware, requireRole(..
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// FEATURE: Priority Queue — jobs sorted by deadline urgency
+// ════════════════════════════════════════════════════════════
+
+router.get('/priority-queue', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT sq.*, u.full_name as officer_name,
+        CASE
+          WHEN sq.deadline IS NULL THEN 'none'
+          WHEN JULIANDAY(sq.deadline) - JULIANDAY('now') < 0 THEN 'overdue'
+          WHEN JULIANDAY(sq.deadline) - JULIANDAY('now') <= 1 THEN 'critical'
+          WHEN JULIANDAY(sq.deadline) - JULIANDAY('now') <= 3 THEN 'urgent'
+          WHEN JULIANDAY(sq.deadline) - JULIANDAY('now') <= 7 THEN 'soon'
+          ELSE 'normal'
+        END as urgency,
+        ROUND(JULIANDAY(sq.deadline) - JULIANDAY('now'), 1) as days_remaining
+      FROM serve_queue sq
+      LEFT JOIN users u ON sq.officer_id = u.id
+      WHERE sq.status IN ('pending', 'in_progress')
+      ORDER BY
+        CASE
+          WHEN sq.deadline IS NULL THEN 5
+          WHEN JULIANDAY(sq.deadline) - JULIANDAY('now') < 0 THEN 0
+          WHEN JULIANDAY(sq.deadline) - JULIANDAY('now') <= 1 THEN 1
+          WHEN JULIANDAY(sq.deadline) - JULIANDAY('now') <= 3 THEN 2
+          WHEN JULIANDAY(sq.deadline) - JULIANDAY('now') <= 7 THEN 3
+          ELSE 4
+        END ASC,
+        CASE sq.priority WHEN 'rush' THEN 0 WHEN 'urgent' THEN 1 WHEN 'normal' THEN 2 WHEN 'low' THEN 3 ELSE 4 END ASC,
+        sq.deadline ASC NULLS LAST
+    `).all();
+    res.json(rows);
+  } catch (err: any) {
+    console.error('[SERVE] Priority queue error:', err);
+    res.status(500).json({ error: 'Failed to fetch priority queue' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE: Route Map — today's serve jobs with coordinates
+// ════════════════════════════════════════════════════════════
+
+router.get('/route-map/:date', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const date = String(req.params.date);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD.' });
+      return;
+    }
+    const parsedOfficerId = req.query.officer_id ? Number(req.query.officer_id) : null;
+    const officerId = (parsedOfficerId != null && !isNaN(parsedOfficerId) && parsedOfficerId > 0) ? parsedOfficerId : req.user!.userId;
+
+    const jobs = db.prepare(`
+      SELECT sq.id, sq.recipient_name, sq.recipient_address, sq.recipient_city,
+        sq.recipient_state, sq.recipient_zip, sq.recipient_lat, sq.recipient_lng,
+        sq.status, sq.priority, sq.deadline, sq.document_type, sq.sort_order,
+        sq.time_window, sq.attempt_count, sq.max_attempts
+      FROM serve_queue sq
+      WHERE sq.officer_id = ?
+        AND (sq.serve_date = ? OR sq.status IN ('pending', 'in_progress'))
+        AND sq.recipient_lat IS NOT NULL AND sq.recipient_lng IS NOT NULL
+      ORDER BY sq.sort_order ASC, sq.priority DESC
+    `).all(officerId, date);
+
+    const route = db.prepare(`
+      SELECT * FROM serve_routes
+      WHERE officer_id = ? AND route_date = ?
+    `).get(officerId, date);
+
+    res.json({ jobs, route: route || null });
+  } catch (err: any) {
+    console.error('[SERVE] Route map error:', err);
+    res.status(500).json({ error: 'Failed to fetch route map data' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE: Serve Completion Notification — notify admin
+// ════════════════════════════════════════════════════════════
+
+router.post('/:id/notify-completion', validateParamIdMiddleware, requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
+    if (!job) { res.status(404).json({ error: 'Serve job not found' }); return; }
+
+    // Import createNotificationForRoles
+    const { createNotificationForRoles } = require('./notifications');
+    createNotificationForRoles(
+      ['admin', 'manager', 'supervisor'],
+      'serve_completed',
+      `Serve Complete: ${job.recipient_name}`,
+      `${job.document_type || 'Document'} for ${job.recipient_name} (${job.case_number || 'N/A'}) has been marked ${job.status}. Attempts: ${job.attempt_count || 0}.`,
+      'serve_queue',
+      job.id,
+      'normal',
+      undefined,
+      req.user!.userId
+    );
+
+    res.json({ success: true, message: 'Completion notification sent to admins' });
+  } catch (err: any) {
+    console.error('[SERVE] Notify completion error:', err);
+    res.status(500).json({ error: 'Failed to send notification' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE: Client Case Status Webhook
+// Push update via callback when serve job status changes
+// ════════════════════════════════════════════════════════════
+
+router.post('/:id/push-status', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor'), async (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
+    if (!job) { res.status(404).json({ error: 'Serve job not found' }); return; }
+
+    const attempts = db.prepare(
+      'SELECT * FROM serve_attempts WHERE serve_queue_id = ? ORDER BY attempt_number ASC'
+    ).all(req.params.id) as any[];
+
+    const callbackUrl = 'https://rmpgutahps.us/api/serve-status-callback';
+    const payload = {
+      serve_job_id: job.id,
+      case_number: job.case_number,
+      recipient_name: job.recipient_name,
+      status: job.status,
+      attempt_count: job.attempt_count,
+      document_type: job.document_type,
+      client_name: job.client_name,
+      deadline: job.deadline,
+      last_attempt: attempts.length > 0 ? {
+        date: attempts[attempts.length - 1].attempt_at,
+        result: attempts[attempts.length - 1].result,
+        method: attempts[attempts.length - 1].attempt_type,
+      } : null,
+      updated_at: job.updated_at,
+    };
+
+    try {
+      const response = await fetch(callbackUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(10000),
+      });
+
+      auditLog(req, 'WEBHOOK', 'serve_queue', String(req.params.id),
+        `Status push to portal: ${response.status} ${response.statusText}`);
+
+      res.json({
+        success: response.ok,
+        status: response.status,
+        message: response.ok ? 'Status pushed to client portal' : 'Callback returned error',
+      });
+    } catch (fetchErr: any) {
+      auditLog(req, 'WEBHOOK_FAIL', 'serve_queue', String(req.params.id),
+        `Status push failed: ${fetchErr.message}`);
+      res.json({
+        success: false,
+        message: `Webhook delivery failed: ${fetchErr.message}`,
+      });
+    }
+  } catch (err: any) {
+    console.error('[SERVE] Push status error:', err);
+    res.status(500).json({ error: 'Failed to push status' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE: Serve Job Cost Calculator
+// ════════════════════════════════════════════════════════════
+
+router.get('/:id/cost-estimate', validateParamIdMiddleware, requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
+    if (!job) { res.status(404).json({ error: 'Serve job not found' }); return; }
+
+    const attempts = db.prepare(
+      'SELECT * FROM serve_attempts WHERE serve_queue_id = ?'
+    ).all(req.params.id) as any[];
+
+    // Default fee schedule (can be overridden by query params)
+    const baseServeFee = parseFloat(req.query.base_fee as string) || 75.00;
+    const additionalAttemptFee = parseFloat(req.query.attempt_fee as string) || 35.00;
+    const rushSurcharge = parseFloat(req.query.rush_fee as string) || 50.00;
+    const mileageRate = parseFloat(req.query.mileage_rate as string) || 0.67;
+    const skipTraceFee = parseFloat(req.query.skip_trace_fee as string) || 45.00;
+
+    const skipTraceCount = (db.prepare(
+      'SELECT COUNT(*) as cnt FROM serve_skip_traces WHERE serve_queue_id = ?'
+    ).get(req.params.id) as any)?.cnt || 0;
+
+    // Calculate estimated mileage from attempt GPS data
+    let totalMileage = 0;
+    for (const att of attempts) {
+      if (att.notes) {
+        try {
+          const parsed = JSON.parse(att.notes);
+          if (parsed.mileage) totalMileage += parseFloat(parsed.mileage) || 0;
+        } catch { /* not JSON notes */ }
+      }
+    }
+
+    const attemptCount = attempts.length;
+    const extraAttempts = Math.max(0, attemptCount - 1);
+    const isRush = job.priority === 'rush' || job.priority === 'urgent';
+
+    const costs = {
+      base_fee: baseServeFee,
+      extra_attempts: extraAttempts,
+      extra_attempt_fee: extraAttempts * additionalAttemptFee,
+      rush_surcharge: isRush ? rushSurcharge : 0,
+      skip_trace_count: skipTraceCount,
+      skip_trace_fee: skipTraceCount * skipTraceFee,
+      mileage: totalMileage,
+      mileage_fee: totalMileage * mileageRate,
+      total: baseServeFee + (extraAttempts * additionalAttemptFee) + (isRush ? rushSurcharge : 0) + (skipTraceCount * skipTraceFee) + (totalMileage * mileageRate),
+    };
+
+    res.json({
+      job_id: job.id,
+      recipient_name: job.recipient_name,
+      case_number: job.case_number,
+      document_type: job.document_type,
+      status: job.status,
+      attempt_count: attemptCount,
+      costs,
+    });
+  } catch (err: any) {
+    console.error('[SERVE] Cost estimate error:', err);
+    res.status(500).json({ error: 'Failed to calculate cost' });
+  }
+});
+
 export default router;

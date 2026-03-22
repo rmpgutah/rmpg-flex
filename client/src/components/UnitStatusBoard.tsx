@@ -1,7 +1,16 @@
-import React from 'react';
-import { Radio, MapPin, PlusCircle, Plus, Edit, Trash2 } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { Radio, MapPin, PlusCircle, Plus, Edit, Trash2, AlertTriangle } from 'lucide-react';
 import type { Unit, UnitStatus } from '../types';
 import StatusBadge from './StatusBadge';
+
+// Feature 2: GPS stale indicator thresholds
+function getGpsStaleStatus(unit: Unit): 'ok' | 'stale' | 'lost' {
+  if (!unit.gps_updated_at || unit.status === 'off_duty') return 'ok';
+  const elapsed = Date.now() - new Date(unit.gps_updated_at).getTime();
+  if (elapsed > 5 * 60 * 1000) return 'lost';  // >5 min = red (lost)
+  if (elapsed > 2 * 60 * 1000) return 'stale'; // >2 min = amber (stale)
+  return 'ok';
+}
 
 interface UnitStatusBoardProps {
   units: Unit[];
@@ -120,6 +129,13 @@ export default React.memo(function UnitStatusBoard({
                 <div className="flex items-center gap-2">
                   <span className={STATUS_LED_CLASSES[unit.status]} />
                   <span className="font-bold text-white font-mono">{unit.call_sign}</span>
+                  {/* Feature 2: GPS stale indicator */}
+                  {(() => {
+                    const gpsStatus = getGpsStaleStatus(unit);
+                    if (gpsStatus === 'lost') return <span title="GPS lost (>5min)"><AlertTriangle className="w-3 h-3 text-red-400 animate-pulse" /></span>;
+                    if (gpsStatus === 'stale') return <span title="GPS stale (>2min)"><AlertTriangle className="w-3 h-3 text-amber-400" /></span>;
+                    return null;
+                  })()}
                 </div>
               </td>
               <td className="text-rmpg-200">{unit.officer_name || <span className="text-rmpg-500">Unassigned</span>}</td>

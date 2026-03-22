@@ -2498,4 +2498,239 @@ router.put('/fuel-cards/:id', requireRole('admin', 'manager'), (req: Request, re
   }
 });
 
+// ── Feature 16: Vehicle pre-trip checklist ────────────────────────
+// POST /api/fleet/pretrip - Submit pre-trip checklist
+router.post('/pretrip', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const {
+      vehicle_id, lights_ok, brakes_ok, radio_ok, mdt_ok, camera_ok,
+      tires_ok, fluids_ok, exterior_ok, interior_ok, emergency_equipment_ok, notes,
+    } = req.body;
+
+    if (!vehicle_id) { res.status(400).json({ error: 'vehicle_id is required' }); return; }
+
+    const checks = [lights_ok, brakes_ok, radio_ok, mdt_ok, camera_ok, tires_ok, fluids_ok, exterior_ok, interior_ok, emergency_equipment_ok];
+    const overall_pass = checks.every(c => c) ? 1 : 0;
+    const today = localNow().split('T')[0];
+
+    const result = db.prepare(`
+      INSERT INTO fleet_pretrip_checklists (vehicle_id, officer_id, shift_date,
+        lights_ok, brakes_ok, radio_ok, mdt_ok, camera_ok, tires_ok, fluids_ok,
+        exterior_ok, interior_ok, emergency_equipment_ok, notes, overall_pass, completed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(vehicle_id, req.user!.userId, today,
+      lights_ok ? 1 : 0, brakes_ok ? 1 : 0, radio_ok ? 1 : 0, mdt_ok ? 1 : 0,
+      camera_ok ? 1 : 0, tires_ok ? 1 : 0, fluids_ok ? 1 : 0, exterior_ok ? 1 : 0,
+      interior_ok ? 1 : 0, emergency_equipment_ok ? 1 : 0, notes || null, overall_pass, localNow());
+
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid), overall_pass: !!overall_pass });
+  } catch (error: any) {
+    console.error('Pre-trip checklist error:', error);
+    res.status(500).json({ error: 'Failed to save pre-trip checklist' });
+  }
+});
+
+// GET /api/fleet/pretrip/:vehicleId - Get pre-trip history for a vehicle
+router.get('/pretrip/:vehicleId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const checklists = db.prepare(`
+      SELECT fpc.*, u.full_name as officer_name
+      FROM fleet_pretrip_checklists fpc
+      LEFT JOIN users u ON fpc.officer_id = u.id
+      WHERE fpc.vehicle_id = ?
+      ORDER BY fpc.completed_at DESC
+      LIMIT 50
+    `).all(req.params.vehicleId);
+    res.json(checklists);
+  } catch (error: any) {
+    console.error('Get pre-trip checklists error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Feature 17: Vehicle mileage tracking from GPS breadcrumbs ─────
+// GET /api/fleet/daily-mileage/:vehicleId - Get daily mileage from GPS
+router.get('/daily-mileage/:vehicleId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { days = '30' } = req.query;
+    const dayCount = parseInt(days as string, 10) || 30;
+
+    // Get the unit assigned to this vehicle
+    const unit = db.prepare('SELECT id FROM units WHERE vehicle_id = ?').get(req.params.vehicleId) as any;
+    if (!unit) { res.json([]); return; }
+
+    const breadcrumbs = db.prepare(`
+      SELECT DATE(recorded_at) as day, latitude, longitude, recorded_at
+      FROM gps_breadcrumbs
+      WHERE unit_id = ? AND recorded_at >= datetime('now', '-${dayCount} days', 'localtime')
+      ORDER BY recorded_at ASC
+    `).all(unit.id) as any[];
+
+    // Group by day and calculate distance
+    const byDay: Record<string, { points: any[] }> = {};
+    for (const bc of breadcrumbs) {
+      if (!byDay[bc.day]) byDay[bc.day] = { points: [] };
+      byDay[bc.day].points.push(bc);
+    }
+
+    const dailyMileage = Object.entries(byDay).map(([day, data]) => {
+      let miles = 0;
+      for (let i = 1; i < data.points.length; i++) {
+        const prev = data.points[i - 1];
+        const curr = data.points[i];
+        const R = 3959;
+        const dLat = (curr.latitude - prev.latitude) * Math.PI / 180;
+        const dLon = (curr.longitude - prev.longitude) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos(prev.latitude * Math.PI / 180) * Math.cos(curr.latitude * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+        miles += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      }
+      return { date: day, miles: Math.round(miles * 10) / 10, breadcrumb_count: data.points.length };
+    });
+
+    res.json(dailyMileage);
+  } catch (error: any) {
+    console.error('Daily mileage error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Feature 18: Fleet maintenance calendar ────────────────────────
+// GET /api/fleet/maintenance-calendar - Calendar view of upcoming maintenance
+router.get('/maintenance-calendar', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { start, end } = req.query;
+    const now = localNow();
+    const startDate = start || now.split('T')[0];
+    const endDate = end || new Date(Date.now() + 90 * 86400000).toISOString().split('T')[0];
+
+    // Upcoming scheduled maintenance
+    const scheduled = db.prepare(`
+      SELECT fm.id, fm.vehicle_id, fm.maintenance_type, fm.description, fm.scheduled_date,
+        fm.cost, fm.status, fv.vehicle_number, fv.make, fv.model, fv.year
+      FROM fleet_maintenance fm
+      JOIN fleet_vehicles fv ON fm.vehicle_id = fv.id
+      WHERE fm.scheduled_date BETWEEN ? AND ?
+      ORDER BY fm.scheduled_date ASC
+    `).all(startDate, endDate) as any[];
+
+    // Vehicles with next_service_due
+    const dueSoon = db.prepare(`
+      SELECT id, vehicle_number, make, model, year, next_service_due, next_service_type, current_mileage
+      FROM fleet_vehicles
+      WHERE next_service_due IS NOT NULL AND next_service_due BETWEEN ? AND ?
+      ORDER BY next_service_due ASC
+    `).all(startDate, endDate) as any[];
+
+    res.json({
+      scheduled_maintenance: scheduled,
+      vehicles_due_for_service: dueSoon,
+    });
+  } catch (error: any) {
+    console.error('Maintenance calendar error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Feature 19: Vehicle swap logging ──────────────────────────────
+// POST /api/fleet/vehicle-swap - Log a vehicle swap
+router.post('/vehicle-swap', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { from_vehicle_id, to_vehicle_id, reason } = req.body;
+    if (!to_vehicle_id) { res.status(400).json({ error: 'to_vehicle_id is required' }); return; }
+
+    const result = db.prepare(`
+      INSERT INTO fleet_vehicle_swaps (officer_id, from_vehicle_id, to_vehicle_id, reason, swapped_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(req.user!.userId, from_vehicle_id || null, to_vehicle_id, reason || null, localNow());
+
+    // Update the unit's vehicle_id if they have one
+    try {
+      db.prepare('UPDATE units SET vehicle_id = ? WHERE officer_id = ?').run(to_vehicle_id, req.user!.userId);
+    } catch { /* unit may not exist */ }
+
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+  } catch (error: any) {
+    console.error('Vehicle swap error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/fleet/vehicle-swaps - Get swap history
+router.get('/vehicle-swaps', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { date, officer_id, limit = '50' } = req.query;
+    const limitNum = parseInt(limit as string, 10) || 50;
+
+    let whereClause = 'WHERE 1=1';
+    const params: any[] = [];
+
+    if (date) { whereClause += ' AND DATE(vs.swapped_at) = ?'; params.push(date); }
+    if (officer_id) { whereClause += ' AND vs.officer_id = ?'; params.push(officer_id); }
+
+    const swaps = db.prepare(`
+      SELECT vs.*, u.full_name as officer_name,
+        fv1.vehicle_number as from_vehicle_number,
+        fv2.vehicle_number as to_vehicle_number
+      FROM fleet_vehicle_swaps vs
+      LEFT JOIN users u ON vs.officer_id = u.id
+      LEFT JOIN fleet_vehicles fv1 ON vs.from_vehicle_id = fv1.id
+      LEFT JOIN fleet_vehicles fv2 ON vs.to_vehicle_id = fv2.id
+      ${whereClause}
+      ORDER BY vs.swapped_at DESC
+      LIMIT ?
+    `).all(...params, limitNum);
+
+    res.json(swaps);
+  } catch (error: any) {
+    console.error('Get vehicle swaps error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Feature 20: Fleet cost-per-mile ───────────────────────────────
+// GET /api/fleet/cost-per-mile/:vehicleId - Calculate cost per mile
+router.get('/cost-per-mile/:vehicleId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const vehicleId = req.params.vehicleId;
+
+    const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(vehicleId) as any;
+    if (!vehicle) { res.status(404).json({ error: 'Vehicle not found' }); return; }
+
+    // Total fuel cost
+    const fuelCost = db.prepare(
+      'SELECT COALESCE(SUM(total_cost), 0) as total FROM fleet_fuel_logs WHERE vehicle_id = ?'
+    ).get(vehicleId) as any;
+
+    // Total maintenance cost
+    const maintCost = db.prepare(
+      'SELECT COALESCE(SUM(cost), 0) as total FROM fleet_maintenance WHERE vehicle_id = ? AND cost IS NOT NULL'
+    ).get(vehicleId) as any;
+
+    const totalCost = (fuelCost.total || 0) + (maintCost.total || 0);
+    const mileage = vehicle.current_mileage || 0;
+
+    res.json({
+      vehicle_id: vehicleId,
+      vehicle_number: vehicle.vehicle_number,
+      total_fuel_cost: Math.round((fuelCost.total || 0) * 100) / 100,
+      total_maintenance_cost: Math.round((maintCost.total || 0) * 100) / 100,
+      total_cost: Math.round(totalCost * 100) / 100,
+      current_mileage: mileage,
+      cost_per_mile: mileage > 0 ? Math.round((totalCost / mileage) * 100) / 100 : null,
+      fuel_cost_per_mile: mileage > 0 ? Math.round(((fuelCost.total || 0) / mileage) * 100) / 100 : null,
+      maintenance_cost_per_mile: mileage > 0 ? Math.round(((maintCost.total || 0) / mileage) * 100) / 100 : null,
+    });
+  } catch (error: any) {
+    console.error('Cost per mile error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

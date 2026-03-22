@@ -159,6 +159,40 @@ app.get('/api/presence', (_req, res) => {
   res.json({ users, count: users.length, connections: getConnectedClientCount() });
 });
 
+// ── Feature 25: System status page (public) ────────────────────
+app.get('/api/system-status', (_req, res) => {
+  try {
+    const { getDb } = require('./models/database');
+    const db = getDb();
+    const uptime = process.uptime();
+
+    // Check DB
+    let dbStatus = 'ok';
+    try { db.prepare('SELECT 1').get(); } catch { dbStatus = 'error'; }
+
+    // WebSocket status
+    const wsConnections = getConnectedClientCount();
+
+    // Last deploy (from package.json version change or build time)
+    const startTime = new Date(Date.now() - uptime * 1000).toISOString();
+
+    res.json({
+      status: dbStatus === 'ok' ? 'operational' : 'degraded',
+      api: { status: 'ok', response_time_ms: 0 },
+      database: { status: dbStatus },
+      websocket: { status: wsConnections >= 0 ? 'ok' : 'error', connections: wsConnections },
+      server: {
+        version: SERVER_VERSION,
+        uptime_seconds: Math.round(uptime),
+        started_at: startTime,
+        environment: config.nodeEnv,
+      },
+    });
+  } catch (error: any) {
+    res.json({ status: 'error', error: error.message });
+  }
+});
+
 // ─── Live Broadcast Middleware ────────────────────────
 // Auto-broadcasts WebSocket events on all successful data mutations
 // so every connected device sees changes in real-time

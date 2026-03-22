@@ -13,7 +13,7 @@ import {
   Gavel, Search, Plus, Calendar, Clock, User, MapPin,
   X, Save, Loader2, AlertTriangle, CheckCircle, FileText, Scale,
   ChevronLeft, ChevronRight, Upload, Shield, DollarSign, BarChart3,
-  BookOpen, AlertCircle, Check, RefreshCw,
+  BookOpen, AlertCircle, Check, RefreshCw, Users,
 } from 'lucide-react';
 import type { CourtEvent, CourtEventType, CourtEventStatus, CourtOutcome } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -131,6 +131,87 @@ export default function CourtTrackerPage() {
   // Feature 10: Statistics
   const [stats, setStats] = useState<any>(null);
   const [statsLoading, setStatsLoading] = useState(false);
+
+  // Feature 7: Prosecutor contact info
+  const [prosecutorOpen, setProsecutorOpen] = useState(false);
+  const [prosecutorData, setProsecutorData] = useState({ prosecutor_name: '', prosecutor_phone: '', prosecutor_email: '' });
+  const [prosecutorSubmitting, setProsecutorSubmitting] = useState(false);
+
+  // Feature 8b: Court fee tracking
+  const [feeOpen, setFeeOpen] = useState(false);
+  const [feeData, setFeeData] = useState({ filing_fee: '', service_fee: '', other_fees: '', fee_notes: '' });
+  const [feeSubmitting, setFeeSubmitting] = useState(false);
+
+  // Feature 9: Witness list
+  const [witnessOpen, setWitnessOpen] = useState(false);
+  const [witnesses, setWitnesses] = useState<any[]>([]);
+  const [witnessSubmitting, setWitnessSubmitting] = useState(false);
+
+  // Feature 7: Save prosecutor info
+  const handleSaveProsecutor = async () => {
+    if (!selected) return;
+    setProsecutorSubmitting(true);
+    try {
+      await apiFetch(`/court/events/${selected.id}/prosecutor`, {
+        method: 'PUT', body: JSON.stringify(prosecutorData),
+      });
+      addToast('Prosecutor info saved', 'success');
+      setProsecutorOpen(false);
+      fetchEvents({ silent: true });
+    } catch (err: any) { addToast(err?.message || 'Failed to save', 'error'); }
+    finally { setProsecutorSubmitting(false); }
+  };
+
+  // Feature 8b: Save court fees
+  const handleSaveFees = async () => {
+    if (!selected) return;
+    setFeeSubmitting(true);
+    try {
+      await apiFetch(`/court/events/${selected.id}/fees`, {
+        method: 'PUT', body: JSON.stringify(feeData),
+      });
+      addToast('Court fees saved', 'success');
+      setFeeOpen(false);
+      fetchEvents({ silent: true });
+    } catch (err: any) { addToast(err?.message || 'Failed to save', 'error'); }
+    finally { setFeeSubmitting(false); }
+  };
+
+  // Feature 9: Save witnesses
+  const handleSaveWitnesses = async () => {
+    if (!selected) return;
+    setWitnessSubmitting(true);
+    try {
+      await apiFetch(`/court/events/${selected.id}/witnesses`, {
+        method: 'PUT', body: JSON.stringify({ witnesses }),
+      });
+      addToast('Witness list saved', 'success');
+      setWitnessOpen(false);
+      fetchEvents({ silent: true });
+    } catch (err: any) { addToast(err?.message || 'Failed to save', 'error'); }
+    finally { setWitnessSubmitting(false); }
+  };
+
+  // Feature 10b: Clone event for continuance
+  const handleCloneEvent = async (eventId: number) => {
+    const newDate = prompt('Enter new date for the cloned event (YYYY-MM-DD):');
+    if (!newDate || !/^\d{4}-\d{2}-\d{2}$/.test(newDate)) return;
+    try {
+      const res = await apiFetch<{ data: any }>(`/court/events/${eventId}/clone`, {
+        method: 'POST', body: JSON.stringify({ new_date: newDate }),
+      });
+      addToast(`Event cloned: ${res.data?.event_number}`, 'success');
+      fetchEvents({ silent: true }); fetchUpcoming();
+    } catch (err: any) { addToast(err?.message || 'Clone failed', 'error'); }
+  };
+
+  // Feature 6: Generate 24h reminders
+  const handleGenerateReminders = async () => {
+    try {
+      const res = await apiFetch<{ reminders_sent: number; events_tomorrow: number }>('/court/events/generate-reminders', { method: 'POST' });
+      addToast(`${res.reminders_sent} reminders sent for ${res.events_tomorrow} events tomorrow`, 'success');
+    } catch (err: any) { addToast(err?.message || 'Failed to generate reminders', 'error'); }
+  };
 
   const handleSearchCitations = async () => {
     if (!citationSearchQ || citationSearchQ.length < 2) return;
@@ -729,6 +810,95 @@ export default function CourtTrackerPage() {
                 })()}
               </div>
 
+              {/* Feature 7: Prosecutor Contact Info */}
+              <div className="panel-beveled p-3">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="text-[9px] font-mono text-rmpg-500 uppercase flex items-center gap-1">
+                    <User style={{ width: 10, height: 10 }} /> Prosecutor Contact
+                  </div>
+                  <button onClick={() => {
+                    const parsed = (() => { try { return JSON.parse(selected.prosecutor || '{}'); } catch { return { name: selected.prosecutor || '' }; } })();
+                    setProsecutorData({ prosecutor_name: parsed.name || '', prosecutor_phone: parsed.phone || '', prosecutor_email: parsed.email || '' });
+                    setProsecutorOpen(true);
+                  }} className="toolbar-btn text-[9px]">Edit</button>
+                </div>
+                {(() => {
+                  try {
+                    const p = JSON.parse(selected.prosecutor || '{}');
+                    return (
+                      <div className="grid grid-cols-3 gap-2">
+                        <div><span className="text-[9px] text-rmpg-500">Name:</span> <span className="text-xs text-white">{p.name || '--'}</span></div>
+                        <div><span className="text-[9px] text-rmpg-500">Phone:</span> <span className="text-xs text-white">{p.phone || '--'}</span></div>
+                        <div><span className="text-[9px] text-rmpg-500">Email:</span> <span className="text-xs text-white">{p.email || '--'}</span></div>
+                      </div>
+                    );
+                  } catch { return <div className="text-xs text-rmpg-300">{selected.prosecutor || '--'}</div>; }
+                })()}
+              </div>
+
+              {/* Feature 8b: Court Fee Tracking */}
+              <div className="panel-beveled p-3">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="text-[9px] font-mono text-rmpg-500 uppercase flex items-center gap-1">
+                    <DollarSign style={{ width: 10, height: 10 }} /> Court Fees
+                  </div>
+                  <button onClick={() => {
+                    const fees = JSON.parse((selected as any).court_fees || '{}');
+                    setFeeData({ filing_fee: fees.filing_fee || '', service_fee: fees.service_fee || '', other_fees: fees.other_fees || '', fee_notes: fees.fee_notes || '' });
+                    setFeeOpen(true);
+                  }} className="toolbar-btn text-[9px]">Edit</button>
+                </div>
+                {(() => {
+                  const fees = JSON.parse((selected as any).court_fees || '{}');
+                  const total = (fees.filing_fee || 0) + (fees.service_fee || 0) + (fees.other_fees || 0);
+                  return (
+                    <div className="grid grid-cols-4 gap-2">
+                      <div><span className="text-[9px] text-rmpg-500">Filing:</span> <span className="text-xs text-white">{fees.filing_fee ? `$${fees.filing_fee}` : '--'}</span></div>
+                      <div><span className="text-[9px] text-rmpg-500">Service:</span> <span className="text-xs text-white">{fees.service_fee ? `$${fees.service_fee}` : '--'}</span></div>
+                      <div><span className="text-[9px] text-rmpg-500">Other:</span> <span className="text-xs text-white">{fees.other_fees ? `$${fees.other_fees}` : '--'}</span></div>
+                      <div><span className="text-[9px] text-rmpg-500 font-bold">Total:</span> <span className="text-xs text-brand-300 font-bold">{total > 0 ? `$${total.toFixed(2)}` : '--'}</span></div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Feature 9: Witness List */}
+              <div className="panel-beveled p-3">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="text-[9px] font-mono text-rmpg-500 uppercase flex items-center gap-1">
+                    <Users style={{ width: 10, height: 10 }} /> Witnesses
+                  </div>
+                  <button onClick={() => {
+                    setWitnesses(JSON.parse((selected as any).witnesses || '[]'));
+                    setWitnessOpen(true);
+                  }} className="toolbar-btn text-[9px]">Manage</button>
+                </div>
+                {(() => {
+                  const w = JSON.parse((selected as any).witnesses || '[]');
+                  if (w.length === 0) return <div className="text-[10px] text-rmpg-500">No witnesses recorded.</div>;
+                  return w.map((wit: any, i: number) => (
+                    <div key={i} className="flex items-center gap-2 py-1 border-b border-rmpg-800 last:border-0">
+                      <span className={`w-2 h-2 rounded-full ${wit.contact_status === 'confirmed' ? 'bg-green-500' : wit.contact_status === 'contacted' ? 'bg-amber-500' : 'bg-rmpg-600'}`} />
+                      <span className="text-[10px] text-white flex-1">{wit.name}</span>
+                      <span className="text-[9px] text-rmpg-500">{wit.role}</span>
+                      <span className="text-[9px] text-rmpg-600">{wit.contact_status}</span>
+                    </div>
+                  ));
+                })()}
+              </div>
+
+              {/* Feature 10b: Clone Event + Feature 6: Reminders */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {selected.status !== 'completed' && (
+                  <button onClick={() => handleCloneEvent(parseInt(String(selected.id)))} className="toolbar-btn text-[10px] px-2 py-1">
+                    <RefreshCw style={{ width: 10, height: 10 }} /> Clone for Continuance
+                  </button>
+                )}
+                <button onClick={handleGenerateReminders} className="toolbar-btn text-[10px] px-2 py-1">
+                  <Clock style={{ width: 10, height: 10 }} /> Generate 24h Reminders
+                </button>
+              </div>
+
               {/* Feature 3: Continuance log */}
               {(() => {
                 const log = JSON.parse((selected as any).continuance_log || '[]');
@@ -959,6 +1129,101 @@ export default function CourtTrackerPage() {
                 <button onClick={handleJudgeNotesSubmit} disabled={judgeNotesSubmitting} className="toolbar-btn toolbar-btn-primary">
                   {judgeNotesSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />}
                   Save Notes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Feature 7: Prosecutor Contact Modal */}
+      {prosecutorOpen && selected && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
+          <div className="panel-surface w-full max-w-md mx-4">
+            <PanelTitleBar title="Prosecutor Contact Info" icon={User}>
+              <button onClick={() => setProsecutorOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
+            </PanelTitleBar>
+            <div className="p-4 space-y-3">
+              <div><label className="field-label">Name</label>
+                <input value={prosecutorData.prosecutor_name} onChange={e => setProsecutorData(p => ({ ...p, prosecutor_name: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
+              <div><label className="field-label">Phone</label>
+                <input value={prosecutorData.prosecutor_phone} onChange={e => setProsecutorData(p => ({ ...p, prosecutor_phone: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" placeholder="(555) 123-4567" /></div>
+              <div><label className="field-label">Email</label>
+                <input type="email" value={prosecutorData.prosecutor_email} onChange={e => setProsecutorData(p => ({ ...p, prosecutor_email: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
+              <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
+                <button onClick={() => setProsecutorOpen(false)} className="toolbar-btn">Cancel</button>
+                <button onClick={handleSaveProsecutor} disabled={prosecutorSubmitting} className="toolbar-btn toolbar-btn-primary">
+                  {prosecutorSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />} Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Feature 8b: Court Fees Modal */}
+      {feeOpen && selected && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
+          <div className="panel-surface w-full max-w-md mx-4">
+            <PanelTitleBar title="Court Fee Tracking" icon={DollarSign}>
+              <button onClick={() => setFeeOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
+            </PanelTitleBar>
+            <div className="p-4 space-y-3">
+              <div><label className="field-label">Filing Fee ($)</label>
+                <input type="number" step="0.01" value={feeData.filing_fee} onChange={e => setFeeData(p => ({ ...p, filing_fee: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
+              <div><label className="field-label">Service Fee ($)</label>
+                <input type="number" step="0.01" value={feeData.service_fee} onChange={e => setFeeData(p => ({ ...p, service_fee: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
+              <div><label className="field-label">Other Fees ($)</label>
+                <input type="number" step="0.01" value={feeData.other_fees} onChange={e => setFeeData(p => ({ ...p, other_fees: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
+              <div><label className="field-label">Notes</label>
+                <textarea value={feeData.fee_notes} onChange={e => setFeeData(p => ({ ...p, fee_notes: e.target.value }))} rows={2} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" /></div>
+              <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
+                <button onClick={() => setFeeOpen(false)} className="toolbar-btn">Cancel</button>
+                <button onClick={handleSaveFees} disabled={feeSubmitting} className="toolbar-btn toolbar-btn-primary">
+                  {feeSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />} Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Feature 9: Witness List Modal */}
+      {witnessOpen && selected && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
+          <div className="panel-surface w-full max-w-lg mx-4">
+            <PanelTitleBar title="Witness Management" icon={Users}>
+              <button onClick={() => setWitnessOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
+            </PanelTitleBar>
+            <div className="p-4 space-y-3">
+              <div className="max-h-[300px] overflow-y-auto space-y-2">
+                {witnesses.map((w, i) => (
+                  <div key={i} className="panel-beveled p-2 space-y-1">
+                    <div className="flex gap-2">
+                      <input value={w.name} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, name: e.target.value } : ww))} placeholder="Name" className="flex-1 px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                      <select value={w.contact_status} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, contact_status: e.target.value } : ww))} className="px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
+                        <option value="pending">Pending</option>
+                        <option value="contacted">Contacted</option>
+                        <option value="confirmed">Confirmed</option>
+                        <option value="unavailable">Unavailable</option>
+                      </select>
+                      <button onClick={() => setWitnesses(ws => ws.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-300"><X style={{ width: 12, height: 12 }} /></button>
+                    </div>
+                    <div className="flex gap-2">
+                      <input value={w.phone || ''} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, phone: e.target.value } : ww))} placeholder="Phone" className="flex-1 px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                      <input value={w.email || ''} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, email: e.target.value } : ww))} placeholder="Email" className="flex-1 px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                      <input value={w.role || ''} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, role: e.target.value } : ww))} placeholder="Role" className="w-24 px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button onClick={() => setWitnesses(ws => [...ws, { name: '', phone: '', email: '', role: 'witness', contact_status: 'pending', notes: '' }])} className="toolbar-btn text-[10px] w-full justify-center">
+                <Plus style={{ width: 10, height: 10 }} /> Add Witness
+              </button>
+              <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
+                <button onClick={() => setWitnessOpen(false)} className="toolbar-btn">Cancel</button>
+                <button onClick={handleSaveWitnesses} disabled={witnessSubmitting} className="toolbar-btn toolbar-btn-primary">
+                  {witnessSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />} Save Witnesses
                 </button>
               </div>
             </div>

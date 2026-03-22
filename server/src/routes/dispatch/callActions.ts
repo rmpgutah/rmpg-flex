@@ -369,20 +369,22 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
       return;
     }
 
+    // ── Feature 4: Disposition required enforcement (ALL calls) ─────
+    // All calls must have a disposition when closing (cleared/closed).
+    if (['cleared', 'closed'].includes(status) && !disposition && !call.disposition) {
+      res.status(400).json({
+        error: 'A disposition is required when clearing or closing a call',
+        code: 'DISPOSITION_REQUIRED',
+      });
+      return;
+    }
+
     // ── PSO 72-Hour Rule Enforcement (server-side) ──────────
     // PSO Client Request calls have special rules:
-    // 1. Cannot be cleared/closed without a disposition
+    // 1. Cannot be cleared/closed without a disposition (already enforced above)
     // 2. Cannot be archived if 72hr re-dispatch deadline hasn't been addressed
     // 3. Auto-sets pso_72hr_deadline when cleared so countdown is precise
     if (call.incident_type === 'pso_client_request') {
-      // Require disposition when clearing/closing PSO calls
-      if (['cleared', 'closed'].includes(status) && !disposition && !call.disposition) {
-        res.status(400).json({
-          error: 'PSO calls require a disposition when clearing or closing',
-          code: 'PSO_DISPOSITION_REQUIRED',
-        });
-        return;
-      }
 
       // Prevent archiving PSO calls that are overdue (72hr passed without re-dispatch)
       if (status === 'archived') {

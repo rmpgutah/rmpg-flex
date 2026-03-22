@@ -177,6 +177,31 @@ export default function CrmPage() {
     client_id: '', activity_type: 'note', subject: '', details: '',
   });
 
+  // Feature 12: Pipeline summary
+  const [pipelineSummary, setPipelineSummary] = useState<any>(null);
+  // Feature 13: Follow-ups
+  const [followUps, setFollowUps] = useState<any>(null);
+  // Feature 14: Source analytics
+  const [sourceAnalytics, setSourceAnalytics] = useState<any>(null);
+  // Feature 15: Revenue forecast
+  const [revenueForecast, setRevenueForecast] = useState<any>(null);
+
+  const fetchPipelineSummary = useCallback(async () => {
+    try { const res = await apiFetch<any>('/crm/pipeline-summary'); setPipelineSummary(res); } catch { /* ignore */ }
+  }, []);
+
+  const fetchFollowUps = useCallback(async () => {
+    try { const res = await apiFetch<any>('/crm/leads/follow-ups'); setFollowUps(res); } catch { /* ignore */ }
+  }, []);
+
+  const fetchSourceAnalytics = useCallback(async () => {
+    try { const res = await apiFetch<any>('/crm/leads/source-analytics'); setSourceAnalytics(res); } catch { /* ignore */ }
+  }, []);
+
+  const fetchRevenueForecast = useCallback(async () => {
+    try { const res = await apiFetch<any>('/crm/revenue-forecast'); setRevenueForecast(res); } catch { /* ignore */ }
+  }, []);
+
   // Persist active section
   useEffect(() => { try { localStorage.setItem('crm_active_section', activeSection); } catch { /* ignore */ } }, [activeSection]);
 
@@ -262,8 +287,14 @@ export default function CrmPage() {
     if (activeSection === 'contacts') fetchContacts();
     if (activeSection === 'invoices') fetchInvoices();
     if (activeSection === 'tasks') fetchTasks();
-    if (activeSection === 'dashboard') fetchDashboard();
-  }, [activeSection, fetchProperties, fetchContacts, fetchInvoices, fetchTasks, fetchDashboard]);
+    if (activeSection === 'dashboard') {
+      fetchDashboard();
+      fetchPipelineSummary();
+      fetchFollowUps();
+      fetchSourceAnalytics();
+      fetchRevenueForecast();
+    }
+  }, [activeSection, fetchProperties, fetchContacts, fetchInvoices, fetchTasks, fetchDashboard, fetchPipelineSummary, fetchFollowUps, fetchSourceAnalytics, fetchRevenueForecast]);
 
   // Live sync
   useLiveSync('admin', useCallback(() => { fetchClients(); fetchDashboard(); }, [fetchClients, fetchDashboard]));
@@ -602,6 +633,122 @@ export default function CrmPage() {
               <StatCard icon={DollarSign} label="Outstanding" value={formatCurrency(stats.outstanding_revenue)} sub={`${stats.overdue_invoices} overdue`} color="text-amber-400" />
               <StatCard icon={TrendingUp} label="Invoiced MTD" value={formatCurrency(stats.total_invoiced_mtd)} sub={`${formatCurrency(stats.total_paid_mtd)} paid`} color="text-green-400" />
               <StatCard icon={CheckSquare} label="Pending Tasks" value={stats.pending_tasks} sub={`${stats.expiring_contracts} contracts expiring`} color="text-blue-400" />
+            </div>
+
+            {/* Feature 15: Revenue Forecast */}
+            {revenueForecast && (
+              <div className="panel-inset p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <TrendingUp className="w-3.5 h-3.5 text-green-400" />
+                  <span className="text-xs font-bold text-white">Revenue Forecast</span>
+                </div>
+                <div className="grid grid-cols-4 gap-3 text-center">
+                  <div><div className="text-lg font-bold text-green-400 font-mono">{formatCurrency(revenueForecast.won_revenue)}</div><div className="text-[9px] text-rmpg-400 uppercase">Won</div></div>
+                  <div><div className="text-lg font-bold text-brand-300 font-mono">{formatCurrency(revenueForecast.total_expected)}</div><div className="text-[9px] text-rmpg-400 uppercase">Expected</div></div>
+                  <div><div className="text-lg font-bold text-white font-mono">{formatCurrency(revenueForecast.total_pipeline)}</div><div className="text-[9px] text-rmpg-400 uppercase">Total Pipeline</div></div>
+                  <div><div className="text-lg font-bold text-amber-400 font-mono">{revenueForecast.active_deals}</div><div className="text-[9px] text-rmpg-400 uppercase">Active Deals</div></div>
+                </div>
+              </div>
+            )}
+
+            {/* Feature 12: Pipeline Summary */}
+            {pipelineSummary && (
+              <div className="panel-inset p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <Target className="w-3.5 h-3.5 text-brand-400" />
+                  <span className="text-xs font-bold text-white">Sales Pipeline</span>
+                </div>
+                <div className="flex gap-1">
+                  {(pipelineSummary.stages || []).map((s: any) => {
+                    const stageColors: Record<string, string> = { new: 'bg-rmpg-600', contacted: 'bg-blue-700', qualified: 'bg-cyan-700', proposal: 'bg-amber-700', negotiation: 'bg-orange-700', won: 'bg-green-700', lost: 'bg-red-700' };
+                    return (
+                      <div key={s.pipeline_stage} className={`flex-1 ${stageColors[s.pipeline_stage] || 'bg-rmpg-700'} px-2 py-2 text-center rounded-sm`}>
+                        <div className="text-sm font-bold text-white">{s.count}</div>
+                        <div className="text-[8px] text-white/70 uppercase">{s.pipeline_stage}</div>
+                        {s.total_value > 0 && <div className="text-[8px] text-white/50">{formatCurrency(s.total_value)}</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+                {pipelineSummary.conversions?.length > 0 && (
+                  <div className="mt-2 flex items-center gap-1 text-[9px] text-rmpg-400">
+                    {pipelineSummary.conversions.map((c: any, i: number) => (
+                      <span key={i}>{c.from} → {c.to}: <span className="text-white font-bold">{c.rate}%</span>{i < pipelineSummary.conversions.length - 1 ? ' | ' : ''}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Feature 13: Follow-up Reminders + Feature 14: Source Analytics */}
+            <div className="grid grid-cols-2 gap-4">
+              {/* Follow-ups */}
+              {followUps && (
+                <div className="panel-inset p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Calendar className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="text-xs font-bold text-white">Follow-up Reminders</span>
+                  </div>
+                  {(followUps.overdue?.length || 0) > 0 && (
+                    <div className="mb-2">
+                      <div className="text-[9px] text-red-400 font-bold uppercase mb-1">Overdue ({followUps.overdue.length})</div>
+                      {followUps.overdue.slice(0, 5).map((l: any) => (
+                        <div key={l.id} className="text-[10px] flex gap-2 py-0.5 text-red-300">
+                          <span className="flex-1 truncate">{l.business_name}</span>
+                          <span className="text-rmpg-500">{l.next_follow_up}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {(followUps.today?.length || 0) > 0 && (
+                    <div className="mb-2">
+                      <div className="text-[9px] text-amber-400 font-bold uppercase mb-1">Today ({followUps.today.length})</div>
+                      {followUps.today.slice(0, 5).map((l: any) => (
+                        <div key={l.id} className="text-[10px] flex gap-2 py-0.5 text-amber-300">
+                          <span className="flex-1 truncate">{l.business_name}</span>
+                          <span className="text-rmpg-500">Score: {l.lead_score}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {(followUps.upcoming?.length || 0) > 0 && (
+                    <div>
+                      <div className="text-[9px] text-blue-400 font-bold uppercase mb-1">Upcoming ({followUps.upcoming.length})</div>
+                      {followUps.upcoming.slice(0, 3).map((l: any) => (
+                        <div key={l.id} className="text-[10px] flex gap-2 py-0.5 text-blue-300">
+                          <span className="flex-1 truncate">{l.business_name}</span>
+                          <span className="text-rmpg-500">{l.next_follow_up}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {!followUps.overdue?.length && !followUps.today?.length && !followUps.upcoming?.length && (
+                    <p className="text-xs text-rmpg-400">No follow-ups scheduled</p>
+                  )}
+                </div>
+              )}
+
+              {/* Feature 14: Lead Source Analytics */}
+              {sourceAnalytics && (
+                <div className="panel-inset p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
+                    <span className="text-xs font-bold text-white">Lead Sources ({sourceAnalytics.period_days}d)</span>
+                  </div>
+                  <div className="space-y-1">
+                    {(sourceAnalytics.data || []).slice(0, 8).map((s: any) => (
+                      <div key={s.source} className="flex items-center gap-2 text-[10px]">
+                        <span className="w-24 text-rmpg-300 truncate capitalize">{s.source.replace(/_/g, ' ')}</span>
+                        <div className="flex-1 bg-rmpg-700 h-2 rounded-sm overflow-hidden">
+                          <div className="h-full bg-brand-500" style={{ width: `${Math.min(100, (s.total_leads / (sourceAnalytics.data[0]?.total_leads || 1)) * 100)}%` }} />
+                        </div>
+                        <span className="text-white w-6 text-right">{s.total_leads}</span>
+                        <span className="text-green-400 w-10 text-right">{s.conversion_rate}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
