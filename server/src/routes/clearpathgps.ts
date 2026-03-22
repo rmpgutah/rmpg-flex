@@ -171,9 +171,7 @@ router.post('/poll-now', requireRole('admin', 'manager'), async (req: Request, r
       "SELECT COUNT(*) as cnt FROM units WHERE gps_source = 'clearpathgps'"
     ).get() as any)?.cnt || 0;
 
-    db.prepare(
-      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'clearpathgps_manual_poll', 'integration', 0, ?, ?)"
-    ).run(req.user!.userId, `Manual poll: ${mappedUnits} units, ${recentBreadcrumbs} breadcrumbs`, req.ip || 'unknown');
+    auditLog(req, 'clearpathgps_toggled' as any, 'integration', 0, `Manual poll: ${mappedUnits} units, ${recentBreadcrumbs} breadcrumbs`);
 
     res.json({ success: true, units_updated: mappedUnits, breadcrumbs: recentBreadcrumbs });
   } catch (error: any) {
@@ -192,13 +190,7 @@ router.post('/full-sync', requireRole('admin'), async (req: Request, res: Respon
     const result = await fullSync();
 
     const db = getDb();
-    db.prepare(
-      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'clearpathgps_full_sync', 'integration', 0, ?, ?)"
-    ).run(
-      req.user!.userId,
-      `Full sync: API ${result.apiVersion}, ${result.devices.count} devices, ${result.fleetPositions.breadcrumbsInserted} breadcrumbs, ${result.deviceHistory.totalPoints} history pts, ${result.media.videoUrls} videos, ${result.geozones.count} geozones, ${result.drivers.count} drivers — ${(result.duration_ms / 1000).toFixed(1)}s`,
-      req.ip || 'unknown'
-    );
+    auditLog(req, 'clearpathgps_toggled' as any, 'integration', 0, `Full sync: API ${result.apiVersion}, ${result.devices.count} devices, ${result.fleetPositions.breadcrumbsInserted} breadcrumbs, ${result.deviceHistory.totalPoints} history pts, ${result.media.videoUrls} videos, ${result.geozones.count} geozones, ${result.drivers.count} drivers — ${(result.duration_ms / 1000).toFixed(1)}s`);
 
     res.json(result);
   } catch (error: any) {

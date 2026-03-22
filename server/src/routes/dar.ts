@@ -258,9 +258,6 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       activities_narrative || null, notable_events || null, equipment_issues || null,
       safety_concerns || null, recommendations || null, now, now);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'create', 'dar', ?, ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ dar_number }), req.ip || 'unknown', now);
-
     auditLog(req, 'CREATE' as any, 'dar' as any, Number(result.lastInsertRowid), `Created DAR ${dar_number} for ${shift_date}`);
     res.status(201).json({ data: { id: result.lastInsertRowid, dar_number } });
   } catch (error: any) {
@@ -309,9 +306,6 @@ router.put('/:id/submit', validateParamId, requireRole('admin', 'manager', 'supe
     db.prepare('UPDATE daily_activity_reports SET status = ?, submitted_at = ?, updated_at = ? WHERE id = ?')
       .run('submitted', now, now, req.params.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'submit', 'dar', ?, '{}', ?, ?)`).run(req.user!.userId, req.params.id, req.ip || 'unknown', now);
-
     auditLog(req, 'UPDATE' as any, 'dar' as any, req.params.id, `Submitted DAR ${req.params.id} for review`);
     res.json({ data: { id: parseInt(req.params.id as string, 10), status: 'submitted' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
@@ -329,9 +323,6 @@ router.put('/:id/approve', validateParamId, requireRole('admin', 'manager', 'sup
     db.prepare(`UPDATE daily_activity_reports SET status = 'approved', reviewed_by = ?,
       reviewed_by_name = ?, reviewed_at = ?, review_notes = ?, updated_at = ? WHERE id = ?`)
       .run(req.user!.userId, user?.full_name || '', now, req.body.review_notes ?? null, now, req.params.id);
-
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'approve', 'dar', ?, '{}', ?, ?)`).run(req.user!.userId, req.params.id, req.ip || 'unknown', now);
 
     auditLog(req, 'UPDATE' as any, 'dar' as any, req.params.id, `Approved DAR ${req.params.id}`);
     res.json({ data: { id: parseInt(req.params.id as string, 10), status: 'approved' } });

@@ -809,15 +809,8 @@ router.post('/:id/attempt', validateParamId, requireRole(...WRITE_ROLES), (req: 
             );
 
             // Activity logs
-            db.prepare(`
-              INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-              VALUES (?, 'call_created', 'call', ?, ?, ?)
-            `).run(req.user!.userId, newId, `Auto re-dispatch ${newCallNum} from ${originalCall.call_number} (attempt #${attemptNumber} result: ${currentResult})`, req.ip || 'unknown');
-
-            db.prepare(`
-              INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-              VALUES (?, 'call_closed', 'call', ?, ?, ?)
-            `).run(req.user!.userId, originalCall.id, `Auto-closed: re-dispatched as ${newCallNum}`, req.ip || 'unknown');
+            auditLog(req, 'call_created', 'call', newId, `Auto re-dispatch ${newCallNum} from ${originalCall.call_number} (attempt #${attemptNumber} result: ${currentResult})`);
+            auditLog(req, 'call_closed', 'call', originalCall.id, `Auto-closed: re-dispatched as ${newCallNum}`);
 
             // Update serve_queue to point to the new call
             db.prepare('UPDATE serve_queue SET call_id = ?, updated_at = ? WHERE id = ?').run(newId, now, req.params.id);

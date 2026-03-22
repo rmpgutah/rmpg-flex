@@ -622,8 +622,7 @@ router.post('/chunked/:uploadId/finalize', (req: Request, res: Response) => {
       db.prepare(`INSERT INTO attachments (file_id,original_name,stored_name,file_path,mime_type,file_size,entity_type,entity_id,uploaded_by) VALUES (?,?,?,?,?,?,?,?,?)`)
         .run(fileId, info.originalName, finalName, path.relative(UPLOAD_DIR, finalPath), info.mimeType, actualSize, info.entityType || null, info.entityId || null, info.userId);
       const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(fileId);
-      db.prepare(`INSERT INTO activity_log (user_id,action,entity_type,entity_id,details,ip_address) VALUES (?,'file_uploaded',?,?,?,?)`)
-        .run(info.userId, info.entityType || 'attachment', info.entityId || null, `Uploaded (chunked): ${info.originalName}`, req.ip || 'unknown');
+      auditLog(req, 'file_uploaded', (info.entityType || 'attachment') as any, info.entityId || 0, `Uploaded (chunked): ${info.originalName}`);
       try { fs.rmSync(chunkDir, { recursive: true, force: true }); } catch { /* */ }
       activeChunkedUploads.delete(req.params.uploadId);
       res.status(201).json(attachment);
@@ -764,16 +763,7 @@ router.post('/', uploadRateLimit, upload.array('files', 10), (req: Request, res:
     }
 
     // Log the upload
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'file_uploaded', ?, ?, ?, ?)
-    `).run(
-      req.user!.userId,
-      entity_type || 'attachment',
-      entity_id ? parseInt(entity_id, 10) : null,
-      `Uploaded ${files.length} file(s): ${files.map(f => f.originalname).join(', ')}`,
-      req.ip || 'unknown',
-    );
+    auditLog(req, 'file_uploaded', (entity_type || 'attachment') as any, entity_id ? parseInt(entity_id, 10) : 0, `Uploaded ${files.length} file(s): ${files.map(f => f.originalname).join(', ')}`);
 
     res.status(201).json(results);
   } catch (error: any) {
@@ -815,15 +805,7 @@ router.put('/:fileId/link', requireRole('admin', 'manager', 'supervisor'), (req:
     const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(req.params.fileId);
 
     // Audit log: file reassignment
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'file_linked', 'attachment', ?, ?, ?)
-    `).run(
-      req.user!.userId,
-      req.params.fileId,
-      `Linked file to ${entity_type} #${entity_id}`,
-      req.ip || 'unknown',
-    );
+    auditLog(req, 'UPDATE' as any, 'attachment' as any, req.params.fileId, `Linked file to ${entity_type} #${entity_id}`);
 
     res.json(attachment);
   } catch (error: any) {
@@ -861,16 +843,7 @@ router.delete('/:fileId', authenticateToken, (req: Request, res: Response) => {
     db.prepare('DELETE FROM attachments WHERE file_id = ?').run(req.params.fileId);
 
     // Log deletion
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'file_deleted', ?, ?, ?, ?)
-    `).run(
-      req.user!.userId,
-      attachment.entity_type || 'attachment',
-      attachment.entity_id,
-      `Deleted file: ${attachment.original_name}`,
-      req.ip || 'unknown',
-    );
+    auditLog(req, 'file_deleted', (attachment.entity_type || 'attachment') as any, attachment.entity_id || 0, `Deleted file: ${attachment.original_name}`);
 
     res.json({ message: 'File deleted' });
   } catch (error: any) {

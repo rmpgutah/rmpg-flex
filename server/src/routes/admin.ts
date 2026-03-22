@@ -1146,10 +1146,7 @@ router.put('/users/:id/role', rateLimit({ maxRequests: 5, windowMs: 60000 }), re
     // Without this, the user's existing JWTs still carry the old role until they expire
     db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(userId);
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'role_changed', 'user', ?, ?, ?)
-    `).run(req.user!.userId, userId, `Role changed: ${oldRole} → ${role} for ${user.username}`, ip);
+    auditLog(req, 'user_updated', 'user', userId, `Role changed: ${oldRole} → ${role} for ${user.username}`);
 
     createSecurityNotification(
       userId,
@@ -1211,10 +1208,7 @@ router.put('/users/:id/status', requireRole('admin', 'manager'), (req: Request, 
       db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(userId);
     }
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'status_changed', 'user', ?, ?, ?)
-    `).run(req.user!.userId, userId, `Status changed: ${oldStatus} → ${status} for ${user.username}`, ip);
+    auditLog(req, 'user_updated', 'user', userId, `Status changed: ${oldStatus} → ${status} for ${user.username}`);
 
     res.json({ message: `${user.full_name}'s status changed from ${oldStatus} to ${status}.`, oldStatus, newStatus: status });
   } catch (error: any) {

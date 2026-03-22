@@ -4,6 +4,7 @@ import { requireRole } from '../../middleware/auth';
 import { broadcastUnitUpdate } from '../../utils/websocket';
 import { reverseGeocodeDetailed } from '../../utils/geocode';
 import { localNow } from '../../utils/timeUtils';
+import { auditLog } from '../../utils/auditLogger';
 
 // GPS source priority — higher number wins
 const GPS_SOURCE_PRIORITY: Record<string, number> = {
@@ -105,16 +106,7 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
       console.log(`[GPS] Auto-created unit "${unit.call_sign}" for user ${req.user!.userId}`);
 
       // Audit log: auto-created unit
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-        VALUES (?, 'unit_auto_created', 'unit', ?, ?, ?, ?)
-      `).run(
-        req.user!.userId,
-        unit.id,
-        `Auto-created unit "${unit.call_sign}" via GPS tracking`,
-        req.ip || 'unknown',
-        localNow(),
-      );
+      auditLog(req, 'CREATE' as any, 'unit', unit.id, `Auto-created unit "${unit.call_sign}" via GPS tracking`);
     }
 
     // GPS tracking is mandatory for ALL logged-in users regardless of status.

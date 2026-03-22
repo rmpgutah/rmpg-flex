@@ -7,6 +7,7 @@ import { localNow } from '../../utils/timeUtils';
 import { reverseGeocodeAddress } from '../../utils/geocode';
 import { identifyBeat } from '../../utils/geofence';
 import { escapeLike } from '../../middleware/sanitize';
+import { auditLog } from '../../utils/auditLogger';
 import { assignUnitsToCall } from '../../utils/callUnits';
 
 const router = Router();
@@ -228,16 +229,8 @@ router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', '
     const panicTx = db.transaction(() => {
       // Generate call number INSIDE transaction to prevent race conditions
       const callNumber = generateCallNumber(db);
-      // Log the panic alert to activity log
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'panic_alert', 'user', ?, ?, ?)
-      `).run(
-        user.id,
-        user.id,
-        `PANIC ALERT triggered by ${user.full_name} (${user.badge_number || 'N/A'})${message ? ': ' + message : ''}`,
-        req.ip || 'unknown'
-      );
+      // Log the panic alert
+      auditLog(req, 'panic_activated', 'user', user.id, `PANIC ALERT triggered by ${user.full_name} (${user.badge_number || 'N/A'})${message ? ': ' + message : ''}`);
 
       // Auto-create "Officer Assist — Panic Alarm" dispatch call
       const callResult = db.prepare(`
@@ -282,10 +275,7 @@ router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', '
       }
 
       // Log call creation
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'call_created', 'call', ?, ?, ?)
-      `).run(user.id, call.id, `PANIC auto-created ${callNumber}: officer_assist`, req.ip || 'unknown');
+      auditLog(req, 'call_created', 'call', call.id, `PANIC auto-created ${callNumber}: officer_assist`);
 
       return { call, unit, callNumber };
     });
