@@ -556,6 +556,88 @@ export async function announceNewCall(call: CallFlags & {
   enqueuePhrases(phrases);
 }
 
+// ─── Additional Dispatch Voice Alerts ────────────────────────
+
+/** Announce a status change: "UNIT [CALL_SIGN] NOW [STATUS]" */
+export async function announceStatusChange(callSign: string, newStatus: string): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  const dedupKey = `status:${callSign}:${newStatus}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+  const status = newStatus.replace(/_/g, ' ').toUpperCase();
+  enqueuePhrases([{ text: `Unit ${callSign}, now ${status}.` }]);
+}
+
+/** Announce unit dispatched: "UNIT [CALL_SIGN] DISPATCHED TO CALL [NUMBER]" */
+export async function announceUnitDispatched(callSign: string, callNumber: string): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  const dedupKey = `dispatched:${callSign}:${callNumber}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+  enqueuePhrases([{ text: `Unit ${callSign}, dispatched to call ${callNumber}.` }]);
+}
+
+/** Announce BOLO alert: "ATTENTION ALL UNITS — BOLO — [TITLE]" */
+export async function announceBolo(title: string, priority?: string): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  const dedupKey = `bolo:${title}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+  await playToneAsync('caution');
+  await delay(TONE_GAP_MS);
+  const phrases: VoicePhrase[] = [{ text: naturalPhrase('ATTENTION ALL UNITS') }, { text: `B.O.L.O. ${title}.` }];
+  if (priority === 'P1') phrases.push({ text: naturalPhrase('PRIORITY ONE') });
+  enqueuePhrases(phrases);
+}
+
+/** Announce warrant hit: "WARRANT HIT — [SUBJECT NAME]" */
+export async function announceWarrantHit(subjectName: string): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  const dedupKey = `warrant:${subjectName}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+  await playToneAsync('caution');
+  await delay(TONE_GAP_MS);
+  enqueuePhrases([{ text: naturalPhrase('ACTIVE WARRANTS') }, { text: `Subject: ${subjectName}.` }]);
+}
+
+/** Announce backup request: "BACKUP REQUESTED BY UNIT [CALL_SIGN]" */
+export async function announceBackupRequest(callSign: string, location?: string): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  const dedupKey = `backup:${callSign}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+  await playToneAsync('alert');
+  await delay(TONE_GAP_MS);
+  const phrases: VoicePhrase[] = [{ text: `Backup requested by unit ${callSign}.` }];
+  if (location) phrases.push({ text: `Location: ${location}.` });
+  enqueuePhrases(phrases);
+}
+
+/** Announce pursuit: "PURSUIT IN PROGRESS — UNIT [CALL_SIGN]" */
+export async function announcePursuit(callSign: string, direction?: string): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  const dedupKey = `pursuit:${callSign}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+  await playToneAsync('alert');
+  await delay(TONE_GAP_MS);
+  const phrases: VoicePhrase[] = [{ text: `Pursuit in progress. Unit ${callSign}.` }];
+  if (direction) phrases.push({ text: `Direction of travel: ${direction}.` });
+  enqueuePhrases(phrases);
+}
+
+/** Announce all-units broadcast: "ATTENTION ALL UNITS — [MESSAGE]" */
+export async function announceAllUnits(message: string): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  const dedupKey = `allunits:${message.slice(0, 50)}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+  await playToneAsync('caution');
+  await delay(TONE_GAP_MS);
+  enqueuePhrases([{ text: naturalPhrase('ATTENTION ALL UNITS') }, { text: `${message}.` }]);
+}
+
 // ─── Demo / Test ─────────────────────────────────────────────
 
 /**
@@ -656,4 +738,27 @@ export async function demoAllVoiceAlerts(): Promise<void> {
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ── Dispatch voice alert functions ──────────────────────────────────────
+export function announceWarrantHit(data: any): void {
+  const name = data?.subject_name || 'Unknown subject';
+  speakAlert(`Warrant hit on ${name}`, 'high');
+}
+
+export function announceBackupRequest(data: any): void {
+  const unit = data?.call_sign || 'Unknown unit';
+  const location = data?.location || '';
+  speakAlert(`Backup requested by ${unit}${location ? ` at ${location}` : ''}`, 'critical');
+}
+
+export function announcePursuit(data: any): void {
+  const unit = data?.call_sign || 'Unknown unit';
+  const direction = data?.direction || '';
+  speakAlert(`Pursuit in progress, ${unit}${direction ? `, heading ${direction}` : ''}`, 'critical');
+}
+
+export function announceAllUnits(data: any): void {
+  const message = data?.message || 'All units advisory';
+  speakAlert(`All units: ${message}`, 'high');
 }
