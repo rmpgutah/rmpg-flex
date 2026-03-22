@@ -171,7 +171,7 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
       charges, b.county || '', b.state || 'UT', b.status || 'active', b.booking_number || null, b.agency || null,
       b.gender || null, b.race || null, b.height || null, b.weight || null, b.hair_color || null, b.eye_color || null,
       b.address || null, b.bail_amount != null && !isNaN(parseFloat(b.bail_amount)) && isFinite(parseFloat(b.bail_amount)) ? parseFloat(b.bail_amount) : null, b.hold_reason || null, b.notes || null,
-      user?.id || null, now, now,
+      user?.userId || null, now, now,
     );
 
     const newId = Number(result.lastInsertRowid) as number;
@@ -390,7 +390,7 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
             (() => { const v = parseFloat(r.bail_amount ?? r.BailAmount ?? r.BAIL_AMOUNT); return isNaN(v) || !isFinite(v) ? null : v; })(),
             r.hold_reason || r.HoldReason || null,
             r.notes || null,
-            user?.id || null, now, now,
+            user?.userId || null, now, now,
           );
           imported++;
         } catch (rowErr: any) {

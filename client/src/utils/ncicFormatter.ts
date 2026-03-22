@@ -843,6 +843,7 @@ export interface BackgroundRecord {
   offense?: string;
   offense_date?: string;
   case_number?: string;
+  case_type?: string;
   court?: string;
   disposition?: string;
   sentence?: string;

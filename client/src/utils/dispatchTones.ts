@@ -108,16 +108,6 @@ const PROFILES: Record<ToneType, ToneProfile> = {
     ],
   },
 
-  // ── Alert: Sharp triple-beep (BOLO, warrant hit, backup request)
-  alert: {
-    type: 'sine',
-    gain: 0.30,
-    steps: [
-      { freq: 1000, start: 0,    dur: 0.10 },
-      { freq: 1000, start: 0.15, dur: 0.10 },
-      { freq: 1200, start: 0.30, dur: 0.15 },
-    ],
-  },
 };
 
 /**
