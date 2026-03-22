@@ -1664,6 +1664,15 @@ export default function CrmPage() {
               <X className="w-3 h-3" /> Clear Filter
             </button>
           )}
+          <button
+            onClick={() => {
+              setInvoiceFormData({ is_recurring: false, recurrence_interval: 'monthly', recurrence_anchor: '' });
+              setShowInvoiceModal(true);
+            }}
+            className="toolbar-btn toolbar-btn-primary"
+          >
+            + NEW INVOICE
+          </button>
           <button onClick={() => fetchInvoices()} className="toolbar-btn"><RefreshCw className="w-3 h-3" /></button>
         </PanelTitleBar>
 
@@ -1848,6 +1857,125 @@ export default function CrmPage() {
                     Record Payment
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── New Invoice Modal ────────────────────────── */}
+        {showInvoiceModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowInvoiceModal(false)}>
+            <div className="bg-surface-raised border border-rmpg-600 w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
+              <div className="panel-title-bar flex items-center justify-between">
+                <span className="text-xs font-bold text-white">New Invoice</span>
+                <button onClick={() => setShowInvoiceModal(false)} className="text-rmpg-400 hover:text-rmpg-200"><X className="w-3.5 h-3.5" /></button>
+              </div>
+              <div className="p-4 space-y-3">
+                <div>
+                  <label className="field-label">Client</label>
+                  <select
+                    className="input-dark w-full"
+                    value={String(invoiceFormData.client_id || '')}
+                    onChange={e => setInvoiceFormData((p: any) => ({ ...p, client_id: e.target.value ? Number(e.target.value) : undefined }))}
+                  >
+                    <option value="">Select client…</option>
+                    {clients.filter(c => c.is_active !== false).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="field-label">Title / Description</label>
+                  <input
+                    className="input-dark w-full"
+                    value={invoiceFormData.description || ''}
+                    onChange={e => setInvoiceFormData((p: any) => ({ ...p, description: e.target.value }))}
+                    placeholder="Invoice description…"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="field-label">Total Amount</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="input-dark w-full"
+                      value={invoiceFormData.total || ''}
+                      onChange={e => setInvoiceFormData((p: any) => ({ ...p, total: e.target.value }))}
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <label className="field-label">Due Date</label>
+                    <input
+                      type="date"
+                      className="input-dark w-full"
+                      value={invoiceFormData.due_date || ''}
+                      onChange={e => setInvoiceFormData((p: any) => ({ ...p, due_date: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="field-label">Status</label>
+                  <select
+                    className="input-dark w-full"
+                    value={invoiceFormData.status || 'draft'}
+                    onChange={e => setInvoiceFormData((p: any) => ({ ...p, status: e.target.value }))}
+                  >
+                    <option value="draft">Draft</option>
+                    <option value="sent">Sent</option>
+                    <option value="paid">Paid</option>
+                    <option value="partial">Partial</option>
+                    <option value="overdue">Overdue</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    id="inv-recurring"
+                    type="checkbox"
+                    className="w-3.5 h-3.5 accent-brand-400"
+                    checked={!!invoiceFormData.is_recurring}
+                    onChange={e => setInvoiceFormData((p: any) => ({ ...p, is_recurring: e.target.checked }))}
+                  />
+                  <label htmlFor="inv-recurring" className="text-xs text-rmpg-200 cursor-pointer">Recurring Invoice</label>
+                </div>
+                {invoiceFormData.is_recurring && (
+                  <div className="grid grid-cols-2 gap-3 pl-5">
+                    <div>
+                      <label className="field-label">Recurrence Interval</label>
+                      <select
+                        className="input-dark w-full"
+                        value={invoiceFormData.recurrence_interval || 'monthly'}
+                        onChange={e => setInvoiceFormData((p: any) => ({ ...p, recurrence_interval: e.target.value }))}
+                      >
+                        <option value="monthly">Monthly</option>
+                        <option value="quarterly">Quarterly</option>
+                        <option value="annually">Annually</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="field-label">Recurrence Anchor Date</label>
+                      <input
+                        type="date"
+                        className="input-dark w-full"
+                        value={invoiceFormData.recurrence_anchor || ''}
+                        onChange={e => setInvoiceFormData((p: any) => ({ ...p, recurrence_anchor: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
+                <button onClick={() => setShowInvoiceModal(false)} className="toolbar-btn">Cancel</button>
+                <button
+                  onClick={async () => {
+                    await apiFetch('/crm/invoices', { method: 'POST', body: JSON.stringify(invoiceFormData) });
+                    setShowInvoiceModal(false);
+                    fetchInvoices();
+                  }}
+                  className="toolbar-btn toolbar-btn-primary"
+                  disabled={!invoiceFormData.client_id || !invoiceFormData.total}
+                >
+                  <Save className="w-3 h-3" /> Create Invoice
+                </button>
               </div>
             </div>
           </div>
