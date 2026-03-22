@@ -8,6 +8,7 @@ import SafetyScreening from './SafetyScreening';
 import DuplicateCallWarning from './DuplicateCallWarning';
 import BoloAlertBanner from './BoloAlertBanner';
 import { useDistrictIdentify } from '../hooks/useDistrictLookup';
+import { fetchWeather, wmoToFormValue } from '../utils/weather';
 
 interface NewCallModalProps {
   isOpen: boolean;
@@ -163,6 +164,12 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
       setFormData({ ...DEFAULT_FORM_DATA, ...initialData } as typeof DEFAULT_FORM_DATA);
     } else if (isOpen) {
       setFormData({ ...DEFAULT_FORM_DATA });
+    }
+    // Auto-fill weather conditions when modal opens
+    if (isOpen) {
+      fetchWeather().then(w => {
+        if (w) setFormData(prev => prev.weather_conditions ? prev : { ...prev, weather_conditions: `${wmoToFormValue(w.conditionCode)}, ${w.temperature}°F` });
+      });
     }
   }, [isOpen, initialData]);
 

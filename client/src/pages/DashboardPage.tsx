@@ -24,6 +24,7 @@ import StatsCard from '../components/StatsCard';
 import ActivityFeed from '../components/ActivityFeed';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IntegrationHub from '../components/IntegrationHub';
+import WeatherWidget from '../components/WeatherWidget';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import { StatsCardSkeleton, CardSkeleton } from '../components/Skeleton';
@@ -473,6 +474,11 @@ export default function DashboardPage() {
               <Gavel style={{ width: 12, height: 12 }} />
               Active Warrants
             </button>
+          </div>
+
+          {/* Weather */}
+          <div className="mt-3">
+            <WeatherWidget />
           </div>
 
           {/* Shift Summary */}
