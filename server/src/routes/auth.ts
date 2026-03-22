@@ -946,6 +946,73 @@ router.post('/totp/verify-setup', authenticateToken, (req: Request, res: Respons
   }
 });
 
+// ─── GET /api/auth/session-timeout ────────────────────
+// Returns session timeout configuration for the client
+router.get('/session-timeout', authenticateToken, (_req: Request, res: Response) => {
+  try {
+    res.json({
+      timeoutMinutes: 60,      // 1 hour of inactivity
+      maxSessionHours: 12,     // 12 hours of continuous use
+    });
+  } catch (error: any) {
+    console.error('Session timeout config error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── POST /api/auth/admin/reset-all-2fa ──────────────
+// Admin-only: Reset 2FA for ALL users (clears TOTP secrets, backup codes, pending secrets)
+router.post('/admin/reset-all-2fa', authenticateToken, (req: Request, res: Response) => {
+  try {
+    // Only admins can reset 2FA for all users
+    if (req.user!.role !== 'admin') {
+      res.status(403).json({ error: 'Admin access required' });
+      return;
+    }
+
+    const db = getDb();
+    const now = localNow();
+
+    // Reset 2FA for all users in a transaction
+    const resetTx = db.transaction(() => {
+      const result = db.prepare(`
+        UPDATE users SET
+          totp_enabled = 0,
+          totp_secret_enc = NULL,
+          totp_backup_codes = NULL,
+          totp_pending_secret = NULL,
+          updated_at = ?
+        WHERE totp_enabled = 1 OR totp_secret_enc IS NOT NULL OR totp_pending_secret IS NOT NULL
+      `).run(now);
+
+      // Log the action
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'admin_reset_all_2fa', 'system', 0, ?, ?)
+      `).run(
+        req.user!.userId,
+        `Admin reset 2FA for ${result.changes} users`,
+        req.ip || 'unknown'
+      );
+
+      return result.changes;
+    });
+
+    const usersReset = resetTx();
+
+    console.log(`[Auth] Admin ${req.user!.userId} reset 2FA for ${usersReset} users`);
+
+    res.json({
+      success: true,
+      usersReset,
+      message: `Two-factor authentication reset for ${usersReset} user(s). Users will need to re-enroll.`,
+    });
+  } catch (error: any) {
+    console.error('Admin reset all 2FA error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── POST /api/auth/totp/disable ─────────────────────
 // Disable 2FA (requires password re-entry)
 router.post('/totp/disable', authenticateToken, (req: Request, res: Response) => {

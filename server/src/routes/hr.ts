@@ -12,6 +12,40 @@ router.use(authenticateToken);
 
 const isManagerOrAbove = (role: string) => ['admin', 'manager', 'supervisor'].includes(role);
 
+// ─── Employees list (used by HR modals for dropdowns) ────────────────────────
+
+router.get('/employees', (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const users = db.prepare(`
+      SELECT id, full_name, badge_number, role, status
+      FROM users
+      WHERE status = 'active'
+      ORDER BY full_name
+    `).all();
+    res.json(users);
+  } catch (error: any) {
+    console.error('HR employees list error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/hr/review-cycles — Review cycle templates
+router.get('/review-cycles', (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    // Check if review_cycles table exists, otherwise return empty
+    try {
+      const cycles = db.prepare('SELECT * FROM review_cycles ORDER BY start_date DESC').all();
+      res.json(cycles);
+    } catch {
+      res.json([]);
+    }
+  } catch (error: any) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── Dashboard ───────────────────────────────────────────────────────────────
 
 router.get('/dashboard', requireRole('admin', 'manager', 'supervisor'), (_req: Request, res: Response) => {

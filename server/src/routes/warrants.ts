@@ -259,7 +259,37 @@ router.get('/dashboard/stats', (req: Request, res: Response) => {
     const totalAll30d = totalActive + totalServed30d;
     const clearanceRate = totalAll30d > 0 ? Math.round((totalServed30d / totalAll30d) * 100) : 0;
 
+    // Hits today (new warrants found by scanner today)
+    const hitsToday = (db.prepare(
+      `SELECT COUNT(*) as cnt FROM warrant_watch_log
+       WHERE event = 'warrant_found' AND created_at >= date('now','localtime')`
+    ).get() as any).cnt;
+
+    // Persons flagged with active warrants
+    const personsFlagged = (db.prepare(
+      `SELECT COUNT(DISTINCT subject_person_id) as cnt FROM warrants
+       WHERE status = 'active' AND subject_person_id IS NOT NULL AND archived_at IS NULL`
+    ).get() as any).cnt;
+
+    // Source counts
+    const scraperSourceCount = (db.prepare(
+      `SELECT COUNT(*) as cnt FROM warrant_scraper_config`
+    ).get() as any).cnt;
+    const scraperOnlineCount = (db.prepare(
+      `SELECT COUNT(*) as cnt FROM warrant_scraper_config WHERE enabled = 1 AND last_error IS NULL`
+    ).get() as any).cnt;
+    // +1 for Utah API (always counts as a source)
+    const sourcesTotal = scraperSourceCount + 1;
+    const sourcesOnline = scraperOnlineCount + (isUtahApiBlocked() ? 0 : 1);
+
     res.json({
+      // Client-expected fields
+      activeWarrants: totalActive,
+      hitsToday,
+      personsFlagged,
+      sourcesOnline,
+      sourcesTotal,
+      // Extended fields
       total_active: totalActive,
       total_served_30d: totalServed30d,
       total_by_type,
@@ -281,6 +311,14 @@ router.get('/dashboard/feed', (req: Request, res: Response) => {
   try {
     const db = getDb();
 
+    // Parse range parameter (1h, 8h, 24h, 7d)
+    const range = (req.query.range as string) || '24h';
+    let rangeClause = "datetime('now', '-1 day', 'localtime')";
+    if (range === '1h') rangeClause = "datetime('now', '-1 hour', 'localtime')";
+    else if (range === '8h') rangeClause = "datetime('now', '-8 hours', 'localtime')";
+    else if (range === '24h') rangeClause = "datetime('now', '-1 day', 'localtime')";
+    else if (range === '7d') rangeClause = "datetime('now', '-7 days', 'localtime')";
+
     // Combine warrant_watch_log + activity_log warrant entries
     const feed = db.prepare(`
       SELECT
@@ -293,6 +331,7 @@ router.get('/dashboard/feed', (req: Request, res: Response) => {
         wl.utah_warrant_id as source_id,
         wl.created_at as timestamp
       FROM warrant_watch_log wl
+      WHERE wl.created_at >= ${rangeClause}
       UNION ALL
       SELECT
         'activity' as feed_source,
@@ -305,12 +344,12 @@ router.get('/dashboard/feed', (req: Request, res: Response) => {
         al.created_at as timestamp
       FROM activity_log al
       LEFT JOIN users u ON al.user_id = u.id
-      WHERE al.entity_type = 'warrant'
+      WHERE al.entity_type = 'warrant' AND al.created_at >= ${rangeClause}
       ORDER BY timestamp DESC
-      LIMIT 50
+      LIMIT 100
     `).all();
 
-    res.json(feed);
+    res.json({ data: feed });
   } catch (error: any) {
     console.error('Dashboard feed error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -343,7 +382,7 @@ router.get('/dashboard/priority', (req: Request, res: Response) => {
       LIMIT 20
     `).all();
 
-    res.json(warrants);
+    res.json({ data: warrants });
   } catch (error: any) {
     console.error('Priority warrants error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -433,9 +472,179 @@ router.get('/unified', (req: Request, res: Response) => {
       unified.push(w);
     }
 
-    res.json(unified);
+    // Apply filters from query params
+    let filtered = unified;
+    const { status: fStatus, type: fType, source: fSource, severity, subject_name: fName, archived: fArchived } = req.query;
+    if (fStatus) filtered = filtered.filter((w: any) => w.status === fStatus);
+    if (fType) filtered = filtered.filter((w: any) => w.type === fType);
+    if (fSource) filtered = filtered.filter((w: any) => w.source === fSource);
+    if (severity) filtered = filtered.filter((w: any) => w.offense_level === severity);
+    if (fName) {
+      const nameQ = String(fName).toLowerCase();
+      filtered = filtered.filter((w: any) =>
+        (w.subject_name || '').toLowerCase().includes(nameQ) ||
+        (w.subject_first_name || '').toLowerCase().includes(nameQ) ||
+        (w.subject_last_name || '').toLowerCase().includes(nameQ)
+      );
+    }
+    if (fArchived === 'true') {
+      filtered = filtered.filter((w: any) => w.archived_at);
+    } else if (fArchived !== 'all') {
+      filtered = filtered.filter((w: any) => !w.archived_at);
+    }
+
+    // Pagination
+    const pageNum = parseInt(req.query.page as string, 10) || 1;
+    const perPage = parseInt(req.query.per_page as string, 10) || 50;
+    const total = filtered.length;
+    const paged = filtered.slice((pageNum - 1) * perPage, pageNum * perPage);
+
+    res.json({ warrants: paged, total });
   } catch (error: any) {
     console.error('Unified warrants error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/warrants/person/:personId/profile — Person profile with warrant info
+router.get('/person/:personId/profile', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { personId } = req.params;
+
+    const person = db.prepare(`
+      SELECT p.*,
+        (SELECT COUNT(*) FROM warrants w WHERE w.subject_person_id = p.id AND w.status = 'active') as active_warrant_count,
+        (SELECT COUNT(*) FROM warrants w WHERE w.subject_person_id = p.id) as total_warrant_count
+      FROM persons p WHERE p.id = ?
+    `).get(personId) as any;
+
+    if (!person) {
+      res.status(404).json({ error: 'Person not found' });
+      return;
+    }
+
+    const warrants = db.prepare(`
+      SELECT w.*, u.full_name as entered_by_name
+      FROM warrants w
+      LEFT JOIN users u ON w.entered_by = u.id
+      WHERE w.subject_person_id = ?
+      ORDER BY w.status = 'active' DESC, w.created_at DESC
+    `).all(personId);
+
+    // Scan history from warrant_watch_log
+    const scanHistory = db.prepare(`
+      SELECT id, event, charges as details, created_at
+      FROM warrant_watch_log
+      WHERE person_id = ?
+      ORDER BY created_at DESC
+      LIMIT 50
+    `).all(personId);
+
+    // Last checked time
+    const lastCheckedRow = db.prepare(`
+      SELECT created_at FROM warrant_watch_log
+      WHERE person_id = ?
+      ORDER BY created_at DESC LIMIT 1
+    `).get(personId) as { created_at: string } | undefined;
+
+    res.json({
+      person,
+      warrants,
+      scanHistory,
+      lastChecked: lastCheckedRow?.created_at || null,
+    });
+  } catch (error: any) {
+    console.error('Person warrant profile error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/warrants/scraped/status — Scraper source status
+router.get('/scraped/status', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    // Get scraper configs and their stats
+    const sources = db.prepare(`
+      SELECT
+        wsc.id,
+        wsc.source_key,
+        wsc.source_name,
+        wsc.source_url,
+        wsc.enabled,
+        wsc.last_run_at,
+        wsc.last_error,
+        (SELECT COUNT(*) FROM scraped_warrants sw WHERE sw.source_key = wsc.source_key AND sw.status = 'active') as active_count,
+        (SELECT COUNT(*) FROM scraped_warrants sw WHERE sw.source_key = wsc.source_key) as total_count
+      FROM warrant_scraper_config wsc
+      ORDER BY wsc.source_name
+    `).all();
+
+    // Add Utah API as a virtual source
+    const utahStatus = getUtahWarrantSyncStatus();
+    const utahBlocked = isUtahApiBlocked();
+
+    const allSources = [
+      {
+        id: 0,
+        source_key: 'utah_api',
+        source_name: 'Utah State Warrants (warrants.utah.gov)',
+        source_url: 'https://warrants.utah.gov',
+        enabled: true,
+        last_run_at: utahStatus.lastSync,
+        last_error: utahBlocked ? 'IP temporarily blocked by CloudFront WAF' : null,
+        active_count: utahStatus.warrantCount,
+        total_count: utahStatus.warrantCount,
+        status: utahBlocked ? 'blocked' : utahStatus.status,
+      },
+      ...sources,
+    ];
+
+    res.json({ data: allSources });
+  } catch (error: any) {
+    console.error('Scraped status error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/warrants/watch/runs — Warrant watch scan run history
+router.get('/watch/runs', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const limit = parseInt(req.query.limit as string, 10) || 20;
+
+    const runs = db.prepare(`
+      SELECT * FROM warrant_watch_runs
+      ORDER BY started_at DESC
+      LIMIT ?
+    `).all(limit);
+
+    res.json({ data: runs });
+  } catch (error: any) {
+    console.error('Watch runs error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/warrants/watch/scan — Trigger a warrant watch scan (admin only)
+router.post('/watch/scan', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    // Run in background — don't await
+    runWarrantWatchScan().catch((err: any) => {
+      console.error('[Warrant Watch] Manual trigger failed:', err.message || err);
+    });
+
+    // Log the manual trigger
+    const db = getDb();
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'warrant_watch_scan_triggered', 'system', 0, 'Manual warrant watch scan triggered', ?)
+    `).run(req.user!.userId, req.ip || 'unknown');
+
+    res.json({ message: 'Warrant watch scan started', started_at: localNow() });
+  } catch (error: any) {
+    console.error('Trigger watch scan error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
