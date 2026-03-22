@@ -561,7 +561,7 @@ router.post('/invoices/:id/payments', validateParamId, requireRole('admin', 'man
     const { id } = req.params;
     const { amount, paid_at, method, reference } = req.body;
 
-    if (amount == null || isNaN(Number(amount)) || Number(amount) <= 0) {
+    if (amount == null || isNaN(Number(amount)) || !isFinite(Number(amount)) || Number(amount) <= 0) {
       res.status(400).json({ error: 'amount is required and must be positive' });
       return;
     }
