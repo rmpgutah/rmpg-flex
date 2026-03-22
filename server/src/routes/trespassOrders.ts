@@ -265,4 +265,56 @@ router.put('/:id/violate', (req: Request, res: Response) => {
   }
 });
 
+// POST /:id/renew — Renew expiring trespass order
+router.post('/:id/renew', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    const now = localNow();
+
+    const existing = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id) as any;
+    if (!existing) return res.status(404).json({ error: 'Trespass order not found' });
+
+    // Generate new order number
+    const order_number = generateOrderNumber(db);
+
+    // Calculate new dates
+    const duration = existing.duration_days || 365;
+    const effectiveDate = new Date();
+    const expirationDate = new Date();
+    expirationDate.setDate(expirationDate.getDate() + duration);
+
+    // Create new order with same details
+    const result = db.prepare(`
+      INSERT INTO trespass_orders (
+        order_number, person_id, subject_first_name, subject_last_name, subject_dob, subject_description,
+        property_id, property_name, location,
+        order_type, status, reason, conditions,
+        duration_days, effective_date, expiration_date,
+        issued_by, issued_by_name, authorized_by, notes,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      order_number, existing.person_id, existing.subject_first_name, existing.subject_last_name,
+      existing.subject_dob, existing.subject_description,
+      existing.property_id, existing.property_name, existing.location,
+      existing.order_type, existing.reason, existing.conditions,
+      duration, effectiveDate.toISOString().split('T')[0], expirationDate.toISOString().split('T')[0],
+      user.id, user.full_name, existing.authorized_by,
+      `Renewed from ${existing.order_number}. ${existing.notes || ''}`.trim(),
+      now, now
+    );
+
+    // Archive old order
+    db.prepare(`UPDATE trespass_orders SET archived_at = ?, notes = COALESCE(notes, '') || ? WHERE id = ?`)
+      .run(now, `\nArchived: Renewed as ${order_number}`, existing.id);
+
+    const created = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(result.lastInsertRowid);
+    broadcast('alerts', 'trespass_order_renewed', { old: existing, new: created });
+    res.status(201).json(created);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

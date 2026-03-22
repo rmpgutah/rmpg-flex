@@ -22,6 +22,7 @@ import {
   FileText,
   Loader2,
   X,
+  ChevronRight,
 } from 'lucide-react';
 import type { CallForService, Unit, CallStatus } from '../types';
 import { apiFetch } from '../hooks/useApi';
@@ -42,6 +43,8 @@ import { useToast } from '../components/ToastProvider';
 
 const UNIT_STATUSES = [
   { label: 'AVAIL', status: 'available', color: '#22c55e' },
+  { label: 'ENROUTE', status: 'enroute', color: '#3b82f6' },
+  { label: 'ON SCENE', status: 'onscene', color: '#a855f7' },
   { label: 'BUSY', status: 'busy', color: '#ef4444' },
   { label: 'OFF', status: 'off_duty', color: '#5a6e80' },
 ] as const;
@@ -626,6 +629,38 @@ export default function MdtPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── ACTIVE CALL BANNER ── */}
+      {myCalls.length > 0 && !selectedCall && (
+        <div
+          className="flex-shrink-0 px-4 py-2 flex items-center gap-3 cursor-pointer hover:bg-green-900/15 transition-colors"
+          style={{ background: 'rgba(34,197,94,0.06)', borderBottom: '1px solid rgba(34,197,94,0.2)' }}
+          onClick={() => setSelectedCall(myCalls[0])}
+        >
+          <span className="led-dot led-green animate-led-pulse" />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-mono font-black text-green-400">{myCalls[0].call_number}</span>
+              <span className="text-[9px] font-bold px-1 py-px" style={{ background: prioColor(myCalls[0].priority), color: '#fff' }}>{myCalls[0].priority}</span>
+              <StatusBadge status={myCalls[0].status} type="call_status" size="sm" />
+            </div>
+            <div className="text-[10px] text-white font-semibold truncate">{formatIncidentType(myCalls[0].incident_type)}</div>
+            <div className="text-[9px] text-rmpg-400 truncate flex items-center gap-1">
+              <MapPin style={{ width: 9, height: 9 }} />
+              {myCalls[0].location || 'No address'}
+            </div>
+          </div>
+          {myCalls[0].description && (
+            <div className="hidden md:block text-[9px] text-rmpg-300 max-w-[200px] truncate">
+              {myCalls[0].description}
+            </div>
+          )}
+          <div className="text-[9px] text-green-500 font-mono font-bold">
+            {getStatusElapsed(myCalls[0]) ? formatTimer(getStatusElapsed(myCalls[0])!) : ''}
+          </div>
+          <ChevronRight style={{ width: 12, height: 12, color: '#5a6e80' }} />
         </div>
       )}
 

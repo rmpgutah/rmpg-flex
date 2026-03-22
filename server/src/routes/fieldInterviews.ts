@@ -93,6 +93,31 @@ router.get('/map', (req: Request, res: Response) => {
   }
 });
 
+// GET /repeat-check — Check if a subject has been contacted 3+ times in last 30 days
+router.get('/repeat-check', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { name } = req.query;
+    if (!name || (name as string).length < 2) {
+      res.json({ count: 0, recent: [] });
+      return;
+    }
+    const searchName = `%${(name as string).trim()}%`;
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+    const rows = db.prepare(`
+      SELECT id, fi_number, subject_first_name, subject_last_name, location, contact_reason, created_at
+      FROM field_interviews
+      WHERE (subject_first_name || ' ' || subject_last_name LIKE ? OR subject_last_name LIKE ?)
+        AND created_at >= ?
+        AND archived_at IS NULL
+      ORDER BY created_at DESC
+    `).all(searchName, searchName, thirtyDaysAgo) as any[];
+    res.json({ count: rows.length, recent: rows.slice(0, 5) });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /:id — Single FI detail
 router.get('/:id', (req: Request, res: Response) => {
   try {

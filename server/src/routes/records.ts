@@ -1480,6 +1480,91 @@ router.post('/evidence/:id/chain-action', (req: Request, res: Response) => {
   }
 });
 
+// POST /api/records/evidence/:id/request-release — Request evidence release (needs supervisor approval)
+router.post('/evidence/:id/request-release', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
+    if (!evidence) return res.status(404).json({ error: 'Evidence not found' });
+
+    const { release_to, reason } = req.body;
+    const now = localNow();
+
+    db.prepare(`UPDATE evidence SET release_status = 'release_requested', release_requested_by = ?, release_requested_at = ?,
+      release_to = ?, release_reason = ?, updated_at = ? WHERE id = ?`)
+      .run(req.user!.userId, now, release_to || null, reason || null, now, req.params.id);
+
+    // Notify supervisors
+    try {
+      const supervisors = db.prepare(`SELECT id FROM users WHERE role IN ('admin','manager','supervisor') AND status = 'active'`).all() as any[];
+      for (const sup of supervisors) {
+        db.prepare(`INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, created_at)
+          VALUES ('system', 'normal', ?, ?, 'evidence', ?, ?, ?)`).run(
+          `Evidence Release Request: ${evidence.evidence_number || 'EV-' + evidence.id}`,
+          `Release requested by ${req.user!.fullName || 'officer'} for: ${reason || 'No reason specified'}`,
+          evidence.id, sup.id, now
+        );
+      }
+    } catch { /* notifications table may not exist */ }
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'evidence_release_request', 'evidence', ?, ?, ?)`).run(
+      req.user!.userId, evidence.id, JSON.stringify({ release_to, reason }), now);
+
+    res.json({ data: { id: evidence.id, release_status: 'release_requested' } });
+  } catch (error: any) {
+    console.error('Evidence release request error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/records/evidence/:id/approve-release — Supervisor approves evidence release
+router.put('/evidence/:id/approve-release', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    if (!['admin', 'manager', 'supervisor'].includes(req.user!.role)) {
+      return res.status(403).json({ error: 'Only supervisors can approve evidence release' });
+    }
+
+    const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
+    if (!evidence) return res.status(404).json({ error: 'Evidence not found' });
+
+    const { action } = req.body; // 'approve' or 'deny'
+    const now = localNow();
+
+    if (action === 'approve') {
+      // Approve and update chain of custody
+      const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
+      let chain: any[] = [];
+      try { chain = JSON.parse(evidence.chain_of_custody || '[]'); } catch { /* ignore */ }
+      chain.push({
+        action: 'release',
+        timestamp: now,
+        user_id: req.user!.userId,
+        user_name: user?.full_name || '',
+        notes: `Release approved by ${user?.full_name || 'supervisor'}. Released to: ${evidence.release_to || 'owner'}`,
+      });
+
+      db.prepare(`UPDATE evidence SET status = 'released', release_status = 'released',
+        release_approved_by = ?, release_approved_at = ?, chain_of_custody = ?, updated_at = ? WHERE id = ?`)
+        .run(req.user!.userId, now, JSON.stringify(chain), now, req.params.id);
+    } else {
+      db.prepare(`UPDATE evidence SET release_status = NULL, updated_at = ? WHERE id = ?`)
+        .run(now, req.params.id);
+    }
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, ?, 'evidence', ?, ?, ?)`).run(
+      req.user!.userId, action === 'approve' ? 'evidence_release_approved' : 'evidence_release_denied',
+      evidence.id, JSON.stringify({ action }), now);
+
+    res.json({ data: { id: evidence.id, release_status: action === 'approve' ? 'released' : null } });
+  } catch (error: any) {
+    console.error('Approve evidence release error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // PUT /api/records/properties/:id - Update property
 router.put('/properties/:id', (req: Request, res: Response) => {
   try {

@@ -102,6 +102,26 @@ export default function LoginPage() {
   const [twoFactorMode, setTwoFactorMode] = useState<TwoFactorMode>('choose');
   const [twoFactorMethods, setTwoFactorMethods] = useState<{ totp?: boolean; webauthn?: boolean }>({});
 
+  // Last login display
+  const [lastLoginInfo, setLastLoginInfo] = useState<{ time: string; ip: string } | null>(null);
+
+  // Check for last login info stored during login flow
+  useEffect(() => {
+    if (loginStep === 'complete') {
+      const info = sessionStorage.getItem('rmpg_last_login_info');
+      if (info) {
+        try {
+          const parsed = JSON.parse(info);
+          setLastLoginInfo(parsed);
+          sessionStorage.removeItem('rmpg_last_login_info');
+          // Auto-dismiss after 8 seconds
+          const t = setTimeout(() => setLastLoginInfo(null), 8000);
+          return () => clearTimeout(t);
+        } catch { /* ignore */ }
+      }
+    }
+  }, [loginStep]);
+
   // 2FA setup state
   const [qrCodeUri, setQrCodeUri] = useState('');
   const [manualKey, setManualKey] = useState('');
@@ -416,11 +436,38 @@ export default function LoginPage() {
               </div>
             )}
 
+            {/* Last login info banner */}
+            {lastLoginInfo && (
+              <div className="flex items-center gap-2 p-2 mb-4 animate-fade-in" style={{ background: 'rgba(34, 197, 94, 0.08)', border: '1px solid #166534' }}>
+                <ShieldCheck className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#22c55e' }} />
+                <p className="text-xs" style={{ color: '#86efac' }}>
+                  Last login: {(() => {
+                    const d = new Date(lastLoginInfo.time);
+                    const now = new Date();
+                    const diff = now.getTime() - d.getTime();
+                    const hours = Math.floor(diff / 3600000);
+                    const mins = Math.floor(diff / 60000);
+                    const timeAgo = hours > 24 ? `${Math.floor(hours / 24)}d ago` : hours > 0 ? `${hours}h ago` : `${mins}m ago`;
+                    return timeAgo;
+                  })()}
+                  {lastLoginInfo.ip && ` from ${lastLoginInfo.ip}`}
+                </p>
+              </div>
+            )}
+
             {/* Error message */}
             {error && (
-              <div className="flex items-center gap-2 p-2 mb-4 animate-fade-in" style={{ background: 'rgba(220, 38, 38, 0.15)', border: '1px solid #991b1b' }}>
+              <div className="flex items-center gap-2 p-2 mb-4 animate-fade-in" style={{
+                background: error.includes('locked') ? 'rgba(239, 68, 68, 0.2)' : 'rgba(220, 38, 38, 0.15)',
+                border: error.includes('locked') ? '1px solid #ef4444' : '1px solid #991b1b',
+              }}>
                 <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#ef4444' }} />
-                <p className="text-xs" style={{ color: '#ef7a7a' }}>{error}</p>
+                <div>
+                  <p className="text-xs" style={{ color: '#ef7a7a' }}>{error}</p>
+                  {error.includes('attempt') && (
+                    <p className="text-[10px] mt-0.5" style={{ color: '#f87171' }}>Too many failed attempts will lock your account.</p>
+                  )}
+                </div>
               </div>
             )}
 

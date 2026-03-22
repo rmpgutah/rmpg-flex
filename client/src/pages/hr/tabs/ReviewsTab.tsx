@@ -93,6 +93,10 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
   const [ackComment, setAckComment] = useState<Record<number, string>>({});
   const [ackLoading, setAckLoading] = useState<number | null>(null);
 
+  // Certification expiry tracking
+  const [expiringCerts, setExpiringCerts] = useState<any[]>([]);
+  const [certsLoading, setCertsLoading] = useState(false);
+
   // ── Data fetching ─────────────────────────────────────
   const fetchReviews = useCallback(async () => {
     try {
@@ -133,6 +137,27 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
   useEffect(() => {
     if (isManager) fetchOfficers();
   }, [isManager, fetchOfficers]);
+
+  // Fetch expiring certifications (manager only)
+  const fetchExpiringCerts = useCallback(async () => {
+    setCertsLoading(true);
+    try {
+      const data = await apiFetch<any[]>('/personnel/credentials');
+      const now = new Date();
+      const ninetyDays = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+      const expiring = (data || []).filter((c: any) => {
+        if (!c.expiry_date) return false;
+        const exp = new Date(c.expiry_date);
+        return exp <= ninetyDays;
+      }).sort((a: any, b: any) => new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime());
+      setExpiringCerts(expiring);
+    } catch { setExpiringCerts([]); }
+    finally { setCertsLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (isManager) fetchExpiringCerts();
+  }, [isManager, fetchExpiringCerts]);
 
   // ── Handlers ──────────────────────────────────────────
   const handleCreate = async (data: any) => {
@@ -383,6 +408,36 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
               <div className="text-lg font-bold text-white">{stats.avgRating || '--'}</div>
               <div className="text-[10px] text-rmpg-400">Avg Rating</div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Certification Expiry Dashboard */}
+      {isManager && expiringCerts.length > 0 && (
+        <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm overflow-hidden">
+          <div className="px-3 py-2 border-b border-[#1e3048] flex items-center gap-2 bg-[#0d1520]">
+            <AlertTriangle size={13} className="text-amber-400" />
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">Certification Expiry Alert</span>
+            <span className="text-[9px] text-rmpg-500 ml-auto">{expiringCerts.length} expiring within 90 days</span>
+          </div>
+          <div className="max-h-48 overflow-y-auto">
+            {expiringCerts.map((cert: any) => {
+              const now = new Date();
+              const exp = new Date(cert.expiry_date);
+              const daysLeft = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+              const isExpired = daysLeft < 0;
+              const urgencyColor = isExpired ? 'text-red-400 bg-red-900/30' : daysLeft <= 30 ? 'text-red-400 bg-red-900/20' : daysLeft <= 60 ? 'text-amber-400 bg-amber-900/20' : 'text-yellow-400 bg-yellow-900/20';
+              return (
+                <div key={cert.id} className={`flex items-center gap-3 px-3 py-1.5 border-b border-[#1e3048]/50 ${urgencyColor}`}>
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isExpired ? 'bg-red-500' : daysLeft <= 30 ? 'bg-red-500 animate-pulse' : daysLeft <= 60 ? 'bg-amber-500' : 'bg-yellow-500'}`} />
+                  <span className="text-[11px] text-white font-medium flex-shrink-0 w-36 truncate">{cert.officer_name || cert.full_name || '—'}</span>
+                  <span className="text-[10px] text-rmpg-300 flex-1 truncate">{cert.type} — {cert.credential_number || ''}</span>
+                  <span className="text-[10px] font-bold flex-shrink-0">
+                    {isExpired ? `EXPIRED ${Math.abs(daysLeft)}d ago` : `${daysLeft}d remaining`}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

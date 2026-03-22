@@ -150,13 +150,22 @@ const LINE_TYPE_LABELS: Record<string, string> = {
 };
 
 const PAYMENT_METHODS = [
-  { value: 'check', label: 'Check' },
-  { value: 'ach', label: 'ACH Transfer' },
-  { value: 'wire', label: 'Wire Transfer' },
-  { value: 'credit_card', label: 'Credit Card' },
-  { value: 'cash', label: 'Cash' },
-  { value: 'other', label: 'Other' },
+  { value: 'check', label: 'Check', icon: 'CHK' },
+  { value: 'ach', label: 'ACH Transfer', icon: 'ACH' },
+  { value: 'wire', label: 'Wire Transfer', icon: 'WIR' },
+  { value: 'credit_card', label: 'Credit Card', icon: 'CC' },
+  { value: 'cash', label: 'Cash', icon: 'CSH' },
+  { value: 'other', label: 'Other', icon: 'OTH' },
 ];
+
+const PAYMENT_METHOD_COLORS: Record<string, string> = {
+  check: 'bg-blue-900/40 text-blue-400 border-blue-700/50',
+  ach: 'bg-cyan-900/40 text-cyan-400 border-cyan-700/50',
+  wire: 'bg-purple-900/40 text-purple-400 border-purple-700/50',
+  credit_card: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
+  cash: 'bg-green-900/40 text-green-400 border-green-700/50',
+  other: 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50',
+};
 
 function formatCurrency(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(Number(n))) return '$0.00';
@@ -839,7 +848,7 @@ export default function InvoicesPage() {
                   className="bg-[#141e2b] border border-[#1e3048] rounded-sm px-2 py-1 text-xs text-white"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className={`grid ${paymentForm.payment_method === 'check' ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
                 <select
                   value={paymentForm.payment_method}
                   onChange={e => setPaymentForm(f => ({ ...f, payment_method: e.target.value }))}
@@ -847,11 +856,26 @@ export default function InvoicesPage() {
                 >
                   {PAYMENT_METHODS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                 </select>
+                {paymentForm.payment_method === 'check' && (
+                  <input
+                    type="text"
+                    placeholder="Check #"
+                    value={paymentForm.reference_number}
+                    onChange={e => setPaymentForm(f => ({ ...f, reference_number: e.target.value }))}
+                    className="bg-[#141e2b] border border-[#1e3048] rounded-sm px-2 py-1 text-xs text-white"
+                  />
+                )}
                 <input
                   type="text"
-                  placeholder="Reference #"
-                  value={paymentForm.reference_number}
-                  onChange={e => setPaymentForm(f => ({ ...f, reference_number: e.target.value }))}
+                  placeholder={paymentForm.payment_method === 'check' ? 'Notes' : 'Reference #'}
+                  value={paymentForm.payment_method === 'check' ? paymentForm.notes : paymentForm.reference_number}
+                  onChange={e => {
+                    if (paymentForm.payment_method === 'check') {
+                      setPaymentForm(f => ({ ...f, notes: e.target.value }));
+                    } else {
+                      setPaymentForm(f => ({ ...f, reference_number: e.target.value }));
+                    }
+                  }}
                   className="bg-[#141e2b] border border-[#1e3048] rounded-sm px-2 py-1 text-xs text-white"
                 />
               </div>
@@ -883,7 +907,11 @@ export default function InvoicesPage() {
                   <div className="flex items-center gap-2">
                     <span className="text-green-400 font-mono font-bold">{formatCurrency(pay.amount)}</span>
                     <span className="text-rmpg-500">{formatDate(pay.payment_date) || pay.payment_date}</span>
-                    {pay.payment_method && <span className="text-rmpg-500">{toDisplayLabel(pay.payment_method)}</span>}
+                    {pay.payment_method && (
+                      <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 border ${PAYMENT_METHOD_COLORS[pay.payment_method] || PAYMENT_METHOD_COLORS.other}`}>
+                        {PAYMENT_METHODS.find(m => m.value === pay.payment_method)?.icon || pay.payment_method}
+                      </span>
+                    )}
                     {pay.reference_number && <span className="text-rmpg-600 font-mono">#{pay.reference_number}</span>}
                   </div>
                   <div className="flex items-center gap-2">

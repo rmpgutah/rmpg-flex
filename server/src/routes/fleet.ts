@@ -385,6 +385,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       plate_number,
       plate_state,
       current_mileage,
+      next_service_mileage,
       insurance_expiry,
       registration_expiry,
       equipment,
@@ -408,10 +409,10 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
     const result = db.prepare(`
       INSERT INTO fleet_vehicles (
         vehicle_number, make, model, year, color, vin,
-        plate_number, plate_state, current_mileage,
+        plate_number, plate_state, current_mileage, next_service_mileage,
         insurance_expiry, registration_expiry, equipment, notes,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       vehicle_number,
       make || null,
@@ -422,6 +423,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       plate_number || null,
       plate_state || null,
       current_mileage || null,
+      next_service_mileage || null,
       insurance_expiry || null,
       registration_expiry || null,
       equipmentJson,
@@ -506,6 +508,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
       year: v => v ?? null, color: v => v ?? null, vin: v => v ?? null,
       plate_number: v => v ?? null, plate_state: v => v ?? null,
       status: v => v ?? null, current_mileage: v => v ?? null,
+      next_service_mileage: v => v ?? null,
       insurance_expiry: v => v ?? null, registration_expiry: v => v ?? null,
       notes: v => v ?? null,
     };

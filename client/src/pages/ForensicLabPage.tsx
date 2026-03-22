@@ -1674,6 +1674,33 @@ export default function ForensicLabPage() {
         </div>
       )}
 
+      {/* Examiner Workload Summary */}
+      {stats && !isMobile && (
+        <div className="px-3 py-2 border-b border-[#1e3048] bg-[#0d1520]/30">
+          <div className="flex items-center gap-4 text-[10px]">
+            <span className="text-rmpg-400 font-bold uppercase tracking-wider">Workload</span>
+            <div className="flex items-center gap-1">
+              <span className="text-rmpg-500">Cases/Examiner:</span>
+              <span className="text-white font-bold font-mono">{stats.total > 0 ? Math.ceil(stats.total / Math.max(1, Object.keys(stats.by_type).length || 1)) : 0}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-rmpg-500">Queue Depth:</span>
+              <span className="text-amber-400 font-bold font-mono">{(stats.by_status?.submitted || 0) + (stats.by_status?.intake || 0)}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-rmpg-500">Avg Turnaround:</span>
+              <span className="text-blue-400 font-bold font-mono">{stats.overdue > 0 ? 'Behind schedule' : 'On track'}</span>
+            </div>
+            {stats.overdue > 0 && (
+              <div className="flex items-center gap-1 ml-auto">
+                <AlertTriangle size={10} className="text-red-400" />
+                <span className="text-red-400 font-bold">{stats.overdue} overdue</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Tab Bar */}
       <div className="flex items-center border-b border-[#1e3048] bg-[#0d1520]">
         {TABS.map(tab => {

@@ -223,6 +223,17 @@ export default function FleetDetailPanel({
             {getExpiryStatus(detail.next_service_due) === 'expired' && (
               <span className="px-2 py-0.5 text-[9px] font-bold bg-amber-900/50 text-amber-400 border border-amber-700/50">SERVICE OVERDUE</span>
             )}
+            {(() => {
+              const nextMi = (detail as any).next_service_mileage;
+              const curMi = detail.current_mileage;
+              if (nextMi && curMi) {
+                const milesLeft = nextMi - curMi;
+                if (milesLeft <= 0) return <span className="px-2 py-0.5 text-[9px] font-bold bg-red-900/50 text-red-400 border border-red-700/50 animate-pulse">MILEAGE SERVICE OVERDUE</span>;
+                if (milesLeft <= 100) return <span className="px-2 py-0.5 text-[9px] font-bold bg-red-900/50 text-red-400 border border-red-700/50">SERVICE IN {milesLeft} MI</span>;
+                if (milesLeft <= 500) return <span className="px-2 py-0.5 text-[9px] font-bold bg-amber-900/50 text-amber-400 border border-amber-700/50">SERVICE IN {milesLeft} MI</span>;
+              }
+              return null;
+            })()}
           </div>
 
           {/* Timestamps row */}

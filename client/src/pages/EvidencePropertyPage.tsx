@@ -89,6 +89,12 @@ export default function EvidencePropertyPage() {
   const [chainNotes, setChainNotes] = useState('');
   const [chainSubmitting, setChainSubmitting] = useState(false);
 
+  // Release request
+  const [releaseOpen, setReleaseOpen] = useState(false);
+  const [releaseTo, setReleaseTo] = useState('');
+  const [releaseReason, setReleaseReason] = useState('');
+  const [releaseSubmitting, setReleaseSubmitting] = useState(false);
+
   // New evidence modal
   const [newEvidenceOpen, setNewEvidenceOpen] = useState(false);
   const [newEvidence, setNewEvidence] = useState({
@@ -210,6 +216,39 @@ export default function EvidencePropertyPage() {
     } catch (err: any) {
       addToast(err?.message || 'Failed to create evidence', 'error');
     } finally { setNewEvidenceSubmitting(false); }
+  };
+
+  const handleRequestRelease = async () => {
+    if (!selected) return;
+    setReleaseSubmitting(true);
+    try {
+      await apiFetch(`/records/evidence/${selected.id}/request-release`, {
+        method: 'POST', body: JSON.stringify({ release_to: releaseTo, reason: releaseReason }),
+      });
+      addToast('Release requested — awaiting supervisor approval', 'success');
+      setReleaseOpen(false);
+      setReleaseTo('');
+      setReleaseReason('');
+      fetchItems({ silent: true });
+      const updated = await apiFetch<{ data: any }>(`/records/evidence/${selected.id}`);
+      setSelected(updated.data);
+    } catch (err: any) { addToast(err?.message || 'Failed', 'error'); }
+    finally { setReleaseSubmitting(false); }
+  };
+
+  const handleApproveRelease = async (action: 'approve' | 'deny') => {
+    if (!selected) return;
+    setReleaseSubmitting(true);
+    try {
+      await apiFetch(`/records/evidence/${selected.id}/approve-release`, {
+        method: 'PUT', body: JSON.stringify({ action }),
+      });
+      addToast(action === 'approve' ? 'Release approved' : 'Release denied', 'success');
+      fetchItems({ silent: true });
+      const updated = await apiFetch<{ data: any }>(`/records/evidence/${selected.id}`);
+      setSelected(updated.data);
+    } catch (err: any) { addToast(err?.message || 'Failed', 'error'); }
+    finally { setReleaseSubmitting(false); }
   };
 
   let chainOfCustody: any[] = [];
@@ -512,6 +551,59 @@ export default function EvidencePropertyPage() {
                       <div className="text-xs text-rmpg-300 whitespace-pre-wrap">{selected.notes}</div>
                     </div>
                   )}
+
+                  {/* Release Authorization */}
+                  <div className="panel-inset p-3">
+                    <div className="text-[9px] font-mono text-rmpg-500 uppercase mb-2 tracking-wider">Release Authorization</div>
+                    {selected.release_status === 'release_requested' ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] px-2 py-0.5 border bg-amber-900/50 text-amber-400 border-amber-700/50 font-bold">RELEASE REQUESTED</span>
+                          {selected.release_to && <span className="text-[10px] text-rmpg-300">To: {selected.release_to}</span>}
+                        </div>
+                        {selected.release_reason && <div className="text-[10px] text-rmpg-400">Reason: {selected.release_reason}</div>}
+                        <div className="flex gap-1">
+                          <button onClick={() => handleApproveRelease('approve')} disabled={releaseSubmitting}
+                            className="toolbar-btn text-green-400 border-green-700/50 hover:bg-green-900/30">
+                            <CheckCircle style={{ width: 11, height: 11 }} /> Approve Release
+                          </button>
+                          <button onClick={() => handleApproveRelease('deny')} disabled={releaseSubmitting}
+                            className="toolbar-btn text-red-400 border-red-700/50 hover:bg-red-900/30">
+                            <X style={{ width: 11, height: 11 }} /> Deny
+                          </button>
+                        </div>
+                      </div>
+                    ) : selected.release_status === 'released' ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] px-2 py-0.5 border bg-green-900/50 text-green-400 border-green-700/50 font-bold">RELEASED</span>
+                        {selected.release_to && <span className="text-[10px] text-rmpg-300">To: {selected.release_to}</span>}
+                      </div>
+                    ) : selected.status !== 'released' && selected.status !== 'disposed' ? (
+                      <div>
+                        {!releaseOpen ? (
+                          <button onClick={() => setReleaseOpen(true)} className="toolbar-btn text-[10px]">
+                            <PackageOpen style={{ width: 10, height: 10 }} /> Request Release
+                          </button>
+                        ) : (
+                          <div className="space-y-2">
+                            <input value={releaseTo} onChange={e => setReleaseTo(e.target.value)} placeholder="Release to (name/entity)..."
+                              className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                            <textarea value={releaseReason} onChange={e => setReleaseReason(e.target.value)} placeholder="Reason for release..."
+                              rows={2} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
+                            <div className="flex gap-1">
+                              <button onClick={handleRequestRelease} disabled={releaseSubmitting || !releaseReason.trim()} className="toolbar-btn toolbar-btn-primary">
+                                {releaseSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle style={{ width: 11, height: 11 }} />}
+                                Submit Request
+                              </button>
+                              <button onClick={() => setReleaseOpen(false)} className="toolbar-btn">Cancel</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-[10px] text-rmpg-500">Item already {selected.status.replace(/_/g, ' ')}</div>
+                    )}
+                  </div>
                 </div>
               )}
 

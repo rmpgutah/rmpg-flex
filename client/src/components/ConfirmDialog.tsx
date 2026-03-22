@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useId } from 'react';
-import { AlertTriangle, X, Loader2 } from 'lucide-react';
+import { AlertTriangle, Info, X, Loader2 } from 'lucide-react';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -8,7 +8,8 @@ interface ConfirmDialogProps {
   title: string;
   message: string;
   confirmLabel?: string;
-  confirmVariant?: 'danger' | 'warning';
+  cancelLabel?: string;
+  confirmVariant?: 'danger' | 'warning' | 'default';
   isLoading?: boolean;
 }
 
@@ -18,7 +19,8 @@ export default function ConfirmDialog({
   onConfirm,
   title,
   message,
-  confirmLabel = 'Delete',
+  confirmLabel = 'Confirm',
+  cancelLabel = 'Cancel',
   confirmVariant = 'danger',
   isLoading = false,
 }: ConfirmDialogProps) {
@@ -28,6 +30,8 @@ export default function ConfirmDialog({
 
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const onConfirmRef = useRef(onConfirm);
+  onConfirmRef.current = onConfirm;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -43,6 +47,7 @@ export default function ConfirmDialog({
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { onCloseRef.current(); return; }
+      if (e.key === 'Enter') { onConfirmRef.current(); return; }
       if (e.key !== 'Tab') return;
       const focusable = dialog.querySelectorAll<HTMLElement>(
         'button:not([disabled]):not([tabindex="-1"]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
@@ -67,7 +72,12 @@ export default function ConfirmDialog({
   const confirmClass =
     confirmVariant === 'danger'
       ? 'bg-red-700 hover:bg-red-600 border-red-500 text-white'
-      : 'bg-amber-700 hover:bg-amber-600 border-amber-500 text-white';
+      : confirmVariant === 'warning'
+        ? 'bg-amber-700 hover:bg-amber-600 border-amber-500 text-white'
+        : 'bg-brand-700 hover:bg-brand-600 border-brand-500 text-white';
+
+  const HeaderIcon = confirmVariant === 'default' ? Info : AlertTriangle;
+  const iconColor = confirmVariant === 'danger' ? 'text-red-400' : confirmVariant === 'warning' ? 'text-amber-400' : 'text-brand-400';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" role="alertdialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descId} ref={dialogRef}>
@@ -78,7 +88,7 @@ export default function ConfirmDialog({
           style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)' }}
         >
           <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-red-400" />
+            <HeaderIcon className={`w-4 h-4 ${iconColor}`} />
             <h2 id={titleId} className="text-xs font-bold text-white uppercase tracking-wider">{title}</h2>
           </div>
           <button onClick={onClose} className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-white transition-colors" aria-label="Close dialog">
@@ -89,7 +99,7 @@ export default function ConfirmDialog({
           <p id={descId} className="text-sm text-rmpg-200 leading-relaxed">{message}</p>
           <div className="flex items-center justify-end gap-3 mt-6">
             <button type="button" onClick={onClose} className="toolbar-btn" disabled={isLoading}>
-              Cancel
+              {cancelLabel}
             </button>
             <button
               type="button"

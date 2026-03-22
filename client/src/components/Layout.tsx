@@ -395,6 +395,95 @@ export default function Layout() {
     return () => window.removeEventListener('keydown', handleFKey);
   }, [navigate, isAdmin, isClientViewer]);
 
+  // ── Keyboard Shortcut Help Modal ────────────────────────
+  const [showShortcutHelp, setShowShortcutHelp] = useState(false);
+
+  // ── Command Palette (Ctrl+K / Cmd+K) ─────────────────────
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [paletteQuery, setPaletteQuery] = useState('');
+  const paletteInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Unsaved Changes Warning ─────────────────────────────
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
+  // Global keyboard shortcuts: ? for help, Ctrl/Cmd+K for palette, beforeunload for unsaved
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      // ? key — show shortcut help
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        setShowShortcutHelp(prev => !prev);
+        return;
+      }
+    };
+
+    // Ctrl/Cmd+K — command palette (needs to work even when in inputs)
+    const paletteHandler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowCommandPalette(prev => !prev);
+        setPaletteQuery('');
+        return;
+      }
+      if (e.key === 'Escape' && showCommandPalette) {
+        setShowCommandPalette(false);
+      }
+      if (e.key === 'Escape' && showShortcutHelp) {
+        setShowShortcutHelp(false);
+      }
+    };
+
+    window.addEventListener('keydown', handler);
+    window.addEventListener('keydown', paletteHandler);
+    return () => {
+      window.removeEventListener('keydown', handler);
+      window.removeEventListener('keydown', paletteHandler);
+    };
+  }, [showCommandPalette, showShortcutHelp]);
+
+  // Beforeunload warning for unsaved changes
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [hasUnsavedChanges]);
+
+  // Expose unsaved changes setter globally via window for form pages
+  useEffect(() => {
+    (window as any).__rmpgSetUnsavedChanges = setHasUnsavedChanges;
+    return () => { delete (window as any).__rmpgSetUnsavedChanges; };
+  }, []);
+
+  // Clear unsaved changes on navigation
+  useEffect(() => {
+    setHasUnsavedChanges(false);
+  }, [location.pathname]);
+
+  // Command palette search results
+  const paletteResults = paletteQuery.trim().length > 0
+    ? TOOLBAR_NAV.flatMap(item => {
+        const items: { path: string; label: string; icon: React.ElementType }[] = [];
+        if (item.label.toLowerCase().includes(paletteQuery.toLowerCase())) {
+          items.push({ path: item.path, label: item.label, icon: item.icon });
+        }
+        if (item.children) {
+          item.children.forEach(child => {
+            if (child.label.toLowerCase().includes(paletteQuery.toLowerCase())) {
+              items.push({ path: child.path, label: child.label, icon: child.icon });
+            }
+          });
+        }
+        return items;
+      }).slice(0, 10)
+    : [];
+
   // Mobile menu & responsive detection
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const isMobile = useIsMobile();
@@ -1222,6 +1311,94 @@ export default function Layout() {
 
       {/* Force 2FA Setup Modal — blocks UI until 2FA is enabled */}
       <Force2FASetupModal />
+
+      {/* Keyboard Shortcut Help Modal */}
+      {showShortcutHelp && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowShortcutHelp(false)}>
+          <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm w-full max-w-md mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#1e3048] bg-[#0d1520]">
+              <h3 className="text-sm font-semibold text-white">Keyboard Shortcuts</h3>
+              <button onClick={() => setShowShortcutHelp(false)} className="text-rmpg-500 hover:text-white"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto">
+              <div className="space-y-1.5">
+                <div className="text-[10px] text-rmpg-400 font-bold uppercase tracking-wider mb-2">Module Navigation</div>
+                {TOOLBAR_NAV.filter(i => i.shortcut).map(item => (
+                  <div key={item.shortcut} className="flex items-center justify-between py-1">
+                    <span className="text-xs text-rmpg-200">{item.label}</span>
+                    <kbd className="px-2 py-0.5 text-[10px] font-mono bg-[#0d1520] border border-[#2a3e58] text-brand-400 rounded-sm">{item.shortcut}</kbd>
+                  </div>
+                ))}
+              </div>
+              <div className="border-t border-[#1e3048] pt-3 space-y-1.5">
+                <div className="text-[10px] text-rmpg-400 font-bold uppercase tracking-wider mb-2">Global</div>
+                {[
+                  { label: 'Command Palette', keys: navigator.platform.includes('Mac') ? 'Cmd+K' : 'Ctrl+K' },
+                  { label: 'Keyboard Shortcuts', keys: '?' },
+                  { label: 'Global Search', keys: navigator.platform.includes('Mac') ? 'Cmd+K' : 'Ctrl+K' },
+                  { label: 'Navigate Back', keys: 'Alt+Left' },
+                  { label: 'Navigate Forward', keys: 'Alt+Right' },
+                  { label: 'Close Modal', keys: 'Escape' },
+                ].map(s => (
+                  <div key={s.label} className="flex items-center justify-between py-1">
+                    <span className="text-xs text-rmpg-200">{s.label}</span>
+                    <kbd className="px-2 py-0.5 text-[10px] font-mono bg-[#0d1520] border border-[#2a3e58] text-brand-400 rounded-sm">{s.keys}</kbd>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Command Palette */}
+      {showCommandPalette && (
+        <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm" onClick={() => setShowCommandPalette(false)}>
+          <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm w-full max-w-lg mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-[#1e3048]">
+              <Search className="w-4 h-4 text-rmpg-500 flex-shrink-0" />
+              <input
+                ref={paletteInputRef}
+                autoFocus
+                value={paletteQuery}
+                onChange={e => setPaletteQuery(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && paletteResults.length > 0) {
+                    navigate(paletteResults[0].path);
+                    setShowCommandPalette(false);
+                  }
+                  if (e.key === 'Escape') setShowCommandPalette(false);
+                }}
+                placeholder="Search pages, modules..."
+                className="flex-1 bg-transparent text-sm text-white placeholder-rmpg-500 focus:outline-none"
+              />
+              <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-[#0d1520] border border-[#2a3e58] text-rmpg-500 rounded-sm">ESC</kbd>
+            </div>
+            <div className="max-h-80 overflow-y-auto">
+              {paletteQuery.trim() === '' ? (
+                <div className="p-4 text-center text-rmpg-500 text-xs">Type to search pages and modules...</div>
+              ) : paletteResults.length === 0 ? (
+                <div className="p-4 text-center text-rmpg-500 text-xs">No results found</div>
+              ) : (
+                paletteResults.map((result, idx) => {
+                  const Icon = result.icon;
+                  return (
+                    <button
+                      key={`${result.path}-${idx}`}
+                      onClick={() => { navigate(result.path); setShowCommandPalette(false); }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-brand-500/10 transition-colors border-b border-[#1e3048]/50 last:border-0"
+                    >
+                      <Icon className="w-4 h-4 text-brand-400 flex-shrink-0" />
+                      <span className="text-sm text-white">{result.label}</span>
+                      <span className="text-[10px] text-rmpg-500 ml-auto">{result.path}</span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

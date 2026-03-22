@@ -9,7 +9,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Construction, Search, Plus, Truck, MapPin, Clock, User,
   X, Save, Loader2, AlertTriangle, DollarSign, FileText,
-  ChevronDown, Eye, Hash, CheckCircle,
+  ChevronDown, Eye, Hash, CheckCircle, Calendar,
 } from 'lucide-react';
 import type { CodeViolation, VehicleTow, ViolationType, ViolationStatus, TowStatus, TowReason } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -99,6 +99,14 @@ export default function CodeEnforcementPage() {
   const [stats, setStats] = useState<any>(null);
   const [fetchError, setFetchError] = useState('');
 
+  // Reinspection scheduling
+  const [showReinspection, setShowReinspection] = useState(false);
+  const [reinspectionDate, setReinspectionDate] = useState('');
+  const [schedulingReinspection, setSchedulingReinspection] = useState(false);
+
+  // Property violation history
+  const [propertyHistory, setPropertyHistory] = useState<any>(null);
+
   // Forms
   const [vFormOpen, setVFormOpen] = useState(false);
   const [vFormData, setVFormData] = useState({ ...EMPTY_VIOLATION });
@@ -148,6 +156,15 @@ export default function CodeEnforcementPage() {
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useLiveSync('records', () => { fetchViolations({ silent: true }); fetchTows({ silent: true }); fetchStats(); });
 
+  // Fetch property history when violation selected
+  useEffect(() => {
+    if (selectedViolation?.location) {
+      apiFetch<{ data: any }>(`/code-enforcement/property-history?location=${encodeURIComponent(selectedViolation.location)}`)
+        .then(res => setPropertyHistory(res.data))
+        .catch(() => setPropertyHistory(null));
+    } else { setPropertyHistory(null); }
+  }, [selectedViolation]);
+
   const handleCreateViolation = async () => {
     const isValid = validateVForm(vFormData, {
       location: { required: true },
@@ -195,6 +212,24 @@ export default function CodeEnforcementPage() {
         setSelectedViolation(updated.data);
       }
     } catch (err: any) { addToast(err?.message || 'Operation failed', 'error'); }
+  };
+
+  const handleScheduleReinspection = async () => {
+    if (!selectedViolation || !reinspectionDate) return;
+    setSchedulingReinspection(true);
+    try {
+      await apiFetch(`/code-enforcement/violations/${selectedViolation.id}/status`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: 'reinspection', reinspection_date: reinspectionDate }),
+      });
+      addToast(`Reinspection scheduled for ${new Date(reinspectionDate + 'T00:00:00').toLocaleDateString()}`, 'success');
+      setShowReinspection(false);
+      setReinspectionDate('');
+      fetchViolations({ silent: true }); fetchStats();
+      const updated = await apiFetch<{ data: CodeViolation }>(`/code-enforcement/violations/${selectedViolation.id}`);
+      setSelectedViolation(updated.data);
+    } catch (err: any) { addToast(err?.message || 'Failed to schedule reinspection', 'error'); }
+    finally { setSchedulingReinspection(false); }
   };
 
   const handleTowStatus = async (id: number, status: string) => {
@@ -381,6 +416,67 @@ export default function CodeEnforcementPage() {
                   ))}
                 </div>
               </div>
+              {/* Schedule Reinspection */}
+              <div className="panel-beveled p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[9px] font-mono text-rmpg-500 uppercase">Reinspection</div>
+                  <button
+                    onClick={() => setShowReinspection(!showReinspection)}
+                    className="text-[10px] px-2 py-1 border border-blue-700/50 text-blue-400 bg-blue-900/20 hover:bg-blue-900/40 transition-colors"
+                  >
+                    <Calendar style={{ width: 10, height: 10, display: 'inline', marginRight: 4 }} />
+                    Schedule Reinspection
+                  </button>
+                </div>
+                {showReinspection && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <input
+                      type="date"
+                      value={reinspectionDate}
+                      onChange={e => setReinspectionDate(e.target.value)}
+                      min={new Date().toISOString().slice(0, 10)}
+                      className="input-dark text-[10px] px-2 py-1 flex-1"
+                    />
+                    <button
+                      onClick={handleScheduleReinspection}
+                      disabled={!reinspectionDate || schedulingReinspection}
+                      className="text-[10px] px-3 py-1 bg-blue-900/40 text-blue-400 border border-blue-700/50 hover:bg-blue-800/50 disabled:opacity-40 transition-colors"
+                    >
+                      {schedulingReinspection ? 'Scheduling...' : 'Confirm'}
+                    </button>
+                    <button onClick={() => { setShowReinspection(false); setReinspectionDate(''); }} className="text-rmpg-500 hover:text-white">
+                      <X style={{ width: 12, height: 12 }} />
+                    </button>
+                  </div>
+                )}
+                {(selectedViolation as any).reinspection_date && (
+                  <div className="mt-2 text-[10px] text-blue-400 flex items-center gap-1">
+                    <Calendar style={{ width: 10, height: 10 }} />
+                    Reinspection scheduled: {new Date((selectedViolation as any).reinspection_date + 'T00:00:00').toLocaleDateString()}
+                  </div>
+                )}
+              </div>
+
+              {/* Property Violation History */}
+              {propertyHistory && (
+                <div className={`panel-beveled p-3 ${propertyHistory.is_repeat_offender ? 'border-red-700/50 bg-red-900/10' : ''}`}>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="text-[9px] font-mono text-rmpg-500 uppercase">Property Violation History (12 mo)</div>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 border ${
+                      propertyHistory.is_repeat_offender ? 'bg-red-900/50 text-red-400 border-red-700/50' : 'bg-rmpg-700/30 text-rmpg-300 border-rmpg-600/50'
+                    }`}>
+                      {propertyHistory.violation_count_12mo} violation{propertyHistory.violation_count_12mo !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  {propertyHistory.is_repeat_offender && (
+                    <div className="flex items-center gap-1.5 mt-1 text-[10px] text-red-400 font-bold">
+                      <AlertTriangle style={{ width: 12, height: 12 }} />
+                      REPEAT OFFENDER — 3+ violations in 12 months
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[
                   ['Location', selectedViolation.location],

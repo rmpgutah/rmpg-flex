@@ -14,6 +14,7 @@ export interface VehicleFormState {
   plate_state: string;
   status: FleetVehicleStatus;
   current_mileage: string;
+  next_service_mileage: string;
   insurance_expiry: string;
   registration_expiry: string;
   equipment_str: string;
@@ -23,7 +24,7 @@ export interface VehicleFormState {
 export const EMPTY_VEHICLE_FORM: VehicleFormState = {
   vehicle_number: '', make: '', model: '', year: '', color: '', vin: '',
   plate_number: '', plate_state: '', status: 'in_service', current_mileage: '',
-  insurance_expiry: '', registration_expiry: '', equipment_str: '', notes: '',
+  next_service_mileage: '', insurance_expiry: '', registration_expiry: '', equipment_str: '', notes: '',
 };
 
 const VEHICLE_STATUSES: { value: FleetVehicleStatus; label: string }[] = [
@@ -109,6 +110,20 @@ export default function VehicleFormModal({ isOpen, mode, form, onChange, onSave,
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Current Mileage</label>
               <input className="input-dark w-full text-[11px] font-mono" type="number" value={form.current_mileage}
                 onChange={(e) => setField('current_mileage', e.target.value)} />
+            </div>
+            <div>
+              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Next Service Mileage</label>
+              <input className="input-dark w-full text-[11px] font-mono" type="number" value={form.next_service_mileage}
+                onChange={(e) => setField('next_service_mileage', e.target.value)}
+                placeholder="e.g. 50000" />
+              {form.current_mileage && form.next_service_mileage && (
+                <span className={`text-[8px] mt-0.5 block ${
+                  parseInt(form.next_service_mileage) - parseInt(form.current_mileage) <= 0 ? 'text-red-400' :
+                  parseInt(form.next_service_mileage) - parseInt(form.current_mileage) <= 500 ? 'text-amber-400' : 'text-green-400'
+                }`}>
+                  {parseInt(form.next_service_mileage) - parseInt(form.current_mileage)} miles until service
+                </span>
+              )}
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Registration Expiry (Date/Time)</label>

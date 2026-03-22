@@ -778,23 +778,34 @@ export default function CrmPage() {
                   {clientActivity.length === 0 ? (
                     <p className="text-xs text-rmpg-400">No activity recorded</p>
                   ) : (
-                    <div className="space-y-1.5 max-h-64 overflow-y-auto">
-                      {clientActivity.map((a: any) => (
-                        <div key={a.id} className="text-xs p-1.5 bg-surface-sunken border border-rmpg-700/30">
-                          <div className="flex items-center justify-between">
-                            <span className={`inline-block px-1 py-0.5 text-[9px] font-bold border ${
-                              a.activity_type === 'call' ? 'text-green-400 border-green-700/50 bg-green-900/20' :
-                              a.activity_type === 'email' ? 'text-blue-400 border-blue-700/50 bg-blue-900/20' :
-                              a.activity_type === 'meeting' ? 'text-purple-400 border-purple-700/50 bg-purple-900/20' :
-                              'text-rmpg-300 border-rmpg-600 bg-rmpg-800/20'
-                            }`}>{toDisplayLabel(a.activity_type)}</span>
-                            <span className="text-rmpg-400 font-mono">{formatDateTime(a.created_at)}</span>
+                    <div className="relative pl-5 max-h-64 overflow-y-auto">
+                      <div className="absolute left-1.5 top-0 bottom-0 w-px bg-rmpg-700" />
+                      {clientActivity.map((a: any) => {
+                        const dotColor = a.activity_type === 'call' ? 'bg-green-500' :
+                          a.activity_type === 'email' ? 'bg-blue-500' :
+                          a.activity_type === 'meeting' ? 'bg-purple-500' :
+                          a.activity_type === 'invoice' ? 'bg-amber-500' :
+                          a.activity_type === 'contract_change' ? 'bg-cyan-500' : 'bg-rmpg-500';
+                        return (
+                          <div key={a.id} className="relative mb-2">
+                            <div className={`absolute -left-[14px] top-1.5 w-2 h-2 rounded-full ${dotColor}`} />
+                            <div className="text-xs p-1.5 bg-surface-sunken border border-rmpg-700/30">
+                              <div className="flex items-center justify-between">
+                                <span className={`inline-block px-1 py-0.5 text-[9px] font-bold border ${
+                                  a.activity_type === 'call' ? 'text-green-400 border-green-700/50 bg-green-900/20' :
+                                  a.activity_type === 'email' ? 'text-blue-400 border-blue-700/50 bg-blue-900/20' :
+                                  a.activity_type === 'meeting' ? 'text-purple-400 border-purple-700/50 bg-purple-900/20' :
+                                  'text-rmpg-300 border-rmpg-600 bg-rmpg-800/20'
+                                }`}>{toDisplayLabel(a.activity_type)}</span>
+                                <span className="text-rmpg-400 font-mono">{formatDateTime(a.created_at)}</span>
+                              </div>
+                              {a.subject && <div className="text-rmpg-200 font-medium mt-0.5">{a.subject}</div>}
+                              {a.details && <div className="text-rmpg-300 mt-0.5">{a.details}</div>}
+                              {a.created_by_name && <div className="text-rmpg-500 mt-0.5">-- {a.created_by_name}</div>}
+                            </div>
                           </div>
-                          {a.subject && <div className="text-rmpg-200 font-medium mt-0.5">{a.subject}</div>}
-                          {a.details && <div className="text-rmpg-300 mt-0.5">{a.details}</div>}
-                          {a.created_by_name && <div className="text-rmpg-500 mt-0.5">— {a.created_by_name}</div>}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>

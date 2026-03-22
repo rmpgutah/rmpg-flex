@@ -9,6 +9,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
+import { createNotification } from './notifications';
 
 const router = Router();
 router.use(authenticateToken);
@@ -150,6 +151,25 @@ router.post('/events', (req: Request, res: Response) => {
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
       VALUES (?, 'create', 'court_event', ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ event_number }), now);
 
+    // Notify assigned officers
+    const officerIds = officers_required || [];
+    const parsedOfficers = typeof officerIds === 'string' ? JSON.parse(officerIds) : officerIds;
+    if (Array.isArray(parsedOfficers)) {
+      for (const officerId of parsedOfficers) {
+        const id = typeof officerId === 'number' ? officerId : parseInt(officerId, 10);
+        if (isNaN(id) || id === req.user!.userId) continue;
+        createNotification(
+          id,
+          'court_assignment',
+          `Court ${event_type || 'Event'}: ${event_number}`,
+          `You have been assigned to a court event on ${event_date}${court_name ? ` at ${court_name}` : ''}. ${defendant_name ? `Defendant: ${defendant_name}` : ''}`,
+          'court_event',
+          result.lastInsertRowid as number,
+          event_type === 'subpoena' ? 'high' : 'normal'
+        );
+      }
+    }
+
     res.status(201).json({ data: { id: result.lastInsertRowid, event_number } });
   } catch (error: any) {
     console.error('Create court event error:', error);
@@ -176,6 +196,28 @@ router.put('/events/:id', (req: Request, res: Response) => {
     }
     params.push(req.params.id);
     db.prepare(`UPDATE court_events SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+
+    // Notify newly assigned officers
+    if (req.body.officers_required !== undefined) {
+      const eventRow = db.prepare('SELECT * FROM court_events WHERE id = ?').get(req.params.id) as any;
+      const officerIds = req.body.officers_required || [];
+      if (Array.isArray(officerIds)) {
+        for (const officerId of officerIds) {
+          const id = typeof officerId === 'number' ? officerId : parseInt(officerId, 10);
+          if (isNaN(id) || id === req.user!.userId) continue;
+          createNotification(
+            id,
+            'court_assignment',
+            `Court Event Updated: ${eventRow?.event_number || ''}`,
+            `A court event on ${eventRow?.event_date || ''}${eventRow?.court_name ? ` at ${eventRow.court_name}` : ''} has been updated.`,
+            'court_event',
+            parseInt(req.params.id),
+            'normal'
+          );
+        }
+      }
+    }
+
     res.json({ data: { id: parseInt(req.params.id) } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -198,6 +240,51 @@ router.put('/events/:id/outcome', (req: Request, res: Response) => {
 
     res.json({ data: { id: parseInt(req.params.id), outcome } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ─── POST /events/from-citation ─────────────────────────
+// Create a court event from an existing citation
+router.post('/events/from-citation', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { citation_id } = req.body;
+    if (!citation_id) return res.status(400).json({ error: 'citation_id is required' });
+
+    const citation = db.prepare('SELECT * FROM citations WHERE id = ?').get(citation_id) as any;
+    if (!citation) return res.status(404).json({ error: 'Citation not found' });
+
+    const now = localNow();
+    const event_number = nextEventNumber();
+
+    const result = db.prepare(`
+      INSERT INTO court_events (event_number, event_type, status, event_date, event_time,
+        court_name, court_case_number, citation_id,
+        defendant_name, notes,
+        created_by, created_at, updated_at)
+      VALUES (?, 'arraignment', 'scheduled', ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      event_number,
+      citation.court_date || localToday(),
+      citation.court_name || null,
+      citation.citation_number || null,
+      citation_id,
+      citation.person_name || null,
+      `Auto-created from citation ${citation.citation_number}`,
+      req.user!.userId, now, now
+    );
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'create', 'court_event', ?, ?, ?)`).run(
+      req.user!.userId, result.lastInsertRowid,
+      JSON.stringify({ event_number, source: 'citation', citation_id }),
+      now
+    );
+
+    res.status(201).json({ data: { id: result.lastInsertRowid, event_number } });
+  } catch (error: any) {
+    console.error('Create court event from citation error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 export default router;

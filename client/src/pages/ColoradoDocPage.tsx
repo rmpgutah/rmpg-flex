@@ -6,10 +6,11 @@
 // for 24 hours after initial lookup.
 // ============================================================
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Search, Loader2, X, User, Building2, Calendar, Hash,
-  AlertCircle, ChevronRight, Shield, FileText,
+  AlertCircle, ChevronRight, Shield, FileText, Link2, Plus, UserCheck,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
@@ -53,6 +54,7 @@ function statusClass(status: string | null): string {
 // ── Main Component ───────────────────────────────────────────
 
 export default function ColoradoDocPage() {
+  const navigate = useNavigate();
   // Search state
   const [lastName, setLastName] = useState('');
   const [firstName, setFirstName] = useState('');
@@ -65,6 +67,32 @@ export default function ColoradoDocPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [searched, setSearched] = useState(false);
+
+  // Local person matching
+  const [localMatch, setLocalMatch] = useState<{ id: number; full_name: string; dob?: string } | null>(null);
+  const [matchLoading, setMatchLoading] = useState(false);
+
+  // When an offender is selected, check for local person match
+  useEffect(() => {
+    if (!selected) { setLocalMatch(null); return; }
+    setMatchLoading(true);
+    setLocalMatch(null);
+    const params = new URLSearchParams({ last_name: selected.last_name });
+    if (selected.first_name) params.set('first_name', selected.first_name);
+    apiFetch<any[]>(`/records/persons?${params}&limit=5`)
+      .then(persons => {
+        const match = (persons || []).find((p: any) => {
+          const nameMatch = p.last_name?.toLowerCase() === selected.last_name.toLowerCase()
+            && p.first_name?.toLowerCase() === selected.first_name.toLowerCase();
+          if (!nameMatch) return false;
+          if (selected.dob && p.dob) return p.dob === selected.dob;
+          return true;
+        });
+        setLocalMatch(match ? { id: match.id, full_name: match.full_name || `${match.first_name} ${match.last_name}`, dob: match.dob } : null);
+      })
+      .catch(() => setLocalMatch(null))
+      .finally(() => setMatchLoading(false));
+  }, [selected]);
 
   // ── Search by name ───────────────────────────────────────
   const searchByName = useCallback(async () => {
@@ -412,6 +440,48 @@ export default function ColoradoDocPage() {
                   </div>
                 </div>
               )}
+
+              {/* Local Person Match */}
+              <div className="border-t border-[#1e3048] pt-3">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Link2 size={12} className="text-rmpg-500" />
+                  <span className="text-[9px] uppercase tracking-wider text-rmpg-500 font-bold">Local Records Match</span>
+                </div>
+                {matchLoading ? (
+                  <div className="flex items-center gap-2 text-[10px] text-rmpg-400">
+                    <Loader2 size={12} className="animate-spin" /> Checking local records...
+                  </div>
+                ) : localMatch ? (
+                  <div className="px-2.5 py-2 bg-green-900/20 border border-green-700/40 rounded-sm">
+                    <div className="flex items-center gap-2">
+                      <UserCheck size={14} className="text-green-400 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[11px] text-green-300 font-bold">Match Found in Local Records</div>
+                        <div className="text-[10px] text-green-400/80 mt-0.5">{localMatch.full_name} (Person #{localMatch.id})</div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => navigate(`/records?person=${localMatch.id}`)}
+                      className="mt-2 w-full text-[10px] py-1.5 bg-green-900/40 text-green-400 border border-green-700/50 hover:bg-green-800/50 transition-colors text-center font-bold uppercase tracking-wider"
+                    >
+                      View Person Record
+                    </button>
+                  </div>
+                ) : (
+                  <div className="px-2.5 py-2 bg-[#0d1520] border border-[#1e3048] rounded-sm">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle size={14} className="text-rmpg-500 flex-shrink-0" />
+                      <div className="text-[10px] text-rmpg-400">No local match found</div>
+                    </div>
+                    <button
+                      onClick={() => navigate(`/records?action=new-person&first_name=${encodeURIComponent(selected.first_name)}&last_name=${encodeURIComponent(selected.last_name)}${selected.dob ? `&dob=${encodeURIComponent(selected.dob)}` : ''}`)}
+                      className="mt-2 w-full text-[10px] py-1.5 bg-brand-900/30 text-brand-400 border border-brand-700/50 hover:bg-brand-800/40 transition-colors text-center font-bold uppercase tracking-wider flex items-center justify-center gap-1"
+                    >
+                      <Plus size={10} /> Create Person Record
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}

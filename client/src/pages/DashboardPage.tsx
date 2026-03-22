@@ -45,6 +45,8 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import { StatsCardSkeleton, CardSkeleton } from '../components/Skeleton';
+import NewCallModal from '../components/NewCallModal';
+import IncidentFormModal from '../components/IncidentFormModal';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -332,6 +334,8 @@ export default function DashboardPage() {
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const [showNewCallModal, setShowNewCallModal] = useState(false);
+  const [showIncidentModal, setShowIncidentModal] = useState(false);
 
   // Shift countdown timer — update every second
   useEffect(() => {
@@ -433,6 +437,17 @@ export default function DashboardPage() {
   // Live sync — auto-refresh dashboard when ANY module changes (silent to avoid unmounting UI)
   const silentRefreshDashboard = useCallback(() => fetchDashboardData({ silent: true }), [fetchDashboardData]);
   useLiveSync(['dispatch', 'incidents', 'records', 'personnel', 'fleet'], silentRefreshDashboard);
+
+  // Activity feed 30-second auto-refresh
+  useEffect(() => {
+    const activityInterval = setInterval(async () => {
+      try {
+        const activityRaw = await apiFetch<{ data: ActivityApiEntry[] }>('/comms/activity-feed?limit=20');
+        if (activityRaw?.data) setActivities(activityRaw.data.map(mapActivityEntry));
+      } catch { /* silent */ }
+    }, 30_000);
+    return () => clearInterval(activityInterval);
+  }, []);
 
   // Format hour labels for chart
   const chartData = stats.calls_by_hour.map((d) => ({
@@ -680,16 +695,16 @@ export default function DashboardPage() {
           <div className="p-3">
             <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-3'} gap-2`}>
               {[
-                { icon: Phone, label: 'New Dispatch', path: '/dispatch', color: '#ef4444' },
-                { icon: FileText, label: 'Incident Report', path: '/incidents', color: '#f59e0b' },
+                { icon: Phone, label: 'New Call', path: '', color: '#ef4444', action: () => setShowNewCallModal(true) },
+                { icon: FileText, label: 'New Incident', path: '', color: '#f59e0b', action: () => setShowIncidentModal(true) },
                 { icon: Navigation, label: 'Start Patrol', path: '/patrol', color: '#22c55e' },
                 { icon: Gavel, label: 'New Citation', path: '/citations', color: '#3b82f6' },
                 { icon: Target, label: 'Process Server', path: '/serve', color: '#a855f7' },
                 { icon: Mail, label: 'Email', path: '/email', color: '#06b6d4' },
-              ].map(({ icon: ActionIcon, label, path, color }) => (
+              ].map(({ icon: ActionIcon, label, path, color, action }) => (
                 <button
                   key={label}
-                  onClick={() => navigate(path)}
+                  onClick={() => action ? action() : navigate(path)}
                   className={`flex flex-col items-center gap-1.5 ${isMobile ? 'p-3 min-h-[64px]' : 'p-2.5'} panel-beveled bg-surface-sunken hover:bg-surface-raised transition-all duration-150 cursor-pointer group border border-transparent hover:border-[#2a3e58]`}
                 >
                   <ActionIcon
@@ -1232,6 +1247,23 @@ export default function DashboardPage() {
           </div>
         );
       })()}
+
+      {/* Quick Action Modals */}
+      {showNewCallModal && (
+        <NewCallModal
+          isOpen={showNewCallModal}
+          onClose={() => setShowNewCallModal(false)}
+          onSubmit={async () => { setShowNewCallModal(false); fetchDashboardData({ silent: true }); }}
+        />
+      )}
+      {showIncidentModal && (
+        <IncidentFormModal
+          isOpen={showIncidentModal}
+          onClose={() => setShowIncidentModal(false)}
+          onSubmit={() => { setShowIncidentModal(false); fetchDashboardData({ silent: true }); }}
+          isSubmitting={false}
+        />
+      )}
     </div>
   );
 }

@@ -218,6 +218,25 @@ export default function TrespassOrdersPage() {
     } catch (err: any) { setError(err.message); }
   };
 
+  const handleRenew = async (order: TrespassOrder) => {
+    try {
+      const renewed = await apiFetch<TrespassOrder>(`/trespass-orders/${order.id}/renew`, { method: 'POST' });
+      addToast(`Order renewed as ${(renewed as any).order_number}`, 'success');
+      await fetchOrders();
+      setSelectedOrder(renewed);
+    } catch (err: any) { addToast(err.message || 'Failed to renew', 'error'); }
+  };
+
+  // Check if order expires within 30 days
+  const isExpiringWithin30Days = (order: TrespassOrder): boolean => {
+    if (!order.expiration_date) return false;
+    const exp = new Date(order.expiration_date);
+    const now = new Date();
+    const thirtyDays = new Date();
+    thirtyDays.setDate(thirtyDays.getDate() + 30);
+    return exp > now && exp <= thirtyDays;
+  };
+
   const update = (field: string, value: any) => setFormData(prev => ({ ...prev, [field]: value }));
 
   const selectPerson = (p: any) => {
@@ -356,7 +375,17 @@ export default function TrespassOrdersPage() {
                     <button onClick={() => handleViolate(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: '#a855f7', minHeight: isMobile ? 48 : undefined }}>
                       <AlertTriangle style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Violated
                     </button>
+                    {isExpiringWithin30Days(selectedOrder) && (
+                      <button onClick={() => handleRenew(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: '#60a5fa', minHeight: isMobile ? 48 : undefined }}>
+                        <RotateCcw style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Renew
+                      </button>
+                    )}
                   </>
+                )}
+                {(selectedOrder.status === 'expired' || selectedOrder.status === 'served') && (
+                  <button onClick={() => handleRenew(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: '#60a5fa', minHeight: isMobile ? 48 : undefined }}>
+                    <RotateCcw style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Renew
+                  </button>
                 )}
                 <button onClick={() => setSelectedOrder(null)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
                   <X style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} />

@@ -382,6 +382,41 @@ export default function WarrantsPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
 
+  // Batch selection
+  const [batchSelected, setBatchSelected] = useState<Set<number>>(new Set());
+  const [batchStatus, setBatchStatus] = useState('');
+  const [batchSubmitting, setBatchSubmitting] = useState(false);
+
+  const toggleBatchSelect = (id: number) => {
+    setBatchSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelectAll = () => {
+    if (batchSelected.size === warrants.length) {
+      setBatchSelected(new Set());
+    } else {
+      setBatchSelected(new Set(warrants.map(w => w.id)));
+    }
+  };
+  const handleBatchUpdate = async () => {
+    if (batchSelected.size === 0 || !batchStatus) return;
+    if (!confirm(`Update ${batchSelected.size} warrants to "${batchStatus}"?`)) return;
+    setBatchSubmitting(true);
+    try {
+      await apiFetch('/warrants/batch-update', {
+        method: 'PUT',
+        body: JSON.stringify({ ids: Array.from(batchSelected), status: batchStatus }),
+      });
+      setBatchSelected(new Set());
+      setBatchStatus('');
+      fetchWarrants({ silent: true });
+    } catch (err: any) { alert(err?.message || 'Batch update failed'); }
+    finally { setBatchSubmitting(false); }
+  };
+
   // Form modal
   const [formOpen, setFormOpen] = useState(false);
   const [editingWarrant, setEditingWarrant] = useState<Warrant | null>(null);
@@ -1189,6 +1224,24 @@ export default function WarrantsPage() {
               </div>
             )}
 
+            {/* Batch Actions Bar */}
+            {batchSelected.size > 0 && isAdminOrManager && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-brand-900/20 border-b border-brand-700/50">
+                <span className="text-[10px] font-bold text-brand-300">{batchSelected.size} selected</span>
+                <select value={batchStatus} onChange={e => setBatchStatus(e.target.value)} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-2 py-0.5 outline-none">
+                  <option value="">Set Status...</option>
+                  <option value="served">Served</option>
+                  <option value="recalled">Recalled</option>
+                  <option value="quashed">Quashed</option>
+                  <option value="expired">Expired</option>
+                </select>
+                <button onClick={handleBatchUpdate} disabled={!batchStatus || batchSubmitting} className="toolbar-btn-primary text-[10px] px-2 py-0.5 disabled:opacity-50">
+                  {batchSubmitting ? 'Updating...' : 'Apply'}
+                </button>
+                <button onClick={() => setBatchSelected(new Set())} className="toolbar-btn text-[10px] px-2 py-0.5">Clear</button>
+              </div>
+            )}
+
             {/* Table */}
             <div className="flex-1 overflow-auto">
               {loading ? (
@@ -1235,6 +1288,11 @@ export default function WarrantsPage() {
                 <table className="table-dark">
                   <thead>
                     <tr>
+                      {isAdminOrManager && (
+                        <th style={{ width: 30 }}>
+                          <input type="checkbox" checked={batchSelected.size === warrants.length && warrants.length > 0} onChange={toggleSelectAll} className="accent-brand-500" />
+                        </th>
+                      )}
                       <th style={{ width: 80 }}>Status</th>
                       <th style={{ width: 120 }}>Warrant #</th>
                       <th>Subject</th>
@@ -1251,8 +1309,13 @@ export default function WarrantsPage() {
                       <tr
                         key={w.id}
                         onClick={() => fetchWarrantDetail(w.id)}
-                        className={`cursor-pointer ${selectedWarrant?.id === w.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''}`}
+                        className={`cursor-pointer ${selectedWarrant?.id === w.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''} ${batchSelected.has(w.id) ? 'bg-brand-900/10' : ''}`}
                       >
+                        {isAdminOrManager && (
+                          <td onClick={e => e.stopPropagation()}>
+                            <input type="checkbox" checked={batchSelected.has(w.id)} onChange={() => toggleBatchSelect(w.id)} className="accent-brand-500" />
+                          </td>
+                        )}
                         <td>
                           <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-bold rounded-sm border ${STATUS_COLORS[w.status] || ''}`}>
                             {w.status.toUpperCase()}

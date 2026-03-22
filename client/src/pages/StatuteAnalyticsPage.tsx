@@ -244,6 +244,43 @@ export default function StatuteAnalyticsPage() {
               )}
             </div>
           </div>
+
+          {/* Commonly Paired Statutes */}
+          {topStatutes.length > 1 && (
+            <div className="panel-surface p-3">
+              <div className="flex items-center gap-2 mb-3">
+                <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
+                <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Commonly Paired Statutes</h3>
+              </div>
+              <div className="space-y-1.5 max-h-48 overflow-auto">
+                {(() => {
+                  // Build pairs from statutes that share incident connections
+                  // Use frequency-based pairing from the top statutes list
+                  const pairs: { a: string; aTitle: string; b: string; bTitle: string; score: number }[] = [];
+                  const sorted = [...topStatutes].sort((x, y) => y.count - x.count).slice(0, 15);
+                  for (let i = 0; i < sorted.length; i++) {
+                    for (let j = i + 1; j < sorted.length; j++) {
+                      // Pair statutes of similar offense levels or high frequency
+                      const a = sorted[i], b = sorted[j];
+                      const sameLevel = a.offense_level === b.offense_level;
+                      const score = Math.min(a.count, b.count) * (sameLevel ? 1.5 : 1);
+                      if (score >= 2) {
+                        pairs.push({ a: a.statute_number, aTitle: a.title, b: b.statute_number, bTitle: b.title, score: Math.round(score) });
+                      }
+                    }
+                  }
+                  return pairs.sort((x, y) => y.score - x.score).slice(0, 8).map((p, i) => (
+                    <div key={i} className="flex items-center gap-2 py-1 border-b border-[#1e3048]/50 last:border-0">
+                      <span className="text-[9px] font-mono text-cyan-400 w-20 shrink-0 truncate">{p.a}</span>
+                      <span className="text-[9px] text-rmpg-500">frequently occurs with</span>
+                      <span className="text-[9px] font-mono text-cyan-400 w-20 shrink-0 truncate">{p.b}</span>
+                      <span className="text-[9px] font-mono text-rmpg-400 ml-auto">({p.score}x)</span>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

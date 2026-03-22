@@ -442,6 +442,36 @@ export default function OffenderRegistryPage() {
                 </div>
               </div>
 
+              {/* Ban Zone Map Visualization */}
+              {(selected.alert_type === 'ban_zone' || selected.restriction_radius_ft) && selected.location_lat && selected.location_lng && (
+                <div className="panel-beveled overflow-hidden">
+                  <div className="text-[9px] font-mono text-rmpg-500 uppercase px-3 pt-2 pb-1 flex items-center gap-1.5">
+                    <MapPin size={10} className="text-red-400" />
+                    Registered Address / Ban Zone
+                  </div>
+                  <div className="h-40 bg-[#0d1520] relative">
+                    <img
+                      src={`https://maps.googleapis.com/maps/api/staticmap?center=${selected.location_lat},${selected.location_lng}&zoom=15&size=600x200&maptype=roadmap&markers=color:red%7C${selected.location_lat},${selected.location_lng}&key=${(import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY || ''}&style=feature:all|element:geometry|color:0x242f3e&style=feature:all|element:labels.text.fill|color:0x746855`}
+                      alt="Ban zone map"
+                      className="w-full h-full object-cover"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                    />
+                    {selected.restriction_radius_ft && (
+                      <div className="absolute bottom-2 left-2 px-2 py-1 bg-red-900/80 text-red-300 text-[9px] font-bold border border-red-700/50">
+                        <Ban size={10} className="inline mr-1" />
+                        {selected.restriction_radius_ft}ft restriction zone
+                      </div>
+                    )}
+                  </div>
+                  {selected.location_address && (
+                    <div className="px-3 py-1.5 text-[10px] text-rmpg-300 flex items-center gap-1.5 border-t border-[#1e3048]">
+                      <MapPin size={10} className="text-rmpg-500" />
+                      {selected.location_address}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Alert details */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[

@@ -437,4 +437,94 @@ router.delete('/:id', (req: Request, res: Response) => {
   }
 });
 
+// ─── Payment Plan Tracking ──────────────────────────────
+
+// Ensure citation_payments table exists
+try {
+  const db = getDb();
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS citation_payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      citation_id INTEGER NOT NULL REFERENCES citations(id),
+      amount REAL NOT NULL,
+      payment_date TEXT NOT NULL,
+      payment_method TEXT,
+      reference_number TEXT,
+      notes TEXT,
+      recorded_by INTEGER,
+      created_at TEXT NOT NULL
+    )
+  `);
+} catch { /* table may already exist */ }
+
+// GET /api/citations/:id/payments — Get payment history for a citation
+router.get('/:id/payments', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const citation = db.prepare('SELECT id, fine_amount, status FROM citations WHERE id = ?').get(req.params.id) as any;
+    if (!citation) { res.status(404).json({ error: 'Citation not found' }); return; }
+
+    const payments = db.prepare(
+      'SELECT * FROM citation_payments WHERE citation_id = ? ORDER BY payment_date DESC'
+    ).all(req.params.id) as any[];
+
+    const totalPaid = payments.reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
+    const fineAmount = citation.fine_amount || 0;
+
+    res.json({
+      data: {
+        payments,
+        total_amount: fineAmount,
+        total_paid: totalPaid,
+        remaining: Math.max(0, fineAmount - totalPaid),
+      },
+    });
+  } catch (error: any) {
+    console.error('Get citation payments error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/citations/:id/payments — Record a payment
+router.post('/:id/payments', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const citation = db.prepare('SELECT id, fine_amount, status FROM citations WHERE id = ?').get(req.params.id) as any;
+    if (!citation) { res.status(404).json({ error: 'Citation not found' }); return; }
+
+    const { amount, payment_date, payment_method, reference_number, notes } = req.body;
+    if (!amount || !payment_date) {
+      res.status(400).json({ error: 'Amount and payment_date are required' });
+      return;
+    }
+
+    const now = localNow();
+    const result = db.prepare(`
+      INSERT INTO citation_payments (citation_id, amount, payment_date, payment_method, reference_number, notes, recorded_by, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(req.params.id, parseFloat(amount), payment_date, payment_method || null, reference_number || null, notes || null, req.user!.userId, now);
+
+    // Check if fully paid
+    const payments = db.prepare(
+      'SELECT COALESCE(SUM(amount), 0) as total FROM citation_payments WHERE citation_id = ?'
+    ).get(req.params.id) as any;
+    const totalPaid = payments.total;
+    if (totalPaid >= (citation.fine_amount || 0)) {
+      db.prepare("UPDATE citations SET status = 'paid', updated_at = ? WHERE id = ?").run(now, req.params.id);
+    } else if (citation.status !== 'payment_plan') {
+      db.prepare("UPDATE citations SET status = 'payment_plan', updated_at = ? WHERE id = ?").run(now, req.params.id);
+    }
+
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'payment_recorded', 'citation', ?, ?, ?)
+    `).run(req.user!.userId, req.params.id, `Payment of $${parseFloat(amount).toFixed(2)} recorded`, req.ip || 'unknown');
+
+    res.status(201).json({ data: { id: result.lastInsertRowid } });
+  } catch (error: any) {
+    console.error('Record citation payment error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

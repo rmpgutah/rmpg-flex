@@ -157,6 +157,49 @@ router.get('/check/:personId', (req: Request, res: Response) => {
   }
 });
 
+// PUT /api/warrants/batch-update — Batch update warrant statuses
+router.put('/batch-update', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { ids, status } = req.body;
+    const validStatuses = ['active', 'served', 'recalled', 'expired', 'quashed'];
+    if (!Array.isArray(ids) || ids.length === 0) {
+      res.status(400).json({ error: 'ids array is required' });
+      return;
+    }
+    if (!status || !validStatuses.includes(status)) {
+      res.status(400).json({ error: `status must be one of: ${validStatuses.join(', ')}` });
+      return;
+    }
+    const now = localNow();
+    const placeholders = ids.map(() => '?').join(',');
+
+    const extraFields = status === 'served'
+      ? `, served_by = ?, served_at = ?` : '';
+    const extraParams = status === 'served'
+      ? [req.user!.userId, now] : [];
+
+    db.prepare(`
+      UPDATE warrants SET status = ?, updated_at = ?${extraFields}
+      WHERE id IN (${placeholders})
+    `).run(status, now, ...extraParams, ...ids);
+
+    // Activity log
+    for (const id of ids) {
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'warrant_batch_update', 'warrant', ?, ?, ?)
+      `).run(req.user!.userId, id, `Batch status change to ${status}`, req.ip || 'unknown');
+    }
+
+    broadcast('alerts', 'warrants_updated', { ids, status });
+    res.json({ success: true, updated: ids.length });
+  } catch (error: any) {
+    console.error('Batch update warrants error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // GET /api/warrants/:id - Get single warrant with details
 router.get('/:id', (req: Request, res: Response) => {
   try {

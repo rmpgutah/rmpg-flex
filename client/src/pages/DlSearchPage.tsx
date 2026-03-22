@@ -282,6 +282,28 @@ export default function DlSearchPage() {
                   </div>
                 </div>
 
+                {/* License Status Alert */}
+                {(() => {
+                  const isExpired = selected.dl_expiration && new Date(selected.dl_expiration) < new Date();
+                  const isSuspended = selected.dl_status && ['SUSPENDED', 'REVOKED', 'CANCELLED', 'DISQUALIFIED'].includes(selected.dl_status.toUpperCase());
+                  if (isExpired || isSuspended) {
+                    return (
+                      <div className={`mt-3 px-4 py-2.5 border-2 flex items-center gap-2 ${
+                        isSuspended ? 'bg-red-900/30 border-red-600 text-red-400' : 'bg-amber-900/30 border-amber-600 text-amber-400'
+                      }`}>
+                        <Shield className="w-5 h-5 flex-shrink-0" />
+                        <span className="text-sm font-black uppercase tracking-wider animate-pulse">
+                          {isSuspended ? `LICENSE ${selected.dl_status?.toUpperCase()}` : 'LICENSE EXPIRED'}
+                        </span>
+                        {isExpired && !isSuspended && (
+                          <span className="text-xs font-mono ml-auto">Expired: {formatDate(selected.dl_expiration)}</span>
+                        )}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+
                 {/* DL Information */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3 p-3 bg-rmpg-800/20 border border-rmpg-700/30">
                   <div>

@@ -66,7 +66,21 @@ interface PayrollEntry {
 
 interface Officer { id: number; full_name: string; }
 
-type SubTab = 'periods' | 'rates' | 'entries';
+interface OvertimeRequest {
+  id: number;
+  officer_id: number;
+  officer_name: string;
+  requested_date: string;
+  hours_requested: number;
+  reason: string | null;
+  status: string;
+  reviewed_by_name: string | null;
+  reviewed_at: string | null;
+  review_notes: string | null;
+  created_at: string;
+}
+
+type SubTab = 'periods' | 'rates' | 'entries' | 'overtime' | 'leave';
 
 const STATUS_COLORS: Record<string, string> = {
   open: '#3b82f6',
@@ -101,6 +115,19 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
   const [loading, setLoading] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState<PayPeriod | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: string } | null>(null);
+
+  // ─── Leave Balances ──────────────────────────────────────
+  interface LeaveBalance { id: number; full_name: string; badge_number?: string; hire_date?: string; pto_used: number; sick_used: number; pto_pending: number; }
+  const [leaveData, setLeaveData] = useState<LeaveBalance[]>([]);
+  const [leaveLoading, setLeaveLoading] = useState(false);
+  const PTO_ACCRUAL_PER_PAY_PERIOD = 4; // hours per bi-weekly pay period
+  const PAY_PERIODS_PER_YEAR = 26;
+  const ANNUAL_PTO_ALLOTMENT = PTO_ACCRUAL_PER_PAY_PERIOD * PAY_PERIODS_PER_YEAR; // 104 hours/year
+
+  // ─── Overtime ─────────────────────────────────────────────
+  const [otRequests, setOtRequests] = useState<OvertimeRequest[]>([]);
+  const [showOtForm, setShowOtForm] = useState(false);
+  const [otForm, setOtForm] = useState({ requested_date: '', hours_requested: '', reason: '' });
 
   // ─── Forms ────────────────────────────────────────────────
   const [showPeriodForm, setShowPeriodForm] = useState(false);
@@ -157,6 +184,69 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
     } catch { /* silent */ }
   }, []);
 
+  const fetchOtRequests = useCallback(async () => {
+    try {
+      const data = await apiFetch<OvertimeRequest[]>('/hr/payroll/overtime');
+      setOtRequests(data);
+    } catch { /* silent */ }
+  }, []);
+
+  const fetchLeaveBalances = useCallback(async () => {
+    setLeaveLoading(true);
+    try {
+      const personnel = await apiFetch<any[]>('/personnel');
+      // Calculate leave balances from payroll entries across all closed periods
+      const allEntries = await apiFetch<PayrollEntry[]>('/hr/payroll/entries?all=1').catch(() => [] as PayrollEntry[]);
+      const balances: LeaveBalance[] = (personnel || []).map((p: any) => {
+        const officerEntries = (allEntries || []).filter(e => e.user_id === p.id);
+        const ptoUsed = officerEntries.reduce((sum, e) => sum + (e.pto_hours || 0), 0);
+        const sickUsed = officerEntries.reduce((sum, e) => sum + (e.sick_hours || 0), 0);
+        // Calculate accrued PTO based on hire date
+        const hireDate = p.hire_date || p.start_date || p.created_at;
+        let accrued = ANNUAL_PTO_ALLOTMENT;
+        if (hireDate) {
+          const hire = new Date(hireDate);
+          const now = new Date();
+          const yearStart = new Date(now.getFullYear(), 0, 1);
+          const effectiveStart = hire > yearStart ? hire : yearStart;
+          const weeksWorked = Math.floor((now.getTime() - effectiveStart.getTime()) / (7 * 24 * 60 * 60 * 1000));
+          const periodsWorked = Math.floor(weeksWorked / 2);
+          accrued = Math.min(ANNUAL_PTO_ALLOTMENT, periodsWorked * PTO_ACCRUAL_PER_PAY_PERIOD);
+        }
+        return {
+          id: p.id,
+          full_name: p.full_name || `${p.first_name} ${p.last_name}`,
+          badge_number: p.badge_number,
+          hire_date: hireDate,
+          pto_used: ptoUsed,
+          sick_used: sickUsed,
+          pto_pending: Math.max(0, accrued - ptoUsed),
+        };
+      });
+      setLeaveData(balances);
+    } catch { /* silent */ }
+    finally { setLeaveLoading(false); }
+  }, []);
+
+  const handleRequestOt = async () => {
+    if (!otForm.requested_date || !otForm.hours_requested) { addToast('Date and hours required', 'error'); return; }
+    try {
+      await apiFetch('/hr/payroll/overtime', { method: 'POST', body: JSON.stringify(otForm) });
+      addToast('OT request submitted', 'success');
+      setShowOtForm(false);
+      setOtForm({ requested_date: '', hours_requested: '', reason: '' });
+      fetchOtRequests();
+    } catch { addToast('Failed to submit OT request', 'error'); }
+  };
+
+  const handleOtDecision = async (id: number, status: 'approved' | 'denied') => {
+    try {
+      await apiFetch(`/hr/payroll/overtime/${id}`, { method: 'PUT', body: JSON.stringify({ status }) });
+      addToast(`OT request ${status}`, 'success');
+      fetchOtRequests();
+    } catch { addToast('Failed to update OT request', 'error'); }
+  };
+
   useEffect(() => {
     fetchPeriods();
     fetchOfficers();
@@ -164,7 +254,8 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
 
   useEffect(() => {
     if (subTab === 'rates') fetchRates();
-  }, [subTab, fetchRates]);
+    if (subTab === 'overtime') fetchOtRequests();
+  }, [subTab, fetchRates, fetchOtRequests]);
 
   useEffect(() => {
     if (selectedPeriod) fetchEntries(selectedPeriod.id);
@@ -330,6 +421,8 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
     { key: 'periods', label: 'Pay Periods', icon: Calendar },
     { key: 'rates', label: 'Pay Rates', icon: TrendingUp },
     { key: 'entries', label: 'Timesheet', icon: Clock },
+    { key: 'overtime', label: 'Overtime', icon: AlertTriangle },
+    { key: 'leave', label: 'Leave Balances', icon: Banknote },
   ];
 
   // ─── Render ───────────────────────────────────────────────
@@ -722,6 +815,165 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                     </tr>
                   </tfoot>
                 )}
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════ */}
+      {/* Overtime Requests */}
+      {/* ═══════════════════════════════════════════════════════ */}
+      {subTab === 'overtime' && (
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <AlertTriangle size={15} /> Overtime Requests
+            </h3>
+            <div className="flex-1" />
+            <button onClick={() => setShowOtForm(true)} className="flex items-center gap-1 px-3 py-1.5 text-xs bg-brand-500/20 text-brand-300 border border-brand-500/30 hover:bg-brand-500/30 transition-colors">
+              <Plus size={13} /> Request OT
+            </button>
+          </div>
+
+          {/* OT Request Form */}
+          {showOtForm && (
+            <div className="p-3 border border-brand-500/30 bg-[#141e2b] space-y-2">
+              <div className="text-xs font-bold text-white uppercase">New OT Request</div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div>
+                  <label className="text-[9px] text-rmpg-400 uppercase">Date *</label>
+                  <input type="date" value={otForm.requested_date} onChange={e => setOtForm(p => ({ ...p, requested_date: e.target.value }))} className="w-full px-2 py-1 text-xs bg-[#0d1520] border border-[#1e3048] text-white outline-none" />
+                </div>
+                <div>
+                  <label className="text-[9px] text-rmpg-400 uppercase">Hours *</label>
+                  <input type="number" step="0.5" value={otForm.hours_requested} onChange={e => setOtForm(p => ({ ...p, hours_requested: e.target.value }))} className="w-full px-2 py-1 text-xs bg-[#0d1520] border border-[#1e3048] text-white outline-none" />
+                </div>
+                <div>
+                  <label className="text-[9px] text-rmpg-400 uppercase">Reason</label>
+                  <input value={otForm.reason} onChange={e => setOtForm(p => ({ ...p, reason: e.target.value }))} className="w-full px-2 py-1 text-xs bg-[#0d1520] border border-[#1e3048] text-white outline-none" />
+                </div>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button onClick={handleRequestOt} className="flex items-center gap-1 px-3 py-1 text-xs bg-brand-500/20 text-brand-300 border border-brand-500/30 hover:bg-brand-500/30">
+                  <Check size={12} /> Submit Request
+                </button>
+                <button onClick={() => setShowOtForm(false)} className="px-3 py-1 text-xs text-rmpg-400 hover:text-white">Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {/* OT Requests List */}
+          {otRequests.length === 0 ? (
+            <div className="text-center py-8 text-rmpg-500 text-xs">No overtime requests</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-[#0d1520] text-rmpg-500 text-[10px] uppercase">
+                    <th className="text-left px-2 py-1.5">Officer</th>
+                    <th className="text-left px-2 py-1.5">Date</th>
+                    <th className="text-left px-2 py-1.5">Hours</th>
+                    <th className="text-left px-2 py-1.5">Reason</th>
+                    <th className="text-left px-2 py-1.5">Status</th>
+                    {isManager && <th className="text-left px-2 py-1.5">Actions</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {otRequests.map(ot => (
+                    <tr key={ot.id} className="border-b border-[#1e3048] hover:bg-[#141e2b]">
+                      <td className="px-2 py-1.5 text-white">{ot.officer_name}</td>
+                      <td className="px-2 py-1.5 text-rmpg-300">{formatDate(ot.requested_date)}</td>
+                      <td className="px-2 py-1.5 text-rmpg-300 font-mono">{ot.hours_requested}h</td>
+                      <td className="px-2 py-1.5 text-rmpg-400 max-w-[200px] truncate">{ot.reason || '-'}</td>
+                      <td className="px-2 py-1.5">
+                        <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-sm ${
+                          ot.status === 'approved' ? 'bg-green-900/50 text-green-400' :
+                          ot.status === 'denied' ? 'bg-red-900/50 text-red-400' :
+                          'bg-amber-900/50 text-amber-400'
+                        }`}>{ot.status}</span>
+                      </td>
+                      {isManager && (
+                        <td className="px-2 py-1.5">
+                          {ot.status === 'requested' && (
+                            <div className="flex gap-1">
+                              <button onClick={() => handleOtDecision(ot.id, 'approved')} className="text-green-400 hover:text-green-300 text-[10px] font-bold">Approve</button>
+                              <button onClick={() => handleOtDecision(ot.id, 'denied')} className="text-red-400 hover:text-red-300 text-[10px] font-bold">Deny</button>
+                            </div>
+                          )}
+                          {ot.status !== 'requested' && ot.reviewed_by_name && (
+                            <span className="text-[9px] text-rmpg-500">by {ot.reviewed_by_name}</span>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════ */}
+      {/* Leave Balances */}
+      {/* ═══════════════════════════════════════════════════════ */}
+      {subTab === 'leave' && (
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <Banknote size={15} className="text-brand-400" /> PTO / Leave Balances
+            </h3>
+            <span className="text-[9px] text-rmpg-500">Accrual: {PTO_ACCRUAL_PER_PAY_PERIOD} hrs/pay period ({ANNUAL_PTO_ALLOTMENT} hrs/year)</span>
+            <div className="flex-1" />
+            <button onClick={fetchLeaveBalances}
+              className="flex items-center gap-1 px-2.5 py-1 text-[11px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/30 rounded-sm transition-colors">
+              <RefreshCw size={12} /> Refresh
+            </button>
+          </div>
+
+          {leaveLoading ? (
+            <div className="text-center py-8"><Loader2 className="w-5 h-5 animate-spin text-brand-400 mx-auto" /></div>
+          ) : leaveData.length === 0 ? (
+            <div className="text-center py-8 text-rmpg-500 text-xs">
+              <p>No leave data loaded. Click Refresh to calculate balances.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-[9px] text-rmpg-400 uppercase tracking-wider border-b border-[#1e3048]">
+                    <th className="text-left py-2 px-3">Officer</th>
+                    <th className="text-left py-2 px-3">Badge</th>
+                    <th className="text-right py-2 px-3">PTO Accrued</th>
+                    <th className="text-right py-2 px-3">PTO Used</th>
+                    <th className="text-right py-2 px-3">PTO Remaining</th>
+                    <th className="text-right py-2 px-3">Sick Used</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {leaveData.map(lb => {
+                    const accrued = lb.pto_pending + lb.pto_used;
+                    const pctUsed = accrued > 0 ? (lb.pto_used / accrued) * 100 : 0;
+                    return (
+                      <tr key={lb.id} className="border-b border-[#1e3048]/50 hover:bg-surface-raised/30">
+                        <td className="py-2 px-3 text-white font-medium">{lb.full_name}</td>
+                        <td className="py-2 px-3 text-rmpg-400 font-mono">{lb.badge_number || '—'}</td>
+                        <td className="py-2 px-3 text-right text-rmpg-300">{accrued.toFixed(1)}h</td>
+                        <td className="py-2 px-3 text-right text-amber-400">{lb.pto_used.toFixed(1)}h</td>
+                        <td className="py-2 px-3 text-right">
+                          <span className={lb.pto_pending <= 8 ? 'text-red-400 font-bold' : lb.pto_pending <= 24 ? 'text-amber-400' : 'text-green-400'}>
+                            {lb.pto_pending.toFixed(1)}h
+                          </span>
+                          <div className="w-full h-1 bg-surface-sunken rounded-full mt-0.5 overflow-hidden">
+                            <div className="h-full rounded-full" style={{ width: `${Math.min(100, pctUsed)}%`, background: pctUsed > 80 ? '#ef4444' : pctUsed > 50 ? '#f59e0b' : '#22c55e' }} />
+                          </div>
+                        </td>
+                        <td className="py-2 px-3 text-right text-rmpg-300">{lb.sick_used.toFixed(1)}h</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
               </table>
             </div>
           )}

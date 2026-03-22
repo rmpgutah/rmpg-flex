@@ -110,6 +110,51 @@ export default function SkipTracerPage() {
     }
   }, [mode, nameQuery, addressQuery, phoneQuery, emailQuery, page]);
 
+  // ── Search History (localStorage) ──
+  const HISTORY_KEY = 'rmpg_skiptracer_history';
+  const [searchHistory, setSearchHistory] = useState<{ query: string; mode: SearchMode; date: string; count: number }[]>(() => {
+    try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch { return []; }
+  });
+
+  const saveSearchToHistory = useCallback((query: string, searchMode: SearchMode, resultCount: number) => {
+    setSearchHistory(prev => {
+      const entry = { query, mode: searchMode, date: new Date().toISOString(), count: resultCount };
+      const updated = [entry, ...prev.filter(h => !(h.query === query && h.mode === searchMode))].slice(0, 20);
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  const clearSearchHistory = useCallback(() => {
+    localStorage.removeItem(HISTORY_KEY);
+    setSearchHistory([]);
+  }, []);
+
+  const rerunSearch = useCallback((entry: { query: string; mode: SearchMode }) => {
+    setMode(entry.mode);
+    switch (entry.mode) {
+      case 'name': setNameQuery(entry.query); break;
+      case 'address': setAddressQuery(entry.query); break;
+      case 'phone': setPhoneQuery(entry.query); break;
+      case 'email': setEmailQuery(entry.query); break;
+      case 'nameaddress': setNameQuery(entry.query); break;
+    }
+    setPage(1);
+    // Trigger search after state updates
+    setTimeout(() => handleSearch(), 100);
+  }, [handleSearch]);
+
+  // Save to history after successful search
+  useEffect(() => {
+    if (results && !error) {
+      const query = mode === 'name' ? nameQuery : mode === 'address' ? addressQuery : mode === 'phone' ? phoneQuery : mode === 'email' ? emailQuery : nameQuery;
+      if (query.trim()) {
+        const count = results?.PeopleDetails?.length || results?.data?.length || 0;
+        saveSearchToHistory(query.trim(), mode, count);
+      }
+    }
+  }, [results]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useLiveSync('skiptracer', handleSearch);
 
   const handlePageChange = (newPage: number) => {
@@ -307,6 +352,31 @@ export default function SkipTracerPage() {
               </div>
             )}
           </div>
+
+          {/* ─── Recent Searches ────────────────────────────── */}
+          {searchHistory.length > 0 && (
+            <div className="border-t border-rmpg-700 p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[9px] font-bold text-rmpg-400 uppercase tracking-wider">Recent Searches</span>
+                <button onClick={clearSearchHistory} className="text-[8px] text-rmpg-600 hover:text-red-400 transition-colors">Clear</button>
+              </div>
+              <div className="space-y-1 max-h-40 overflow-y-auto">
+                {searchHistory.slice(0, 10).map((entry, i) => (
+                  <button key={i} onClick={() => rerunSearch(entry)}
+                    className="w-full text-left px-2 py-1.5 text-[10px] bg-surface-sunken border border-rmpg-800 hover:bg-rmpg-800/50 transition-colors">
+                    <div className="flex items-center justify-between">
+                      <span className="text-rmpg-200 font-mono truncate">{entry.query}</span>
+                      <span className="text-[8px] text-rmpg-600 ml-1 shrink-0">{entry.count} results</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-[8px] text-rmpg-500">
+                      <span className="uppercase">{entry.mode}</span>
+                      <span>{new Date(entry.date).toLocaleDateString()}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* ─── Result List ────────────────────────────────── */}
           {resultItems.length > 0 && (

@@ -5,7 +5,7 @@
 // ============================================================
 
 import React, { useState, useCallback } from 'react';
-import { Search, AlertTriangle, User, Shield, Calendar, MapPin, FileText, ChevronRight, Scale } from 'lucide-react';
+import { Search, AlertTriangle, User, Shield, Calendar, MapPin, FileText, ChevronRight, Scale, List, Clock } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { toDisplayLabel } from '../utils/formatters';
@@ -51,6 +51,8 @@ export default function CriminalHistoryPage() {
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [fetchError, setFetchError] = useState('');
+  const [viewMode, setViewMode] = useState<'table' | 'timeline'>('table');
+  const [expandedEntry, setExpandedEntry] = useState<string | null>(null);
 
   const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) return;
@@ -342,15 +344,27 @@ export default function CriminalHistoryPage() {
 
               {/* History Timeline */}
               <div className="panel-surface p-4">
-                <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider mb-3">
-                  Criminal History — {history.length} records
-                </h3>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">
+                    Criminal History — {history.length} records
+                  </h3>
+                  <div className="flex gap-1">
+                    <button onClick={() => setViewMode('table')}
+                      className={`text-[9px] px-2 py-0.5 border ${viewMode === 'table' ? 'bg-brand-900/30 text-brand-300 border-brand-600/50' : 'text-rmpg-500 border-rmpg-700 hover:text-rmpg-300'}`}>
+                      <List className="w-3 h-3 inline mr-0.5" />Table
+                    </button>
+                    <button onClick={() => setViewMode('timeline')}
+                      className={`text-[9px] px-2 py-0.5 border ${viewMode === 'timeline' ? 'bg-brand-900/30 text-brand-300 border-brand-600/50' : 'text-rmpg-500 border-rmpg-700 hover:text-rmpg-300'}`}>
+                      <Clock className="w-3 h-3 inline mr-0.5" />Timeline
+                    </button>
+                  </div>
+                </div>
 
                 {historyLoading ? (
                   <p className="text-rmpg-400 text-[10px] text-center py-4">Loading history...</p>
                 ) : history.length === 0 ? (
                   <p className="text-rmpg-500 text-[10px] text-center py-4">No criminal history on file</p>
-                ) : (
+                ) : viewMode === 'table' ? (
                   <div className="space-y-1">
                     {history.map((entry) => (
                       <div key={`${entry.type}-${entry.id}`} className="flex items-start gap-3 py-2 border-b border-rmpg-800/30">
@@ -372,6 +386,46 @@ export default function CriminalHistoryPage() {
                         </div>
                       </div>
                     ))}
+                  </div>
+                ) : (
+                  /* Visual Timeline View */
+                  <div className="relative pl-6">
+                    {/* Vertical line */}
+                    <div className="absolute left-2 top-0 bottom-0 w-px bg-rmpg-700" />
+                    {history.map((entry, idx) => {
+                      const isExpanded = expandedEntry === `${entry.type}-${entry.id}`;
+                      const dotColor = entry.type === 'incident' ? 'bg-brand-500' : entry.type === 'citation' ? 'bg-amber-500' :
+                        entry.type === 'field_interview' ? 'bg-purple-500' : entry.type === 'warrant' ? 'bg-red-500' : 'bg-rmpg-500';
+                      return (
+                        <div key={`${entry.type}-${entry.id}`} className="relative mb-4">
+                          {/* Dot on timeline */}
+                          <div className={`absolute -left-[15px] top-1.5 w-2.5 h-2.5 rounded-full border-2 border-surface-base ${dotColor}`} />
+                          {/* Date label */}
+                          <div className="text-[9px] font-mono text-rmpg-500 mb-0.5">
+                            {entry.date ? new Date(entry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Unknown date'}
+                          </div>
+                          {/* Card */}
+                          <button onClick={() => setExpandedEntry(isExpanded ? null : `${entry.type}-${entry.id}`)}
+                            className={`w-full text-left p-2.5 border transition-colors ${isExpanded ? 'bg-rmpg-800/60 border-rmpg-600' : 'bg-surface-sunken border-rmpg-800/50 hover:bg-rmpg-800/30'}`}>
+                            <div className="flex items-center gap-2">
+                              {typeIcon(entry.type)}
+                              <span className={`text-[8px] font-bold uppercase px-1 py-0.5 border ${typeColor(entry.type)}`}>
+                                {entry.type.replace(/_/g, ' ')}
+                              </span>
+                              <span className="text-[10px] font-mono font-bold text-rmpg-200">{entry.reference_number}</span>
+                            </div>
+                            <p className="text-[10px] text-rmpg-300 mt-1">{entry.description}</p>
+                            {isExpanded && (
+                              <div className="mt-2 pt-2 border-t border-rmpg-700 space-y-1">
+                                {entry.status && <div className="text-[9px] text-rmpg-400">Status: <span className="text-white">{toDisplayLabel(entry.status)}</span></div>}
+                                {entry.officer_name && <div className="text-[9px] text-rmpg-400">Officer: <span className="text-white">{entry.officer_name}</span></div>}
+                                {entry.location && <div className="text-[9px] text-rmpg-400 flex items-center gap-1"><MapPin className="w-2.5 h-2.5" />{entry.location}</div>}
+                              </div>
+                            )}
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

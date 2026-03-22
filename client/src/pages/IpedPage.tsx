@@ -154,6 +154,12 @@ export default function IpedPage() {
   const [importSubmitting, setImportSubmitting] = useState(false);
   const [fetchError, setFetchError] = useState('');
 
+  // Hash search
+  const [hashSearchQuery, setHashSearchQuery] = useState('');
+  const [hashSearchResults, setHashSearchResults] = useState<HashResult[]>([]);
+  const [hashSearching, setHashSearching] = useState(false);
+  const [hashSearchError, setHashSearchError] = useState('');
+
   // ── Fetch Functions ───────────────────────────────────────
 
   const fetchStatus = useCallback(async () => {
@@ -195,6 +201,25 @@ export default function IpedPage() {
     } catch { /* optional */ }
     finally { setHashSetsLoading(false); }
   }, []);
+
+  const handleHashSearch = useCallback(async () => {
+    if (!hashSearchQuery.trim()) return;
+    setHashSearching(true);
+    setHashSearchError('');
+    try {
+      const q = hashSearchQuery.trim();
+      const data = await apiFetch<any>(`/iped/hashes/search?q=${encodeURIComponent(q)}`);
+      setHashSearchResults(data.results || data.data || []);
+      if ((data.results || data.data || []).length === 0) {
+        setHashSearchError('No matches found');
+      }
+    } catch (err: any) {
+      setHashSearchError(err?.message || 'Search failed');
+      setHashSearchResults([]);
+    } finally {
+      setHashSearching(false);
+    }
+  }, [hashSearchQuery]);
 
   const fetchJobDetail = useCallback(async (id: number) => {
     setDetailLoading(true);
@@ -354,6 +379,64 @@ export default function IpedPage() {
           <StatCard label="Failed" value={stats.failedJobs} icon={AlertTriangle} color="text-red-400" />
           <StatCard label="Total Hashes" value={stats.totalHashes} icon={Hash} color="text-blue-400" />
           <StatCard label="Flagged" value={stats.flaggedHashes} icon={Shield} color="text-red-400" />
+        </div>
+
+        {/* ── Hash Search ──────────────────────────────── */}
+        <div className="card-glass rounded-sm">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-[#1e3048]">
+            <div className="flex items-center gap-2">
+              <Search size={13} className="text-brand-blue" />
+              <span className="text-xs font-bold text-white uppercase tracking-wide">Hash Search</span>
+            </div>
+          </div>
+          <div className="p-3 space-y-2">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={hashSearchQuery}
+                onChange={e => setHashSearchQuery(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleHashSearch()}
+                placeholder="Search MD5, SHA1, or SHA256 hash..."
+                className="flex-1 px-2 py-1.5 text-xs bg-[#0d1520] border border-[#1e3048] text-white placeholder-rmpg-500 font-mono outline-none"
+              />
+              <button onClick={handleHashSearch} disabled={hashSearching || !hashSearchQuery.trim()}
+                className="flex items-center gap-1 px-3 py-1 text-[10px] font-bold bg-brand-blue/20 text-brand-blue border border-brand-blue/30 hover:bg-brand-blue/30 disabled:opacity-50 transition-colors">
+                {hashSearching ? <Loader2 size={11} className="animate-spin" /> : <Search size={11} />}
+                Search
+              </button>
+            </div>
+            <div className="text-[9px] text-rmpg-500">Accepts MD5 (32 chars), SHA1 (40 chars), SHA256 (64 chars), or partial hashes</div>
+            {hashSearchError && (
+              <div className="text-[10px] text-rmpg-400">{hashSearchError}</div>
+            )}
+            {hashSearchResults.length > 0 && (
+              <div className="space-y-1 max-h-48 overflow-y-auto">
+                {hashSearchResults.map(hr => (
+                  <div key={hr.id} className={`p-2 border text-[10px] ${
+                    hr.flagged ? 'bg-red-900/20 border-red-700/50' : 'bg-surface-sunken border-rmpg-700/30'
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      {hr.flagged ? (
+                        <AlertTriangle size={11} className="text-red-400 flex-shrink-0" />
+                      ) : (
+                        <Hash size={11} className="text-rmpg-400 flex-shrink-0" />
+                      )}
+                      <span className="text-white font-mono text-[9px] truncate">{hr.md5}</span>
+                      {hr.flagged ? (
+                        <span className="text-[8px] px-1 py-0.5 bg-red-900/50 text-red-400 border border-red-700/50 font-bold">FLAGGED</span>
+                      ) : null}
+                    </div>
+                    {hr.attachment_name && <div className="text-rmpg-300 mt-0.5">File: {hr.attachment_name}</div>}
+                    {hr.flag_reason && <div className="text-red-400 mt-0.5">Reason: {hr.flag_reason}</div>}
+                    <div className="flex gap-3 mt-0.5 text-rmpg-500 font-mono text-[8px]">
+                      <span>SHA1: {hr.sha1?.slice(0, 16)}...</span>
+                      <span>SHA256: {hr.sha256?.slice(0, 16)}...</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ── Hash Sets Panel ────────────────────────────── */}

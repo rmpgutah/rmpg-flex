@@ -1249,4 +1249,87 @@ router.get('/payroll/export/csv', requireRole('admin', 'manager'), (req: Request
   }
 });
 
+// ─── Overtime Approval Workflow ──────────────────────────────────────────────
+
+// Ensure overtime_requests table exists
+try {
+  const db = getDb();
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS overtime_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      officer_id INTEGER NOT NULL,
+      officer_name TEXT,
+      requested_date TEXT NOT NULL,
+      hours_requested REAL NOT NULL,
+      reason TEXT,
+      status TEXT NOT NULL DEFAULT 'requested',
+      reviewed_by INTEGER,
+      reviewed_by_name TEXT,
+      reviewed_at TEXT,
+      review_notes TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
+} catch { /* table may already exist */ }
+
+// GET /payroll/overtime — List OT requests
+router.get('/payroll/overtime', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { status, officer_id } = req.query;
+    let where = 'WHERE 1=1';
+    const params: any[] = [];
+    if (status) { where += ' AND status = ?'; params.push(status); }
+    if (officer_id) { where += ' AND officer_id = ?'; params.push(officer_id); }
+    const role = req.user!.role;
+    // Non-managers only see their own
+    if (!isManagerOrAbove(role)) { where += ' AND officer_id = ?'; params.push(req.user!.userId); }
+    const rows = db.prepare(`SELECT * FROM overtime_requests ${where} ORDER BY created_at DESC`).all(...params);
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to fetch OT requests' });
+  }
+});
+
+// POST /payroll/overtime — Request OT
+router.post('/payroll/overtime', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { requested_date, hours_requested, reason } = req.body;
+    if (!requested_date || !hours_requested) {
+      res.status(400).json({ error: 'requested_date and hours_requested are required' });
+      return;
+    }
+    const now = localNow();
+    const officerName = (db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any)?.full_name || '';
+    const result = db.prepare(`
+      INSERT INTO overtime_requests (officer_id, officer_name, requested_date, hours_requested, reason, status, created_at)
+      VALUES (?, ?, ?, ?, ?, 'requested', ?)
+    `).run(req.user!.userId, officerName, requested_date, parseFloat(hours_requested as string), reason || null, now);
+    res.status(201).json({ id: result.lastInsertRowid });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create OT request' });
+  }
+});
+
+// PUT /payroll/overtime/:id — Approve/deny OT request
+router.put('/payroll/overtime/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { status, review_notes } = req.body;
+    if (!['approved', 'denied'].includes(status)) {
+      res.status(400).json({ error: 'Status must be approved or denied' });
+      return;
+    }
+    const now = localNow();
+    const reviewerName = (db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any)?.full_name || '';
+    db.prepare(`
+      UPDATE overtime_requests SET status = ?, reviewed_by = ?, reviewed_by_name = ?, reviewed_at = ?, review_notes = ? WHERE id = ?
+    `).run(status, req.user!.userId, reviewerName, now, review_notes || null, req.params.id);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to update OT request' });
+  }
+});
+
 export default router;

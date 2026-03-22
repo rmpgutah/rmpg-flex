@@ -2,9 +2,10 @@
 // RMPG Flex — Officer Equipment Detail Tab
 // ============================================================
 
-import React from 'react';
-import { Package, Plus, Edit2, Trash2, Loader2, Box } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Package, Plus, Edit2, Trash2, Loader2, Box, LogIn, LogOut, Clock } from 'lucide-react';
 import type { OfficerEquipment } from '../../../types';
+import { apiFetch } from '../../../hooks/useApi';
 import { EQUIPMENT_STATUS_COLORS, EQUIPMENT_CONDITION_COLORS } from '../utils/personnelConstants';
 
 interface Props {
@@ -22,6 +23,44 @@ export default function EquipmentDetailTab({
   onDelete,
   loading,
 }: Props) {
+  const [checkoutLogs, setCheckoutLogs] = useState<Record<string, any[]>>({});
+  const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+  const [checkingOut, setCheckingOut] = useState<string | null>(null);
+
+  const fetchCheckoutLog = useCallback(async (equipId: string) => {
+    try {
+      const logs = await apiFetch<any[]>(`/personnel/equipment/${equipId}/checkout-log`);
+      setCheckoutLogs(prev => ({ ...prev, [equipId]: logs }));
+    } catch { /* silent */ }
+  }, []);
+
+  const handleCheckout = async (equipId: string) => {
+    setCheckingOut(equipId);
+    try {
+      await apiFetch(`/personnel/equipment/${equipId}/checkout`, { method: 'POST', body: JSON.stringify({}) });
+      fetchCheckoutLog(equipId);
+    } catch { /* silent */ }
+    finally { setCheckingOut(null); }
+  };
+
+  const handleCheckin = async (equipId: string) => {
+    setCheckingOut(equipId);
+    try {
+      await apiFetch(`/personnel/equipment/${equipId}/checkin`, { method: 'POST', body: JSON.stringify({}) });
+      fetchCheckoutLog(equipId);
+    } catch { /* silent */ }
+    finally { setCheckingOut(null); }
+  };
+
+  const toggleLog = (equipId: string) => {
+    if (expandedLogId === equipId) {
+      setExpandedLogId(null);
+    } else {
+      setExpandedLogId(equipId);
+      if (!checkoutLogs[equipId]) fetchCheckoutLog(equipId);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -177,6 +216,50 @@ export default function EquipmentDetailTab({
                   <p className="text-[10px] text-rmpg-400 italic">
                     {eq.notes}
                   </p>
+                </div>
+              )}
+
+              {/* Checkout/Checkin Controls */}
+              <div className="flex items-center gap-2 mt-2 pt-2 border-t border-rmpg-800/50">
+                {eq.status === 'issued' ? (
+                  <button onClick={() => handleCheckin(eq.id)} disabled={checkingOut === eq.id}
+                    className="flex items-center gap-1 px-2 py-1 text-[10px] bg-blue-900/30 text-blue-300 border border-blue-700/40 hover:bg-blue-900/50">
+                    <LogIn className="w-3 h-3" /> {checkingOut === eq.id ? '...' : 'Check In'}
+                  </button>
+                ) : (
+                  <button onClick={() => handleCheckout(eq.id)} disabled={checkingOut === eq.id}
+                    className="flex items-center gap-1 px-2 py-1 text-[10px] bg-green-900/30 text-green-300 border border-green-700/40 hover:bg-green-900/50">
+                    <LogOut className="w-3 h-3" /> {checkingOut === eq.id ? '...' : 'Check Out'}
+                  </button>
+                )}
+                <button onClick={() => toggleLog(eq.id)}
+                  className="flex items-center gap-1 px-2 py-1 text-[10px] text-rmpg-400 hover:text-rmpg-200">
+                  <Clock className="w-3 h-3" /> History
+                </button>
+                {eq.status === 'issued' && (
+                  <span className="ml-auto text-[9px] font-bold text-green-400 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" /> Currently checked out
+                  </span>
+                )}
+              </div>
+
+              {/* Checkout Log */}
+              {expandedLogId === eq.id && (
+                <div className="mt-2 space-y-1 max-h-[150px] overflow-y-auto">
+                  {(checkoutLogs[eq.id] || []).length === 0 ? (
+                    <div className="text-[10px] text-rmpg-500 text-center py-2">No checkout history</div>
+                  ) : (
+                    (checkoutLogs[eq.id] || []).map((log: any) => (
+                      <div key={log.id} className="flex items-center gap-2 text-[10px] px-2 py-1 bg-surface-sunken border border-rmpg-800/30">
+                        <span className={log.action === 'checkout' ? 'text-green-400' : 'text-blue-400'}>
+                          {log.action === 'checkout' ? 'OUT' : 'IN'}
+                        </span>
+                        <span className="text-rmpg-400">{new Date(log.created_at).toLocaleString()}</span>
+                        <span className="text-rmpg-300">by {log.checked_by_name || 'Unknown'}</span>
+                        {log.notes && <span className="text-rmpg-500 italic">{log.notes}</span>}
+                      </div>
+                    ))
+                  )}
                 </div>
               )}
             </div>

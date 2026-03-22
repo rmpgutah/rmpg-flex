@@ -1,8 +1,9 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import {
   X, Zap, Star, Shield, Clock, Award, Calendar, User, Activity, GraduationCap, MapPinned,
-  Pencil, Trash2, LogIn, LogOut, Archive, RotateCcw, Coffee, Printer, ChevronDown,
+  Pencil, Trash2, LogIn, LogOut, Archive, RotateCcw, Coffee, Printer, ChevronDown, Radio,
 } from 'lucide-react';
+import { apiFetch } from '../../hooks/useApi';
 import type { Credential, Schedule, TimeEntry, TrainingRecord, Deployment, OfficerEquipment, BodyCamera, BodyCamVideo, DashcamEvent, CpgDeviceMapping } from '../../types';
 import type { OfficerWithStatus } from './utils/personnelMappers';
 import { calcYearsOfService } from './utils/personnelFormatters';
@@ -136,6 +137,47 @@ function PersonnelPrintMenu({ officer, credentials, training, equipment, bodyCam
         </div>
       )}
     </div>
+  );
+}
+
+// ── On-Duty Toggle Component ──────────────────────────────────
+function DutyToggle({ officerId, currentStatus }: { officerId: string; currentStatus: string }) {
+  const [toggling, setToggling] = useState(false);
+  const isOnDuty = currentStatus === 'on_duty';
+
+  const handleToggle = useCallback(async () => {
+    setToggling(true);
+    try {
+      // Find the officer's dispatch unit and toggle status
+      const units = await apiFetch<any[]>('/dispatch/units');
+      const myUnit = (units || []).find((u: any) => String(u.user_id) === String(officerId));
+      if (myUnit) {
+        await apiFetch(`/dispatch/units/${myUnit.id}/status`, {
+          method: 'PUT',
+          body: JSON.stringify({ status: isOnDuty ? 'off_duty' : 'available' }),
+        });
+      }
+    } catch (err) {
+      console.error('Duty toggle failed:', err);
+    } finally {
+      setToggling(false);
+    }
+  }, [officerId, isOnDuty]);
+
+  return (
+    <button
+      onClick={handleToggle}
+      disabled={toggling}
+      className={`flex items-center gap-1.5 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider transition-all border ${
+        isOnDuty
+          ? 'bg-green-900/50 text-green-400 border-green-700/50 hover:bg-red-900/50 hover:text-red-400 hover:border-red-700/50'
+          : 'bg-surface-sunken text-rmpg-400 border-rmpg-600 hover:bg-green-900/50 hover:text-green-400 hover:border-green-700/50'
+      } disabled:opacity-50`}
+      title={isOnDuty ? 'Go Off Duty' : 'Go On Duty'}
+    >
+      <Radio className="w-3 h-3" />
+      {toggling ? '...' : isOnDuty ? 'On Duty' : 'Off Duty'}
+    </button>
   );
 }
 
@@ -302,6 +344,11 @@ export default function PersonnelDetailPanel({
               <LogIn className="w-3 h-3" /> Clock In
             </button>
           )}
+
+          <span className="toolbar-separator" />
+
+          {/* On-Duty Toggle */}
+          <DutyToggle officerId={officer.id} currentStatus={officer.status} />
 
           {/* Action buttons — right side */}
           <div className="ml-auto flex items-center gap-1">

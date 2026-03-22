@@ -1768,6 +1768,80 @@ export function mountScheduleRoutes(parentRouter: Router): void {
     }
   });
 
+  // ─── EQUIPMENT CHECKOUT LOG ────────────────────────────
+
+  // Ensure table exists
+  try {
+    const db = getDb();
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS equipment_checkout_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        equipment_id INTEGER NOT NULL,
+        officer_id INTEGER NOT NULL,
+        action TEXT NOT NULL,
+        checked_by INTEGER,
+        checked_by_name TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL
+      )
+    `);
+  } catch { /* table may already exist */ }
+
+  // POST /api/personnel/equipment/:equipId/checkout — Check out equipment
+  parentRouter.post('/personnel/equipment/:equipId/checkout', authenticateToken, (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const eq = db.prepare('SELECT * FROM officer_equipment WHERE id = ?').get(req.params.equipId) as any;
+      if (!eq) { res.status(404).json({ error: 'Equipment not found' }); return; }
+      const now = localNow();
+      const userName = (db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any)?.full_name || '';
+
+      db.prepare("UPDATE officer_equipment SET status = 'issued', updated_at = ? WHERE id = ?").run(now, req.params.equipId);
+      db.prepare(`
+        INSERT INTO equipment_checkout_log (equipment_id, officer_id, action, checked_by, checked_by_name, notes, created_at)
+        VALUES (?, ?, 'checkout', ?, ?, ?, ?)
+      `).run(req.params.equipId, eq.officer_id, req.user!.userId, userName, req.body.notes || null, now);
+
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Checkout failed' });
+    }
+  });
+
+  // POST /api/personnel/equipment/:equipId/checkin — Check in equipment
+  parentRouter.post('/personnel/equipment/:equipId/checkin', authenticateToken, (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const eq = db.prepare('SELECT * FROM officer_equipment WHERE id = ?').get(req.params.equipId) as any;
+      if (!eq) { res.status(404).json({ error: 'Equipment not found' }); return; }
+      const now = localNow();
+      const userName = (db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any)?.full_name || '';
+
+      db.prepare("UPDATE officer_equipment SET status = 'available', updated_at = ? WHERE id = ?").run(now, req.params.equipId);
+      db.prepare(`
+        INSERT INTO equipment_checkout_log (equipment_id, officer_id, action, checked_by, checked_by_name, notes, created_at)
+        VALUES (?, ?, 'checkin', ?, ?, ?, ?)
+      `).run(req.params.equipId, eq.officer_id, req.user!.userId, userName, req.body.notes || null, now);
+
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Checkin failed' });
+    }
+  });
+
+  // GET /api/personnel/equipment/:equipId/checkout-log — Get checkout history
+  parentRouter.get('/personnel/equipment/:equipId/checkout-log', authenticateToken, (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const logs = db.prepare(`
+        SELECT * FROM equipment_checkout_log WHERE equipment_id = ? ORDER BY created_at DESC LIMIT 20
+      `).all(req.params.equipId);
+      res.json(logs);
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to fetch checkout log' });
+    }
+  });
+
   // ─── BODY CAMERAS ──────────────────────────────────────
 
   // GET /api/personnel/body-cameras - List all body cameras

@@ -275,4 +275,32 @@ router.put('/tows/:id/status', (req: Request, res: Response) => {
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// GET /property-history — Violation count for a property in last 12 months
+router.get('/property-history', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { property_id, location } = req.query;
+    if (!property_id && !location) return res.status(400).json({ error: 'property_id or location required' });
+
+    let where = `WHERE created_at >= datetime('now', '-12 months')`;
+    const params: any[] = [];
+    if (property_id) { where += ' AND property_id = ?'; params.push(property_id); }
+    else if (location) { where += ' AND location LIKE ?'; params.push(`%${location}%`); }
+
+    const count = (db.prepare(`SELECT COUNT(*) as count FROM code_violations ${where}`).get(...params) as any).count;
+    const violations = db.prepare(`SELECT id, violation_number, violation_type, status, location, created_at FROM code_violations ${where} ORDER BY created_at DESC`).all(...params);
+
+    res.json({
+      data: {
+        violation_count_12mo: count,
+        is_repeat_offender: count >= 3,
+        violations,
+      },
+    });
+  } catch (error: any) {
+    console.error('Get property history error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

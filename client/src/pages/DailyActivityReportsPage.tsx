@@ -416,14 +416,34 @@ export default function DailyActivityReportsPage() {
               </button>
 
               {autoPopulateData && (
-                <div className="panel-beveled p-3">
-                  <div className="text-[9px] font-mono text-green-400 mb-1">Data Populated:</div>
-                  <div className="grid grid-cols-2 gap-1 text-[10px] text-rmpg-300">
-                    <span>Calls: {(autoPopulateData.calls || []).length}</span>
-                    <span>Incidents: {(autoPopulateData.incidents || []).length}</span>
-                    <span>Citations: {(autoPopulateData.citations || []).length}</span>
-                    <span>Patrols: {(autoPopulateData.patrols || []).length}</span>
+                <div className="panel-beveled p-3 border-l-2 border-l-green-500">
+                  <div className="text-[9px] font-mono text-green-400 mb-2 flex items-center gap-1">
+                    <CheckCircle style={{ width: 10, height: 10 }} /> Shift Stats Auto-Populated
                   </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { label: 'Calls Handled', data: autoPopulateData.calls || [], color: 'text-blue-400' },
+                      { label: 'Incidents Created', data: autoPopulateData.incidents || [], color: 'text-red-400' },
+                      { label: 'Citations Issued', data: autoPopulateData.citations || [], color: 'text-amber-400' },
+                      { label: 'Patrols Completed', data: autoPopulateData.patrols || [], color: 'text-green-400' },
+                    ].map(item => (
+                      <div key={item.label} className="panel-beveled p-2">
+                        <div className="text-[8px] text-rmpg-500 uppercase">{item.label}</div>
+                        <div className={`text-lg font-bold font-mono ${item.color}`}>{item.data.length}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {autoPopulateData.miles_patrolled != null && (
+                    <div className="mt-2 text-[10px] text-rmpg-300">
+                      Miles Patrolled: <span className="text-white font-bold">{autoPopulateData.miles_patrolled || 0}</span>
+                    </div>
+                  )}
+                  {autoPopulateData.arrests != null && (
+                    <div className="text-[10px] text-rmpg-300">
+                      Arrests: <span className="text-white font-bold">{(autoPopulateData.arrests || []).length}</span>
+                    </div>
+                  )}
+                  <div className="text-[8px] text-rmpg-500 mt-1">Values can be edited after creation</div>
                 </div>
               )}
 

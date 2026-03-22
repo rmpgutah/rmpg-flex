@@ -1929,7 +1929,7 @@ export interface EvidenceChainEntry {
 
 // --- Case Management ---
 
-export type CaseStatus = 'open' | 'assigned' | 'active' | 'suspended' | 'closed_cleared' | 'closed_unfounded' | 'closed_exception';
+export type CaseStatus = 'open' | 'assigned' | 'active' | 'suspended' | 'under_review' | 'closed_cleared' | 'closed_unfounded' | 'closed_exception';
 export type CaseType = 'general' | 'theft' | 'assault' | 'fraud' | 'narcotics' | 'missing_person' | 'other';
 export type CasePriority = 'low' | 'normal' | 'high' | 'critical';
 export type CaseNoteType = 'general' | 'lead' | 'interview' | 'evidence' | 'followup';
@@ -2147,6 +2147,9 @@ export interface OffenderAlert {
   restricted_properties: string; // JSON
   restricted_zones: string; // JSON
   restriction_radius_ft?: number;
+  location_lat?: number;
+  location_lng?: number;
+  location_address?: string;
   effective_date: string;
   expiration_date?: string;
   source_incident_id?: number;

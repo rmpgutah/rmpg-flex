@@ -327,11 +327,41 @@ function DashboardTab({ records, requirements, officers }: {
       completed: records.filter(r => r.category === cat && r.status === 'completed').length,
     })).filter(c => c.total > 0);
 
-    return { completed, inProgress, scheduled, overdue, totalHours, expiringSoon, officerCompliance, avgCompliance, byCategory };
+    const overduePersonnel = officerCompliance.filter(o => o.overdue > 0);
+    const overduePercent = officerCompliance.length > 0
+      ? Math.round((overduePersonnel.length / officerCompliance.length) * 100) : 0;
+
+    return { completed, inProgress, scheduled, overdue, totalHours, expiringSoon, officerCompliance, avgCompliance, byCategory, overduePersonnel, overduePercent };
   }, [records, requirements, officers]);
 
   return (
     <div className="p-4 space-y-4">
+      {/* Compliance Summary Banner */}
+      <div className="panel-beveled p-3 border-l-2 border-l-brand-500">
+        <div className="flex items-center gap-2 mb-2">
+          <CheckCircle className="w-3.5 h-3.5 text-brand-400" />
+          <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Compliance Summary</span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+          <div>
+            <p className="text-lg font-bold font-mono text-brand-300">{officers.length}</p>
+            <p className="text-[8px] uppercase font-bold text-rmpg-500">Total Personnel</p>
+          </div>
+          <div>
+            <p className="text-lg font-bold font-mono" style={{ color: stats.overduePersonnel.length > 0 ? '#ef4444' : '#22c55e' }}>{stats.overduePersonnel.length}</p>
+            <p className="text-[8px] uppercase font-bold text-rmpg-500">Overdue Personnel ({stats.overduePercent}%)</p>
+          </div>
+          <div>
+            <p className="text-lg font-bold font-mono text-orange-400">{stats.expiringSoon}</p>
+            <p className="text-[8px] uppercase font-bold text-rmpg-500">Certs Expiring (30d)</p>
+          </div>
+          <div>
+            <p className="text-lg font-bold font-mono" style={{ color: stats.avgCompliance >= 90 ? '#22c55e' : stats.avgCompliance >= 70 ? '#f59e0b' : '#ef4444' }}>{stats.avgCompliance}%</p>
+            <p className="text-[8px] uppercase font-bold text-rmpg-500">Avg Compliance</p>
+          </div>
+        </div>
+      </div>
+
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2">
         <StatCard value={records.length} label="Total Records" color="#6b8aad" borderColor="#4a6a8a" />
@@ -462,6 +492,30 @@ function DashboardTab({ records, requirements, officers }: {
           </div>
         </div>
       )}
+
+      {/* Overdue Personnel Detail */}
+      {stats.overduePersonnel.length > 0 && (
+        <div className="panel-beveled p-3">
+          <div className="flex items-center gap-2 mb-3">
+            <Users className="w-3.5 h-3.5 text-red-400" />
+            <span className="text-[9px] text-red-400 uppercase font-bold tracking-wider">
+              Overdue Personnel ({stats.overduePersonnel.length})
+            </span>
+          </div>
+          <div className="space-y-1.5 max-h-[250px] overflow-y-auto">
+            {stats.overduePersonnel.map(o => (
+              <div key={o.id} className="flex items-center gap-2 py-1 px-2 border border-rmpg-800/50 bg-red-900/5">
+                <span className="text-[11px] text-rmpg-100 font-medium w-32 truncate">{o.full_name}</span>
+                {o.badge_number && <span className="text-[9px] font-mono text-rmpg-500">{o.badge_number}</span>}
+                <span className="text-[9px] text-red-400 font-bold">{o.overdue} missing</span>
+                <span className="ml-auto text-[9px] font-mono" style={{
+                  color: o.compliance >= 90 ? '#22c55e' : o.compliance >= 70 ? '#f59e0b' : '#ef4444',
+                }}>{o.compliance}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -484,13 +538,24 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
   onDelete: (id: string) => void;
 }) {
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | TrainingStatus>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | TrainingStatus | 'expiring_soon'>('all');
   const [categoryFilter, setCategoryFilter] = useState<'all' | TrainingCategory>('all');
   const [officerFilter, setOfficerFilter] = useState<string>('all');
 
   const filtered = useMemo(() => {
     let result = records;
-    if (statusFilter !== 'all') result = result.filter(r => r.status === statusFilter);
+    if (statusFilter === 'expiring_soon') {
+      const now = new Date();
+      const thirtyDays = new Date();
+      thirtyDays.setDate(thirtyDays.getDate() + 30);
+      result = result.filter(r => {
+        if (!r.expiry_date) return false;
+        const exp = new Date(r.expiry_date);
+        return exp > now && exp <= thirtyDays;
+      });
+    } else if (statusFilter !== 'all') {
+      result = result.filter(r => r.status === statusFilter);
+    }
     if (categoryFilter !== 'all') result = result.filter(r => r.category === categoryFilter);
     if (officerFilter !== 'all') result = result.filter(r => r.officer_id === officerFilter);
     if (search.trim()) {
@@ -529,6 +594,7 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
           <option value="scheduled">Scheduled</option>
           <option value="overdue">Overdue</option>
           <option value="expired">Expired</option>
+          <option value="expiring_soon">Expiring in 30 Days</option>
         </select>
         <select
           value={categoryFilter}
@@ -588,7 +654,20 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
                     {record.completed_date ? formatDate(record.completed_date) : '—'}
                   </td>
                   <td className="py-1.5 px-2 text-rmpg-300 font-mono text-[10px]">
-                    {record.expiry_date ? formatDate(record.expiry_date) : '—'}
+                    {record.expiry_date ? (
+                      <span className="flex items-center gap-1">
+                        <span className={
+                          new Date(record.expiry_date) < new Date() ? 'text-red-400 font-bold' :
+                          new Date(record.expiry_date) <= new Date(Date.now() + 30 * 86400000) ? 'text-amber-400' : ''
+                        }>{formatDate(record.expiry_date)}</span>
+                        {new Date(record.expiry_date) < new Date() && (
+                          <span className="text-[8px] px-1 py-0 bg-red-900/50 text-red-400 border border-red-700/50 font-bold uppercase">EXPIRED</span>
+                        )}
+                        {new Date(record.expiry_date) >= new Date() && new Date(record.expiry_date) <= new Date(Date.now() + 30 * 86400000) && (
+                          <span className="text-[8px] px-1 py-0 bg-amber-900/50 text-amber-400 border border-amber-700/50 font-bold uppercase">EXPIRING</span>
+                        )}
+                      </span>
+                    ) : '—'}
                   </td>
                   <td className="py-1.5 px-2 text-right text-rmpg-200 font-mono">{record.hours || 0}</td>
                   <td className="py-1.5 px-2 text-right text-rmpg-200 font-mono">{record.score ?? '—'}</td>

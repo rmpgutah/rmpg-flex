@@ -169,13 +169,85 @@ router.put('/:id', (req: Request, res: Response) => {
   }
 });
 
+// ─── PUT /:id/submit-review — Submit case for supervisor review ─
+router.put('/:id/submit-review', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const existing = db.prepare('SELECT * FROM cases WHERE id = ?').get(req.params.id) as any;
+    if (!existing) return res.status(404).json({ error: 'Case not found' });
+
+    db.prepare(`UPDATE cases SET approval_status = 'pending_review', updated_at = ? WHERE id = ?`)
+      .run(now, req.params.id);
+
+    // Create notification for supervisors
+    try {
+      const supervisors = db.prepare(`SELECT id FROM users WHERE role IN ('admin','manager','supervisor') AND status = 'active'`).all() as any[];
+      for (const sup of supervisors) {
+        db.prepare(`INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, created_at)
+          VALUES ('system', 'normal', ?, ?, 'case', ?, ?, ?)`).run(
+          `Case Review: ${existing.case_number}`,
+          `${existing.title} submitted for supervisor review by ${req.user!.fullName || 'an officer'}`,
+          req.params.id, sup.id, now
+        );
+      }
+    } catch { /* notifications table may not exist */ }
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'submit_review', 'case', ?, ?, ?)`).run(
+      req.user!.userId, req.params.id, JSON.stringify({ case_number: existing.case_number }), now);
+
+    res.json({ data: { id: parseInt(req.params.id), approval_status: 'pending_review' } });
+  } catch (error: any) {
+    console.error('Submit case for review error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── PUT /:id/approve — Supervisor approves/returns case ────
+router.put('/:id/approve', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const { action, return_reason } = req.body; // action: 'approve' | 'return'
+
+    // Only supervisors+ can approve
+    if (!['admin', 'manager', 'supervisor'].includes(req.user!.role)) {
+      return res.status(403).json({ error: 'Only supervisors can approve cases' });
+    }
+
+    const existing = db.prepare('SELECT * FROM cases WHERE id = ?').get(req.params.id) as any;
+    if (!existing) return res.status(404).json({ error: 'Case not found' });
+
+    if (action === 'approve') {
+      db.prepare(`UPDATE cases SET approval_status = 'approved', approved_by = ?, approved_at = ?, updated_at = ? WHERE id = ?`)
+        .run(req.user!.userId, now, now, req.params.id);
+    } else if (action === 'return') {
+      db.prepare(`UPDATE cases SET approval_status = 'returned', return_reason = ?, updated_at = ? WHERE id = ?`)
+        .run(return_reason || '', now, req.params.id);
+    } else {
+      return res.status(400).json({ error: 'Invalid action. Use "approve" or "return"' });
+    }
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, ?, 'case', ?, ?, ?)`).run(
+      req.user!.userId, action === 'approve' ? 'approve_case' : 'return_case', req.params.id,
+      JSON.stringify({ case_number: existing.case_number, action, return_reason }), now);
+
+    res.json({ data: { id: parseInt(req.params.id), approval_status: action === 'approve' ? 'approved' : 'returned' } });
+  } catch (error: any) {
+    console.error('Approve case error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── PUT /:id/status ────────────────────────────────────
 router.put('/:id/status', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
     const { status } = req.body;
-    const validStatuses = ['open', 'assigned', 'active', 'suspended', 'closed_cleared', 'closed_unfounded', 'closed_exception'];
+    const validStatuses = ['open', 'assigned', 'active', 'suspended', 'under_review', 'closed_cleared', 'closed_unfounded', 'closed_exception'];
     if (!validStatuses.includes(status)) return res.status(400).json({ error: 'Invalid status' });
 
     const existing = db.prepare('SELECT * FROM cases WHERE id = ?').get(req.params.id) as any;

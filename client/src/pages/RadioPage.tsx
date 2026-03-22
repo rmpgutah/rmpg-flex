@@ -34,6 +34,17 @@ import { localToday } from '../utils/dateUtils';
 // real-time audio streaming, and retro CAD styling.
 // ============================================================
 
+// ── Channel Group Presets ──────────────────────────────────
+const CHANNEL_GROUPS: { label: string; channelIds: string[] }[] = [
+  { label: 'All', channelIds: [] },
+  { label: 'Patrol', channelIds: ['dispatch', 'tactical', 'patrol', 'patrol1', 'patrol2'] },
+  { label: 'Dispatch', channelIds: ['dispatch', 'admin', 'command'] },
+  { label: 'Tactical', channelIds: ['tactical', 'tac1', 'tac2', 'surveillance'] },
+  { label: 'Admin', channelIds: ['admin', 'command', 'training'] },
+];
+
+const CHANNEL_GROUP_STORAGE_KEY = 'radio_channel_group';
+
 export default function RadioPage() {
   const {
     currentChannel,
@@ -90,6 +101,19 @@ export default function RadioPage() {
 
   // Mobile sidebar drawer toggle
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
+
+  // Channel group preset filter
+  const [channelGroup, setChannelGroup] = useState<string>(() => {
+    try { return localStorage.getItem(CHANNEL_GROUP_STORAGE_KEY) || 'All'; } catch { return 'All'; }
+  });
+  const handleGroupChange = (group: string) => {
+    setChannelGroup(group);
+    try { localStorage.setItem(CHANNEL_GROUP_STORAGE_KEY, group); } catch { /* ignore */ }
+  };
+  const activeGroup = CHANNEL_GROUPS.find(g => g.label === channelGroup) || CHANNEL_GROUPS[0];
+  const filteredChannels = activeGroup.channelIds.length === 0
+    ? RADIO_CHANNELS
+    : RADIO_CHANNELS.filter(ch => activeGroup.channelIds.includes(ch.id));
 
   // ─── Keyboard PTT (Space bar) ──────────────────────────────
   useEffect(() => {
@@ -748,9 +772,27 @@ export default function RadioPage() {
               )}
             </div>
 
+            {/* Channel group presets */}
+            <div className="flex items-center justify-center gap-1 mb-4">
+              {CHANNEL_GROUPS.map(g => (
+                <button
+                  key={g.label}
+                  onClick={() => handleGroupChange(g.label)}
+                  className="px-3 py-1 text-[10px] font-mono font-bold uppercase tracking-wider transition-all border"
+                  style={{
+                    background: channelGroup === g.label ? 'rgba(26, 90, 158, 0.25)' : 'transparent',
+                    borderColor: channelGroup === g.label ? '#1a5a9e' : '#2a3e58',
+                    color: channelGroup === g.label ? '#fff' : '#5a6e80',
+                  }}
+                >
+                  {g.label}
+                </button>
+              ))}
+            </div>
+
             {/* Channel grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {RADIO_CHANNELS.map((ch) => (
+              {filteredChannels.map((ch) => (
                 <button
                   key={ch.id}
                   onClick={() => joinChannel(ch.id)}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Search, ClipboardList, MapPin, User, Clock, FileText,
-  ChevronDown, Archive, RotateCcw, X, Save, Loader2, Eye,
+  ChevronDown, Archive, RotateCcw, X, Save, Loader2, Eye, AlertTriangle,
 } from 'lucide-react';
 import type { FieldInterview, FIContactReason, FIContactType, FIActionTaken } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -102,6 +102,10 @@ export default function FieldInterviewsPage() {
   const [selectedPerson, setSelectedPerson] = useState<any>(null);
   const personSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Repeat contact warning
+  const [repeatWarning, setRepeatWarning] = useState<string | null>(null);
+  const repeatCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Delete
   const [deleteTarget, setDeleteTarget] = useState<FieldInterview | null>(null);
 
@@ -142,6 +146,25 @@ export default function FieldInterviewsPage() {
     }, 300);
     return () => { if (personSearchTimer.current) clearTimeout(personSearchTimer.current); };
   }, [personSearch]);
+
+  // ── Repeat contact check ──
+  useEffect(() => {
+    if (!formOpen || editingFi) { setRepeatWarning(null); return; }
+    const lastName = formData.subject_last_name?.trim();
+    if (!lastName || lastName.length < 2) { setRepeatWarning(null); return; }
+    if (repeatCheckTimer.current) clearTimeout(repeatCheckTimer.current);
+    repeatCheckTimer.current = setTimeout(async () => {
+      try {
+        const res = await apiFetch<{ count: number }>(`/field-interviews/repeat-check?name=${encodeURIComponent(lastName)}`);
+        if (res.count >= 3) {
+          setRepeatWarning(`This subject has been contacted ${res.count} times in the last 30 days`);
+        } else {
+          setRepeatWarning(null);
+        }
+      } catch { setRepeatWarning(null); }
+    }, 500);
+    return () => { if (repeatCheckTimer.current) clearTimeout(repeatCheckTimer.current); };
+  }, [formData.subject_last_name, formOpen, editingFi]);
 
   // ── Handlers ──
   const handleOpenNew = () => {
@@ -436,6 +459,11 @@ export default function FieldInterviewsPage() {
               <button onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white"><X style={{ width: 14, height: 14 }} /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-4 space-y-3">
+              {repeatWarning && (
+                <div className="bg-amber-900/40 border border-amber-700/50 px-3 py-2 text-xs text-amber-300 flex items-center gap-2">
+                  <AlertTriangle style={{ width: 14, height: 14 }} className="flex-shrink-0 text-amber-400" /> {repeatWarning}
+                </div>
+              )}
               {/* Person search */}
               <div>
                 <label className="field-label">Link to Person Record (Optional)</label>

@@ -9,7 +9,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Briefcase, Search, Plus, ChevronDown, User, Clock, FileText,
   X, Save, Loader2, AlertTriangle, Target, MessageSquare,
-  ArrowRight, CheckCircle, Pause, Hash, FolderOpen,
+  ArrowRight, CheckCircle, Pause, Hash, FolderOpen, ShieldCheck, RotateCcw, Send, Link,
 } from 'lucide-react';
 import type { Case, CaseNote, CaseStatus, CaseType, CasePriority } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -26,10 +26,17 @@ const STATUS_OPTIONS: { value: CaseStatus; label: string; color: string }[] = [
   { value: 'assigned', label: 'Assigned', color: 'bg-cyan-900/50 text-cyan-400 border-cyan-700/50' },
   { value: 'active', label: 'Active', color: 'bg-green-900/50 text-green-400 border-green-700/50' },
   { value: 'suspended', label: 'Suspended', color: 'bg-amber-900/50 text-amber-400 border-amber-700/50' },
+  { value: 'under_review', label: 'Under Review', color: 'bg-purple-900/50 text-purple-400 border-purple-700/50' },
   { value: 'closed_cleared', label: 'Closed (Cleared)', color: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50' },
   { value: 'closed_unfounded', label: 'Closed (Unfounded)', color: 'bg-rmpg-700/50 text-rmpg-400 border-rmpg-600/50' },
   { value: 'closed_exception', label: 'Closed (Exception)', color: 'bg-rmpg-700/50 text-rmpg-400 border-rmpg-600/50' },
 ];
+
+const APPROVAL_STATUS_COLORS: Record<string, string> = {
+  pending_review: 'bg-purple-900/50 text-purple-400 border-purple-700/50',
+  approved: 'bg-green-900/50 text-green-400 border-green-700/50',
+  returned: 'bg-red-900/50 text-red-400 border-red-700/50',
+};
 
 const TYPE_OPTIONS: { value: CaseType; label: string }[] = [
   { value: 'general', label: 'General' }, { value: 'theft', label: 'Theft' },
@@ -98,6 +105,18 @@ export default function CaseManagementPage() {
 
   // Status change
   const [statusChanging, setStatusChanging] = useState(false);
+
+  // Review workflow
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [returnReason, setReturnReason] = useState('');
+  const [showReturnModal, setShowReturnModal] = useState(false);
+
+  // Link person
+  const [linkPersonOpen, setLinkPersonOpen] = useState(false);
+  const [personSearchQuery, setPersonSearchQuery] = useState('');
+  const [personResults, setPersonResults] = useState<any[]>([]);
+  const [personSearching, setPersonSearching] = useState(false);
+  const [linkedPersons, setLinkedPersons] = useState<any[]>([]);
 
   const fetchCases = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
@@ -200,6 +219,77 @@ export default function CaseManagementPage() {
     } catch (err: any) { addToast(err.message, 'error'); }
     finally { setSolvSubmitting(false); }
   };
+
+  // ── Review workflow handlers ──
+  const handleSubmitForReview = async () => {
+    if (!selected) return;
+    setReviewSubmitting(true);
+    try {
+      await apiFetch(`/cases/${selected.id}/submit-review`, { method: 'PUT' });
+      addToast('Case submitted for supervisor review', 'success');
+      const updated = await apiFetch<{ data: Case }>(`/cases/${selected.id}`);
+      setSelected(updated.data);
+      fetchCases({ silent: true });
+    } catch (err: any) { addToast(err.message, 'error'); }
+    finally { setReviewSubmitting(false); }
+  };
+
+  const handleApproveCase = async (action: 'approve' | 'return') => {
+    if (!selected) return;
+    setReviewSubmitting(true);
+    try {
+      await apiFetch(`/cases/${selected.id}/approve`, {
+        method: 'PUT',
+        body: JSON.stringify({ action, return_reason: returnReason }),
+      });
+      addToast(action === 'approve' ? 'Case approved' : 'Case returned', 'success');
+      setShowReturnModal(false);
+      setReturnReason('');
+      const updated = await apiFetch<{ data: Case }>(`/cases/${selected.id}`);
+      setSelected(updated.data);
+      fetchCases({ silent: true });
+    } catch (err: any) { addToast(err.message, 'error'); }
+    finally { setReviewSubmitting(false); }
+  };
+
+  // ── Link Person handlers ──
+  const handlePersonSearch = async () => {
+    if (!personSearchQuery.trim()) return;
+    setPersonSearching(true);
+    try {
+      const data = await apiFetch<any>(`/records/persons/search?q=${encodeURIComponent(personSearchQuery)}`);
+      setPersonResults(Array.isArray(data) ? data : (data?.data || []));
+    } catch { setPersonResults([]); }
+    finally { setPersonSearching(false); }
+  };
+
+  const handleLinkPerson = async (person: any) => {
+    if (!selected) return;
+    try {
+      let existing: any[] = [];
+      try { existing = selected.linked_persons ? (typeof selected.linked_persons === 'string' ? JSON.parse(selected.linked_persons) : selected.linked_persons) : []; } catch { existing = []; }
+      const already = existing.some((p: any) => p.id === person.id);
+      if (already) { addToast('Person already linked', 'error'); return; }
+      const updated = [...existing, { id: person.id, first_name: person.first_name, last_name: person.last_name, role: 'involved' }];
+      await apiFetch(`/cases/${selected.id}`, { method: 'PUT', body: JSON.stringify({ linked_persons: updated }) });
+      addToast(`${person.first_name} ${person.last_name} linked to case`, 'success');
+      const refreshed = await apiFetch<{ data: Case }>(`/cases/${selected.id}`);
+      setSelected(refreshed.data);
+      setLinkPersonOpen(false);
+      setPersonSearchQuery('');
+      setPersonResults([]);
+    } catch (err: any) { addToast(err.message, 'error'); }
+  };
+
+  // Parse linked persons for display
+  useEffect(() => {
+    if (selected?.linked_persons) {
+      try {
+        const parsed = typeof selected.linked_persons === 'string' ? JSON.parse(selected.linked_persons) : selected.linked_persons;
+        setLinkedPersons(Array.isArray(parsed) ? parsed : []);
+      } catch { setLinkedPersons([]); }
+    } else { setLinkedPersons([]); }
+  }, [selected]);
 
   const getStatusColor = (status: string) => STATUS_OPTIONS.find(s => s.value === status)?.color || '';
   const getPriorityColor = (priority: string) => PRIORITY_OPTIONS.find(p => p.value === priority)?.color || '';
@@ -369,6 +459,65 @@ export default function CaseManagementPage() {
                     </div>
                   </div>
 
+                  {/* Review Workflow */}
+                  {(selected.status === 'under_review' || (selected as any).approval_status) && (
+                    <div className="panel-beveled p-3">
+                      <div className="text-[9px] font-mono text-rmpg-500 uppercase mb-2">Case Review Workflow</div>
+                      {(selected as any).approval_status && (
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className={`text-[10px] px-2 py-0.5 border font-bold ${APPROVAL_STATUS_COLORS[(selected as any).approval_status] || ''}`}>
+                            {((selected as any).approval_status || '').replace(/_/g, ' ').toUpperCase()}
+                          </span>
+                          {(selected as any).return_reason && (
+                            <span className="text-[10px] text-red-400 italic">Reason: {(selected as any).return_reason}</span>
+                          )}
+                        </div>
+                      )}
+                      <div className="flex flex-wrap gap-1">
+                        {selected.status === 'under_review' && !(selected as any).approval_status && (
+                          <button onClick={handleSubmitForReview} disabled={reviewSubmitting} className="toolbar-btn toolbar-btn-primary">
+                            {reviewSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send style={{ width: 11, height: 11 }} />}
+                            Submit for Review
+                          </button>
+                        )}
+                        {(selected as any).approval_status === 'pending_review' && (
+                          <>
+                            <button onClick={() => handleApproveCase('approve')} disabled={reviewSubmitting} className="toolbar-btn text-green-400 border-green-700/50 hover:bg-green-900/30">
+                              {reviewSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck style={{ width: 11, height: 11 }} />}
+                              Approve
+                            </button>
+                            <button onClick={() => setShowReturnModal(true)} disabled={reviewSubmitting} className="toolbar-btn text-red-400 border-red-700/50 hover:bg-red-900/30">
+                              <RotateCcw style={{ width: 11, height: 11 }} /> Return
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Link Person Quick Action */}
+                  <div className="panel-beveled p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-[9px] font-mono text-rmpg-500 uppercase">Linked Persons</div>
+                      <button onClick={() => setLinkPersonOpen(true)} className="toolbar-btn text-[10px]">
+                        <Link style={{ width: 10, height: 10 }} /> Link Person
+                      </button>
+                    </div>
+                    {linkedPersons.length > 0 ? (
+                      <div className="space-y-1">
+                        {linkedPersons.map((p: any, i: number) => (
+                          <div key={i} className="flex items-center gap-2 text-[10px] text-rmpg-300">
+                            <User style={{ width: 10, height: 10 }} className="text-rmpg-500" />
+                            <span className="text-white font-bold">{p.last_name}, {p.first_name}</span>
+                            <span className="text-[9px] text-rmpg-500 px-1 border border-rmpg-700 bg-rmpg-800/50">{p.role || 'involved'}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-[10px] text-rmpg-500">No persons linked</div>
+                    )}
+                  </div>
+
                   {/* Detail grid */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {[
@@ -478,6 +627,70 @@ export default function CaseManagementPage() {
           </div>
         )}
       </div>
+
+      {/* ── Return Case Modal ── */}
+      {showReturnModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="panel-surface w-full max-w-md mx-4">
+            <PanelTitleBar title="Return Case" icon={RotateCcw}>
+              <button onClick={() => setShowReturnModal(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
+            </PanelTitleBar>
+            <div className="p-4 space-y-3">
+              <div>
+                <label className="field-label">Return Reason *</label>
+                <textarea value={returnReason} onChange={e => setReturnReason(e.target.value)} rows={3}
+                  placeholder="Explain why this case needs additional work..."
+                  className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
+              </div>
+              <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
+                <button onClick={() => setShowReturnModal(false)} className="toolbar-btn">Cancel</button>
+                <button onClick={() => handleApproveCase('return')} disabled={reviewSubmitting || !returnReason.trim()} className="toolbar-btn text-red-400 border-red-700/50 hover:bg-red-900/30">
+                  {reviewSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw style={{ width: 11, height: 11 }} />}
+                  Return Case
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Link Person Modal ── */}
+      {linkPersonOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="panel-surface w-full max-w-md mx-4">
+            <PanelTitleBar title="Link Person to Case" icon={Link}>
+              <button onClick={() => { setLinkPersonOpen(false); setPersonResults([]); setPersonSearchQuery(''); }} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
+            </PanelTitleBar>
+            <div className="p-4 space-y-3">
+              <div className="flex gap-2">
+                <input value={personSearchQuery} onChange={e => setPersonSearchQuery(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handlePersonSearch()}
+                  placeholder="Search by name, phone, email..."
+                  className="flex-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                <button onClick={handlePersonSearch} disabled={personSearching} className="toolbar-btn toolbar-btn-primary">
+                  {personSearching ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search style={{ width: 11, height: 11 }} />}
+                  Search
+                </button>
+              </div>
+              <div className="max-h-60 overflow-y-auto space-y-1">
+                {personResults.map((p: any) => (
+                  <button key={p.id} onClick={() => handleLinkPerson(p)}
+                    className="w-full text-left px-3 py-2 border border-rmpg-700 hover:bg-rmpg-800/40 transition-colors">
+                    <div className="text-[11px] font-bold text-white">{p.last_name}, {p.first_name}</div>
+                    <div className="text-[9px] text-rmpg-500">
+                      {p.date_of_birth && <span>DOB: {p.date_of_birth} </span>}
+                      {p.phone && <span>Ph: {p.phone}</span>}
+                    </div>
+                  </button>
+                ))}
+                {personResults.length === 0 && personSearchQuery && !personSearching && (
+                  <div className="text-[10px] text-rmpg-500 text-center py-4">No results found</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── New Case Modal ── */}
       {formOpen && (

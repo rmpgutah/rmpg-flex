@@ -92,6 +92,38 @@ export default function CourtTrackerPage() {
   const [outcomeData, setOutcomeData] = useState({ outcome: '' as string, sentence: '', fine_amount: '' });
   const [outcomeSubmitting, setOutcomeSubmitting] = useState(false);
 
+  // Create from citation
+  const [citationSearchOpen, setCitationSearchOpen] = useState(false);
+  const [citationSearchQ, setCitationSearchQ] = useState('');
+  const [citationSearchResults, setCitationSearchResults] = useState<any[]>([]);
+  const [citationSearching, setCitationSearching] = useState(false);
+  const [creatingFromCitation, setCreatingFromCitation] = useState(false);
+
+  const handleSearchCitations = async () => {
+    if (!citationSearchQ || citationSearchQ.length < 2) return;
+    setCitationSearching(true);
+    try {
+      const res = await apiFetch<{ data: any[] }>(`/citations/search?q=${encodeURIComponent(citationSearchQ)}`);
+      setCitationSearchResults(res.data || []);
+    } catch { setCitationSearchResults([]); }
+    finally { setCitationSearching(false); }
+  };
+
+  const handleCreateFromCitation = async (citationId: number) => {
+    setCreatingFromCitation(true);
+    try {
+      await apiFetch('/court/events/from-citation', {
+        method: 'POST', body: JSON.stringify({ citation_id: citationId }),
+      });
+      addToast('Court event created from citation', 'success');
+      setCitationSearchOpen(false);
+      setCitationSearchQ('');
+      setCitationSearchResults([]);
+      fetchEvents({ silent: true }); fetchUpcoming();
+    } catch (err: any) { addToast(err?.message || 'Failed to create event', 'error'); }
+    finally { setCreatingFromCitation(false); }
+  };
+
   const fetchEvents = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
     setFetchError('');
@@ -169,6 +201,9 @@ export default function CourtTrackerPage() {
       {/* ── Left Panel ── */}
       <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Court / Legal Tracker" icon={Gavel}>
+          <button onClick={() => setCitationSearchOpen(true)} className="toolbar-btn text-[10px]">
+            <FileText style={{ width: 11, height: 11 }} /> From Citation
+          </button>
           <button onClick={() => { clearAllErrors(); setFormOpen(true); setFormData({ ...EMPTY_FORM }); }} className="toolbar-btn toolbar-btn-primary">
             <Plus style={{ width: 11, height: 11 }} /> New
           </button>
@@ -424,6 +459,47 @@ export default function CourtTrackerPage() {
                   Save Outcome
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create from Citation Modal */}
+      {citationSearchOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setCitationSearchOpen(false)}>
+          <div className="panel-surface w-full max-w-lg mx-4" onClick={e => e.stopPropagation()}>
+            <PanelTitleBar title="Create Court Event from Citation" icon={FileText}>
+              <button onClick={() => setCitationSearchOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
+            </PanelTitleBar>
+            <div className="p-4 space-y-3">
+              <div className="flex gap-2">
+                <input value={citationSearchQ} onChange={e => setCitationSearchQ(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleSearchCitations()}
+                  placeholder="Search by citation number, name, or statute..."
+                  className="flex-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                <button onClick={handleSearchCitations} disabled={citationSearching} className="toolbar-btn-primary text-[10px] px-3">
+                  {citationSearching ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search style={{ width: 11, height: 11 }} />}
+                  Search
+                </button>
+              </div>
+              {citationSearchResults.length > 0 ? (
+                <div className="max-h-[300px] overflow-y-auto space-y-1">
+                  {citationSearchResults.map((c: any) => (
+                    <div key={c.id} className="flex items-center justify-between px-3 py-2 border border-rmpg-700 bg-surface-sunken hover:bg-rmpg-800/50">
+                      <div>
+                        <div className="text-[11px] font-mono font-bold text-white">{c.citation_number}</div>
+                        <div className="text-[10px] text-rmpg-300">{c.person_name || 'Unknown'} -- {c.statute_citation || c.violation_description || ''}</div>
+                        <div className="text-[9px] text-rmpg-500">{c.court_date ? `Court: ${c.court_date}` : 'No court date'} {c.court_name ? `at ${c.court_name}` : ''}</div>
+                      </div>
+                      <button onClick={() => handleCreateFromCitation(c.id)} disabled={creatingFromCitation} className="toolbar-btn-primary text-[10px] px-2 py-1 flex-shrink-0">
+                        {creatingFromCitation ? '...' : 'Create Event'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : citationSearchQ && !citationSearching ? (
+                <div className="text-center text-[10px] text-rmpg-500 py-4">No citations found. Try a different search.</div>
+              ) : null}
             </div>
           </div>
         </div>

@@ -665,4 +665,31 @@ function mapIpedTypeToExhibitType(ipedType: string): string {
   return 'other';
 }
 
+// GET /hashes/search — Search hash results by MD5, SHA1, or SHA256
+router.get('/hashes/search', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { q } = req.query;
+    if (!q || String(q).trim().length < 4) {
+      return res.status(400).json({ error: 'Search query must be at least 4 characters' });
+    }
+
+    const searchTerm = `%${String(q).trim()}%`;
+    const results = db.prepare(`
+      SELECT hr.*, j.input_path, j.job_type
+      FROM hash_results hr
+      LEFT JOIN iped_jobs j ON hr.iped_job_id = j.id
+      WHERE hr.md5 LIKE ? OR hr.sha1 LIKE ? OR hr.sha256 LIKE ?
+        OR (hr.sha512 IS NOT NULL AND hr.sha512 LIKE ?)
+      ORDER BY hr.flagged DESC, hr.created_at DESC
+      LIMIT 50
+    `).all(searchTerm, searchTerm, searchTerm, searchTerm);
+
+    res.json({ results, total: results.length });
+  } catch (error: any) {
+    console.error('Hash search error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

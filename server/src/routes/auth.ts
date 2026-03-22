@@ -227,6 +227,13 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
     // ── No 2FA — issue full tokens ──────────────────────
     const accessToken = generateAccessToken(payload);
     const refreshToken = generateRefreshToken(payload);
+    // Capture previous login info before updating
+    const prevLogin = db.prepare(`SELECT last_login_at FROM users WHERE id = ?`).get(user.id) as { last_login_at?: string } | undefined;
+    const prevLoginIp = db.prepare(`
+      SELECT ip_address FROM login_attempts WHERE username = ? AND success = 1
+      ORDER BY created_at DESC LIMIT 1
+    `).get(username) as { ip_address?: string } | undefined;
+
     const sessionId = createSession(user.id, refreshToken, ip, userAgent);
 
     // Include sessionId in a fresh access token so IP binding works
@@ -272,6 +279,8 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
       refreshToken,
       sessionId,
       expiresIn: config.jwt.accessExpiry,
+      lastLoginAt: prevLogin?.last_login_at || null,
+      lastLoginIp: prevLoginIp?.ip_address || null,
       user: {
         id: user.id,
         username: user.username,

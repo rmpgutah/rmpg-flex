@@ -45,7 +45,7 @@ import ExportButton from '../components/ExportButton';
 // ── Types ──────────────────────────────────────────────────
 
 type CitationType = 'traffic' | 'criminal' | 'parking' | 'warning';
-type CitationStatus = 'issued' | 'paid' | 'contested' | 'dismissed' | 'warrant_issued' | 'voided';
+type CitationStatus = 'issued' | 'paid' | 'contested' | 'dismissed' | 'warrant_issued' | 'voided' | 'payment_plan';
 
 interface Citation {
   id: number;
@@ -137,6 +137,7 @@ const CITATION_TYPES: { value: CitationType; label: string }[] = [
 const CITATION_STATUSES: { value: CitationStatus; label: string }[] = [
   { value: 'issued', label: 'Issued' },
   { value: 'paid', label: 'Paid' },
+  { value: 'payment_plan', label: 'Payment Plan' },
   { value: 'contested', label: 'Contested' },
   { value: 'dismissed', label: 'Dismissed' },
   { value: 'warrant_issued', label: 'Warrant Issued' },
@@ -146,6 +147,7 @@ const CITATION_STATUSES: { value: CitationStatus; label: string }[] = [
 const STATUS_BADGE: Record<string, string> = {
   issued: 'bg-blue-900/50 text-blue-300 border-blue-700/50',
   paid: 'bg-green-900/50 text-green-300 border-green-700/50',
+  payment_plan: 'bg-cyan-900/50 text-cyan-300 border-cyan-700/50',
   contested: 'bg-amber-900/50 text-amber-300 border-amber-700/50',
   dismissed: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
   warrant_issued: 'bg-red-900/60 text-red-300 border-red-700/50',
@@ -233,6 +235,16 @@ export default function CitationsPage() {
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState(false);
   const { errors: formErrors, validate: runValidation, clearAllErrors: clearFormErrors } = useFormValidation();
+
+  // Duplicate detection
+  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
+  const dupCheckTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  // Payment plan tracking
+  const [paymentData, setPaymentData] = useState<{ payments: any[]; total_amount: number; total_paid: number; remaining: number } | null>(null);
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [paymentForm, setPaymentForm] = useState({ amount: '', payment_date: localToday(), payment_method: 'cash', reference_number: '', notes: '' });
+  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
 
   // Person search state
   const [personSearch, setPersonSearch] = useState('');
@@ -339,6 +351,62 @@ export default function CitationsPage() {
     }));
     setPersonSearch('');
   };
+
+  // ── Fetch payments when citation selected ──────────────
+  useEffect(() => {
+    if (!selectedCitation || !selectedCitation.fine_amount) { setPaymentData(null); return; }
+    (async () => {
+      try {
+        const res = await apiFetch<{ data: any }>(`/citations/${selectedCitation.id}/payments`);
+        setPaymentData(res.data);
+      } catch { setPaymentData(null); }
+    })();
+  }, [selectedCitation?.id, selectedCitation?.fine_amount]);
+
+  const handleRecordPayment = async () => {
+    if (!selectedCitation || !paymentForm.amount) return;
+    setPaymentSubmitting(true);
+    try {
+      await apiFetch(`/citations/${selectedCitation.id}/payments`, {
+        method: 'POST', body: JSON.stringify(paymentForm),
+      });
+      // Refresh
+      const res = await apiFetch<{ data: any }>(`/citations/${selectedCitation.id}/payments`);
+      setPaymentData(res.data);
+      setShowPaymentForm(false);
+      setPaymentForm({ amount: '', payment_date: localToday(), payment_method: 'cash', reference_number: '', notes: '' });
+      fetchCitations({ silent: true }); fetchStats();
+    } catch (err: any) { alert(err.message || 'Failed to record payment'); }
+    finally { setPaymentSubmitting(false); }
+  };
+
+  // ── Duplicate detection ─────────────────────────────────
+  useEffect(() => {
+    if (mode !== 'create' && mode !== 'edit') { setDuplicateWarning(null); return; }
+    const name = form.person_name?.trim();
+    const statute = form.statute_citation?.trim();
+    if (!name || name.length < 3 || !statute || statute.length < 2) { setDuplicateWarning(null); return; }
+    if (dupCheckTimer.current) clearTimeout(dupCheckTimer.current);
+    dupCheckTimer.current = setTimeout(async () => {
+      try {
+        const res = await apiFetch<{ data: Citation[] }>(`/citations/search?q=${encodeURIComponent(name)}`);
+        const matches = (res.data || []).filter(
+          c => c.statute_citation?.toLowerCase() === statute.toLowerCase()
+            && c.person_name?.toLowerCase().includes(name.toLowerCase())
+            && (mode !== 'edit' || c.id !== selectedCitation?.id)
+        );
+        if (matches.length > 0) {
+          const m = matches[0];
+          setDuplicateWarning(
+            `Similar citation exists for ${m.person_name} — ${m.statute_citation} on ${formatDate(m.violation_date || m.created_at)}`
+          );
+        } else {
+          setDuplicateWarning(null);
+        }
+      } catch { setDuplicateWarning(null); }
+    }, 500);
+    return () => { if (dupCheckTimer.current) clearTimeout(dupCheckTimer.current); };
+  }, [form.person_name, form.statute_citation, mode, selectedCitation?.id]);
 
   // ── Statute lookup ───────────────────────────────────────
 
@@ -745,6 +813,67 @@ export default function CitationsPage() {
             </div>
           </section>
 
+          {/* Payment Plan Tracking */}
+          {c.fine_amount != null && c.fine_amount > 0 && paymentData && (
+            <section>
+              <h3 className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2 flex items-center gap-1">
+                <DollarSign size={10} /> Payment Tracking
+              </h3>
+              <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-2">
+                <div className="flex items-center gap-4 text-xs">
+                  <div><span className="text-rmpg-400">Total:</span> <span className="text-rmpg-200 font-bold">{formatCurrency(paymentData.total_amount)}</span></div>
+                  <div><span className="text-rmpg-400">Paid:</span> <span className="text-green-400 font-bold">{formatCurrency(paymentData.total_paid)}</span></div>
+                  <div><span className="text-rmpg-400">Remaining:</span> <span className="text-amber-400 font-bold">{formatCurrency(paymentData.remaining)}</span></div>
+                </div>
+                {paymentData.total_amount > 0 && (
+                  <div className="h-1.5 bg-rmpg-700 rounded-sm overflow-hidden">
+                    <div className="h-full bg-green-500 transition-all" style={{ width: `${Math.min(100, (paymentData.total_paid / paymentData.total_amount) * 100)}%` }} />
+                  </div>
+                )}
+                {paymentData.payments.length > 0 && (
+                  <div className="space-y-1 mt-2">
+                    {paymentData.payments.map((p: any) => (
+                      <div key={p.id} className="flex items-center gap-2 text-[10px] border-b border-rmpg-800/30 pb-1">
+                        <span className="text-rmpg-500">{formatDate(p.payment_date)}</span>
+                        <span className="text-green-400 font-bold">{formatCurrency(p.amount)}</span>
+                        {p.payment_method && <span className="text-rmpg-500 capitalize">{p.payment_method}</span>}
+                        {p.reference_number && <span className="text-rmpg-500 font-mono">{p.reference_number}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {!showPaymentForm ? (
+                  <button onClick={() => setShowPaymentForm(true)} className="toolbar-btn text-[10px] mt-1">
+                    <Plus size={10} /> Record Payment
+                  </button>
+                ) : (
+                  <div className="space-y-2 mt-2 p-2 border border-rmpg-700 bg-surface-sunken">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div><label className="text-[9px] text-rmpg-400 uppercase">Amount *</label>
+                        <input type="number" step="0.01" className="input-dark text-xs w-full" value={paymentForm.amount} onChange={e => setPaymentForm(p => ({ ...p, amount: e.target.value }))} /></div>
+                      <div><label className="text-[9px] text-rmpg-400 uppercase">Date *</label>
+                        <input type="date" className="input-dark text-xs w-full" value={paymentForm.payment_date} onChange={e => setPaymentForm(p => ({ ...p, payment_date: e.target.value }))} /></div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div><label className="text-[9px] text-rmpg-400 uppercase">Method</label>
+                        <select className="input-dark text-xs w-full" value={paymentForm.payment_method} onChange={e => setPaymentForm(p => ({ ...p, payment_method: e.target.value }))}>
+                          <option value="cash">Cash</option><option value="check">Check</option><option value="card">Card</option><option value="money_order">Money Order</option><option value="other">Other</option>
+                        </select></div>
+                      <div><label className="text-[9px] text-rmpg-400 uppercase">Reference #</label>
+                        <input className="input-dark text-xs w-full" value={paymentForm.reference_number} onChange={e => setPaymentForm(p => ({ ...p, reference_number: e.target.value }))} /></div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={handleRecordPayment} disabled={paymentSubmitting || !paymentForm.amount} className="toolbar-btn-primary text-[10px] px-3 py-1">
+                        {paymentSubmitting ? 'Saving...' : 'Save Payment'}
+                      </button>
+                      <button onClick={() => setShowPaymentForm(false)} className="toolbar-btn text-[10px]">Cancel</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
           {/* Subject */}
           <section>
             <h3 className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2 flex items-center gap-1">
@@ -858,6 +987,11 @@ export default function CitationsPage() {
         {saveSuccess && (
           <div className="bg-green-900/40 border border-green-700/50 px-3 py-2 text-xs text-green-300 flex items-center gap-2">
             <Check size={14} /> Citation saved successfully
+          </div>
+        )}
+        {duplicateWarning && (
+          <div className="bg-amber-900/40 border border-amber-700/50 px-3 py-2 text-xs text-amber-300 flex items-center gap-2">
+            <AlertTriangle size={14} className="flex-shrink-0" /> {duplicateWarning}
           </div>
         )}
 

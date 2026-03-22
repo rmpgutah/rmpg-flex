@@ -569,6 +569,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           safeSetItem(SESSION_ID_KEY, data.sessionId);
         }
 
+        // Store last login info for display on login page
+        if (data.lastLoginAt) {
+          try {
+            sessionStorage.setItem('rmpg_last_login_info', JSON.stringify({
+              time: data.lastLoginAt,
+              ip: data.lastLoginIp || '',
+            }));
+          } catch { /* ignore */ }
+        }
+
         // Store username for offline auth lookup
         safeSetItem(LAST_USERNAME_KEY, username);
 
