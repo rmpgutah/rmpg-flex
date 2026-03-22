@@ -1,11 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
-import { broadcast } from '../utils/websocket';
-import { auditLog } from '../utils/auditLogger';
-import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 
@@ -50,8 +46,6 @@ router.use((_req, _res, next) => {
       tablesInitialized = true;
     } catch (err) {
       console.error('shiftPlans initTables retry failed:', err);
-      _res.status(503).json({ error: 'Database tables not ready' });
-      return;
     }
   }
   next();
@@ -94,14 +88,14 @@ router.get('/shift-plans', requireRole('admin', 'manager', 'supervisor', 'dispat
       params.push(status);
     }
 
-    sql += ' ORDER BY sp.date DESC, sp.created_at DESC LIMIT 500';
+    sql += ' ORDER BY sp.date DESC, sp.created_at DESC';
 
     const rows = db.prepare(sql).all(...params) as any[];
     const plans = rows.map(parseAssignments);
 
     res.json(plans);
   } catch (error: any) {
-    console.error('Get shift plans error:', error?.message || 'Unknown error');
+    console.error('Get shift plans error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -141,7 +135,7 @@ router.get('/shift-plans/coverage/:date', requireRole('admin', 'manager', 'super
 
     res.json(allAssignments);
   } catch (error: any) {
-    console.error('Get shift coverage error:', error?.message || 'Unknown error');
+    console.error('Get shift coverage error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -149,7 +143,7 @@ router.get('/shift-plans/coverage/:date', requireRole('admin', 'manager', 'super
 // ============================================================
 // GET /shift-plans/:id — Get single plan by id
 // ============================================================
-router.get('/shift-plans/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/shift-plans/:id', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -167,7 +161,7 @@ router.get('/shift-plans/:id', validateParamId, requireRole('admin', 'manager', 
 
     res.json(parseAssignments(row));
   } catch (error: any) {
-    console.error('Get shift plan error:', error?.message || 'Unknown error');
+    console.error('Get shift plan error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -182,32 +176,6 @@ router.post('/shift-plans', requireRole('admin', 'manager', 'supervisor'), (req:
 
     if (!id || !name || !date) {
       res.status(400).json({ error: 'id, name, and date are required' });
-      return;
-    }
-    // Validate id format (prevent SQL injection via non-parameterized usage elsewhere)
-    if (typeof id !== 'string' || id.length > 100) {
-      res.status(400).json({ error: 'id must be a string, max 100 characters' });
-      return;
-    }
-    if (typeof name !== 'string' || name.length > 200) {
-      res.status(400).json({ error: 'name must be a string, max 200 characters' });
-      return;
-    }
-    // Validate date format
-    if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      res.status(400).json({ error: 'date must be in YYYY-MM-DD format' });
-      return;
-    }
-    // Validate shift type
-    const validShiftTypes = ['day', 'swing', 'night', 'graveyard'];
-    if (shiftType && !validShiftTypes.includes(shiftType)) {
-      res.status(400).json({ error: `shiftType must be one of: ${validShiftTypes.join(', ')}` });
-      return;
-    }
-    // Validate status
-    const validPlanStatuses = ['draft', 'active', 'archived'];
-    if (status && !validPlanStatuses.includes(status)) {
-      res.status(400).json({ error: `status must be one of: ${validPlanStatuses.join(', ')}` });
       return;
     }
 
@@ -267,12 +235,9 @@ router.post('/shift-plans', requireRole('admin', 'manager', 'supervisor'), (req:
       WHERE sp.id = ?
     `).get(id) as any;
 
-    const parsed = parseAssignments(plan);
-    auditLog(req, existing ? 'UPDATE' : 'CREATE', 'schedule', id, `${existing ? 'Updated' : 'Created'} shift plan: ${name}`);
-    broadcast('admin', existing ? 'shiftPlan:updated' : 'shiftPlan:created', parsed);
-    res.status(existing ? 200 : 201).json(parsed);
+    res.status(existing ? 200 : 201).json(parseAssignments(plan));
   } catch (error: any) {
-    console.error('Create/upsert shift plan error:', error?.message || 'Unknown error');
+    console.error('Create/upsert shift plan error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -280,7 +245,7 @@ router.post('/shift-plans', requireRole('admin', 'manager', 'supervisor'), (req:
 // ============================================================
 // PUT /shift-plans/:id — Update a shift plan
 // ============================================================
-router.put('/shift-plans/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/shift-plans/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM shift_plans WHERE id = ?').get(req.params.id) as any;
@@ -328,13 +293,9 @@ router.put('/shift-plans/:id', validateParamId, requireRole('admin', 'manager', 
       WHERE sp.id = ?
     `).get(req.params.id) as any;
 
-    if (!updated) return res.status(404).json({ error: 'Shift plan not found after update' });
-    const parsed = parseAssignments(updated);
-    auditLog(req, 'UPDATE', 'schedule', req.params.id, `Updated shift plan: ${existing.name}`);
-    broadcast('admin', 'shiftPlan:updated', parsed);
-    res.json(parsed);
+    res.json(parseAssignments(updated));
   } catch (error: any) {
-    console.error('Update shift plan error:', error?.message || 'Unknown error');
+    console.error('Update shift plan error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -342,7 +303,7 @@ router.put('/shift-plans/:id', validateParamId, requireRole('admin', 'manager', 
 // ============================================================
 // DELETE /shift-plans/:id — Admin/manager only: delete a shift plan
 // ============================================================
-router.delete('/shift-plans/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/shift-plans/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM shift_plans WHERE id = ?').get(req.params.id) as any;
@@ -358,11 +319,9 @@ router.delete('/shift-plans/:id', validateParamId, requireRole('admin', 'manager
       VALUES (?, 'shift_plan_deleted', 'shift_plan', ?, ?, ?)
     `).run(req.user!.userId, existing.id, `Deleted shift plan: ${existing.name}`, req.ip || 'unknown');
 
-    auditLog(req, 'DELETE', 'schedule', req.params.id, `Deleted shift plan: ${existing.name}`);
-    broadcast('admin', 'shiftPlan:deleted', { id: req.params.id });
     res.json({ message: 'Shift plan deleted' });
   } catch (error: any) {
-    console.error('Delete shift plan error:', error?.message || 'Unknown error');
+    console.error('Delete shift plan error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -370,7 +329,7 @@ router.delete('/shift-plans/:id', validateParamId, requireRole('admin', 'manager
 // ============================================================
 // POST /shift-plans/:id/activate — Activate a plan, deactivate others for same date
 // ============================================================
-router.post('/shift-plans/:id/activate', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/shift-plans/:id/activate', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM shift_plans WHERE id = ?').get(req.params.id) as any;
@@ -405,42 +364,9 @@ router.post('/shift-plans/:id/activate', validateParamId, requireRole('admin', '
       WHERE sp.id = ?
     `).get(req.params.id) as any;
 
-    const parsed = parseAssignments(updated);
-    auditLog(req, 'UPDATE', 'schedule', req.params.id, `Activated shift plan: ${existing.name} for ${existing.date}`);
-    broadcast('admin', 'shiftPlan:activated', parsed);
-    res.json(parsed);
+    res.json(parseAssignments(updated));
   } catch (error: any) {
-    console.error('Activate shift plan error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ============================================================
-// GET /shift-plans/export/csv — Export shift plans as CSV
-// ============================================================
-router.get('/shift-plans/export/csv', requireRole('admin', 'manager', 'supervisor'), (_req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const rows = db.prepare(`
-      SELECT sp.*, u.full_name as created_by_name
-      FROM shift_plans sp
-      LEFT JOIN users u ON sp.created_by = u.id
-      ORDER BY sp.date DESC, sp.created_at DESC
-    `).all();
-
-    sendCsv(res, `shift_plans_export_${localNow().slice(0, 10)}.csv`, [
-      { key: 'id', header: 'Plan ID' },
-      { key: 'name', header: 'Name' },
-      { key: 'date', header: 'Date' },
-      { key: 'shift_type', header: 'Shift Type' },
-      { key: 'status', header: 'Status' },
-      { key: 'assignments', header: 'Assignments (JSON)' },
-      { key: 'created_by_name', header: 'Created By' },
-      { key: 'created_at', header: 'Created At' },
-      { key: 'updated_at', header: 'Updated At' },
-    ], rows);
-  } catch (error: any) {
-    console.error('Export shift plans error:', error?.message || 'Unknown error');
+    console.error('Activate shift plan error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

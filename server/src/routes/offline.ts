@@ -9,22 +9,7 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { rateLimit } from '../middleware/rateLimiter';
-import { sanitizeObject } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
-import { generateIncidentNumber } from '../utils/caseNumbers';
-import { auditLog } from '../utils/auditLogger';
-import config from '../config';
-
-/**
- * Generate HMAC-SHA256 signature for offline secrets in transit.
- * Prevents tampering if TLS is somehow intercepted.
- */
-function signSecret(secret: string, userId: number): string {
-  return crypto.createHmac('sha256', config.jwt.secret)
-    .update(`${userId}:${secret}`)
-    .digest('hex');
-}
 
 const router = Router();
 
@@ -35,7 +20,7 @@ router.use(authenticateToken);
 // Maps table name → columns to SELECT (controls what the desktop app receives)
 const SYNC_TABLES: Record<string, { columns: string; hasUpdatedAt: boolean; limit?: number }> = {
   users: {
-    columns: 'id, username, first_name, last_name, full_name, email, role, badge_number, phone, status, avatar_url, created_at, updated_at',
+    columns: 'id, username, password_hash, first_name, last_name, full_name, email, role, badge_number, phone, status, avatar_url, created_at, updated_at',
     hasUpdatedAt: true,
   },
   clients: {
@@ -52,7 +37,7 @@ const SYNC_TABLES: Record<string, { columns: string; hasUpdatedAt: boolean; limi
     limit: 500,
   },
   units: {
-    columns: 'id, call_sign, officer_id, status, latitude, longitude, current_call_id, last_status_change, capabilities',
+    columns: 'id, call_sign, officer_id, officer_name, status, latitude, longitude, current_call_id, last_status_change, capabilities',
     hasUpdatedAt: false,
   },
   incidents: {
@@ -61,12 +46,12 @@ const SYNC_TABLES: Record<string, { columns: string; hasUpdatedAt: boolean; limi
     limit: 500,
   },
   time_entries: {
-    columns: 'id, officer_id, schedule_id, clock_in, clock_out, clock_in_latitude, clock_in_longitude, total_hours, break_minutes, status',
+    columns: 'id, officer_id, schedule_id, clock_in, clock_out, clock_in_latitude, clock_in_longitude, clock_out_latitude, clock_out_longitude, total_hours, break_minutes, status',
     hasUpdatedAt: false,
     limit: 200,
   },
   persons: {
-    columns: 'id, first_name, last_name, dob, gender, race, address, phone, dl_number, dl_state, ssn_last4, flags, notes, created_at, updated_at',
+    columns: 'id, first_name, last_name, dob, gender, race, address, phone, dl_number, dl_state, flags, notes, created_at, updated_at',
     hasUpdatedAt: true,
     limit: 500,
   },
@@ -80,61 +65,21 @@ const SYNC_TABLES: Record<string, { columns: string; hasUpdatedAt: boolean; limi
 // Reference tables get full replacement (small datasets)
 const REFERENCE_TABLES = ['users', 'clients', 'properties'];
 
-// ─── Table access by role ────────────────────────────────────
-// PII-heavy tables (persons, vehicles) are restricted to supervisor+ roles
-const PII_TABLES = new Set(['persons', 'vehicles_records']);
-const SYNC_ALLOWED_ROLES = new Set(['admin', 'manager', 'supervisor', 'officer', 'dispatcher']);
-
-// Stricter rate limit for sync endpoints — 30 requests per minute per user
-const syncRateLimit = rateLimit({
-  windowMs: 60_000,
-  maxRequests: 30,
-  keyGenerator: (req: Request) => `sync:${req.user?.userId || req.ip}`,
-  message: 'Sync rate limit exceeded — try again shortly',
-});
-
 // ─── POST /sync/pull ─────────────────────────────────────────
 // Returns rows from a table, optionally filtered by updated_at > since
-router.post('/sync/pull', syncRateLimit, (req: Request, res: Response) => {
+router.post('/sync/pull', (req: Request, res: Response) => {
   try {
     const { table, since, limit: reqLimit } = req.body;
     const db = getDb();
-    const role = req.user?.role;
 
-    // Only field roles can sync
-    if (!role || !SYNC_ALLOWED_ROLES.has(role)) {
-      res.status(403).json({ error: 'Offline sync not available for your role' });
+    if (!table || !SYNC_TABLES[table]) {
+      res.status(400).json({ error: `Invalid table: ${table}. Allowed: ${Object.keys(SYNC_TABLES).join(', ')}` });
       return;
-    }
-
-    if (!table || typeof table !== 'string' || !SYNC_TABLES[table]) {
-      res.status(400).json({ error: 'Invalid or unrecognized table name' });
-      return;
-    }
-
-    if (since && (typeof since !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(since))) {
-      res.status(400).json({ error: 'Invalid since parameter — expected ISO date string' });
-      return;
-    }
-
-    // PII-heavy tables restricted to supervisor+ roles
-    if (PII_TABLES.has(table) && !['admin', 'manager', 'supervisor'].includes(role)) {
-      res.status(403).json({ error: `Access to ${table} sync requires supervisor or higher role` });
-      return;
-    }
-
-    // Validate reqLimit if provided
-    if (reqLimit !== undefined && reqLimit !== null) {
-      const parsedLimit = parseInt(String(reqLimit), 10);
-      if (isNaN(parsedLimit) || parsedLimit < 1) {
-        res.status(400).json({ error: 'limit must be a positive integer' });
-        return;
-      }
     }
 
     const config = SYNC_TABLES[table];
     const isReference = REFERENCE_TABLES.includes(table);
-    const maxRows = Math.min(parseInt(String(reqLimit), 10) || config.limit || 1000, 5000);
+    const maxRows = reqLimit || config.limit || 1000;
 
     let sql: string;
     let params: any[];
@@ -151,9 +96,6 @@ router.post('/sync/pull', syncRateLimit, (req: Request, res: Response) => {
 
     const rows = db.prepare(sql).all(...params);
 
-    auditLog(req, 'offline_sync_pull', 'offline_sync', 0,
-      `Pulled ${rows.length} rows from ${table}${since ? ` (since ${since})` : ' (full)'}`);
-
     res.json({
       table,
       rows,
@@ -162,7 +104,7 @@ router.post('/sync/pull', syncRateLimit, (req: Request, res: Response) => {
       pulledAt: localNow(),
     });
   } catch (error: any) {
-    console.error('[OFFLINE] Pull sync error:', error?.message);
+    console.error('[OFFLINE] Pull sync error:', error.message);
     res.status(500).json({ error: 'Failed to pull sync data' });
   }
 });
@@ -170,25 +112,13 @@ router.post('/sync/pull', syncRateLimit, (req: Request, res: Response) => {
 // ─── POST /sync/push ─────────────────────────────────────────
 // Accepts a batch of locally-created records, inserts them, returns
 // the mapping of local_id → server-assigned id
-router.post('/sync/push', syncRateLimit, (req: Request, res: Response) => {
+router.post('/sync/push', (req: Request, res: Response) => {
   try {
     const { items } = req.body; // Array of { method, endpoint, body, local_id, table_name }
     const db = getDb();
-    const role = req.user?.role;
-
-    // Only field roles can push
-    if (!role || !SYNC_ALLOWED_ROLES.has(role)) {
-      res.status(403).json({ error: 'Offline sync not available for your role' });
-      return;
-    }
 
     if (!Array.isArray(items) || items.length === 0) {
       res.status(400).json({ error: 'No items to push' });
-      return;
-    }
-
-    if (items.length > 100) {
-      res.status(400).json({ error: 'Batch size exceeds maximum of 100 items' });
       return;
     }
 
@@ -196,57 +126,29 @@ router.post('/sync/push', syncRateLimit, (req: Request, res: Response) => {
 
     for (const item of items) {
       try {
-        // Validate item structure
-        if (!item || typeof item !== 'object') {
-          results.push({ local_id: 'unknown', success: false, error: 'Item must be an object' });
-          continue;
-        }
-        if (typeof item.method !== 'string' || !['POST', 'PUT'].includes(item.method)) {
-          results.push({ local_id: item.local_id || 'unknown', success: false, error: 'Invalid method' });
-          continue;
-        }
-        if (typeof item.local_id !== 'string' || item.local_id.length > 200) {
-          results.push({ local_id: 'unknown', success: false, error: 'Invalid local_id' });
-          continue;
-        }
-        if (item.table_name && (typeof item.table_name !== 'string' || item.table_name.length > 50)) {
-          results.push({ local_id: item.local_id, success: false, error: 'Invalid table_name' });
-          continue;
-        }
-        if (item.endpoint && (typeof item.endpoint !== 'string' || item.endpoint.length > 500)) {
-          results.push({ local_id: item.local_id, success: false, error: 'Invalid endpoint' });
-          continue;
-        }
-
-        // Parse and re-sanitize decoded bodies — the global middleware only sanitized
-        // the outer JSON string, not the inner fields after JSON.parse()
-        const parsedBody = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
-        const body = parsedBody && typeof parsedBody === 'object' && !Array.isArray(parsedBody)
-          ? sanitizeObject(parsedBody as Record<string, unknown>)
-          : parsedBody;
-
         if (item.table_name === 'calls_for_service' && item.method === 'POST') {
+          const body = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
           const result = pushCallForService(db, body, req.user!.userId);
           results.push({ local_id: item.local_id, server_id: result.id, success: true });
 
         } else if (item.table_name === 'incidents' && item.method === 'POST') {
+          const body = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
           const result = pushIncident(db, body, req.user!.userId);
           results.push({ local_id: item.local_id, server_id: result.id, success: true });
 
         } else if (item.table_name === 'time_entries' && item.method === 'POST') {
+          const body = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
           const result = pushTimeEntry(db, body);
           results.push({ local_id: item.local_id, server_id: result.id, success: true });
 
         } else if (item.table_name === 'gps_breadcrumbs' && item.method === 'POST') {
-          // GPS body is an array — sanitize each point individually
-          const sanitizedGps = Array.isArray(body)
-            ? body.map((pt: any) => pt && typeof pt === 'object' ? sanitizeObject(pt) : pt)
-            : body;
-          pushGpsBreadcrumbs(db, sanitizedGps);
+          const body = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
+          pushGpsBreadcrumbs(db, body);
           results.push({ local_id: item.local_id, success: true });
 
         } else if (item.method === 'PUT') {
           // Generic update — parse the endpoint to get table and id
+          const body = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
           pushUpdate(db, item.endpoint, body);
           results.push({ local_id: item.local_id, success: true });
 
@@ -254,19 +156,17 @@ router.post('/sync/push', syncRateLimit, (req: Request, res: Response) => {
           results.push({ local_id: item.local_id, success: false, error: 'Unsupported operation' });
         }
       } catch (err: any) {
-        results.push({ local_id: item.local_id, success: false, error: 'Operation failed' });
+        results.push({ local_id: item.local_id, success: false, error: err.message });
       }
     }
 
-    const pushed = results.filter(r => r.success).length;
-    const failed = results.filter(r => !r.success).length;
-
-    auditLog(req, 'offline_sync_push', 'offline_sync', 0,
-      `Pushed ${pushed} records (${failed} failed) from offline client`);
-
-    res.json({ pushed, failed, results });
+    res.json({
+      pushed: results.filter(r => r.success).length,
+      failed: results.filter(r => !r.success).length,
+      results,
+    });
   } catch (error: any) {
-    console.error('[OFFLINE] Push sync error:', error?.message);
+    console.error('[OFFLINE] Push sync error:', error.message);
     res.status(500).json({ error: 'Failed to push sync data' });
   }
 });
@@ -275,16 +175,11 @@ router.post('/sync/push', syncRateLimit, (req: Request, res: Response) => {
 
 function pushCallForService(db: any, body: any, userId: number) {
   // Generate a proper call number
-  const year = parseInt(new Date().toISOString().slice(0, 4), 10); // UTC is acceptable for offline push CFS numbers
+  const year = new Date().getFullYear();
   const last = db.prepare(
     `SELECT call_number FROM calls_for_service WHERE call_number LIKE ? ORDER BY id DESC LIMIT 1`
   ).get(`CFS-${year}-%`);
-  let seq = 1;
-  if (last) {
-    const parts = last.call_number.split('-');
-    const parsed = parts.length >= 3 ? parseInt(parts[2], 10) : NaN;
-    if (!isNaN(parsed)) seq = parsed + 1;
-  }
+  const seq = last ? parseInt(last.call_number.split('-')[2], 10) + 1 : 1;
   const callNumber = `CFS-${year}-${String(seq).padStart(5, '0')}`;
   const now = localNow();
 
@@ -302,48 +197,43 @@ function pushCallForService(db: any, body: any, userId: number) {
     body.dispatcher_id || userId, now, now
   );
 
-  return { id: Number(result.lastInsertRowid), call_number: callNumber };
+  return { id: result.lastInsertRowid, call_number: callNumber };
 }
 
 function pushIncident(db: any, body: any, userId: number) {
   const now = localNow();
-  const incidentNumber = generateIncidentNumber(db, body.incident_type || 'general');
   const result = db.prepare(`
-    INSERT INTO incidents (incident_number, incident_type, priority, status, location_address, property_id,
+    INSERT INTO incidents (incident_type, priority, status, location_address, property_id,
       narrative, officer_id, supervisor_id, call_id, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    incidentNumber, body.incident_type, body.priority || 'P3', body.status || 'draft',
+    body.incident_type, body.priority || 'P3', body.status || 'draft',
     body.location_address, body.property_id, body.narrative,
     body.officer_id || userId, body.supervisor_id, body.call_id, now, now
   );
 
-  return { id: Number(result.lastInsertRowid), incident_number: incidentNumber };
+  return { id: result.lastInsertRowid };
 }
 
 function pushTimeEntry(db: any, body: any) {
   const result = db.prepare(`
     INSERT INTO time_entries (officer_id, schedule_id, clock_in, clock_out,
-      clock_in_latitude, clock_in_longitude,
+      clock_in_latitude, clock_in_longitude, clock_out_latitude, clock_out_longitude,
       total_hours, break_minutes, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     body.officer_id, body.schedule_id, body.clock_in, body.clock_out,
     body.clock_in_latitude, body.clock_in_longitude,
-    body.total_hours, body.break_minutes ?? 0, body.status || 'active'
+    body.clock_out_latitude, body.clock_out_longitude,
+    body.total_hours, body.break_minutes || 0, body.status || 'active'
   );
 
-  return { id: Number(result.lastInsertRowid) };
+  return { id: result.lastInsertRowid };
 }
 
 function pushGpsBreadcrumbs(db: any, body: any) {
   // Body is an array of GPS points
   const points = Array.isArray(body) ? body : (body.points || [body]);
-
-  // Limit GPS batch size to prevent abuse
-  if (points.length > 500) {
-    throw new Error('GPS batch exceeds maximum of 500 points');
-  }
   const stmt = db.prepare(`
     INSERT INTO gps_breadcrumbs (unit_id, officer_id, call_sign, latitude, longitude,
       accuracy, heading, speed, unit_status, recorded_at)
@@ -366,11 +256,6 @@ function pushUpdate(db: any, endpoint: string, body: any) {
   if (parts.length < 3) return;
 
   const entityId = parts[parts.length - 1];
-
-  // Validate entityId is a positive integer to prevent injection
-  if (!/^\d+$/.test(entityId)) {
-    throw new Error('Invalid entity ID');
-  }
 
   if (parts[0] === 'dispatch' && parts[1] === 'calls') {
     const sets: string[] = [];
@@ -429,31 +314,34 @@ router.get('/secrets', requireRole('admin'), (req: Request, res: Response) => {
       admin_secret: adminSecret ? adminSecret.secret : null,
     });
   } catch (error: any) {
-    console.error('[OFFLINE] Get secrets error:', error?.message);
+    console.error('[OFFLINE] Get secrets error:', error.message);
     res.status(500).json({ error: 'Failed to get offline secrets' });
   }
 });
 
 // ─── GET /my-secret ──────────────────────────────────────────
-// Returns ONLY the requesting user's own offline secret.
-// Admin secret removed — it lives in admin-only /secrets endpoint.
-router.get('/my-secret', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+// Returns the requesting user's own offline secret
+router.get('/my-secret', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare(
       'SELECT secret FROM offline_pin_secrets WHERE user_id = ?'
     ).get(req.user!.userId);
 
-    auditLog(req, 'offline_secret_accessed', 'offline_secret', req.user!.userId,
-      'User accessed their own offline secret');
+    // Also get the admin secret (needed for local PIN validation)
+    const adminUser = db.prepare(
+      `SELECT id FROM users WHERE role = 'admin' ORDER BY id ASC LIMIT 1`
+    ).get() as any;
+    const adminSecret = adminUser
+      ? db.prepare('SELECT secret FROM offline_pin_secrets WHERE user_id = ?').get(adminUser.id)
+      : null;
 
-    const secret = row ? (row as any).secret : null;
     res.json({
-      secret,
-      signature: secret ? signSecret(secret, req.user!.userId) : null,
+      secret: row ? (row as any).secret : null,
+      admin_secret: adminSecret ? (adminSecret as any).secret : null,
     });
   } catch (error: any) {
-    console.error('[OFFLINE] Get my-secret error:', error?.message);
+    console.error('[OFFLINE] Get my-secret error:', error.message);
     res.status(500).json({ error: 'Failed to get offline secret' });
   }
 });
@@ -467,13 +355,6 @@ router.post('/secrets/generate', requireRole('admin'), (req: Request, res: Respo
 
     if (!userId) {
       res.status(400).json({ error: 'userId is required' });
-      return;
-    }
-
-    // Validate userId is a positive integer
-    const parsedUserId = parseInt(String(userId), 10);
-    if (isNaN(parsedUserId) || parsedUserId <= 0 || String(parsedUserId) !== String(userId)) {
-      res.status(400).json({ error: 'userId must be a positive integer' });
       return;
     }
 
@@ -494,12 +375,9 @@ router.post('/secrets/generate', requireRole('admin'), (req: Request, res: Respo
       ON CONFLICT(user_id) DO UPDATE SET secret = excluded.secret, rotated_at = ?
     `).run(userId, secret, now, now);
 
-    auditLog(req, 'offline_secret_generated', 'offline_secret', userId,
-      `Generated/rotated offline secret for user ${userId}`);
-
-    res.json({ userId, secret, signature: signSecret(secret, userId), generated_at: now });
+    res.json({ userId, secret, generated_at: now });
   } catch (error: any) {
-    console.error('[OFFLINE] Generate secret error:', error?.message);
+    console.error('[OFFLINE] Generate secret error:', error.message);
     res.status(500).json({ error: 'Failed to generate offline secret' });
   }
 });
@@ -526,12 +404,9 @@ router.post('/secrets/generate-all', requireRole('admin'), (req: Request, res: R
     });
     tx();
 
-    auditLog(req, 'offline_secrets_bulk_generated', 'offline_secret', 0,
-      `Bulk-generated offline secrets for ${users.length} users`);
-
     res.json({ generated: users.length });
   } catch (error: any) {
-    console.error('[OFFLINE] Generate-all error:', error?.message);
+    console.error('[OFFLINE] Generate-all error:', error.message);
     res.status(500).json({ error: 'Failed to generate offline secrets' });
   }
 });

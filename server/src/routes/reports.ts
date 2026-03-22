@@ -4,9 +4,6 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { reverseGeocodeDetailed } from '../utils/geocode';
 import { identifyBeat } from '../utils/geofence';
 import { listDailyReports, getReportPath, generateAndSaveDailyReport } from '../utils/dailyReportGenerator';
-import { localToday } from '../utils/timeUtils';
-import { escapeLike, quoteIdent } from '../middleware/sanitize';
-import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 
@@ -26,7 +23,7 @@ router.get('/dashboard', (req: Request, res: Response) => {
     // Today's calls
     const todayCalls = db.prepare(`
       SELECT COUNT(*) as count FROM calls_for_service
-      WHERE DATE(created_at) = DATE('now', 'localtime')
+      WHERE DATE(created_at) = DATE('now')
     `).get() as any;
 
     // Units on duty
@@ -58,20 +55,20 @@ router.get('/dashboard', (req: Request, res: Response) => {
         (julianday(onscene_at) - julianday(created_at)) * 24 * 60
       ) as avg_minutes
       FROM calls_for_service
-      WHERE onscene_at IS NOT NULL AND DATE(created_at) = DATE('now', 'localtime')
+      WHERE onscene_at IS NOT NULL AND DATE(created_at) = DATE('now')
     `).get() as any;
 
     // Calls by priority today
     const callsByPriority = db.prepare(`
       SELECT priority, COUNT(*) as count FROM calls_for_service
-      WHERE DATE(created_at) = DATE('now', 'localtime')
+      WHERE DATE(created_at) = DATE('now')
       GROUP BY priority ORDER BY priority
     `).all();
 
     // Calls by status
     const callsByStatus = db.prepare(`
       SELECT status, COUNT(*) as count FROM calls_for_service
-      WHERE DATE(created_at) = DATE('now', 'localtime')
+      WHERE DATE(created_at) = DATE('now')
       GROUP BY status
     `).all();
 
@@ -97,125 +94,27 @@ router.get('/dashboard', (req: Request, res: Response) => {
     const callsByHour = db.prepare(`
       SELECT strftime('%H', created_at) as hour, COUNT(*) as count
       FROM calls_for_service
-      WHERE DATE(created_at) = DATE('now', 'localtime')
+      WHERE DATE(created_at) = DATE('now')
       GROUP BY hour ORDER BY hour
     `).all();
 
-    // ── PSO (Process Service Officer) Metrics ──
-    const psoActive = db.prepare(`
-      SELECT COUNT(*) as count FROM calls_for_service
-      WHERE incident_type = 'pso_client_request'
-        AND status IN ('pending', 'dispatched', 'enroute', 'onscene')
-    `).get() as any;
-
-    const psoToday = db.prepare(`
-      SELECT COUNT(*) as count FROM calls_for_service
-      WHERE incident_type = 'pso_client_request'
-        AND DATE(created_at) = DATE('now', 'localtime')
-    `).get() as any;
-
-    const psoThisMonth = db.prepare(`
-      SELECT COUNT(*) as count FROM calls_for_service
-      WHERE incident_type = 'pso_client_request'
-        AND strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now', 'localtime')
-    `).get() as any;
-
-    const psoCompleted = db.prepare(`
-      SELECT COUNT(*) as count FROM calls_for_service
-      WHERE incident_type = 'pso_client_request'
-        AND status IN ('cleared', 'closed', 'archived')
-        AND strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now', 'localtime')
-    `).get() as any;
-
-    // Process service success rate (served vs total attempts this month)
-    const psoServeResults = db.prepare(`
-      SELECT
-        COUNT(*) as total,
-        SUM(CASE WHEN process_service_result = 'served' THEN 1 ELSE 0 END) as served,
-        SUM(CASE WHEN process_service_result = 'not_served' THEN 1 ELSE 0 END) as not_served,
-        SUM(CASE WHEN process_service_result = 'refused' THEN 1 ELSE 0 END) as refused,
-        SUM(CASE WHEN process_service_result IS NULL OR process_service_result = '' THEN 1 ELSE 0 END) as pending_result
-      FROM calls_for_service
-      WHERE incident_type = 'pso_client_request'
-        AND process_service_type IS NOT NULL AND process_service_type != ''
-        AND strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now', 'localtime')
-    `).get() as any;
-
-    // Average attempts per process serve
-    const psoAvgAttempts = db.prepare(`
-      SELECT AVG(CAST(process_attempts AS REAL)) as avg_attempts
-      FROM calls_for_service
-      WHERE incident_type = 'pso_client_request'
-        AND process_attempts IS NOT NULL AND process_attempts > 0
-        AND strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now', 'localtime')
-    `).get() as any;
-
-    // PSO calls by service type (this month)
-    const psoByServiceType = db.prepare(`
-      SELECT pso_service_type, COUNT(*) as count
-      FROM calls_for_service
-      WHERE incident_type = 'pso_client_request'
-        AND pso_service_type IS NOT NULL AND pso_service_type != ''
-        AND strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now', 'localtime')
-      GROUP BY pso_service_type ORDER BY count DESC
-    `).all();
-
-    // ServeManager sync stats (if tables exist)
-    let smStats = { totalJobs: 0, pendingJobs: 0, completedJobs: 0 };
-    try {
-      const smTotal = db.prepare(`SELECT COUNT(*) as count FROM sm_jobs`).get() as any;
-      const smPending = db.prepare(`SELECT COUNT(*) as count FROM sm_jobs WHERE status IN ('pending', 'assigned', 'in_progress')`).get() as any;
-      const smCompleted = db.prepare(`SELECT COUNT(*) as count FROM sm_jobs WHERE status IN ('completed', 'served')`).get() as any;
-      smStats = { totalJobs: smTotal?.count ?? 0, pendingJobs: smPending?.count ?? 0, completedJobs: smCompleted?.count ?? 0 };
-    } catch (err: any) { /* sm_jobs table may not exist */ console.error('[Reports] sm_jobs query error:', err?.message); }
-
-    // PSO avg response time (separate from general)
-    const psoAvgResponse = db.prepare(`
-      SELECT AVG(
-        (julianday(onscene_at) - julianday(created_at)) * 24 * 60
-      ) as avg_minutes
-      FROM calls_for_service
-      WHERE incident_type = 'pso_client_request'
-        AND onscene_at IS NOT NULL
-        AND DATE(created_at) = DATE('now', 'localtime')
-    `).get() as any;
-
-    const pso = {
-      activeCalls: psoActive?.count ?? 0,
-      todayCalls: psoToday?.count ?? 0,
-      monthCalls: psoThisMonth?.count ?? 0,
-      monthCompleted: psoCompleted?.count ?? 0,
-      avgResponseMinutes: psoAvgResponse?.avg_minutes ? Math.round(psoAvgResponse.avg_minutes * 10) / 10 : null,
-      avgAttempts: psoAvgAttempts?.avg_attempts ? Math.round(psoAvgAttempts.avg_attempts * 10) / 10 : null,
-      serveResults: {
-        total: psoServeResults?.total || 0,
-        served: psoServeResults?.served || 0,
-        notServed: psoServeResults?.not_served || 0,
-        refused: psoServeResults?.refused || 0,
-        pendingResult: psoServeResults?.pending_result || 0,
-      },
-      byServiceType: psoByServiceType,
-      serveManager: smStats,
-    };
-
     res.json({
-      activeCalls: activeCalls?.count ?? 0,
-      todayCalls: todayCalls?.count ?? 0,
-      unitsOnDuty: unitsOnDuty?.count ?? 0,
-      totalUnits: totalUnits?.count ?? 0,
-      pendingReports: pendingReports?.count ?? 0,
-      activeBolos: activeBolos?.count ?? 0,
-      unreadMessages: unreadMessages?.count ?? 0,
-      avgResponseMinutes: avgResponse?.avg_minutes ? Math.round(avgResponse.avg_minutes * 10) / 10 : null,
+      activeCalls: activeCalls.count,
+      todayCalls: todayCalls.count,
+      unitsOnDuty: unitsOnDuty.count,
+      totalUnits: totalUnits.count,
+      pendingReports: pendingReports.count,
+      activeBolos: activeBolos.count,
+      unreadMessages: unreadMessages.count,
+      avgResponseMinutes: avgResponse.avg_minutes ? Math.round(avgResponse.avg_minutes * 10) / 10 : null,
       callsByPriority,
       callsByStatus,
       recentActivity,
       officersOnDuty,
       callsByHour,
-      pso,
     });
   } catch (error: any) {
-    console.error('[Reports] get dashboard error:', error?.message || 'Unknown error');
+    console.error('Get dashboard error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -277,7 +176,7 @@ router.get('/incidents-summary', (req: Request, res: Response) => {
       total: total.count,
     });
   } catch (error: any) {
-    console.error('[Reports] get incidents summary error:', error?.message || 'Unknown error');
+    console.error('Get incidents summary error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -384,7 +283,7 @@ router.get('/response-times', (req: Request, res: Response) => {
       })),
     });
   } catch (error: any) {
-    console.error('[Reports] get response times error:', error?.message || 'Unknown error');
+    console.error('Get response times error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -431,7 +330,7 @@ router.get('/officer-activity', (req: Request, res: Response) => {
       // Total hours worked
       const hours = db.prepare(`
         SELECT SUM(total_hours) as total FROM time_entries
-        WHERE officer_id = ? AND status = 'completed' ${dateFilter.replaceAll('created_at', 'clock_in')}
+        WHERE officer_id = ? AND status = 'completed' ${dateFilter.replace('created_at', 'clock_in')}
       `).get(officer.id, ...params) as any;
 
       // Calls responded to (via unit assignment)
@@ -440,8 +339,8 @@ router.get('/officer-activity', (req: Request, res: Response) => {
       if (unit) {
         const callCount = db.prepare(`
           SELECT COUNT(*) as count FROM calls_for_service
-          WHERE assigned_unit_ids LIKE ? ESCAPE '\\' ${dateFilter}
-        `).get(`%${escapeLike(String(unit.id))}%`, ...params) as any;
+          WHERE assigned_unit_ids LIKE ? ${dateFilter}
+        `).get(`%${unit.id}%`, ...params) as any;
         callsResponded = callCount.count;
       }
 
@@ -459,7 +358,7 @@ router.get('/officer-activity', (req: Request, res: Response) => {
 
     res.json(metrics);
   } catch (error: any) {
-    console.error('[Reports] get officer activity error:', error?.message || 'Unknown error');
+    console.error('Get officer activity error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -578,7 +477,7 @@ router.get('/client/:clientId', (req: Request, res: Response) => {
       slaTargetMinutes: client.sla_response_minutes,
     });
   } catch (error: any) {
-    console.error('[Reports] get client report error:', error?.message || 'Unknown error');
+    console.error('Get client report error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -588,14 +487,7 @@ router.get('/shift-activity/:officerId', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { officerId } = req.params;
-    const date = (req.query.date as string) || localToday();
-
-    // Authorization: officers can only view their own shift data
-    const privilegedRoles = ['admin', 'manager', 'supervisor'];
-    if (!privilegedRoles.includes(req.user!.role) && String(req.user!.userId) !== String(officerId)) {
-      res.status(403).json({ error: 'You can only view your own shift activity' });
-      return;
-    }
+    const date = (req.query.date as string) || new Date().toISOString().slice(0, 10);
 
     // Officer info
     const officer = db.prepare('SELECT id, full_name, badge_number, email, role FROM users WHERE id = ?').get(officerId) as any;
@@ -609,10 +501,10 @@ router.get('/shift-activity/:officerId', (req: Request, res: Response) => {
       SELECT c.*
       FROM calls_for_service c
       WHERE DATE(c.created_at) = ? AND (
-        c.dispatcher_id = ? OR c.assigned_unit_ids LIKE ? ESCAPE '\\'
+        c.dispatcher_id = ? OR c.assigned_unit_ids LIKE ?
       )
       ORDER BY c.created_at ASC
-    `).all(date, officerId, `%${escapeLike(unitId)}%`) as any[];
+    `).all(date, officerId, `%${unitId}%`) as any[];
 
     // Incidents authored today
     const incidents = db.prepare(`
@@ -641,7 +533,7 @@ router.get('/shift-activity/:officerId', (req: Request, res: Response) => {
 
     // Field interviews today
     const fieldInterviews = db.prepare(`
-      SELECT id, fi_number, (subject_first_name || ' ' || subject_last_name) AS subject_name, location, contact_reason, created_at
+      SELECT id, subject_name, location, reason, created_at
       FROM field_interviews
       WHERE DATE(created_at) = ? AND officer_id = ?
       ORDER BY created_at ASC
@@ -664,7 +556,7 @@ router.get('/shift-activity/:officerId', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('[Reports] get shift activity error:', error?.message || 'Unknown error');
+    console.error('Get shift activity error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -675,10 +567,10 @@ router.get('/training-compliance', requireRole('admin', 'manager'), (req: Reques
     const db = getDb();
     const users = db.prepare("SELECT id, full_name, badge_number, role FROM users WHERE role IN ('officer','manager','admin') AND status = 'active'").all() as any[];
     const requirements = db.prepare('SELECT * FROM training_requirements WHERE is_active = 1').all() as any[];
-    const records = db.prepare('SELECT * FROM training_records ORDER BY completed_date DESC LIMIT 10000').all() as any[];
+    const records = db.prepare('SELECT * FROM training_records ORDER BY completed_date DESC').all() as any[];
     res.json({ users, requirements, records });
   } catch (error: any) {
-    console.error('[Reports] training compliance error:', error?.message || 'Unknown error');
+    console.error('Training compliance error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -687,7 +579,7 @@ router.get('/training-compliance', requireRole('admin', 'manager'), (req: Reques
 router.get('/call-density', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const days = parseInt(req.query.days as string, 10) || 30;
+    const days = parseInt(req.query.days as string) || 30;
     const incidentType = req.query.type as string;
 
     const safeDays = Math.max(1, Math.min(365, Math.floor(days) || 30));
@@ -695,7 +587,7 @@ router.get('/call-density', (req: Request, res: Response) => {
       SELECT latitude, longitude, priority, incident_type, zone_beat, created_at
       FROM calls_for_service
       WHERE latitude IS NOT NULL AND longitude IS NOT NULL
-        AND created_at >= datetime('now', 'localtime', ?)
+        AND created_at >= datetime('now', ?)
     `;
     const params: any[] = [`-${safeDays} days`];
     if (incidentType) {
@@ -706,7 +598,7 @@ router.get('/call-density', (req: Request, res: Response) => {
     const points = db.prepare(sql).all(...params) as any[];
     res.json({ points, count: points.length });
   } catch (error: any) {
-    console.error('[Reports] call density error:', error?.message || 'Unknown error');
+    console.error('Call density error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -715,7 +607,7 @@ router.get('/call-density', (req: Request, res: Response) => {
 router.get('/statute-analytics', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 90));
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string) || 90));
     const offset = `-${days} days`;
 
     // Top cited statutes
@@ -723,7 +615,7 @@ router.get('/statute-analytics', (req: Request, res: Response) => {
       SELECT us.citation AS statute_number, us.short_title AS title, us.offense_level, COUNT(*) as count
       FROM citations c
       JOIN utah_statutes us ON us.id = c.statute_id
-      WHERE c.created_at >= datetime('now', 'localtime', ?)
+      WHERE c.created_at >= datetime('now', ?)
       GROUP BY c.statute_id
       ORDER BY count DESC
       LIMIT 20
@@ -734,7 +626,7 @@ router.get('/statute-analytics', (req: Request, res: Response) => {
       SELECT us.offense_level, COUNT(*) as count
       FROM citations c
       JOIN utah_statutes us ON us.id = c.statute_id
-      WHERE c.created_at >= datetime('now', 'localtime', ?)
+      WHERE c.created_at >= datetime('now', ?)
       GROUP BY us.offense_level
       ORDER BY count DESC
     `).all(offset) as any[];
@@ -743,7 +635,7 @@ router.get('/statute-analytics', (req: Request, res: Response) => {
     const trend = db.prepare(`
       SELECT strftime('%Y-%m', c.created_at) as month, COUNT(*) as count
       FROM citations c
-      WHERE c.created_at >= datetime('now', 'localtime', ?)
+      WHERE c.created_at >= datetime('now', ?)
       GROUP BY month
       ORDER BY month ASC
     `).all(offset) as any[];
@@ -753,7 +645,7 @@ router.get('/statute-analytics', (req: Request, res: Response) => {
       SELECT us.citation AS statute_number, us.short_title AS title, us.offense_level, COUNT(*) as count
       FROM incidents i
       JOIN utah_statutes us ON us.id = i.statute_id
-      WHERE i.created_at >= datetime('now', 'localtime', ?) AND i.statute_id IS NOT NULL
+      WHERE i.created_at >= datetime('now', ?) AND i.statute_id IS NOT NULL
       GROUP BY i.statute_id
       ORDER BY count DESC
       LIMIT 20
@@ -761,7 +653,7 @@ router.get('/statute-analytics', (req: Request, res: Response) => {
 
     res.json({ topStatutes, byLevel, trend, incidentStatutes });
   } catch (error: any) {
-    console.error('[Reports] statute analytics error:', error?.message || 'Unknown error');
+    console.error('Statute analytics error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -770,12 +662,12 @@ router.get('/statute-analytics', (req: Request, res: Response) => {
 router.get('/patrol-compliance', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string) || 30));
     const offset = `-${days} days`;
 
     // Overall scan stats
     const totalScans = db.prepare(`
-      SELECT COUNT(*) as count FROM patrol_scans WHERE scanned_at >= datetime('now', 'localtime', ?)
+      SELECT COUNT(*) as count FROM patrol_scans WHERE scanned_at >= datetime('now', ?)
     `).get(offset) as any;
 
     const activeCheckpoints = db.prepare(`
@@ -788,7 +680,7 @@ router.get('/patrol-compliance', (req: Request, res: Response) => {
         COUNT(DISTINCT DATE(ps.scanned_at)) as active_days
       FROM patrol_scans ps
       JOIN users u ON u.id = ps.officer_id
-      WHERE ps.scanned_at >= datetime('now', 'localtime', ?)
+      WHERE ps.scanned_at >= datetime('now', ?)
       GROUP BY ps.officer_id
       ORDER BY scan_count DESC
     `).all(offset) as any[];
@@ -799,7 +691,7 @@ router.get('/patrol-compliance', (req: Request, res: Response) => {
         MAX(ps.scanned_at) as last_scan
       FROM patrol_checkpoints pc
       LEFT JOIN patrol_scans ps ON ps.checkpoint_id = pc.id
-        AND ps.scanned_at >= datetime('now', 'localtime', ?)
+        AND ps.scanned_at >= datetime('now', ?)
       WHERE pc.is_active = 1
       GROUP BY pc.id
       ORDER BY scan_count DESC
@@ -809,7 +701,7 @@ router.get('/patrol-compliance', (req: Request, res: Response) => {
     const byHour = db.prepare(`
       SELECT CAST(strftime('%H', scanned_at) AS INTEGER) as hour, COUNT(*) as count
       FROM patrol_scans
-      WHERE scanned_at >= datetime('now', 'localtime', ?)
+      WHERE scanned_at >= datetime('now', ?)
       GROUP BY hour
       ORDER BY hour ASC
     `).all(offset) as any[];
@@ -822,7 +714,7 @@ router.get('/patrol-compliance', (req: Request, res: Response) => {
       byHour,
     });
   } catch (error: any) {
-    console.error('[Reports] patrol compliance error:', error?.message || 'Unknown error');
+    console.error('Patrol compliance error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -837,15 +729,14 @@ router.post('/custom', requireRole('admin', 'manager'), (req: Request, res: Resp
     const ALLOWED_SOURCES: Record<string, string[]> = {
       calls_for_service: ['id', 'call_number', 'incident_type', 'priority', 'status', 'caller_name', 'location_address', 'zone_beat', 'beat_id', 'zone_id', 'section_id', 'disposition', 'created_at', 'dispatched_at', 'onscene_at', 'cleared_at'],
       incidents: ['id', 'incident_number', 'incident_type', 'priority', 'status', 'location_address', 'narrative', 'officer_id', 'created_at', 'occurred_date', 'zone_beat', 'beat_id', 'zone_id', 'disposition', 'domestic_violence', 'weapons_involved'],
-      citations: ['id', 'citation_number', 'type', 'violation_description', 'statute_citation', 'offense_level', 'location', 'status', 'fine_amount', 'issuing_officer_id', 'violation_date', 'created_at'],
-      warrants: ['id', 'warrant_number', 'type', 'status', 'offense_level', 'charge_description', 'statute_citation', 'issuing_court', 'issuing_judge', 'bail_amount', 'expires_at', 'served_at', 'created_at'],
-      bolos: ['id', 'title', 'description', 'subject_description', 'vehicle_description', 'priority', 'status', 'issued_by', 'created_at', 'expires_at'],
-      evidence: ['id', 'evidence_number', 'incident_id', 'description', 'category', 'storage_location', 'chain_of_custody', 'collected_by', 'collected_date', 'created_at'],
-      time_entries: ['id', 'officer_id', 'clock_in', 'clock_out', 'total_hours', 'break_minutes', 'status', 'created_at'],
-      training_records: ['id', 'officer_id', 'course_name', 'category', 'status', 'hours', 'completed_date', 'expiry_date', 'score', 'created_at'],
-      field_interviews: ['id', 'fi_number', 'subject_first_name', 'subject_last_name', 'location', 'contact_reason', 'officer_id', 'created_at'],
-      patrol_scans: ['id', 'checkpoint_id', 'officer_id', 'scanned_at', 'latitude', 'longitude'],
-      schedules: ['id', 'officer_id', 'property_id', 'shift_date', 'start_time', 'end_time', 'status', 'notes', 'created_at'],
+      citations: ['id', 'citation_number', 'type', 'violation_description', 'statute_citation', 'offense_level', 'location', 'status', 'fine_amount', 'officer_id', 'violation_date', 'created_at'],
+      warrants: ['id', 'warrant_number', 'type', 'status', 'offense_level', 'charge_description', 'statute_citation', 'court_name', 'bail_amount', 'date_issued', 'expires_at', 'served_at', 'created_at'],
+      bolos: ['id', 'subject_name', 'description', 'priority', 'status', 'category', 'vehicle_info', 'location_last_seen', 'issued_by', 'created_at', 'expires_at'],
+      evidence: ['id', 'evidence_number', 'incident_id', 'description', 'category', 'storage_location', 'chain_of_custody', 'collected_by', 'collected_at', 'created_at'],
+      time_entries: ['id', 'officer_id', 'shift_date', 'clock_in', 'clock_out', 'hours_worked', 'overtime_hours', 'status', 'notes', 'approved_by'],
+      training_records: ['id', 'officer_id', 'title', 'category', 'status', 'hours', 'completed_date', 'expiry_date', 'instructor', 'score'],
+      field_interviews: ['id', 'subject_name', 'location', 'reason', 'officer_id', 'created_at'],
+      patrol_scans: ['id', 'checkpoint_id', 'officer_id', 'scanned_at', 'gps_latitude', 'gps_longitude'],
     };
 
     if (!source || !ALLOWED_SOURCES[source]) {
@@ -856,45 +747,36 @@ router.post('/custom', requireRole('admin', 'manager'), (req: Request, res: Resp
     const selectedCols = (columns || allowedCols).filter((c: string) => allowedCols.includes(c));
     if (selectedCols.length === 0) return res.status(400).json({ error: 'No valid columns selected' });
 
-    let sql = `SELECT ${selectedCols.map(quoteIdent).join(', ')} FROM ${quoteIdent(source)}`;
+    let sql = `SELECT ${selectedCols.join(', ')} FROM ${source}`;
     const params: any[] = [];
     const conditions: string[] = [];
-
-    // Validate filter operators to prevent injection via operator field
-    const VALID_OPERATORS = new Set(['eq', 'contains', 'gte', 'lte']);
 
     if (filters && Array.isArray(filters)) {
       for (const f of filters) {
         if (!allowedCols.includes(f.column)) continue;
-        if (!VALID_OPERATORS.has(f.operator)) continue;
-        const col = quoteIdent(f.column);
-        if (f.operator === 'eq') { conditions.push(`${col} = ?`); params.push(f.value); }
-        else if (f.operator === 'contains') { conditions.push(`${col} LIKE ? ESCAPE '\\'`); params.push(`%${escapeLike(String(f.value))}%`); }
-        else if (f.operator === 'gte') { conditions.push(`${col} >= ?`); params.push(f.value); }
-        else if (f.operator === 'lte') { conditions.push(`${col} <= ?`); params.push(f.value); }
+        if (f.operator === 'eq') { conditions.push(`${f.column} = ?`); params.push(f.value); }
+        else if (f.operator === 'contains') { conditions.push(`${f.column} LIKE ?`); params.push(`%${f.value}%`); }
+        else if (f.operator === 'gte') { conditions.push(`${f.column} >= ?`); params.push(f.value); }
+        else if (f.operator === 'lte') { conditions.push(`${f.column} <= ?`); params.push(f.value); }
       }
     }
 
     if (conditions.length > 0) sql += ` WHERE ${conditions.join(' AND ')}`;
-    if (groupBy && allowedCols.includes(groupBy)) sql += ` GROUP BY ${quoteIdent(groupBy)}`;
-    if (sortBy && allowedCols.includes(sortBy)) sql += ` ORDER BY ${quoteIdent(sortBy)} ${sortDir === 'asc' ? 'ASC' : 'DESC'}`;
-    const parsedLimit = parseInt(queryLimit, 10);
-    const safeLimit = Math.min(isNaN(parsedLimit) ? 500 : parsedLimit, 2000);
-    sql += ` LIMIT ?`;
-    params.push(safeLimit);
+    if (groupBy && allowedCols.includes(groupBy)) sql += ` GROUP BY ${groupBy}`;
+    if (sortBy && allowedCols.includes(sortBy)) sql += ` ORDER BY ${sortBy} ${sortDir === 'asc' ? 'ASC' : 'DESC'}`;
+    sql += ` LIMIT ${Math.min(parseInt(queryLimit) || 500, 2000)}`;
 
     const rows = db.prepare(sql).all(...params);
-    auditLog(req, 'CREATE', 'report', 0, `Ran custom report on ${source} (${rows.length} rows)`);
     res.json({ data: rows, columns: selectedCols, count: rows.length, sql: sql.replace(/\?/g, '…') });
   } catch (error: any) {
-    console.error('[Reports] custom report error:', error?.message || 'Unknown error');
+    console.error('Custom report error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── GET /crime-analysis ─────────────────────────────────
 // Crime analysis / ILP dashboard data
-router.get('/crime-analysis', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.get('/crime-analysis', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { days = '90' } = req.query;
@@ -904,28 +786,28 @@ router.get('/crime-analysis', requireRole('admin', 'manager', 'supervisor'), (re
     // Top offenses by incident type
     const topOffenses = db.prepare(`
       SELECT incident_type, COUNT(*) as count FROM incidents
-      WHERE created_at >= DATE('now', 'localtime', ?) AND status != 'draft'
+      WHERE created_at >= DATE('now', ?) AND status != 'draft'
       GROUP BY incident_type ORDER BY count DESC LIMIT 10
     `).all(offset);
 
     // Monthly trend (last 12 months)
     const trendData = db.prepare(`
       SELECT strftime('%Y-%m', created_at) as month, COUNT(*) as count
-      FROM incidents WHERE created_at >= DATE('now', 'localtime', '-12 months') AND status != 'draft'
+      FROM incidents WHERE created_at >= DATE('now', '-12 months') AND status != 'draft'
       GROUP BY month ORDER BY month
     `).all();
 
     // Time of day distribution
     const timeOfDay = db.prepare(`
       SELECT CAST(strftime('%H', created_at) AS INTEGER) as hour, COUNT(*) as count
-      FROM calls_for_service WHERE created_at >= DATE('now', 'localtime', ?)
+      FROM calls_for_service WHERE created_at >= DATE('now', ?)
       GROUP BY hour ORDER BY hour
     `).all(offset);
 
     // Day of week distribution
     const dayOfWeek = db.prepare(`
       SELECT CAST(strftime('%w', created_at) AS INTEGER) as day, COUNT(*) as count
-      FROM calls_for_service WHERE created_at >= DATE('now', 'localtime', ?)
+      FROM calls_for_service WHERE created_at >= DATE('now', ?)
       GROUP BY day ORDER BY day
     `).all(offset);
 
@@ -934,7 +816,7 @@ router.get('/crime-analysis', requireRole('admin', 'manager', 'supervisor'), (re
       SELECT location_address, COUNT(*) as count,
         GROUP_CONCAT(DISTINCT incident_type) as types
       FROM calls_for_service
-      WHERE created_at >= DATE('now', 'localtime', ?) AND location_address IS NOT NULL
+      WHERE created_at >= DATE('now', ?) AND location_address IS NOT NULL
       GROUP BY location_address ORDER BY count DESC LIMIT 15
     `).all(offset);
 
@@ -946,7 +828,7 @@ router.get('/crime-analysis', requireRole('admin', 'manager', 'supervisor'), (re
       FROM persons p
       JOIN incident_persons ip ON p.id = ip.person_id
       JOIN incidents i ON ip.incident_id = i.id
-      WHERE i.created_at >= DATE('now', 'localtime', ?)
+      WHERE i.created_at >= DATE('now', ?)
       GROUP BY p.id HAVING incident_count >= 3
       ORDER BY incident_count DESC LIMIT 20
     `).all(offset);
@@ -959,7 +841,7 @@ router.get('/crime-analysis', requireRole('admin', 'manager', 'supervisor'), (re
         ), 1) as avg_response_min,
         COUNT(*) as count
       FROM calls_for_service
-      WHERE created_at >= DATE('now', 'localtime', ?) AND onscene_at IS NOT NULL
+      WHERE created_at >= DATE('now', ?) AND onscene_at IS NOT NULL
       GROUP BY priority
     `).all(offset);
 
@@ -968,7 +850,7 @@ router.get('/crime-analysis', requireRole('admin', 'manager', 'supervisor'), (re
       SELECT
         COUNT(*) as total,
         SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as cleared
-      FROM incidents WHERE created_at >= DATE('now', 'localtime', ?)
+      FROM incidents WHERE created_at >= DATE('now', ?)
     `).get(offset) as any;
 
     res.json({
@@ -991,7 +873,7 @@ router.get('/crime-analysis', requireRole('admin', 'manager', 'supervisor'), (re
       },
     });
   } catch (error: any) {
-    console.error('[Reports] crime analysis error:', error?.message || 'Unknown error');
+    console.error('Crime analysis error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1011,7 +893,7 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
     const officerId = req.query.officerId as string;
     const startDate = req.query.startDate as string;
     const endDate = req.query.endDate as string;
-    const hours = Math.max(1, Math.min(72, parseInt(req.query.hours as string, 10) || 8));
+    const hours = parseInt(req.query.hours as string) || 8;
     const includeGeocode = req.query.geocode === 'true'; // opt-in (costs API calls)
 
     // ── Haversine distance (meters) ──────────────────────
@@ -1048,11 +930,11 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
     let whereExtra = '';
     if (unitId) {
       whereExtra += ' AND b.unit_id = ?';
-      params.push(parseInt(unitId, 10));
+      params.push(parseInt(unitId));
     }
     if (officerId) {
       whereExtra += ' AND b.officer_id = ?';
-      params.push(parseInt(officerId, 10));
+      params.push(parseInt(officerId));
     }
 
     const rows = db.prepare(`
@@ -1153,7 +1035,7 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
     const trails: UnitTrail[] = [];
 
     for (const [uid, trail] of Object.entries(trailMap)) {
-      const unitId = parseInt(uid, 10);
+      const unitId = parseInt(uid);
       const points: ProcessedPoint[] = [];
       let totalDistance = 0;
       let maxSpeed = 0;
@@ -1170,7 +1052,6 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
           distFromPrev = haversineM(prevAccepted.latitude, prevAccepted.longitude, row.latitude, row.longitude);
           const prevTime = new Date(prevAccepted.recorded_at).getTime();
           const curTime = new Date(row.recorded_at).getTime();
-          if (isNaN(prevTime) || isNaN(curTime)) continue; // skip points with invalid timestamps
           timeDelta = (curTime - prevTime) / 1000;
 
           // Jump detection
@@ -1269,9 +1150,7 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
         if (call.dispatched_at) {
           const dispatchTime = new Date(call.dispatched_at).getTime();
           const firstBcTime = new Date(firstPoint.time).getTime();
-          if (!isNaN(dispatchTime) && !isNaN(firstBcTime)) {
-            timeToFirstBreadcrumb = Math.round((firstBcTime - dispatchTime) / 1000);
-          }
+          timeToFirstBreadcrumb = Math.round((firstBcTime - dispatchTime) / 1000);
         }
 
         // Time from dispatch to onscene
@@ -1279,9 +1158,7 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
         if (call.dispatched_at && call.onscene_at) {
           const dispatchTime = new Date(call.dispatched_at).getTime();
           const onsceneTime = new Date(call.onscene_at).getTime();
-          if (!isNaN(dispatchTime) && !isNaN(onsceneTime)) {
-            timeToOnscene = Math.round((onsceneTime - dispatchTime) / 1000);
-          }
+          timeToOnscene = Math.round((onsceneTime - dispatchTime) / 1000);
         }
 
         responseSegments.push({
@@ -1303,9 +1180,7 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
       if (points.length >= 2) {
         const first = new Date(points[0].time).getTime();
         const last = new Date(points[points.length - 1].time).getTime();
-        if (!isNaN(first) && !isNaN(last)) {
-          durationMinutes = Math.round((last - first) / 60000);
-        }
+        durationMinutes = Math.round((last - first) / 60000);
       }
 
       // ── Zone coverage summary ────────────────────────────
@@ -1401,7 +1276,7 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
       total_points: trails.reduce((s, t) => s + t.points.length, 0),
     });
   } catch (error: any) {
-    console.error('[Reports] patrol tracking report error:', error?.message || 'Unknown error');
+    console.error('Patrol tracking report error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1414,7 +1289,7 @@ router.get('/daily-reports', requireRole('admin', 'manager', 'supervisor'), (req
     const reports = listDailyReports();
     res.json({ reports });
   } catch (error: any) {
-    console.error('[Reports] list daily reports error:', error?.message || 'Unknown error');
+    console.error('List daily reports error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1431,11 +1306,10 @@ router.get('/daily-reports/:filename', requireRole('admin', 'manager', 'supervis
       return;
     }
     res.setHeader('Content-Type', 'application/pdf');
-    const safeName = filename.replace(/[\r\n\0"]/g, '_');
-    res.setHeader('Content-Disposition', `inline; filename="${safeName}"`);
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
     res.sendFile(filepath);
   } catch (error: any) {
-    console.error('[Reports] download daily report error:', error?.message || 'Unknown error');
+    console.error('Download daily report error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1451,10 +1325,9 @@ router.post('/daily-reports/generate', requireRole('admin'), async (req: Request
       res.json({ ok: false, message: 'No breadcrumb data for specified date' });
       return;
     }
-    auditLog(req, 'CREATE', 'report', 0, `Generated daily report: ${filename}`);
     res.json({ ok: true, filename });
   } catch (error: any) {
-    console.error('[Reports] generate daily report error:', error?.message || 'Unknown error');
+    console.error('Generate daily report error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

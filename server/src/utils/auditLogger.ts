@@ -45,30 +45,6 @@ export type AuditAction =
   | 'evidence_created'
   | 'evidence_updated'
   | 'evidence_deleted'
-  | 'person_archived'
-  | 'person_unarchived'
-  | 'vehicle_archived'
-  | 'vehicle_unarchived'
-  | 'evidence_archived'
-  | 'evidence_unarchived'
-  | 'property_created'
-  | 'property_updated'
-  | 'property_deleted'
-  | 'property_archived'
-  | 'property_unarchived'
-  | 'custody_entry'
-  | 'evidence_check_in'
-  | 'evidence_check_out'
-  | 'evidence_transfer'
-  | 'evidence_lab_submit'
-  | 'evidence_release'
-  | 'evidence_dispose'
-  | 'criminal_history_created'
-  | 'criminal_history_updated'
-  | 'criminal_history_deleted'
-  | 'client_person_linked'
-  | 'client_person_updated'
-  | 'client_person_unlinked'
   | 'record_linked'
   | 'record_unlinked'
   // Warrants & Citations
@@ -128,97 +104,11 @@ export type AuditAction =
   | 'invoice_created'
   | 'invoice_updated'
   | 'payment_recorded'
-  // Arrests & Jail
-  | 'arrest_created'
-  | 'arrest_updated'
-  | 'arrest_deleted'
-  | 'arrest_imported'
-  | 'arrest_linked'
-  | 'arrest_unlinked'
-  | 'jail_roster_config_updated'
-  | 'jail_roster_sync_triggered'
-  | 'jail_roster_errors_reset'
-  // DL Records
-  | 'dl_record_created'
-  | 'dl_record_deleted'
-  // Skip Tracer
-  | 'skiptracer_search'
-  | 'skiptracer_config_updated'
-  | 'skiptracer_config_cleared'
-  // Forensic Lab
-  | 'forensic_case_created'
-  | 'forensic_case_updated'
-  | 'forensic_case_deleted'
-  // IPED Digital Forensics
-  | 'iped_job_created'
-  | 'iped_job_cancelled'
-  | 'iped_config_updated'
-  | 'iped_config_cleared'
-  | 'iped_hash_computed'
-  | 'iped_hashset_imported'
-  | 'iped_hashset_removed'
-  // ClearPathGPS
-  | 'clearpathgps_credentials_updated'
-  | 'clearpathgps_credentials_cleared'
-  | 'clearpathgps_toggled'
-  | 'clearpathgps_mapping_created'
-  | 'clearpathgps_mapping_removed'
-  | 'clearpathgps_settings_updated'
-  | 'clearpathgps_media_settings_updated'
-  | 'clearpathgps_media_sync_triggered'
-  // Dash Camera Videos
-  | 'dashcam_uploaded'
-  | 'dashcam_updated'
-  | 'dashcam_deleted'
-  | 'dashcam_linked'
-  | 'dashcam_unlinked'
-  // Email
-  | 'SEND_EMAIL'
-  | 'REPLY_EMAIL'
-  | 'REPLY_ALL_EMAIL'
-  | 'FORWARD_EMAIL'
-  | 'DELETE_EMAIL'
-  | 'BATCH_EMAIL'
-  | 'MARK_ALL_READ'
-  | 'OAUTH_INITIATE'
-  | 'SCHEDULE_EMAIL'
-  // CRM
-  | 'crm_task_created'
-  | 'crm_task_updated'
-  | 'crm_task_deleted'
-  | 'crm_activity_logged'
-  // Offline Sync
-  | 'offline_sync_pull'
-  | 'offline_sync_push'
-  | 'offline_secret_accessed'
-  | 'offline_secret_generated'
-  | 'offline_secrets_bulk_generated'
-  // User Preferences
-  | 'preferences_updated'
-  | 'preferences_reset'
-  // Microbilt / OFAC
-  | 'microbilt_credentials_updated'
-  | 'microbilt_credentials_cleared'
-  | 'microbilt_products_updated'
-  | 'ofac_search'
-  // Generic CRUD (used by newer routes)
-  | 'CREATE'
-  | 'UPDATE'
-  | 'DELETE'
-  | 'SEARCH'
-  | 'BLOCK'
-  | 'EXPORT'
-  | 'LOGIN'
-  | 'ADMIN_PASSWORD_RESET'
-  | 'MOVE_EMAIL'
-  | 'CANCEL_EMAIL'
   // Integrations
-  | 'integration_service_request'
-  | 'integration_key_created'
-  | 'integration_key_revoked'
-  | 'integration_key_activated'
-  | 'integration_key_deleted'
-  | (string & {}); // Accept custom action strings while preserving autocomplete
+  | 'api_key_created'
+  | 'api_key_revoked'
+  | 'api_key_activated'
+  | 'api_key_deleted';
 
 export type AuditEntityType =
   | 'user'
@@ -250,93 +140,7 @@ export type AuditEntityType =
   | 'patrol_scan'
   | 'invoice'
   | 'payment'
-  | 'arrest_record'
-  | 'serve_queue'
-  | 'dl_record'
-  | 'skiptracer'
-  | 'iped_job'
-  | 'iped_hashset'
-  | 'jail_roster'
-  | 'integration'
-  | 'dashcam_video'
-  | 'dashcam_video_link'
-  | 'email'
-  | 'email_folder'
-  | 'email_template'
-  | 'email_link'
-  | 'email_schedule'
-  | 'system_config'
-  | 'colorado_doc_offenders'
-  | 'crm_task'
-  | 'crm_activity'
-  | 'crm_leads'
-  | 'crm_lead_activity'
-  | 'crm_proposals'
-  | 'crm_proposal_templates'
-  | 'lead_scrape_sources'
-  | 'forensic_case'
-  | 'offline_sync'
-  | 'offline_secret'
-  | 'user_preferences'
-  | 'ofac_screening'
-  | 'property'
-  | 'record_link'
-  | 'criminal_history'
-  | 'court_event'
-  | 'field_interview'
-  | 'trespass_order'
-  | 'code_violation'
-  | 'vehicle_tow'
-  | 'attachment'
-  | 'case'
-  | 'case_note'
-  | 'company_documents'
-  | 'dar'
-  | 'statute'
-  | 'entity_statute'
-  | 'offender_alert'
-  | 'leave_request'
-  | 'leave_balance'
-  | 'performance_review'
-  | 'disciplinary_record'
-  | 'hr_pay_period'
-  | 'hr_pay_rate'
-  | 'hr_payroll_entry'
-  | 'forensic_tool'
-  | 'forensic_custody'
-  | 'scraper'
-  | 'notification'
-  | 'announcement'
-  | 'department'
-  | 'notification_rule'
-  | 'shift_plan'
-  | 'patrol_checkpoint'
-  | 'invoice_line_item'
-  | 'scheduled_email'
-  | 'integration_service_request'
-  | 'integration_api_key'
-  | (string & {}); // Accept custom entity types while preserving autocomplete
-
-// Sensitive field patterns that must never appear in audit log details
-const SENSITIVE_PATTERNS = [
-  /password[_\s]*(?:hash)?["']?\s*[:=]\s*["']?[^\s,}"']+/gi,
-  /secret["']?\s*[:=]\s*["']?[^\s,}"']+/gi,
-  /token["']?\s*[:=]\s*["']?[^\s,}"']+/gi,
-  /totp[_\s]*(?:secret|key)["']?\s*[:=]\s*["']?[^\s,}"']+/gi,
-  /api[_\s]*key["']?\s*[:=]\s*["']?[^\s,}"']+/gi,
-  /Bearer\s+[A-Za-z0-9._-]+/g,
-  /\b[A-Za-z0-9+/=]{40,}\b/g, // Long base64-ish strings (potential secrets)
-];
-
-function maskSensitiveData(text: string): string {
-  if (!text || text.length === 0) return text;
-  let masked = text.length > 2000 ? text.substring(0, 2000) : text;
-  for (const pattern of SENSITIVE_PATTERNS) {
-    pattern.lastIndex = 0; // Reset global regex state
-    masked = masked.replace(pattern, '[REDACTED]');
-  }
-  return masked;
-}
+  | 'api_key';
 
 /**
  * Log an action to the activity_log table.
@@ -351,26 +155,18 @@ export function auditLog(
   req: Request,
   action: AuditAction,
   entityType: AuditEntityType,
-  entityId: string | number | bigint,
+  entityId: string | number,
   details: string,
 ): void {
   try {
     const db = getDb();
     const userId = req.user?.userId ?? null;
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
-    const requestId = req.headers['x-request-id'] || '';
-
-    // Truncate details, strip control characters, and mask sensitive data
-    const safeDetails = maskSensitiveData(
-      details.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '').substring(0, 1000)
-    );
-    // Append request ID for correlation if available
-    const detailsWithId = requestId ? `${safeDetails} [req:${requestId}]` : safeDetails;
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(userId, action, entityType, String(entityId), detailsWithId, ip, localNow());
+    `).run(userId, action, entityType, String(entityId), details, ip, localNow());
   } catch (err) {
     // Never let audit logging break the actual operation
     console.error('[AUDIT] Failed to log:', action, entityType, entityId, err);
@@ -383,7 +179,7 @@ export function auditLog(
 export function auditLogSystem(
   action: AuditAction,
   entityType: AuditEntityType,
-  entityId: string | number | bigint,
+  entityId: string | number,
   details: string,
 ): void {
   try {

@@ -8,44 +8,25 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken, requireRole } from '../middleware/auth';
-import { escapeLike, validateParamId, validateStr, validateDateStr, requireInt, validateEnum, validateQueryInt } from '../middleware/sanitize';
+import { authenticateToken } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
-import { auditLog } from '../utils/auditLogger';
-import { broadcast } from '../utils/websocket';
-import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 router.use(authenticateToken);
 
-// Validate :id params as positive integers
-router.param('id', (req: Request, res: Response, next) => {
-  const raw = String(req.params.id);
-  const n = parseInt(raw, 10);
-  if (isNaN(n) || n < 1 || String(n) !== raw) {
-    res.status(400).json({ error: 'Invalid ID parameter' });
-    return;
-  }
-  next();
-});
-
-/** Generate next DAR number — wrapped in transaction to prevent race conditions */
 function nextDarNumber(): string {
   const db = getDb();
-  const yr = parseInt(localToday().slice(0, 4), 10);
+  const yr = new Date().getFullYear();
   const prefix = `DAR-${yr}-`;
-  return db.transaction(() => {
-    const last = db.prepare(
-      "SELECT dar_number FROM daily_activity_reports WHERE dar_number LIKE ? ORDER BY id DESC LIMIT 1"
-    ).get(`${prefix}%`) as { dar_number: string } | undefined;
-    const parsed = last ? parseInt(last.dar_number.replace(prefix, ''), 10) : 0;
-    const seq = (isNaN(parsed) ? 0 : parsed) + 1;
-    return `${prefix}${String(seq).padStart(4, '0')}`;
-  })();
+  const last = db.prepare(
+    "SELECT dar_number FROM daily_activity_reports WHERE dar_number LIKE ? ORDER BY id DESC LIMIT 1"
+  ).get(`${prefix}%`) as { dar_number: string } | undefined;
+  const seq = last ? parseInt(last.dar_number.replace(prefix, ''), 10) + 1 : 1;
+  return `${prefix}${String(seq).padStart(4, '0')}`;
 }
 
 // ─── GET / ───────────────────────────────────────────────
-router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.get('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { status, officer_id, property_id, date_from, date_to, search, page = '1', limit = '50' } = req.query;
@@ -55,35 +36,17 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: 
 
     let where = 'WHERE 1=1';
     const params: any[] = [];
-    if (status) {
-      const DAR_STATUSES = ['draft', 'submitted', 'approved', 'returned'];
-      if (!DAR_STATUSES.includes(status as string)) { res.status(400).json({ error: 'Invalid status filter' }); return; }
-      where += ' AND d.status = ?'; params.push(status);
-    }
-    if (officer_id) {
-      const oid = parseInt(String(officer_id), 10);
-      if (isNaN(oid) || oid < 1) { res.status(400).json({ error: 'Invalid officer_id' }); return; }
-      where += ' AND d.officer_id = ?'; params.push(oid);
-    }
-    if (property_id) {
-      const pid = parseInt(String(property_id), 10);
-      if (isNaN(pid) || pid < 1) { res.status(400).json({ error: 'Invalid property_id' }); return; }
-      where += ' AND d.property_id = ?'; params.push(pid);
-    }
-    if (date_from) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date_from))) { res.status(400).json({ error: 'date_from must be YYYY-MM-DD' }); return; }
-      where += ' AND d.shift_date >= ?'; params.push(date_from);
-    }
-    if (date_to) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date_to))) { res.status(400).json({ error: 'date_to must be YYYY-MM-DD' }); return; }
-      where += ' AND d.shift_date <= ?'; params.push(date_to);
-    }
+    if (status) { where += ' AND d.status = ?'; params.push(status); }
+    if (officer_id) { where += ' AND d.officer_id = ?'; params.push(officer_id); }
+    if (property_id) { where += ' AND d.property_id = ?'; params.push(property_id); }
+    if (date_from) { where += ' AND d.shift_date >= ?'; params.push(date_from); }
+    if (date_to) { where += ' AND d.shift_date <= ?'; params.push(date_to); }
     if (search) {
-      where += " AND (d.dar_number LIKE ? ESCAPE '\\' OR d.officer_name LIKE ? ESCAPE '\\' OR d.property_name LIKE ? ESCAPE '\\' OR d.activities_narrative LIKE ? ESCAPE '\\')";
-      const s = `%${escapeLike(String(search))}%`; params.push(s, s, s, s);
+      where += ' AND (d.dar_number LIKE ? OR d.officer_name LIKE ? OR d.property_name LIKE ? OR d.activities_narrative LIKE ?)';
+      const s = `%${search}%`; params.push(s, s, s, s);
     }
 
-    const total = (db.prepare(`SELECT COUNT(*) as count FROM daily_activity_reports d ${where}`).get(...params) as any)?.count || 0;
+    const total = (db.prepare(`SELECT COUNT(*) as count FROM daily_activity_reports d ${where}`).get(...params) as any).count;
     const rows = db.prepare(`
       SELECT d.*, u.full_name as reviewer_name
       FROM daily_activity_reports d
@@ -95,13 +58,13 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: 
 
     res.json({ data: rows, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
   } catch (error: any) {
-    console.error('Get DARs error:', error?.message || 'Unknown error');
+    console.error('Get DARs error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── GET /:id ────────────────────────────────────────────
-router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare('SELECT * FROM daily_activity_reports WHERE id = ?').get(req.params.id);
@@ -112,13 +75,11 @@ router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
 
 // ─── POST /auto-populate ────────────────────────────────
 // Fetches shift data for an officer on a given date
-router.post('/auto-populate', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/auto-populate', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const officer_id = parseInt(String(req.body.officer_id), 10);
-    if (!officer_id || isNaN(officer_id) || officer_id < 1) return res.status(400).json({ error: 'Valid officer_id is required' });
-    const shift_date = req.body.shift_date;
-    if (!shift_date || !/^\d{4}-\d{2}-\d{2}$/.test(String(shift_date))) return res.status(400).json({ error: 'shift_date must be in YYYY-MM-DD format' });
+    const { officer_id, shift_date } = req.body;
+    if (!officer_id || !shift_date) return res.status(400).json({ error: 'Officer ID and shift date required' });
 
     // Get officer info
     const officer = db.prepare('SELECT full_name FROM users WHERE id = ?').get(officer_id) as any;
@@ -127,9 +88,9 @@ router.post('/auto-populate', requireRole('admin', 'manager', 'supervisor', 'off
     const calls = db.prepare(`
       SELECT id, call_number, incident_type, created_at, disposition, status
       FROM calls_for_service
-      WHERE DATE(created_at) = ? AND (assigned_unit_ids LIKE ? ESCAPE '\\' OR dispatcher_id = ?)
+      WHERE DATE(created_at) = ? AND (assigned_unit_ids LIKE ? OR dispatcher_id = ?)
       ORDER BY created_at
-    `).all(shift_date, `%${escapeLike(String(officer_id))}%`, officer_id) as any[];
+    `).all(shift_date, `%${officer_id}%`, officer_id) as any[];
 
     // Get incidents created
     const incidents = db.prepare(`
@@ -171,9 +132,9 @@ router.post('/auto-populate', requireRole('admin', 'manager', 'supervisor', 'off
     let fieldInterviews: any[] = [];
     try {
       fieldInterviews = db.prepare(`
-        SELECT id, subject_first_name, subject_last_name, location, contact_reason
+        SELECT id, subject_first_name, subject_last_name, location, reason
         FROM field_interviews
-        WHERE DATE(created_at) = ? AND officer_id = ?
+        WHERE DATE(interview_date) = ? AND officer_id = ?
       `).all(shift_date, officer_id);
     } catch { /* table may not exist */ }
 
@@ -238,19 +199,19 @@ router.post('/auto-populate', requireRole('admin', 'manager', 'supervisor', 'off
         calls_handled: calls.map((c: any) => ({ call_id: c.id, number: c.call_number, type: c.incident_type, time: c.created_at, disposition: c.disposition })),
         incidents_created: incidents.map((i: any) => ({ incident_id: i.id, number: i.incident_number, type: i.incident_type })),
         citations_issued: citations.map((c: any) => ({ citation_id: c.id, number: c.citation_number, type: c.type })),
-        field_interviews: fieldInterviews.map((fi: any) => ({ name: `${fi.subject_first_name} ${fi.subject_last_name}`, location: fi.location, reason: fi.contact_reason })),
+        field_interviews: fieldInterviews.map((fi: any) => ({ name: `${fi.subject_first_name} ${fi.subject_last_name}`, location: fi.location, reason: fi.reason })),
         patrols_completed: patrols.map((p: any) => ({ checkpoint: p.checkpoint, time: p.scanned_at, status: p.status })),
         auto_narrative: autoNarrative,
       },
     });
   } catch (error: any) {
-    console.error('Auto-populate DAR error:', error?.message || 'Unknown error');
+    console.error('Auto-populate DAR error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── POST / ──────────────────────────────────────────────
-router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -258,23 +219,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       property_id, property_name, post_assignment,
       calls_handled, incidents_created, citations_issued, patrols_completed,
       activities_narrative, notable_events, equipment_issues, safety_concerns, recommendations } = req.body;
-    // ── Validate DAR inputs ──
-    const validShiftDate = validateDateStr(shift_date, 'shift_date');
-    if (!validShiftDate) return res.status(400).json({ error: 'Shift date is required (YYYY-MM-DD)' });
-    if (officer_id) requireInt(officer_id, 'officer_id');
-    if (property_id) requireInt(property_id, 'property_id');
-    validateStr(activities_narrative, 'activities_narrative', 10000);
-    validateStr(notable_events, 'notable_events', 5000);
-    validateStr(equipment_issues, 'equipment_issues', 5000);
-    validateStr(safety_concerns, 'safety_concerns', 5000);
-    validateStr(recommendations, 'recommendations', 5000);
-    validateStr(post_assignment, 'post_assignment', 500);
-    validateStr(officer_name, 'officer_name', 200);
-    validateStr(property_name, 'property_name', 200);
-    if (calls_handled && !Array.isArray(calls_handled)) return res.status(400).json({ error: 'calls_handled must be an array' });
-    if (incidents_created && !Array.isArray(incidents_created)) return res.status(400).json({ error: 'incidents_created must be an array' });
-    if (citations_issued && !Array.isArray(citations_issued)) return res.status(400).json({ error: 'citations_issued must be an array' });
-    if (patrols_completed && !Array.isArray(patrols_completed)) return res.status(400).json({ error: 'patrols_completed must be an array' });
+    if (!shift_date) return res.status(400).json({ error: 'Shift date is required' });
 
     const effectiveOfficerId = officer_id || req.user!.userId;
     const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(effectiveOfficerId) as any;
@@ -295,31 +240,20 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       activities_narrative || null, notable_events || null, equipment_issues || null,
       safety_concerns || null, recommendations || null, now, now);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'create', 'dar', ?, ?, ?, ?)`).run(req.user!.userId, Number(result.lastInsertRowid), JSON.stringify({ dar_number }), req.ip || 'unknown', now);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'create', 'dar', ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ dar_number }), now);
 
-    auditLog(req, 'CREATE', 'dar', Number(result.lastInsertRowid), `Created DAR ${dar_number} for ${shift_date}`);
-    broadcast('records', 'dar:created', { id: Number(result.lastInsertRowid), dar_number });
-    res.status(201).json({ data: { id: Number(result.lastInsertRowid), dar_number } });
+    res.status(201).json({ data: { id: result.lastInsertRowid, dar_number } });
   } catch (error: any) {
-    if (error.message?.startsWith('Invalid ') || error.message?.includes('must be')) {
-      res.status(400).json({ error: error.message }); return;
-    }
-    console.error('Create DAR error:', error?.message || 'Unknown error');
+    console.error('Create DAR error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── PUT /:id ────────────────────────────────────────────
-router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const existing = db.prepare('SELECT id, officer_id FROM daily_activity_reports WHERE id = ?').get(req.params.id) as any;
-    if (!existing) { res.status(404).json({ error: 'DAR not found' }); return; }
-    // Officers can only edit their own DARs
-    if (req.user!.role === 'officer' && existing.officer_id !== req.user!.userId) {
-      res.status(403).json({ error: 'You can only edit your own DAR' }); return;
-    }
     const now = localNow();
     const fields = ['activities_narrative', 'notable_events', 'equipment_issues',
       'safety_concerns', 'recommendations', 'post_assignment', 'shift_start', 'shift_end'];
@@ -335,114 +269,58 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     }
     params.push(req.params.id);
     db.prepare(`UPDATE daily_activity_reports SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    auditLog(req, 'UPDATE', 'dar', req.params.id, `Updated DAR ${req.params.id}`);
-    broadcast('records', 'dar:updated', { id: parseInt(req.params.id as string, 10) });
-    res.json({ data: { id: parseInt(req.params.id as string, 10) } });
+    res.json({ data: { id: parseInt(req.params.id) } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── PUT /:id/submit ────────────────────────────────────
-router.put('/:id/submit', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:id/submit', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const existing = db.prepare('SELECT id FROM daily_activity_reports WHERE id = ?').get(req.params.id);
-    if (!existing) { res.status(404).json({ error: 'DAR not found' }); return; }
     const now = localNow();
     db.prepare('UPDATE daily_activity_reports SET status = ?, submitted_at = ?, updated_at = ? WHERE id = ?')
       .run('submitted', now, now, req.params.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'submit', 'dar', ?, '{}', ?, ?)`).run(req.user!.userId, req.params.id, req.ip || 'unknown', now);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'submit', 'dar', ?, '{}', ?)`).run(req.user!.userId, req.params.id, now);
 
-    auditLog(req, 'UPDATE', 'dar', req.params.id, `Submitted DAR ${req.params.id} for review`);
-    broadcast('records', 'dar:updated', { id: parseInt(req.params.id as string, 10), status: 'submitted' });
-    res.json({ data: { id: parseInt(req.params.id as string, 10), status: 'submitted' } });
+    res.json({ data: { id: parseInt(req.params.id), status: 'submitted' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── PUT /:id/approve ───────────────────────────────────
-router.put('/:id/approve', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/:id/approve', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const existing = db.prepare('SELECT id FROM daily_activity_reports WHERE id = ?').get(req.params.id);
-    if (!existing) { res.status(404).json({ error: 'DAR not found' }); return; }
     const now = localNow();
     const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
 
     db.prepare(`UPDATE daily_activity_reports SET status = 'approved', reviewed_by = ?,
       reviewed_by_name = ?, reviewed_at = ?, review_notes = ?, updated_at = ? WHERE id = ?`)
-      .run(req.user!.userId, user?.full_name || '', now, req.body.review_notes ?? null, now, req.params.id);
+      .run(req.user!.userId, user?.full_name || '', now, req.body.review_notes || null, now, req.params.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'approve', 'dar', ?, '{}', ?, ?)`).run(req.user!.userId, req.params.id, req.ip || 'unknown', now);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'approve', 'dar', ?, '{}', ?)`).run(req.user!.userId, req.params.id, now);
 
-    auditLog(req, 'UPDATE', 'dar', req.params.id, `Approved DAR ${req.params.id}`);
-    broadcast('records', 'dar:updated', { id: parseInt(req.params.id as string, 10), status: 'approved' });
-    res.json({ data: { id: parseInt(req.params.id as string, 10), status: 'approved' } });
+    res.json({ data: { id: parseInt(req.params.id), status: 'approved' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── PUT /:id/return ────────────────────────────────────
-router.put('/:id/return', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/:id/return', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const existing = db.prepare('SELECT id FROM daily_activity_reports WHERE id = ?').get(req.params.id);
-    if (!existing) { res.status(404).json({ error: 'DAR not found' }); return; }
     const now = localNow();
     const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
-    const review_notes = validateStr(req.body.review_notes, 'review_notes', 5000);
+    const { review_notes } = req.body;
     if (!review_notes) return res.status(400).json({ error: 'Review notes required when returning' });
 
     db.prepare(`UPDATE daily_activity_reports SET status = 'returned', reviewed_by = ?,
       reviewed_by_name = ?, reviewed_at = ?, review_notes = ?, updated_at = ? WHERE id = ?`)
       .run(req.user!.userId, user?.full_name || '', now, review_notes, now, req.params.id);
 
-    auditLog(req, 'UPDATE', 'dar', req.params.id, `Returned DAR ${req.params.id} for revision`);
-    broadcast('records', 'dar:updated', { id: parseInt(req.params.id as string, 10), status: 'returned' });
-    res.json({ data: { id: parseInt(req.params.id as string, 10), status: 'returned' } });
+    res.json({ data: { id: parseInt(req.params.id), status: 'returned' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
-});
-
-// ─── CSV EXPORT ──────────────────────────────────────────
-
-// GET /api/dar/export/csv — Export daily activity reports
-router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const rows = db.prepare(`
-      SELECT d.id, d.dar_number, d.status, d.officer_name, d.shift_date,
-        d.shift_start, d.shift_end, d.property_name, d.post_assignment,
-        d.activities_narrative, d.notable_events, d.equipment_issues,
-        d.safety_concerns, d.recommendations,
-        d.submitted_at, d.reviewed_at, d.reviewed_by_name, d.review_notes,
-        d.created_at
-      FROM daily_activity_reports d
-      ORDER BY d.shift_date DESC, d.created_at DESC LIMIT 10000
-    `).all();
-    sendCsv(res, 'dar_export.csv', [
-      { key: 'id', header: 'ID' },
-      { key: 'dar_number', header: 'DAR Number' },
-      { key: 'status', header: 'Status' },
-      { key: 'officer_name', header: 'Officer' },
-      { key: 'shift_date', header: 'Shift Date' },
-      { key: 'shift_start', header: 'Shift Start' },
-      { key: 'shift_end', header: 'Shift End' },
-      { key: 'property_name', header: 'Property' },
-      { key: 'post_assignment', header: 'Post Assignment' },
-      { key: 'activities_narrative', header: 'Activities Narrative' },
-      { key: 'notable_events', header: 'Notable Events' },
-      { key: 'equipment_issues', header: 'Equipment Issues' },
-      { key: 'safety_concerns', header: 'Safety Concerns' },
-      { key: 'recommendations', header: 'Recommendations' },
-      { key: 'submitted_at', header: 'Submitted At' },
-      { key: 'reviewed_by_name', header: 'Reviewed By' },
-      { key: 'reviewed_at', header: 'Reviewed At' },
-      { key: 'review_notes', header: 'Review Notes' },
-      { key: 'created_at', header: 'Created At' },
-    ], rows);
-  } catch (error: any) {
-    res.status(500).json({ error: 'Export failed' });
-  }
 });
 
 export default router;

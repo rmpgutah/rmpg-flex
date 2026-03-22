@@ -3,7 +3,6 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { sendCsv } from '../utils/csvExport';
 import { localNow } from '../utils/timeUtils';
-import { escapeLike } from '../middleware/sanitize';
 
 const router = Router();
 
@@ -24,8 +23,8 @@ router.get('/logs', (req: Request, res: Response) => {
       limit = '100'
     } = req.query;
 
-    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.min(500, Math.max(1, parseInt(limit as string, 10) || 100));
+    const pageNum = parseInt(page as string);
+    const limitNum = parseInt(limit as string);
     const offset = (pageNum - 1) * limitNum;
 
     const db = getDb();
@@ -45,33 +44,24 @@ router.get('/logs', (req: Request, res: Response) => {
     }
 
     if (userId) {
-      const uid = parseInt(String(userId), 10);
-      if (isNaN(uid) || uid < 1) { res.status(400).json({ error: 'Invalid userId' }); return; }
       conditions.push('al.user_id = ?');
-      params.push(uid);
+      params.push(userId);
     }
 
     if (startDate) {
-      if (typeof startDate !== 'string' || startDate.length > 30) { res.status(400).json({ error: 'Invalid startDate' }); return; }
       conditions.push('al.created_at >= ?');
       params.push(startDate);
     }
 
     if (endDate) {
-      if (typeof endDate !== 'string' || endDate.length > 30) { res.status(400).json({ error: 'Invalid endDate' }); return; }
       conditions.push('al.created_at <= ?');
       params.push(endDate);
     }
 
     if (search) {
-      if (typeof search !== 'string' || search.length > 200) { res.status(400).json({ error: 'Search query too long' }); return; }
-      conditions.push("al.details LIKE ? ESCAPE '\\'");
-      params.push(`%${escapeLike(search as string)}%`);
+      conditions.push('al.details LIKE ?');
+      params.push(`%${search}%`);
     }
-
-    // Validate action and entityType are safe strings (no SQL injection via parameterized queries, but prevents junk data)
-    if (action && (typeof action !== 'string' || action.length > 100)) { res.status(400).json({ error: 'Invalid action filter' }); return; }
-    if (entityType && (typeof entityType !== 'string' || entityType.length > 100)) { res.status(400).json({ error: 'Invalid entityType filter' }); return; }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
@@ -114,8 +104,8 @@ router.get('/logs', (req: Request, res: Response) => {
         totalPages
       }
     });
-  } catch (error: any) {
-    console.error('Error fetching audit logs:', error?.message || 'Unknown error');
+  } catch (error) {
+    console.error('Error fetching audit logs:', error);
     res.status(500).json({ error: 'Failed to fetch audit logs' });
   }
 });
@@ -137,10 +127,6 @@ router.get('/stats', (req: Request, res: Response) => {
     `).get() as any;
     const entriesToday = todayRow?.total || 0;
 
-    // Compute 30-day cutoff once for reuse
-    const d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const thirtyDaysAgo = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T00:00:00`;
-
     // Top actions (last 30 days)
     const topActions = db.prepare(`
       SELECT action, COUNT(*) as count
@@ -149,7 +135,7 @@ router.get('/stats', (req: Request, res: Response) => {
       GROUP BY action
       ORDER BY count DESC
       LIMIT 10
-    `).all(thirtyDaysAgo);
+    `).all(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
 
     // Top users (last 30 days)
     const topUsers = db.prepare(`
@@ -164,7 +150,7 @@ router.get('/stats', (req: Request, res: Response) => {
       GROUP BY u.full_name, u.badge_number
       ORDER BY count DESC
       LIMIT 10
-    `).all(thirtyDaysAgo);
+    `).all(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
 
     res.json({
       totalEntries,
@@ -172,8 +158,8 @@ router.get('/stats', (req: Request, res: Response) => {
       topActions,
       topUsers
     });
-  } catch (error: any) {
-    console.error('Error fetching audit stats:', error?.message || 'Unknown error');
+  } catch (error) {
+    console.error('Error fetching audit stats:', error);
     res.status(500).json({ error: 'Failed to fetch audit statistics' });
   }
 });
@@ -216,8 +202,8 @@ router.get('/export', (req: Request, res: Response) => {
       params.push(endDate);
     }
     if (search) {
-      conditions.push("al.details LIKE ? ESCAPE '\\'");
-      params.push(`%${escapeLike(search as string)}%`);
+      conditions.push('al.details LIKE ?');
+      params.push(`%${search}%`);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -229,7 +215,6 @@ router.get('/export', (req: Request, res: Response) => {
       LEFT JOIN users u ON al.user_id = u.id
       ${whereClause}
       ORDER BY al.created_at DESC
-      LIMIT 50000
     `).all(...params);
 
     sendCsv(res, 'audit_log_export.csv', [
@@ -242,7 +227,7 @@ router.get('/export', (req: Request, res: Response) => {
       { key: 'created_at', header: 'Created At' },
     ], rows);
   } catch (error: any) {
-    console.error('Export audit log error:', error?.message || 'Unknown error');
+    console.error('Export audit log error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

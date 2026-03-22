@@ -8,35 +8,20 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken, requireRole } from '../middleware/auth';
-import { validateParamId, escapeLike } from '../middleware/sanitize';
+import { authenticateToken } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
-import { resolveDistrict } from '../utils/districtResolver';
-import { auditLog } from '../utils/auditLogger';
-import { broadcast } from '../utils/websocket';
-import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 router.use(authenticateToken);
-router.use(requireRole('admin', 'manager', 'supervisor', 'officer'));
-
-// Whitelist of valid table/column pairs to prevent SQL injection via interpolation
-const SEQUENCE_TARGETS: Record<string, string> = {
-  'code_violations:violation_number': 'SELECT violation_number FROM code_violations WHERE violation_number LIKE ? ORDER BY id DESC LIMIT 1',
-  'vehicle_tows:tow_number': 'SELECT tow_number FROM vehicle_tows WHERE tow_number LIKE ? ORDER BY id DESC LIMIT 1',
-};
 
 function nextNumber(table: string, prefix: string, col: string): string {
   const db = getDb();
-  const key = `${table}:${col}`;
-  const sql = SEQUENCE_TARGETS[key];
-  if (!sql) throw new Error(`nextNumber: invalid table/column pair "${key}"`);
-
-  const yr = parseInt(localToday().slice(0, 4), 10);
+  const yr = new Date().getFullYear();
   const pfx = `${prefix}-${yr}-`;
-  const last = db.prepare(sql).get(`${pfx}%`) as any;
-  const parsed = last ? parseInt(last[col].replace(pfx, ''), 10) : 0;
-  const seq = (isNaN(parsed) ? 0 : parsed) + 1;
+  const last = db.prepare(
+    `SELECT ${col} FROM ${table} WHERE ${col} LIKE ? ORDER BY id DESC LIMIT 1`
+  ).get(`${pfx}%`) as any;
+  const seq = last ? parseInt(last[col].replace(pfx, ''), 10) + 1 : 1;
   return `${pfx}${String(seq).padStart(4, '0')}`;
 }
 
@@ -59,7 +44,7 @@ router.get('/stats', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Get code enforcement stats error:', error?.message || 'Unknown error');
+    console.error('Get code enforcement stats error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -82,20 +67,20 @@ router.get('/violations', (req: Request, res: Response) => {
     if (violation_type) { where += ' AND violation_type = ?'; params.push(violation_type); }
     if (severity) { where += ' AND severity = ?'; params.push(severity); }
     if (search) {
-      where += " AND (violation_number LIKE ? ESCAPE '\\' OR location LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\' OR violator_name LIKE ? ESCAPE '\\')";
-      const s = `%${escapeLike(String(search))}%`; params.push(s, s, s, s);
+      where += ' AND (violation_number LIKE ? OR location LIKE ? OR description LIKE ? OR violator_name LIKE ?)';
+      const s = `%${search}%`; params.push(s, s, s, s);
     }
 
-    const total = (db.prepare(`SELECT COUNT(*) as count FROM code_violations ${where}`).get(...params) as any)?.count || 0;
+    const total = (db.prepare(`SELECT COUNT(*) as count FROM code_violations ${where}`).get(...params) as any).count;
     const rows = db.prepare(`SELECT * FROM code_violations ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...params, limitNum, offset);
     res.json({ data: rows, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
   } catch (error: any) {
-    console.error('Get code violations error:', error?.message || 'Unknown error');
+    console.error('Get code violations error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-router.get('/violations/:id', validateParamId, (req: Request, res: Response) => {
+router.get('/violations/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare('SELECT * FROM code_violations WHERE id = ?').get(req.params.id);
@@ -104,96 +89,44 @@ router.get('/violations/:id', validateParamId, (req: Request, res: Response) => 
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.post('/violations', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/violations', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
     const { violation_type, location, description, code_section, severity, property_id,
-      person_id, violator_name, violator_contact, compliance_deadline, fine_amount,
-      latitude, longitude } = req.body;
+      person_id, violator_name, violator_contact, compliance_deadline, fine_amount } = req.body;
     if (!location || !description || !violation_type) return res.status(400).json({ error: 'Location, description, and type required' });
 
-    // Validate severity
-    const VALID_SEVERITIES = ['minor', 'moderate', 'major', 'critical'];
-    if (severity && !VALID_SEVERITIES.includes(severity)) {
-      return res.status(400).json({ error: `Invalid severity. Must be one of: ${VALID_SEVERITIES.join(', ')}` });
-    }
-
-    // Validate fine_amount
-    if (fine_amount !== undefined && fine_amount !== null) {
-      const fa = Number(fine_amount);
-      if (isNaN(fa) || fa < 0 || fa > 1000000) {
-        return res.status(400).json({ error: 'fine_amount must be between 0 and 1,000,000' });
-      }
-    }
-
-    // Validate coordinates
-    if (latitude !== undefined && latitude !== null) {
-      const lat = Number(latitude);
-      if (isNaN(lat) || lat < -90 || lat > 90) return res.status(400).json({ error: 'latitude must be between -90 and 90' });
-    }
-    if (longitude !== undefined && longitude !== null) {
-      const lng = Number(longitude);
-      if (isNaN(lng) || lng < -180 || lng > 180) return res.status(400).json({ error: 'longitude must be between -180 and 180' });
-    }
-
-    // Validate string lengths
-    if (location.length > 1000) return res.status(400).json({ error: 'Location too long (max 1000)' });
-    if (description.length > 10000) return res.status(400).json({ error: 'Description too long (max 10000)' });
-
-    // Auto-fill Section/Zone/Beat from coordinates
-    let { section_id, zone_id, beat_id, zone_beat } = req.body;
-    if (latitude != null && longitude != null && !section_id && !zone_id && !beat_id) {
-      const district = resolveDistrict(Number(latitude), Number(longitude));
-      if (district) {
-        section_id = district.section_id;
-        zone_id = district.zone_id;
-        beat_id = district.beat_id;
-        zone_beat = district.zone_beat;
-      }
-    }
-
     const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
+    const violation_number = nextNumber('code_violations', 'CV', 'violation_number');
 
-    // Wrap sequence generation + INSERT in a transaction to prevent duplicate violation numbers
-    const createViolation = db.transaction(() => {
-      const violation_number = nextNumber('code_violations', 'CV', 'violation_number');
-      const result = db.prepare(`
-        INSERT INTO code_violations (violation_number, violation_type, status, location, property_id,
-          person_id, violator_name, violator_contact, description, code_section, severity,
-          compliance_deadline, fine_amount, reporting_officer_id, reporting_officer_name,
-          section_id, zone_id, beat_id, zone_beat,
-          created_at, updated_at)
-        VALUES (?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(violation_number, violation_type, location, property_id || null,
-        person_id || null, violator_name || null, violator_contact || null,
-        description, code_section || null, severity || 'minor',
-        compliance_deadline || null, fine_amount ?? 0, req.user!.userId, user?.full_name || '',
-        section_id || null, zone_id || null, beat_id || null, zone_beat || null,
-        now, now);
-      return { result, violation_number };
-    });
-    const { result, violation_number } = createViolation();
+    const result = db.prepare(`
+      INSERT INTO code_violations (violation_number, violation_type, status, location, property_id,
+        person_id, violator_name, violator_contact, description, code_section, severity,
+        compliance_deadline, fine_amount, reporting_officer_id, reporting_officer_name, created_at, updated_at)
+      VALUES (?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(violation_number, violation_type, location, property_id || null,
+      person_id || null, violator_name || null, violator_contact || null,
+      description, code_section || null, severity || 'minor',
+      compliance_deadline || null, fine_amount || 0, req.user!.userId, user?.full_name || '', now, now);
 
-    auditLog(req, 'CREATE', 'code_violation', Number(result.lastInsertRowid), 'Created code enforcement violation');
-    broadcast('records', 'violation:created', { id: Number(result.lastInsertRowid), violation_number, violation_type, location });
-    res.status(201).json({ data: { id: Number(result.lastInsertRowid), violation_number } });
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'create', 'code_violation', ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ violation_number }), now);
+
+    res.status(201).json({ data: { id: result.lastInsertRowid, violation_number } });
   } catch (error: any) {
-    console.error('Create violation error:', error?.message || 'Unknown error');
+    console.error('Create violation error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-router.put('/violations/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/violations/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const existing = db.prepare('SELECT id FROM code_violations WHERE id = ?').get(req.params.id);
-    if (!existing) return res.status(404).json({ error: 'Violation not found' });
-
     const now = localNow();
     const fields = ['violation_type', 'location', 'description', 'code_section', 'severity',
       'property_id', 'person_id', 'violator_name', 'violator_contact', 'compliance_deadline',
-      'fine_amount', 'resolution_notes', 'section_id', 'zone_id', 'beat_id', 'zone_beat'];
+      'fine_amount', 'resolution_notes'];
     const updates: string[] = ['updated_at = ?'];
     const params: any[] = [now];
     for (const f of fields) {
@@ -201,33 +134,29 @@ router.put('/violations/:id', validateParamId, requireRole('admin', 'manager', '
     }
     params.push(req.params.id);
     db.prepare(`UPDATE code_violations SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    auditLog(req, 'UPDATE', 'code_violation', String(req.params.id), `Updated code enforcement violation #${req.params.id}`);
-    broadcast('records', 'violation:updated', { id: parseInt(req.params.id as string, 10) });
-    res.json({ data: { id: parseInt(req.params.id as string, 10) } });
+    res.json({ data: { id: parseInt(req.params.id) } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.put('/violations/:id/status', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/violations/:id/status', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const existing = db.prepare('SELECT id FROM code_violations WHERE id = ?').get(req.params.id);
-    if (!existing) return res.status(404).json({ error: 'Violation not found' });
-
     const now = localNow();
     const { status, resolution_notes } = req.body;
     const valid = ['open', 'notice_sent', 'reinspection', 'resolved', 'referred', 'voided'];
     if (!valid.includes(status)) return res.status(400).json({ error: 'Invalid status' });
 
-    const setClauses: string[] = ['status = ?', 'updated_at = ?'];
-    const updateParams: any[] = [status, now];
-    if (status === 'resolved') { setClauses.push('resolved_date = ?'); updateParams.push(localToday()); }
-    if (resolution_notes) { setClauses.push('resolution_notes = ?'); updateParams.push(resolution_notes); }
-    updateParams.push(req.params.id);
-    db.prepare(`UPDATE code_violations SET ${setClauses.join(', ')} WHERE id = ?`).run(...updateParams);
+    const updates: any = { status, updated_at: now };
+    if (status === 'resolved') updates.resolved_date = localToday();
+    if (resolution_notes) updates.resolution_notes = resolution_notes;
 
-    auditLog(req, 'UPDATE', 'code_violation', String(req.params.id), `Changed violation #${req.params.id} status`);
-    broadcast('records', 'violation:updated', { id: parseInt(req.params.id as string, 10), status });
-    res.json({ data: { id: parseInt(req.params.id as string, 10), status } });
+    const setClauses = Object.keys(updates).map(k => `${k} = ?`).join(', ');
+    db.prepare(`UPDATE code_violations SET ${setClauses} WHERE id = ?`).run(...Object.values(updates), req.params.id);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'status_change', 'code_violation', ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ status }), now);
+
+    res.json({ data: { id: parseInt(req.params.id), status } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -247,17 +176,17 @@ router.get('/tows', (req: Request, res: Response) => {
     const params: any[] = [];
     if (status) { where += ' AND status = ?'; params.push(status); }
     if (search) {
-      where += " AND (tow_number LIKE ? ESCAPE '\\' OR vehicle_plate LIKE ? ESCAPE '\\' OR tow_from LIKE ? ESCAPE '\\' OR tow_company LIKE ? ESCAPE '\\')";
-      const s = `%${escapeLike(String(search))}%`; params.push(s, s, s, s);
+      where += ' AND (tow_number LIKE ? OR vehicle_plate LIKE ? OR tow_from LIKE ? OR tow_company LIKE ?)';
+      const s = `%${search}%`; params.push(s, s, s, s);
     }
 
-    const total = (db.prepare(`SELECT COUNT(*) as count FROM vehicle_tows ${where}`).get(...params) as any)?.count || 0;
+    const total = (db.prepare(`SELECT COUNT(*) as count FROM vehicle_tows ${where}`).get(...params) as any).count;
     const rows = db.prepare(`SELECT * FROM vehicle_tows ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...params, limitNum, offset);
     res.json({ data: rows, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.get('/tows/:id', validateParamId, (req: Request, res: Response) => {
+router.get('/tows/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare('SELECT * FROM vehicle_tows WHERE id = ?').get(req.params.id);
@@ -266,7 +195,7 @@ router.get('/tows/:id', validateParamId, (req: Request, res: Response) => {
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.post('/tows', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/tows', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -276,62 +205,37 @@ router.post('/tows', requireRole('admin', 'manager', 'supervisor', 'officer'), (
       call_id, citation_id, incident_id, tow_fee, storage_fee_daily, notes } = req.body;
     if (!tow_from || !tow_reason) return res.status(400).json({ error: 'Location and reason required' });
 
-    // Validate string lengths
-    if (tow_from.length > 1000) return res.status(400).json({ error: 'Location too long (max 1000)' });
-    if (tow_reason.length > 2000) return res.status(400).json({ error: 'Reason too long (max 2000)' });
-
-    // Validate fees
-    if (tow_fee !== undefined && tow_fee !== null) {
-      const tf = Number(tow_fee);
-      if (isNaN(tf) || tf < 0 || tf > 100000) return res.status(400).json({ error: 'tow_fee must be 0-100000' });
-    }
-    if (storage_fee_daily !== undefined && storage_fee_daily !== null) {
-      const sf = Number(storage_fee_daily);
-      if (isNaN(sf) || sf < 0 || sf > 10000) return res.status(400).json({ error: 'storage_fee_daily must be 0-10000' });
-    }
-
-    // Validate VIN format if provided
-    if (vehicle_vin && !/^[A-HJ-NPR-Z0-9]{5,17}$/i.test(vehicle_vin)) {
-      return res.status(400).json({ error: 'Invalid VIN format' });
-    }
-
     const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
+    const tow_number = nextNumber('vehicle_tows', 'TOW', 'tow_number');
 
-    // Wrap sequence generation + INSERT in a transaction to prevent duplicate tow numbers
-    const createTow = db.transaction(() => {
-      const tow_number = nextNumber('vehicle_tows', 'TOW', 'tow_number');
-      const result = db.prepare(`
-        INSERT INTO vehicle_tows (tow_number, status, vehicle_plate, vehicle_state, vehicle_vin,
-          vehicle_year, vehicle_make, vehicle_model, vehicle_color, vehicle_id,
-          tow_from, tow_to, tow_reason, authorization, tow_company, tow_driver, tow_company_phone,
-          call_id, citation_id, incident_id, tow_fee, storage_fee_daily,
-          officer_id, officer_name, notes, ordered_at, created_at, updated_at)
-        VALUES (?, 'ordered', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(tow_number, vehicle_plate || null, vehicle_state || null, vehicle_vin || null,
-        vehicle_year ?? null, vehicle_make || null, vehicle_model || null, vehicle_color || null, vehicle_id || null,
-        tow_from, tow_to || null, tow_reason, authorization || null,
-        tow_company || null, tow_driver || null, tow_company_phone || null,
-        call_id || null, citation_id || null, incident_id || null,
-        tow_fee ?? 0, storage_fee_daily ?? 0,
-        req.user!.userId, user?.full_name || '', notes || null, now, now, now);
-      return { result, tow_number };
-    });
-    const { result, tow_number } = createTow();
+    const result = db.prepare(`
+      INSERT INTO vehicle_tows (tow_number, status, vehicle_plate, vehicle_state, vehicle_vin,
+        vehicle_year, vehicle_make, vehicle_model, vehicle_color, vehicle_id,
+        tow_from, tow_to, tow_reason, authorization, tow_company, tow_driver, tow_company_phone,
+        call_id, citation_id, incident_id, tow_fee, storage_fee_daily,
+        officer_id, officer_name, notes, ordered_at, created_at, updated_at)
+      VALUES (?, 'ordered', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(tow_number, vehicle_plate || null, vehicle_state || null, vehicle_vin || null,
+      vehicle_year || null, vehicle_make || null, vehicle_model || null, vehicle_color || null, vehicle_id || null,
+      tow_from, tow_to || null, tow_reason, authorization || null,
+      tow_company || null, tow_driver || null, tow_company_phone || null,
+      call_id || null, citation_id || null, incident_id || null,
+      tow_fee || 0, storage_fee_daily || 0,
+      req.user!.userId, user?.full_name || '', notes || null, now, now, now);
 
-    auditLog(req, 'CREATE', 'vehicle_tow', Number(result.lastInsertRowid), 'Created tow record');
-    broadcast('records', 'tow:created', { id: Number(result.lastInsertRowid), tow_number, tow_from, tow_reason });
-    res.status(201).json({ data: { id: Number(result.lastInsertRowid), tow_number } });
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'create', 'vehicle_tow', ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ tow_number }), now);
+
+    res.status(201).json({ data: { id: result.lastInsertRowid, tow_number } });
   } catch (error: any) {
-    console.error('Create tow error:', error?.message || 'Unknown error');
+    console.error('Create tow error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-router.put('/tows/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/tows/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const existing = db.prepare('SELECT id FROM vehicle_tows WHERE id = ?').get(req.params.id);
-    if (!existing) return res.status(404).json({ error: 'Tow not found' });
     const now = localNow();
     const fields = ['tow_from', 'tow_to', 'tow_reason', 'authorization', 'tow_company',
       'tow_driver', 'tow_company_phone', 'vehicle_plate', 'vehicle_state', 'vehicle_vin',
@@ -344,17 +248,13 @@ router.put('/tows/:id', validateParamId, requireRole('admin', 'manager', 'superv
     }
     params.push(req.params.id);
     db.prepare(`UPDATE vehicle_tows SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    auditLog(req, 'UPDATE', 'vehicle_tow', String(req.params.id), `Updated tow record #${req.params.id}`);
-    broadcast('records', 'tow:updated', { id: parseInt(req.params.id as string, 10) });
-    res.json({ data: { id: parseInt(req.params.id as string, 10) } });
+    res.json({ data: { id: parseInt(req.params.id) } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.put('/tows/:id/status', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/tows/:id/status', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const existing = db.prepare('SELECT id FROM vehicle_tows WHERE id = ?').get(req.params.id);
-    if (!existing) return res.status(404).json({ error: 'Tow not found' });
     const now = localNow();
     const { status } = req.body;
     const valid = ['ordered', 'dispatched', 'in_progress', 'completed', 'released', 'cancelled'];
@@ -368,35 +268,11 @@ router.put('/tows/:id/status', validateParamId, requireRole('admin', 'manager', 
     const setClauses = Object.keys(updates).map(k => `${k} = ?`).join(', ');
     db.prepare(`UPDATE vehicle_tows SET ${setClauses} WHERE id = ?`).run(...Object.values(updates), req.params.id);
 
-    auditLog(req, 'UPDATE', 'vehicle_tow', String(req.params.id), `Changed tow #${req.params.id} status`);
-    broadcast('records', 'tow:updated', { id: parseInt(req.params.id as string, 10), status });
-    res.json({ data: { id: parseInt(req.params.id as string, 10), status } });
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'status_change', 'vehicle_tow', ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ status }), now);
+
+    res.json({ data: { id: parseInt(req.params.id), status } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
-});
-
-// ─── GET /violations/export/csv ─────────────────────────
-router.get('/violations/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const rows = db.prepare(`
-      SELECT violation_number as case_number, violation_type, location as address,
-             created_at as reported_date, status, reporting_officer_name as assigned_to_name
-      FROM code_violations
-      ORDER BY created_at DESC
-    `).all() as any[];
-
-    sendCsv(res, 'code-violations-export.csv', [
-      { key: 'case_number', header: 'Case Number' },
-      { key: 'violation_type', header: 'Violation Type' },
-      { key: 'address', header: 'Address' },
-      { key: 'reported_date', header: 'Reported Date' },
-      { key: 'status', header: 'Status' },
-      { key: 'assigned_to_name', header: 'Assigned To' },
-    ], rows);
-  } catch (error: any) {
-    console.error('Code violations CSV export error:', error?.message);
-    res.status(500).json({ error: 'Export failed' });
-  }
 });
 
 export default router;

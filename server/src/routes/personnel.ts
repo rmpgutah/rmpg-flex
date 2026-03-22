@@ -4,27 +4,20 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
-import { execFile } from 'child_process';
+import { exec } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
-import { queueOverlayProcessing, type BodyCamOverlayConfig } from '../utils/videoOverlay';
-import { validateEmail, validatePhone, validateBadgeNumber, validateAll } from '../utils/inputValidation';
-import { validateParamId } from '../middleware/sanitize';
-import { auditLog } from '../utils/auditLogger';
-import { broadcast } from '../utils/websocket';
-import { sendCsv } from '../utils/csvExport';
 
-const execFileAsync = promisify(execFile);
+const execAsync = promisify(exec);
 
 /** Extract video duration using ffprobe. Returns seconds or null if ffmpeg not available. */
 async function extractVideoDuration(filePath: string): Promise<number | null> {
   try {
-    const { stdout } = await execFileAsync(
-      'ffprobe',
-      ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', filePath],
+    const { stdout } = await execAsync(
+      `ffprobe -v error -show_entries format=duration -of csv=p=0 "${filePath}"`,
       { timeout: 30000 }
     );
     const seconds = parseFloat(stdout.trim());
@@ -50,8 +43,8 @@ const VIDEO_MIME_TYPES = new Set([
 
 const bodycamStorage = multer.diskStorage({
   destination: (_req, _file, cb) => {
-    const today = localToday();
-    const subDir = path.join(BODYCAM_DIR, today.slice(0, 4), today.slice(5, 7));
+    const now = new Date();
+    const subDir = path.join(BODYCAM_DIR, `${now.getFullYear()}`, String(now.getMonth() + 1).padStart(2, '0'));
     if (!fs.existsSync(subDir)) fs.mkdirSync(subDir, { recursive: true });
     cb(null, subDir);
   },
@@ -63,7 +56,6 @@ const bodycamStorage = multer.diskStorage({
 
 const bodycamUpload = multer({
   storage: bodycamStorage,
-  limits: { fileSize: 10 * 1024 * 1024 * 1024 }, // 10 GB max per file
   fileFilter: (_req, file, cb) => {
     if (VIDEO_MIME_TYPES.has(file.mimetype)) {
       cb(null, true);
@@ -73,29 +65,14 @@ const bodycamUpload = multer({
   },
 });
 
-// Chunked upload storage — raw binary chunks saved to temp dir
-const CHUNK_DIR = path.resolve(BODYCAM_DIR, '_chunks');
-if (!fs.existsSync(CHUNK_DIR)) fs.mkdirSync(CHUNK_DIR, { recursive: true });
-const CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB chunk size
-
-const chunkUpload = multer({
-  storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, CHUNK_DIR),
-    filename: (_req, _file, cb) => cb(null, `chunk_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`),
-  }),
-  limits: { fileSize: CHUNK_SIZE + 1024 * 1024 }, // chunk + 1MB safety margin
-});
-
 const router = Router();
 
 // Promote query-string token to Authorization header BEFORE authenticateToken runs.
 // <video> elements can't set custom headers, so the VideoPlayer passes the JWT as
 // ?token=... on the streaming URL. This middleware promotes it so authenticateToken
-// can validate it normally. Scoped to video streaming routes ONLY to limit attack surface.
+// can validate it normally. Safe for all personnel routes (same JWT either way).
 router.use((req: Request, res: Response, next: NextFunction) => {
-  const isVideoRoute = /\/(bodycam-videos|body-cameras)\//.test(req.path)
-    && /(stream|download|thumbnail)/.test(req.path);
-  if (!req.headers['authorization'] && req.query.token && isVideoRoute) {
+  if (!req.headers['authorization'] && req.query.token) {
     req.headers['authorization'] = `Bearer ${req.query.token}`;
   }
   next();
@@ -106,8 +83,7 @@ router.use(authenticateToken);
 // ─── USERS / OFFICERS ─────────────────────────────────
 
 // GET /api/personnel - List all personnel
-// Restricted to sworn/dispatch/command roles — contract_manager must NOT see officer PII
-router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { role, status, archived } = req.query;
@@ -116,19 +92,19 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     const params: any[] = [];
 
     if (role) {
-      whereClause += ' AND u.role = ?';
+      whereClause += ' AND role = ?';
       params.push(role);
     }
     if (status) {
-      whereClause += ' AND u.status = ?';
+      whereClause += ' AND status = ?';
       params.push(status);
     }
 
     // Archive filter
     if (archived === 'true') {
-      whereClause += ' AND u.archived_at IS NOT NULL';
+      whereClause += ' AND archived_at IS NOT NULL';
     } else if (archived !== 'all') {
-      whereClause += ' AND u.archived_at IS NULL';
+      whereClause += ' AND archived_at IS NULL';
     }
 
     const users = db.prepare(`
@@ -139,37 +115,29 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
         u.emergency_contact_name, u.emergency_contact_phone, u.emergency_contact_relationship,
         u.employee_id, u.certifications, u.notes, u.profile_image,
         u.login_count, u.last_login_at,
-        u.totp_enabled, u.totp_setup_required, u.password_expires_at, u.force_password_change, u.password_changed_at,
+        u.totp_enabled, u.totp_exempt,
         u.created_at, u.updated_at,
         un.call_sign as unit_call_sign
       FROM users u
       LEFT JOIN units un ON un.officer_id = u.id
-      ${whereClause}
+      ${whereClause.replace(/\bstatus\b/g, 'u.status').replace(/\brole\b/g, 'u.role').replace(/\barchived_at\b/g, 'u.archived_at')}
       ORDER BY u.full_name
     `).all(...params);
 
     res.json(users);
   } catch (error: any) {
-    console.error('Get personnel error:', error?.message || 'Unknown error');
+    console.error('Get personnel error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // GET /api/personnel/:id - Get user details
-// Restrict to sworn/dispatch/command roles — contract_manager must NOT see officer PII
-router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), validateParamId, (req: Request, res: Response, next) => {
+router.get('/:id', (req: Request, res: Response, next) => {
   try {
     // Check for route conflicts with sub-paths handled by mountScheduleRoutes
     const subPaths = ['schedules', 'time', 'credentials', 'training', 'training-requirements', 'deployments', 'coverage-gaps', 'analytics', 'activity', 'equipment', 'body-cameras', 'bodycam-videos'];
     if (subPaths.includes(String(req.params.id))) {
       return next('route');
-    }
-
-    // Validate ID parameter
-    const id = parseInt(String(req.params.id), 10);
-    if (isNaN(id)) {
-      res.status(400).json({ error: 'Invalid user ID' });
-      return;
     }
 
     const db = getDb();
@@ -180,32 +148,11 @@ router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dis
         emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
         created_at, updated_at
       FROM users WHERE id = ?
-    `).get(id) as any;
+    `).get(req.params.id) as any;
 
     if (!user) {
       res.status(404).json({ error: 'User not found' });
       return;
-    }
-
-    // Redact PII fields for non-privileged users viewing other users' profiles
-    const callerRole = req.user?.role;
-    const isSelf = req.user?.userId === user.id;
-    const isPrivileged = ['admin', 'manager', 'supervisor'].includes(callerRole || '');
-    if (!isSelf && !isPrivileged) {
-      // Strip sensitive PII — non-privileged users only see operational info
-      delete user.address;
-      delete user.city;
-      delete user.state;
-      delete user.zip;
-      delete user.date_of_birth;
-      delete user.dl_number;
-      delete user.dl_state;
-      delete user.dl_expiry;
-      delete user.blood_type;
-      delete user.allergies;
-      delete user.emergency_contact_name;
-      delete user.emergency_contact_phone;
-      delete user.emergency_contact_relationship;
     }
 
     // Get associated unit
@@ -236,7 +183,7 @@ router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dis
       activeTimeEntry,
     });
   } catch (error: any) {
-    console.error('Get user error:', error?.message || 'Unknown error');
+    console.error('Get user error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -260,51 +207,6 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       return;
     }
 
-    // Validate username format (3-50 chars, alphanumeric + underscores + dots)
-    if (typeof username !== 'string' || !/^[a-zA-Z0-9_.]{3,50}$/.test(username)) {
-      res.status(400).json({ error: 'Username must be 3-50 alphanumeric characters (underscores and dots allowed)' });
-      return;
-    }
-
-    // Validate password strength
-    if (typeof password !== 'string' || password.length < 8) {
-      res.status(400).json({ error: 'Password must be at least 8 characters' });
-      return;
-    }
-    if (password.length > 128) {
-      res.status(400).json({ error: 'Password must be 128 characters or less' });
-      return;
-    }
-
-    // Validate full_name length
-    if (full_name.length > 200) {
-      res.status(400).json({ error: 'Full name must be 200 characters or less' });
-      return;
-    }
-
-    // Validate field formats
-    const validationError = validateAll(
-      validateEmail(email),
-      validatePhone(phone),
-      validateBadgeNumber(badge_number),
-    );
-    if (validationError) {
-      res.status(400).json({ error: validationError });
-      return;
-    }
-
-    // Validate role against allowlist
-    const VALID_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
-    if (!VALID_ROLES.includes(role)) {
-      res.status(400).json({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}` });
-      return;
-    }
-    // Only admins can create admin accounts
-    if (role === 'admin' && req.user!.role !== 'admin') {
-      res.status(403).json({ error: 'Only admins can create admin accounts' });
-      return;
-    }
-
     // Check username uniqueness
     const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
     if (existing) {
@@ -312,12 +214,11 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       return;
     }
 
-    const passwordHash = bcryptjs.hashSync(password, 12);
+    const passwordHash = bcryptjs.hashSync(password, 10);
 
     // Derive first_name/last_name from full_name if not provided
-    const nameParts = (full_name || '').split(' ');
-    const derivedFirst = first_name || nameParts[0] || '';
-    const derivedLast = last_name || nameParts.slice(1).join(' ') || '';
+    const derivedFirst = first_name || full_name.split(' ')[0] || '';
+    const derivedLast = last_name || full_name.split(' ').slice(1).join(' ') || '';
 
     const result = db.prepare(`
       INSERT INTO users (username, password_hash, full_name, first_name, last_name, email, role, badge_number, phone,
@@ -354,58 +255,28 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
         employee_id, certifications, notes, profile_image,
         created_at, updated_at
       FROM users WHERE id = ?
-    `).get(Number(result.lastInsertRowid));
+    `).get(result.lastInsertRowid);
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'user_created', 'user', ?, ?, ?)
-    `).run(req.user!.userId, Number(result.lastInsertRowid), `Created user: ${username} (${role})`, req.ip || 'unknown');
+    `).run(req.user!.userId, result.lastInsertRowid, `Created user: ${username} (${role})`, req.ip || 'unknown');
 
-    broadcast('personnel', 'user:created', user);
     res.status(201).json(user);
   } catch (error: any) {
-    console.error('Create user error:', error?.message || 'Unknown error');
+    console.error('Create user error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // PUT /api/personnel/:id - Update user
-router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = db.prepare('SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, status, archived_at FROM users WHERE id = ?').get(req.params.id) as any;
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id) as any;
     if (!user) {
       res.status(404).json({ error: 'User not found' });
       return;
-    }
-
-    // Validate field formats on update
-    const updateValidationError = validateAll(
-      validateEmail(req.body.email),
-      validatePhone(req.body.phone),
-      validateBadgeNumber(req.body.badge_number),
-    );
-    if (updateValidationError) {
-      res.status(400).json({ error: updateValidationError });
-      return;
-    }
-
-    // Validate role against allowlist if provided
-    const VALID_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
-    if (req.body.role && !VALID_ROLES.includes(req.body.role)) {
-      res.status(400).json({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}` });
-      return;
-    }
-    // Only admins can assign the admin role; prevent self-role-modification
-    if (req.body.role) {
-      if (req.body.role === 'admin' && req.user!.role !== 'admin') {
-        res.status(403).json({ error: 'Only admins can assign the admin role' });
-        return;
-      }
-      if (String(req.params.id) === String(req.user!.userId)) {
-        res.status(403).json({ error: 'Cannot change your own role' });
-        return;
-      }
     }
 
     // Build dynamic SET clause — only update fields explicitly provided in the body.
@@ -434,7 +305,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Reque
     // ── Admin password reset (not in updatableFields — needs bcrypt) ──
     const passwordChanged = !!(req.body.password && typeof req.body.password === 'string' && req.body.password.trim());
     if (passwordChanged) {
-      const hash = bcryptjs.hashSync(req.body.password.trim(), 12);
+      const hash = bcryptjs.hashSync(req.body.password.trim(), 10);
       setClauses.push('password_hash = ?');
       setValues.push(hash);
       setClauses.push('last_password_change = ?');
@@ -468,19 +339,18 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Reque
       FROM users WHERE id = ?
     `).get(req.params.id);
 
-    broadcast('personnel', 'user:updated', updated);
     res.json(updated);
   } catch (error: any) {
-    console.error('Update user error:', error?.message || 'Unknown error');
+    console.error('Update user error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // DELETE /api/personnel/:id - Soft-delete (terminate) user
-router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = db.prepare('SELECT id, username, full_name, status FROM users WHERE id = ?').get(req.params.id) as any;
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id) as any;
     if (!user) {
       res.status(404).json({ error: 'User not found' });
       return;
@@ -508,21 +378,18 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
     });
     delTx();
 
-    auditLog(req, 'TERMINATE', 'user', Number(req.params.id),
-      `Terminated user: ${user.username} (${user.full_name || 'N/A'})`);
-    broadcast('personnel', 'user:updated', { id: Number(req.params.id), status: 'terminated' });
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
-    console.error('Delete user error:', error?.message || 'Unknown error');
+    console.error('Delete user error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // POST /api/personnel/:id/archive - Archive terminated user
-router.post('/:id/archive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/:id/archive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = db.prepare('SELECT id, full_name, status, archived_at FROM users WHERE id = ?').get(req.params.id) as any;
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id) as any;
     if (!user) { res.status(404).json({ error: 'User not found' }); return; }
     if (user.status !== 'terminated') {
       res.status(400).json({ error: 'Only terminated users can be archived' }); return;
@@ -542,16 +409,16 @@ router.post('/:id/archive', validateParamId, requireRole('admin', 'manager'), (r
     `).get(user.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Archive user error:', error?.message || 'Unknown error');
+    console.error('Archive user error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // POST /api/personnel/:id/unarchive
-router.post('/:id/unarchive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/:id/unarchive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = db.prepare('SELECT id, full_name, status, archived_at FROM users WHERE id = ?').get(req.params.id) as any;
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id) as any;
     if (!user) { res.status(404).json({ error: 'User not found' }); return; }
     if (!user.archived_at) { res.status(400).json({ error: 'User is not archived' }); return; }
 
@@ -567,7 +434,7 @@ router.post('/:id/unarchive', validateParamId, requireRole('admin', 'manager'), 
     `).get(user.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Unarchive user error:', error?.message || 'Unknown error');
+    console.error('Unarchive user error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -586,121 +453,40 @@ router.get('/bodycam-videos/:videoId/stream', (req: Request, res: Response) => {
       return;
     }
 
-    // IDOR protection: only the video's officer, admins, managers, or supervisors may stream
-    const callerRole = req.user?.role;
-    const isOwner = video.officer_id === req.user?.userId;
-    const isPrivileged = ['admin', 'manager', 'supervisor'].includes(callerRole || '');
-    if (!isOwner && !isPrivileged) {
-      res.status(403).json({ error: 'You do not have permission to view this video' });
-      return;
-    }
-
-    // Serve processed (overlaid) file if available, otherwise original
-    const servePath = (video.overlay_status === 'complete' && video.processed_file_path)
-      ? path.resolve(BODYCAM_DIR, video.processed_file_path)
-      : path.resolve(BODYCAM_DIR, video.file_path);
-
-    const filePath = fs.existsSync(servePath) ? servePath : path.resolve(BODYCAM_DIR, video.file_path);
-
-    if (path.relative(BODYCAM_DIR, filePath).startsWith('..') || !fs.existsSync(filePath)) {
+    const filePath = path.resolve(BODYCAM_DIR, video.file_path);
+    if (!filePath.startsWith(BODYCAM_DIR) || !fs.existsSync(filePath)) {
       res.status(404).json({ error: 'Video file not found on disk' });
       return;
     }
 
     const stat = fs.statSync(filePath);
     const fileSize = stat.size;
-    const mimeType = filePath.endsWith('.mp4') ? 'video/mp4' : (video.mime_type || 'video/mp4');
     const range = req.headers.range;
 
     if (range) {
       const parts = range.replace(/bytes=/, '').split('-');
       const start = parseInt(parts[0], 10);
       const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-
-      if (isNaN(start) || isNaN(end) || start < 0 || end >= fileSize || start > end) {
-        res.writeHead(416, { 'Content-Range': `bytes */${fileSize}` });
-        res.end();
-        return;
-      }
-
       const chunkSize = end - start + 1;
 
       res.writeHead(206, {
         'Content-Range': `bytes ${start}-${end}/${fileSize}`,
         'Accept-Ranges': 'bytes',
         'Content-Length': chunkSize,
-        'Content-Type': mimeType,
-        'X-Content-Type-Options': 'nosniff',
+        'Content-Type': video.mime_type || 'video/mp4',
       });
 
-      const stream = fs.createReadStream(filePath, { start, end });
-      stream.once('error', (err) => { console.error('Bodycam stream error:', err); if (!res.headersSent) res.status(500).end(); else res.destroy(); });
-      res.on('error', () => { stream.destroy(); });
-      stream.pipe(res);
+      fs.createReadStream(filePath, { start, end }).pipe(res);
     } else {
       res.writeHead(200, {
         'Content-Length': fileSize,
-        'Content-Type': mimeType,
-        'X-Content-Type-Options': 'nosniff',
+        'Content-Type': video.mime_type || 'video/mp4',
       });
 
-      const stream = fs.createReadStream(filePath);
-      stream.once('error', (err) => { console.error('Bodycam stream error:', err); if (!res.headersSent) res.status(500).end(); else res.destroy(); });
-      res.on('error', () => { stream.destroy(); });
-      stream.pipe(res);
+      fs.createReadStream(filePath).pipe(res);
     }
   } catch (error: any) {
-    console.error('Stream bodycam video error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ── GET /api/personnel/bodycam-videos/:videoId/download — Force-download with overlay ──
-router.get('/bodycam-videos/:videoId/download', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const video = db.prepare('SELECT * FROM bodycam_videos WHERE id = ?').get(req.params.videoId) as any;
-    if (!video) {
-      res.status(404).json({ error: 'Video not found' });
-      return;
-    }
-
-    // IDOR protection: only the video's officer, admins, managers, or supervisors may download
-    const callerRole = req.user?.role;
-    const isOwner = video.officer_id === req.user?.userId;
-    const isPrivileged = ['admin', 'manager', 'supervisor'].includes(callerRole || '');
-    if (!isOwner && !isPrivileged) {
-      res.status(403).json({ error: 'You do not have permission to download this video' });
-      return;
-    }
-
-    const servePath = (video.overlay_status === 'complete' && video.processed_file_path)
-      ? path.resolve(BODYCAM_DIR, video.processed_file_path)
-      : path.resolve(BODYCAM_DIR, video.file_path);
-
-    const filePath = fs.existsSync(servePath) ? servePath : path.resolve(BODYCAM_DIR, video.file_path);
-
-    if (path.relative(BODYCAM_DIR, filePath).startsWith('..') || !fs.existsSync(filePath)) {
-      res.status(404).json({ error: 'Video file not found on disk' });
-      return;
-    }
-
-    const stat = fs.statSync(filePath);
-    // Sanitize filename: strip non-alphanumeric chars and CRLF/null bytes to prevent header injection
-    const safeTitle = (video.title || `bodycam_${video.id}`)
-      .replace(/[\r\n\0"]/g, '')
-      .replace(/[^a-zA-Z0-9_\-. ]/g, '_');
-    res.writeHead(200, {
-      'Content-Type': 'video/mp4',
-      'Content-Length': stat.size,
-      'X-Content-Type-Options': 'nosniff',
-      'Content-Disposition': `attachment; filename="BWC_${safeTitle}.mp4"`,
-    });
-    const dlStream = fs.createReadStream(filePath);
-    dlStream.on('error', (err) => { console.error('Bodycam stream error:', err); if (!res.headersSent) res.status(500).end(); else res.destroy(); });
-    dlStream.pipe(res);
-  } catch (error: any) {
-    console.error('Download bodycam video error:', error?.message || 'Unknown error');
+    console.error('Stream bodycam video error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -708,45 +494,6 @@ router.get('/bodycam-videos/:videoId/download', (req: Request, res: Response) =>
 // ─── SCHEDULES / TIME / CREDENTIALS ──────────────────
 // These routes are handled via mountScheduleRoutes() in index.ts
 // to avoid /:id route conflicts in this sub-router.
-
-// ─── CSV EXPORT ──────────────────────────────────────────
-
-// GET /api/personnel/export/csv — Export personnel roster
-router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const rows = db.prepare(`
-      SELECT id, username, full_name, first_name, last_name, email, role,
-        badge_number, phone, status, rank, department,
-        hire_date, termination_date, shift_preference,
-        employee_id, created_at
-      FROM users
-      WHERE archived_at IS NULL
-      ORDER BY full_name LIMIT 10000
-    `).all();
-    sendCsv(res, 'personnel_export.csv', [
-      { key: 'id', header: 'ID' },
-      { key: 'username', header: 'Username' },
-      { key: 'full_name', header: 'Full Name' },
-      { key: 'first_name', header: 'First Name' },
-      { key: 'last_name', header: 'Last Name' },
-      { key: 'email', header: 'Email' },
-      { key: 'role', header: 'Role' },
-      { key: 'badge_number', header: 'Badge Number' },
-      { key: 'phone', header: 'Phone' },
-      { key: 'status', header: 'Status' },
-      { key: 'rank', header: 'Rank' },
-      { key: 'department', header: 'Department' },
-      { key: 'employee_id', header: 'Employee ID' },
-      { key: 'hire_date', header: 'Hire Date' },
-      { key: 'termination_date', header: 'Termination Date' },
-      { key: 'shift_preference', header: 'Shift Preference' },
-      { key: 'created_at', header: 'Created At' },
-    ], rows);
-  } catch (error: any) {
-    res.status(500).json({ error: 'Export failed' });
-  }
-});
 
 export default router;
 
@@ -799,7 +546,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(schedules);
     } catch (error: any) {
-      console.error('Get schedules error:', error?.message || 'Unknown error');
+      console.error('Get schedules error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -826,11 +573,11 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         LEFT JOIN users u ON s.officer_id = u.id
         LEFT JOIN properties p ON s.property_id = p.id
         WHERE s.id = ?
-      `).get(Number(result.lastInsertRowid));
+      `).get(result.lastInsertRowid);
 
       res.status(201).json(schedule);
     } catch (error: any) {
-      console.error('Create schedule error:', error?.message || 'Unknown error');
+      console.error('Create schedule error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -864,7 +611,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const result = db.prepare(`
         INSERT INTO time_entries (officer_id, schedule_id, clock_in, clock_in_latitude, clock_in_longitude)
         VALUES (?, ?, ?, ?, ?)
-      `).run(targetId, schedule_id || null, now, latitude ?? null, longitude ?? null);
+      `).run(targetId, schedule_id || null, now, latitude || null, longitude || null);
 
       // Update schedule status if linked
       if (schedule_id) {
@@ -875,15 +622,15 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       db.prepare(`
         INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
         VALUES (?, 'clock_in', 'time_entry', ?, ?, ?)
-      `).run(req.user!.userId, Number(result.lastInsertRowid), isSelf ? 'Clocked in' : `Clocked in ${officerName}`, req.ip || 'unknown');
+      `).run(req.user!.userId, result.lastInsertRowid, isSelf ? 'Clocked in' : `Clocked in ${officerName}`, req.ip || 'unknown');
 
       const entry = db.prepare(`
         SELECT t.*, u.full_name as officer_name, u.badge_number
         FROM time_entries t LEFT JOIN users u ON t.officer_id = u.id WHERE t.id = ?
-      `).get(Number(result.lastInsertRowid));
+      `).get(result.lastInsertRowid);
       res.status(201).json(entry);
     } catch (error: any) {
-      console.error('Clock in error:', error?.message || 'Unknown error');
+      console.error('Clock in error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -948,7 +695,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       `).get(activeEntry.id);
       res.json(entry);
     } catch (error: any) {
-      console.error('Clock out error:', error?.message || 'Unknown error');
+      console.error('Clock out error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -988,7 +735,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       `).get(activeEntry.id);
       res.json(entry);
     } catch (error: any) {
-      console.error('Start break error:', error?.message || 'Unknown error');
+      console.error('Start break error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1019,9 +766,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       if (breakEntry.break_start) {
         const breakStart = new Date(breakEntry.break_start.replace(' ', 'T'));
         const breakEnd = new Date(now.replace(' ', 'T'));
-        if (!isNaN(breakStart.getTime()) && !isNaN(breakEnd.getTime())) {
-          breakMins += Math.round(((breakEnd.getTime() - breakStart.getTime()) / 60000) * 100) / 100;
-        }
+        breakMins += Math.round(((breakEnd.getTime() - breakStart.getTime()) / 60000) * 100) / 100;
       }
 
       db.prepare(`UPDATE time_entries SET status = 'active', break_start = NULL, break_minutes = ? WHERE id = ?`).run(breakMins, breakEntry.id);
@@ -1029,7 +774,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       db.prepare(`
         INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
         VALUES (?, 'break_end', 'time_entry', ?, ?, ?)
-      `).run(req.user!.userId, breakEntry.id, `Ended break. Break: ${(isNaN(breakMins) ? 0 : breakMins).toFixed(0)}min`, req.ip || 'unknown');
+      `).run(req.user!.userId, breakEntry.id, `Ended break. Break: ${breakMins.toFixed(0)}min`, req.ip || 'unknown');
 
       const entry = db.prepare(`
         SELECT t.*, u.full_name as officer_name, u.badge_number
@@ -1037,7 +782,41 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       `).get(breakEntry.id);
       res.json(entry);
     } catch (error: any) {
-      console.error('End break error:', error?.message || 'Unknown error');
+      console.error('End break error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/personnel/time/batch-clock-in - Clock in multiple officers at once
+  parentRouter.post('/personnel/time/batch-clock-in', authenticateToken, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const { officer_ids } = req.body;
+      if (!Array.isArray(officer_ids) || officer_ids.length === 0) {
+        res.status(400).json({ error: 'officer_ids array is required' });
+        return;
+      }
+
+      const results: { officer_id: number; success: boolean; error?: string }[] = [];
+
+      for (const officerId of officer_ids) {
+        const existing = db.prepare("SELECT id FROM time_entries WHERE officer_id = ? AND status IN ('active', 'on_break')").get(officerId);
+        if (existing) {
+          results.push({ officer_id: officerId, success: false, error: 'Already clocked in' });
+          continue;
+        }
+
+        db.prepare('INSERT INTO time_entries (officer_id, clock_in, status) VALUES (?, datetime("now","localtime"), "active")').run(officerId);
+
+        db.prepare("INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'clock_in', 'time_entry', ?, ?, ?)")
+          .run(req.user!.userId, officerId, `Batch clock-in for officer ${officerId}`, req.ip || 'unknown');
+
+        results.push({ officer_id: officerId, success: true });
+      }
+
+      res.json({ results, clocked_in: results.filter(r => r.success).length, skipped: results.filter(r => !r.success).length });
+    } catch (error: any) {
+      console.error('Batch clock-in error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1056,7 +835,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(credentials);
     } catch (error: any) {
-      console.error('Get credentials error:', error?.message || 'Unknown error');
+      console.error('Get credentials error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1065,7 +844,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   parentRouter.get('/personnel/time', authenticateToken, (req: Request, res: Response) => {
     try {
       const db = getDb();
-      const { status, date } = req.query;
+      const { status, date, start_date, end_date } = req.query;
 
       let whereClause = 'WHERE 1=1';
       const params: any[] = [];
@@ -1078,6 +857,14 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         whereClause += ' AND DATE(t.clock_in) = ?';
         params.push(date);
       }
+      if (start_date) {
+        whereClause += ' AND DATE(t.clock_in) >= ?';
+        params.push(start_date);
+      }
+      if (end_date) {
+        whereClause += ' AND DATE(t.clock_in) <= ?';
+        params.push(end_date);
+      }
 
       if (req.user!.role === 'officer') {
         whereClause += ' AND t.officer_id = ?';
@@ -1085,17 +872,19 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       }
 
       const entries = db.prepare(`
-        SELECT t.*, u.full_name as officer_name, u.badge_number
+        SELECT t.*, u.full_name as officer_name, u.badge_number,
+          (SELECT COUNT(*) FROM time_entry_edits WHERE time_entry_id = t.id) as edit_count,
+          (SELECT u2.full_name FROM users u2 WHERE u2.id = t.edited_by) as edited_by_name
         FROM time_entries t
         LEFT JOIN users u ON t.officer_id = u.id
         ${whereClause}
         ORDER BY t.clock_in DESC
-        LIMIT 100
+        LIMIT 500
       `).all(...params);
 
       res.json(entries);
     } catch (error: any) {
-      console.error('Get time entries error:', error?.message || 'Unknown error');
+      console.error('Get time entries error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1105,15 +894,22 @@ export function mountScheduleRoutes(parentRouter: Router): void {
     try {
       const db = getDb();
       const entry = db.prepare('SELECT * FROM time_entries WHERE id = ?').get(req.params.id) as any;
-      if (!entry) {
-        res.status(404).json({ error: 'Time entry not found' });
-        return;
-      }
+      if (!entry) { res.status(404).json({ error: 'Time entry not found' }); return; }
 
-      const { clock_in, clock_out } = req.body;
-      if (!clock_in) {
-        res.status(400).json({ error: 'clock_in is required' });
-        return;
+      const { clock_in, clock_out, reason, notes } = req.body;
+      if (!clock_in) { res.status(400).json({ error: 'clock_in is required' }); return; }
+      if (!reason) { res.status(400).json({ error: 'reason is required for edits' }); return; }
+
+      const editorName = (db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any)?.full_name || 'Unknown';
+
+      // Log individual field changes to audit table
+      if (entry.clock_in !== clock_in) {
+        db.prepare('INSERT INTO time_entry_edits (time_entry_id, edited_by, edited_by_name, edit_type, old_value, new_value, reason) VALUES (?,?,?,?,?,?,?)')
+          .run(entry.id, req.user!.userId, editorName, 'clock_in_changed', entry.clock_in, clock_in, reason);
+      }
+      if ((entry.clock_out || '') !== (clock_out || '')) {
+        db.prepare('INSERT INTO time_entry_edits (time_entry_id, edited_by, edited_by_name, edit_type, old_value, new_value, reason) VALUES (?,?,?,?,?,?,?)')
+          .run(entry.id, req.user!.userId, editorName, 'clock_out_changed', entry.clock_out || null, clock_out || null, reason);
       }
 
       // Recalculate total hours
@@ -1121,36 +917,31 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       if (clock_out) {
         const start = new Date(clock_in).getTime();
         const end = new Date(clock_out).getTime();
-        if (isNaN(start) || isNaN(end)) {
-          res.status(400).json({ error: 'Invalid clock_in or clock_out date format' });
-          return;
-        }
         totalHours = Math.round(((end - start) / (1000 * 60 * 60)) * 10000) / 10000;
         if (totalHours < 0) totalHours = 0;
       }
 
-      const newStatus = clock_out ? 'completed' : 'active';
-
       db.prepare(`
-        UPDATE time_entries SET clock_in = ?, clock_out = ?, total_hours = ?, status = 'edited'
+        UPDATE time_entries SET clock_in = ?, clock_out = ?, total_hours = ?, status = 'edited',
+          notes = COALESCE(?, notes), edit_reason = ?, edited_by = ?, edited_at = datetime('now','localtime')
         WHERE id = ?
-      `).run(clock_in, clock_out || null, totalHours, req.params.id);
+      `).run(clock_in, clock_out || null, totalHours, notes || null, reason, req.user!.userId, req.params.id);
 
       db.prepare(`
         INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
         VALUES (?, 'time_entry_edited', 'time_entry', ?, ?, ?)
-      `).run(req.user!.userId, req.params.id, `Edited time entry for officer ${entry.officer_id}`, req.ip || 'unknown');
+      `).run(req.user!.userId, req.params.id, `Edited time entry for officer ${entry.officer_id}: ${reason}`, req.ip || 'unknown');
 
       const updated = db.prepare(`
-        SELECT t.*, u.full_name as officer_name, u.badge_number
-        FROM time_entries t
-        LEFT JOIN users u ON t.officer_id = u.id
-        WHERE t.id = ?
+        SELECT t.*, u.full_name as officer_name, u.badge_number,
+          (SELECT COUNT(*) FROM time_entry_edits WHERE time_entry_id = t.id) as edit_count,
+          (SELECT u2.full_name FROM users u2 WHERE u2.id = t.edited_by) as edited_by_name
+        FROM time_entries t LEFT JOIN users u ON t.officer_id = u.id WHERE t.id = ?
       `).get(req.params.id);
 
       res.json(updated);
     } catch (error: any) {
-      console.error('Edit time entry error:', error?.message || 'Unknown error');
+      console.error('Edit time entry error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1165,6 +956,12 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         return;
       }
 
+      const editorName = (db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any)?.full_name || 'Unknown';
+      db.prepare('INSERT INTO time_entry_edits (time_entry_id, edited_by, edited_by_name, edit_type, old_value, new_value, reason) VALUES (?,?,?,?,?,?,?)')
+        .run(entry.id, req.user!.userId, editorName, 'deleted',
+          JSON.stringify({ clock_in: entry.clock_in, clock_out: entry.clock_out, total_hours: entry.total_hours, officer_id: entry.officer_id }),
+          null, 'Deleted by ' + editorName);
+
       db.prepare('DELETE FROM time_entries WHERE id = ?').run(req.params.id);
 
       db.prepare(`
@@ -1174,7 +971,21 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json({ success: true, id: req.params.id });
     } catch (error: any) {
-      console.error('Delete time entry error:', error?.message || 'Unknown error');
+      console.error('Delete time entry error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/personnel/time/:id/history - Edit history for a time entry
+  parentRouter.get('/personnel/time/:id/history', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const edits = db.prepare(
+        'SELECT * FROM time_entry_edits WHERE time_entry_id = ? ORDER BY created_at DESC'
+      ).all(req.params.id);
+      res.json(edits);
+    } catch (error: any) {
+      console.error('Get time entry history error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1192,7 +1003,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(credentials);
     } catch (error: any) {
-      console.error('Get all credentials error:', error?.message || 'Unknown error');
+      console.error('Get all credentials error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1213,10 +1024,10 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         VALUES (?, ?, ?, ?, ?, ?)
       `).run(officer_id, credential_type, credential_number || null, issued_date || null, expiry_date || null, notes || null);
 
-      const credential = db.prepare('SELECT * FROM credentials WHERE id = ?').get(Number(result.lastInsertRowid));
+      const credential = db.prepare('SELECT * FROM credentials WHERE id = ?').get(result.lastInsertRowid);
       res.status(201).json(credential);
     } catch (error: any) {
-      console.error('Create credential error:', error?.message || 'Unknown error');
+      console.error('Create credential error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1256,7 +1067,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(credential);
     } catch (error: any) {
-      console.error('Update credential error:', error?.message || 'Unknown error');
+      console.error('Update credential error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1280,7 +1091,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json({ message: 'Credential deleted' });
     } catch (error: any) {
-      console.error('Delete credential error:', error?.message || 'Unknown error');
+      console.error('Delete credential error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1297,7 +1108,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const updated = db.prepare('SELECT * FROM credentials WHERE id = ?').get(cred.id);
       res.json(updated);
     } catch (error: any) {
-      console.error('Archive credential error:', error?.message || 'Unknown error');
+      console.error('Archive credential error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1313,7 +1124,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const updated = db.prepare('SELECT * FROM credentials WHERE id = ?').get(cred.id);
       res.json(updated);
     } catch (error: any) {
-      console.error('Unarchive credential error:', error?.message || 'Unknown error');
+      console.error('Unarchive credential error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1322,7 +1133,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   parentRouter.get('/personnel/activity/:userId', authenticateToken, (req: Request, res: Response) => {
     try {
       const db = getDb();
-      const limit = Math.min(500, Math.max(1, parseInt(req.query.limit as string, 10) || 50));
+      const limit = parseInt(req.query.limit as string, 10) || 50;
 
       const activity = db.prepare(`
         SELECT al.*, u.full_name as user_name, u.badge_number
@@ -1335,7 +1146,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(activity);
     } catch (error: any) {
-      console.error('Get user activity error:', error?.message || 'Unknown error');
+      console.error('Get user activity error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1353,7 +1164,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       db.prepare('DELETE FROM schedules WHERE id = ?').run(req.params.id);
       res.json({ message: 'Schedule deleted' });
     } catch (error: any) {
-      console.error('Delete schedule error:', error?.message || 'Unknown error');
+      console.error('Delete schedule error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1394,7 +1205,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(schedule);
     } catch (error: any) {
-      console.error('Update schedule error:', error?.message || 'Unknown error');
+      console.error('Update schedule error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1411,7 +1222,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const updated = db.prepare('SELECT * FROM schedules WHERE id = ?').get(schedule.id);
       res.json(updated);
     } catch (error: any) {
-      console.error('Archive schedule error:', error?.message || 'Unknown error');
+      console.error('Archive schedule error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1427,7 +1238,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const updated = db.prepare('SELECT * FROM schedules WHERE id = ?').get(schedule.id);
       res.json(updated);
     } catch (error: any) {
-      console.error('Unarchive schedule error:', error?.message || 'Unknown error');
+      console.error('Unarchive schedule error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1446,7 +1257,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       `).all();
       res.json(records);
     } catch (error: any) {
-      console.error('Get training records error:', error?.message || 'Unknown error');
+      console.error('Get training records error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1458,97 +1269,11 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const requirements = db.prepare('SELECT * FROM training_requirements ORDER BY course_name').all();
       res.json(requirements.map((r: any) => ({
         ...r,
-        required_for_roles: (() => { try { return typeof r.required_for_roles === 'string' ? JSON.parse(r.required_for_roles) : r.required_for_roles; } catch { return []; } })(),
+        required_for_roles: typeof r.required_for_roles === 'string' ? JSON.parse(r.required_for_roles) : r.required_for_roles,
         is_mandatory: !!r.is_mandatory,
       })));
     } catch (error: any) {
-      console.error('Get training requirements error:', error?.message || 'Unknown error');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // POST /api/personnel/training-requirements - Create requirement
-  parentRouter.post('/personnel/training-requirements', authenticateToken, requireRole('admin', 'manager'), (req: Request, res: Response) => {
-    try {
-      const db = getDb();
-      const { course_name, category, required_for_roles, renewal_period_months, minimum_hours, is_mandatory, description } = req.body;
-      if (!course_name) { res.status(400).json({ error: 'course_name is required' }); return; }
-
-      const result = db.prepare(`
-        INSERT INTO training_requirements (course_name, category, required_for_roles, renewal_period_months, minimum_hours, is_mandatory, description)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        course_name,
-        category || 'other',
-        JSON.stringify(required_for_roles || []),
-        renewal_period_months ?? null,
-        minimum_hours ?? 0,
-        is_mandatory ? 1 : 0,
-        description || null,
-      );
-
-      const requirement = db.prepare('SELECT * FROM training_requirements WHERE id = ?').get(Number(result.lastInsertRowid)) as any;
-      let parsedRoles: any = [];
-      try { parsedRoles = typeof requirement.required_for_roles === 'string' ? JSON.parse(requirement.required_for_roles) : requirement.required_for_roles; } catch { parsedRoles = []; }
-      res.status(201).json({
-        ...requirement,
-        required_for_roles: parsedRoles,
-        is_mandatory: !!requirement.is_mandatory,
-      });
-    } catch (error: any) {
-      console.error('Create training requirement error:', error?.message || 'Unknown error');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // PUT /api/personnel/training-requirements/:id - Update requirement
-  parentRouter.put('/personnel/training-requirements/:id', authenticateToken, requireRole('admin', 'manager'), (req: Request, res: Response) => {
-    try {
-      const db = getDb();
-      const existing = db.prepare('SELECT * FROM training_requirements WHERE id = ?').get(req.params.id) as any;
-      if (!existing) { res.status(404).json({ error: 'Requirement not found' }); return; }
-
-      const fields = ['course_name', 'category', 'required_for_roles', 'renewal_period_months', 'minimum_hours', 'is_mandatory', 'description'];
-      const sets: string[] = [];
-      const vals: any[] = [];
-      for (const f of fields) {
-        if (f in req.body) {
-          sets.push(`${f} = ?`);
-          if (f === 'required_for_roles') vals.push(JSON.stringify(req.body[f] || []));
-          else if (f === 'is_mandatory') vals.push(req.body[f] ? 1 : 0);
-          else vals.push(req.body[f] ?? null);
-        }
-      }
-      if (sets.length > 0) {
-        vals.push(req.params.id);
-        db.prepare(`UPDATE training_requirements SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
-      }
-
-      const updated = db.prepare('SELECT * FROM training_requirements WHERE id = ?').get(req.params.id) as any;
-      let updatedRoles: any = [];
-      try { updatedRoles = typeof updated.required_for_roles === 'string' ? JSON.parse(updated.required_for_roles) : updated.required_for_roles; } catch { updatedRoles = []; }
-      res.json({
-        ...updated,
-        required_for_roles: updatedRoles,
-        is_mandatory: !!updated.is_mandatory,
-      });
-    } catch (error: any) {
-      console.error('Update training requirement error:', error?.message || 'Unknown error');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // DELETE /api/personnel/training-requirements/:id - Delete requirement
-  parentRouter.delete('/personnel/training-requirements/:id', authenticateToken, requireRole('admin', 'manager'), (req: Request, res: Response) => {
-    try {
-      const db = getDb();
-      const existing = db.prepare('SELECT * FROM training_requirements WHERE id = ?').get(req.params.id) as any;
-      if (!existing) { res.status(404).json({ error: 'Requirement not found' }); return; }
-
-      db.prepare('DELETE FROM training_requirements WHERE id = ?').run(req.params.id);
-      res.json({ message: 'Requirement deleted' });
-    } catch (error: any) {
-      console.error('Delete training requirement error:', error?.message || 'Unknown error');
+      console.error('Get training requirements error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1566,7 +1291,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       `).all(req.params.officerId);
       res.json(records);
     } catch (error: any) {
-      console.error('Get officer training error:', error?.message || 'Unknown error');
+      console.error('Get officer training error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1587,7 +1312,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         officer_id, course_name, category || 'other', provider || null,
-        completed_date || null, expiry_date || null, score ?? null, hours ?? 0,
+        completed_date || null, expiry_date || null, score || null, hours || 0,
         certificate_number || null, status || 'scheduled', notes || null,
       );
 
@@ -1596,11 +1321,11 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         FROM training_records t
         LEFT JOIN users u ON t.officer_id = u.id
         WHERE t.id = ?
-      `).get(Number(result.lastInsertRowid));
+      `).get(result.lastInsertRowid);
 
       res.status(201).json(record);
     } catch (error: any) {
-      console.error('Create training record error:', error?.message || 'Unknown error');
+      console.error('Create training record error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1642,7 +1367,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(record);
     } catch (error: any) {
-      console.error('Update training record error:', error?.message || 'Unknown error');
+      console.error('Update training record error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1660,7 +1385,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       db.prepare('DELETE FROM training_records WHERE id = ?').run(req.params.id);
       res.json({ message: 'Training record deleted' });
     } catch (error: any) {
-      console.error('Delete training record error:', error?.message || 'Unknown error');
+      console.error('Delete training record error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1677,7 +1402,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const updated = db.prepare('SELECT * FROM training_records WHERE id = ?').get(record.id);
       res.json(updated);
     } catch (error: any) {
-      console.error('Archive training record error:', error?.message || 'Unknown error');
+      console.error('Archive training record error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1693,7 +1418,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const updated = db.prepare('SELECT * FROM training_records WHERE id = ?').get(record.id);
       res.json(updated);
     } catch (error: any) {
-      console.error('Unarchive training record error:', error?.message || 'Unknown error');
+      console.error('Unarchive training record error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1726,7 +1451,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(deployments);
     } catch (error: any) {
-      console.error('Get deployments error:', error?.message || 'Unknown error');
+      console.error('Get deployments error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1746,7 +1471,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       `).all(req.params.officerId);
       res.json(deployments);
     } catch (error: any) {
-      console.error('Get officer deployments error:', error?.message || 'Unknown error');
+      console.error('Get officer deployments error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1767,7 +1492,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         officer_id, property_id, position || 'Patrol', start_date,
-        end_date || null, status || 'active', hours_per_week ?? null, notes || null,
+        end_date || null, status || 'active', hours_per_week || null, notes || null,
       );
 
       const deployment = db.prepare(`
@@ -1777,11 +1502,11 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         LEFT JOIN properties p ON d.property_id = p.id
         LEFT JOIN clients c ON p.client_id = c.id
         WHERE d.id = ?
-      `).get(Number(result.lastInsertRowid));
+      `).get(result.lastInsertRowid);
 
       res.status(201).json(deployment);
     } catch (error: any) {
-      console.error('Create deployment error:', error?.message || 'Unknown error');
+      console.error('Create deployment error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1825,7 +1550,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(deployment);
     } catch (error: any) {
-      console.error('Update deployment error:', error?.message || 'Unknown error');
+      console.error('Update deployment error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1843,7 +1568,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       db.prepare('DELETE FROM deployments WHERE id = ?').run(req.params.id);
       res.json({ message: 'Deployment deleted' });
     } catch (error: any) {
-      console.error('Delete deployment error:', error?.message || 'Unknown error');
+      console.error('Delete deployment error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1865,7 +1590,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       `).get(dep.id);
       res.json(updated);
     } catch (error: any) {
-      console.error('Archive deployment error:', error?.message || 'Unknown error');
+      console.error('Archive deployment error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1886,7 +1611,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       `).get(dep.id);
       res.json(updated);
     } catch (error: any) {
-      console.error('Unarchive deployment error:', error?.message || 'Unknown error');
+      console.error('Unarchive deployment error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1921,7 +1646,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(equipment);
     } catch (error: any) {
-      console.error('Get equipment error:', error?.message || 'Unknown error');
+      console.error('Get equipment error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1936,7 +1661,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(equipment);
     } catch (error: any) {
-      console.error('Get officer equipment error:', error?.message || 'Unknown error');
+      console.error('Get officer equipment error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1968,11 +1693,11 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         FROM officer_equipment e
         LEFT JOIN users u ON e.officer_id = u.id
         WHERE e.id = ?
-      `).get(Number(result.lastInsertRowid));
+      `).get(result.lastInsertRowid);
 
       res.status(201).json(equipment);
     } catch (error: any) {
-      console.error('Create equipment error:', error?.message || 'Unknown error');
+      console.error('Create equipment error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2014,7 +1739,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(equipment);
     } catch (error: any) {
-      console.error('Update equipment error:', error?.message || 'Unknown error');
+      console.error('Update equipment error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2038,7 +1763,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json({ message: 'Equipment record deleted' });
     } catch (error: any) {
-      console.error('Delete equipment error:', error?.message || 'Unknown error');
+      console.error('Delete equipment error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2064,7 +1789,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(cameras);
     } catch (error: any) {
-      console.error('Get body cameras error:', error?.message || 'Unknown error');
+      console.error('Get body cameras error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2078,7 +1803,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       `).all(req.params.id);
       res.json(cameras);
     } catch (error: any) {
-      console.error('Get officer body cameras error:', error?.message || 'Unknown error');
+      console.error('Get officer body cameras error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2113,7 +1838,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         FROM body_cameras c
         LEFT JOIN users u ON c.officer_id = u.id
         WHERE c.id = ?
-      `).get(Number(result.lastInsertRowid));
+      `).get(result.lastInsertRowid);
 
       res.status(201).json(camera);
     } catch (error: any) {
@@ -2121,7 +1846,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         res.status(409).json({ error: 'A camera with that serial number already exists' });
         return;
       }
-      console.error('Create body camera error:', error?.message || 'Unknown error');
+      console.error('Create body camera error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2163,7 +1888,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(camera);
     } catch (error: any) {
-      console.error('Update body camera error:', error?.message || 'Unknown error');
+      console.error('Update body camera error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2182,7 +1907,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const videos = db.prepare('SELECT * FROM bodycam_videos WHERE camera_id = ?').all(req.params.cameraId) as any[];
       for (const vid of videos) {
         const filePath = path.resolve(BODYCAM_DIR, vid.file_path);
-        if (!path.relative(BODYCAM_DIR, filePath).startsWith('..') && fs.existsSync(filePath)) {
+        if (filePath.startsWith(BODYCAM_DIR) && fs.existsSync(filePath)) {
           fs.unlinkSync(filePath);
         }
       }
@@ -2191,7 +1916,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json({ message: 'Body camera and associated videos deleted' });
     } catch (error: any) {
-      console.error('Delete body camera error:', error?.message || 'Unknown error');
+      console.error('Delete body camera error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2221,7 +1946,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(videos);
     } catch (error: any) {
-      console.error('Get bodycam videos error:', error?.message || 'Unknown error');
+      console.error('Get bodycam videos error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2245,7 +1970,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
           if (!video) { results.errors++; continue; }
           // Delete file from disk
           const filePath = path.resolve(BODYCAM_DIR, video.file_path);
-          if (!path.relative(BODYCAM_DIR, filePath).startsWith('..') && fs.existsSync(filePath)) {
+          if (filePath.startsWith(BODYCAM_DIR) && fs.existsSync(filePath)) {
             try { fs.unlinkSync(filePath); } catch { results.errors++; }
           }
           db.prepare('DELETE FROM bodycam_videos WHERE id = ?').run(id);
@@ -2255,7 +1980,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       deleteTransaction();
       res.json(results);
     } catch (error: any) {
-      console.error('Bulk delete bodycam videos error:', error?.message || 'Unknown error');
+      console.error('Bulk delete bodycam videos error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2287,7 +2012,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json({ updated: Math.min(videoIds.length, 100) });
     } catch (error: any) {
-      console.error('Bulk update bodycam videos error:', error?.message || 'Unknown error');
+      console.error('Bulk update bodycam videos error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2312,7 +2037,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
           const videos = db.prepare('SELECT * FROM bodycam_videos WHERE camera_id = ?').all(camId) as any[];
           for (const vid of videos) {
             const filePath = path.resolve(BODYCAM_DIR, vid.file_path);
-            if (!path.relative(BODYCAM_DIR, filePath).startsWith('..') && fs.existsSync(filePath)) {
+            if (filePath.startsWith(BODYCAM_DIR) && fs.existsSync(filePath)) {
               try { fs.unlinkSync(filePath); } catch { /* ok */ }
             }
             results.videosDeleted++;
@@ -2325,7 +2050,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       deleteTransaction();
       res.json(results);
     } catch (error: any) {
-      console.error('Bulk delete body cameras error:', error?.message || 'Unknown error');
+      console.error('Bulk delete body cameras error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2343,223 +2068,12 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       `).all(req.params.id);
       res.json(videos);
     } catch (error: any) {
-      console.error('Get officer bodycam videos error:', error?.message || 'Unknown error');
+      console.error('Get officer bodycam videos error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
 
-  // ────────────────────────────────────────────────────────────
-  // Chunked Upload API — for reliable large file uploads
-  // ────────────────────────────────────────────────────────────
-
-  // POST /api/personnel/bodycam-videos/upload-init — Start a chunked upload session
-  parentRouter.post('/personnel/bodycam-videos/upload-init', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
-    try {
-      const { fileName, fileSize, totalChunks, mimeType } = req.body;
-      if (!fileName || !fileSize || !totalChunks) {
-        res.status(400).json({ error: 'fileName, fileSize, and totalChunks are required' });
-        return;
-      }
-      const uploadId = crypto.randomUUID();
-      const sessionDir = path.join(CHUNK_DIR, uploadId);
-      fs.mkdirSync(sessionDir, { recursive: true });
-
-      // Write session metadata
-      const meta = { uploadId, fileName, fileSize, totalChunks, mimeType: mimeType || 'video/mp4', receivedChunks: 0, createdAt: Date.now() };
-      fs.writeFileSync(path.join(sessionDir, '_meta.json'), JSON.stringify(meta));
-
-      console.log(`[Bodycam] Chunked upload initialized: ${uploadId}, file=${fileName}, size=${fileSize}, chunks=${totalChunks}`);
-      res.json({ uploadId, chunkSize: CHUNK_SIZE });
-    } catch (error: any) {
-      console.error('Upload init error:', error?.message || 'Unknown error');
-      res.status(500).json({ error: 'Failed to initialize upload' });
-    }
-  });
-
-  // POST /api/personnel/bodycam-videos/upload-chunk — Upload a single chunk
-  parentRouter.post('/personnel/bodycam-videos/upload-chunk', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
-    req.setTimeout(120000); // 2 min per chunk
-    res.setTimeout(120000);
-
-    chunkUpload.single('chunk')(req, res, (multerErr: any) => {
-      if (multerErr) {
-        console.error('Chunk upload multer error:', multerErr?.message);
-        res.status(400).json({ error: 'Chunk upload failed' });
-        return;
-      }
-
-      try {
-        const { uploadId: rawUploadId, chunkIndex } = req.body;
-        const uploadId = rawUploadId ? path.basename(String(rawUploadId)) : '';
-        if (!uploadId || uploadId !== rawUploadId || chunkIndex == null || !req.file) {
-          if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-          res.status(400).json({ error: 'uploadId, chunkIndex, and chunk file are required' });
-          return;
-        }
-
-        const sessionDir = path.join(CHUNK_DIR, uploadId);
-        const metaPath = path.join(sessionDir, '_meta.json');
-        if (!fs.existsSync(metaPath)) {
-          if (req.file.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-          res.status(404).json({ error: 'Upload session not found or expired' });
-          return;
-        }
-
-        // Move chunk file into session directory
-        const idx = parseInt(String(chunkIndex), 10);
-        if (isNaN(idx) || idx < 0) {
-          if (req.file.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-          res.status(400).json({ error: 'Invalid chunkIndex' });
-          return;
-        }
-        const chunkDest = path.join(sessionDir, `chunk_${String(idx).padStart(6, '0')}`);
-        fs.renameSync(req.file.path, chunkDest);
-
-        // Update meta
-        const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
-        meta.receivedChunks = (meta.receivedChunks || 0) + 1;
-        fs.writeFileSync(metaPath, JSON.stringify(meta));
-
-        res.json({ success: true, chunkIndex: idx, received: meta.receivedChunks, total: meta.totalChunks });
-      } catch (error: any) {
-        console.error('Chunk upload error:', error?.message || 'Unknown error');
-        if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-        res.status(500).json({ error: 'Failed to process chunk' });
-      }
-    });
-  });
-
-  // POST /api/personnel/bodycam-videos/upload-complete — Finalize chunked upload
-  parentRouter.post('/personnel/bodycam-videos/upload-complete', authenticateToken, requireRole('admin'), async (req: Request, res: Response) => {
-    req.setTimeout(600000); // 10 min for reassembly
-    res.setTimeout(600000);
-
-    try {
-      const db = getDb();
-      const { uploadId: rawFinUploadId, camera_id, officer_id, title, duration_seconds, recorded_at, case_number, classification, notes } = req.body;
-      // Sanitize uploadId to prevent path traversal
-      const uploadId = rawFinUploadId ? path.basename(String(rawFinUploadId)) : '';
-
-      if (!uploadId || uploadId !== rawFinUploadId || !camera_id || !officer_id || !title) {
-        res.status(400).json({ error: 'uploadId, camera_id, officer_id, and title are required' });
-        return;
-      }
-
-      const sessionDir = path.join(CHUNK_DIR, uploadId);
-      const metaPath = path.join(sessionDir, '_meta.json');
-      if (!fs.existsSync(metaPath)) {
-        res.status(404).json({ error: 'Upload session not found or expired' });
-        return;
-      }
-
-      const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
-      const totalChunks = parseInt(String(meta.totalChunks), 10);
-
-      // Verify all chunks are present
-      for (let i = 0; i < totalChunks; i++) {
-        const chunkPath = path.join(sessionDir, `chunk_${String(i).padStart(6, '0')}`);
-        if (!fs.existsSync(chunkPath)) {
-          res.status(400).json({ error: `Missing chunk ${i} of ${totalChunks}` });
-          return;
-        }
-      }
-
-      // Reassemble file
-      const now = new Date();
-      const destDir = path.join(BODYCAM_DIR, `${now.getFullYear()}`, String(now.getMonth() + 1).padStart(2, '0'));
-      if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
-
-      const ext = path.extname(meta.fileName).toLowerCase() || '.mp4';
-      const finalFileName = `${crypto.randomUUID()}${ext}`;
-      const finalPath = path.join(destDir, finalFileName);
-
-      console.log(`[Bodycam] Reassembling ${totalChunks} chunks → ${finalPath}`);
-      const writeStream = fs.createWriteStream(finalPath);
-      for (let i = 0; i < totalChunks; i++) {
-        const chunkPath = path.join(sessionDir, `chunk_${String(i).padStart(6, '0')}`);
-        const chunkData = fs.readFileSync(chunkPath);
-        writeStream.write(chunkData);
-      }
-      await new Promise<void>((resolve, reject) => {
-        writeStream.on('finish', resolve);
-        writeStream.on('error', reject);
-        writeStream.end();
-      });
-
-      // Verify final file
-      const diskStat = fs.statSync(finalPath);
-      const verifiedSize = diskStat.size;
-      console.log(`[Bodycam] Reassembly complete: ${verifiedSize} bytes`);
-
-      const relativePath = path.relative(BODYCAM_DIR, finalPath);
-      const user = (req as any).user;
-
-      const result = db.prepare(`
-        INSERT INTO bodycam_videos (camera_id, officer_id, title, file_path, file_size, duration_seconds, mime_type, recorded_at, case_number, classification, notes, uploaded_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        camera_id, officer_id, title, relativePath, verifiedSize,
-        duration_seconds ?? null, meta.mimeType || 'video/mp4',
-        recorded_at || localNow(), case_number || null,
-        classification || 'routine', notes || null, String(user?.userId || 'system')
-      );
-
-      const videoId = Number(result.lastInsertRowid);
-
-      // Clean up chunk session
-      try {
-        fs.rmSync(sessionDir, { recursive: true, force: true });
-      } catch { /* best effort */ }
-
-      // Fire-and-forget: extract actual duration with ffprobe
-      extractVideoDuration(finalPath).then((probedDuration) => {
-        if (probedDuration != null) {
-          try {
-            const dbInner = getDb();
-            dbInner.prepare('UPDATE bodycam_videos SET duration_seconds = ?, updated_at = ? WHERE id = ?')
-              .run(probedDuration, localNow(), videoId);
-          } catch (e: any) {
-            console.warn('ffprobe duration update failed:', e?.message);
-          }
-        }
-      }).catch((err) => { console.error('[Personnel] Background operation failed:', err.message || err); });
-
-      const video = db.prepare(`
-        SELECT v.*, u.full_name as officer_name, c.camera_id as camera_serial
-        FROM bodycam_videos v
-        LEFT JOIN users u ON v.officer_id = u.id
-        LEFT JOIN body_cameras c ON v.camera_id = c.id
-        WHERE v.id = ?
-      `).get(videoId);
-
-      console.log(`[Bodycam] Chunked upload complete: id=${videoId}, title=${title}, size=${verifiedSize}`);
-      res.status(201).json(video);
-    } catch (error: any) {
-      console.error('Upload complete error:', error?.message, error?.stack);
-      res.status(500).json({ error: 'Upload finalization failed' });
-    }
-  });
-
-  // DELETE /api/personnel/bodycam-videos/upload-abort/:uploadId — Cancel a chunked upload
-  parentRouter.delete('/personnel/bodycam-videos/upload-abort/:uploadId', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
-    try {
-      // Sanitize uploadId to prevent path traversal (e.g. ../../)
-      const uploadId = path.basename(req.params.uploadId as string);
-      if (!uploadId || uploadId !== req.params.uploadId) {
-        res.status(400).json({ error: 'Invalid upload ID' });
-        return;
-      }
-      const sessionDir = path.join(CHUNK_DIR, uploadId);
-      if (fs.existsSync(sessionDir)) {
-        fs.rmSync(sessionDir, { recursive: true, force: true });
-      }
-      res.json({ success: true });
-    } catch (error: any) {
-      res.status(500).json({ error: 'Failed to abort upload' });
-    }
-  });
-
-  // POST /api/personnel/bodycam-videos - Upload video (legacy single-file upload)
+  // POST /api/personnel/bodycam-videos - Upload video
   parentRouter.post('/personnel/bodycam-videos', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
     // Increase timeout for large video uploads (10 minutes)
     req.setTimeout(600000);
@@ -2573,7 +2087,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       fs.accessSync(BODYCAM_DIR, fs.constants.W_OK);
     } catch (dirErr: any) {
       console.error('Bodycam upload dir not writable:', BODYCAM_DIR, dirErr);
-      res.status(503).json({ error: 'Upload storage is unavailable' });
+      res.status(503).json({ error: `Upload storage is unavailable: ${dirErr.message}` });
       return;
     }
 
@@ -2581,7 +2095,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       bodycamUpload.single('video')(req, res, (multerErr: any) => {
         if (multerErr) {
           console.error('Multer upload error:', multerErr?.message, multerErr?.code, multerErr?.stack);
-          res.status(400).json({ error: 'Upload failed' });
+          res.status(400).json({ error: multerErr.message || 'Upload failed' });
           return;
         }
 
@@ -2615,12 +2129,12 @@ export function mountScheduleRoutes(parentRouter: Router): void {
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
             camera_id, officer_id, title, relativePath, verifiedSize,
-            duration_seconds ?? null, file.mimetype,
+            duration_seconds || null, file.mimetype,
             recorded_at || localNow(), case_number || null,
             classification || 'routine', notes || null, String(req.user!.userId)
           );
 
-          const videoId = Number(result.lastInsertRowid);
+          const videoId = result.lastInsertRowid;
 
           const video = db.prepare(`
             SELECT v.*, u.full_name as officer_name, c.camera_id as camera_serial
@@ -2644,29 +2158,16 @@ export function mountScheduleRoutes(parentRouter: Router): void {
             }
           }).catch(() => { /* ffprobe not available — client value used */ });
 
-          // Fire-and-forget: queue overlay burn via FFmpeg
-          const videoRecord = video as any;
-          const overlayConfig: BodyCamOverlayConfig = {
-            type: 'bodycam',
-            officerName: videoRecord?.officer_name || 'UNKNOWN',
-            badgeNumber: (db.prepare('SELECT badge_number FROM users WHERE id = ?').get(officer_id) as any)?.badge_number || '',
-            cameraSerial: videoRecord?.camera_serial || '',
-            recordedAtUnix: Math.floor(new Date(recorded_at || Date.now()).getTime() / 1000),
-            caseNumber: case_number || '',
-            classification: (classification || 'routine').toUpperCase(),
-          };
-          queueOverlayProcessing(videoId, 'bodycam', fullFilePath, overlayConfig);
-
           res.status(201).json(video);
         } catch (error: any) {
           console.error('Upload bodycam video DB error:', error?.message, error?.stack);
-          res.status(500).json({ error: 'Upload processing failed' });
+          res.status(500).json({ error: `Upload processing failed: ${error?.message || 'Internal server error'}` });
         }
       });
     } catch (outerErr: any) {
       console.error('Bodycam upload outer error:', outerErr?.message, outerErr?.stack);
       if (!res.headersSent) {
-        res.status(500).json({ error: 'Upload failed' });
+        res.status(500).json({ error: `Upload failed: ${outerErr?.message || 'Internal server error'}` });
       }
     }
   });
@@ -2709,37 +2210,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(video);
     } catch (error: any) {
-      console.error('Update bodycam video error:', error?.message || 'Unknown error');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // POST /api/personnel/bodycam-videos/reprobe - Re-extract duration & verify file_size for all videos with null duration
-  parentRouter.post('/personnel/bodycam-videos/reprobe', authenticateToken, requireRole('admin'), async (req: Request, res: Response) => {
-    try {
-      const db = getDb();
-      const videos = db.prepare('SELECT id, file_path, file_size, duration_seconds FROM bodycam_videos WHERE duration_seconds IS NULL OR duration_seconds = 0').all() as any[];
-      let updated = 0;
-      let sizeFixed = 0;
-      for (const vid of videos) {
-        const fullPath = path.resolve(BODYCAM_DIR, vid.file_path);
-        if (!fs.existsSync(fullPath)) continue;
-        // Verify / fix file_size from actual file
-        const stat = fs.statSync(fullPath);
-        if (stat.size !== vid.file_size) {
-          db.prepare('UPDATE bodycam_videos SET file_size = ?, updated_at = ? WHERE id = ?').run(stat.size, localNow(), vid.id);
-          sizeFixed++;
-        }
-        // Extract duration via ffprobe
-        const dur = await extractVideoDuration(fullPath);
-        if (dur != null) {
-          db.prepare('UPDATE bodycam_videos SET duration_seconds = ?, updated_at = ? WHERE id = ?').run(dur, localNow(), vid.id);
-          updated++;
-        }
-      }
-      res.json({ total: videos.length, duration_updated: updated, size_fixed: sizeFixed });
-    } catch (error: any) {
-      console.error('Reprobe bodycam videos error:', error?.message || 'Unknown error');
+      console.error('Update bodycam video error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2754,23 +2225,16 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         return;
       }
 
-      // Delete original file from disk
+      // Delete file from disk
       const filePath = path.resolve(BODYCAM_DIR, existing.file_path);
-      if (!path.relative(BODYCAM_DIR, filePath).startsWith('..') && fs.existsSync(filePath)) {
+      if (filePath.startsWith(BODYCAM_DIR) && fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
-      }
-      // Delete processed overlay file if it exists
-      if (existing.processed_file_path) {
-        const processedPath = path.resolve(BODYCAM_DIR, existing.processed_file_path);
-        if (processedPath.startsWith(BODYCAM_DIR) && fs.existsSync(processedPath)) {
-          fs.unlinkSync(processedPath);
-        }
       }
 
       db.prepare('DELETE FROM bodycam_videos WHERE id = ?').run(req.params.videoId);
       res.json({ message: 'Video deleted' });
     } catch (error: any) {
-      console.error('Delete bodycam video error:', error?.message || 'Unknown error');
+      console.error('Delete bodycam video error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2791,122 +2255,40 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         return;
       }
 
-      // Serve processed (overlaid) file if available, otherwise original
-      const servePath = (video.overlay_status === 'complete' && video.processed_file_path)
-        ? path.resolve(BODYCAM_DIR, video.processed_file_path)
-        : path.resolve(BODYCAM_DIR, video.file_path);
-
-      const filePath = fs.existsSync(servePath) ? servePath : path.resolve(BODYCAM_DIR, video.file_path);
-
-      if (path.relative(BODYCAM_DIR, filePath).startsWith('..') || !fs.existsSync(filePath)) {
+      const filePath = path.resolve(BODYCAM_DIR, video.file_path);
+      if (!filePath.startsWith(BODYCAM_DIR) || !fs.existsSync(filePath)) {
         res.status(404).json({ error: 'Video file not found on disk' });
         return;
       }
 
       const stat = fs.statSync(filePath);
       const fileSize = stat.size;
-      const mimeType = filePath.endsWith('.mp4') ? 'video/mp4' : (video.mime_type || 'video/mp4');
       const range = req.headers.range;
 
       if (range) {
         const parts = range.replace(/bytes=/, '').split('-');
         const start = parseInt(parts[0], 10);
         const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-
-        if (isNaN(start) || isNaN(end) || start < 0 || end >= fileSize || start > end) {
-          res.writeHead(416, { 'Content-Range': `bytes */${fileSize}` });
-          res.end();
-          return;
-        }
-
         const chunkSize = end - start + 1;
 
         res.writeHead(206, {
           'Content-Range': `bytes ${start}-${end}/${fileSize}`,
           'Accept-Ranges': 'bytes',
           'Content-Length': chunkSize,
-          'Content-Type': mimeType,
+          'Content-Type': video.mime_type || 'video/mp4',
         });
 
-        const stream = fs.createReadStream(filePath, { start, end });
-        stream.on('error', (err) => { console.error('Bodycam stream error:', err); res.destroy(); });
-        stream.pipe(res);
+        fs.createReadStream(filePath, { start, end }).pipe(res);
       } else {
         res.writeHead(200, {
           'Content-Length': fileSize,
-          'Content-Type': mimeType,
+          'Content-Type': video.mime_type || 'video/mp4',
         });
 
-        const stream = fs.createReadStream(filePath);
-        stream.on('error', (err) => { console.error('Bodycam stream error:', err); res.destroy(); });
-        stream.pipe(res);
+        fs.createReadStream(filePath).pipe(res);
       }
     } catch (error: any) {
-      console.error('Stream bodycam video error:', error?.message || 'Unknown error');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // POST /api/personnel/bodycam-videos/:videoId/reprocess - Re-queue overlay processing (admin)
-  parentRouter.post('/personnel/bodycam-videos/:videoId/reprocess', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
-    try {
-      const db = getDb();
-      const video = db.prepare(`
-        SELECT v.*, u.full_name as officer_name, u.badge_number, c.camera_id as camera_serial
-        FROM bodycam_videos v
-        LEFT JOIN users u ON v.officer_id = u.id
-        LEFT JOIN body_cameras c ON v.camera_id = c.id
-        WHERE v.id = ?
-      `).get(req.params.videoId) as any;
-
-      if (!video) {
-        res.status(404).json({ error: 'Video not found' });
-        return;
-      }
-
-      const inputPath = path.resolve(BODYCAM_DIR, video.file_path);
-      if (!fs.existsSync(inputPath)) {
-        res.status(404).json({ error: 'Original video file not found on disk' });
-        return;
-      }
-
-      const recordedAt = video.recorded_at ? new Date(video.recorded_at) : new Date();
-      const config: BodyCamOverlayConfig = {
-        type: 'bodycam',
-        officerName: video.officer_name || 'UNKNOWN',
-        badgeNumber: video.badge_number || '',
-        cameraSerial: video.camera_serial || '',
-        recordedAtUnix: Math.floor(recordedAt.getTime() / 1000),
-        caseNumber: video.case_number || '',
-        classification: (video.classification || 'routine').toUpperCase(),
-      };
-
-      queueOverlayProcessing(video.id, 'bodycam', inputPath, config);
-      res.json({ message: 'Overlay reprocessing queued', videoId: video.id });
-    } catch (error: any) {
-      console.error('Reprocess overlay error:', error?.message || 'Unknown error');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // GET /api/personnel/bodycam-videos/overlay-status - Overlay processing summary (admin)
-  parentRouter.get('/personnel/bodycam-videos/overlay-status', authenticateToken, requireRole('admin'), (_req: Request, res: Response) => {
-    try {
-      const db = getDb();
-      const stats = db.prepare(`
-        SELECT overlay_status, COUNT(*) as count
-        FROM bodycam_videos
-        GROUP BY overlay_status
-      `).all() as any[];
-
-      const summary: Record<string, number> = { pending: 0, processing: 0, complete: 0, error: 0 };
-      for (const row of stats) {
-        summary[row.overlay_status || 'pending'] = row.count;
-      }
-
-      res.json(summary);
-    } catch (error: any) {
-      console.error('Overlay status error:', error?.message || 'Unknown error');
+      console.error('Stream bodycam video error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2936,7 +2318,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(gaps);
     } catch (error: any) {
-      console.error('Get coverage gaps error:', error?.message || 'Unknown error');
+      console.error('Get coverage gaps error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2949,25 +2331,22 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const db = getDb();
 
       // Headcount summary
-      const totalPersonnel = (db.prepare('SELECT COUNT(*) as count FROM users').get() as any)?.count || 0;
-      const activePersonnel = (db.prepare("SELECT COUNT(*) as count FROM users WHERE status = 'active'").get() as any)?.count || 0;
+      const totalPersonnel = (db.prepare('SELECT COUNT(*) as count FROM users').get() as any).count;
+      const activePersonnel = (db.prepare("SELECT COUNT(*) as count FROM users WHERE status = 'active'").get() as any).count;
       const onDuty = activePersonnel;
-      const clockedIn = (db.prepare("SELECT COUNT(*) as count FROM time_entries WHERE status = 'active'").get() as any)?.count || 0;
+      const clockedIn = (db.prepare("SELECT COUNT(*) as count FROM time_entries WHERE status = 'active'").get() as any).count;
 
       // Avg tenure
       const tenureRows = db.prepare("SELECT hire_date FROM users WHERE hire_date IS NOT NULL AND status = 'active'").all() as any[];
       const now = Date.now();
       const avgTenure = tenureRows.length > 0
-        ? tenureRows.reduce((sum: number, r: any) => {
-            const hireMs = new Date(r.hire_date).getTime();
-            return sum + (isNaN(hireMs) ? 0 : (now - hireMs) / (365.25 * 24 * 60 * 60 * 1000));
-          }, 0) / tenureRows.length
+        ? tenureRows.reduce((sum: number, r: any) => sum + (now - new Date(r.hire_date).getTime()) / (365.25 * 24 * 60 * 60 * 1000), 0) / tenureRows.length
         : 0;
 
       // New hires / terminations in last 30 days
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-      const newHires = (db.prepare('SELECT COUNT(*) as count FROM users WHERE hire_date >= ?').get(thirtyDaysAgo) as any)?.count || 0;
-      const terminations = (db.prepare('SELECT COUNT(*) as count FROM users WHERE termination_date >= ?').get(thirtyDaysAgo) as any)?.count || 0;
+      const newHires = (db.prepare('SELECT COUNT(*) as count FROM users WHERE hire_date >= ?').get(thirtyDaysAgo) as any).count;
+      const terminations = (db.prepare('SELECT COUNT(*) as count FROM users WHERE termination_date >= ?').get(thirtyDaysAgo) as any).count;
 
       // Hours trend (by month)
       const hoursTrend = db.prepare(`
@@ -2997,10 +2376,10 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       `).all();
 
       // Credential compliance
-      const totalCreds = (db.prepare('SELECT COUNT(*) as count FROM credentials').get() as any)?.count || 0;
-      const validCreds = (db.prepare("SELECT COUNT(*) as count FROM credentials WHERE expiry_date IS NULL OR expiry_date >= date('now')").get() as any)?.count || 0;
-      const expiringSoon = (db.prepare("SELECT COUNT(*) as count FROM credentials WHERE expiry_date >= date('now') AND expiry_date <= date('now', '+90 days')").get() as any)?.count || 0;
-      const expiredCreds = (db.prepare("SELECT COUNT(*) as count FROM credentials WHERE expiry_date < date('now')").get() as any)?.count || 0;
+      const totalCreds = (db.prepare('SELECT COUNT(*) as count FROM credentials').get() as any).count;
+      const validCreds = (db.prepare("SELECT COUNT(*) as count FROM credentials WHERE expiry_date IS NULL OR expiry_date >= date('now')").get() as any).count;
+      const expiringSoon = (db.prepare("SELECT COUNT(*) as count FROM credentials WHERE expiry_date >= date('now') AND expiry_date <= date('now', '+90 days')").get() as any).count;
+      const expiredCreds = (db.prepare("SELECT COUNT(*) as count FROM credentials WHERE expiry_date < date('now')").get() as any).count;
 
       // Overtime tracking - top officers
       const overtimeTracking = db.prepare(`
@@ -3032,7 +2411,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       // Role distribution
       const ROLE_COLORS: Record<string, string> = {
         admin: '#ef4444', manager: '#a855f7', supervisor: '#f59e0b',
-        officer: '#1a5a9e', dispatcher: '#3b82f6',
+        officer: '#bc1010', dispatcher: '#3b82f6',
       };
       const roleDistribution = db.prepare(`
         SELECT role, COUNT(*) as count FROM users GROUP BY role ORDER BY count DESC
@@ -3043,9 +2422,9 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       }));
 
       // Training compliance
-      const totalTraining = (db.prepare('SELECT COUNT(*) as count FROM training_records').get() as any)?.count || 0;
-      const completedTraining = (db.prepare("SELECT COUNT(*) as count FROM training_records WHERE status = 'completed'").get() as any)?.count || 0;
-      const overdueTraining = (db.prepare("SELECT COUNT(*) as count FROM training_records WHERE status = 'overdue' OR (status = 'scheduled' AND expiry_date < date('now'))").get() as any)?.count || 0;
+      const totalTraining = (db.prepare('SELECT COUNT(*) as count FROM training_records').get() as any).count;
+      const completedTraining = (db.prepare("SELECT COUNT(*) as count FROM training_records WHERE status = 'completed'").get() as any).count;
+      const overdueTraining = (db.prepare("SELECT COUNT(*) as count FROM training_records WHERE status = 'overdue' OR (status = 'scheduled' AND expiry_date < date('now'))").get() as any).count;
 
       res.json({
         hours_trend: hoursTrend,
@@ -3077,7 +2456,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         },
       });
     } catch (error: any) {
-      console.error('Get personnel analytics error:', error?.message || 'Unknown error');
+      console.error('Get personnel analytics error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });

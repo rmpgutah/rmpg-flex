@@ -10,46 +10,6 @@
 
 import { getDb } from '../models/database';
 
-/** Validate a SQL identifier (table/column name) to prevent injection.
- *  Uses an ALLOWLIST approach — only permits characters that are valid in SQL identifiers.
- *  For simple identifiers (table/column names): alphanumeric + underscores only.
- *  For compound expressions (JOINs, SELECT lists): also allows dots, spaces, commas,
- *  parens, *, and quoted identifiers — but still rejects semicolons, comments, and
- *  dangerous statement keywords that should never appear in an identifier context. */
-function assertSafeIdentifier(value: string, label: string): void {
-  if (!value || typeof value !== 'string') {
-    throw new Error(`Empty or invalid ${label}`);
-  }
-
-  // Strip quoted identifiers (e.g. "column_name") for validation — these are safe
-  const stripped = value.replace(/"[^"]+"/g, 'QUOTED');
-
-  // ALLOWLIST: Only permit characters valid in SQL identifier expressions
-  // Letters, digits, underscores, dots, spaces, commas, parens, *, =, <, >, !, single quotes (for values)
-  // This covers: table.column, aliases, JOIN...ON expressions, ORDER BY, SELECT lists
-  const ALLOWED_CHARS = /^[a-zA-Z0-9_.*, ()=<>!|'\-\n\r\t]+$/;
-  if (!ALLOWED_CHARS.test(stripped)) {
-    throw new Error(`Unsafe characters in ${label}: "${value}"`);
-  }
-
-  // DENYLIST (defense-in-depth): reject dangerous SQL statement keywords
-  // even if individual characters pass — prevents multi-statement injection
-  const DANGEROUS_KEYWORDS = /\b(UNION|EXEC|EXECUTE|ATTACH|DETACH|PRAGMA|LOAD_EXTENSION|VACUUM)\b/i;
-  if (DANGEROUS_KEYWORDS.test(stripped)) {
-    throw new Error(`Unsafe SQL keyword in ${label}: "${value}"`);
-  }
-
-  // Block SQL comment sequences
-  if (/--|\/\*|\*\//.test(stripped)) {
-    throw new Error(`SQL comment sequence in ${label}: "${value}"`);
-  }
-
-  // Block semicolons (statement terminators)
-  if (/;/.test(stripped)) {
-    throw new Error(`Statement terminator in ${label}: "${value}"`);
-  }
-}
-
 /**
  * Batch insert rows into a table within a transaction.
  * Returns the number of rows inserted.
@@ -65,11 +25,9 @@ export function batchInsert(
   rows: Record<string, any>[],
 ): number {
   if (rows.length === 0) return 0;
-  assertSafeIdentifier(table, 'table');
 
   const db = getDb();
   const columns = Object.keys(rows[0]);
-  columns.forEach(c => assertSafeIdentifier(c, 'column'));
   const placeholders = columns.map(() => '?').join(', ');
   const sql = `INSERT INTO "${table}" (${columns.map((c) => `"${c}"`).join(', ')}) VALUES (${placeholders})`;
 
@@ -105,8 +63,6 @@ export function batchUpdate(
   idColumn = 'id',
 ): number {
   if (rows.length === 0) return 0;
-  assertSafeIdentifier(table, 'table');
-  assertSafeIdentifier(idColumn, 'idColumn');
 
   const db = getDb();
   let totalAffected = 0;
@@ -143,8 +99,6 @@ export function batchDelete(
   idColumn = 'id',
 ): number {
   if (ids.length === 0) return 0;
-  assertSafeIdentifier(table, 'table');
-  assertSafeIdentifier(idColumn, 'idColumn');
 
   const db = getDb();
   const placeholders = ids.map(() => '?').join(', ');
@@ -187,12 +141,9 @@ export function batchUpsert(
   conflictColumns: string[],
 ): number {
   if (rows.length === 0) return 0;
-  assertSafeIdentifier(table, 'table');
-  conflictColumns.forEach(c => assertSafeIdentifier(c, 'conflictColumn'));
 
   const db = getDb();
   const columns = Object.keys(rows[0]);
-  columns.forEach(c => assertSafeIdentifier(c, 'column'));
   const placeholders = columns.map(() => '?').join(', ');
   const updateCols = columns.filter((c) => !conflictColumns.includes(c));
   const updateSet = updateCols.map((c) => `"${c}" = excluded."${c}"`).join(', ');
@@ -258,15 +209,10 @@ export function paginatedQuery<T = any>(opts: {
     limit = 25,
   } = opts;
 
-  assertSafeIdentifier(table, 'table');
-  assertSafeIdentifier(select, 'select');
-  assertSafeIdentifier(orderBy, 'orderBy');
-
   const whereParts: string[] = [];
   const params: any[] = [];
 
   for (const cond of conditions) {
-    assertSafeIdentifier(cond.column, 'condition.column');
     if (cond.operator === 'IS NULL' || cond.operator === 'IS NOT NULL') {
       whereParts.push(`${cond.column} ${cond.operator}`);
     } else if (cond.operator === 'IN' && Array.isArray(cond.value)) {

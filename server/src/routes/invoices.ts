@@ -8,44 +8,26 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken, requireRole } from '../middleware/auth';
-import { escapeLike, validateParamId, validateStr, validateEnum, requireInt, requireFloat, validateDateStr } from '../middleware/sanitize';
+import { authenticateToken } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
-import { auditLog } from '../utils/auditLogger';
-import { broadcast } from '../utils/websocket';
-import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 router.use(authenticateToken);
 
-// Validate :id params as positive integers
-router.param('id', (req: Request, res: Response, next) => {
-  const raw = String(req.params.id);
-  const n = parseInt(raw, 10);
-  if (isNaN(n) || n < 1 || String(n) !== raw) {
-    res.status(400).json({ error: 'Invalid ID parameter' });
-    return;
-  }
-  next();
-});
-
 // ─── Helper: Generate next invoice number ─────────────────
 function generateInvoiceNumber(): string {
   const db = getDb();
-  const year = parseInt(localToday().slice(0, 4), 10);
+  const year = new Date().getFullYear();
   const prefix = `INV-${year}-`;
-  return db.transaction(() => {
-    const last = db.prepare(
-      "SELECT invoice_number FROM invoices WHERE invoice_number LIKE ? ORDER BY id DESC LIMIT 1"
-    ).get(`${prefix}%`) as any;
-    let seq = 1;
-    if (last) {
-      const parts = last.invoice_number.split('-');
-      const parsed = parts.length >= 3 ? parseInt(parts[2], 10) : NaN;
-      seq = isNaN(parsed) ? 1 : parsed + 1;
-    }
-    return `${prefix}${String(seq).padStart(4, '0')}`;
-  })();
+  const last = db.prepare(
+    "SELECT invoice_number FROM invoices WHERE invoice_number LIKE ? ORDER BY id DESC LIMIT 1"
+  ).get(`${prefix}%`) as any;
+  let seq = 1;
+  if (last) {
+    const parts = last.invoice_number.split('-');
+    seq = parseInt(parts[2], 10) + 1;
+  }
+  return `${prefix}${String(seq).padStart(4, '0')}`;
 }
 
 // ─── Helper: Parse payment terms to days ──────────────────
@@ -58,7 +40,6 @@ function parsePaymentTermsDays(terms?: string): number {
 // ─── Helper: Add days to a date string ────────────────────
 function addDays(dateStr: string, days: number): string {
   const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return dateStr;
   d.setDate(d.getDate() + days);
   return d.toISOString().split('T')[0];
 }
@@ -68,64 +49,60 @@ function recalculateInvoiceTotals(invoiceId: number | string | string[]): void {
   const db = getDb();
   const now = localNow();
 
-  const recalcTx = db.transaction(() => {
-    // Sum line items by type
-    const items = db.prepare(`
-      SELECT line_type, COALESCE(SUM(amount), 0) as total
-      FROM invoice_line_items WHERE invoice_id = ?
-      GROUP BY line_type
-    `).all(invoiceId) as any[];
+  // Sum line items by type
+  const items = db.prepare(`
+    SELECT line_type, COALESCE(SUM(amount), 0) as total
+    FROM invoice_line_items WHERE invoice_id = ?
+    GROUP BY line_type
+  `).all(invoiceId) as any[];
 
-    let subtotal = 0;
-    let discountAmount = 0;
-    let lateFeeAmount = 0;
-    for (const item of items) {
-      if (item.line_type === 'discount') {
-        discountAmount = Math.abs(item.total);
-      } else if (item.line_type === 'late_fee') {
-        lateFeeAmount = item.total;
-      } else {
-        subtotal += item.total;
-      }
+  let subtotal = 0;
+  let discountAmount = 0;
+  let lateFeeAmount = 0;
+  for (const item of items) {
+    if (item.line_type === 'discount') {
+      discountAmount = Math.abs(item.total);
+    } else if (item.line_type === 'late_fee') {
+      lateFeeAmount = item.total;
+    } else {
+      subtotal += item.total;
     }
+  }
 
-    const total = subtotal - discountAmount + lateFeeAmount;
+  const total = subtotal - discountAmount + lateFeeAmount;
 
-    // Sum payments
-    const payResult = db.prepare(
-      'SELECT COALESCE(SUM(amount), 0) as paid FROM payments WHERE invoice_id = ?'
-    ).get(invoiceId) as any;
-    const amountPaid = payResult?.paid ?? 0;
-    const balanceDue = Math.max(0, total - amountPaid);
+  // Sum payments
+  const payResult = db.prepare(
+    'SELECT COALESCE(SUM(amount), 0) as paid FROM payments WHERE invoice_id = ?'
+  ).get(invoiceId) as any;
+  const amountPaid = payResult.paid;
+  const balanceDue = Math.max(0, total - amountPaid);
 
+  db.prepare(`
+    UPDATE invoices
+    SET subtotal = ?, discount_amount = ?, late_fee_amount = ?,
+        total = ?, amount_paid = ?, balance_due = ?, updated_at = ?
+    WHERE id = ?
+  `).run(subtotal, discountAmount, lateFeeAmount, total, amountPaid, balanceDue, now, invoiceId);
+
+  // Update client aggregates
+  const inv = db.prepare('SELECT client_id FROM invoices WHERE id = ?').get(invoiceId) as any;
+  if (inv) {
+    const agg = db.prepare(`
+      SELECT COALESCE(SUM(total), 0) as total_invoiced,
+             COALESCE(SUM(amount_paid), 0) as total_paid,
+             COALESCE(SUM(balance_due), 0) as outstanding
+      FROM invoices WHERE client_id = ? AND status NOT IN ('void','cancelled')
+    `).get(inv.client_id) as any;
     db.prepare(`
-      UPDATE invoices
-      SET subtotal = ?, discount_amount = ?, late_fee_amount = ?,
-          total = ?, amount_paid = ?, balance_due = ?, updated_at = ?
+      UPDATE clients SET total_invoiced = ?, total_paid = ?, outstanding_balance = ?, updated_at = ?
       WHERE id = ?
-    `).run(subtotal, discountAmount, lateFeeAmount, total, amountPaid, balanceDue, now, invoiceId);
-
-    // Update client aggregates
-    const inv = db.prepare('SELECT client_id FROM invoices WHERE id = ?').get(invoiceId) as any;
-    if (inv) {
-      const agg = db.prepare(`
-        SELECT COALESCE(SUM(total), 0) as total_invoiced,
-               COALESCE(SUM(amount_paid), 0) as total_paid,
-               COALESCE(SUM(balance_due), 0) as outstanding
-        FROM invoices WHERE client_id = ? AND status NOT IN ('void','cancelled')
-      `).get(inv.client_id) as any;
-      db.prepare(`
-        UPDATE clients SET total_invoiced = ?, total_paid = ?, outstanding_balance = ?, updated_at = ?
-        WHERE id = ?
-      `).run(agg?.total_invoiced ?? 0, agg?.total_paid ?? 0, agg?.outstanding ?? 0, now, inv.client_id);
-    }
-  });
-
-  recalcTx();
+    `).run(agg.total_invoiced, agg.total_paid, agg.outstanding, now, inv.client_id);
+  }
 }
 
 // ─── GET /api/invoices/stats ──────────────────────────────
-router.get('/stats', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.get('/stats', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { client_id } = req.query;
@@ -166,18 +143,18 @@ router.get('/stats', requireRole('admin', 'manager', 'contract_manager'), (req: 
       },
     });
   } catch (error: any) {
-    console.error('Invoice stats error:', error?.message || 'Unknown error');
+    console.error('Invoice stats error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── GET /api/invoices ────────────────────────────────────
 // List invoices with pagination and filters
-router.get('/', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.get('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 50));
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
     const offset = (page - 1) * limit;
 
     const conditions: string[] = [];
@@ -188,11 +165,8 @@ router.get('/', requireRole('admin', 'manager', 'contract_manager'), (req: Reque
       params.push(req.query.status);
     }
     if (req.query.client_id) {
-      const clientId = parseInt(req.query.client_id as string, 10);
-      if (!isNaN(clientId)) {
-        conditions.push('i.client_id = ?');
-        params.push(clientId);
-      }
+      conditions.push('i.client_id = ?');
+      params.push(req.query.client_id);
     }
     if (req.query.date_from) {
       conditions.push('i.issue_date >= ?');
@@ -203,8 +177,8 @@ router.get('/', requireRole('admin', 'manager', 'contract_manager'), (req: Reque
       params.push(req.query.date_to);
     }
     if (req.query.q) {
-      const q = `%${escapeLike(String(req.query.q))}%`;
-      conditions.push("(i.invoice_number LIKE ? ESCAPE '\\' OR c.name LIKE ? ESCAPE '\\' OR i.notes LIKE ? ESCAPE '\\')");
+      const q = `%${req.query.q}%`;
+      conditions.push('(i.invoice_number LIKE ? OR c.name LIKE ? OR i.notes LIKE ?)');
       params.push(q, q, q);
     }
 
@@ -238,14 +212,14 @@ router.get('/', requireRole('admin', 'manager', 'contract_manager'), (req: Reque
       },
     });
   } catch (error: any) {
-    console.error('Invoice list error:', error?.message || 'Unknown error');
+    console.error('Invoice list error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── GET /api/invoices/:id ────────────────────────────────
 // Full invoice detail with line items and payments
-router.get('/:id', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const invoice = db.prepare(`
@@ -274,30 +248,23 @@ router.get('/:id', validateParamId, requireRole('admin', 'manager', 'contract_ma
 
     res.json({ data: { ...invoice, line_items, payments } });
   } catch (error: any) {
-    console.error('Invoice detail error:', error?.message || 'Unknown error');
+    console.error('Invoice detail error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── POST /api/invoices ───────────────────────────────────
 // Create a new invoice
-router.post('/', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.post('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
     const now = localNow();
     const { client_id, period_start, period_end, issue_date, notes, internal_notes } = req.body;
 
-    // ── Validate invoice inputs ──
-    const validClientId = requireInt(client_id, 'client_id');
-    if (!validClientId) return res.status(400).json({ error: 'client_id is required' });
-    const validPeriodStart = validateDateStr(period_start, 'period_start');
-    if (!validPeriodStart) return res.status(400).json({ error: 'period_start is required (YYYY-MM-DD)' });
-    const validPeriodEnd = validateDateStr(period_end, 'period_end');
-    if (!validPeriodEnd) return res.status(400).json({ error: 'period_end is required (YYYY-MM-DD)' });
-    if (issue_date) validateDateStr(issue_date, 'issue_date');
-    validateStr(notes, 'notes', 5000);
-    validateStr(internal_notes, 'internal_notes', 5000);
+    if (!client_id || !period_start || !period_end) {
+      return res.status(400).json({ error: 'client_id, period_start, and period_end are required' });
+    }
 
     // Get client for billing snapshot
     const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(client_id) as any;
@@ -326,26 +293,20 @@ router.post('/', requireRole('admin', 'manager', 'contract_manager'), (req: Requ
 
     // Activity log
     db.prepare(
-      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(user.userId, 'invoice_created', 'invoice', Number(result.lastInsertRowid), `Created invoice ${invoice_number} for client ${client.name}`, req.ip || 'unknown', now);
+      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(user.userId, 'invoice_created', 'invoice', result.lastInsertRowid, `Created invoice ${invoice_number} for client ${client.name}`, now);
 
-    auditLog(req, 'CREATE', 'invoice', Number(result.lastInsertRowid), `Created invoice ${invoice_number} for client ${client.name}`);
-    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(Number(result.lastInsertRowid));
-    if (!invoice) { res.status(500).json({ error: 'Failed to retrieve created invoice' }); return; }
-    broadcast('admin', 'invoice:created', invoice);
+    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json({ data: invoice });
   } catch (error: any) {
-    if (error.message?.startsWith('Invalid ') || error.message?.includes('must be')) {
-      res.status(400).json({ error: error.message }); return;
-    }
-    console.error('Invoice create error:', error?.message || 'Unknown error');
+    console.error('Invoice create error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── POST /api/invoices/:id/generate ──────────────────────
 // Auto-generate line items from billing period
-router.post('/:id/generate', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.post('/:id/generate', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -400,7 +361,7 @@ router.post('/:id/generate', validateParamId, requireRole('admin', 'manager', 'c
 
         const rate = client.rate_per_hour || 0;
         for (const h of hours) {
-          const hrs = Number.isFinite(Number(h.total_hours)) ? Number(h.total_hours) : 0;
+          const hrs = h.total_hours || 0;
           const amt = Math.round(hrs * rate * 100) / 100;
           const desc = `Service hours — ${h.officer_name || 'Officer'} at ${h.property_name || 'Property'} (${String(h.clock_in).substring(0, 10)}) — ${hrs.toFixed(2)} hrs`;
           insertItem.run(invoice.id, 'service_hours', desc, hrs, rate, amt, 'time_entry', h.id, sortOrder++, now);
@@ -523,7 +484,7 @@ router.post('/:id/generate', validateParamId, requireRole('admin', 'manager', 'c
           `).all(...citParams) as any[];
 
           for (const cit of citations) {
-            const amt = cit.fine_amount ?? 0;
+            const amt = cit.fine_amount || 0;
             const desc = `Citation ${cit.citation_number} — ${cit.violation_description || 'Violation'}`;
             insertItem.run(invoice.id, 'citation', desc, 1, amt, amt, 'citation', cit.id, sortOrder++, now);
             items.push({ type: 'citation', amount: amt });
@@ -534,7 +495,7 @@ router.post('/:id/generate', validateParamId, requireRole('admin', 'manager', 'c
       // 6. Apply discount
       if (client.discount_percent && client.discount_percent > 0) {
         // Calculate subtotal of non-discount items so far
-        const sub = items.reduce((s, i) => s + (i.amount ?? 0), 0);
+        const sub = items.reduce((s, i) => s + (i.amount || 0), 0);
         const discountAmt = -Math.round(sub * client.discount_percent / 100 * 100) / 100;
         const desc = `Client discount (${client.discount_percent}%)`;
         insertItem.run(invoice.id, 'discount', desc, 1, discountAmt, discountAmt, null, null, sortOrder++, now);
@@ -556,17 +517,16 @@ router.post('/:id/generate', validateParamId, requireRole('admin', 'manager', 'c
       'SELECT * FROM invoice_line_items WHERE invoice_id = ? ORDER BY sort_order, id'
     ).all(invoice.id);
 
-    auditLog(req, 'UPDATE', 'invoice', req.params.id, `Auto-generated ${count} line items for invoice ${invoice.invoice_number}`);
     res.json({ data: { ...updated, line_items }, generated: count });
   } catch (error: any) {
-    console.error('Invoice generate error:', error?.message || 'Unknown error');
+    console.error('Invoice generate error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── PUT /api/invoices/:id ────────────────────────────────
 // Update invoice fields
-router.put('/:id', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -608,32 +568,28 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'contract_ma
     }
 
     db.prepare(
-      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(user.userId, 'invoice_updated', 'invoice', req.params.id, `Updated invoice ${invoice.invoice_number}`, req.ip || 'unknown', now);
+      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(user.userId, 'invoice_updated', 'invoice', req.params.id, `Updated invoice ${invoice.invoice_number}`, now);
 
-    auditLog(req, 'UPDATE', 'invoice', req.params.id, `Updated invoice ${invoice.invoice_number}`);
     const updated = db.prepare(`
       SELECT i.*, c.name as client_name FROM invoices i
       LEFT JOIN clients c ON i.client_id = c.id WHERE i.id = ?
     `).get(req.params.id);
-    broadcast('admin', 'invoice:updated', updated);
     res.json({ data: updated });
   } catch (error: any) {
-    console.error('Invoice update error:', error?.message || 'Unknown error');
+    console.error('Invoice update error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── PUT /api/invoices/:id/status ─────────────────────────
 // Status transition with validation
-router.put('/:id/status', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/:id/status', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
     const now = localNow();
     const { status } = req.body;
-    const INVOICE_STATUSES = ['draft', 'sent', 'paid', 'partial', 'overdue', 'void', 'cancelled'] as const;
-    try { validateEnum(status, INVOICE_STATUSES, 'status'); } catch (e: any) { res.status(400).json({ error: e.message }); return; }
 
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
@@ -676,22 +632,20 @@ router.put('/:id/status', validateParamId, requireRole('admin', 'manager'), (req
     recalculateInvoiceTotals(req.params.id);
 
     db.prepare(
-      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(user.userId, 'invoice_status_changed', 'invoice', req.params.id, `Status: ${invoice.status} → ${status}`, req.ip || 'unknown', now);
+      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(user.userId, 'invoice_status_changed', 'invoice', req.params.id, `Status: ${invoice.status} → ${status}`, now);
 
-    auditLog(req, 'UPDATE', 'invoice', req.params.id, `Invoice status changed from ${invoice.status} to ${status}`);
     const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
-    broadcast('admin', 'invoice:updated', updated);
     res.json({ data: updated });
   } catch (error: any) {
-    console.error('Invoice status error:', error?.message || 'Unknown error');
+    console.error('Invoice status error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── POST /api/invoices/:id/line-items ────────────────────
 // Add a line item
-router.post('/:id/line-items', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.post('/:id/line-items', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -699,20 +653,12 @@ router.post('/:id/line-items', validateParamId, requireRole('admin', 'manager', 
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
 
     const { line_type, description, quantity, unit_price, linked_entity_type, linked_entity_id } = req.body;
+    if (!line_type || !description) {
+      return res.status(400).json({ error: 'line_type and description are required' });
+    }
 
-    // ── Validate line item inputs ──
-    const LINE_TYPES = ['contract_base', 'service_hours', 'dispatch_call', 'incident_response', 'citation', 'discount', 'late_fee', 'custom', 'adjustment'] as const;
-    const validLineType = validateEnum(line_type, LINE_TYPES, 'line_type');
-    if (!validLineType) return res.status(400).json({ error: 'line_type is required' });
-    const validDesc = validateStr(description, 'description', 1000);
-    if (!validDesc) return res.status(400).json({ error: 'description is required' });
-    const validQty = requireFloat(quantity, 'quantity', -99999, 99999) ?? 1;
-    const validPrice = requireFloat(unit_price, 'unit_price', -100_000_000, 100_000_000) ?? 0;
-    if (linked_entity_id) requireInt(linked_entity_id, 'linked_entity_id');
-    if (linked_entity_type) validateStr(linked_entity_type, 'linked_entity_type', 50);
-
-    const qty = validQty;
-    const price = validPrice;
+    const qty = quantity || 1;
+    const price = unit_price || 0;
     const amount = Math.round(qty * price * 100) / 100;
 
     // Get max sort order
@@ -727,30 +673,24 @@ router.post('/:id/line-items', validateParamId, requireRole('admin', 'manager', 
 
     recalculateInvoiceTotals(req.params.id);
 
-    auditLog(req, 'CREATE', 'invoice_line_item', Number(result.lastInsertRowid), `Added line item to invoice ${req.params.id}: ${description}`);
-    const item = db.prepare('SELECT * FROM invoice_line_items WHERE id = ?').get(Number(result.lastInsertRowid));
-    res.status(201).json({ data: item || { id: Number(result.lastInsertRowid) } });
+    const item = db.prepare('SELECT * FROM invoice_line_items WHERE id = ?').get(result.lastInsertRowid);
+    res.status(201).json({ data: item });
   } catch (error: any) {
-    if (error.message?.startsWith('Invalid ') || error.message?.includes('must be')) {
-      res.status(400).json({ error: error.message }); return;
-    }
-    console.error('Add line item error:', error?.message || 'Unknown error');
+    console.error('Add line item error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── PUT /api/invoices/:id/line-items/:itemId ─────────────
 // Update a line item
-router.put('/:id/line-items/:itemId', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/:id/line-items/:itemId', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
-    const itemId = parseInt(String(req.params.itemId), 10);
-    if (isNaN(itemId)) { res.status(400).json({ error: 'Invalid item ID' }); return; }
 
     const item = db.prepare(
       'SELECT * FROM invoice_line_items WHERE id = ? AND invoice_id = ?'
-    ).get(itemId, req.params.id) as any;
+    ).get(req.params.itemId, req.params.id) as any;
     if (!item) return res.status(404).json({ error: 'Line item not found' });
 
     const { description, quantity, unit_price, sort_order } = req.body;
@@ -771,17 +711,16 @@ router.put('/:id/line-items/:itemId', validateParamId, requireRole('admin', 'man
 
     recalculateInvoiceTotals(req.params.id);
 
-    auditLog(req, 'UPDATE', 'invoice_line_item', req.params.itemId, `Updated line item ${req.params.itemId} on invoice ${req.params.id}`);
     const updated = db.prepare('SELECT * FROM invoice_line_items WHERE id = ?').get(req.params.itemId);
     res.json({ data: updated });
   } catch (error: any) {
-    console.error('Update line item error:', error?.message || 'Unknown error');
+    console.error('Update line item error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── DELETE /api/invoices/:id/line-items/:itemId ──────────
-router.delete('/:id/line-items/:itemId', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id/line-items/:itemId', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const item = db.prepare(
@@ -791,17 +730,16 @@ router.delete('/:id/line-items/:itemId', validateParamId, requireRole('admin', '
 
     db.prepare('DELETE FROM invoice_line_items WHERE id = ?').run(req.params.itemId);
     recalculateInvoiceTotals(req.params.id);
-    auditLog(req, 'DELETE', 'invoice_line_item', req.params.itemId, `Deleted line item ${req.params.itemId} from invoice ${req.params.id}`);
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Delete line item error:', error?.message || 'Unknown error');
+    console.error('Delete line item error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── POST /api/invoices/:id/payments ──────────────────────
 // Record a payment
-router.post('/:id/payments', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/:id/payments', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -811,58 +749,45 @@ router.post('/:id/payments', validateParamId, requireRole('admin', 'manager'), (
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
 
     const { amount, payment_date, payment_method, reference_number, notes } = req.body;
-
-    // ── Validate payment inputs ──
-    const PAYMENT_METHODS = ['check', 'ach', 'wire', 'credit_card', 'cash', 'other'] as const;
-    const validAmount = requireFloat(amount, 'amount', 0.01, 100_000_000);
-    if (validAmount == null) return res.status(400).json({ error: 'amount is required (positive number)' });
-    const validPayDate = validateDateStr(payment_date, 'payment_date');
-    if (!validPayDate) return res.status(400).json({ error: 'payment_date is required (YYYY-MM-DD)' });
-    if (payment_method) validateEnum(payment_method, PAYMENT_METHODS, 'payment_method');
-    validateStr(reference_number, 'reference_number', 100);
-    validateStr(notes, 'notes', 2000);
+    if (!amount || !payment_date) {
+      return res.status(400).json({ error: 'amount and payment_date are required' });
+    }
 
     const result = db.prepare(`
       INSERT INTO payments (invoice_id, amount, payment_date, payment_method, reference_number, notes, recorded_by, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(req.params.id, validAmount, validPayDate, payment_method || null, reference_number || null, notes || null, user.userId, now);
+    `).run(req.params.id, amount, payment_date, payment_method || null, reference_number || null, notes || null, user.userId, now);
 
     // Recalculate totals
     recalculateInvoiceTotals(req.params.id);
 
     // Auto-transition status
     const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
-    if (updated) {
-      if (updated.balance_due <= 0 && updated.status !== 'paid') {
-        db.prepare("UPDATE invoices SET status = 'paid', paid_date = ?, updated_at = ? WHERE id = ?").run(localToday(), now, req.params.id);
-      } else if (updated.amount_paid > 0 && updated.balance_due > 0 && updated.status === 'sent') {
-        db.prepare("UPDATE invoices SET status = 'partial', updated_at = ? WHERE id = ?").run(now, req.params.id);
-      }
+    if (updated.balance_due <= 0 && updated.status !== 'paid') {
+      db.prepare("UPDATE invoices SET status = 'paid', paid_date = ?, updated_at = ? WHERE id = ?").run(localToday(), now, req.params.id);
+    } else if (updated.amount_paid > 0 && updated.balance_due > 0 && updated.status === 'sent') {
+      db.prepare("UPDATE invoices SET status = 'partial', updated_at = ? WHERE id = ?").run(now, req.params.id);
     }
 
     db.prepare(
-      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(user.userId, 'payment_recorded', 'invoice', req.params.id, `Payment of $${amount} recorded on invoice ${invoice.invoice_number}`, req.ip || 'unknown', now);
+      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(user.userId, 'payment_recorded', 'invoice', req.params.id, `Payment of $${amount} recorded on invoice ${invoice.invoice_number}`, now);
 
-    auditLog(req, 'CREATE', 'payment', Number(result.lastInsertRowid), `Recorded payment of $${amount} on invoice ${invoice.invoice_number}`);
     const payment = db.prepare(`
       SELECT p.*, u.full_name as recorded_by_name
       FROM payments p LEFT JOIN users u ON p.recorded_by = u.id
       WHERE p.id = ?
-    `).get(Number(result.lastInsertRowid));
-    res.status(201).json({ data: payment || { id: Number(result.lastInsertRowid) } });
+    `).get(result.lastInsertRowid);
+    res.status(201).json({ data: payment });
   } catch (error: any) {
-    if (error.message?.startsWith('Invalid ') || error.message?.includes('must be')) {
-      res.status(400).json({ error: error.message }); return;
-    }
-    console.error('Record payment error:', error?.message || 'Unknown error');
+    console.error('Record payment error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── DELETE /api/invoices/:id/payments/:paymentId ─────────
 // Reverse a payment
-router.delete('/:id/payments/:paymentId', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id/payments/:paymentId', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -878,29 +803,26 @@ router.delete('/:id/payments/:paymentId', validateParamId, requireRole('admin', 
 
     // May need to revert status from paid/partial back to sent
     const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
-    if (updated) {
-      if (updated.amount_paid <= 0 && (updated.status === 'paid' || updated.status === 'partial')) {
-        db.prepare("UPDATE invoices SET status = 'sent', paid_date = NULL, updated_at = ? WHERE id = ?").run(now, req.params.id);
-      } else if (updated.balance_due > 0 && updated.status === 'paid') {
-        db.prepare("UPDATE invoices SET status = 'partial', paid_date = NULL, updated_at = ? WHERE id = ?").run(now, req.params.id);
-      }
+    if (updated.amount_paid <= 0 && (updated.status === 'paid' || updated.status === 'partial')) {
+      db.prepare("UPDATE invoices SET status = 'sent', paid_date = NULL, updated_at = ? WHERE id = ?").run(now, req.params.id);
+    } else if (updated.balance_due > 0 && updated.status === 'paid') {
+      db.prepare("UPDATE invoices SET status = 'partial', paid_date = NULL, updated_at = ? WHERE id = ?").run(now, req.params.id);
     }
 
     db.prepare(
-      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(user.userId, 'payment_reversed', 'invoice', req.params.id, `Payment of $${payment.amount} reversed on invoice ${updated.invoice_number}`, req.ip || 'unknown', now);
+      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(user.userId, 'payment_reversed', 'invoice', req.params.id, `Payment of $${payment.amount} reversed on invoice ${updated.invoice_number}`, now);
 
-    auditLog(req, 'DELETE', 'payment', req.params.paymentId, `Reversed payment of $${payment.amount} on invoice ${updated.invoice_number}`);
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Delete payment error:', error?.message || 'Unknown error');
+    console.error('Delete payment error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── GET /api/invoices/:id/pdf-data ───────────────────────
 // Return all data needed for client-side PDF generation
-router.get('/:id/pdf-data', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.get('/:id/pdf-data', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const invoice = db.prepare(`
@@ -931,7 +853,7 @@ router.get('/:id/pdf-data', validateParamId, requireRole('admin', 'manager', 'co
       },
     });
   } catch (error: any) {
-    console.error('Invoice PDF data error:', error?.message || 'Unknown error');
+    console.error('Invoice PDF data error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -939,7 +861,7 @@ router.get('/:id/pdf-data', validateParamId, requireRole('admin', 'manager', 'co
 // ─── GET /api/invoices/:id/person-chain ─────────────────
 // Get Person ↔ Client ↔ Incident traceability data for this invoice
 // Shows all persons linked to the client, and their involvement in invoiced incidents
-router.get('/:id/person-chain', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.get('/:id/person-chain', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
@@ -1013,47 +935,8 @@ router.get('/:id/person-chain', validateParamId, requireRole('admin', 'manager',
       },
     });
   } catch (error: any) {
-    console.error('Invoice person-chain error:', error?.message || 'Unknown error');
+    console.error('Invoice person-chain error:', error);
     res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ─── CSV EXPORT ──────────────────────────────────────────
-
-// GET /api/invoices/export/csv — Export invoices
-router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const rows = db.prepare(`
-      SELECT i.id, i.invoice_number, i.status, i.issue_date, i.due_date, i.paid_date,
-        i.subtotal, i.discount_amount, i.late_fee_amount, i.total,
-        i.amount_paid, i.balance_due, i.payment_terms, i.notes,
-        i.created_at, i.updated_at,
-        c.name as client_name
-      FROM invoices i
-      LEFT JOIN clients c ON c.id = i.client_id
-      ORDER BY i.created_at DESC LIMIT 10000
-    `).all();
-    sendCsv(res, 'invoices_export.csv', [
-      { key: 'id', header: 'ID' },
-      { key: 'invoice_number', header: 'Invoice Number' },
-      { key: 'client_name', header: 'Client' },
-      { key: 'status', header: 'Status' },
-      { key: 'issue_date', header: 'Issue Date' },
-      { key: 'due_date', header: 'Due Date' },
-      { key: 'paid_date', header: 'Paid Date' },
-      { key: 'subtotal', header: 'Subtotal' },
-      { key: 'discount_amount', header: 'Discount' },
-      { key: 'late_fee_amount', header: 'Late Fee' },
-      { key: 'total', header: 'Total' },
-      { key: 'amount_paid', header: 'Amount Paid' },
-      { key: 'balance_due', header: 'Balance Due' },
-      { key: 'payment_terms', header: 'Payment Terms' },
-      { key: 'notes', header: 'Notes' },
-      { key: 'created_at', header: 'Created At' },
-    ], rows);
-  } catch (error: any) {
-    res.status(500).json({ error: 'Export failed' });
   }
 });
 

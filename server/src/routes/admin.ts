@@ -1,27 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
-import { createSecurityNotification, parseDeviceName } from '../utils/deviceFingerprint';
-import { sendNotificationEmail } from '../utils/emailSender';
-import { auditLog } from '../utils/auditLogger';
-import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 
 router.use(authenticateToken);
 router.use(requireRole('admin', 'manager'));
-// Validate all :id parameters as positive integers to prevent malformed input
-router.param('id', (req: Request, res: Response, next: Function) => {
-  const raw = String(req.params.id);
-  const n = parseInt(raw, 10);
-  if (isNaN(n) || n < 1 || String(n) !== raw) {
-    res.status(400).json({ error: 'Invalid ID parameter' });
-    return;
-  }
-  next();
-});
 
 // GET /api/admin/clients - List all clients
 router.get('/clients', (req: Request, res: Response) => {
@@ -36,7 +21,7 @@ router.get('/clients', (req: Request, res: Response) => {
 
     res.json(clients);
   } catch (error: any) {
-    console.error('Get clients error:', error?.message || 'Unknown error');
+    console.error('Get clients error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -55,7 +40,7 @@ router.get('/clients/:id', (req: Request, res: Response) => {
 
     res.json({ ...client, properties });
   } catch (error: any) {
-    console.error('Get client error:', error?.message || 'Unknown error');
+    console.error('Get client error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -74,27 +59,9 @@ router.post('/clients', (req: Request, res: Response) => {
       account_manager, priority_client, client_since,
     } = req.body;
 
-    if (!name || typeof name !== 'string' || !name.trim()) {
+    if (!name) {
       res.status(400).json({ error: 'name is required' });
       return;
-    }
-    if (contact_email && typeof contact_email === 'string' && contact_email.length > 320) {
-      res.status(400).json({ error: 'contact_email exceeds maximum length' });
-      return;
-    }
-    if (sla_response_minutes !== undefined && sla_response_minutes !== null) {
-      const sla = parseInt(String(sla_response_minutes), 10);
-      if (isNaN(sla) || sla < 0 || sla > 10080) {
-        res.status(400).json({ error: 'sla_response_minutes must be 0-10080' });
-        return;
-      }
-    }
-    if (contract_value !== undefined && contract_value !== null) {
-      const cv = parseFloat(String(contract_value));
-      if (isNaN(cv) || cv < 0) {
-        res.status(400).json({ error: 'contract_value must be a non-negative number' });
-        return;
-      }
     }
 
     const result = db.prepare(`
@@ -110,26 +77,25 @@ router.post('/clients', (req: Request, res: Response) => {
     `).run(
       name, contact_name || null, contact_email || null, contact_phone || null,
       address || null, contract_start || null, contract_end || null,
-      sla_response_minutes ?? null, notes || null,
+      sla_response_minutes || null, notes || null,
       billing_email || null, billing_address || null, contract_type || null,
-      contract_value ?? null, payment_terms || null, auto_renew ? 1 : 0,
+      contract_value || null, payment_terms || null, auto_renew ? 1 : 0,
       client_code || null, industry || null, website || null, tax_id || null,
-      payment_method || null, billing_cycle || null, billing_day ?? null,
-      discount_percent ?? null, late_fee_percent ?? null,
+      payment_method || null, billing_cycle || null, billing_day || null,
+      discount_percent || null, late_fee_percent || null,
       account_manager || null, priority_client ? 1 : 0, client_since || null,
     );
 
-    const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(Number(result.lastInsertRowid));
-    if (!client) { res.status(500).json({ error: 'Failed to retrieve created client' }); return; }
+    const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(result.lastInsertRowid);
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'client_created', 'client', ?, ?, ?)
-    `).run(req.user!.userId, Number(result.lastInsertRowid), `Created client: ${name}`, req.ip || 'unknown');
+    `).run(req.user!.userId, result.lastInsertRowid, `Created client: ${name}`, req.ip || 'unknown');
 
     res.status(201).json(client);
   } catch (error: any) {
-    console.error('Create client error:', error?.message || 'Unknown error');
+    console.error('Create client error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -200,7 +166,7 @@ router.put('/clients/:id', (req: Request, res: Response) => {
     const updated = db.prepare('SELECT * FROM clients WHERE id = ?').get(req.params.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Update client error:', error?.message || 'Unknown error');
+    console.error('Update client error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -217,9 +183,8 @@ router.delete('/clients/:id', (req: Request, res: Response) => {
 
     // Check for associated properties
     const propCount = db.prepare('SELECT COUNT(*) as count FROM properties WHERE client_id = ?').get(client.id) as any;
-    const propCountVal = propCount?.count ?? 0;
-    if (propCountVal > 0) {
-      res.status(400).json({ error: `Cannot delete client with ${propCountVal} associated properties` });
+    if (propCount.count > 0) {
+      res.status(400).json({ error: `Cannot delete client with ${propCount.count} associated properties` });
       return;
     }
 
@@ -232,7 +197,7 @@ router.delete('/clients/:id', (req: Request, res: Response) => {
 
     res.json({ message: 'Client deleted' });
   } catch (error: any) {
-    console.error('Delete client error:', error?.message || 'Unknown error');
+    console.error('Delete client error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -255,7 +220,7 @@ router.post('/clients/:id/archive', (req: Request, res: Response) => {
     const updated = db.prepare('SELECT * FROM clients WHERE id = ?').get(client.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Archive client error:', error?.message || 'Unknown error');
+    console.error('Archive client error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -277,7 +242,7 @@ router.post('/clients/:id/unarchive', (req: Request, res: Response) => {
     const updated = db.prepare('SELECT * FROM clients WHERE id = ?').get(client.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Unarchive client error:', error?.message || 'Unknown error');
+    console.error('Unarchive client error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -298,7 +263,7 @@ router.get('/call-templates', (req: Request, res: Response) => {
     `).all();
     res.json(templates);
   } catch (error: any) {
-    console.error('Get call templates error:', error?.message || 'Unknown error');
+    console.error('Get call templates error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -326,16 +291,16 @@ router.post('/call-templates', (req: Request, res: Response) => {
       sortOrder, req.user!.userId,
     );
 
-    const template = db.prepare('SELECT * FROM call_templates WHERE id = ?').get(Number(result.lastInsertRowid)) || { id: Number(result.lastInsertRowid) };
+    const template = db.prepare('SELECT * FROM call_templates WHERE id = ?').get(result.lastInsertRowid);
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'template_created', 'call_template', ?, ?, ?)
-    `).run(req.user!.userId, Number(result.lastInsertRowid), `Created call template: ${name}`, req.ip || 'unknown');
+    `).run(req.user!.userId, result.lastInsertRowid, `Created call template: ${name}`, req.ip || 'unknown');
 
     res.status(201).json(template);
   } catch (error: any) {
-    console.error('Create call template error:', error?.message || 'Unknown error');
+    console.error('Create call template error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -366,12 +331,10 @@ router.put('/call-templates/:id', (req: Request, res: Response) => {
       db.prepare(`UPDATE call_templates SET ${tmplSet.join(', ')} WHERE id = ?`).run(...tmplVals);
     }
 
-    auditLog(req, 'UPDATE', 'config', Number(req.params.id), `Updated call template: ${existing.name}`);
-
     const updated = db.prepare('SELECT * FROM call_templates WHERE id = ?').get(req.params.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Update call template error:', error?.message || 'Unknown error');
+    console.error('Update call template error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -395,7 +358,7 @@ router.delete('/call-templates/:id', (req: Request, res: Response) => {
 
     res.json({ message: 'Call template removed' });
   } catch (error: any) {
-    console.error('Delete call template error:', error?.message || 'Unknown error');
+    console.error('Delete call template error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -410,25 +373,9 @@ router.put('/system-settings', (req: Request, res: Response) => {
     const db = getDb();
     const settings = req.body as Record<string, string>;
 
-    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+    if (!settings || typeof settings !== 'object') {
       res.status(400).json({ error: 'Request body must be an object of key-value pairs' });
       return;
-    }
-    const settingsKeys = Object.keys(settings);
-    if (settingsKeys.length > 100) {
-      res.status(400).json({ error: 'Too many settings (max 100)' });
-      return;
-    }
-    // Validate all keys are safe identifiers and values are strings
-    for (const [key, value] of Object.entries(settings)) {
-      if (typeof key !== 'string' || key.length > 200 || !/^[a-zA-Z0-9_.\-]+$/.test(key)) {
-        res.status(400).json({ error: `Invalid settings key: ${String(key).slice(0, 50)}` });
-        return;
-      }
-      if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
-        res.status(400).json({ error: `Invalid value type for key: ${key}` });
-        return;
-      }
     }
 
     const now = localNow();
@@ -470,7 +417,7 @@ router.put('/system-settings', (req: Request, res: Response) => {
 
     res.json(all);
   } catch (error: any) {
-    console.error('Update system settings error:', error?.message || 'Unknown error');
+    console.error('Update system settings error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -493,7 +440,7 @@ router.get('/clients/:id/incidents', (req: Request, res: Response) => {
     `).all(clientId, clientId);
     res.json(incidents);
   } catch (error: any) {
-    console.error('Client incidents error:', error?.message || 'Unknown error');
+    console.error('Client incidents error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -515,7 +462,7 @@ router.get('/clients/:id/calls', (req: Request, res: Response) => {
     `).all(clientId, clientId);
     res.json(calls);
   } catch (error: any) {
-    console.error('Client calls error:', error?.message || 'Unknown error');
+    console.error('Client calls error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -576,7 +523,7 @@ router.get('/clients/:id/billing', (req: Request, res: Response) => {
       overdue_count: invoiceSummary?.overdue_count || 0,
     });
   } catch (error: any) {
-    console.error('Client billing error:', error?.message || 'Unknown error');
+    console.error('Client billing error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -597,7 +544,7 @@ router.get('/sessions', requireRole('admin', 'manager'), (req: Request, res: Res
     `).all();
     res.json(sessions);
   } catch (error: any) {
-    console.error('Admin get sessions error:', error?.message || 'Unknown error');
+    console.error('Admin get sessions error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -606,10 +553,9 @@ router.delete('/sessions/:id', requireRole('admin', 'manager'), (req: Request, r
   try {
     const db = getDb();
     db.prepare('UPDATE sessions SET is_active = 0 WHERE id = ?').run(req.params.id);
-    auditLog(req, 'DELETE', 'user', Number(req.params.id), `Revoked session #${req.params.id}`);
     res.json({ message: 'Session revoked' });
   } catch (error: any) {
-    console.error('Admin revoke session error:', error?.message || 'Unknown error');
+    console.error('Admin revoke session error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -640,7 +586,7 @@ router.get('/radio-channels', (req: Request, res: Response) => {
 
     res.json(channels);
   } catch (error: any) {
-    console.error('Admin get radio channels error:', error?.message || 'Unknown error');
+    console.error('Admin get radio channels error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -653,15 +599,6 @@ router.post('/radio-channels', (req: Request, res: Response) => {
 
     if (!id || !label) {
       res.status(400).json({ error: 'id and label are required' });
-      return;
-    }
-    // Validate radio channel ID format (alphanumeric + hyphens, max 50 chars)
-    if (typeof id !== 'string' || id.length > 50 || !/^[a-zA-Z0-9_\-]+$/.test(id)) {
-      res.status(400).json({ error: 'id must be alphanumeric with hyphens/underscores, max 50 characters' });
-      return;
-    }
-    if (typeof label !== 'string' || label.length > 100) {
-      res.status(400).json({ error: 'label must be a string, max 100 characters' });
       return;
     }
 
@@ -693,7 +630,7 @@ router.post('/radio-channels', (req: Request, res: Response) => {
 
     res.status(201).json({ id, label, freq: freq || '0.000', sort_order: sortOrder, is_active: true });
   } catch (error: any) {
-    console.error('Admin create radio channel error:', error?.message || 'Unknown error');
+    console.error('Admin create radio channel error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -729,13 +666,8 @@ router.put('/radio-channels/:key', (req: Request, res: Response) => {
       vals.push(is_active ? 1 : 0);
     }
     if (sort_order !== undefined) {
-      const so = parseInt(String(sort_order), 10);
-      if (isNaN(so) || so < 0 || so > 10000) {
-        res.status(400).json({ error: 'sort_order must be an integer 0-10000' });
-        return;
-      }
       sets.push('sort_order = ?');
-      vals.push(so);
+      vals.push(sort_order);
     }
 
     vals.push(key);
@@ -749,7 +681,7 @@ router.put('/radio-channels/:key', (req: Request, res: Response) => {
 
     res.json({ id: key, label: meta.label, freq: meta.freq, is_active: is_active !== undefined ? !!is_active : true, sort_order });
   } catch (error: any) {
-    console.error('Admin update radio channel error:', error?.message || 'Unknown error');
+    console.error('Admin update radio channel error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -776,7 +708,7 @@ router.delete('/radio-channels/:key', (req: Request, res: Response) => {
 
     res.json({ message: 'Radio channel deleted' });
   } catch (error: any) {
-    console.error('Admin delete radio channel error:', error?.message || 'Unknown error');
+    console.error('Admin delete radio channel error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -816,7 +748,7 @@ router.post('/radio-channels/seed', (req: Request, res: Response) => {
 
     res.json({ message: 'Seeded default radio channels', seeded: true, count: defaults.length });
   } catch (error: any) {
-    console.error('Admin seed radio channels error:', error?.message || 'Unknown error');
+    console.error('Admin seed radio channels error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -873,471 +805,78 @@ router.get('/account-stats', (req: Request, res: Response) => {
       neverLoggedIn,
     });
   } catch (error: any) {
-    console.error('Admin account stats error:', error?.message || 'Unknown error');
+    console.error('Admin account stats error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// ═══════════════════════════════════════════════════════
-// POST /api/admin/users/:id/reset-2fa — Admin resets user's 2FA
-// ═══════════════════════════════════════════════════════
-router.post('/users/:id/reset-2fa', requireRole('admin'), (req: Request, res: Response) => {
+// ─── DELETE /api/admin/users/:id/totp ────────────────
+// Admin can reset a user's 2FA (e.g., lost authenticator)
+router.delete('/users/:id/totp', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const targetId = parseInt(req.params.id as string, 10);
+    const targetId = parseInt(req.params.id, 10);
     if (isNaN(targetId)) {
       res.status(400).json({ error: 'Invalid user ID' });
       return;
     }
 
-    const user = db.prepare('SELECT id, username, full_name FROM users WHERE id = ?').get(targetId) as any;
-    if (!user) {
+    const target = db.prepare('SELECT id, username, totp_enabled FROM users WHERE id = ?')
+      .get(targetId) as any;
+    if (!target) {
       res.status(404).json({ error: 'User not found' });
       return;
     }
 
-    const reqIp = req.ip || 'unknown';
-    const reqUserAgent = req.headers['user-agent'] || 'unknown';
+    db.prepare(`
+      UPDATE users SET totp_enabled = 0, totp_secret_enc = NULL, totp_backup_codes = NULL,
+        totp_pending_secret = NULL, updated_at = datetime('now','localtime') WHERE id = ?
+    `).run(targetId);
 
-    // Delete TOTP secret and backup codes
-    db.prepare('DELETE FROM user_totp_secrets WHERE user_id = ?').run(targetId);
-    db.prepare('DELETE FROM user_backup_codes WHERE user_id = ?').run(targetId);
-    db.prepare('DELETE FROM trusted_devices WHERE user_id = ?').run(targetId);
-    db.prepare('UPDATE users SET totp_enabled = 0, totp_setup_required = 1, updated_at = ? WHERE id = ?')
-      .run(localNow(), targetId);
-
-    // Also clear legacy TOTP columns if they exist
-    try {
-      db.prepare(`
-        UPDATE users SET totp_secret_enc = NULL, totp_backup_codes = NULL,
-          totp_pending_secret = NULL WHERE id = ?
-      `).run(targetId);
-    } catch { /* legacy columns may not exist */ }
-
-    // Log
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, '2fa_reset', 'user', ?, ?, ?)
-    `).run(req.user!.userId, targetId, `Admin reset 2FA for ${user.username}`, reqIp);
+      VALUES (?, 'admin_reset_totp', 'user', ?, ?, ?)
+    `).run(req.user!.userId, targetId, `Admin reset 2FA for ${target.username}`, req.ip || 'unknown');
 
-    createSecurityNotification(
-      targetId,
-      '2fa_reset',
-      'Two-factor authentication reset',
-      `Your 2FA was reset by an administrator. You will need to set it up again on next login.`,
-      reqIp,
-      parseDeviceName(reqUserAgent)
-    );
-
-    res.json({ message: `2FA reset for ${user.full_name}. They will be prompted to set up 2FA on next login.` });
+    res.json({ message: `Two-factor authentication reset for ${target.username}` });
   } catch (error: any) {
-    console.error('Reset 2FA error:', error?.message || 'Unknown error');
+    console.error('Admin TOTP reset error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-
-// ═══════════════════════════════════════════════════════
-// POST /api/admin/users/:id/force-password-change
-// ═══════════════════════════════════════════════════════
-router.post('/users/:id/force-password-change', requireRole('admin'), (req: Request, res: Response) => {
+// ─── PUT /api/admin/users/:id/totp-exempt ────────────
+// Admin can toggle a user's 2FA exemption
+router.put('/users/:id/totp-exempt', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const userId = parseInt(req.params.id as string, 10);
-    const ip = String(req.ip || 'unknown');
+    const targetId = parseInt(req.params.id, 10);
+    if (isNaN(targetId)) {
+      res.status(400).json({ error: 'Invalid user ID' });
+      return;
+    }
 
-    const user = db.prepare('SELECT id, username, full_name FROM users WHERE id = ?').get(userId) as any;
-    if (!user) {
+    const { exempt } = req.body;
+    const value = exempt ? 1 : 0;
+
+    const target = db.prepare('SELECT id, username FROM users WHERE id = ?').get(targetId) as any;
+    if (!target) {
       res.status(404).json({ error: 'User not found' });
       return;
     }
 
-    db.prepare('UPDATE users SET force_password_change = 1, updated_at = ? WHERE id = ?')
-      .run(localNow(), userId);
+    db.prepare("UPDATE users SET totp_exempt = ?, updated_at = datetime('now','localtime') WHERE id = ?")
+      .run(value, targetId);
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'force_password_change', 'user', ?, ?, ?)
-    `).run(req.user!.userId, userId, `Admin forced password change for ${user.username}`, ip);
+      VALUES (?, 'admin_toggle_totp_exempt', 'user', ?, ?, ?)
+    `).run(req.user!.userId, targetId, `Admin ${value ? 'exempted' : 'un-exempted'} ${target.username} from 2FA`, req.ip || 'unknown');
 
-    createSecurityNotification(
-      userId,
-      'password_expiring',
-      'Password change required',
-      'An administrator has required you to change your password on next login.',
-      ip
-    );
-
-    res.json({ message: `${user.full_name} will be required to change password on next login.` });
+    res.json({ message: `${target.username} is now ${value ? 'exempt from' : 'subject to'} mandatory 2FA`, totp_exempt: value });
   } catch (error: any) {
-    console.error('Force password change error:', error?.message || 'Unknown error');
+    console.error('Admin TOTP exempt toggle error:', error);
     res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-
-// ═══════════════════════════════════════════════════════
-// GET /api/admin/security/overview — System-wide security metrics
-// ═══════════════════════════════════════════════════════
-router.get('/security/overview', requireRole('admin'), (_req: Request, res: Response) => {
-  try {
-    const db = getDb();
-
-    const totalUsers = db.prepare("SELECT COUNT(*) as count FROM users WHERE status = 'active'").get() as { count: number };
-    const with2FA = db.prepare("SELECT COUNT(*) as count FROM users WHERE status = 'active' AND totp_enabled = 1").get() as { count: number };
-    const pendingSetup = db.prepare("SELECT COUNT(*) as count FROM users WHERE status = 'active' AND totp_setup_required = 1").get() as { count: number };
-    const lockedAccounts = db.prepare(`
-      SELECT COUNT(DISTINCT username) as count FROM login_attempts
-      WHERE success = 0 AND created_at > datetime('now', '-15 minutes')
-      GROUP BY username HAVING COUNT(*) >= 5
-    `).all().length;
-    const activeSessions = db.prepare("SELECT COUNT(*) as count FROM sessions WHERE is_active = 1").get() as { count: number };
-    const passwordsExpired = db.prepare("SELECT COUNT(*) as count FROM users WHERE status = 'active' AND password_expires_at IS NOT NULL AND password_expires_at < datetime('now','localtime')").get() as { count: number };
-
-    // Recent failed login attempts (last 24h)
-    const recentFailures = db.prepare(`
-      SELECT COUNT(*) as count FROM login_attempts
-      WHERE success = 0 AND created_at > datetime('now', '-1 day', 'localtime')
-    `).get() as { count: number };
-
-    const totalCount = totalUsers?.count ?? 0;
-    const twoFACount = with2FA?.count ?? 0;
-    res.json({
-      totalActiveUsers: totalCount,
-      usersWithTwoFA: twoFACount,
-      usersPendingSetup: pendingSetup?.count ?? 0,
-      twoFAAdoptionRate: totalCount > 0 ? Math.round((twoFACount / totalCount) * 100) : 0,
-      lockedAccounts,
-      activeSessions: activeSessions?.count ?? 0,
-      passwordsExpired: passwordsExpired?.count ?? 0,
-      failedLoginsLast24h: recentFailures?.count ?? 0,
-    });
-  } catch (error: any) {
-    console.error('Security overview error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ═══════════════════════════════════════════════════════
-// POST /api/admin/users/:id/reset-2fa — Admin resets user's 2FA (new tables)
-// ═══════════════════════════════════════════════════════
-router.post('/users/:id/reset-2fa', requireRole('admin'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const userId = parseInt(req.params.id as string, 10);
-    if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
-    const ip = String(req.ip || 'unknown');
-    const userAgent = String(req.headers['user-agent'] || 'unknown');
-
-    const user = db.prepare('SELECT id, username, full_name FROM users WHERE id = ?').get(userId) as any;
-    if (!user) {
-      res.status(404).json({ error: 'User not found' });
-      return;
-    }
-
-    // Delete TOTP secret and backup codes from new tables
-    db.prepare('DELETE FROM user_totp_secrets WHERE user_id = ?').run(userId);
-    db.prepare('DELETE FROM user_backup_codes WHERE user_id = ?').run(userId);
-    db.prepare('DELETE FROM trusted_devices WHERE user_id = ?').run(userId);
-
-    // Also clear old-style columns for full cleanup
-    db.prepare(`
-      UPDATE users SET totp_enabled = 0, totp_setup_required = 1,
-        totp_secret_enc = NULL, totp_backup_codes = NULL, totp_pending_secret = NULL,
-        updated_at = ? WHERE id = ?
-    `).run(localNow(), userId);
-
-    // Log
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, '2fa_reset', 'user', ?, ?, ?)
-    `).run(req.user!.userId, userId, `Admin reset 2FA for ${user.username}`, ip);
-
-    createSecurityNotification(
-      userId,
-      '2fa_reset',
-      'Two-factor authentication reset',
-      `Your 2FA was reset by an administrator. You will need to set it up again on next login.`,
-      ip,
-      parseDeviceName(userAgent)
-    );
-
-    // Email alert for 2FA reset
-    sendNotificationEmail(
-      userId,
-      'Two-Factor Authentication Reset',
-      `Your RMPG Flex two-factor authentication has been reset by an administrator.\n\nYou will be required to set up 2FA again on your next login.\n\nTime: ${localNow()}\n\nIf you did not request this, contact your administrator immediately.`
-    ).catch((err) => { console.error('[Admin] Background operation failed:', err.message || err); });
-
-    res.json({ message: `2FA reset for ${user.full_name}. They will be prompted to set up 2FA on next login.` });
-  } catch (error: any) {
-    console.error('Reset 2FA error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-
-// ═══════════════════════════════════════════════════════
-// POST /api/admin/users/:id/force-password-change
-// ═══════════════════════════════════════════════════════
-router.post('/users/:id/force-password-change', requireRole('admin'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const userId = parseInt(req.params.id as string, 10);
-    if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
-    const ip = String(req.ip || 'unknown');
-
-    const user = db.prepare('SELECT id, username, full_name FROM users WHERE id = ?').get(userId) as any;
-    if (!user) {
-      res.status(404).json({ error: 'User not found' });
-      return;
-    }
-
-    db.prepare('UPDATE users SET force_password_change = 1, updated_at = ? WHERE id = ?')
-      .run(localNow(), userId);
-
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'force_password_change', 'user', ?, ?, ?)
-    `).run(req.user!.userId, userId, `Admin forced password change for ${user.username}`, ip);
-
-    createSecurityNotification(
-      userId,
-      'password_expiring',
-      'Password change required',
-      'An administrator has required you to change your password on next login.',
-      ip
-    );
-
-    res.json({ message: `${user.full_name} will be required to change password on next login.` });
-  } catch (error: any) {
-    console.error('Force password change error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-
-// ═══════════════════════════════════════════════════════
-// POST /api/admin/users/:id/revoke-sessions — Revoke all sessions for a user
-// ═══════════════════════════════════════════════════════
-router.post('/users/:id/revoke-sessions', requireRole('admin'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const userId = parseInt(req.params.id as string, 10);
-    if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
-    const ip = String(req.ip || 'unknown');
-
-    const user = db.prepare('SELECT id, username, full_name FROM users WHERE id = ?').get(userId) as any;
-    if (!user) {
-      res.status(404).json({ error: 'User not found' });
-      return;
-    }
-
-    const result = db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(userId);
-
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'admin_revoke_sessions', 'user', ?, ?, ?)
-    `).run(req.user!.userId, userId, `Admin revoked ${result.changes} sessions for ${user.username}`, ip);
-
-    createSecurityNotification(
-      userId,
-      'all_sessions_revoked',
-      'Sessions Terminated',
-      'An administrator has terminated all your active sessions. Please log in again.',
-      ip
-    );
-
-    res.json({ message: `Revoked ${result.changes} session(s) for ${user.full_name}.`, count: result.changes });
-  } catch (error: any) {
-    console.error('Admin revoke sessions error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ═══════════════════════════════════════════════════════
-// PUT /api/admin/users/:id/role — Change a user's role
-// ═══════════════════════════════════════════════════════
-router.put('/users/:id/role', requireRole('admin'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const userId = parseInt(req.params.id as string, 10);
-    if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
-    const { role } = req.body;
-    const ip = String(req.ip || 'unknown');
-
-    const validRoles = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
-    if (!role || !validRoles.includes(role)) {
-      res.status(400).json({ error: 'Invalid role' });
-      return;
-    }
-
-    const user = db.prepare('SELECT id, username, full_name, role FROM users WHERE id = ?').get(userId) as any;
-    if (!user) {
-      res.status(404).json({ error: 'User not found' });
-      return;
-    }
-
-    // Prevent self-demotion
-    if (userId === req.user!.userId && role !== 'admin') {
-      res.status(400).json({ error: 'Cannot change your own role' });
-      return;
-    }
-
-    const oldRole = user.role;
-    db.prepare('UPDATE users SET role = ?, updated_at = ? WHERE id = ?')
-      .run(role, localNow(), userId);
-
-    // Invalidate all sessions — forces re-login so the new role takes effect in fresh JWTs
-    // Without this, the user's existing JWTs still carry the old role until they expire
-    db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(userId);
-
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'role_changed', 'user', ?, ?, ?)
-    `).run(req.user!.userId, userId, `Role changed: ${oldRole} → ${role} for ${user.username}`, ip);
-
-    createSecurityNotification(
-      userId,
-      'role_changed',
-      'Role Changed',
-      `Your role has been changed from ${oldRole} to ${role} by an administrator.`,
-      ip
-    );
-
-    // Email alert for role change
-    sendNotificationEmail(
-      userId,
-      'Role Changed',
-      `Your RMPG Flex role has been changed from ${oldRole} to ${role} by an administrator.\n\nTime: ${localNow()}\n\nIf you believe this is an error, contact your administrator.`
-    ).catch((err) => { console.error('[Admin] Background operation failed:', err.message || err); });
-
-    res.json({ message: `${user.full_name}'s role changed from ${oldRole} to ${role}.`, oldRole, newRole: role });
-  } catch (error: any) {
-    console.error('Change role error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ═══════════════════════════════════════════════════════
-// PUT /api/admin/users/:id/status — Change a user's status
-// ═══════════════════════════════════════════════════════
-router.put('/users/:id/status', requireRole('admin', 'manager'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const userId = parseInt(req.params.id as string, 10);
-    if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
-    const { status } = req.body;
-    const ip = String(req.ip || 'unknown');
-
-    const validStatuses = ['active', 'inactive', 'terminated'];
-    if (!status || !validStatuses.includes(status)) {
-      res.status(400).json({ error: 'Invalid status value' });
-      return;
-    }
-
-    const user = db.prepare('SELECT id, username, full_name, status FROM users WHERE id = ?').get(userId) as any;
-    if (!user) {
-      res.status(404).json({ error: 'User not found' });
-      return;
-    }
-
-    // Prevent self-deactivation
-    if (userId === req.user!.userId && status !== 'active') {
-      res.status(400).json({ error: 'Cannot deactivate your own account' });
-      return;
-    }
-
-    const oldStatus = user.status;
-    db.prepare('UPDATE users SET status = ?, updated_at = ? WHERE id = ?')
-      .run(status, localNow(), userId);
-
-    // If deactivating/terminating, also revoke all sessions
-    if (status !== 'active') {
-      db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(userId);
-    }
-
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'status_changed', 'user', ?, ?, ?)
-    `).run(req.user!.userId, userId, `Status changed: ${oldStatus} → ${status} for ${user.username}`, ip);
-
-    res.json({ message: `${user.full_name}'s status changed from ${oldStatus} to ${status}.`, oldStatus, newStatus: status });
-  } catch (error: any) {
-    console.error('Change status error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ─── CSV EXPORTS ─────────────────────────────────────────
-
-// GET /api/admin/clients/export/csv — Export clients
-router.get('/clients/export/csv', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const rows = db.prepare(`
-      SELECT id, name, status, contact_name, contact_email, contact_phone,
-        address, city, state, zip, industry, source,
-        contract_start, contract_end, contract_type, contract_value,
-        auto_renew, account_manager, client_since,
-        total_invoiced, total_paid, outstanding_balance,
-        created_at, updated_at
-      FROM clients
-      ORDER BY name LIMIT 10000
-    `).all();
-    sendCsv(res, 'clients_export.csv', [
-      { key: 'id', header: 'ID' },
-      { key: 'name', header: 'Name' },
-      { key: 'status', header: 'Status' },
-      { key: 'contact_name', header: 'Contact Name' },
-      { key: 'contact_email', header: 'Contact Email' },
-      { key: 'contact_phone', header: 'Contact Phone' },
-      { key: 'address', header: 'Address' },
-      { key: 'city', header: 'City' },
-      { key: 'state', header: 'State' },
-      { key: 'zip', header: 'ZIP' },
-      { key: 'industry', header: 'Industry' },
-      { key: 'contract_start', header: 'Contract Start' },
-      { key: 'contract_end', header: 'Contract End' },
-      { key: 'contract_type', header: 'Contract Type' },
-      { key: 'contract_value', header: 'Contract Value' },
-      { key: 'total_invoiced', header: 'Total Invoiced' },
-      { key: 'total_paid', header: 'Total Paid' },
-      { key: 'outstanding_balance', header: 'Outstanding Balance' },
-      { key: 'client_since', header: 'Client Since' },
-      { key: 'created_at', header: 'Created At' },
-    ], rows);
-  } catch (error: any) {
-    res.status(500).json({ error: 'Export failed' });
-  }
-});
-
-// GET /api/admin/properties/export/csv — Export properties
-router.get('/properties/export/csv', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const rows = db.prepare(`
-      SELECT p.id, p.name, p.address, p.property_type, p.status,
-        p.latitude, p.longitude, p.notes, p.created_at,
-        c.name as client_name
-      FROM properties p
-      LEFT JOIN clients c ON c.id = p.client_id
-      ORDER BY p.name LIMIT 10000
-    `).all();
-    sendCsv(res, 'properties_export.csv', [
-      { key: 'id', header: 'ID' },
-      { key: 'name', header: 'Name' },
-      { key: 'client_name', header: 'Client' },
-      { key: 'address', header: 'Address' },
-      { key: 'property_type', header: 'Type' },
-      { key: 'status', header: 'Status' },
-      { key: 'latitude', header: 'Latitude' },
-      { key: 'longitude', header: 'Longitude' },
-      { key: 'notes', header: 'Notes' },
-      { key: 'created_at', header: 'Created At' },
-    ], rows);
-  } catch (error: any) {
-    res.status(500).json({ error: 'Export failed' });
   }
 });
 

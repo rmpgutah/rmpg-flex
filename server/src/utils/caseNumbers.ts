@@ -3,7 +3,6 @@
 // ============================================================
 
 import Database from 'better-sqlite3';
-import { localToday } from './timeUtils';
 
 // ── Type Code Mapping (mirrors client/src/utils/caseNumbers.ts) ──
 
@@ -64,10 +63,10 @@ export function getCaseTypeCode(caseType: string): string {
 }
 
 // ── Case Number Generation ──────────────────────────────────
-// Format: YY-#####-XX  (2-digit year + 5-digit sequence + 2-letter type code)
+// Format: YY-######-XX  (2-digit year + 6-digit sequence + 2-letter type code)
 
 export function generateCaseNumber(db: Database.Database, caseType: string = 'general'): string {
-  const yy = localToday().slice(2, 4);
+  const yy = String(new Date().getFullYear()).slice(-2);
   const typeCode = getCaseTypeCode(caseType);
   // Sequence is global per year (not per type)
   const prefix = `${yy}-`;
@@ -77,14 +76,13 @@ export function generateCaseNumber(db: Database.Database, caseType: string = 'ge
 
   let nextNum = 1;
   if (lastCase) {
-    // Match both old 6-digit and new 5-digit formats for backward compatibility
-    const match = lastCase.case_number.match(/\d{2}-(\d{5,6})-[A-Z]{2}/);
+    const match = lastCase.case_number.match(/\d{2}-(\d{6})-[A-Z]{2}/);
     if (match) {
       nextNum = parseInt(match[1], 10) + 1;
     }
   }
 
-  return `${prefix}${String(nextNum).padStart(5, '0')}-${typeCode}`;
+  return `${prefix}${String(nextNum).padStart(6, '0')}-${typeCode}`;
 }
 
 // ── Incident Number Generation ──────────────────────────────
@@ -92,7 +90,8 @@ export function generateCaseNumber(db: Database.Database, caseType: string = 'ge
 // Sequence is global per year (not per type)
 
 export function generateIncidentNumber(db: Database.Database, incidentType: string): string {
-  const yy = localToday().slice(2, 4);
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(-2);
   const code = getTypeCode(incidentType);
   const prefix = `RKY${yy}-`;
 
@@ -115,7 +114,7 @@ export function generateIncidentNumber(db: Database.Database, incidentType: stri
 // Format: 26-CFS#####  (2-digit year + CFS prefix)
 
 export function generateCallNumber(db: Database.Database): string {
-  const yy = localToday().slice(2, 4);
+  const yy = String(new Date().getFullYear()).slice(-2);
   const prefix = `${yy}-CFS`;
   const lastCall = db.prepare(
     `SELECT call_number FROM calls_for_service WHERE call_number LIKE ? ORDER BY id DESC LIMIT 1`,

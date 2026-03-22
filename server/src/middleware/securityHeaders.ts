@@ -1,65 +1,24 @@
 import { Request, Response, NextFunction } from 'express';
-import crypto from 'crypto';
 import config from '../config';
 
 export function securityHeaders(req: Request, res: Response, next: NextFunction): void {
-  // Attach a unique request ID for audit correlation
-  const requestId = crypto.randomUUID();
-  req.headers['x-request-id'] = requestId;
-  res.set('X-Request-ID', requestId);
-
   // Prevent MIME-type sniffing
   res.set('X-Content-Type-Options', 'nosniff');
 
   // Prevent clickjacking (SAMEORIGIN allows internal blob: PDF viewer iframes)
   res.set('X-Frame-Options', 'SAMEORIGIN');
 
-  // XSS protection — set to 0 (modern best practice)
-  // The legacy '1; mode=block' value can introduce XSS vulnerabilities in older IE.
-  // Modern browsers have deprecated this header; CSP provides the real protection.
-  res.set('X-XSS-Protection', '0');
+  // XSS protection (legacy browsers)
+  res.set('X-XSS-Protection', '1; mode=block');
 
-  // Referrer policy — sends origin on cross-origin requests, full URL on same-origin
-  // Balances security (no path/query leakage cross-origin) with analytics/debugging utility
+  // Referrer policy
   res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
 
-  // Permissions policy — restrict browser features to minimum required
-  // camera/microphone: needed for body cam and radio; geolocation: needed for patrol GPS
-  // All others explicitly denied to reduce attack surface
-  res.set('Permissions-Policy', [
-    'camera=(self)', 'microphone=(self)', 'geolocation=(self)',
-    'payment=()', 'usb=()', 'bluetooth=()', 'serial=()',
-    'hid=()', 'magnetometer=()', 'gyroscope=()',
-    'accelerometer=()', 'ambient-light-sensor=()',
-    'autoplay=()', 'display-capture=()', 'document-domain=()',
-    'encrypted-media=(self)', 'fullscreen=(self)',
-    'idle-detection=()', 'screen-wake-lock=()',
-    'interest-cohort=()',  // Block FLoC — prevent privacy-invasive ad tracking
-    'browsing-topics=()',  // Block Topics API (FLoC successor)
-    'join-ad-interest-group=()', // Block FLEDGE/Protected Audience API
-    'run-ad-auction=()',   // Block FLEDGE ad auctions
-  ].join(', '));
+  // Permissions policy (restrict browser features)
+  res.set('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(self), payment=()');
 
-  // Cross-Origin isolation headers — prevent cross-origin attacks
-  res.set('Cross-Origin-Opener-Policy', 'same-origin');
-  res.set('Cross-Origin-Resource-Policy', 'same-origin');
-  res.set('Cross-Origin-Embedder-Policy', 'credentialless');
-  res.set('X-Permitted-Cross-Domain-Policies', 'none');
-
-  // Prevent DNS prefetching — stops browsers from resolving domains in page content
-  // before they're needed, reducing information leakage about what data officers are viewing
-  res.set('X-DNS-Prefetch-Control', 'off');
-
-  // Prevent caching of API responses containing sensitive law enforcement data
-  // Static assets are cached separately with their own Cache-Control in index.ts
-  if (req.path.startsWith('/api')) {
-    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-    res.set('Pragma', 'no-cache');
-  }
-
-  // Strict Transport Security — ONLY when SSL is actually enabled
-  // Sending HSTS without HTTPS causes browsers to refuse plain HTTP connections
-  if (config.ssl.enabled) {
+  // Strict Transport Security (when SSL is enabled or in production)
+  if (config.isProduction || config.ssl.enabled) {
     res.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
   }
 
@@ -74,25 +33,17 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   // when Google or Esri add new sub-domains.
   res.set('Content-Security-Policy', [
     "default-src 'self'",
-    // unsafe-inline is required by Google Maps JS API which injects inline scripts
-    // unsafe-eval only in dev for Vite HMR; blocked in production
-    `script-src 'self' 'unsafe-inline' ${config.isProduction ? '' : "'unsafe-eval'"} blob: https://*.googleapis.com https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com`.replace(/\s+/g, ' '),
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://*.googleapis.com https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com",
     "style-src 'self' 'unsafe-inline' https://unpkg.com https://*.googleapis.com https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com",
     "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://unpkg.com https://*.googleapis.com https://*.gstatic.com https://*.ggpht.com https://*.google.com https://*.googleusercontent.com https://*.arcgis.com https://js.arcgis.com",
     "font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com",
-    `connect-src 'self' wss://rmpgutah.us ${config.isProduction ? '' : 'ws://localhost:* wss://localhost:*'} https://*.googleapis.com https://*.google.com https://*.gstatic.com https://*.arcgis.com https://js.arcgis.com https://*.arcgisonline.com`.replace(/\s+/g, ' '),
+    "connect-src 'self' ws: wss: https://*.googleapis.com https://*.google.com https://*.gstatic.com https://*.arcgis.com https://js.arcgis.com https://*.arcgisonline.com",
     "frame-src 'self' blob: https://*.arcgis.com",
     "worker-src 'self' blob:",
     "child-src 'self' blob:",
     "manifest-src 'self'",
     "frame-ancestors 'self'",
-    "base-uri 'self'",
-    "object-src 'none'",
-    "form-action 'self'",
   ].join('; '));
-
-  // Prevent IE from opening downloads directly in the browser context
-  res.set('X-Download-Options', 'noopen');
 
   // Remove powered-by header
   res.removeHeader('X-Powered-By');

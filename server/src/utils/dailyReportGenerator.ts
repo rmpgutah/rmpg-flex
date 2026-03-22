@@ -5,22 +5,16 @@
 // Saves to server/data/reports/ with date-based naming.
 // ============================================================
 
-import { createRequire } from 'module';
+import jsPDF from 'jspdf';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { getDb } from '../models/database';
 import { identifyBeat } from './geofence';
 import { reverseGeocodeDetailed } from './geocode';
-import { localNow } from './timeUtils';
 
-// Use createRequire for jsPDF — tsx ESM interop can resolve the named
-// export incorrectly under long-running processes (not-a-constructor bug).
-// CJS require('jspdf').jsPDF always returns the constructor reliably.
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const __require = createRequire(import.meta.url);
-const { jsPDF } = __require('jspdf');
 
 // ── Report storage directory ────────────────────────────────
 
@@ -175,7 +169,7 @@ async function collectDailyBreadcrumbs(dateStr: string): Promise<UnitTrail[]> {
   const trails: UnitTrail[] = [];
 
   for (const [uid, trail] of Object.entries(trailMap)) {
-    const unitId = parseInt(uid, 10);
+    const unitId = parseInt(uid);
     const points: ProcessedPoint[] = [];
     let totalDistance = 0;
     let maxSpeed = 0;
@@ -192,7 +186,6 @@ async function collectDailyBreadcrumbs(dateStr: string): Promise<UnitTrail[]> {
         distFromPrev = haversineM(prevAccepted.latitude, prevAccepted.longitude, row.latitude, row.longitude);
         const prevTime = new Date(prevAccepted.recorded_at).getTime();
         const curTime = new Date(row.recorded_at).getTime();
-        if (isNaN(prevTime) || isNaN(curTime)) continue;
         timeDelta = (curTime - prevTime) / 1000;
 
         if (timeDelta > 0) {
@@ -282,7 +275,7 @@ async function collectDailyBreadcrumbs(dateStr: string): Promise<UnitTrail[]> {
           response_distance_miles: Math.round((responseDist / 1609.34) * 100) / 100,
           breadcrumb_count: callPoints.length,
         });
-      } catch (e: any) { console.warn('[DailyReport] Section skipped:', e?.message); }
+      } catch { /* skip */ }
     }
 
     // Zone coverage
@@ -294,15 +287,6 @@ async function collectDailyBreadcrumbs(dateStr: string): Promise<UnitTrail[]> {
         zoneCoverage[pt.beat_id] = { beat_code: pt.beat_code || '', city: pt.zone || '', point_count: 0, time_seconds: 0, percentage: 0 };
       }
       zoneCoverage[pt.beat_id].point_count++;
-      // Estimate time in zone from interval between consecutive points
-      if (i > 0 && points[i - 1].beat_id === pt.beat_id) {
-        const prevTime = new Date(points[i - 1].time).getTime();
-        const curTime = new Date(pt.time).getTime();
-        const delta = (curTime - prevTime) / 1000;
-        if (delta > 0 && delta < 600) { // cap at 10 min gap to avoid idle inflation
-          zoneCoverage[pt.beat_id].time_seconds += delta;
-        }
-      }
     }
     const totalTrackedSeconds = Object.values(zoneCoverage).reduce((s, z) => s + z.time_seconds, 0);
     for (const z of Object.values(zoneCoverage)) {
@@ -358,7 +342,7 @@ async function collectDailyBreadcrumbs(dateStr: string): Promise<UnitTrail[]> {
             lastRoadName = result.road_name;
             lastIntersection = result.nearest_intersection;
           }
-        } catch (e: any) { console.warn('[DailyReport] Section skipped:', e?.message); }
+        } catch { /* skip on error */ }
         lastGeoLat = pt.lat;
         lastGeoLng = pt.lng;
         geocodeCount++;
@@ -406,13 +390,13 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
   let brandText = 'ROCKY MOUNTAIN PATROL GROUP';
   let brandSub = 'Private Security & Operations Support';
   try {
-    const cfg = db.prepare("SELECT config_value FROM system_config WHERE config_key = 'branding'").get() as any;
-    if (cfg?.config_value) {
-      const b = JSON.parse(cfg.config_value);
+    const cfg = db.prepare("SELECT value FROM system_config WHERE key = 'branding'").get() as any;
+    if (cfg?.value) {
+      const b = JSON.parse(cfg.value);
       brandText = b.report_header_text || brandText;
       brandSub = b.report_subheader_text || brandSub;
     }
-  } catch (e: any) { console.warn('[DailyReport] Using defaults:', e?.message); }
+  } catch { /* use defaults */ }
 
   // ── Section header (light bg + dark text) ──
   function drawSectionHeader(title: string) {
@@ -464,7 +448,7 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
           doc.setFillColor(255, 255, 255);
           doc.roundedRect(margin - 1, 1.5, 13, 11, 1, 1, 'F');
           doc.addImage(logoPngB64, 'PNG', margin - 0.5, 2, 12, 10);
-        } catch (e: any) { console.warn('[DailyReport] Ignored error:', e?.message); }
+        } catch { /* ignore */ }
       }
 
       const textX = logoPngB64 ? margin + 14 : margin;
@@ -517,7 +501,7 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
       const logoData = fs.readFileSync(logoPath);
       logoPngB64 = 'data:image/png;base64,' + logoData.toString('base64');
     }
-  } catch (e: any) { console.warn('[DailyReport] Logo unavailable:', e?.message); }
+  } catch { /* no logo available */ }
 
   // White background with subtle border at top
   doc.setFillColor(255, 255, 255);
@@ -533,7 +517,7 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
       const logoSize = 30;
       const logoX = (pageW - logoSize) / 2;
       doc.addImage(logoPngB64, 'PNG', logoX, 6, logoSize, logoSize);
-    } catch (e: any) { console.warn('[DailyReport] Ignored error:', e?.message); }
+    } catch { /* ignore */ }
   }
 
   // Bold centered title
@@ -783,10 +767,10 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
  */
 export async function generateAndSaveDailyReport(dateStr?: string): Promise<string | null> {
   const date = dateStr || (() => {
-    // Default to yesterday in local timezone (since this runs at midnight)
+    // Default to yesterday (since this runs at midnight)
     const d = new Date();
     d.setDate(d.getDate() - 1);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return d.toISOString().slice(0, 10);
   })();
 
   console.log(`[Daily Report] Generating patrol tracking report for ${date}...`);
@@ -812,19 +796,15 @@ export async function generateAndSaveDailyReport(dateStr?: string): Promise<stri
   console.log(`[Daily Report] Saved: ${filepath} (${Math.round(pdfBuffer.length / 1024)} KB)`);
 
   // Also save metadata
-  try {
-    const metaPath = path.join(REPORTS_DIR, `${filename}.meta.json`);
-    fs.writeFileSync(metaPath, JSON.stringify({
-      date,
-      generated_at: localNow(),
-      units: trails.length,
-      total_breadcrumbs: totalPoints,
-      file_size_bytes: pdfBuffer.length,
-      filename,
-    }, null, 2));
-  } catch (metaErr) {
-    console.error('[Daily Report] Failed to write metadata file:', metaErr);
-  }
+  const metaPath = path.join(REPORTS_DIR, `${filename}.meta.json`);
+  fs.writeFileSync(metaPath, JSON.stringify({
+    date,
+    generated_at: new Date().toISOString(),
+    units: trails.length,
+    total_breadcrumbs: totalPoints,
+    file_size_bytes: pdfBuffer.length,
+    filename,
+  }, null, 2));
 
   return filename;
 }
@@ -849,7 +829,7 @@ export function listDailyReports(): { filename: string; date: string; size: numb
         date = meta.date || '';
         generated_at = meta.generated_at || generated_at;
       }
-    } catch (e: any) { console.warn('[DailyReport] Using defaults:', e?.message); }
+    } catch { /* use defaults */ }
 
     // Extract date from filename if not in meta
     if (!date) {
@@ -904,42 +884,17 @@ export function startDailyReportScheduler(): void {
         console.error('[Daily Report] Generation failed:', err);
       }
 
-      // Auto-archive: purge old breadcrumbs based on retention policy (default 30 days)
+      // Auto-archive: purge breadcrumbs older than 24 hours after report is saved
       try {
         const db = getDb();
-        // Check if retention_policies table exists before querying
-        const tableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='retention_policies'").get();
-        const days = tableExists
-          ? ((db.prepare("SELECT retention_days FROM retention_policies WHERE entity_type = 'gps_breadcrumbs' AND is_active = 1").get() as { retention_days: number } | undefined)?.retention_days ?? 30)
-          : 30;
         const result = db.prepare(
-          `DELETE FROM gps_breadcrumbs WHERE recorded_at < datetime('now', 'localtime', '-' || ? || ' days')`
-        ).run(days);
+          `DELETE FROM gps_breadcrumbs WHERE recorded_at < datetime('now', 'localtime', '-1 days')`
+        ).run();
         if (result.changes > 0) {
-          console.log(`[Daily Report] Purged ${result.changes} breadcrumbs older than ${days} day(s)`);
+          console.log(`[Daily Report] Auto-archived ${result.changes} breadcrumbs older than 24h`);
         }
       } catch (err) {
-        console.error('[Daily Report] Breadcrumb retention cleanup failed:', err);
-      }
-
-      // Purge old dashcam events based on retention policy (default 90 days)
-      try {
-        const db = getDb();
-        const tableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='retention_policies'").get();
-        const camDays = tableExists
-          ? ((db.prepare("SELECT retention_days FROM retention_policies WHERE entity_type = 'dashcam_events' AND is_active = 1").get() as { retention_days: number } | undefined)?.retention_days ?? 90)
-          : 90;
-        const dashcamTableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='dashcam_events'").get();
-        if (dashcamTableExists) {
-          const camResult = db.prepare(
-            `DELETE FROM dashcam_events WHERE created_at < datetime('now', 'localtime', '-' || ? || ' days')`
-          ).run(camDays);
-          if (camResult.changes > 0) {
-            console.log(`[Daily Report] Purged ${camResult.changes} dashcam events older than ${camDays} day(s)`);
-          }
-        }
-      } catch (err) {
-        console.error('[Daily Report] Dashcam event retention cleanup failed:', err);
+        console.error('[Daily Report] Breadcrumb auto-archive failed:', err);
       }
 
       // Schedule the next one

@@ -8,36 +8,15 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { validateEnum, requireInt, validateParamId, escapeLike } from '../middleware/sanitize';
-import { authenticateToken, requireRole } from '../middleware/auth';
+import { authenticateToken } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
-import { createNotificationForRoles } from './notifications';
-import { resolveDistrict } from '../utils/districtResolver';
-import { auditLog } from '../utils/auditLogger';
-import { sendCsv } from '../utils/csvExport';
-import { broadcast } from '../utils/websocket';
 
 const router = Router();
-
-// ─── Allowed enum values ─────────────────────────────────
-const VALID_CITATION_TYPES = ['traffic', 'criminal', 'parking', 'warning'] as const;
-const VALID_CITATION_STATUSES = ['issued', 'paid', 'contested', 'dismissed', 'warrant_issued', 'voided'] as const;
-const VALID_OFFENSE_LEVELS = ['infraction', 'misdemeanor', 'felony'] as const;
 router.use(authenticateToken);
-// Validate :id params as positive integers
-router.param('id', (req: Request, res: Response, next: Function) => {
-  const raw = String(req.params.id);
-  const n = parseInt(raw, 10);
-  if (isNaN(n) || n < 1 || String(n) !== raw) {
-    res.status(400).json({ error: 'Invalid ID parameter' });
-    return;
-  }
-  next();
-});
 
 // ─── GET /api/citations/stats ─────────────────────────────
 // Dashboard statistics: counts by status/type, fines totals
-router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/stats', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const today = localToday();
@@ -63,17 +42,17 @@ router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
     const finesIssued = db.prepare(`
       SELECT COALESCE(SUM(fine_amount), 0) as total FROM citations
       WHERE status != 'voided'
-    `).get() as any ?? { total: 0 };
+    `).get() as any;
 
     const finesCollected = db.prepare(`
       SELECT COALESCE(SUM(fine_amount), 0) as total FROM citations
       WHERE status = 'paid'
-    `).get() as any ?? { total: 0 };
+    `).get() as any;
 
     const todayCount = db.prepare(`
       SELECT COUNT(*) as count FROM citations
       WHERE violation_date = ? AND status != 'voided'
-    `).get(today) as any ?? { count: 0 };
+    `).get(today) as any;
 
     res.json({
       data: {
@@ -86,19 +65,19 @@ router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
         },
         by_type: typeMap,
         total: Object.values(statusMap).reduce((a, b) => a + b, 0),
-        fines_issued: finesIssued?.total ?? 0,
-        fines_collected: finesCollected?.total ?? 0,
-        today_count: todayCount?.count ?? 0,
+        fines_issued: finesIssued.total,
+        fines_collected: finesCollected.total,
+        today_count: todayCount.count,
       },
     });
   } catch (error: any) {
-    console.error('Get citation stats error:', error?.message || 'Unknown error');
+    console.error('Get citation stats error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── GET /api/citations/search ────────────────────────────
-router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/search', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { q } = req.query;
@@ -108,31 +87,25 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
       return;
     }
 
-    const searchTerm = `%${escapeLike(q as string)}%`;
+    const searchTerm = `%${q}%`;
 
     const citations = db.prepare(`
       SELECT * FROM citations
-      WHERE citation_number LIKE ? ESCAPE '\\' OR person_name LIKE ? ESCAPE '\\' OR statute_citation LIKE ? ESCAPE '\\' OR violation_description LIKE ? ESCAPE '\\'
+      WHERE citation_number LIKE ? OR person_name LIKE ? OR statute_citation LIKE ? OR violation_description LIKE ?
       ORDER BY created_at DESC
       LIMIT 25
     `).all(searchTerm, searchTerm, searchTerm, searchTerm);
 
     res.json({ data: citations });
   } catch (error: any) {
-    console.error('Search citations error:', error?.message || 'Unknown error');
+    console.error('Search citations error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── GET /api/citations/person/:personId ──────────────────
-router.get('/person/:personId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/person/:personId', (req: Request, res: Response) => {
   try {
-    // Validate personId as positive integer
-    const personId = parseInt(String(req.params.personId), 10);
-    if (isNaN(personId) || personId < 1) {
-      res.status(400).json({ error: 'Invalid personId parameter' });
-      return;
-    }
     const db = getDb();
 
     const citations = db.prepare(`
@@ -143,14 +116,14 @@ router.get('/person/:personId', requireRole('admin', 'manager', 'supervisor', 'o
 
     res.json({ data: citations });
   } catch (error: any) {
-    console.error('Get person citations error:', error?.message || 'Unknown error');
+    console.error('Get person citations error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── GET /api/citations ───────────────────────────────────
 // List with pagination and filters
-router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const {
@@ -164,8 +137,8 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       date_to,
     } = req.query;
 
-    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
+    const pageNum = parseInt(page as string, 10);
+    const limitNum = Math.min(parseInt(limit as string, 10) || 50, 200);
     const offset = (pageNum - 1) * limitNum;
 
     let whereClause = 'WHERE 1=1';
@@ -182,8 +155,8 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     }
 
     if (q) {
-      const searchTerm = `%${escapeLike(q as string)}%`;
-      whereClause += " AND (c.citation_number LIKE ? ESCAPE '\\' OR c.person_name LIKE ? ESCAPE '\\' OR c.violation_description LIKE ? ESCAPE '\\')";
+      const searchTerm = `%${q}%`;
+      whereClause += ' AND (c.citation_number LIKE ? OR c.person_name LIKE ? OR c.violation_description LIKE ?)';
       params.push(searchTerm, searchTerm, searchTerm);
     }
 
@@ -219,18 +192,18 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       pagination: {
         page: pageNum,
         limit: limitNum,
-        total: countRow?.total ?? 0,
-        totalPages: Math.ceil((countRow?.total ?? 0) / limitNum),
+        total: countRow.total,
+        totalPages: Math.ceil(countRow.total / limitNum),
       },
     });
   } catch (error: any) {
-    console.error('Get citations error:', error?.message || 'Unknown error');
+    console.error('Get citations error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── GET /api/citations/:id ──────────────────────────────
-router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -243,13 +216,13 @@ router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
 
     res.json({ data: citation });
   } catch (error: any) {
-    console.error('Get citation error:', error?.message || 'Unknown error');
+    console.error('Get citation error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── POST /api/citations ─────────────────────────────────
-router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.post('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -287,132 +260,76 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispa
       res.status(400).json({ error: 'violation_date is required' });
       return;
     }
-    // Validate date format
-    if (typeof violation_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(violation_date)) {
-      res.status(400).json({ error: 'violation_date must be in YYYY-MM-DD format' });
-      return;
-    }
-    // Validate fine_amount if provided
-    if (fine_amount !== undefined && fine_amount !== null) {
-      const fa = parseFloat(String(fine_amount));
-      if (isNaN(fa) || fa < 0) {
-        res.status(400).json({ error: 'fine_amount must be a non-negative number' });
-        return;
-      }
-    }
 
-    // Validate enums
-    try {
-      validateEnum(type, VALID_CITATION_TYPES, 'type');
-      validateEnum(status, VALID_CITATION_STATUSES, 'status');
-      if (offense_level) validateEnum(offense_level, VALID_OFFENSE_LEVELS, 'offense_level');
-    } catch (err: any) {
-      res.status(400).json({ error: err.message });
-      return;
+    // Auto-generate citation number: CIT-YYYY-NNNN
+    const year = new Date().getFullYear();
+    const lastCit = db.prepare(
+      "SELECT citation_number FROM citations WHERE citation_number LIKE ? ORDER BY id DESC LIMIT 1"
+    ).get(`CIT-${year}-%`) as any;
+    let seq = 1;
+    if (lastCit) {
+      const parts = lastCit.citation_number.split('-');
+      seq = parseInt(parts[2], 10) + 1;
     }
+    const citation_number = `CIT-${year}-${String(seq).padStart(4, '0')}`;
 
     const now = localNow();
 
-    // Auto-fill Section/Zone/Beat from linked call or incident
-    let { section_id, zone_id, beat_id, zone_beat } = req.body;
-    if (!section_id && !zone_id && !beat_id) {
-      if (call_id) {
-        const linkedCall = db.prepare('SELECT section_id, zone_id, beat_id, zone_beat FROM calls_for_service WHERE id = ?').get(call_id) as any;
-        if (linkedCall) {
-          section_id = linkedCall.section_id;
-          zone_id = linkedCall.zone_id;
-          beat_id = linkedCall.beat_id;
-          zone_beat = linkedCall.zone_beat;
-        }
-      } else if (incident_id) {
-        const linkedIncident = db.prepare('SELECT section_id, zone_id, beat_id, zone_beat FROM incidents WHERE id = ?').get(incident_id) as any;
-        if (linkedIncident) {
-          section_id = linkedIncident.section_id;
-          zone_id = linkedIncident.zone_id;
-          beat_id = linkedIncident.beat_id;
-          zone_beat = linkedIncident.zone_beat;
-        }
-      }
-    }
-
-    // Wrap sequence generation + INSERT in a transaction to prevent duplicate citation numbers
-    const createCitation = db.transaction(() => {
-      const year = new Date().getFullYear();
-      const lastCit = db.prepare(
-        "SELECT citation_number FROM citations WHERE citation_number LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 1"
-      ).get(`CIT-${year}-%`) as any;
-      let seq = 1;
-      if (lastCit) {
-        const parts = lastCit.citation_number.split('-');
-        const parsed = parts.length >= 3 ? parseInt(parts[2], 10) : NaN;
-        if (!isNaN(parsed)) seq = parsed + 1;
-      }
-      const citation_number = `CIT-${year}-${String(seq).padStart(4, '0')}`;
-
-      const result = db.prepare(`
-        INSERT INTO citations (
-          citation_number, type, status,
-          person_id, person_name, person_dob, person_dl, person_address,
-          vehicle_description, vehicle_plate, vehicle_state,
-          statute_id, statute_citation, violation_description, offense_level, fine_amount,
-          violation_date, violation_time, location,
-          incident_id, call_id,
-          issuing_officer_id, issuing_officer_name, badge_number,
-          court_date, court_name, court_address,
-          notes, section_id, zone_id, beat_id, zone_beat,
-          created_at, updated_at
-        ) VALUES (
-          ?, ?, ?,
-          ?, ?, ?, ?, ?,
-          ?, ?, ?,
-          ?, ?, ?, ?, ?,
-          ?, ?, ?,
-          ?, ?,
-          ?, ?, ?,
-          ?, ?, ?,
-          ?, ?, ?, ?, ?,
-          ?, ?
-        )
-      `).run(
+    const result = db.prepare(`
+      INSERT INTO citations (
         citation_number, type, status,
-        person_id ?? null, person_name ?? null, person_dob ?? null, person_dl ?? null, person_address ?? null,
-        vehicle_description ?? null, vehicle_plate ?? null, vehicle_state ?? null,
-        statute_id ?? null, statute_citation ?? null, violation_description ?? null, offense_level ?? null, fine_amount ?? null,
-        violation_date, violation_time ?? null, location ?? null,
-        incident_id ?? null, call_id ?? null,
-        issuing_officer_id ?? null, issuing_officer_name ?? null, badge_number ?? null,
-        court_date ?? null, court_name ?? null, court_address ?? null,
-        notes ?? null, section_id ?? null, zone_id ?? null, beat_id ?? null, zone_beat ?? null,
-        now, now
-      );
-      return { result, citation_number };
-    });
-
-    const { result, citation_number } = createCitation();
-
-    auditLog(req, 'citation_created', 'citation', Number(result.lastInsertRowid), `Created citation ${citation_number}${person_name ? ` for ${person_name}` : ''}`);
-
-    const created = db.prepare('SELECT * FROM citations WHERE id = ?').get(Number(result.lastInsertRowid));
-    if (!created) { res.status(500).json({ error: 'Failed to retrieve created citation' }); return; }
-
-    // Notify supervisors of citation issued
-    createNotificationForRoles(
-      ['admin', 'manager', 'supervisor'],
-      'citation', `Citation Issued: ${citation_number}`,
-      `${type} citation${person_name ? ` — ${person_name}` : ''}`,
-      'citation', Number(result.lastInsertRowid), 'normal', 'citation.issued', req.user!.userId,
+        person_id, person_name, person_dob, person_dl, person_address,
+        vehicle_description, vehicle_plate, vehicle_state,
+        statute_id, statute_citation, violation_description, offense_level, fine_amount,
+        violation_date, violation_time, location,
+        incident_id, call_id,
+        issuing_officer_id, issuing_officer_name, badge_number,
+        court_date, court_name, court_address,
+        notes, created_at, updated_at
+      ) VALUES (
+        ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?
+      )
+    `).run(
+      citation_number, type, status,
+      person_id || null, person_name || null, person_dob || null, person_dl || null, person_address || null,
+      vehicle_description || null, vehicle_plate || null, vehicle_state || null,
+      statute_id || null, statute_citation || null, violation_description || null, offense_level || null, fine_amount ?? null,
+      violation_date, violation_time || null, location || null,
+      incident_id || null, call_id || null,
+      issuing_officer_id || null, issuing_officer_name || null, badge_number || null,
+      court_date || null, court_name || null, court_address || null,
+      notes || null, now, now
     );
 
-    broadcast('records', 'citation:created', created);
+    // Activity log
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'citation_created', 'citation', ?, ?, ?)
+    `).run(
+      req.user!.userId,
+      result.lastInsertRowid,
+      `Created citation ${citation_number}${person_name ? ` for ${person_name}` : ''}`,
+      req.ip || 'unknown'
+    );
+
+    const created = db.prepare('SELECT * FROM citations WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json({ data: created });
   } catch (error: any) {
-    console.error('Create citation error:', error?.message || 'Unknown error');
+    console.error('Create citation error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── PUT /api/citations/:id ──────────────────────────────
-router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.put('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const citation = db.prepare('SELECT * FROM citations WHERE id = ?').get(req.params.id) as any;
@@ -428,7 +345,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     const fieldMap: Record<string, (v: any) => any> = {
       type: v => v ?? null,
       status: v => v ?? null,
-      person_id: v => v ?? null,
+      person_id: v => v || null,
       person_name: v => v ?? null,
       person_dob: v => v ?? null,
       person_dl: v => v ?? null,
@@ -436,7 +353,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
       vehicle_description: v => v ?? null,
       vehicle_plate: v => v ?? null,
       vehicle_state: v => v ?? null,
-      statute_id: v => v ?? null,
+      statute_id: v => v || null,
       statute_citation: v => v ?? null,
       violation_description: v => v ?? null,
       offense_level: v => v ?? null,
@@ -444,19 +361,15 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
       violation_date: v => v ?? null,
       violation_time: v => v ?? null,
       location: v => v ?? null,
-      incident_id: v => v ?? null,
-      call_id: v => v ?? null,
-      issuing_officer_id: v => v ?? null,
+      incident_id: v => v || null,
+      call_id: v => v || null,
+      issuing_officer_id: v => v || null,
       issuing_officer_name: v => v ?? null,
       badge_number: v => v ?? null,
       court_date: v => v ?? null,
       court_name: v => v ?? null,
       court_address: v => v ?? null,
       notes: v => v ?? null,
-      section_id: v => v ?? null,
-      zone_id: v => v ?? null,
-      beat_id: v => v ?? null,
-      zone_beat: v => v ?? null,
     };
 
     for (const [key, transform] of Object.entries(fieldMap)) {
@@ -473,49 +386,28 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
       db.prepare(`UPDATE citations SET ${fields.join(', ')} WHERE id = ?`).run(...values);
     }
 
-    auditLog(req, 'citation_updated', 'citation', Number(req.params.id), `Updated citation ${citation.citation_number}`);
+    // Activity log
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'citation_updated', 'citation', ?, ?, ?)
+    `).run(
+      req.user!.userId,
+      req.params.id,
+      `Updated citation ${citation.citation_number}`,
+      req.ip || 'unknown'
+    );
 
     const updated = db.prepare('SELECT * FROM citations WHERE id = ?').get(req.params.id);
-    broadcast('records', 'citation:updated', updated);
     res.json({ data: updated });
   } catch (error: any) {
-    console.error('Update citation error:', error?.message || 'Unknown error');
+    console.error('Update citation error:', error);
     res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ─── GET /api/citations/export/csv ───────────────────────
-// Export all non-voided citations as a CSV download
-router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const rows = db.prepare(`
-      SELECT citation_number, person_name, violation_description,
-             violation_date, location, fine_amount, status, issuing_officer_name
-      FROM citations
-      WHERE status != 'voided'
-      ORDER BY violation_date DESC, id DESC
-    `).all() as any[];
-
-    sendCsv(res, 'citations-export.csv', [
-      { key: 'citation_number', header: 'Citation Number' },
-      { key: 'person_name', header: 'Violator Name' },
-      { key: 'violation_description', header: 'Violation Description' },
-      { key: 'violation_date', header: 'Violation Date' },
-      { key: 'location', header: 'Location' },
-      { key: 'fine_amount', header: 'Fine Amount' },
-      { key: 'status', header: 'Status' },
-      { key: 'issuing_officer_name', header: 'Officer Name' },
-    ], rows);
-  } catch (error: any) {
-    console.error('Citation CSV export error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Export failed' });
   }
 });
 
 // ─── DELETE /api/citations/:id ────────────────────────────
 // Soft-delete: sets status to 'voided'
-router.delete('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.delete('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const citation = db.prepare('SELECT * FROM citations WHERE id = ?').get(req.params.id) as any;
@@ -528,11 +420,19 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager', 'supervis
       UPDATE citations SET status = 'voided', updated_at = ? WHERE id = ?
     `).run(localNow(), req.params.id);
 
-    auditLog(req, 'citation_voided', 'citation', Number(req.params.id), `Voided citation ${citation.citation_number}`);
-    broadcast('records', 'citation:updated', { id: citation.id, status: 'voided' });
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'citation_voided', 'citation', ?, ?, ?)
+    `).run(
+      req.user!.userId,
+      req.params.id,
+      `Voided citation ${citation.citation_number}`,
+      req.ip || 'unknown'
+    );
+
     res.json({ message: 'Citation voided', data: { id: citation.id, status: 'voided' } });
   } catch (error: any) {
-    console.error('Void citation error:', error?.message || 'Unknown error');
+    console.error('Void citation error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

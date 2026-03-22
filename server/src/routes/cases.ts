@@ -8,19 +8,15 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken, requireRole } from '../middleware/auth';
+import { authenticateToken } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 import { generateCaseNumber } from '../utils/caseNumbers';
-import { validateParamId, escapeLike } from '../middleware/sanitize';
-import { auditLog } from '../utils/auditLogger';
-import { sendCsv } from '../utils/csvExport';
-import { broadcast } from '../utils/websocket';
 
 const router = Router();
 router.use(authenticateToken);
 
 // ─── GET /stats ──────────────────────────────────────────
-router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/stats', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const statusCounts = db.prepare(`
@@ -42,13 +38,13 @@ router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       },
     });
   } catch (error: any) {
-    console.error('Get case stats error:', error?.message || 'Unknown error');
+    console.error('Get case stats error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── GET / ───────────────────────────────────────────────
-router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { status, case_type, priority, investigator, search, page = '1', limit = '50' } = req.query;
@@ -64,12 +60,12 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     if (priority) { where += ' AND c.priority = ?'; params.push(priority); }
     if (investigator) { where += ' AND c.lead_investigator_id = ?'; params.push(investigator); }
     if (search) {
-      where += " AND (c.case_number LIKE ? ESCAPE '\\' OR c.title LIKE ? ESCAPE '\\' OR c.summary LIKE ? ESCAPE '\\')";
-      const s = `%${escapeLike(String(search))}%`;
+      where += ' AND (c.case_number LIKE ? OR c.title LIKE ? OR c.summary LIKE ?)';
+      const s = `%${search}%`;
       params.push(s, s, s);
     }
 
-    const total = (db.prepare(`SELECT COUNT(*) as count FROM cases c ${where}`).get(...params) as any)?.count || 0;
+    const total = (db.prepare(`SELECT COUNT(*) as count FROM cases c ${where}`).get(...params) as any).count;
     const rows = db.prepare(`
       SELECT c.*, u.full_name as lead_investigator_name
       FROM cases c
@@ -83,13 +79,13 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
 
     res.json({ data: rows, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
   } catch (error: any) {
-    console.error('Get cases error:', error?.message || 'Unknown error');
+    console.error('Get cases error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── GET /:id ────────────────────────────────────────────
-router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare(`
@@ -100,107 +96,81 @@ router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     if (!row) return res.status(404).json({ error: 'Case not found' });
     res.json({ data: row });
   } catch (error: any) {
-    console.error('Get case error:', error?.message || 'Unknown error');
+    console.error('Get case error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── POST / ──────────────────────────────────────────────
-router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
     const { title, case_type = 'general', priority = 'normal', summary, lead_investigator_id, linked_call_id } = req.body;
     if (!title) return res.status(400).json({ error: 'Title is required' });
 
-    // Wrap in transaction to prevent duplicate case numbers from concurrent requests
-    const createCase = db.transaction(() => {
-      const case_number = generateCaseNumber(db, case_type);
-      const result = db.prepare(`
-        INSERT INTO cases (case_number, title, case_type, status, priority, lead_investigator_id,
-          summary, linked_calls, created_by, created_at, updated_at, opened_date)
-        VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(case_number, title, case_type, priority, lead_investigator_id || null, summary || null,
-        linked_call_id ? JSON.stringify([linked_call_id]) : '[]',
-        req.user!.userId, now, now, localToday());
+    const case_number = generateCaseNumber(db, case_type);
+    const result = db.prepare(`
+      INSERT INTO cases (case_number, title, case_type, status, priority, lead_investigator_id,
+        summary, linked_calls, created_by, created_at, updated_at, opened_date)
+      VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(case_number, title, case_type, priority, lead_investigator_id || null, summary || null,
+      linked_call_id ? JSON.stringify([linked_call_id]) : '[]',
+      req.user!.userId, now, now, localToday());
 
-      // Update the linked call with this case_id for bidirectional linkage
-      if (linked_call_id) {
-        const callId = parseInt(String(linked_call_id), 10);
-        if (isNaN(callId)) throw new Error('Invalid linked_call_id');
-        db.prepare('UPDATE calls_for_service SET case_id = ?, case_number = ? WHERE id = ?')
-          .run(Number(result.lastInsertRowid), case_number, callId);
-      }
+    // Update the linked call with this case_id for bidirectional linkage
+    if (linked_call_id) {
+      db.prepare('UPDATE calls_for_service SET case_id = ?, case_number = ? WHERE id = ?')
+        .run(result.lastInsertRowid, case_number, linked_call_id);
+    }
 
-      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-        VALUES (?, 'create', 'case', ?, ?, ?, ?)`).run(req.user!.userId, Number(result.lastInsertRowid), JSON.stringify({ case_number, title }), req.ip || 'unknown', now);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'create', 'case', ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ case_number, title }), now);
 
-      return { id: Number(result.lastInsertRowid), case_number };
-    });
-
-    const caseData = createCase();
-    auditLog(req, 'CREATE', 'case', caseData.id, `Created case ${caseData.case_number}`);
-    broadcast('records', 'case:created', caseData);
-    res.status(201).json({ data: caseData });
+    res.status(201).json({ data: { id: result.lastInsertRowid, case_number } });
   } catch (error: any) {
-    console.error('Create case error:', error?.message || 'Unknown error');
+    console.error('Create case error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── PUT /:id ────────────────────────────────────────────
-router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
     const existing = db.prepare('SELECT * FROM cases WHERE id = ?').get(req.params.id) as any;
     if (!existing) return res.status(404).json({ error: 'Case not found' });
 
-    // Whitelist of allowed update fields — prevents arbitrary column injection
-    const ALLOWED_CASE_FIELDS = ['title', 'case_type', 'priority', 'summary', 'narrative', 'disposition',
+    const fields = ['title', 'case_type', 'priority', 'summary', 'narrative', 'disposition',
       'disposition_date', 'due_date', 'lead_investigator_id', 'assigned_officers',
       'solvability_score', 'solvability_factors', 'linked_incidents', 'linked_citations',
-      'linked_evidence', 'linked_persons', 'linked_field_interviews', 'linked_calls'] as const;
+      'linked_evidence', 'linked_persons', 'linked_field_interviews', 'linked_calls'];
     const updates: string[] = ['updated_at = ?'];
     const params: any[] = [now];
 
-    // Only process keys that are in the whitelist
-    for (const f of ALLOWED_CASE_FIELDS) {
+    for (const f of fields) {
       if (req.body[f] !== undefined) {
         updates.push(`${f} = ?`);
-        const val = req.body[f];
-        // Validate numeric fields
-        if (f === 'lead_investigator_id' && val !== null) {
-          const id = parseInt(String(val), 10);
-          if (isNaN(id) || id < 1) { res.status(400).json({ error: 'lead_investigator_id must be a positive integer' }); return; }
-          params.push(id);
-        } else if (f === 'solvability_score' && val !== null) {
-          const score = parseFloat(String(val));
-          if (isNaN(score) || score < 0 || score > 100) { res.status(400).json({ error: 'solvability_score must be 0-100' }); return; }
-          params.push(score);
-        } else {
-          params.push(typeof val === 'object' ? JSON.stringify(val) : val);
-        }
+        params.push(typeof req.body[f] === 'object' ? JSON.stringify(req.body[f]) : req.body[f]);
       }
     }
 
     params.push(req.params.id);
     db.prepare(`UPDATE cases SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'update', 'case', ?, ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ fields: Object.keys(req.body) }), req.ip || 'unknown', now);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'update', 'case', ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ fields: Object.keys(req.body) }), now);
 
-    auditLog(req, 'UPDATE', 'case', req.params.id, `Updated case fields: ${Object.keys(req.body).join(', ')}`);
-    broadcast('records', 'case:updated', { id: parseInt(req.params.id as string, 10) });
-    res.json({ data: { id: parseInt(req.params.id as string, 10) } });
+    res.json({ data: { id: parseInt(req.params.id) } });
   } catch (error: any) {
-    console.error('Update case error:', error?.message || 'Unknown error');
+    console.error('Update case error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── PUT /:id/status ────────────────────────────────────
-router.put('/:id/status', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/:id/status', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -218,21 +188,19 @@ router.put('/:id/status', validateParamId, requireRole('admin', 'manager', 'supe
     const setClauses = Object.keys(updates).map(k => `${k} = ?`).join(', ');
     db.prepare(`UPDATE cases SET ${setClauses} WHERE id = ?`).run(...Object.values(updates), req.params.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'status_change', 'case', ?, ?, ?, ?)`).run(
-      req.user!.userId, req.params.id, JSON.stringify({ from: existing.status, to: status }), req.ip || 'unknown', now);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'status_change', 'case', ?, ?, ?)`).run(
+      req.user!.userId, req.params.id, JSON.stringify({ from: existing.status, to: status }), now);
 
-    auditLog(req, 'UPDATE', 'case', req.params.id, `Case status changed from ${existing.status} to ${status}`);
-    broadcast('records', 'case:updated', { id: parseInt(req.params.id as string, 10), status });
-    res.json({ data: { id: parseInt(req.params.id as string, 10), status } });
+    res.json({ data: { id: parseInt(req.params.id), status } });
   } catch (error: any) {
-    console.error('Update case status error:', error?.message || 'Unknown error');
+    console.error('Update case status error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── POST /:id/notes ────────────────────────────────────
-router.post('/:id/notes', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/:id/notes', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -246,17 +214,15 @@ router.post('/:id/notes', validateParamId, requireRole('admin', 'manager', 'supe
     `).run(req.params.id, req.user!.userId, user?.full_name || '', note_type, content, now);
 
     db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(now, req.params.id);
-    auditLog(req, 'CREATE', 'case_note', Number(result.lastInsertRowid), `Added ${note_type} note to case ${req.params.id}`);
-    broadcast('records', 'case:updated', { id: parseInt(req.params.id as string, 10) });
-    res.status(201).json({ data: { id: Number(result.lastInsertRowid) } });
+    res.status(201).json({ data: { id: result.lastInsertRowid } });
   } catch (error: any) {
-    console.error('Create case note error:', error?.message || 'Unknown error');
+    console.error('Create case note error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── GET /:id/notes ─────────────────────────────────────
-router.get('/:id/notes', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id/notes', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const notes = db.prepare(`
@@ -264,13 +230,13 @@ router.get('/:id/notes', validateParamId, requireRole('admin', 'manager', 'super
     `).all(req.params.id);
     res.json({ data: notes });
   } catch (error: any) {
-    console.error('Get case notes error:', error?.message || 'Unknown error');
+    console.error('Get case notes error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── POST /:id/calculate-solvability ────────────────────
-router.post('/:id/calculate-solvability', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/:id/calculate-solvability', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -289,40 +255,10 @@ router.post('/:id/calculate-solvability', validateParamId, requireRole('admin', 
     db.prepare('UPDATE cases SET solvability_score = ?, solvability_factors = ?, updated_at = ? WHERE id = ?')
       .run(score, JSON.stringify(factors), now, req.params.id);
 
-    auditLog(req, 'UPDATE', 'case', req.params.id, `Calculated solvability score: ${score}`);
-    broadcast('records', 'case:updated', { id: parseInt(req.params.id as string, 10), score });
     res.json({ data: { score, factors } });
   } catch (error: any) {
-    console.error('Calculate solvability error:', error?.message || 'Unknown error');
+    console.error('Calculate solvability error:', error);
     res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ─── GET /export/csv ────────────────────────────────────
-router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const rows = db.prepare(`
-      SELECT c.case_number, c.title, c.case_type, c.status,
-             u.full_name as assigned_to_name, c.opened_date, c.closed_date
-      FROM cases c
-      LEFT JOIN users u ON c.lead_investigator_id = u.id
-      WHERE c.archived_at IS NULL
-      ORDER BY c.created_at DESC
-    `).all() as any[];
-
-    sendCsv(res, 'cases-export.csv', [
-      { key: 'case_number', header: 'Case Number' },
-      { key: 'title', header: 'Title' },
-      { key: 'case_type', header: 'Case Type' },
-      { key: 'status', header: 'Status' },
-      { key: 'assigned_to_name', header: 'Assigned To' },
-      { key: 'opened_date', header: 'Opened Date' },
-      { key: 'closed_date', header: 'Closed Date' },
-    ], rows);
-  } catch (error: any) {
-    console.error('Cases CSV export error:', error?.message);
-    res.status(500).json({ error: 'Export failed' });
   }
 });
 

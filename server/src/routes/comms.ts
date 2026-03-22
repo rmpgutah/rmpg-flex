@@ -1,31 +1,17 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { validateEnum, escapeLike, validateParamId } from '../middleware/sanitize';
 import { broadcastNewMessage, broadcastAlert, sendToUser } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
-import { auditLog } from '../utils/auditLogger';
-import { sendCsv } from '../utils/csvExport';
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
-
-const __comms_filename = fileURLToPath(import.meta.url);
-const __comms_dirname = path.dirname(__comms_filename);
 
 const router = Router();
-
-// ─── Allowed enum values ─────────────────────────────────
-const VALID_BOLO_TYPES = ['person', 'vehicle', 'property'] as const;
-const VALID_BOLO_PRIORITIES = ['P1', 'P2', 'P3', 'P4'] as const;
-const VALID_MSG_PRIORITIES = ['routine', 'urgent', 'emergency'] as const;
 
 router.use(authenticateToken);
 
 // ─── MESSAGES ─────────────────────────────────────────
 
 // POST /api/comms/messages - Send message
-router.post('/messages', requireRole('admin', 'manager', 'dispatcher', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/messages', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { to_user_id, channel, content, priority, subject, parent_id } = req.body;
@@ -47,25 +33,10 @@ router.post('/messages', requireRole('admin', 'manager', 'dispatcher', 'supervis
       res.status(400).json({ error: 'to_user_id is required for direct messages' });
       return;
     }
-    if (to_user_id) {
-      const uid = parseInt(String(to_user_id), 10);
-      if (isNaN(uid) || uid < 1) {
-        res.status(400).json({ error: 'to_user_id must be a positive integer' });
-        return;
-      }
-    }
 
     // Broadcast/dispatch require dispatcher+ role
     if (['broadcast', 'dispatch'].includes(msgChannel) && !['admin', 'manager', 'dispatcher', 'supervisor'].includes(req.user!.role)) {
       res.status(403).json({ error: 'Insufficient permissions for broadcast/dispatch messages' });
-      return;
-    }
-
-    // Validate message priority (emergency triggers system-wide broadcastAlert)
-    try {
-      if (priority) validateEnum(priority, VALID_MSG_PRIORITIES, 'priority');
-    } catch (err: any) {
-      res.status(400).json({ error: err.message });
       return;
     }
 
@@ -88,10 +59,7 @@ router.post('/messages', requireRole('admin', 'manager', 'dispatcher', 'supervis
       FROM messages m
       LEFT JOIN users u ON m.from_user_id = u.id
       WHERE m.id = ?
-    `).get(Number(result.lastInsertRowid)) as any;
-    if (!message) { res.status(500).json({ error: 'Failed to retrieve created message' }); return; }
-
-    auditLog(req, 'message_sent', 'message', Number(result.lastInsertRowid), `Sent ${msgChannel} message #${Number(result.lastInsertRowid)}`);
+    `).get(result.lastInsertRowid) as any;
 
     // Send via WebSocket
     if (msgChannel === 'direct' && to_user_id) {
@@ -111,7 +79,7 @@ router.post('/messages', requireRole('admin', 'manager', 'dispatcher', 'supervis
 
     res.status(201).json(message);
   } catch (error: any) {
-    console.error('Send message error:', error?.message || 'Unknown error');
+    console.error('Send message error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -121,7 +89,7 @@ router.get('/messages', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { channel, unreadOnly, thread_id, limit = '50' } = req.query;
-    const limitNum = Math.min(Math.max(parseInt(limit as string, 10) || 50, 1), 200);
+    const limitNum = parseInt(limit as string, 10);
 
     let whereClause = 'WHERE (m.to_user_id = ? OR m.to_user_id IS NULL OR m.from_user_id = ?)';
     const params: any[] = [req.user!.userId, req.user!.userId];
@@ -161,16 +129,16 @@ router.get('/messages', (req: Request, res: Response) => {
 
     res.json({
       data: messages,
-      unreadCount: unreadCount?.count ?? 0,
+      unreadCount: unreadCount.count,
     });
   } catch (error: any) {
-    console.error('Get messages error:', error?.message || 'Unknown error');
+    console.error('Get messages error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // PUT /api/comms/messages/:id/read - Mark message as read
-router.put('/messages/:id/read', validateParamId, (req: Request, res: Response) => {
+router.put('/messages/:id/read', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -181,7 +149,7 @@ router.put('/messages/:id/read', validateParamId, (req: Request, res: Response) 
 
     res.json({ message: 'Marked as read' });
   } catch (error: any) {
-    console.error('Mark read error:', error?.message || 'Unknown error');
+    console.error('Mark read error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -196,17 +164,15 @@ router.post('/messages/mark-all-read', (req: Request, res: Response) => {
       UPDATE messages SET read_at = ? WHERE to_user_id = ? AND read_at IS NULL
     `).run(now, req.user!.userId);
 
-    auditLog(req, 'UPDATE', 'message', 0, `Marked ${result.changes} messages as read`);
-
     res.json({ message: 'All messages marked as read', count: result.changes });
   } catch (error: any) {
-    console.error('Mark all read error:', error?.message || 'Unknown error');
+    console.error('Mark all read error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // DELETE /api/comms/messages/:id - Delete message
-router.delete('/messages/:id', validateParamId, (req: Request, res: Response) => {
+router.delete('/messages/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(req.params.id) as any;
@@ -219,13 +185,9 @@ router.delete('/messages/:id', validateParamId, (req: Request, res: Response) =>
     }
 
     db.prepare('DELETE FROM messages WHERE id = ?').run(req.params.id);
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'message_deleted', 'message', ?, ?, ?)`).run(
-      req.user!.userId, req.params.id, `Deleted message #${req.params.id}`, req.ip || 'unknown'
-    );
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
-    console.error('Delete message error:', error?.message || 'Unknown error');
+    console.error('Delete message error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -233,10 +195,10 @@ router.delete('/messages/:id', validateParamId, (req: Request, res: Response) =>
 // ─── BOLOS ────────────────────────────────────────────
 
 // GET /api/comms/bolos - List all BOLOs
-router.get('/bolos', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/bolos', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { status, type, search, archived } = req.query;
+    const { status, type, archived } = req.query;
 
     let whereClause = 'WHERE 1=1';
     const params: any[] = [];
@@ -248,11 +210,6 @@ router.get('/bolos', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
     if (type) {
       whereClause += ' AND b.type = ?';
       params.push(type);
-    }
-    if (search) {
-      whereClause += " AND (b.subject LIKE ? ESCAPE '\\' OR b.description LIKE ? ESCAPE '\\')";
-      const s = `%${escapeLike(String(search))}%`;
-      params.push(s, s);
     }
 
     // Archive filter
@@ -274,13 +231,13 @@ router.get('/bolos', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
 
     res.json(bolos);
   } catch (error: any) {
-    console.error('Get BOLOs error:', error?.message || 'Unknown error');
+    console.error('Get BOLOs error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // GET /api/comms/bolos/active - Get active BOLOs
-router.get('/bolos/active', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/bolos/active', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const bolos = db.prepare(`
@@ -296,13 +253,13 @@ router.get('/bolos/active', requireRole('admin', 'manager', 'supervisor', 'offic
 
     res.json(bolos);
   } catch (error: any) {
-    console.error('Get active BOLOs error:', error?.message || 'Unknown error');
+    console.error('Get active BOLOs error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // GET /api/comms/bolos/check - Check active BOLOs for matching descriptions
-router.get('/bolos/check', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/bolos/check', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { address, subject, vehicle } = req.query;
@@ -319,29 +276,29 @@ router.get('/bolos/check', requireRole('admin', 'manager', 'supervisor', 'office
 
     // Extract keywords (3+ chars) from each field and match against BOLO fields
     const extractKeywords = (text: string) =>
-      (text || '').toUpperCase().split(/[\s,;]+/).filter(w => w.length >= 3);
+      text.toUpperCase().split(/[\s,;]+/).filter(w => w.length >= 3);
 
     const matchClauses: string[] = [];
 
     if (subject && typeof subject === 'string' && subject.length >= 3) {
       const keywords = extractKeywords(subject);
       for (const kw of keywords.slice(0, 5)) {
-        matchClauses.push("(UPPER(b.subject_description) LIKE ? ESCAPE '\\' OR UPPER(b.description) LIKE ? ESCAPE '\\')");
-        params.push(`%${escapeLike(kw)}%`, `%${escapeLike(kw)}%`);
+        matchClauses.push('(UPPER(b.subject_description) LIKE ? OR UPPER(b.description) LIKE ?)');
+        params.push(`%${kw}%`, `%${kw}%`);
       }
     }
 
     if (vehicle && typeof vehicle === 'string' && vehicle.length >= 3) {
       const keywords = extractKeywords(vehicle);
       for (const kw of keywords.slice(0, 5)) {
-        matchClauses.push("(UPPER(b.vehicle_description) LIKE ? ESCAPE '\\' OR UPPER(b.description) LIKE ? ESCAPE '\\')");
-        params.push(`%${escapeLike(kw)}%`, `%${escapeLike(kw)}%`);
+        matchClauses.push('(UPPER(b.vehicle_description) LIKE ? OR UPPER(b.description) LIKE ?)');
+        params.push(`%${kw}%`, `%${kw}%`);
       }
     }
 
     if (address && typeof address === 'string' && address.length >= 3) {
-      matchClauses.push("UPPER(b.description) LIKE ? ESCAPE '\\'");
-      params.push(`%${escapeLike((address as string).toUpperCase())}%`);
+      matchClauses.push('UPPER(b.description) LIKE ?');
+      params.push(`%${(address as string).toUpperCase()}%`);
     }
 
     if (matchClauses.length === 0) {
@@ -363,13 +320,13 @@ router.get('/bolos/check', requireRole('admin', 'manager', 'supervisor', 'office
 
     res.json({ matches, count: matches.length });
   } catch (error: any) {
-    console.error('BOLO check error:', error?.message || 'Unknown error');
+    console.error('BOLO check error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // GET /api/comms/bolos/:id - Get single BOLO
-router.get('/bolos/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/bolos/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const bolo = db.prepare(`
@@ -386,7 +343,7 @@ router.get('/bolos/:id', validateParamId, requireRole('admin', 'manager', 'super
 
     res.json(bolo);
   } catch (error: any) {
-    console.error('Get BOLO error:', error?.message || 'Unknown error');
+    console.error('Get BOLO error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -405,70 +362,51 @@ router.post('/bolos', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       return;
     }
 
-    // Validate BOLO enum fields
-    try {
-      validateEnum(type, VALID_BOLO_TYPES, 'type');
-      if (priority) validateEnum(priority, VALID_BOLO_PRIORITIES, 'priority');
-    } catch (err: any) {
-      res.status(400).json({ error: err.message });
-      return;
+    // Generate BOLO number
+    const lastBolo = db.prepare(`SELECT bolo_number FROM bolos ORDER BY id DESC LIMIT 1`).get() as any;
+    let nextNum = 1;
+    if (lastBolo) {
+      const parts = lastBolo.bolo_number.split('-');
+      nextNum = parseInt(parts[1], 10) + 1;
     }
+    const boloNumber = `BOLO-${String(nextNum).padStart(3, '0')}`;
 
-    // Wrap sequence generation + INSERT in a transaction to prevent duplicate BOLO numbers
-    const createBolo = db.transaction(() => {
-      const lastBolo = db.prepare(`SELECT bolo_number FROM bolos ORDER BY id DESC LIMIT 1`).get() as any;
-      let nextNum = 1;
-      if (lastBolo) {
-        const parts = lastBolo.bolo_number.split('-');
-        const parsed = parts.length >= 2 ? parseInt(parts[1], 10) : NaN;
-        if (!isNaN(parsed)) nextNum = parsed + 1;
-      }
-      const boloNumber = `BOLO-${String(nextNum).padStart(3, '0')}`;
-
-      const result = db.prepare(`
-        INSERT INTO bolos (bolo_number, type, title, description, subject_description, vehicle_description,
-          photo_url, priority, issued_by, expires_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        boloNumber, type, title, description || null, subject_description || null,
-        vehicle_description || null, photo_url || null, priority || 'P3',
-        req.user!.userId, expires_at || null,
-      );
-      return { result, boloNumber };
-    });
-    const { result, boloNumber } = createBolo();
+    const result = db.prepare(`
+      INSERT INTO bolos (bolo_number, type, title, description, subject_description, vehicle_description,
+        photo_url, priority, issued_by, expires_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      boloNumber, type, title, description || null, subject_description || null,
+      vehicle_description || null, photo_url || null, priority || 'P3',
+      req.user!.userId, expires_at || null,
+    );
 
     const bolo = db.prepare(`
       SELECT b.*, u.full_name as issued_by_name
       FROM bolos b LEFT JOIN users u ON b.issued_by = u.id
       WHERE b.id = ?
-    `).get(Number(result.lastInsertRowid)) as any;
-    if (!bolo) { res.status(500).json({ error: 'Failed to retrieve created BOLO' }); return; }
+    `).get(result.lastInsertRowid);
 
-    // Broadcast minimal BOLO alert — full subject/vehicle descriptions are PII
-    // that should only be accessed via authenticated API with role checks
+    // Broadcast alert for new BOLO
     broadcastAlert({
       type: 'new_bolo',
-      id: bolo.id,
-      bolo_number: bolo.bolo_number,
-      title: bolo.title,
-      priority: bolo.priority,
+      bolo,
     });
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'bolo_created', 'bolo', ?, ?, ?)
-    `).run(req.user!.userId, Number(result.lastInsertRowid), `Created BOLO: ${title}`, req.ip || 'unknown');
+    `).run(req.user!.userId, result.lastInsertRowid, `Created BOLO: ${title}`, req.ip || 'unknown');
 
     res.status(201).json(bolo);
   } catch (error: any) {
-    console.error('Create BOLO error:', error?.message || 'Unknown error');
+    console.error('Create BOLO error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // PUT /api/comms/bolos/:id - Update BOLO
-router.put('/bolos/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+router.put('/bolos/:id', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const bolo = db.prepare('SELECT * FROM bolos WHERE id = ?').get(req.params.id) as any;
@@ -488,7 +426,7 @@ router.put('/bolos/:id', validateParamId, requireRole('admin', 'manager', 'super
     const bBodyKeys = Object.keys(req.body);
 
     const bFieldMap: Record<string, (v: any) => any> = {
-      type: v => v ?? null, title: v => v ?? null, description: v => v ?? null,
+      title: v => v ?? null, description: v => v ?? null,
       subject_description: v => v ?? null, vehicle_description: v => v ?? null,
       photo_url: v => v ?? null, status: v => v ?? null,
       priority: v => v ?? null, expires_at: v => v ?? null,
@@ -520,13 +458,13 @@ router.put('/bolos/:id', validateParamId, requireRole('admin', 'manager', 'super
 
     res.json(updated);
   } catch (error: any) {
-    console.error('Update BOLO error:', error?.message || 'Unknown error');
+    console.error('Update BOLO error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // DELETE /api/comms/bolos/:id - Cancel BOLO
-router.delete('/bolos/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.delete('/bolos/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const bolo = db.prepare('SELECT * FROM bolos WHERE id = ?').get(req.params.id) as any;
@@ -535,7 +473,7 @@ router.delete('/bolos/:id', validateParamId, requireRole('admin', 'manager', 'su
       return;
     }
 
-    db.prepare("UPDATE bolos SET status = 'cancelled', updated_at = ? WHERE id = ?").run(localNow(), bolo.id);
+    db.prepare("UPDATE bolos SET status = 'cancelled' WHERE id = ?").run(bolo.id);
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -544,13 +482,13 @@ router.delete('/bolos/:id', validateParamId, requireRole('admin', 'manager', 'su
 
     res.json({ message: 'BOLO cancelled' });
   } catch (error: any) {
-    console.error('Cancel BOLO error:', error?.message || 'Unknown error');
+    console.error('Cancel BOLO error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // POST /api/comms/bolos/:id/archive
-router.post('/bolos/:id/archive', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+router.post('/bolos/:id/archive', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const bolo = db.prepare('SELECT * FROM bolos WHERE id = ?').get(req.params.id) as any;
@@ -567,13 +505,13 @@ router.post('/bolos/:id/archive', validateParamId, requireRole('admin', 'manager
     const updated = db.prepare('SELECT b.*, u.full_name as issued_by_name FROM bolos b LEFT JOIN users u ON b.issued_by = u.id WHERE b.id = ?').get(bolo.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Archive BOLO error:', error?.message || 'Unknown error');
+    console.error('Archive BOLO error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // POST /api/comms/bolos/:id/unarchive
-router.post('/bolos/:id/unarchive', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+router.post('/bolos/:id/unarchive', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const bolo = db.prepare('SELECT * FROM bolos WHERE id = ?').get(req.params.id) as any;
@@ -589,7 +527,7 @@ router.post('/bolos/:id/unarchive', validateParamId, requireRole('admin', 'manag
     const updated = db.prepare('SELECT b.*, u.full_name as issued_by_name FROM bolos b LEFT JOIN users u ON b.issued_by = u.id WHERE b.id = ?').get(bolo.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Unarchive BOLO error:', error?.message || 'Unknown error');
+    console.error('Unarchive BOLO error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -601,8 +539,8 @@ router.get('/activity-feed', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { limit = '50', offset = '0', entityType } = req.query;
-    const limitNum = Math.min(Math.max(parseInt(limit as string, 10) || 50, 1), 200);
-    const offsetNum = Math.max(parseInt(offset as string, 10) || 0, 0);
+    const limitNum = parseInt(limit as string, 10);
+    const offsetNum = parseInt(offset as string, 10);
 
     let whereClause = '';
     const params: any[] = [];
@@ -628,12 +566,12 @@ router.get('/activity-feed', (req: Request, res: Response) => {
 
     res.json({
       data: activity,
-      total: countRow?.total ?? 0,
+      total: countRow.total,
       limit: limitNum,
       offset: offsetNum,
     });
   } catch (error: any) {
-    console.error('Get activity feed error:', error?.message || 'Unknown error');
+    console.error('Get activity feed error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -658,8 +596,8 @@ router.get('/radio/transcripts', (req: Request, res: Response) => {
       params.push(user_id);
     }
     if (search) {
-      whereClause += " AND rt.transcript LIKE ? ESCAPE '\\'";
-      params.push(`%${escapeLike(search as string)}%`);
+      whereClause += ' AND rt.transcript LIKE ?';
+      params.push(`%${search}%`);
     }
     if (from) {
       whereClause += ' AND rt.transmitted_at >= ?';
@@ -683,9 +621,9 @@ router.get('/radio/transcripts', (req: Request, res: Response) => {
       LIMIT ? OFFSET ?
     `).all(...params, limitNum, offsetNum);
 
-    res.json({ data: transcripts, total: countRow?.total ?? 0, limit: limitNum, offset: offsetNum });
+    res.json({ data: transcripts, total: countRow.total, limit: limitNum, offset: offsetNum });
   } catch (error: any) {
-    console.error('Get radio transcripts error:', error?.message || 'Unknown error');
+    console.error('Get radio transcripts error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -722,110 +660,8 @@ router.get('/radio-channels', (req: Request, res: Response) => {
       ]);
     }
   } catch (error: any) {
-    console.error('Get radio channels error:', error?.message || 'Unknown error');
+    console.error('Get radio channels error:', error);
     res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ─── RADIO AUDIO FILE ─────────────────────────────────
-
-// GET /api/comms/radio/audio/:id — Stream a saved radio recording
-router.get('/radio/audio/:id', validateParamId, (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const row = db.prepare('SELECT audio_file, file_size FROM radio_transcripts WHERE id = ?').get(req.params.id) as any;
-
-    if (!row || !row.audio_file) {
-      return res.status(404).json({ error: 'Audio recording not found' });
-    }
-
-    const uploadsDir = path.resolve(__comms_dirname, '../../uploads');
-    const filePath = path.join(uploadsDir, row.audio_file);
-
-    // Security: ensure resolved path is within uploads directory
-    const relPath = path.relative(uploadsDir, filePath);
-    if (relPath.startsWith('..') || path.isAbsolute(relPath)) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: 'Audio file missing from disk' });
-    }
-
-    const stat = fs.statSync(filePath);
-    res.set({
-      'Content-Type': 'audio/webm',
-      'Content-Length': stat.size.toString(),
-      'Cache-Control': 'public, max-age=86400',
-    });
-    const stream = fs.createReadStream(filePath);
-    stream.on('error', (err) => {
-      console.error('Audio stream error:', err);
-      if (!res.headersSent) res.status(500).json({ error: 'Failed to stream audio' });
-      else res.destroy();
-    });
-    stream.pipe(res);
-  } catch (error: any) {
-    console.error('Get radio audio error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ─── CSV EXPORTS ─────────────────────────────────────────
-
-// GET /api/comms/export/csv — Export messages
-router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const rows = db.prepare(`
-      SELECT m.id, m.channel, m.subject, m.content, m.priority, m.created_at, m.read_at,
-        f.full_name as from_name, t.full_name as to_name
-      FROM messages m
-      LEFT JOIN users f ON m.from_user_id = f.id
-      LEFT JOIN users t ON m.to_user_id = t.id
-      ORDER BY m.created_at DESC LIMIT 10000
-    `).all();
-    sendCsv(res, 'messages_export.csv', [
-      { key: 'id', header: 'ID' },
-      { key: 'channel', header: 'Channel' },
-      { key: 'from_name', header: 'From' },
-      { key: 'to_name', header: 'To' },
-      { key: 'subject', header: 'Subject' },
-      { key: 'content', header: 'Content' },
-      { key: 'priority', header: 'Priority' },
-      { key: 'created_at', header: 'Created At' },
-      { key: 'read_at', header: 'Read At' },
-    ], rows);
-  } catch (error: any) {
-    res.status(500).json({ error: 'Export failed' });
-  }
-});
-
-// GET /api/comms/bolos/export/csv — Export BOLOs
-router.get('/bolos/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const rows = db.prepare(`
-      SELECT b.id, b.bolo_number, b.type, b.title, b.description, b.priority, b.status,
-        b.created_at, b.expires_at, u.full_name as issued_by_name
-      FROM bolos b
-      LEFT JOIN users u ON b.issued_by = u.id
-      ORDER BY b.created_at DESC LIMIT 10000
-    `).all();
-    sendCsv(res, 'bolos_export.csv', [
-      { key: 'id', header: 'ID' },
-      { key: 'bolo_number', header: 'BOLO Number' },
-      { key: 'type', header: 'Type' },
-      { key: 'title', header: 'Title' },
-      { key: 'description', header: 'Description' },
-      { key: 'priority', header: 'Priority' },
-      { key: 'status', header: 'Status' },
-      { key: 'issued_by_name', header: 'Issued By' },
-      { key: 'created_at', header: 'Created At' },
-      { key: 'expires_at', header: 'Expires At' },
-    ], rows);
-  } catch (error: any) {
-    res.status(500).json({ error: 'Export failed' });
   }
 });
 

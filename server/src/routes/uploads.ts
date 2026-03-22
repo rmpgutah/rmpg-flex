@@ -6,28 +6,8 @@ import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import jwt from 'jsonwebtoken';
 import { getDb } from '../models/database';
-import { authenticateToken, requireRole, type JwtPayload } from '../middleware/auth';
-import { rateLimit } from '../middleware/rateLimiter';
-import { validateParamId } from '../middleware/sanitize';
-import { auditLog } from '../utils/auditLogger';
-import { broadcast } from '../utils/websocket';
+import { authenticateToken, type JwtPayload } from '../middleware/auth';
 import config from '../config';
-
-// Rate limiter for file uploads — prevent abuse/DoS via large uploads
-const uploadRateLimit = rateLimit({
-  windowMs: 5 * 60 * 1000, // 5 minutes
-  maxRequests: 30,           // 30 uploads per 5 minutes per user
-  keyGenerator: (req) => `upload:${req.user?.userId || req.ip || 'unknown'}`,
-  message: 'Too many file uploads. Please try again later.',
-});
-
-/** Sanitize a filename for safe use in Content-Disposition headers.
- *  Strips CRLF, null bytes, double quotes, and non-printable chars
- *  to prevent header injection / response splitting attacks. */
-function safeContentDisposition(type: 'inline' | 'attachment', filename: string): string {
-  const safe = filename.replace(/[\r\n\0"]/g, '_').replace(/[^\x20-\x7E]/g, '_');
-  return `${type}; filename="${safe}"`;
-}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -41,23 +21,10 @@ if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
-/** Resolve file path and verify it stays within UPLOAD_DIR to prevent path traversal.
- *  Uses fs.realpathSync on the parent dir to defeat symlink-based escapes. */
+/** Resolve file path and verify it stays within UPLOAD_DIR to prevent path traversal */
 function safeFilePath(relativePath: string): string | null {
-  // Block null bytes which can truncate paths in some OS APIs
-  if (relativePath.includes('\0')) return null;
   const resolved = path.resolve(UPLOAD_DIR, relativePath);
-  const rel = path.relative(UPLOAD_DIR, resolved);
-  if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
-  // For existing files, verify the real path (after symlink resolution) stays within UPLOAD_DIR
-  try {
-    const realUploadDir = fs.realpathSync(UPLOAD_DIR);
-    const parentDir = path.dirname(resolved);
-    if (fs.existsSync(parentDir)) {
-      const realParent = fs.realpathSync(parentDir);
-      if (!realParent.startsWith(realUploadDir)) return null;
-    }
-  } catch { /* parent doesn't exist yet — will be created during upload */ }
+  if (!resolved.startsWith(UPLOAD_DIR)) return null;
   return resolved;
 }
 
@@ -77,60 +44,6 @@ const ALLOWED_TYPES = new Set([
   // Audio
   'audio/mpeg', 'audio/wav', 'audio/ogg',
 ]);
-
-// Magic bytes for file type verification — prevents MIME spoofing
-// Maps file extensions to their expected magic byte signatures
-const MAGIC_BYTES: Record<string, { offset: number; bytes: number[] }[]> = {
-  '.jpg':  [{ offset: 0, bytes: [0xFF, 0xD8, 0xFF] }],
-  '.jpeg': [{ offset: 0, bytes: [0xFF, 0xD8, 0xFF] }],
-  '.png':  [{ offset: 0, bytes: [0x89, 0x50, 0x4E, 0x47] }],
-  '.gif':  [{ offset: 0, bytes: [0x47, 0x49, 0x46, 0x38] }],
-  '.pdf':  [{ offset: 0, bytes: [0x25, 0x50, 0x44, 0x46] }],
-  '.webp': [{ offset: 8, bytes: [0x57, 0x45, 0x42, 0x50] }],
-  '.mp4':  [{ offset: 4, bytes: [0x66, 0x74, 0x79, 0x70] }],
-  '.zip':  [{ offset: 0, bytes: [0x50, 0x4B, 0x03, 0x04] }],
-  '.docx': [{ offset: 0, bytes: [0x50, 0x4B, 0x03, 0x04] }], // OOXML is a ZIP
-  '.xlsx': [{ offset: 0, bytes: [0x50, 0x4B, 0x03, 0x04] }],
-  '.doc':  [{ offset: 0, bytes: [0xD0, 0xCF, 0x11, 0xE0] }], // OLE2
-  '.xls':  [{ offset: 0, bytes: [0xD0, 0xCF, 0x11, 0xE0] }],
-  '.wav':  [{ offset: 0, bytes: [0x52, 0x49, 0x46, 0x46] }],
-  '.mp3':  [{ offset: 0, bytes: [0xFF, 0xFB] }, { offset: 0, bytes: [0x49, 0x44, 0x33] }], // MPEG frame or ID3
-  '.bmp':  [{ offset: 0, bytes: [0x42, 0x4D] }],
-  '.tiff': [{ offset: 0, bytes: [0x49, 0x49, 0x2A, 0x00] }, { offset: 0, bytes: [0x4D, 0x4D, 0x00, 0x2A] }], // Little-endian or Big-endian TIFF
-  '.tif':  [{ offset: 0, bytes: [0x49, 0x49, 0x2A, 0x00] }, { offset: 0, bytes: [0x4D, 0x4D, 0x00, 0x2A] }],
-  '.webm': [{ offset: 0, bytes: [0x1A, 0x45, 0xDF, 0xA3] }], // EBML/Matroska
-  '.mkv':  [{ offset: 0, bytes: [0x1A, 0x45, 0xDF, 0xA3] }],
-  '.mov':  [{ offset: 4, bytes: [0x66, 0x74, 0x79, 0x70] }, { offset: 4, bytes: [0x6D, 0x6F, 0x6F, 0x76] }], // ftyp or moov atom
-  '.avi':  [{ offset: 0, bytes: [0x52, 0x49, 0x46, 0x46] }], // RIFF container (same as WAV)
-  '.ogg':  [{ offset: 0, bytes: [0x4F, 0x67, 0x67, 0x53] }], // OggS
-};
-
-/** Verify that a file's actual content matches its claimed extension */
-// Extensions that are plain text — no magic bytes to verify
-const TEXT_EXTENSIONS = new Set(['.txt', '.csv']);
-
-function verifyMagicBytes(filePath: string, ext: string): boolean {
-  const lowerExt = ext.toLowerCase();
-  // Plain text files have no magic bytes — allow if extension is in the text set
-  if (TEXT_EXTENSIONS.has(lowerExt)) return true;
-  const signatures = MAGIC_BYTES[lowerExt];
-  if (!signatures) {
-    // Unknown extension with no known signature — reject for safety
-    console.warn(`[Uploads] Rejected file with unrecognized extension: ${ext}`);
-    return false;
-  }
-  try {
-    const fd = fs.openSync(filePath, 'r');
-    const buf = Buffer.alloc(16);
-    fs.readSync(fd, buf, 0, 16, 0);
-    fs.closeSync(fd);
-    return signatures.some(sig =>
-      sig.bytes.every((b, i) => buf[sig.offset + i] === b)
-    );
-  } catch {
-    return false; // Can't read file — fail closed
-  }
-}
 
 const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
 
@@ -170,7 +83,7 @@ const upload = multer({
 // without requiring a valid JWT session.  This prevents TOKEN_EXPIRED
 // errors when viewing photos/documents across sessions or computers.
 
-function signFileAccess(fileId: string, ttlSeconds = 86400): { sig: string; exp: number } {
+function signFileAccess(fileId: string, ttlSeconds = 31536000): { sig: string; exp: number } {
   const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
   const data = `file:${fileId}:${exp}`;
   const sig = crypto.createHmac('sha256', config.jwt.secret).update(data).digest('hex');
@@ -198,7 +111,7 @@ function authenticateTokenOrQuery(req: Request, res: Response, next: NextFunctio
   const expParam = typeof req.query.exp === 'string' ? parseInt(req.query.exp, 10) : null;
 
   if (sigParam && expParam) {
-    const fileId = req.params.fileId as string;
+    const fileId = req.params.fileId;
     if (fileId && verifyFileAccess(fileId, sigParam, expParam)) {
       // Signed access verified — minimal user context for read-only serving
       req.user = { userId: 0, username: 'signed-access', role: 'viewer', fullName: 'Signed Access' };
@@ -224,21 +137,8 @@ function authenticateTokenOrQuery(req: Request, res: Response, next: NextFunctio
   }
 
   try {
-    // Verify with iss/aud claims for consistency with main authenticateToken
-    const JWT_VERIFY_OPTIONS = { issuer: 'rmpg-flex', audience: 'rmpg-flex-api' };
-    let decoded: JwtPayload;
-    try {
-      decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
-    } catch (strictErr: any) {
-      // Legacy token backward compat — enforce strict validation after 2026-04-15
-      if (strictErr.message?.includes('jwt issuer invalid') || strictErr.message?.includes('jwt audience invalid')) {
-        decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
-      } else {
-        throw strictErr;
-      }
-    }
-    // Block refresh and mfa_pending tokens — only access tokens should serve files
-    if (decoded.type === 'refresh' || decoded.type === 'mfa_pending') {
+    const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+    if (decoded.type === 'refresh') {
       res.status(403).json({ error: 'Invalid token type' });
       return;
     }
@@ -258,7 +158,7 @@ const router = Router();
 // ─── GET /api/uploads/entity/:type/:id ─── List files for entity ───
 // (Must be before /:fileId catch-all to avoid route conflict)
 // Each attachment now includes `access_sig` + `access_exp` for session-independent file URLs.
-router.get('/entity/:type/:id', validateParamId, authenticateToken, (req: Request, res: Response) => {
+router.get('/entity/:type/:id', authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const attachments = db.prepare(`
@@ -277,7 +177,7 @@ router.get('/entity/:type/:id', validateParamId, authenticateToken, (req: Reques
 
     res.json(enriched);
   } catch (error: any) {
-    console.error('List attachments error:', error?.message || 'Unknown error');
+    console.error('List attachments error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -295,10 +195,10 @@ router.get('/sign/:fileId', authenticateToken, (req: Request, res: Response) => 
       return;
     }
 
-    const { sig, exp } = signFileAccess(req.params.fileId as string);
+    const { sig, exp } = signFileAccess(req.params.fileId);
     res.json({ sig, exp, file_id: req.params.fileId });
   } catch (error: any) {
-    console.error('Sign file error:', error?.message || 'Unknown error');
+    console.error('Sign file error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -326,14 +226,14 @@ router.get('/:fileId', authenticateTokenOrQuery, (req: Request, res: Response) =
 
     // Set appropriate headers
     res.set('Content-Type', attachment.mime_type);
-    res.set('Content-Disposition', safeContentDisposition('inline', attachment.original_name));
+    res.set('Content-Disposition', `inline; filename="${attachment.original_name}"`);
     res.set('Content-Length', String(attachment.file_size));
     // Allow browser caching for 5 minutes
     res.set('Cache-Control', 'private, max-age=300');
 
     res.sendFile(filePath);
   } catch (error: any) {
-    console.error('Download error:', error?.message || 'Unknown error');
+    console.error('Download error:', error);
     res.status(500).json({ error: 'Download failed' });
   }
 });
@@ -357,10 +257,10 @@ router.get('/:fileId/download', authenticateTokenOrQuery, (req: Request, res: Re
     }
 
     res.set('Content-Type', 'application/octet-stream');
-    res.set('Content-Disposition', safeContentDisposition('attachment', attachment.original_name));
+    res.set('Content-Disposition', `attachment; filename="${attachment.original_name}"`);
     res.sendFile(filePath);
   } catch (error: any) {
-    console.error('Download error:', error?.message || 'Unknown error');
+    console.error('Download error:', error);
     res.status(500).json({ error: 'Download failed' });
   }
 });
@@ -390,13 +290,13 @@ router.get('/:fileId/thumbnail', authenticateTokenOrQuery, (req: Request, res: R
     }
 
     res.set('Content-Type', attachment.mime_type);
-    res.set('Content-Disposition', safeContentDisposition('inline', attachment.original_name));
+    res.set('Content-Disposition', `inline; filename="${attachment.original_name}"`);
     res.set('Content-Length', String(attachment.file_size));
     res.set('Cache-Control', 'private, max-age=600');
 
     res.sendFile(filePath);
   } catch (error: any) {
-    console.error('Thumbnail error:', error?.message || 'Unknown error');
+    console.error('Thumbnail error:', error);
     res.status(500).json({ error: 'Thumbnail failed' });
   }
 });
@@ -405,7 +305,7 @@ router.get('/:fileId/thumbnail', authenticateTokenOrQuery, (req: Request, res: R
 router.use(authenticateToken);
 
 // ─── POST /api/uploads ─── Upload one or more files ───
-router.post('/', uploadRateLimit, upload.array('files', 10), (req: Request, res: Response) => {
+router.post('/', upload.array('files', 10), (req: Request, res: Response) => {
   try {
     const files = req.files as Express.Multer.File[];
     if (!files || files.length === 0) {
@@ -418,17 +318,6 @@ router.post('/', uploadRateLimit, upload.array('files', 10), (req: Request, res:
     const results: any[] = [];
 
     for (const file of files) {
-      // Verify magic bytes match claimed file type — prevents MIME spoofing attacks
-      const ext = path.extname(file.originalname).toLowerCase();
-      if (!verifyMagicBytes(file.path, ext)) {
-        // Delete the suspicious file immediately
-        try { fs.unlinkSync(file.path); } catch { /* best effort */ }
-        console.warn(`[Upload] BLOCKED — magic byte mismatch for ${file.originalname} (ext=${ext}) from user ${req.user!.userId}`);
-        auditLog(req, 'BLOCK', 'attachment', 0, `Blocked upload: ${file.originalname} — magic byte mismatch (ext=${ext})`);
-        res.status(400).json({ error: `File "${file.originalname}" content does not match its file type` });
-        return;
-      }
-
       // Store path relative to uploads dir
       const relativePath = path.relative(UPLOAD_DIR, file.path);
 
@@ -449,8 +338,8 @@ router.post('/', uploadRateLimit, upload.array('files', 10), (req: Request, res:
         req.user!.userId,
       );
 
-      const attachment = db.prepare('SELECT * FROM attachments WHERE id = ?').get(Number(result.lastInsertRowid));
-      if (attachment) results.push(attachment);
+      const attachment = db.prepare('SELECT * FROM attachments WHERE id = ?').get(result.lastInsertRowid);
+      results.push(attachment);
     }
 
     // Log the upload
@@ -465,12 +354,11 @@ router.post('/', uploadRateLimit, upload.array('files', 10), (req: Request, res:
       req.ip || 'unknown',
     );
 
-    broadcast('records', 'upload:created', { count: results.length, entity_type, entity_id });
     res.status(201).json(results);
   } catch (error: any) {
-    console.error('Upload error:', error?.message || 'Unknown error');
+    console.error('Upload error:', error);
     if (error.message?.includes('not allowed')) {
-      res.status(400).json({ error: 'File type not allowed' });
+      res.status(400).json({ error: error.message });
     } else {
       res.status(500).json({ error: 'Upload failed' });
     }
@@ -478,7 +366,7 @@ router.post('/', uploadRateLimit, upload.array('files', 10), (req: Request, res:
 });
 
 // ─── PUT /api/uploads/:fileId/link ─── Link file to entity ───
-router.put('/:fileId/link', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/:fileId/link', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { entity_type, entity_id } = req.body;
@@ -487,21 +375,10 @@ router.put('/:fileId/link', requireRole('admin', 'manager', 'supervisor'), (req:
       res.status(400).json({ error: 'entity_type and entity_id are required' });
       return;
     }
-    // Validate entity_type against known types
-    const VALID_ENTITY_TYPES = ['incident', 'call', 'citation', 'warrant', 'arrest', 'case', 'field_interview', 'court_event', 'person', 'vehicle', 'evidence', 'fleet_vehicle', 'dar', 'hr_document', 'invoice'];
-    if (typeof entity_type !== 'string' || !VALID_ENTITY_TYPES.includes(entity_type)) {
-      res.status(400).json({ error: 'Invalid entity_type' });
-      return;
-    }
-    const parsedEntityId = parseInt(String(entity_id), 10);
-    if (isNaN(parsedEntityId) || parsedEntityId < 1) {
-      res.status(400).json({ error: 'entity_id must be a positive integer' });
-      return;
-    }
 
     const result = db.prepare(`
       UPDATE attachments SET entity_type = ?, entity_id = ? WHERE file_id = ?
-    `).run(entity_type, parsedEntityId, req.params.fileId);
+    `).run(entity_type, parseInt(entity_id, 10), req.params.fileId);
 
     if (result.changes === 0) {
       res.status(404).json({ error: 'File not found' });
@@ -509,27 +386,15 @@ router.put('/:fileId/link', requireRole('admin', 'manager', 'supervisor'), (req:
     }
 
     const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(req.params.fileId);
-
-    // Audit log: file reassignment
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'file_linked', 'attachment', ?, ?, ?)
-    `).run(
-      req.user!.userId,
-      req.params.fileId,
-      `Linked file to ${entity_type} #${entity_id}`,
-      req.ip || 'unknown',
-    );
-
     res.json(attachment);
   } catch (error: any) {
-    console.error('Link attachment error:', error?.message || 'Unknown error');
+    console.error('Link attachment error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── DELETE /api/uploads/:fileId ─── Delete a file ───
-router.delete('/:fileId', authenticateToken, (req: Request, res: Response) => {
+router.delete('/:fileId', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(req.params.fileId) as any;
@@ -539,16 +404,9 @@ router.delete('/:fileId', authenticateToken, (req: Request, res: Response) => {
       return;
     }
 
-    // Ownership check: only the uploader or admin/manager can delete files
-    const userRole = req.user!.role;
-    if (attachment.uploaded_by !== req.user!.userId && !['admin', 'manager'].includes(userRole)) {
-      res.status(403).json({ error: 'Not authorized to delete this file' });
-      return;
-    }
-
-    // Delete file from disk (validate path to prevent traversal)
-    const filePath = safeFilePath(attachment.file_path);
-    if (filePath && fs.existsSync(filePath)) {
+    // Delete file from disk
+    const filePath = path.join(UPLOAD_DIR, attachment.file_path);
+    if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }
 
@@ -569,7 +427,7 @@ router.delete('/:fileId', authenticateToken, (req: Request, res: Response) => {
 
     res.json({ message: 'File deleted' });
   } catch (error: any) {
-    console.error('Delete attachment error:', error?.message || 'Unknown error');
+    console.error('Delete attachment error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

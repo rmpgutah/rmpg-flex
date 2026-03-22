@@ -17,7 +17,7 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
 
   try {
     const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${GOOGLE_MAPS_API_KEY}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    const res = await fetch(url);
     if (!res.ok) return null;
 
     const data = await res.json();
@@ -41,7 +41,7 @@ export async function reverseGeocodeAddress(lat: number, lng: number): Promise<s
 
   try {
     const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GOOGLE_MAPS_API_KEY}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    const res = await fetch(url);
     if (!res.ok) return null;
 
     const data = await res.json();
@@ -75,7 +75,7 @@ export async function reverseGeocodeDetailed(lat: number, lng: number): Promise<
 
   try {
     const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&result_type=street_address|route|intersection&key=${GOOGLE_MAPS_API_KEY}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    const res = await fetch(url);
     if (!res.ok) return null;
 
     const data = await res.json();
@@ -123,7 +123,7 @@ export async function reverseGeocodeDetailed(lat: number, lng: number): Promise<
  * After successful geocoding, broadcasts the updated call so the map updates in real-time.
  */
 export function geocodeCallIfNeeded(callId: number, address: string, lat: any, lng: any): void {
-  if ((lat != null && lng != null) || !address.trim()) return;
+  if (lat || lng || !address.trim()) return;
 
   geocodeAddress(address).then((result) => {
     if (!result) return;
@@ -141,7 +141,5 @@ export function geocodeCallIfNeeded(callId: number, address: string, lat: any, l
     } catch (err) {
       console.error('[geocode] Failed to update call coordinates:', err);
     }
-  }).catch(err => {
-    console.warn(`[geocode] Failed to geocode call ${callId}:`, err?.message || err);
   });
 }

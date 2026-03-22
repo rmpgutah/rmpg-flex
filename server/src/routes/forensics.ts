@@ -1,1532 +1,731 @@
 // ============================================================
-// RMPG Flex — Forensic Lab Management API Routes
+// RMPG Flex — Forensics Lab API Routes
 // ============================================================
-// Lab case management with exhibit tracking, analysis workflow,
-// examiner assignment, and timeline logging.
-// Auto-generates lab case numbers in FL-YYYY-NNNN format.
+// Full CRUD for forensic cases, exhibits, analyses, and
+// chain-of-custody activity logging.
+// Lab numbers: LAB-YY-#####
 // ============================================================
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken, requireRole } from '../middleware/auth';
-import { localNow, localToday } from '../utils/timeUtils';
-import { auditLog } from '../utils/auditLogger';
-import { computeFileHashes, computeContentFingerprint } from '../utils/ipedManager';
-import { validateParamId, escapeLike } from '../middleware/sanitize';
-import { broadcast } from '../utils/websocket';
-import { sendCsv } from '../utils/csvExport';
-import path from 'path';
-import fs from 'fs';
+import { authenticateToken } from '../middleware/auth';
+import { localNow } from '../utils/timeUtils';
 
 const router = Router();
 router.use(authenticateToken);
 
-// ── Helpers ──────────────────────────────────────────────
-
-/** Generate lab case number — wrapped in transaction to prevent race conditions */
-function generateLabCaseNumber(): string {
+// ── Lab Number Generation ────────────────────────────────
+function generateLabNumber(): string {
   const db = getDb();
-  const year = parseInt(localToday().slice(0, 4), 10);
-  const prefix = `FL-${year}-`;
-  return db.transaction(() => {
-    const last = db.prepare(
-      `SELECT lab_case_number FROM forensic_cases WHERE lab_case_number LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 1`,
-    ).get(`${escapeLike(prefix)}%`) as { lab_case_number: string } | undefined;
-    const parsed = last ? parseInt(last.lab_case_number.replace(prefix, ''), 10) : 0;
-    const seq = (isNaN(parsed) ? 0 : parsed) + 1;
-    return `${prefix}${String(seq).padStart(4, '0')}`;
-  })();
+  const yy = String(new Date().getFullYear()).slice(-2);
+  const prefix = `LAB-${yy}-`;
+  const last = db.prepare(
+    `SELECT lab_number FROM forensic_cases WHERE lab_number LIKE ? ORDER BY id DESC LIMIT 1`,
+  ).get(`${prefix}%`) as { lab_number: string } | undefined;
+
+  let nextNum = 1;
+  if (last) {
+    const match = last.lab_number.match(/LAB-\d{2}-(\d{5})/);
+    if (match) nextNum = parseInt(match[1], 10) + 1;
+  }
+  return `${prefix}${String(nextNum).padStart(5, '0')}`;
 }
 
-function addTimelineEntry(caseId: number, action: string, description: string, userId: number, userName: string) {
+// ── Activity Log Helper ──────────────────────────────────
+function logActivity(caseId: number, action: string, details: string, userId: number, userName: string, exhibitId?: number) {
   const db = getDb();
   db.prepare(`
-    INSERT INTO forensic_timeline (forensic_case_id, action, description, performed_by, performed_by_name, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(caseId, action, description, userId, userName, localNow());
+    INSERT INTO forensic_activity_log (forensic_case_id, exhibit_id, action, details, performed_by, performed_by_name, performed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(caseId, exhibitId || null, action, details, userId, userName, localNow());
 }
 
-// ─── GET /stats ──────────────────────────────────────────
+// ════════════════════════════════════════════════════════════
+// CASES
+// ════════════════════════════════════════════════════════════
 
-router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer'), (_req: Request, res: Response) => {
+// ─── GET /stats ──────────────────────────────────────────
+router.get('/stats', (_req: Request, res: Response) => {
   try {
     const db = getDb();
     const statusCounts = db.prepare(`
-      SELECT status, COUNT(*) as count FROM forensic_cases WHERE archived_at IS NULL GROUP BY status
+      SELECT status, COUNT(*) as count FROM forensic_cases GROUP BY status
     `).all() as any[];
     const typeCounts = db.prepare(`
-      SELECT case_type, COUNT(*) as count FROM forensic_cases WHERE archived_at IS NULL GROUP BY case_type
+      SELECT case_type, COUNT(*) as count FROM forensic_cases GROUP BY case_type
     `).all() as any[];
     const priorityCounts = db.prepare(`
-      SELECT priority, COUNT(*) as count FROM forensic_cases WHERE archived_at IS NULL GROUP BY priority
+      SELECT priority, COUNT(*) as count FROM forensic_cases WHERE status NOT IN ('released','cancelled') GROUP BY priority
     `).all() as any[];
-    const total = db.prepare(`SELECT COUNT(*) as count FROM forensic_cases WHERE archived_at IS NULL`).get() as any;
-    const overdue = db.prepare(`
-      SELECT COUNT(*) as count FROM forensic_cases
-      WHERE archived_at IS NULL AND due_date IS NOT NULL AND due_date < datetime('now','localtime')
-      AND status NOT IN ('closed','cancelled','report_final')
-    `).get() as any;
+    const totalExhibits = (db.prepare(`SELECT COUNT(*) as cnt FROM forensic_exhibits`).get() as any)?.cnt || 0;
+    const totalAnalyses = (db.prepare(`SELECT COUNT(*) as cnt FROM forensic_analyses`).get() as any)?.cnt || 0;
+    const pendingAnalyses = (db.prepare(`SELECT COUNT(*) as cnt FROM forensic_analyses WHERE status IN ('pending','in_progress')`).get() as any)?.cnt || 0;
 
     res.json({
-      by_status: Object.fromEntries(statusCounts.map((r: any) => [r.status, r.count])),
-      by_type: Object.fromEntries(typeCounts.map((r: any) => [r.case_type, r.count])),
-      by_priority: Object.fromEntries(priorityCounts.map((r: any) => [r.priority, r.count])),
-      total: total?.count || 0,
-      overdue: overdue?.count || 0,
+      data: {
+        by_status: Object.fromEntries(statusCounts.map(r => [r.status, r.count])),
+        by_type: Object.fromEntries(typeCounts.map(r => [r.case_type, r.count])),
+        by_priority: Object.fromEntries(priorityCounts.map(r => [r.priority, r.count])),
+        total: statusCounts.reduce((a: number, b: any) => a + b.count, 0),
+        total_exhibits: totalExhibits,
+        total_analyses: totalAnalyses,
+        pending_analyses: pendingAnalyses,
+      },
     });
   } catch (error: any) {
-    console.error('Forensic stats error:', error?.message || 'Unknown error');
+    console.error('Forensics stats error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// ─── GET / — List forensic cases ─────────────────────────
-
-router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+// ─── GET / ───────────────────────────────────────────────
+router.get('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { status, case_type, priority, examiner, search, page = '1', limit = '50' } = req.query;
+    const { status, case_type, priority, search, page = '1', limit = '50' } = req.query;
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
-    let where = 'WHERE fc.archived_at IS NULL';
+    let where = 'WHERE 1=1';
     const params: any[] = [];
 
     if (status) { where += ' AND fc.status = ?'; params.push(status); }
     if (case_type) { where += ' AND fc.case_type = ?'; params.push(case_type); }
     if (priority) { where += ' AND fc.priority = ?'; params.push(priority); }
-    if (examiner) { where += ' AND fc.assigned_examiner_id = ?'; params.push(examiner); }
     if (search) {
-      where += ` AND (fc.lab_case_number LIKE ? ESCAPE '\\' OR fc.title LIKE ? ESCAPE '\\' OR fc.synopsis LIKE ? ESCAPE '\\' OR fc.requesting_officer_name LIKE ? ESCAPE '\\')`;
-      const s = `%${escapeLike(String(search))}%`;
+      where += ' AND (fc.lab_number LIKE ? OR fc.title LIKE ? OR fc.description LIKE ? OR fc.requesting_officer LIKE ?)';
+      const s = `%${search}%`;
       params.push(s, s, s, s);
     }
 
-    const countRow = db.prepare(`SELECT COUNT(*) as count FROM forensic_cases fc ${where}`).get(...params) as any;
+    const total = (db.prepare(`SELECT COUNT(*) as count FROM forensic_cases fc ${where}`).get(...params) as any).count;
+
     const rows = db.prepare(`
       SELECT fc.*,
+        u.full_name as lead_examiner_name,
+        cb.full_name as created_by_name,
         (SELECT COUNT(*) FROM forensic_exhibits WHERE forensic_case_id = fc.id) as exhibit_count,
-        (SELECT COUNT(*) FROM forensic_analyses WHERE forensic_case_id = fc.id) as analysis_count
+        (SELECT COUNT(*) FROM forensic_analyses WHERE forensic_case_id = fc.id) as analysis_count,
+        (SELECT COUNT(*) FROM forensic_analyses WHERE forensic_case_id = fc.id AND status = 'completed') as completed_analysis_count
       FROM forensic_cases fc
+      LEFT JOIN users u ON fc.lead_examiner_id = u.id
+      LEFT JOIN users cb ON fc.created_by = cb.id
       ${where}
       ORDER BY
-        CASE fc.priority WHEN 'rush' THEN 0 WHEN 'urgent' THEN 1 WHEN 'expedited' THEN 2 ELSE 3 END,
+        CASE fc.priority WHEN 'urgent' THEN 0 WHEN 'rush' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,
+        CASE fc.status WHEN 'received' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'analysis_complete' THEN 2
+          WHEN 'report_drafted' THEN 3 WHEN 'reviewed' THEN 4 WHEN 'released' THEN 5 ELSE 6 END,
         fc.created_at DESC
       LIMIT ? OFFSET ?
-    `).all(...params, limitNum, offset) as any[];
+    `).all(...params, limitNum, offset);
 
-    res.json({
-      data: rows,
-      total: countRow?.count || 0,
-      page: pageNum,
-      limit: limitNum,
-    });
+    res.json({ data: rows, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
   } catch (error: any) {
-    console.error('List forensic cases error:', error?.message || 'Unknown error');
+    console.error('Get forensic cases error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// ─── GET /:id — Get single case with details ─────────────
-
-router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+// ─── GET /:id ────────────────────────────────────────────
+router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const row = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id) as any;
-    if (!row) return res.status(404).json({ error: 'Case not found' });
-
-    const exhibits = db.prepare('SELECT * FROM forensic_exhibits WHERE forensic_case_id = ? ORDER BY exhibit_number').all(req.params.id);
-    const analyses = db.prepare('SELECT * FROM forensic_analyses WHERE forensic_case_id = ? ORDER BY created_at DESC').all(req.params.id);
-    const timeline = db.prepare('SELECT * FROM forensic_timeline WHERE forensic_case_id = ? ORDER BY created_at DESC').all(req.params.id);
-
-    res.json({ ...row, exhibits, analyses, timeline });
+    const row = db.prepare(`
+      SELECT fc.*,
+        u.full_name as lead_examiner_name,
+        cb.full_name as created_by_name
+      FROM forensic_cases fc
+      LEFT JOIN users u ON fc.lead_examiner_id = u.id
+      LEFT JOIN users cb ON fc.created_by = cb.id
+      WHERE fc.id = ?
+    `).get(req.params.id);
+    if (!row) return res.status(404).json({ error: 'Forensic case not found' });
+    res.json({ data: row });
   } catch (error: any) {
-    console.error('Get forensic case error:', error?.message || 'Unknown error');
+    console.error('Get forensic case error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// ─── POST / — Create forensic case ───────────────────────
-
-router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+// ─── POST / ──────────────────────────────────────────────
+router.post('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
     const {
-      title, case_type = 'digital', priority = 'routine', incident_id,
-      evidence_ids, requesting_officer_id, requesting_officer_name,
-      assigned_examiner_id, assigned_examiner_name, lab_location,
-      synopsis, due_date, notes,
+      case_type = 'general', priority = 'normal', title, description,
+      requesting_agency = 'RMPG', requesting_officer, lead_examiner_id,
+      linked_incident_id, linked_case_id, linked_incident_number,
+      linked_case_number, due_date, notes,
     } = req.body;
 
     if (!title?.trim()) return res.status(400).json({ error: 'Title is required' });
-    if (title.length > 500) return res.status(400).json({ error: 'Title must be 500 characters or less' });
 
-    // Validate case_type
-    const VALID_CASE_TYPES = ['digital', 'physical', 'biological', 'chemical', 'fingerprint', 'ballistics', 'documents', 'audio_video', 'other'];
-    if (case_type && !VALID_CASE_TYPES.includes(case_type)) {
-      return res.status(400).json({ error: `Invalid case_type. Must be one of: ${VALID_CASE_TYPES.join(', ')}` });
-    }
-
-    // Validate priority
-    const VALID_PRIORITIES = ['routine', 'expedited', 'urgent', 'rush'];
-    if (priority && !VALID_PRIORITIES.includes(priority)) {
-      return res.status(400).json({ error: `Invalid priority. Must be one of: ${VALID_PRIORITIES.join(', ')}` });
-    }
-
-    // Validate numeric foreign key IDs to prevent type confusion
-    if (incident_id != null && (isNaN(Number(incident_id)) || Number(incident_id) <= 0)) {
-      return res.status(400).json({ error: 'Invalid incident_id' });
-    }
-    if (assigned_examiner_id != null && (isNaN(Number(assigned_examiner_id)) || Number(assigned_examiner_id) <= 0)) {
-      return res.status(400).json({ error: 'Invalid assigned_examiner_id' });
-    }
-    if (requesting_officer_id != null && (isNaN(Number(requesting_officer_id)) || Number(requesting_officer_id) <= 0)) {
-      return res.status(400).json({ error: 'Invalid requesting_officer_id' });
-    }
-
-    const lab_case_number = generateLabCaseNumber();
+    const lab_number = generateLabNumber();
     const now = localNow();
 
     const result = db.prepare(`
       INSERT INTO forensic_cases (
-        lab_case_number, title, case_type, status, priority, incident_id,
-        evidence_ids, requesting_officer_id, requesting_officer_name,
-        assigned_examiner_id, assigned_examiner_name, lab_location,
-        synopsis, due_date, notes, received_date, created_by, created_at, updated_at
-      ) VALUES (?, ?, ?, 'submitted', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        lab_number, case_type, status, priority, title, description,
+        requesting_agency, requesting_officer, lead_examiner_id,
+        linked_incident_id, linked_case_id, linked_incident_number,
+        linked_case_number, received_date, due_date, notes,
+        created_by, created_at, updated_at
+      ) VALUES (?, ?, 'received', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      lab_case_number, title.trim(), case_type, priority, incident_id || null,
-      JSON.stringify(evidence_ids || []), requesting_officer_id || null,
-      requesting_officer_name || null, assigned_examiner_id || null,
-      assigned_examiner_name || null, lab_location || null,
-      synopsis || null, due_date || null, notes || null, now,
-      user.userId, now, now,
+      lab_number, case_type, priority, title.trim(), description || null,
+      requesting_agency, requesting_officer || null, lead_examiner_id || null,
+      linked_incident_id || null, linked_case_id || null,
+      linked_incident_number || null, linked_case_number || null,
+      now, due_date || null, notes || null,
+      user.id, now, now,
     );
 
-    addTimelineEntry(
-      Number(result.lastInsertRowid) as number, 'created',
-      `Case ${lab_case_number} created — ${title}`,
-      user.userId, user.fullName || user.username,
-    );
+    logActivity(result.lastInsertRowid as number, 'case_created', `Lab case ${lab_number} created`, user.id, user.full_name);
 
-    auditLog(req, 'forensic_case_created', 'forensic_case', Number(result.lastInsertRowid) as number,
-      `Forensic case ${lab_case_number} created: ${title.trim()}`);
-
-    const created = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(Number(result.lastInsertRowid));
-    if (!created) { res.status(500).json({ error: 'Failed to retrieve created forensic case' }); return; }
-    broadcast('records', 'forensic:created', created);
-    res.status(201).json(created);
+    const newCase = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(result.lastInsertRowid);
+    res.status(201).json({ data: newCase });
   } catch (error: any) {
-    console.error('Create forensic case error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Create forensic case error:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
   }
 });
 
-// ─── PUT /:id — Update forensic case ─────────────────────
-
-router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+// ─── PUT /:id ────────────────────────────────────────────
+router.put('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
     const existing = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id) as any;
-    if (!existing) return res.status(404).json({ error: 'Case not found' });
-
-    // Validate enums on update
-    if (req.body.status) {
-      const VALID_STATUSES = ['submitted', 'received', 'in_progress', 'analysis', 'report_draft', 'report_final', 'closed', 'cancelled'];
-      if (!VALID_STATUSES.includes(req.body.status)) {
-        return res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` });
-      }
-    }
-    if (req.body.case_type) {
-      const VALID_CT = ['digital', 'physical', 'biological', 'chemical', 'fingerprint', 'ballistics', 'documents', 'audio_video', 'other'];
-      if (!VALID_CT.includes(req.body.case_type)) return res.status(400).json({ error: 'Invalid case_type' });
-    }
-    if (req.body.priority) {
-      const VALID_PRI = ['routine', 'expedited', 'urgent', 'rush'];
-      if (!VALID_PRI.includes(req.body.priority)) return res.status(400).json({ error: 'Invalid priority' });
-    }
+    if (!existing) return res.status(404).json({ error: 'Forensic case not found' });
 
     const {
-      title, case_type, status, priority, incident_id,
-      evidence_ids, requesting_officer_id, requesting_officer_name,
-      assigned_examiner_id, assigned_examiner_name, lab_location,
-      synopsis, findings, conclusion, methodology, due_date,
-      started_date, completed_date, report_date, notes, metadata,
+      case_type, priority, title, description, status,
+      requesting_agency, requesting_officer, lead_examiner_id,
+      linked_incident_id, linked_case_id, linked_incident_number,
+      linked_case_number, due_date, notes,
     } = req.body;
 
     const now = localNow();
+    const newStatus = status || existing.status;
+    let completed_date = existing.completed_date;
+    let released_date = existing.released_date;
 
-    // Calculate turnaround days if completing
-    let turnaround_days = existing.turnaround_days;
-    if (status === 'closed' && existing.status !== 'closed' && existing.received_date) {
-      const received = new Date(existing.received_date);
-      const completed = new Date();
-      turnaround_days = Math.ceil((completed.getTime() - received.getTime()) / (1000 * 60 * 60 * 24));
-    }
+    if (newStatus === 'analysis_complete' && !completed_date) completed_date = now;
+    if (newStatus === 'released' && !released_date) released_date = now;
 
     db.prepare(`
       UPDATE forensic_cases SET
-        title = COALESCE(?, title),
-        case_type = COALESCE(?, case_type),
-        status = COALESCE(?, status),
-        priority = COALESCE(?, priority),
-        incident_id = ?,
-        evidence_ids = COALESCE(?, evidence_ids),
-        requesting_officer_id = ?,
-        requesting_officer_name = ?,
-        assigned_examiner_id = ?,
-        assigned_examiner_name = ?,
-        lab_location = ?,
-        synopsis = ?,
-        findings = ?,
-        conclusion = ?,
-        methodology = ?,
-        due_date = ?,
-        started_date = ?,
-        completed_date = ?,
-        report_date = ?,
-        turnaround_days = ?,
-        notes = ?,
-        metadata = ?,
-        updated_at = ?
+        case_type = ?, priority = ?, title = ?, description = ?, status = ?,
+        requesting_agency = ?, requesting_officer = ?, lead_examiner_id = ?,
+        linked_incident_id = ?, linked_case_id = ?, linked_incident_number = ?,
+        linked_case_number = ?, due_date = ?, completed_date = ?, released_date = ?,
+        notes = ?, updated_at = ?
       WHERE id = ?
     `).run(
-      title || null, case_type || null, status || null, priority || null,
-      incident_id ?? existing.incident_id,
-      evidence_ids ? JSON.stringify(evidence_ids) : null,
-      requesting_officer_id ?? existing.requesting_officer_id,
-      requesting_officer_name ?? existing.requesting_officer_name,
-      assigned_examiner_id ?? existing.assigned_examiner_id,
-      assigned_examiner_name ?? existing.assigned_examiner_name,
-      lab_location ?? existing.lab_location,
-      synopsis ?? existing.synopsis,
-      findings ?? existing.findings,
-      conclusion ?? existing.conclusion,
-      methodology ?? existing.methodology,
+      case_type || existing.case_type, priority || existing.priority,
+      title || existing.title, description ?? existing.description,
+      newStatus,
+      requesting_agency ?? existing.requesting_agency,
+      requesting_officer ?? existing.requesting_officer,
+      lead_examiner_id ?? existing.lead_examiner_id,
+      linked_incident_id ?? existing.linked_incident_id,
+      linked_case_id ?? existing.linked_case_id,
+      linked_incident_number ?? existing.linked_incident_number,
+      linked_case_number ?? existing.linked_case_number,
       due_date ?? existing.due_date,
-      started_date ?? existing.started_date,
-      completed_date ?? existing.completed_date,
-      report_date ?? existing.report_date,
-      turnaround_days,
-      notes ?? existing.notes,
-      metadata != null ? (typeof metadata === 'string' ? metadata : JSON.stringify(metadata)) : (existing.metadata || '{}'),
-      now, req.params.id,
+      completed_date, released_date,
+      notes ?? existing.notes, now, req.params.id,
     );
 
-    // Log status changes
     if (status && status !== existing.status) {
-      addTimelineEntry(
-        existing.id, 'status_change',
-        `Status changed from ${existing.status} to ${status}`,
-        user.userId, user.fullName || user.username,
-      );
-    }
-    if (assigned_examiner_name && assigned_examiner_name !== existing.assigned_examiner_name) {
-      addTimelineEntry(
-        existing.id, 'assigned',
-        `Assigned to ${assigned_examiner_name}`,
-        user.userId, user.fullName || user.username,
-      );
+      logActivity(existing.id, 'status_changed', `Status: ${existing.status} → ${status}`, user.id, user.full_name);
     }
 
-    auditLog(req, 'forensic_case_updated', 'forensic_case', existing.id,
-      `Forensic case ${existing.lab_case_number} updated${status && status !== existing.status ? ` (status: ${existing.status} → ${status})` : ''}`);
-
-    const updated = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id);
-    broadcast('records', 'forensic:updated', updated);
-    res.json(updated);
+    const updated = db.prepare(`
+      SELECT fc.*, u.full_name as lead_examiner_name, cb.full_name as created_by_name
+      FROM forensic_cases fc
+      LEFT JOIN users u ON fc.lead_examiner_id = u.id
+      LEFT JOIN users cb ON fc.created_by = cb.id
+      WHERE fc.id = ?
+    `).get(req.params.id);
+    res.json({ data: updated });
   } catch (error: any) {
-    console.error('Update forensic case error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Update forensic case error:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
   }
 });
 
 // ─── DELETE /:id ─────────────────────────────────────────
-
-router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const existing = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id);
-    if (!existing) return res.status(404).json({ error: 'Case not found' });
+    const existing = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id) as any;
+    if (!existing) return res.status(404).json({ error: 'Forensic case not found' });
     db.prepare('DELETE FROM forensic_cases WHERE id = ?').run(req.params.id);
-    auditLog(req, 'forensic_case_deleted', 'forensic_case', (existing as any).id,
-      `Forensic case ${(existing as any).lab_case_number} deleted`);
-    broadcast('records', 'forensic:deleted', { id: (existing as any).id });
-    res.json({ success: true });
+    res.json({ message: 'Forensic case deleted' });
   } catch (error: any) {
-    console.error('Delete forensic case error:', error?.message || 'Unknown error');
+    console.error('Delete forensic case error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// ═══ EXHIBITS ═══════════════════════════════════════════
+// ════════════════════════════════════════════════════════════
+// EXHIBITS
+// ════════════════════════════════════════════════════════════
 
-// ─── GET /:id/exhibits ───────────────────────────────────
-
-router.get('/:id/exhibits', validateParamId, (req: Request, res: Response) => {
+// ─── GET /:caseId/exhibits ───────────────────────────────
+router.get('/:caseId/exhibits', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const exhibits = db.prepare('SELECT * FROM forensic_exhibits WHERE forensic_case_id = ? ORDER BY exhibit_number').all(req.params.id);
-    res.json(exhibits);
+    const rows = db.prepare(`
+      SELECT * FROM forensic_exhibits WHERE forensic_case_id = ? ORDER BY exhibit_number
+    `).all(req.params.caseId);
+    res.json({ data: rows });
   } catch (error: any) {
+    console.error('Get exhibits error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// ─── POST /:id/exhibits ─────────────────────────────────
-
-router.post('/:id/exhibits', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+// ─── POST /:caseId/exhibits ──────────────────────────────
+router.post('/:caseId/exhibits', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
-    const caseRow = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id) as any;
-    if (!caseRow) return res.status(404).json({ error: 'Case not found' });
+    const fc = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.caseId) as any;
+    if (!fc) return res.status(404).json({ error: 'Forensic case not found' });
 
-    const { description, item_type, evidence_id, condition_received, examination_requested, notes } = req.body;
+    const {
+      exhibit_type = 'other', description, quantity = 1, condition_received,
+      storage_location, storage_temp, collected_by, collected_date,
+      collection_method, hash_md5, hash_sha256, notes,
+    } = req.body;
+
     if (!description?.trim()) return res.status(400).json({ error: 'Description is required' });
 
-    // Auto-generate exhibit number (A, B, C, ...)
-    const countRow = db.prepare('SELECT COUNT(*) as c FROM forensic_exhibits WHERE forensic_case_id = ?').get(req.params.id) as any;
-    const count = countRow?.c ?? 0;
-    const exhibit_number = String.fromCharCode(65 + count); // A=65
+    // Auto-generate exhibit number
+    const lastExhibit = db.prepare(
+      `SELECT exhibit_number FROM forensic_exhibits WHERE forensic_case_id = ? ORDER BY id DESC LIMIT 1`
+    ).get(req.params.caseId) as any;
+    let nextNum = 1;
+    if (lastExhibit) {
+      const match = lastExhibit.exhibit_number.match(/(\d+)$/);
+      if (match) nextNum = parseInt(match[1], 10) + 1;
+    }
+    const exhibit_number = `EX-${String(nextNum).padStart(3, '0')}`;
 
     const now = localNow();
+    const initialCustody = JSON.stringify([{
+      action: 'received',
+      by: user.full_name,
+      at: now,
+      notes: 'Initial intake',
+    }]);
+
     const result = db.prepare(`
-      INSERT INTO forensic_exhibits (forensic_case_id, exhibit_number, evidence_id, description, item_type, condition_received, examination_requested, notes, received_date, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(req.params.id, exhibit_number, evidence_id || null, description.trim(), item_type || null, condition_received || null, examination_requested || null, notes || null, now, now, now);
+      INSERT INTO forensic_exhibits (
+        forensic_case_id, exhibit_number, exhibit_type, description, quantity,
+        condition_received, storage_location, storage_temp, collected_by,
+        collected_date, collection_method, hash_md5, hash_sha256,
+        chain_of_custody, notes, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      req.params.caseId, exhibit_number, exhibit_type, description.trim(), quantity,
+      condition_received || null, storage_location || null, storage_temp || null,
+      collected_by || null, collected_date || null, collection_method || null,
+      hash_md5 || null, hash_sha256 || null, initialCustody,
+      notes || null, now, now,
+    );
 
-    addTimelineEntry(caseRow.id, 'exhibit_added', `Exhibit ${exhibit_number} added — ${description}`, user.userId, user.fullName || user.username);
+    logActivity(parseInt(req.params.caseId as string), 'exhibit_added', `Exhibit ${exhibit_number}: ${description}`, user.id, user.full_name, result.lastInsertRowid as number);
 
-    const created = db.prepare('SELECT * FROM forensic_exhibits WHERE id = ?').get(Number(result.lastInsertRowid));
-    if (!created) { res.status(500).json({ error: 'Failed to retrieve created exhibit' }); return; }
-    res.status(201).json(created);
+    const newExhibit = db.prepare('SELECT * FROM forensic_exhibits WHERE id = ?').get(result.lastInsertRowid);
+    res.status(201).json({ data: newExhibit });
   } catch (error: any) {
-    console.error('Create exhibit error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Create exhibit error:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
   }
 });
 
 // ─── PUT /:caseId/exhibits/:exhibitId ────────────────────
-
-router.put('/:caseId/exhibits/:exhibitId', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
-  try {
-    // Validate caseId and exhibitId as positive integers
-    const caseIdNum = parseInt(req.params.caseId, 10);
-    const exhibitIdNum = parseInt(req.params.exhibitId, 10);
-    if (isNaN(caseIdNum) || caseIdNum < 1 || String(caseIdNum) !== req.params.caseId) {
-      return res.status(400).json({ error: 'Invalid case ID' });
-    }
-    if (isNaN(exhibitIdNum) || exhibitIdNum < 1 || String(exhibitIdNum) !== req.params.exhibitId) {
-      return res.status(400).json({ error: 'Invalid exhibit ID' });
-    }
-    const db = getDb();
-    const { description, item_type, condition_received, examination_requested, examination_performed, results, status, notes, returned_date } = req.body;
-    const now = localNow();
-
-    db.prepare(`
-      UPDATE forensic_exhibits SET
-        description = COALESCE(?, description),
-        item_type = COALESCE(?, item_type),
-        condition_received = ?,
-        examination_requested = ?,
-        examination_performed = ?,
-        results = ?,
-        status = COALESCE(?, status),
-        notes = ?,
-        returned_date = ?,
-        updated_at = ?
-      WHERE id = ? AND forensic_case_id = ?
-    `).run(
-      description || null, item_type || null, condition_received ?? null,
-      examination_requested ?? null, examination_performed ?? null,
-      results ?? null, status || null, notes ?? null, returned_date ?? null,
-      now, req.params.exhibitId, req.params.caseId,
-    );
-
-    const updated = db.prepare('SELECT * FROM forensic_exhibits WHERE id = ?').get(req.params.exhibitId);
-    res.json(updated);
-  } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ═══ ANALYSES ═══════════════════════════════════════════
-
-// ─── GET /:id/analyses ───────────────────────────────────
-
-router.get('/:id/analyses', validateParamId, (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const analyses = db.prepare('SELECT * FROM forensic_analyses WHERE forensic_case_id = ? ORDER BY created_at DESC').all(req.params.id);
-    res.json(analyses);
-  } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ─── POST /:id/analyses ─────────────────────────────────
-
-router.post('/:id/analyses', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:caseId/exhibits/:exhibitId', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
-    const caseRow = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id) as any;
-    if (!caseRow) return res.status(404).json({ error: 'Case not found' });
+    const existing = db.prepare('SELECT * FROM forensic_exhibits WHERE id = ? AND forensic_case_id = ?').get(req.params.exhibitId, req.params.caseId) as any;
+    if (!existing) return res.status(404).json({ error: 'Exhibit not found' });
 
-    const { analysis_type, exhibit_id, examiner_id, examiner_name, methodology, instruments_used, notes } = req.body;
+    const {
+      exhibit_type, description, quantity, condition_received,
+      storage_location, storage_temp, collected_by, collected_date,
+      collection_method, hash_md5, hash_sha256, disposition,
+      disposition_date, disposition_notes, notes,
+    } = req.body;
+
+    const now = localNow();
+    db.prepare(`
+      UPDATE forensic_exhibits SET
+        exhibit_type = ?, description = ?, quantity = ?, condition_received = ?,
+        storage_location = ?, storage_temp = ?, collected_by = ?, collected_date = ?,
+        collection_method = ?, hash_md5 = ?, hash_sha256 = ?, disposition = ?,
+        disposition_date = ?, disposition_notes = ?, notes = ?, updated_at = ?
+      WHERE id = ?
+    `).run(
+      exhibit_type || existing.exhibit_type, description || existing.description,
+      quantity ?? existing.quantity, condition_received ?? existing.condition_received,
+      storage_location ?? existing.storage_location, storage_temp ?? existing.storage_temp,
+      collected_by ?? existing.collected_by, collected_date ?? existing.collected_date,
+      collection_method ?? existing.collection_method, hash_md5 ?? existing.hash_md5,
+      hash_sha256 ?? existing.hash_sha256, disposition ?? existing.disposition,
+      disposition_date ?? existing.disposition_date, disposition_notes ?? existing.disposition_notes,
+      notes ?? existing.notes, now, req.params.exhibitId,
+    );
+
+    if (disposition && disposition !== existing.disposition) {
+      logActivity(parseInt(req.params.caseId as string), 'exhibit_disposition', `Exhibit ${existing.exhibit_number}: ${existing.disposition} → ${disposition}`, user.id, user.full_name, existing.id);
+    }
+
+    const updated = db.prepare('SELECT * FROM forensic_exhibits WHERE id = ?').get(req.params.exhibitId);
+    res.json({ data: updated });
+  } catch (error: any) {
+    console.error('Update exhibit error:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+// ─── DELETE /:caseId/exhibits/:exhibitId ─────────────────
+router.delete('/:caseId/exhibits/:exhibitId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    const existing = db.prepare('SELECT * FROM forensic_exhibits WHERE id = ? AND forensic_case_id = ?').get(req.params.exhibitId, req.params.caseId) as any;
+    if (!existing) return res.status(404).json({ error: 'Exhibit not found' });
+    db.prepare('DELETE FROM forensic_exhibits WHERE id = ?').run(req.params.exhibitId);
+    logActivity(parseInt(req.params.caseId as string), 'exhibit_deleted', `Exhibit ${existing.exhibit_number} deleted`, user.id, user.full_name);
+    res.json({ message: 'Exhibit deleted' });
+  } catch (error: any) {
+    console.error('Delete exhibit error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── POST /:caseId/exhibits/:exhibitId/custody ───────────
+router.post('/:caseId/exhibits/:exhibitId/custody', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    const existing = db.prepare('SELECT * FROM forensic_exhibits WHERE id = ? AND forensic_case_id = ?').get(req.params.exhibitId, req.params.caseId) as any;
+    if (!existing) return res.status(404).json({ error: 'Exhibit not found' });
+
+    const { action, notes: custodyNotes } = req.body;
+    if (!action) return res.status(400).json({ error: 'Action is required' });
+
+    const chain = JSON.parse(existing.chain_of_custody || '[]');
+    chain.push({ action, by: user.full_name, at: localNow(), notes: custodyNotes || '' });
+
+    db.prepare('UPDATE forensic_exhibits SET chain_of_custody = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(chain), localNow(), existing.id);
+
+    logActivity(parseInt(req.params.caseId as string), 'custody_transfer', `${existing.exhibit_number}: ${action}`, user.id, user.full_name, existing.id);
+
+    const updated = db.prepare('SELECT * FROM forensic_exhibits WHERE id = ?').get(existing.id);
+    res.json({ data: updated });
+  } catch (error: any) {
+    console.error('Custody update error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// ANALYSES
+// ════════════════════════════════════════════════════════════
+
+// ─── GET /:caseId/analyses ───────────────────────────────
+router.get('/:caseId/analyses', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT a.*, u.full_name as examiner_name, e.exhibit_number
+      FROM forensic_analyses a
+      LEFT JOIN users u ON a.examiner_id = u.id
+      LEFT JOIN forensic_exhibits e ON a.exhibit_id = e.id
+      WHERE a.forensic_case_id = ?
+      ORDER BY a.created_at DESC
+    `).all(req.params.caseId);
+    res.json({ data: rows });
+  } catch (error: any) {
+    console.error('Get analyses error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── POST /:caseId/analyses ──────────────────────────────
+router.post('/:caseId/analyses', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    const fc = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.caseId) as any;
+    if (!fc) return res.status(404).json({ error: 'Forensic case not found' });
+
+    const {
+      exhibit_id, analysis_type, methodology, equipment_used,
+      examiner_id, notes,
+    } = req.body;
+
     if (!analysis_type) return res.status(400).json({ error: 'Analysis type is required' });
 
     const now = localNow();
     const result = db.prepare(`
-      INSERT INTO forensic_analyses (forensic_case_id, exhibit_id, analysis_type, examiner_id, examiner_name, status, methodology, instruments_used, notes, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
-    `).run(req.params.id, exhibit_id || null, analysis_type, examiner_id || null, examiner_name || null, methodology || null, instruments_used || null, notes || null, now, now);
+      INSERT INTO forensic_analyses (
+        forensic_case_id, exhibit_id, analysis_type, methodology,
+        equipment_used, examiner_id, status, notes, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+    `).run(
+      req.params.caseId, exhibit_id || null, analysis_type,
+      methodology || null, equipment_used || null,
+      examiner_id || user.id, notes || null, now, now,
+    );
 
-    addTimelineEntry(caseRow.id, 'analysis_created', `${analysis_type} analysis created`, user.userId, user.fullName || user.username);
+    logActivity(parseInt(req.params.caseId as string), 'analysis_created', `${analysis_type} analysis created`, user.id, user.full_name);
 
-    const created = db.prepare('SELECT * FROM forensic_analyses WHERE id = ?').get(Number(result.lastInsertRowid));
-    if (!created) { res.status(500).json({ error: 'Failed to retrieve created analysis' }); return; }
-    res.status(201).json(created);
+    const newAnalysis = db.prepare(`
+      SELECT a.*, u.full_name as examiner_name, e.exhibit_number
+      FROM forensic_analyses a
+      LEFT JOIN users u ON a.examiner_id = u.id
+      LEFT JOIN forensic_exhibits e ON a.exhibit_id = e.id
+      WHERE a.id = ?
+    `).get(result.lastInsertRowid);
+    res.status(201).json({ data: newAnalysis });
   } catch (error: any) {
-    console.error('Create analysis error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Create analysis error:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
   }
 });
 
 // ─── PUT /:caseId/analyses/:analysisId ───────────────────
-
-router.put('/:caseId/analyses/:analysisId', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:caseId/analyses/:analysisId', (req: Request, res: Response) => {
   try {
-    // Validate caseId and analysisId as positive integers
-    const caseIdA = parseInt(req.params.caseId, 10);
-    const analysisIdA = parseInt(req.params.analysisId, 10);
-    if (isNaN(caseIdA) || caseIdA < 1 || String(caseIdA) !== req.params.caseId) {
-      return res.status(400).json({ error: 'Invalid case ID' });
-    }
-    if (isNaN(analysisIdA) || analysisIdA < 1 || String(analysisIdA) !== req.params.analysisId) {
-      return res.status(400).json({ error: 'Invalid analysis ID' });
-    }
-    // Validate analysis status if provided
-    if (req.body.status) {
-      const VALID_ANALYSIS_STATUSES = ['pending', 'in_progress', 'completed', 'inconclusive', 'cancelled'];
-      if (!VALID_ANALYSIS_STATUSES.includes(req.body.status)) {
-        return res.status(400).json({ error: `Invalid analysis status. Must be one of: ${VALID_ANALYSIS_STATUSES.join(', ')}` });
-      }
-    }
     const db = getDb();
     const user = (req as any).user;
-    const { analysis_type, examiner_id, examiner_name, status, methodology, instruments_used, results, conclusion, started_at, completed_at, notes } = req.body;
-    const now = localNow();
-
     const existing = db.prepare('SELECT * FROM forensic_analyses WHERE id = ? AND forensic_case_id = ?').get(req.params.analysisId, req.params.caseId) as any;
     if (!existing) return res.status(404).json({ error: 'Analysis not found' });
 
+    const {
+      analysis_type, methodology, equipment_used, examiner_id,
+      status, started_at, completed_at, results, conclusion,
+      limitations, notes,
+    } = req.body;
+
+    const now = localNow();
+    const newStatus = status || existing.status;
+    let newStarted = started_at ?? existing.started_at;
+    let newCompleted = completed_at ?? existing.completed_at;
+
+    if (newStatus === 'in_progress' && !newStarted) newStarted = now;
+    if ((newStatus === 'completed' || newStatus === 'inconclusive') && !newCompleted) newCompleted = now;
+
     db.prepare(`
       UPDATE forensic_analyses SET
-        analysis_type = COALESCE(?, analysis_type),
-        examiner_id = ?,
-        examiner_name = ?,
-        status = COALESCE(?, status),
-        methodology = ?,
-        instruments_used = ?,
-        results = ?,
-        conclusion = ?,
-        started_at = ?,
-        completed_at = ?,
-        notes = ?,
-        updated_at = ?
-      WHERE id = ? AND forensic_case_id = ?
+        analysis_type = ?, methodology = ?, equipment_used = ?, examiner_id = ?,
+        status = ?, started_at = ?, completed_at = ?, results = ?,
+        conclusion = ?, limitations = ?, notes = ?, updated_at = ?
+      WHERE id = ?
     `).run(
-      analysis_type || null,
-      examiner_id ?? existing.examiner_id, examiner_name ?? existing.examiner_name,
-      status || null,
-      methodology ?? existing.methodology, instruments_used ?? existing.instruments_used,
+      analysis_type || existing.analysis_type, methodology ?? existing.methodology,
+      equipment_used ?? existing.equipment_used, examiner_id ?? existing.examiner_id,
+      newStatus, newStarted, newCompleted,
       results ?? existing.results, conclusion ?? existing.conclusion,
-      started_at ?? existing.started_at, completed_at ?? existing.completed_at,
-      notes ?? existing.notes, now, req.params.analysisId, req.params.caseId,
+      limitations ?? existing.limitations, notes ?? existing.notes,
+      now, req.params.analysisId,
     );
 
     if (status && status !== existing.status) {
-      const caseIdNum = parseInt(req.params.caseId as string, 10);
-      if (!isNaN(caseIdNum)) {
-        addTimelineEntry(
-          caseIdNum, 'analysis_update',
-          `${existing.analysis_type} analysis → ${status}`,
-          user.userId, user.fullName || user.username,
-        );
-      }
+      logActivity(parseInt(req.params.caseId as string), 'analysis_status', `${existing.analysis_type}: ${existing.status} → ${status}`, user.id, user.full_name);
     }
 
-    const updated = db.prepare('SELECT * FROM forensic_analyses WHERE id = ?').get(req.params.analysisId);
-    res.json(updated);
+    const updated = db.prepare(`
+      SELECT a.*, u.full_name as examiner_name, e.exhibit_number
+      FROM forensic_analyses a
+      LEFT JOIN users u ON a.examiner_id = u.id
+      LEFT JOIN forensic_exhibits e ON a.exhibit_id = e.id
+      WHERE a.id = ?
+    `).get(req.params.analysisId);
+    res.json({ data: updated });
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Update analysis error:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
   }
 });
 
-// ═══ TIMELINE ═══════════════════════════════════════════
-
-router.get('/:id/timeline', validateParamId, (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const timeline = db.prepare('SELECT * FROM forensic_timeline WHERE forensic_case_id = ? ORDER BY created_at DESC').all(req.params.id);
-    res.json(timeline);
-  } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ─── POST /:id/timeline — Add manual note/entry ──────────
-
-router.post('/:id/timeline', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+// ─── DELETE /:caseId/analyses/:analysisId ────────────────
+router.delete('/:caseId/analyses/:analysisId', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
-    const { action = 'note', description } = req.body;
-    if (!description?.trim()) return res.status(400).json({ error: 'Description is required' });
-
-    const caseIdNum = parseInt(req.params.id as string, 10);
-    if (isNaN(caseIdNum)) { res.status(400).json({ error: 'Invalid case ID' }); return; }
-    addTimelineEntry(caseIdNum, action, description.trim(), user.userId, user.fullName || user.username);
-    res.status(201).json({ success: true });
+    const existing = db.prepare('SELECT * FROM forensic_analyses WHERE id = ? AND forensic_case_id = ?').get(req.params.analysisId, req.params.caseId) as any;
+    if (!existing) return res.status(404).json({ error: 'Analysis not found' });
+    db.prepare('DELETE FROM forensic_analyses WHERE id = ?').run(req.params.analysisId);
+    logActivity(parseInt(req.params.caseId as string), 'analysis_deleted', `${existing.analysis_type} analysis deleted`, user.id, user.full_name);
+    res.json({ message: 'Analysis deleted' });
   } catch (error: any) {
+    console.error('Delete analysis error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// ═══ HASHING ═══════════════════════════════════════════
-
-// ─── GET /:id/hashes — List hashes for a forensic case ──
-
-router.get('/:id/hashes', validateParamId, (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const caseRow = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id) as any;
-    if (!caseRow) return res.status(404).json({ error: 'Case not found' });
-
-    const hashes = db.prepare(`
-      SELECT deh.*, fe.exhibit_number, fe.description as exhibit_description
-      FROM digital_evidence_hashes deh
-      LEFT JOIN forensic_exhibits fe ON deh.exhibit_id = fe.id
-      WHERE deh.forensic_case_id = ?
-      ORDER BY deh.created_at DESC
-    `).all(req.params.id);
-
-    // Stats for the case
-    const total = hashes.length;
-    const flagged = (hashes as any[]).filter(h => h.flagged === 1).length;
-    const matched = (hashes as any[]).filter(h => h.hash_set_match === 1).length;
-
-    res.json({ hashes, total, flagged, matched });
-  } catch (error: any) {
-    console.error('List forensic hashes error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ─── POST /:id/hashes/compute — Compute hashes for an exhibit's file or a direct path ──
-
-router.post('/:id/hashes/compute', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const user = (req as any).user;
-    const caseRow = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id) as any;
-    if (!caseRow) return res.status(404).json({ error: 'Case not found' });
-
-    const { exhibit_id, file_path: rawFilePath, file_name: rawFileName } = req.body;
-
-    let filePath: string | null = null;
-    let fileName: string | null = rawFileName || null;
-    let fileSize: number = 0;
-    let mimeType: string | null = null;
-    let evidenceId: number | null = null;
-    let attachmentId: number | null = null;
-    let exhibitId: number | null = exhibit_id || null;
-
-    // Option 1: Hash a file from an exhibit's linked evidence/attachment
-    if (exhibit_id) {
-      const exhibit = db.prepare('SELECT * FROM forensic_exhibits WHERE id = ? AND forensic_case_id = ?').get(exhibit_id, req.params.id) as any;
-      if (!exhibit) return res.status(404).json({ error: 'Exhibit not found' });
-
-      if (exhibit.evidence_id) {
-        evidenceId = exhibit.evidence_id;
-        // Find attachments linked to this evidence
-        const attachment = db.prepare(`
-          SELECT * FROM attachments WHERE entity_type = 'evidence' AND entity_id = ? LIMIT 1
-        `).get(exhibit.evidence_id) as any;
-        if (attachment) {
-          attachmentId = attachment.id;
-          filePath = path.resolve(attachment.file_path);
-          fileName = fileName || attachment.original_name || attachment.stored_name;
-          mimeType = attachment.mime_type;
-        }
-      }
-    }
-
-    // Option 2: Hash a file by direct path (for disk evidence, forensic images)
-    if (!filePath && rawFilePath) {
-      filePath = path.resolve(rawFilePath);
-      // Prevent path traversal — only allow files within the uploads directory
-      const uploadsDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../uploads');
-      const relForensic = path.relative(uploadsDir, filePath);
-      if (relForensic.startsWith('..') || path.isAbsolute(relForensic)) {
-        return res.status(403).json({ error: 'Access denied: file path must be within the uploads directory' });
-      }
-      if (!fileName) {
-        fileName = path.basename(filePath);
-      }
-    }
-
-    if (!filePath || !fs.existsSync(filePath)) {
-      return res.status(400).json({ error: 'No valid file found to hash. Provide a file_path or an exhibit_id linked to evidence with attachments.' });
-    }
-
-    // Get file stats
-    const stat = fs.statSync(filePath);
-    fileSize = stat.size;
-
-    // Compute hashes (MD5, SHA-1, SHA-256, SHA-512) via streaming
-    const hashes = await computeFileHashes(filePath);
-
-    // Compute content fingerprint for similarity detection
-    let contentFingerprint: string | null = null;
-    try {
-      contentFingerprint = computeContentFingerprint(filePath);
-    } catch { /* non-critical */ }
-
-    // Check for existing hash (avoid duplicates)
-    const existing = db.prepare(`
-      SELECT id FROM digital_evidence_hashes
-      WHERE forensic_case_id = ? AND sha256 = ?
-    `).get(req.params.id, hashes.sha256) as any;
-
-    if (existing) {
-      // Update existing record
-      const now = localNow();
-      db.prepare(`
-        UPDATE digital_evidence_hashes SET
-          md5 = ?, sha1 = ?, sha512 = ?,
-          dhash = COALESCE(?, dhash),
-          file_size = ?, updated_at = ?
-        WHERE id = ?
-      `).run(hashes.md5, hashes.sha1, hashes.sha512, contentFingerprint, fileSize, now, existing.id);
-
-      const record = db.prepare('SELECT * FROM digital_evidence_hashes WHERE id = ?').get(existing.id);
-      addTimelineEntry(caseRow.id, 'hash_computed', `Hashes recomputed for ${fileName} (SHA-256 match found)`, user.userId, user.fullName || user.username);
-      return res.json(record);
-    }
-
-    // Insert new hash record
-    const now = localNow();
-    const result = db.prepare(`
-      INSERT INTO digital_evidence_hashes (
-        evidence_id, attachment_id, forensic_case_id, exhibit_id,
-        file_name, file_path, file_size, mime_type,
-        md5, sha1, sha256, sha512, dhash,
-        created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      evidenceId, attachmentId, parseInt(req.params.id as string, 10), exhibitId,
-      fileName, filePath, fileSize, mimeType,
-      hashes.md5, hashes.sha1, hashes.sha256, hashes.sha512,
-      contentFingerprint,
-      now, now,
-    );
-
-    addTimelineEntry(
-      caseRow.id, 'hash_computed',
-      `Hashes computed for ${fileName} — MD5: ${hashes.md5.substring(0, 12)}...`,
-      user.userId, user.fullName || user.username,
-    );
-
-    const record = db.prepare('SELECT * FROM digital_evidence_hashes WHERE id = ?').get(Number(result.lastInsertRowid));
-    if (!record) { res.status(500).json({ error: 'Failed to retrieve hash record' }); return; }
-    res.status(201).json(record);
-  } catch (error: any) {
-    console.error('Compute hash error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Hash computation failed' });
-  }
-});
-
-// ─── POST /:id/hashes/manual — Manually add a hash record (e.g., from external tools) ──
-
-router.post('/:id/hashes/manual', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const user = (req as any).user;
-    const caseRow = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id) as any;
-    if (!caseRow) return res.status(404).json({ error: 'Case not found' });
-
-    const {
-      exhibit_id, file_name, file_path: fp, file_size, mime_type,
-      md5, sha1, sha256, sha512,
-      hash_set_name, hash_set_category, hash_set_match, match_confidence,
-      flagged, flag_reason, notes,
-    } = req.body;
-
-    if (!file_name?.trim()) return res.status(400).json({ error: 'file_name is required' });
-    if (!md5 && !sha1 && !sha256) return res.status(400).json({ error: 'At least one hash value (md5, sha1, or sha256) is required' });
-
-    const now = localNow();
-    const result = db.prepare(`
-      INSERT INTO digital_evidence_hashes (
-        forensic_case_id, exhibit_id, file_name, file_path, file_size, mime_type,
-        md5, sha1, sha256, sha512,
-        hash_set_match, hash_set_name, hash_set_category, match_confidence,
-        flagged, flag_reason, notes,
-        created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      parseInt(req.params.id as string, 10), exhibit_id || null, file_name.trim(), fp || null, file_size ?? null, mime_type || null,
-      md5 || null, sha1 || null, sha256 || null, sha512 || null,
-      hash_set_match ? 1 : 0, hash_set_name || null, hash_set_category || null, match_confidence ?? null,
-      flagged ? 1 : 0, flag_reason || null, notes || null,
-      now, now,
-    );
-
-    addTimelineEntry(
-      caseRow.id, 'hash_added',
-      `Hash record added for ${file_name}${hash_set_match ? ` — MATCH: ${hash_set_name}` : ''}`,
-      user.userId, user.fullName || user.username,
-    );
-
-    const record = db.prepare('SELECT * FROM digital_evidence_hashes WHERE id = ?').get(Number(result.lastInsertRowid));
-    if (!record) { res.status(500).json({ error: 'Failed to retrieve hash record' }); return; }
-    res.status(201).json(record);
-  } catch (error: any) {
-    console.error('Manual hash add error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ─── PUT /:id/hashes/:hashId — Update hash record (flag, review, set match) ──
-
-router.put('/:id/hashes/:hashId', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const user = (req as any).user;
-    const existing = db.prepare(`
-      SELECT * FROM digital_evidence_hashes WHERE id = ? AND forensic_case_id = ?
-    `).get(req.params.hashId, req.params.id) as any;
-    if (!existing) return res.status(404).json({ error: 'Hash record not found' });
-
-    const {
-      hash_set_match, hash_set_name, hash_set_category, match_confidence,
-      flagged, flag_reason, reviewed_by, reviewed_at, notes,
-    } = req.body;
-
-    const now = localNow();
-    db.prepare(`
-      UPDATE digital_evidence_hashes SET
-        hash_set_match = COALESCE(?, hash_set_match),
-        hash_set_name = ?,
-        hash_set_category = ?,
-        match_confidence = ?,
-        flagged = COALESCE(?, flagged),
-        flag_reason = ?,
-        reviewed_by = ?,
-        reviewed_at = ?,
-        notes = ?,
-        updated_at = ?
-      WHERE id = ?
-    `).run(
-      hash_set_match !== undefined ? (hash_set_match ? 1 : 0) : null,
-      hash_set_name ?? existing.hash_set_name,
-      hash_set_category ?? existing.hash_set_category,
-      match_confidence ?? existing.match_confidence,
-      flagged !== undefined ? (flagged ? 1 : 0) : null,
-      flag_reason ?? existing.flag_reason,
-      reviewed_by ?? user.userId,
-      reviewed_at ?? now,
-      notes ?? existing.notes,
-      now, req.params.hashId,
-    );
-
-    // Log flagging
-    if (flagged !== undefined && flagged !== existing.flagged) {
-      addTimelineEntry(
-        parseInt(req.params.id as string, 10),
-        flagged ? 'hash_flagged' : 'hash_unflagged',
-        `${existing.file_name} ${flagged ? 'FLAGGED' : 'unflagged'}${flag_reason ? `: ${flag_reason}` : ''}`,
-        user.userId, user.fullName || user.username,
-      );
-    }
-
-    const updated = db.prepare('SELECT * FROM digital_evidence_hashes WHERE id = ?').get(req.params.hashId);
-    res.json(updated);
-  } catch (error: any) {
-    console.error('Update hash error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ─── DELETE /:id/hashes/:hashId — Delete hash record ──
-
-router.delete('/:id/hashes/:hashId', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const existing = db.prepare(`
-      SELECT * FROM digital_evidence_hashes WHERE id = ? AND forensic_case_id = ?
-    `).get(req.params.hashId, req.params.id) as any;
-    if (!existing) return res.status(404).json({ error: 'Hash record not found' });
-
-    db.prepare('DELETE FROM digital_evidence_hashes WHERE id = ?').run(req.params.hashId);
-
-    const user = (req as any).user;
-    addTimelineEntry(
-      parseInt(req.params.id as string, 10), 'hash_deleted',
-      `Hash record deleted: ${existing.file_name}`,
-      user.userId, user.fullName || user.username,
-    );
-
-    res.json({ success: true });
-  } catch (error: any) {
-    console.error('Delete hash error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ─── POST /:id/hashes/verify — Verify a hash against known hash sets ──
-
-router.post('/:id/hashes/verify', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const { hash_value, hash_type = 'sha256' } = req.body;
-    if (!hash_value?.trim()) return res.status(400).json({ error: 'hash_value is required' });
-
-    const validTypes = ['md5', 'sha1', 'sha256', 'sha512'];
-    if (!validTypes.includes(hash_type)) return res.status(400).json({ error: `hash_type must be one of: ${validTypes.join(', ')}` });
-
-    // Search for matches across ALL hash records in the database
-    const matches = db.prepare(`
-      SELECT deh.*, fc.lab_case_number, fc.title as case_title
-      FROM digital_evidence_hashes deh
-      LEFT JOIN forensic_cases fc ON deh.forensic_case_id = fc.id
-      WHERE deh.${hash_type} = ?
-      ORDER BY deh.created_at DESC
-    `).all(hash_value.trim().toLowerCase());
-
-    res.json({
-      hash_type,
-      hash_value: hash_value.trim().toLowerCase(),
-      matches_found: matches.length,
-      matches,
-    });
-  } catch (error: any) {
-    console.error('Verify hash error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ═══════════════════════════════════════════════════════════════
-// LINKED EVIDENCE — Cross-module evidence linkage system
-// ═══════════════════════════════════════════════════════════════
-
-// ─── Helper: resolve linked record details ───────────────────
-function resolveLinkedRecord(type: string, id: number): any {
-  const db = getDb();
-  try {
-    switch (type) {
-      case 'bodycam_video': {
-        const r = db.prepare(`SELECT bv.id, bv.title, bv.file_path, bv.file_size, bv.classification, bv.case_number,
-          bv.recorded_at, bv.notes, bv.officer_id, u.full_name as officer_name
-          FROM bodycam_videos bv LEFT JOIN users u ON bv.officer_id = u.id WHERE bv.id = ?`).get(id) as any;
-        return r ? { ...r, display_name: r.title, display_detail: `Officer: ${r.officer_name || 'Unknown'} | ${r.classification || 'routine'}`, icon: 'video' } : null;
-      }
-      case 'dashcam_video': {
-        const r = db.prepare(`SELECT id, cpg_device_id, event_type, event_timestamp, speed_mph, address, latitude, longitude, notes
-          FROM dashcam_events WHERE id = ?`).get(id) as any;
-        return r ? { ...r, display_name: `Dashcam ${r.event_type} @ ${r.address || 'Unknown location'}`, display_detail: `Speed: ${r.speed_mph || '—'} mph | ${r.event_timestamp || '—'}`, icon: 'dashcam' } : null;
-      }
-      case 'evidence': {
-        const r = db.prepare(`SELECT e.id, e.evidence_number, e.description, e.evidence_type, e.storage_location, e.status,
-          e.created_at, u.full_name as collected_by_name
-          FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.id = ?`).get(id) as any;
-        return r ? { ...r, display_name: `${r.evidence_number || 'Evidence'}: ${r.description || ''}`, display_detail: `Type: ${r.evidence_type || '—'} | Status: ${r.status}`, icon: 'evidence' } : null;
-      }
-      case 'attachment': {
-        const r = db.prepare(`SELECT a.id, a.original_name, a.file_path, a.mime_type, a.file_size, a.entity_type, a.entity_id,
-          a.created_at, u.full_name as uploaded_by_name
-          FROM attachments a LEFT JOIN users u ON a.uploaded_by = u.id WHERE a.id = ?`).get(id) as any;
-        return r ? { ...r, display_name: r.original_name, display_detail: `Type: ${r.mime_type || '—'} | Size: ${r.file_size ? Math.round(r.file_size / 1024) + ' KB' : '—'}`, icon: 'file' } : null;
-      }
-      case 'incident': {
-        const r = db.prepare(`SELECT i.id, i.incident_number, i.incident_type, i.status, i.location_address, i.narrative,
-          i.created_at, u.full_name as officer_name
-          FROM incidents i LEFT JOIN users u ON i.officer_id = u.id WHERE i.id = ?`).get(id) as any;
-        return r ? { ...r, display_name: `${r.incident_number || 'Incident'}: ${r.incident_type}`, display_detail: `Status: ${r.status} | ${r.location_address || '—'}`, icon: 'incident' } : null;
-      }
-      case 'supplemental_report': {
-        const r = db.prepare(`SELECT sr.id, sr.report_number, sr.subject, sr.report_type, sr.status, sr.created_at,
-          u.full_name as author_name
-          FROM supplemental_reports sr LEFT JOIN users u ON sr.author_id = u.id WHERE sr.id = ?`).get(id) as any;
-        return r ? { ...r, display_name: `${r.report_number || 'Report'}: ${r.subject}`, display_detail: `Type: ${r.report_type} | By: ${r.author_name || '—'}`, icon: 'report' } : null;
-      }
-      case 'case': {
-        const r = db.prepare(`SELECT c.id, c.case_number, c.title, c.case_type, c.status, c.priority, c.opened_date,
-          u.full_name as investigator_name
-          FROM cases c LEFT JOIN users u ON c.lead_investigator_id = u.id WHERE c.id = ?`).get(id) as any;
-        return r ? { ...r, display_name: `${r.case_number}: ${r.title}`, display_detail: `Status: ${r.status} | ${r.case_type}`, icon: 'case' } : null;
-      }
-      case 'radio_transcript': {
-        const r = db.prepare(`SELECT id, channel, transcript_text, recorded_at, duration_seconds FROM radio_transcripts WHERE id = ?`).get(id) as any;
-        return r ? { ...r, display_name: `Radio Transcript: ${r.channel || 'Unknown channel'}`, display_detail: `Duration: ${r.duration_seconds || '—'}s | ${r.recorded_at || '—'}`, icon: 'radio' } : null;
-      }
-      case 'field_interview': {
-        const r = db.prepare(`SELECT fi.id, fi.fi_number, fi.subject_name, fi.location, fi.reason, fi.status, fi.created_at
-          FROM field_interviews fi WHERE fi.id = ?`).get(id) as any;
-        return r ? { ...r, display_name: `${r.fi_number || 'FI'}: ${r.subject_name || 'Unknown subject'}`, display_detail: `Location: ${r.location || '—'} | ${r.reason || '—'}`, icon: 'interview' } : null;
-      }
-      case 'citation': {
-        const r = db.prepare(`SELECT id, citation_number, violation_description, violator_name, status, issued_date FROM citations WHERE id = ?`).get(id) as any;
-        return r ? { ...r, display_name: `${r.citation_number || 'Citation'}: ${r.violation_description || '—'}`, display_detail: `Violator: ${r.violator_name || '—'} | ${r.issued_date || '—'}`, icon: 'citation' } : null;
-      }
-      case 'daily_activity_report': {
-        const r = db.prepare(`SELECT id, dar_number, officer_name, shift_date, status FROM daily_activity_reports WHERE id = ?`).get(id) as any;
-        return r ? { ...r, display_name: `${r.dar_number}: ${r.officer_name || 'Unknown'}`, display_detail: `Shift: ${r.shift_date || '—'} | ${r.status}`, icon: 'dar' } : null;
-      }
-      default:
-        return null;
-    }
-  } catch {
-    return null;
-  }
-}
-
-// ─── GET /:id/links — List all linked evidence for a case ────
-router.get('/:id/links', validateParamId, (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const caseId = parseInt(req.params.id as string, 10);
-
-    // Verify case exists
-    const fc = db.prepare('SELECT id FROM forensic_cases WHERE id = ?').get(caseId);
-    if (!fc) return res.status(404).json({ error: 'Forensic case not found' });
-
-    const links = db.prepare(`
-      SELECT * FROM forensic_case_links WHERE forensic_case_id = ? ORDER BY linked_at DESC
-    `).all(caseId) as any[];
-
-    // Resolve each linked record's details
-    const resolved = links.map(link => ({
-      ...link,
-      resolved: resolveLinkedRecord(link.linked_type, link.linked_id),
-    }));
-
-    // Stats by type
-    const byType: Record<string, number> = {};
-    const byRelevance: Record<string, number> = {};
-    for (const l of links) {
-      byType[l.linked_type] = (byType[l.linked_type] || 0) + 1;
-      byRelevance[l.relevance || 'standard'] = (byRelevance[l.relevance || 'standard'] || 0) + 1;
-    }
-
-    res.json({
-      links: resolved,
-      total: links.length,
-      by_type: byType,
-      by_relevance: byRelevance,
-    });
-  } catch (error: any) {
-    console.error('Get links error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ─── POST /:id/links — Link evidence to a forensic case ─────
-router.post('/:id/links', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const caseId = parseInt(req.params.id as string, 10);
-    const user = (req as any).user;
-    const { linked_type, linked_id, relationship, relevance, notes } = req.body;
-
-    // Validate
-    const fc = db.prepare('SELECT id, lab_case_number FROM forensic_cases WHERE id = ?').get(caseId) as any;
-    if (!fc) return res.status(404).json({ error: 'Forensic case not found' });
-    if (!linked_type || !linked_id) return res.status(400).json({ error: 'linked_type and linked_id are required' });
-
-    // Verify the target record actually exists
-    const resolved = resolveLinkedRecord(linked_type, linked_id);
-    if (!resolved) return res.status(404).json({ error: `${linked_type} #${linked_id} not found` });
-
-    // Insert link (UNIQUE constraint prevents duplicates)
-    const result = db.prepare(`
-      INSERT INTO forensic_case_links (forensic_case_id, linked_type, linked_id, relationship, relevance, notes, linked_by, linked_by_name, linked_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(caseId, linked_type, linked_id, relationship || 'associated', relevance || 'standard', notes || null, user.id, user.full_name, localNow());
-
-    // Timeline entry
-    addTimelineEntry(caseId, 'evidence_linked',
-      `Linked ${linked_type.replace(/_/g, ' ')} "${resolved.display_name}" (${relationship || 'associated'})`,
-      user.id, user.full_name
-    );
-
-    const link = db.prepare('SELECT * FROM forensic_case_links WHERE id = ?').get(Number(result.lastInsertRowid)) as any;
-    if (!link) { res.status(500).json({ error: 'Failed to retrieve created link' }); return; }
-    res.status(201).json({ ...link, resolved });
-  } catch (error: any) {
-    if (error.message?.includes('UNIQUE constraint')) {
-      return res.status(409).json({ error: 'This item is already linked to this case' });
-    }
-    console.error('Create link error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ─── PUT /:id/links/:linkId — Update link metadata ──────────
-router.put('/:id/links/:linkId', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const caseId = parseInt(req.params.id as string, 10);
-    const linkId = parseInt(req.params.linkId as string, 10);
-    const user = (req as any).user;
-    const { relationship, relevance, notes } = req.body;
-
-    const existing = db.prepare('SELECT * FROM forensic_case_links WHERE id = ? AND forensic_case_id = ?').get(linkId, caseId) as any;
-    if (!existing) return res.status(404).json({ error: 'Link not found' });
-
-    const updates: string[] = [];
-    const params: any[] = [];
-    if (relationship !== undefined) { updates.push('relationship = ?'); params.push(relationship); }
-    if (relevance !== undefined) { updates.push('relevance = ?'); params.push(relevance); }
-    if (notes !== undefined) { updates.push('notes = ?'); params.push(notes); }
-
-    if (updates.length > 0) {
-      params.push(linkId, caseId);
-      db.prepare(`UPDATE forensic_case_links SET ${updates.join(', ')} WHERE id = ? AND forensic_case_id = ?`).run(...params);
-    }
-
-    // Log if relationship or relevance changed
-    if (relationship && relationship !== existing.relationship) {
-      addTimelineEntry(caseId, 'link_updated',
-        `Changed link relationship for ${existing.linked_type} #${existing.linked_id}: ${existing.relationship} → ${relationship}`,
-        user.id, user.full_name
-      );
-    }
-
-    const updated = db.prepare('SELECT * FROM forensic_case_links WHERE id = ?').get(linkId) as any;
-    if (!updated) { res.status(404).json({ error: 'Link not found after update' }); return; }
-    res.json({ ...updated, resolved: resolveLinkedRecord(updated.linked_type, updated.linked_id) });
-  } catch (error: any) {
-    console.error('Update link error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ─── DELETE /:id/links/:linkId — Remove a link ──────────────
-router.delete('/:id/links/:linkId', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const caseId = parseInt(req.params.id as string, 10);
-    const linkId = parseInt(req.params.linkId as string, 10);
-    const user = (req as any).user;
-
-    const existing = db.prepare('SELECT * FROM forensic_case_links WHERE id = ? AND forensic_case_id = ?').get(linkId, caseId) as any;
-    if (!existing) return res.status(404).json({ error: 'Link not found' });
-
-    db.prepare('DELETE FROM forensic_case_links WHERE id = ?').run(linkId);
-
-    addTimelineEntry(caseId, 'evidence_unlinked',
-      `Removed link to ${existing.linked_type.replace(/_/g, ' ')} #${existing.linked_id}`,
-      user.id, user.full_name
-    );
-
-    res.json({ success: true });
-  } catch (error: any) {
-    console.error('Delete link error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ─── GET /:id/links/search — Search available records to link ─
-router.get('/:id/links/search', validateParamId, (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const caseId = parseInt(req.params.id as string, 10);
-    const { type, q } = req.query;
-
-    if (!type) return res.status(400).json({ error: 'type parameter required' });
-
-    const search = q ? `%${escapeLike(String(q).toLowerCase())}%` : '%';
-
-    // Get already-linked IDs for this type so we can mark them
-    const alreadyLinked = db.prepare(
-      'SELECT linked_id FROM forensic_case_links WHERE forensic_case_id = ? AND linked_type = ?'
-    ).all(caseId, type).map((r: any) => r.linked_id);
-
-    let results: any[] = [];
-
-    switch (type) {
-      case 'bodycam_video':
-        results = db.prepare(`
-          SELECT bv.id, bv.title, bv.classification, bv.case_number, bv.recorded_at, bv.file_size,
-            u.full_name as officer_name
-          FROM bodycam_videos bv LEFT JOIN users u ON bv.officer_id = u.id
-          WHERE LOWER(bv.title) LIKE ? ESCAPE '\\' OR LOWER(bv.case_number) LIKE ? ESCAPE '\\' OR LOWER(u.full_name) LIKE ? ESCAPE '\\'
-          ORDER BY bv.created_at DESC LIMIT 50
-        `).all(search, search, search);
-        break;
-
-      case 'dashcam_video':
-        results = db.prepare(`
-          SELECT id, cpg_device_id, event_type, event_timestamp, speed_mph, address
-          FROM dashcam_events
-          WHERE LOWER(address) LIKE ? ESCAPE '\\' OR LOWER(event_type) LIKE ? ESCAPE '\\' OR LOWER(cpg_device_id) LIKE ? ESCAPE '\\'
-          ORDER BY event_timestamp DESC LIMIT 50
-        `).all(search, search, search);
-        break;
-
-      case 'evidence':
-        results = db.prepare(`
-          SELECT e.id, e.evidence_number, e.description, e.evidence_type, e.status,
-            u.full_name as collected_by_name
-          FROM evidence e LEFT JOIN users u ON e.collected_by = u.id
-          WHERE LOWER(e.evidence_number) LIKE ? ESCAPE '\\' OR LOWER(e.description) LIKE ? ESCAPE '\\' OR LOWER(e.evidence_type) LIKE ? ESCAPE '\\'
-          ORDER BY e.created_at DESC LIMIT 50
-        `).all(search, search, search);
-        break;
-
-      case 'attachment':
-        results = db.prepare(`
-          SELECT a.id, a.original_name, a.mime_type, a.file_size, a.entity_type, a.entity_id,
-            u.full_name as uploaded_by_name
-          FROM attachments a LEFT JOIN users u ON a.uploaded_by = u.id
-          WHERE LOWER(a.original_name) LIKE ? ESCAPE '\\'
-          ORDER BY a.created_at DESC LIMIT 50
-        `).all(search);
-        break;
-
-      case 'incident':
-        results = db.prepare(`
-          SELECT i.id, i.incident_number, i.incident_type, i.status, i.location_address,
-            u.full_name as officer_name
-          FROM incidents i LEFT JOIN users u ON i.officer_id = u.id
-          WHERE LOWER(i.incident_number) LIKE ? ESCAPE '\\' OR LOWER(i.incident_type) LIKE ? ESCAPE '\\' OR LOWER(i.location_address) LIKE ? ESCAPE '\\'
-          ORDER BY i.created_at DESC LIMIT 50
-        `).all(search, search, search);
-        break;
-
-      case 'supplemental_report':
-        results = db.prepare(`
-          SELECT sr.id, sr.report_number, sr.subject, sr.report_type, sr.status,
-            u.full_name as author_name
-          FROM supplemental_reports sr LEFT JOIN users u ON sr.author_id = u.id
-          WHERE LOWER(sr.report_number) LIKE ? ESCAPE '\\' OR LOWER(sr.subject) LIKE ? ESCAPE '\\'
-          ORDER BY sr.created_at DESC LIMIT 50
-        `).all(search, search);
-        break;
-
-      case 'case':
-        results = db.prepare(`
-          SELECT c.id, c.case_number, c.title, c.case_type, c.status, c.priority
-          FROM cases c
-          WHERE LOWER(c.case_number) LIKE ? ESCAPE '\\' OR LOWER(c.title) LIKE ? ESCAPE '\\'
-          ORDER BY c.created_at DESC LIMIT 50
-        `).all(search, search);
-        break;
-
-      case 'radio_transcript':
-        results = db.prepare(`
-          SELECT id, channel, recorded_at, duration_seconds
-          FROM radio_transcripts
-          WHERE LOWER(channel) LIKE ? ESCAPE '\\' OR LOWER(transcript_text) LIKE ? ESCAPE '\\'
-          ORDER BY recorded_at DESC LIMIT 50
-        `).all(search, search);
-        break;
-
-      case 'field_interview':
-        results = db.prepare(`
-          SELECT id, fi_number, subject_name, location, reason, status
-          FROM field_interviews
-          WHERE LOWER(fi_number) LIKE ? ESCAPE '\\' OR LOWER(subject_name) LIKE ? ESCAPE '\\' OR LOWER(location) LIKE ? ESCAPE '\\'
-          ORDER BY created_at DESC LIMIT 50
-        `).all(search, search, search);
-        break;
-
-      case 'citation':
-        results = db.prepare(`
-          SELECT id, citation_number, violation_description, violator_name, status, issued_date
-          FROM citations
-          WHERE LOWER(citation_number) LIKE ? ESCAPE '\\' OR LOWER(violation_description) LIKE ? ESCAPE '\\' OR LOWER(violator_name) LIKE ? ESCAPE '\\'
-          ORDER BY created_at DESC LIMIT 50
-        `).all(search, search, search);
-        break;
-
-      case 'daily_activity_report':
-        results = db.prepare(`
-          SELECT id, dar_number, officer_name, shift_date, status
-          FROM daily_activity_reports
-          WHERE LOWER(dar_number) LIKE ? ESCAPE '\\' OR LOWER(officer_name) LIKE ? ESCAPE '\\'
-          ORDER BY created_at DESC LIMIT 50
-        `).all(search, search);
-        break;
-
-      default:
-        return res.status(400).json({ error: 'Unknown link type' });
-    }
-
-    // Mark already-linked items
-    const markedResults = results.map((r: any) => ({
-      ...r,
-      already_linked: alreadyLinked.includes(r.id),
-    }));
-
-    res.json({ results: markedResults, total: markedResults.length });
-  } catch (error: any) {
-    console.error('Search linkable records error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ─── GET /:id/links/summary — Case linkage summary for formatting ─
-router.get('/:id/links/summary', validateParamId, (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const caseId = parseInt(req.params.id as string, 10);
-
-    const fc = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(caseId) as any;
-    if (!fc) return res.status(404).json({ error: 'Forensic case not found' });
-
-    const links = db.prepare(`
-      SELECT * FROM forensic_case_links WHERE forensic_case_id = ? ORDER BY relevance DESC, linked_at ASC
-    `).all(caseId) as any[];
-
-    // Build chronological timeline from linked records
-    const timelineItems: any[] = [];
-    for (const link of links) {
-      const resolved = resolveLinkedRecord(link.linked_type, link.linked_id);
-      if (!resolved) continue;
-
-      const timestamp = resolved.recorded_at || resolved.event_timestamp || resolved.created_at || resolved.issued_date || resolved.shift_date || link.linked_at;
-      timelineItems.push({
-        timestamp,
-        type: link.linked_type,
-        relationship: link.relationship,
-        relevance: link.relevance,
-        display_name: resolved.display_name,
-        display_detail: resolved.display_detail,
-        icon: resolved.icon,
-        link_id: link.id,
-        linked_id: link.linked_id,
-      });
-    }
-
-    // Sort by timestamp
-    timelineItems.sort((a, b) => {
-      if (!a.timestamp) return 1;
-      if (!b.timestamp) return -1;
-      return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
-    });
-
-    // Group by type for organized view
-    const grouped: Record<string, any[]> = {};
-    for (const item of timelineItems) {
-      if (!grouped[item.type]) grouped[item.type] = [];
-      grouped[item.type].push(item);
-    }
-
-    res.json({
-      case: fc,
-      total_links: links.length,
-      timeline: timelineItems,
-      grouped,
-    });
-  } catch (error: any) {
-    console.error('Link summary error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Chain of Custody
-// ═══════════════════════════════════════════════════════════════════════════════
-
-router.get('/cases/:id/custody', validateParamId, (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const caseId = Number(req.params.id);
-
-    // Ensure table
-    const tbl = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='forensic_custody_log'`).get();
-    if (!tbl) {
-      db.prepare(`CREATE TABLE forensic_custody_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, case_id INTEGER NOT NULL,
-        action TEXT NOT NULL, from_user_id INTEGER, to_user_id INTEGER,
-        location TEXT, notes TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-      )`).run();
-      return res.json([]);
-    }
-
-    const entries = db.prepare(`
-      SELECT cl.*, fu.full_name as from_name, tu.full_name as to_name
-      FROM forensic_custody_log cl
-      LEFT JOIN users fu ON fu.id = cl.from_user_id
-      LEFT JOIN users tu ON tu.id = cl.to_user_id
-      WHERE cl.case_id = ? ORDER BY cl.created_at ASC
-    `).all(caseId);
-    res.json(entries);
-  } catch (error: any) {
-    console.error('Custody log error:', error?.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-router.post('/cases/:id/custody', validateParamId, (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const caseId = Number(req.params.id);
-    const user = (req as any).user;
-    const { action, to_user_id, notes, location } = req.body;
-    if (!action) return res.status(400).json({ error: 'action is required' });
-
-    const now = localNow();
-    const result = db.prepare(`
-      INSERT INTO forensic_custody_log (case_id, action, from_user_id, to_user_id, location, notes, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(caseId, action, user.id, to_user_id || null, location || null, notes || null, now);
-
-    const entry = db.prepare(`
-      SELECT cl.*, fu.full_name as from_name, tu.full_name as to_name
-      FROM forensic_custody_log cl LEFT JOIN users fu ON fu.id = cl.from_user_id
-      LEFT JOIN users tu ON tu.id = cl.to_user_id WHERE cl.id = ?
-    `).get(Number(result.lastInsertRowid));
-
-    auditLog(req, 'CREATE', 'forensic_custody', Number(result.lastInsertRowid), `Custody: ${action} for case ${caseId}`);
-    res.json(entry);
-  } catch (error: any) {
-    console.error('Custody create error:', error?.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Forensic Tool Inventory
-// ═══════════════════════════════════════════════════════════════════════════════
-
-router.get('/tools', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const tbl = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='forensic_tools'`).get();
-    if (!tbl) {
-      db.prepare(`CREATE TABLE forensic_tools (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, category TEXT NOT NULL,
-        serial_number TEXT, license_key TEXT, version TEXT, vendor TEXT,
-        purchase_date TEXT, license_expiry TEXT, status TEXT NOT NULL DEFAULT 'active',
-        assigned_to INTEGER, notes TEXT,
-        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-      )`).run();
-      return res.json([]);
-    }
-    const tools = db.prepare(`
-      SELECT ft.*, u.full_name as assigned_to_name FROM forensic_tools ft
-      LEFT JOIN users u ON u.id = ft.assigned_to ORDER BY ft.category, ft.name
-    `).all();
-    res.json(tools);
-  } catch (error: any) {
-    console.error('Forensic tools error:', error?.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-router.post('/tools', requireRole('admin', 'manager'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const { name, category, serial_number, license_key, version, vendor, purchase_date, license_expiry, status, assigned_to, notes } = req.body;
-    if (!name || !category) return res.status(400).json({ error: 'name and category required' });
-    const now = localNow();
-    const result = db.prepare(`
-      INSERT INTO forensic_tools (name, category, serial_number, license_key, version, vendor, purchase_date, license_expiry, status, assigned_to, notes, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(name, category, serial_number||null, license_key||null, version||null, vendor||null,
-      purchase_date||null, license_expiry||null, status||'active', assigned_to||null, notes||null, now, now);
-    const tool = db.prepare('SELECT * FROM forensic_tools WHERE id = ?').get(Number(result.lastInsertRowid));
-    auditLog(req, 'CREATE', 'forensic_tool', Number(result.lastInsertRowid), `Added tool: ${name}`);
-    res.json(tool);
-  } catch (error: any) {
-    console.error('Create tool error:', error?.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-router.put('/tools/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const id = Number(req.params.id);
-    const existing = db.prepare('SELECT * FROM forensic_tools WHERE id = ?').get(id) as any;
-    if (!existing) return res.status(404).json({ error: 'Tool not found' });
-    const fields: Record<string, any> = req.body;
-    const updates: string[] = []; const params: any[] = [];
-    for (const [k, v] of Object.entries(fields)) {
-      if (['name','category','serial_number','license_key','version','vendor','purchase_date','license_expiry','status','assigned_to','notes'].includes(k)) {
-        updates.push(`${k} = ?`); params.push(v);
-      }
-    }
-    if (!updates.length) return res.status(400).json({ error: 'No fields' });
-    updates.push('updated_at = ?'); params.push(localNow()); params.push(id);
-    db.prepare(`UPDATE forensic_tools SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    res.json(db.prepare('SELECT * FROM forensic_tools WHERE id = ?').get(id));
-  } catch (error: any) {
-    console.error('Update tool error:', error?.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-router.delete('/tools/:id', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const id = Number(req.params.id);
-    const existing = db.prepare('SELECT * FROM forensic_tools WHERE id = ?').get(id) as any;
-    if (!existing) return res.status(404).json({ error: 'Tool not found' });
-    db.prepare('DELETE FROM forensic_tools WHERE id = ?').run(id);
-    auditLog(req, 'DELETE', 'forensic_tool', id, `Deleted tool: ${existing.name}`);
-    res.json({ success: true });
-  } catch (error: any) {
-    console.error('Delete tool error:', error?.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ─── CSV EXPORT ──────────────────────────────────────────
-
-// GET /api/forensics/export/csv — Export forensic lab cases
-router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+// ════════════════════════════════════════════════════════════
+// ACTIVITY LOG
+// ════════════════════════════════════════════════════════════
+
+router.get('/:caseId/activity', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const rows = db.prepare(`
-      SELECT fc.id, fc.lab_case_number, fc.title, fc.case_type, fc.status, fc.priority,
-        fc.synopsis, fc.requesting_officer_name, fc.requesting_agency,
-        fc.linked_incident_number, fc.linked_case_number,
-        fc.received_date, fc.due_date, fc.completed_date,
-        fc.assigned_examiner_id, fc.created_at, fc.updated_at
-      FROM forensic_cases fc
-      WHERE fc.archived_at IS NULL
-      ORDER BY fc.created_at DESC LIMIT 10000
-    `).all();
-    sendCsv(res, 'forensic_cases_export.csv', [
-      { key: 'id', header: 'ID' },
-      { key: 'lab_case_number', header: 'Lab Case Number' },
-      { key: 'title', header: 'Title' },
-      { key: 'case_type', header: 'Case Type' },
-      { key: 'status', header: 'Status' },
-      { key: 'priority', header: 'Priority' },
-      { key: 'synopsis', header: 'Synopsis' },
-      { key: 'requesting_officer_name', header: 'Requesting Officer' },
-      { key: 'requesting_agency', header: 'Requesting Agency' },
-      { key: 'linked_incident_number', header: 'Linked Incident' },
-      { key: 'linked_case_number', header: 'Linked Case' },
-      { key: 'received_date', header: 'Received Date' },
-      { key: 'due_date', header: 'Due Date' },
-      { key: 'completed_date', header: 'Completed Date' },
-      { key: 'created_at', header: 'Created At' },
-    ], rows);
+      SELECT * FROM forensic_activity_log WHERE forensic_case_id = ? ORDER BY performed_at DESC
+    `).all(req.params.caseId);
+    res.json({ data: rows });
   } catch (error: any) {
-    res.status(500).json({ error: 'Export failed' });
+    console.error('Get activity log error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// ── Hash Set Management ─────────────────────────────────────
+// ============================================================
+
+// GET /api/forensics/hash-sets — List all hash sets
+router.get('/hash-sets', (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const sets = db.prepare(`
+      SELECT * FROM forensic_hash_sets ORDER BY created_at DESC
+    `).all();
+    res.json({ data: sets });
+  } catch (error: any) {
+    console.error('Get hash sets error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/forensics/hash-sets — Create hash set with optional CSV entries
+router.post('/hash-sets', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { name, set_type, description, version, entries } = req.body;
+
+    if (!name || !set_type) {
+      res.status(400).json({ error: 'Name and set_type are required' });
+      return;
+    }
+
+    const now = localNow();
+    const userName = (req as any).user?.username || 'unknown';
+    const userId = (req as any).user?.userId || null;
+
+    const insertSet = db.prepare(`
+      INSERT INTO forensic_hash_sets (name, set_type, description, version, imported_by, imported_by_name, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const result = insertSet.run(name, set_type, description || null, version || null, userId, userName, now, now);
+    const setId = result.lastInsertRowid;
+
+    // Bulk insert entries if provided
+    let hashCount = 0;
+    if (Array.isArray(entries) && entries.length > 0) {
+      const insertEntry = db.prepare(`
+        INSERT OR IGNORE INTO forensic_hash_entries (hash_set_id, hash_value, hash_type, file_name, file_size, category)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+
+      const bulkInsert = db.transaction((items: any[]) => {
+        for (const entry of items) {
+          // Support multiple hash columns per row
+          if (entry.md5) { insertEntry.run(setId, entry.md5.toLowerCase(), 'md5', entry.file_name || null, entry.file_size || null, entry.category || null); hashCount++; }
+          if (entry.sha1) { insertEntry.run(setId, entry.sha1.toLowerCase(), 'sha1', entry.file_name || null, entry.file_size || null, entry.category || null); hashCount++; }
+          if (entry.sha256) { insertEntry.run(setId, entry.sha256.toLowerCase(), 'sha256', entry.file_name || null, entry.file_size || null, entry.category || null); hashCount++; }
+          // Fallback: single hash_value + hash_type
+          if (!entry.md5 && !entry.sha1 && !entry.sha256 && entry.hash_value && entry.hash_type) {
+            insertEntry.run(setId, entry.hash_value.toLowerCase(), entry.hash_type, entry.file_name || null, entry.file_size || null, entry.category || null);
+            hashCount++;
+          }
+        }
+      });
+      bulkInsert(entries);
+
+      // Update hash count on the set
+      db.prepare('UPDATE forensic_hash_sets SET hash_count = ?, updated_at = ? WHERE id = ?').run(hashCount, now, setId);
+    }
+
+    const created = db.prepare('SELECT * FROM forensic_hash_sets WHERE id = ?').get(setId);
+    res.status(201).json({ data: created, hash_count: hashCount });
+  } catch (error: any) {
+    console.error('Create hash set error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/forensics/hash-sets/:id — Delete hash set and all entries
+router.delete('/hash-sets/:id', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID' }); return; }
+
+    const existing = db.prepare('SELECT id, name FROM forensic_hash_sets WHERE id = ?').get(id) as any;
+    if (!existing) { res.status(404).json({ error: 'Hash set not found' }); return; }
+
+    // CASCADE will remove entries
+    db.prepare('DELETE FROM forensic_hash_sets WHERE id = ?').run(id);
+    res.json({ message: `Hash set "${existing.name}" deleted` });
+  } catch (error: any) {
+    console.error('Delete hash set error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/forensics/hash-sets/check — Check hashes against loaded sets
+router.post('/hash-sets/check', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { hashes } = req.body; // string[] of hash values
+
+    if (!Array.isArray(hashes) || hashes.length === 0) {
+      res.status(400).json({ error: 'Provide an array of hashes' });
+      return;
+    }
+
+    const placeholders = hashes.map(() => '?').join(',');
+    const lowerHashes = hashes.map((h: string) => h.toLowerCase());
+
+    const matches = db.prepare(`
+      SELECT e.hash_value, e.hash_type, e.file_name, e.category,
+             s.id as set_id, s.name as set_name, s.set_type
+      FROM forensic_hash_entries e
+      JOIN forensic_hash_sets s ON s.id = e.hash_set_id
+      WHERE LOWER(e.hash_value) IN (${placeholders})
+    `).all(...lowerHashes) as any[];
+
+    // Group by hash value
+    const results: Record<string, any[]> = {};
+    for (const m of matches) {
+      if (!results[m.hash_value]) results[m.hash_value] = [];
+      results[m.hash_value].push({
+        set_id: m.set_id,
+        set_name: m.set_name,
+        set_type: m.set_type,
+        hash_type: m.hash_type,
+        file_name: m.file_name,
+        category: m.category,
+      });
+    }
+
+    res.json({ data: results, total_matches: matches.length });
+  } catch (error: any) {
+    console.error('Hash check error:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

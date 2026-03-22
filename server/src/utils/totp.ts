@@ -16,9 +16,6 @@ import config from '../config';
 
 function deriveKey(): Buffer {
   const key = config.totp?.encryptionKey || config.jwt.secret;
-  if (!key || key.length < 16) {
-    throw new Error('TOTP encryption key is not configured or too short. Set TOTP_ENCRYPTION_KEY or JWT_SECRET (min 16 chars).');
-  }
   // Derive a 32-byte key from the config secret using SHA-256
   return crypto.createHash('sha256').update(key).digest();
 }
@@ -45,11 +42,7 @@ export function decryptSecret(encrypted: string): string {
     decipher.update(Buffer.from(ciphertextHex, 'hex')),
     decipher.final(),
   ]);
-  const secret = decrypted.toString('utf8');
-  if (!/^[A-Z2-7]+=*$/.test(secret)) {
-    throw new Error('Decrypted TOTP secret is not valid base32');
-  }
-  return secret;
+  return decrypted.toString('utf8');
 }
 
 // ----------------------------------------------------------
@@ -124,7 +117,7 @@ export function generateBackupCodes(count: number = 10): {
     const raw = crypto.randomBytes(4).toString('hex').toUpperCase();
     const formatted = `${raw.slice(0, 4)}-${raw.slice(4)}`;
     plain.push(formatted);
-    hashed.push(bcryptjs.hashSync(formatted.replace('-', ''), 12)); // Hash without dash
+    hashed.push(bcryptjs.hashSync(formatted.replace('-', ''), 8)); // Hash without dash
   }
 
   return { plain, hashed };

@@ -7,19 +7,14 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken, requireRole } from '../middleware/auth';
+import { authenticateToken } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
-import { escapeLike, validateParamId } from '../middleware/sanitize';
-import { auditLog } from '../utils/auditLogger';
-import { broadcast } from '../utils/websocket';
-import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 router.use(authenticateToken);
 
 // ─── GET /stats ──────────────────────────────────────────
-// Restricted: offender alerts contain criminal flags and PII
-router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/stats', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const typeCounts = db.prepare(`
@@ -47,20 +42,18 @@ router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       },
     });
   } catch (error: any) {
-    console.error('Get offender stats error:', error?.message || 'Unknown error');
+    console.error('Get offender stats error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── GET / ───────────────────────────────────────────────
-router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { alert_type, severity, status = 'active', search, page = '1', limit = '50' } = req.query;
-    const parsedPage = parseInt(page as string, 10);
-    const pageNum = Math.max(1, isNaN(parsedPage) ? 1 : parsedPage);
-    const parsedLimit = parseInt(limit as string, 10);
-    const limitNum = Math.min(100, Math.max(1, isNaN(parsedLimit) ? 50 : parsedLimit));
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
     let where = 'WHERE 1=1';
@@ -69,15 +62,15 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     if (alert_type) { where += ' AND oa.alert_type = ?'; params.push(alert_type); }
     if (severity) { where += ' AND oa.severity = ?'; params.push(severity); }
     if (search) {
-      where += " AND (p.first_name LIKE ? ESCAPE '\\' OR p.last_name LIKE ? ESCAPE '\\' OR oa.description LIKE ? ESCAPE '\\')";
-      const s = `%${escapeLike(String(search))}%`; params.push(s, s, s);
+      where += ' AND (p.first_name LIKE ? OR p.last_name LIKE ? OR oa.description LIKE ?)';
+      const s = `%${search}%`; params.push(s, s, s);
     }
 
     const total = (db.prepare(`
       SELECT COUNT(*) as count FROM offender_alerts oa
       LEFT JOIN persons p ON oa.person_id = p.id
       ${where}
-    `).get(...params) as any)?.count || 0;
+    `).get(...params) as any).count;
 
     const rows = db.prepare(`
       SELECT oa.*,
@@ -95,31 +88,26 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
 
     res.json({ data: rows, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
   } catch (error: any) {
-    console.error('Get offender alerts error:', error?.message || 'Unknown error');
+    console.error('Get offender alerts error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── GET /check/:personId ────────────────────────────────
 // Quick check: all active alerts for a specific person
-router.get('/check/:personId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/check/:personId', (req: Request, res: Response) => {
   try {
-    // Validate personId as positive integer
-    const personId = parseInt(req.params.personId, 10);
-    if (isNaN(personId) || personId < 1 || String(personId) !== req.params.personId) {
-      res.status(400).json({ error: 'Invalid person ID' }); return;
-    }
     const db = getDb();
     const alerts = db.prepare(`
       SELECT * FROM offender_alerts WHERE person_id = ? AND status = 'active'
       ORDER BY CASE severity WHEN 'danger' THEN 0 WHEN 'warning' THEN 1 WHEN 'caution' THEN 2 ELSE 3 END
-    `).all(personId);
+    `).all(req.params.personId);
     res.json({ data: alerts });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── GET /:id ────────────────────────────────────────────
-router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare(`
@@ -134,7 +122,7 @@ router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
 });
 
 // ─── POST / ──────────────────────────────────────────────
-router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -142,28 +130,6 @@ router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, r
       restricted_properties, restricted_zones, restriction_radius_ft,
       expiration_date, source_incident_id, source_citation_id, source_case_id, notes } = req.body;
     if (!person_id || !alert_type || !description) return res.status(400).json({ error: 'Person, alert type, and description required' });
-
-    // Validate person_id is a positive integer
-    if (isNaN(Number(person_id)) || Number(person_id) < 1) {
-      return res.status(400).json({ error: 'person_id must be a positive integer' });
-    }
-
-    // Validate alert_type against allowlist
-    const VALID_ALERT_TYPES = ['trespass', 'banned', 'watchlist', 'armed_dangerous', 'mental_health', 'gang', 'warrant', 'other'];
-    if (!VALID_ALERT_TYPES.includes(alert_type)) {
-      return res.status(400).json({ error: `Invalid alert_type. Must be one of: ${VALID_ALERT_TYPES.join(', ')}` });
-    }
-
-    // Validate severity against allowlist
-    const VALID_SEVERITIES = ['caution', 'warning', 'danger'];
-    if (!VALID_SEVERITIES.includes(severity)) {
-      return res.status(400).json({ error: `Invalid severity. Must be one of: ${VALID_SEVERITIES.join(', ')}` });
-    }
-
-    // Validate description length
-    if (typeof description !== 'string' || description.length > 5000) {
-      return res.status(400).json({ error: 'Description must be 5000 characters or less' });
-    }
 
     const result = db.prepare(`
       INSERT INTO offender_alerts (person_id, alert_type, status, description, severity,
@@ -173,42 +139,26 @@ router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, r
       VALUES (?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(person_id, alert_type, description, severity,
       JSON.stringify(restricted_properties || []), JSON.stringify(restricted_zones || []),
-      restriction_radius_ft ?? null, now, expiration_date || null,
+      restriction_radius_ft || null, now, expiration_date || null,
       source_incident_id || null, source_citation_id || null, source_case_id || null,
       req.user!.userId, notes || null, now, now);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'create', 'offender_alert', ?, ?, ?, ?)`).run(
-      req.user!.userId, Number(result.lastInsertRowid), JSON.stringify({ person_id, alert_type, severity }), req.ip || 'unknown', now);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'create', 'offender_alert', ?, ?, ?)`).run(
+      req.user!.userId, result.lastInsertRowid, JSON.stringify({ person_id, alert_type, severity }), now);
 
-    auditLog(req, 'CREATE', 'offender_alert', Number(result.lastInsertRowid), `Created ${severity} ${alert_type} alert for person ${person_id}`);
-    broadcast('records', 'offender:created', { id: Number(result.lastInsertRowid), person_id, alert_type, severity });
-    res.status(201).json({ data: { id: Number(result.lastInsertRowid) } });
+    res.status(201).json({ data: { id: result.lastInsertRowid } });
   } catch (error: any) {
-    console.error('Create offender alert error:', error?.message || 'Unknown error');
+    console.error('Create offender alert error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── PUT /:id ────────────────────────────────────────────
-router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
-    // Validate enums on update
-    if (req.body.alert_type !== undefined) {
-      const VALID_AT = ['trespass', 'banned', 'watchlist', 'armed_dangerous', 'mental_health', 'gang', 'warrant', 'other'];
-      if (!VALID_AT.includes(req.body.alert_type)) return res.status(400).json({ error: 'Invalid alert_type' });
-    }
-    if (req.body.severity !== undefined) {
-      const VALID_SV = ['caution', 'warning', 'danger'];
-      if (!VALID_SV.includes(req.body.severity)) return res.status(400).json({ error: 'Invalid severity' });
-    }
-    if (req.body.restriction_radius_ft !== undefined && req.body.restriction_radius_ft !== null) {
-      const radius = Number(req.body.restriction_radius_ft);
-      if (isNaN(radius) || radius < 0 || radius > 100000) return res.status(400).json({ error: 'restriction_radius_ft must be 0-100000' });
-    }
-
     const fields = ['alert_type', 'description', 'severity', 'restriction_radius_ft',
       'expiration_date', 'notes'];
     const updates: string[] = ['updated_at = ?'];
@@ -224,77 +174,24 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
       updates.push('restricted_zones = ?');
       params.push(JSON.stringify(req.body.restricted_zones));
     }
-    const id = parseInt(req.params.id as string, 10);
-    if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
-
-    const existing = db.prepare('SELECT id FROM offender_alerts WHERE id = ?').get(id);
-    if (!existing) return res.status(404).json({ error: 'Alert not found' });
-
-    params.push(id);
+    params.push(req.params.id);
     db.prepare(`UPDATE offender_alerts SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    auditLog(req, 'UPDATE', 'offender_alert', id, `Updated offender alert ${id}`);
-    broadcast('records', 'offender:updated', { id });
-    res.json({ data: { id } });
+    res.json({ data: { id: parseInt(req.params.id) } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── PUT /:id/clear ──────────────────────────────────────
-router.put('/:id/clear', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/:id/clear', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
-    const id = parseInt(req.params.id as string, 10);
-    if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
+    db.prepare('UPDATE offender_alerts SET status = ?, updated_at = ? WHERE id = ?').run('cleared', now, req.params.id);
 
-    const existing = db.prepare('SELECT id FROM offender_alerts WHERE id = ?').get(id);
-    if (!existing) return res.status(404).json({ error: 'Alert not found' });
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'clear', 'offender_alert', ?, '{}', ?)`).run(req.user!.userId, req.params.id, now);
 
-    db.prepare('UPDATE offender_alerts SET status = ?, updated_at = ? WHERE id = ?').run('cleared', now, id);
-
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'clear', 'offender_alert', ?, '{}', ?, ?)`).run(req.user!.userId, id, req.ip || 'unknown', now);
-
-    auditLog(req, 'UPDATE', 'offender_alert', id, `Cleared offender alert ${id}`);
-    broadcast('records', 'offender:updated', { id, status: 'cleared' });
-    res.json({ data: { id, status: 'cleared' } });
+    res.json({ data: { id: parseInt(req.params.id), status: 'cleared' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
-});
-
-// ─── CSV EXPORT ──────────────────────────────────────────
-
-// GET /api/offender-registry/export/csv — Export offender alerts
-router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const rows = db.prepare(`
-      SELECT oa.id, oa.alert_type, oa.status, oa.description, oa.severity,
-        oa.restriction_radius_ft, oa.effective_date, oa.expiration_date,
-        oa.notes, oa.created_at, oa.updated_at,
-        p.first_name, p.last_name, p.dob,
-        p.first_name || ' ' || p.last_name as person_name
-      FROM offender_alerts oa
-      LEFT JOIN persons p ON oa.person_id = p.id
-      ORDER BY oa.created_at DESC LIMIT 10000
-    `).all();
-    sendCsv(res, 'offender_alerts_export.csv', [
-      { key: 'id', header: 'ID' },
-      { key: 'person_name', header: 'Person' },
-      { key: 'first_name', header: 'First Name' },
-      { key: 'last_name', header: 'Last Name' },
-      { key: 'dob', header: 'DOB' },
-      { key: 'alert_type', header: 'Alert Type' },
-      { key: 'severity', header: 'Severity' },
-      { key: 'status', header: 'Status' },
-      { key: 'description', header: 'Description' },
-      { key: 'restriction_radius_ft', header: 'Restriction Radius (ft)' },
-      { key: 'effective_date', header: 'Effective Date' },
-      { key: 'expiration_date', header: 'Expiration Date' },
-      { key: 'notes', header: 'Notes' },
-      { key: 'created_at', header: 'Created At' },
-    ], rows);
-  } catch (error: any) {
-    res.status(500).json({ error: 'Export failed' });
-  }
 });
 
 export default router;
