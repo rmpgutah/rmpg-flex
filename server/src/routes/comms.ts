@@ -4,6 +4,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { validateEnum, escapeLike, validateParamId } from '../middleware/sanitize';
 import { broadcastNewMessage, broadcastAlert, sendToUser } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
+import { sendCsv } from '../utils/csvExport';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';

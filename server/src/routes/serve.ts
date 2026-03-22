@@ -12,6 +12,7 @@ import { auditLog } from '../utils/auditLogger';
 import { broadcast, broadcastDispatchUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
 import config from '../config';
+import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 router.use(authenticateToken);

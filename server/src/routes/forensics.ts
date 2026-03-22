@@ -13,6 +13,7 @@ import { localNow, localToday } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
 import { computeFileHashes, computeContentFingerprint } from '../utils/ipedManager';
 import { validateParamId, escapeLike } from '../middleware/sanitize';
+import { sendCsv } from '../utils/csvExport';
 import path from 'path';
 import fs from 'fs';
 

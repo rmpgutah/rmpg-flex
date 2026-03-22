@@ -11,6 +11,8 @@ import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
 import { escapeLike, validateParamId } from '../middleware/sanitize';
+import { broadcast } from '../utils/websocket';
+import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 router.use(authenticate);
@@ -150,6 +152,7 @@ router.post('/tasks', requireRole('admin', 'manager', 'contract_manager'), (req:
     auditLog(req, 'crm_task_created', 'crm_task', taskId, `Created task: ${title.trim()}`);
 
     const task = db.prepare('SELECT * FROM crm_tasks WHERE id = ?').get(taskId);
+    broadcast('admin', 'crm:updated', { entity: 'task', action: 'created', id: taskId });
     res.json(task);
   } catch (err: any) {
     console.error('CRM error:', err.message);
@@ -192,6 +195,7 @@ router.put('/tasks/:id', validateParamId, requireRole('admin', 'manager', 'contr
     auditLog(req, 'crm_task_updated', 'crm_task', String(id), `Updated task: ${title || existing.title}`);
 
     const task = db.prepare('SELECT * FROM crm_tasks WHERE id = ?').get(id);
+    broadcast('admin', 'crm:updated', { entity: 'task', action: 'updated', id: Number(id) });
     res.json(task);
   } catch (err: any) {
     console.error('CRM error:', err.message);
@@ -208,6 +212,7 @@ router.delete('/tasks/:id', validateParamId, requireRole('admin', 'manager'), (r
 
     db.prepare('DELETE FROM crm_tasks WHERE id = ?').run(id);
     auditLog(req, 'crm_task_deleted', 'crm_task', String(id), `Deleted task: ${existing.title}`);
+    broadcast('admin', 'crm:updated', { entity: 'task', action: 'deleted', id: Number(id) });
     res.json({ success: true });
   } catch (err: any) {
     console.error('CRM error:', err.message);
@@ -259,6 +264,7 @@ router.post('/activity', requireRole('admin', 'manager', 'contract_manager'), (r
       LEFT JOIN users u ON u.id = a.created_by
       WHERE a.id = ?
     `).get(activityId);
+    broadcast('admin', 'crm:updated', { entity: 'activity', action: 'created', id: activityId });
     res.json(activity);
   } catch (err: any) {
     console.error('CRM error:', err.message);

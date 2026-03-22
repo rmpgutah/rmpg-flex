@@ -14,6 +14,7 @@ import { queueOverlayProcessing, type BodyCamOverlayConfig } from '../utils/vide
 import { validateEmail, validatePhone, validateBadgeNumber, validateAll } from '../utils/inputValidation';
 import { validateParamId } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
+import { sendCsv } from '../utils/csvExport';
 
 const execFileAsync = promisify(execFile);
 

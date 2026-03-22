@@ -12,6 +12,7 @@ import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
 import { validateParamId } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
+import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 router.use(authenticate);

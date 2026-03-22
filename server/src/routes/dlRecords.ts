@@ -13,6 +13,7 @@ import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
 import { broadcastRecordUpdate } from '../utils/websocket';
 import type { DlRecordSubject } from '../utils/dlRecordStore';
+import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 router.use(authenticateToken);

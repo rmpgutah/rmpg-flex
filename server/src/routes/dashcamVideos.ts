@@ -17,6 +17,7 @@ import { escapeLike } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 import { broadcast } from '../utils/websocket';
 import { validateParamId } from '../middleware/sanitize';
+import { sendCsv } from '../utils/csvExport';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

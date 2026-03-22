@@ -12,6 +12,7 @@ import { localNow, localToday } from '../utils/timeUtils';
 import { queueOverlayProcessing, type DashCamOverlayConfig } from '../utils/videoOverlay';
 import { auditLog } from '../utils/auditLogger';
 import { validateParamId } from '../middleware/sanitize';
+import { sendCsv } from '../utils/csvExport';
 
 const execFileAsync = promisify(execFile);
 const __filename_f = fileURLToPath(import.meta.url);

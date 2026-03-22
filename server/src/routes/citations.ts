@@ -15,6 +15,7 @@ import { createNotificationForRoles } from './notifications';
 import { resolveDistrict } from '../utils/districtResolver';
 import { auditLog } from '../utils/auditLogger';
 import { sendCsv } from '../utils/csvExport';
+import { broadcast } from '../utils/websocket';
 
 const router = Router();
 
@@ -383,6 +384,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispa
       'citation', Number(result.lastInsertRowid), 'normal', 'citation.issued', req.user!.userId,
     );
 
+    broadcast('records', 'citation:created', created);
     res.status(201).json({ data: created });
   } catch (error: any) {
     console.error('Create citation error:', error?.message || 'Unknown error');
@@ -455,6 +457,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     auditLog(req, 'citation_updated', 'citation', Number(req.params.id), `Updated citation ${citation.citation_number}`);
 
     const updated = db.prepare('SELECT * FROM citations WHERE id = ?').get(req.params.id);
+    broadcast('records', 'citation:updated', updated);
     res.json({ data: updated });
   } catch (error: any) {
     console.error('Update citation error:', error?.message || 'Unknown error');
@@ -507,7 +510,7 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager', 'supervis
     `).run(localNow(), req.params.id);
 
     auditLog(req, 'citation_voided', 'citation', Number(req.params.id), `Voided citation ${citation.citation_number}`);
-
+    broadcast('records', 'citation:updated', { id: citation.id, status: 'voided' });
     res.json({ message: 'Citation voided', data: { id: citation.id, status: 'voided' } });
   } catch (error: any) {
     console.error('Void citation error:', error?.message || 'Unknown error');

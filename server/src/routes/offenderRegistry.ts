@@ -11,6 +11,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
 import { escapeLike, validateParamId } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
+import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 router.use(authenticateToken);

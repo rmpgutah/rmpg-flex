@@ -5,6 +5,7 @@ import { validateParamId } from '../../middleware/sanitize';
 import { broadcastDispatchUpdate } from '../../utils/websocket';
 import { generateIncidentNumber } from '../../utils/caseNumbers';
 import { localNow } from '../../utils/timeUtils';
+import { auditLog } from '../../utils/auditLogger';
 
 const router = Router();
 

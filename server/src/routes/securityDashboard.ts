@@ -7,6 +7,7 @@ import { isPasswordExpired, isPasswordExpiringSoon } from '../utils/passwordExpi
 import { getBlockedIps, unblockIp } from '../middleware/rateLimiter';
 import { localNow } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
+import { sendCsv } from '../utils/csvExport';
 
 const router = Router();
 
