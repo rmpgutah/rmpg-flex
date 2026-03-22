@@ -44,11 +44,21 @@ export function escapeLike(str: string): string {
   return str.replace(/[%_\\]/g, '\\$&');
 }
 
-/** Validate that req.params[name] is a positive integer */
+/** Validate that req.params[name] is a positive integer (utility function — use in handler body) */
 export function validateParamId(req: Request, name = 'id'): number {
   const val = Number(req.params[name]);
   if (!Number.isInteger(val) || val < 1) throw new Error(`Invalid ${name}`);
   return val;
+}
+
+/** Express middleware version of validateParamId — use in route chain before handler */
+export function validateParamIdMiddleware(req: Request, res: Response, next: NextFunction): void {
+  const val = Number(req.params.id);
+  if (!Number.isInteger(val) || val < 1) {
+    res.status(400).json({ error: 'Invalid ID parameter' });
+    return;
+  }
+  next();
 }
 
 /** Validate a required string field */
@@ -74,10 +84,12 @@ export function requireInt(val: unknown, fieldName: string): number {
   return n;
 }
 
-/** Require a value to be a float/number */
-export function requireFloat(val: unknown, fieldName: string): number {
+/** Require a value to be a float/number, with optional min/max bounds */
+export function requireFloat(val: unknown, fieldName: string, min?: number, max?: number): number {
   const n = Number(val);
   if (isNaN(n)) throw new Error(`${fieldName} must be a number`);
+  if (min !== undefined && n < min) throw new Error(`${fieldName} must be >= ${min}`);
+  if (max !== undefined && n > max) throw new Error(`${fieldName} must be <= ${max}`);
   return n;
 }
 

@@ -62,7 +62,7 @@ async function checkUrl(row: any): Promise<void> {
 
       const changeId = Number(changeResult.lastInsertRowid);
 
-      broadcast('competitor:change_detected', {
+      broadcast('admin', 'competitor:change_detected', {
         monitored_url_id: row.id,
         url: row.url,
         label: row.label,

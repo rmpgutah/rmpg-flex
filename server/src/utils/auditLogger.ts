@@ -108,7 +108,56 @@ export type AuditAction =
   | 'api_key_created'
   | 'api_key_revoked'
   | 'api_key_activated'
-  | 'api_key_deleted';
+  | 'api_key_deleted'
+  // Arrests
+  | 'arrest_created'
+  | 'arrest_updated'
+  | 'arrest_deleted'
+  | 'arrest_imported'
+  | 'arrest_linked'
+  | 'arrest_unlinked'
+  // CRM
+  | 'crm_task_created'
+  | 'crm_task_updated'
+  | 'crm_task_deleted'
+  | 'crm_activity_logged'
+  // Dashcam
+  | 'dashcam_uploaded'
+  | 'dashcam_updated'
+  | 'dashcam_deleted'
+  | 'dashcam_linked'
+  | 'dashcam_unlinked'
+  // Email
+  | 'SEND_EMAIL'
+  | 'REPLY_EMAIL'
+  | 'REPLY_ALL_EMAIL'
+  | 'FORWARD_EMAIL'
+  | 'SCHEDULE_EMAIL'
+  | 'DELETE_EMAIL'
+  | 'BATCH_EMAIL'
+  | 'MARK_ALL_READ'
+  | 'OAUTH_INITIATE'
+  // Search / CRUD
+  | 'SEARCH'
+  | 'CREATE'
+  | 'UPDATE'
+  | 'DELETE'
+  | 'EXPORT'
+  // Skip Tracer
+  | 'skiptracer_search'
+  | 'skiptracer_config_updated'
+  | 'skiptracer_config_cleared'
+  // Jail Roster
+  | 'jail_roster_sync_triggered'
+  | 'jail_roster_config_updated'
+  | 'jail_roster_errors_reset'
+  // Preferences
+  | 'preferences_updated'
+  | 'preferences_reset'
+  // Safety
+  | 'safety_alert_broadcast'
+  // Extensible: allow any string for new features
+  | (string & {});
 
 export type AuditEntityType =
   | 'user'
@@ -140,7 +189,22 @@ export type AuditEntityType =
   | 'patrol_scan'
   | 'invoice'
   | 'payment'
-  | 'api_key';
+  | 'api_key'
+  | 'arrest'
+  | 'dashcam'
+  | 'email'
+  | 'crm_task'
+  | 'crm_lead'
+  | 'crm_proposal'
+  | 'crm_competitor'
+  | 'service_request'
+  | 'skiptracer'
+  | 'jail_roster'
+  | 'preferences'
+  | 'safety_alert'
+  | 'firecrawl'
+  | 'geofence'
+  | (string & {});
 
 /**
  * Log an action to the activity_log table.

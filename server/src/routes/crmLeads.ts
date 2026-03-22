@@ -12,7 +12,7 @@ import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
 import { calculateLeadScore, runScraper, getRegisteredScraper } from '../utils/leadScraperBase';
-import { escapeLike, validateParamId, validateStr, validateEnum, requireInt, requireFloat, validateDateStr } from '../middleware/sanitize';
+import { escapeLike, validateParamIdMiddleware, validateStr, validateEnum, requireInt, requireFloat, validateDateStr } from '../middleware/sanitize';
 import { broadcast } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
 
@@ -98,7 +98,7 @@ router.get('/leads', requireRole('admin', 'manager', 'contract_manager'), (req: 
 });
 
 // ── Get Single Lead ─────────────────────────────────────────
-router.get('/leads/:id', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.get('/leads/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -221,7 +221,7 @@ router.post('/leads', requireRole('admin', 'manager', 'contract_manager'), (req:
 });
 
 // ── Update Lead ─────────────────────────────────────────────
-router.put('/leads/:id', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/leads/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -286,7 +286,7 @@ router.put('/leads/:id', validateParamId, requireRole('admin', 'manager', 'contr
 });
 
 // ── Delete Lead ─────────────────────────────────────────────
-router.delete('/leads/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/leads/:id', validateParamIdMiddleware, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -309,7 +309,7 @@ router.delete('/leads/:id', validateParamId, requireRole('admin', 'manager'), (r
 });
 
 // ── Move Pipeline Stage ─────────────────────────────────────
-router.put('/leads/:id/stage', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/leads/:id/stage', validateParamIdMiddleware, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -362,7 +362,7 @@ router.put('/leads/:id/stage', validateParamId, requireRole('admin', 'manager', 
 });
 
 // ── Assign Lead ─────────────────────────────────────────────
-router.put('/leads/:id/assign', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/leads/:id/assign', validateParamIdMiddleware, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -406,7 +406,7 @@ router.put('/leads/:id/assign', validateParamId, requireRole('admin', 'manager',
 });
 
 // ── Convert Lead to Client ──────────────────────────────────
-router.post('/leads/:id/convert', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.post('/leads/:id/convert', validateParamIdMiddleware, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;

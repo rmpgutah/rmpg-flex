@@ -26,7 +26,7 @@ import config from '../config';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { localNow } from '../utils/timeUtils';
-import { validateParamId } from '../middleware/sanitize';
+import { validateParamId, validateParamIdMiddleware } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
@@ -276,7 +276,7 @@ router.post('/register-verify', authenticateToken, mfaRateLimit, async (req: Req
 
 // ─── DELETE /api/auth/webauthn/credentials/:id ──────
 // Remove a registered security key
-router.delete('/credentials/:id', validateParamId, authenticateToken, (req: Request, res: Response) => {
+router.delete('/credentials/:id', validateParamIdMiddleware, authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const credId = parseInt(req.params.id as string, 10);
@@ -348,7 +348,7 @@ router.post('/authenticate-options', mfaRateLimit, async (req: Request, res: Res
         res.status(401).json({ error: 'Session expired. Please log in again.' });
         return;
       }
-      if (decoded.type !== 'mfa_pending') {
+      if (decoded.type !== '2fa_pending') {
         res.status(403).json({ error: 'Invalid token type' });
         return;
       }
@@ -434,7 +434,7 @@ router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Resp
       return;
     }
 
-    if (decoded.type !== 'mfa_pending') {
+    if (decoded.type !== '2fa_pending') {
       res.status(403).json({ error: 'Invalid token type' });
       return;
     }
@@ -528,7 +528,7 @@ router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Resp
       || _pwExpired;
 
     if (needsPasswordChange) {
-      const pwTempToken = generateTempToken(payload, ['password_change']);
+      const pwTempToken = generateTempToken(payload);
       res.json({
         step: 'password_change',
         requiresPasswordChange: true,

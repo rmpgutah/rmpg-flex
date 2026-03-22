@@ -20,7 +20,7 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { validateParamId } from '../middleware/sanitize';
+import { validateParamId, validateParamIdMiddleware } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
 import { broadcastAdminUpdate } from '../utils/websocket';
@@ -430,7 +430,7 @@ router.get('/search/byemail', skipSearchRateLimit, async (req: Request, res: Res
 });
 
 // ── Person Details by ID (email, phone) ─────────────────────
-router.get('/person/:id', validateParamId, async (req: Request, res: Response) => {
+router.get('/person/:id', validateParamIdMiddleware, async (req: Request, res: Response) => {
   try {
     const id = req.params.id as string;
     if (!id) return res.status(400).json({ error: 'id parameter required' });

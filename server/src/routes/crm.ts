@@ -10,7 +10,7 @@ import { authenticateToken as authenticate, requireRole } from '../middleware/au
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
-import { escapeLike, validateParamId, validateStr, validateEnum, requireInt, validateDateStr } from '../middleware/sanitize';
+import { escapeLike, validateParamIdMiddleware, validateStr, validateEnum, requireInt, validateDateStr } from '../middleware/sanitize';
 import { broadcast } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
 
@@ -174,7 +174,7 @@ router.post('/tasks', requireRole('admin', 'manager', 'contract_manager'), (req:
   }
 });
 
-router.put('/tasks/:id', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/tasks/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -230,7 +230,7 @@ router.put('/tasks/:id', validateParamId, requireRole('admin', 'manager', 'contr
   }
 });
 
-router.delete('/tasks/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/tasks/:id', validateParamIdMiddleware, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;

@@ -114,6 +114,7 @@ export const config = {
     requireSpecial: envBool('PASSWORD_REQUIRE_SPECIAL', true),
     historyCount: envInt('PASSWORD_HISTORY_COUNT', 5),
     expiryDays: envInt('PASSWORD_EXPIRY_DAYS', 90),
+    expiryWarningDays: envInt('PASSWORD_EXPIRY_WARNING_DAYS', 14),
   },
 
   // Two-Factor Authentication (TOTP)
@@ -141,6 +142,18 @@ export const config = {
 
   // Auto-Update Server URL (where desktop apps check for updates)
   updateServerUrl: process.env.UPDATE_SERVER_URL || 'https://rmpgutah.us',
+
+  // Two-Factor Authentication (general 2FA settings)
+  twoFactor: {
+    trustedDeviceDays: envInt('TWO_FACTOR_TRUSTED_DEVICE_DAYS', 30),
+  },
+
+  // WebAuthn / FIDO2
+  webauthn: {
+    rpName: process.env.WEBAUTHN_RP_NAME || 'RMPG Flex',
+    rpID: process.env.WEBAUTHN_RP_ID || 'rmpgutah.us',
+    origin: process.env.WEBAUTHN_ORIGIN || (isProduction ? 'https://rmpgutah.us' : 'http://localhost:5173'),
+  },
 
   // Integrations
   serveManagerApiKey: process.env.SERVEMANAGER_API_KEY || '',

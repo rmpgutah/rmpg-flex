@@ -10,7 +10,7 @@ import { Router, Request, Response } from 'express';
 import { authenticateToken as authenticate, requireRole } from '../middleware/auth';
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
-import { validateParamId, validateStr, validateEnum, requireInt, requireFloat, validateDateStr } from '../middleware/sanitize';
+import { validateParamId, validateParamIdMiddleware, validateStr, validateEnum, requireInt, requireFloat, validateDateStr } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
 import { broadcast } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
@@ -92,7 +92,7 @@ router.get('/proposals', requireRole('admin', 'manager', 'contract_manager'), (r
 });
 
 // ── Get Single Proposal ─────────────────────────────────────
-router.get('/proposals/:id', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.get('/proposals/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -253,7 +253,7 @@ router.post('/proposals', requireRole('admin', 'manager', 'contract_manager'), (
 });
 
 // ── Update Proposal ─────────────────────────────────────────
-router.put('/proposals/:id', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/proposals/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -312,7 +312,7 @@ router.put('/proposals/:id', validateParamId, requireRole('admin', 'manager', 'c
 });
 
 // ── Delete Proposal ─────────────────────────────────────────
-router.delete('/proposals/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/proposals/:id', validateParamIdMiddleware, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -337,7 +337,7 @@ router.delete('/proposals/:id', validateParamId, requireRole('admin', 'manager')
 });
 
 // ── Update Proposal Stage ───────────────────────────────────
-router.put('/proposals/:id/stage', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/proposals/:id/stage', validateParamIdMiddleware, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -472,7 +472,7 @@ router.post('/proposal-templates', requireRole('admin'), (req: Request, res: Res
   }
 });
 
-router.put('/proposal-templates/:id', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
+router.put('/proposal-templates/:id', validateParamIdMiddleware, requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -519,7 +519,7 @@ router.put('/proposal-templates/:id', validateParamId, requireRole('admin'), (re
   }
 });
 
-router.delete('/proposal-templates/:id', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
+router.delete('/proposal-templates/:id', validateParamIdMiddleware, requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;

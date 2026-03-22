@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../../models/database';
 import { requireRole } from '../../middleware/auth';
-import { validateParamId } from '../../middleware/sanitize';
+import { validateParamId, validateParamIdMiddleware } from '../../middleware/sanitize';
 import { broadcastDispatchUpdate } from '../../utils/websocket';
 import { generateIncidentNumber } from '../../utils/caseNumbers';
 import { localNow } from '../../utils/timeUtils';
@@ -89,7 +89,7 @@ router.post('/calls/archive-bulk', requireRole('admin', 'manager', 'dispatcher')
 });
 
 // POST /api/dispatch/calls/:id/archive - Archive a closed/cleared call
-router.post('/calls/:id/archive', validateParamId, requireRole('admin', 'manager', 'dispatcher'), (req: Request, res: Response) => {
+router.post('/calls/:id/archive', validateParamIdMiddleware, requireRole('admin', 'manager', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -138,7 +138,7 @@ router.post('/calls/:id/archive', validateParamId, requireRole('admin', 'manager
 });
 
 // POST /api/dispatch/calls/:id/unarchive - Restore archived call back to closed
-router.post('/calls/:id/unarchive', validateParamId, requireRole('admin', 'manager', 'dispatcher'), (req: Request, res: Response) => {
+router.post('/calls/:id/unarchive', validateParamIdMiddleware, requireRole('admin', 'manager', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -171,7 +171,7 @@ router.post('/calls/:id/unarchive', validateParamId, requireRole('admin', 'manag
 });
 
 // DELETE /api/dispatch/calls/:id - Hard delete a call (admin/manager only)
-router.delete('/calls/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -218,7 +218,7 @@ router.delete('/calls/:id', validateParamId, requireRole('admin', 'manager'), (r
 });
 
 // POST /api/dispatch/calls/:id/generate-incident - Generate incident report from a cleared/closed call
-router.post('/calls/:id/generate-incident', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/calls/:id/generate-incident', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare(`
@@ -379,7 +379,7 @@ router.post('/calls/:id/generate-incident', validateParamId, requireRole('admin'
 });
 
 // PUT /api/dispatch/calls/:id/timeline/:entryId - Edit a timeline/activity entry
-router.put('/calls/:id/timeline/:entryId', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+router.put('/calls/:id/timeline/:entryId', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const entry = db.prepare('SELECT * FROM activity_log WHERE id = ? AND entity_type = ? AND entity_id = ?')
@@ -414,7 +414,7 @@ router.put('/calls/:id/timeline/:entryId', validateParamId, requireRole('admin',
 });
 
 // DELETE /api/dispatch/calls/:id/timeline/:entryId - Delete a timeline/activity entry
-router.delete('/calls/:id/timeline/:entryId', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+router.delete('/calls/:id/timeline/:entryId', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const entry = db.prepare('SELECT * FROM activity_log WHERE id = ? AND entity_type = ? AND entity_id = ?')
@@ -434,7 +434,7 @@ router.delete('/calls/:id/timeline/:entryId', validateParamId, requireRole('admi
 });
 
 // POST /api/dispatch/calls/:id/timeline - Add a manual timeline entry
-router.post('/calls/:id/timeline', validateParamId, requireRole('admin', 'manager', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+router.post('/calls/:id/timeline', validateParamIdMiddleware, requireRole('admin', 'manager', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -465,7 +465,7 @@ router.post('/calls/:id/timeline', validateParamId, requireRole('admin', 'manage
 });
 
 // GET /api/dispatch/calls/:id/warnings - Get warning tags for a call
-router.get('/calls/:id/warnings', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/calls/:id/warnings', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -589,7 +589,7 @@ router.get('/calls/:id/warnings', validateParamId, requireRole('admin', 'manager
 });
 
 // PUT /api/dispatch/calls/:id/mileage - Update starting/ending mileage
-router.put('/calls/:id/mileage', validateParamId, requireRole('admin', 'manager', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+router.put('/calls/:id/mileage', validateParamIdMiddleware, requireRole('admin', 'manager', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;

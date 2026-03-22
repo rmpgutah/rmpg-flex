@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
-import { validateParamId, validateStr, validateEnum, requireInt, requireFloat, validateDateStr } from '../middleware/sanitize';
+import { validateParamId, validateParamIdMiddleware, validateStr, validateEnum, requireInt, requireFloat, validateDateStr } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 import { broadcast } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
@@ -172,7 +172,7 @@ router.post('/leave', (req: Request, res: Response) => {
   }
 });
 
-router.put('/leave/:id', validateParamId, (req: Request, res: Response) => {
+router.put('/leave/:id', validateParamIdMiddleware, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -201,7 +201,7 @@ router.put('/leave/:id', validateParamId, (req: Request, res: Response) => {
   }
 });
 
-router.post('/leave/:id/approve', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/leave/:id/approve', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -245,7 +245,7 @@ router.post('/leave/:id/approve', validateParamId, requireRole('admin', 'manager
   }
 });
 
-router.post('/leave/:id/deny', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/leave/:id/deny', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -312,7 +312,7 @@ router.post('/leave/bulk-approve', requireRole('admin', 'manager', 'supervisor')
   }
 });
 
-router.delete('/leave/:id', validateParamId, (req: Request, res: Response) => {
+router.delete('/leave/:id', validateParamIdMiddleware, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -396,7 +396,7 @@ router.get('/leave/balances', (req: Request, res: Response) => {
   }
 });
 
-router.put('/leave/balances/:id', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
+router.put('/leave/balances/:id', validateParamIdMiddleware, requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = Number(req.params.id);
@@ -563,7 +563,7 @@ router.post('/disciplinary', requireRole('admin', 'manager'), (req: Request, res
   }
 });
 
-router.put('/disciplinary/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/disciplinary/:id', validateParamIdMiddleware, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = Number(req.params.id);
@@ -596,7 +596,7 @@ router.put('/disciplinary/:id', validateParamId, requireRole('admin', 'manager')
   }
 });
 
-router.delete('/disciplinary/:id', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
+router.delete('/disciplinary/:id', validateParamIdMiddleware, requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = Number(req.params.id);
@@ -696,7 +696,7 @@ router.post('/reviews', requireRole('admin', 'manager', 'supervisor'), (req: Req
   }
 });
 
-router.put('/reviews/:id', validateParamId, (req: Request, res: Response) => {
+router.put('/reviews/:id', validateParamIdMiddleware, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -746,7 +746,7 @@ router.put('/reviews/:id', validateParamId, (req: Request, res: Response) => {
   }
 });
 
-router.post('/reviews/:id/acknowledge', validateParamId, (req: Request, res: Response) => {
+router.post('/reviews/:id/acknowledge', validateParamIdMiddleware, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -771,7 +771,7 @@ router.post('/reviews/:id/acknowledge', validateParamId, (req: Request, res: Res
   }
 });
 
-router.delete('/reviews/:id', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
+router.delete('/reviews/:id', validateParamIdMiddleware, requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = Number(req.params.id);
@@ -843,7 +843,7 @@ router.post('/payroll/periods', requireRole('admin', 'manager'), (req: Request, 
   }
 });
 
-router.put('/payroll/periods/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/payroll/periods/:id', validateParamIdMiddleware, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = Number(req.params.id);
@@ -872,7 +872,7 @@ router.put('/payroll/periods/:id', validateParamId, requireRole('admin', 'manage
   }
 });
 
-router.delete('/payroll/periods/:id', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
+router.delete('/payroll/periods/:id', validateParamIdMiddleware, requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = Number(req.params.id);
@@ -1027,7 +1027,7 @@ router.post('/payroll/entries', requireRole('admin', 'manager'), (req: Request, 
   }
 });
 
-router.put('/payroll/entries/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/payroll/entries/:id', validateParamIdMiddleware, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = Number(req.params.id);
@@ -1091,7 +1091,7 @@ router.put('/payroll/entries/:id', validateParamId, requireRole('admin', 'manage
 
 // ─── Auto-populate period ────────────────────────────────────────────────────
 
-router.post('/payroll/periods/:id/populate', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/payroll/periods/:id/populate', validateParamIdMiddleware, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = Number(req.params.id);

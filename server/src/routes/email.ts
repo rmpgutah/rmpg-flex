@@ -11,7 +11,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
 import { broadcast } from '../utils/websocket';
-import { escapeLike, validateParamId } from '../middleware/sanitize';
+import { escapeLike, validateParamId, validateParamIdMiddleware } from '../middleware/sanitize';
 import type { NextFunction } from 'express';
 
 /** Validate Graph API string IDs (alphanumeric, hyphens, underscores, equals, plus). Blocks path traversal. */
@@ -880,7 +880,7 @@ router.get('/templates', (_req: Request, res: Response) => {
 });
 
 // GET /api/email/templates/:id — Get single template
-router.get('/templates/:id', validateParamId, (req: Request, res: Response) => {
+router.get('/templates/:id', validateParamIdMiddleware, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const template = db.prepare('SELECT * FROM email_templates WHERE id = ?').get(req.params.id);
@@ -913,7 +913,7 @@ router.post('/templates', (req: Request, res: Response) => {
 });
 
 // PUT /api/email/templates/:id — Update template
-router.put('/templates/:id', validateParamId, (req: Request, res: Response) => {
+router.put('/templates/:id', validateParamIdMiddleware, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { name, category, subject, body } = req.body;
@@ -936,7 +936,7 @@ router.put('/templates/:id', validateParamId, (req: Request, res: Response) => {
 });
 
 // DELETE /api/email/templates/:id — Delete template
-router.delete('/templates/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/templates/:id', validateParamIdMiddleware, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const template = db.prepare('SELECT * FROM email_templates WHERE id = ?').get(req.params.id) as any;
@@ -1088,7 +1088,7 @@ router.get('/links/incident/:incidentId', (req: Request, res: Response) => {
 });
 
 // DELETE /api/email/link/:id — Remove a link
-router.delete('/link/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.delete('/link/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     db.prepare('DELETE FROM email_incident_links WHERE id = ?').run(req.params.id);
@@ -1157,7 +1157,7 @@ router.get('/scheduled', (req: Request, res: Response) => {
 });
 
 // DELETE /api/email/scheduled/:id — Cancel a scheduled email
-router.delete('/scheduled/:id', validateParamId, (req: Request, res: Response) => {
+router.delete('/scheduled/:id', validateParamIdMiddleware, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare('SELECT * FROM scheduled_emails WHERE id = ? AND created_by = ?')

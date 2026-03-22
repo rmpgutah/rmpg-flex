@@ -6,8 +6,8 @@ import config from '../config';
 
 const ALGORITHM = 'aes-256-gcm';
 
-// Safe accessors with fallbacks in case config.twoFactor is undefined
-const twoFactorConfig = () => config.twoFactor || {} as Record<string, any>;
+// Safe accessors — TOTP settings live under config.totp
+const twoFactorConfig = () => config.totp as { encryptionKey: string; issuer: string; requiredRoles: string[]; backupCodeCount: number; trustedDeviceDays: number };
 
 // ─── TOTP Secret Generation ──────────────────────────
 

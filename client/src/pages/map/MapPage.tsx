@@ -52,6 +52,7 @@ import {
   Car,
   AlertOctagon,
   Sun,
+  TreePine,
 } from 'lucide-react';
 import type { UnitStatus } from '../../types';
 import RmpgLogo from '../../components/RmpgLogo';
@@ -95,6 +96,15 @@ import { useMapPanicZone } from './hooks/useMapPanicZone';
 import { useMapDaylightOverlay } from './hooks/useMapDaylightOverlay';
 import PredictionsPanel from './components/PredictionsPanel';
 import GeofenceManager from './components/GeofenceManager';
+import { useMapThreatAssessment } from './hooks/useMapThreatAssessment';
+import { useMapUnitSafety } from './hooks/useMapUnitSafety';
+import { useMapPerimeter } from './hooks/useMapPerimeter';
+import { useMapCorridor } from './hooks/useMapCorridor';
+import { useMapEnvironment } from './hooks/useMapEnvironment';
+import { useMapTactical } from './hooks/useMapTactical';
+import { useMapAlerts } from './hooks/useMapAlerts';
+import SafetyDashboardPanel from './components/SafetyDashboardPanel';
+import SafetyAlertModal from './components/SafetyAlertModal';
 
 // ============================================================
 // Constants
@@ -323,6 +333,17 @@ export default function MapPage() {
   const [showPanicZone, setShowPanicZone] = useState(true); // on by default for safety
   const [showDaylight, setShowDaylight] = useState(false);
 
+  // Officer Safety System
+  const [showSafetyDashboard, setShowSafetyDashboard] = useState(false);
+  const [showSafetyAlertModal, setShowSafetyAlertModal] = useState(false);
+  const [showThreatAssessment, setShowThreatAssessment] = useState(false);
+  const [showUnitMonitoring, setShowUnitMonitoring] = useState(false);
+  const [showPerimeterTools, setShowPerimeterTools] = useState(false);
+  const [showCorridorAnalysis, setShowCorridorAnalysis] = useState(false);
+  const [showEnvironmentInfo, setShowEnvironmentInfo] = useState(false);
+  const [showTacticalTools, setShowTacticalTools] = useState(false);
+  const [showAlertSystem, setShowAlertSystem] = useState(false);
+
   // Tactical map hooks
   const timelapse = useMapHeatmapTimelapse(mapInstanceRef.current, showTimelapse && showHeatmap, heatmapDays, heatmapMode as 'all' | 'risk');
   const predictions = useMapPredictions(mapInstanceRef.current, showPredictions);
@@ -344,6 +365,15 @@ export default function MapPage() {
   const panicZone = useMapPanicZone(mapInstanceRef.current, showPanicZone);
   const daylight = useMapDaylightOverlay(mapInstanceRef.current, showDaylight);
 
+  // Officer Safety hooks
+  const threatAssessment = useMapThreatAssessment(mapInstanceRef.current, showThreatAssessment);
+  const unitSafety = useMapUnitSafety(mapInstanceRef.current, showUnitMonitoring);
+  const perimeter = useMapPerimeter(mapInstanceRef.current, showPerimeterTools);
+  const corridor = useMapCorridor(mapInstanceRef.current, showCorridorAnalysis);
+  const environment = useMapEnvironment(mapInstanceRef.current, showEnvironmentInfo);
+  const tactical = useMapTactical(mapInstanceRef.current);
+  const alerts = useMapAlerts(mapInstanceRef.current);
+
   // Geofence alerts — show toast when triggered
   useEffect(() => {
     if (!geofences.alerts.length) return;
@@ -352,6 +382,32 @@ export default function MapPage() {
       addToast(`Geofence: ${latest.unitCallSign} ${latest.eventType} ${latest.geofenceName}`, 'warning');
     }
   }, [geofences.alerts.length]);
+
+  // Shift risk data for safety dashboard
+  const [shiftRisk, setShiftRisk] = useState<any>(null);
+  useEffect(() => {
+    if (!showSafetyDashboard) return;
+    let cancelled = false;
+    const fetchShiftRisk = async () => {
+      try {
+        const data = await apiFetch('/map/safety/shift-risk-summary');
+        if (!cancelled) setShiftRisk(data);
+      } catch { /* non-critical */ }
+    };
+    fetchShiftRisk();
+    const iv = setInterval(fetchShiftRisk, 60000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [showSafetyDashboard]);
+
+  // Safety alert toasts
+  useEffect(() => {
+    if (alerts.activeAlerts.length > 0) {
+      const latest = alerts.activeAlerts[alerts.activeAlerts.length - 1];
+      if (latest && !latest.acknowledged) {
+        addToast(`SAFETY ALERT: ${latest.type.replace(/_/g, ' ').toUpperCase()} — ${latest.details || 'No details'}`, 'error', 15000);
+      }
+    }
+  }, [alerts.activeAlerts.length]);
 
   // ============================================================
   // Data Fetching
@@ -3336,6 +3392,52 @@ export default function MapPage() {
                 </div>
               )}
             </div>
+
+            {/* ── Officer Safety ──────────────────────── */}
+            <div className="mt-3 pt-3 border-t border-rmpg-700">
+              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-2">Officer Safety</div>
+
+              <button onClick={() => setShowSafetyDashboard(!showSafetyDashboard)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showSafetyDashboard ? 'bg-red-900/20 text-red-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
+                <ShieldAlert className="w-3 h-3" /> Safety Dashboard
+                {showSafetyDashboard && <span className="led-dot led-green ml-auto" />}
+              </button>
+
+              <button onClick={() => setShowThreatAssessment(!showThreatAssessment)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showThreatAssessment ? 'bg-amber-900/20 text-amber-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
+                <Crosshair className="w-3 h-3" /> Threat Assessment
+              </button>
+
+              <button onClick={() => setShowUnitMonitoring(!showUnitMonitoring)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showUnitMonitoring ? 'bg-blue-900/20 text-blue-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
+                <Target className="w-3 h-3" /> Unit Monitoring
+                {unitSafety.loneOfficers.length > 0 && <span className="led-dot led-amber ml-auto animate-led-pulse" />}
+              </button>
+
+              <button onClick={() => setShowPerimeterTools(!showPerimeterTools)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showPerimeterTools ? 'bg-purple-900/20 text-purple-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
+                <Radar className="w-3 h-3" /> Perimeter Tools
+              </button>
+
+              <button onClick={() => setShowCorridorAnalysis(!showCorridorAnalysis)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showCorridorAnalysis ? 'bg-cyan-900/20 text-cyan-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
+                <Route className="w-3 h-3" /> Corridor Analysis
+              </button>
+
+              <button onClick={() => setShowEnvironmentInfo(!showEnvironmentInfo)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showEnvironmentInfo ? 'bg-green-900/20 text-green-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
+                <TreePine className="w-3 h-3" /> Environment
+                {environment.lowVisibility && <span className="led-dot led-amber ml-auto" />}
+              </button>
+
+              <button onClick={() => setShowTacticalTools(!showTacticalTools)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showTacticalTools ? 'bg-amber-900/20 text-amber-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
+                <Grab className="w-3 h-3" /> Tactical Tools
+              </button>
+
+              <button onClick={() => setShowAlertSystem(!showAlertSystem)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showAlertSystem ? 'bg-red-900/20 text-red-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
+                <Siren className="w-3 h-3" /> Alert System
+                {alerts.activeAlerts.length > 0 && <span className="ml-auto text-[9px] font-mono text-red-400">{alerts.activeAlerts.length}</span>}
+              </button>
+
+              {/* Safety Alert Broadcast Button */}
+              <button onClick={() => setShowSafetyAlertModal(true)} className="w-full mt-2 toolbar-btn toolbar-btn-primary flex items-center justify-center gap-1.5 text-[10px] py-1.5" style={{ background: '#dc2626', border: '1px solid #ef4444' }}>
+                <Siren className="w-3 h-3" /> BROADCAST ALERT
+              </button>
+            </div>
           </div>
           )}
         </div>}
@@ -3364,6 +3466,74 @@ export default function MapPage() {
               drawingMode={geofences.drawingMode}
               onClose={() => setShowGeofences(false)}
             />
+          </div>
+        )}
+
+        {/* ── Safety Dashboard Panel (floating, desktop only) ── */}
+        {!isMobile && showSafetyDashboard && (
+          <div className="absolute top-2 right-2 z-30" style={{ maxWidth: 320 }}>
+            <SafetyDashboardPanel
+              shiftRisk={shiftRisk}
+              environment={{
+                lighting: environment.lighting || 'unknown',
+                sunriseSunset: environment.sunriseSunset ? {
+                  sunrise: environment.sunriseSunset.sunrise,
+                  sunset: environment.sunriseSunset.sunset,
+                  minutesToTransition: environment.sunriseSunset.minutesToNextTransition,
+                  nextTransition: environment.sunriseSunset.nextTransition,
+                } : null,
+                lowVisibility: environment.lowVisibility,
+                weatherHazards: [
+                  environment.weatherHazards.freezing && 'Freezing',
+                  environment.weatherHazards.highWind && 'High Wind',
+                  environment.weatherHazards.rain && 'Rain',
+                  environment.weatherHazards.snow && 'Snow',
+                ].filter(Boolean) as string[],
+                icyRoad: environment.icyRoad,
+                windCondition: environment.windCondition ? {
+                  speed: environment.windCondition.speed,
+                  direction: environment.windCondition.cardinal,
+                } : null,
+                visibilityRange: environment.visibilityRange,
+                schoolZoneActive: environment.schoolZoneActive,
+              }}
+              unitSafety={{
+                loneOfficers: unitSafety.loneOfficers,
+                exposureWarnings: unitSafety.exposureWarnings,
+                stationaryUnits: unitSafety.stationaryUnits,
+                speedAnomalies: unitSafety.speedAnomalies,
+                coveragePercent: unitSafety.coveragePercent ?? 0,
+              }}
+              onClose={() => setShowSafetyDashboard(false)}
+            />
+          </div>
+        )}
+
+        {/* ── Safety Alert Modal ── */}
+        {showSafetyAlertModal && (
+          <SafetyAlertModal
+            isOpen={showSafetyAlertModal}
+            onClose={() => setShowSafetyAlertModal(false)}
+            onBroadcast={(type, lat, lng, details, radius) => alerts.broadcastAlert(type as any, lat, lng, details, radius)}
+            defaultLat={mapInstanceRef.current?.getCenter()?.lat() ?? 40.7608}
+            defaultLng={mapInstanceRef.current?.getCenter()?.lng() ?? -111.891}
+          />
+        )}
+
+        {/* ── Environment Info Bar (top of map) ── */}
+        {showEnvironmentInfo && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-3 py-1.5 panel-beveled bg-surface-base text-[10px]">
+            <span className={`font-bold ${environment.lighting === 'darkness' ? 'text-blue-400' : environment.lighting === 'twilight' ? 'text-amber-400' : 'text-green-400'}`}>
+              {(environment.lighting || 'unknown').toUpperCase()}
+            </span>
+            {environment.sunriseSunset && (
+              <span className="text-rmpg-400 font-mono">{environment.sunriseSunset.minutesToNextTransition}min to {environment.sunriseSunset.nextTransition}</span>
+            )}
+            {environment.icyRoad && <span className="text-blue-400 font-bold">ICY ROADS</span>}
+            {environment.schoolZoneActive && <span className="text-amber-400 font-bold">SCHOOL ZONE</span>}
+            {environment.windCondition && environment.windCondition.speed > 30 && (
+              <span className="text-amber-400">WIND {Math.round(environment.windCondition.speed)}mph</span>
+            )}
           </div>
         )}
 

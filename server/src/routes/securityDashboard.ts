@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { validateParamId } from '../middleware/sanitize';
+import { validateParamId, validateParamIdMiddleware } from '../middleware/sanitize';
 import { parseDeviceName, createSecurityNotification } from '../utils/deviceFingerprint';
 import { isPasswordExpired, isPasswordExpiringSoon } from '../utils/passwordExpiry';
 import { getBlockedIps, unblockIp } from '../middleware/rateLimiter';
@@ -120,7 +120,7 @@ router.get('/trusted-devices', authenticateToken, (req: Request, res: Response) 
 
 
 // ─── DELETE /api/auth/security/trusted-devices/:id ───
-router.delete('/trusted-devices/:id', validateParamId, authenticateToken, (req: Request, res: Response) => {
+router.delete('/trusted-devices/:id', validateParamIdMiddleware, authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const deviceId = parseInt(req.params.id as string, 10);
@@ -180,7 +180,7 @@ router.get('/notifications', authenticateToken, (req: Request, res: Response) =>
 
 
 // ─── PUT /api/auth/security/notifications/:id/read ───
-router.put('/notifications/:id/read', validateParamId, authenticateToken, (req: Request, res: Response) => {
+router.put('/notifications/:id/read', validateParamIdMiddleware, authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const notifId = parseInt(req.params.id as string, 10);

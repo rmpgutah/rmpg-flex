@@ -11,7 +11,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
-import { validateParamId, escapeLike } from '../middleware/sanitize';
+import { validateParamId, validateParamIdMiddleware, escapeLike } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 import { sendCsv } from '../utils/csvExport';
 
@@ -100,7 +100,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
 });
 
 // ─── GET /:id ────────────────────────────────────────────
-router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare('SELECT * FROM sex_offender_registry WHERE id = ?').get(req.params.id);
@@ -212,7 +212,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, r
 });
 
 // ─── PUT /:id ────────────────────────────────────────────
-router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -257,7 +257,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
 
 // ─── PUT /:id/verify ─────────────────────────────────────
 // Log a compliance verification check
-router.put('/:id/verify', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:id/verify', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();

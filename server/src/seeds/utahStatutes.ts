@@ -18,6 +18,12 @@ export interface StatuteSeed {
   subcategory: string;
   /** Base fine amount for traffic citations / infractions (Utah Uniform Fine Schedule) */
   citation_fine?: number | null;
+  /** State code for multi-state statutes (e.g., 'AZ', 'CO', 'ID', 'NV', 'NM', 'WY') */
+  state?: string;
+  /** Full state name for multi-state statutes (e.g., 'Arizona', 'Colorado') */
+  state_name?: string;
+  /** Extended legal definition/elements of the offense */
+  definition?: string;
 }
 
 export const UTAH_STATUTES: StatuteSeed[] = [
@@ -524,6 +530,30 @@ export const UTAH_STATUTES: StatuteSeed[] = [
  * Seed the utah_statutes table with reference data.
  * Uses INSERT OR REPLACE keyed on citation to update existing and add new entries.
  */
+/** Generic statute seeder — inserts/upserts an array of StatuteSeed records */
+export function seedStatutes(db: any, statutes: StatuteSeed[]): void {
+  try { db.prepare('CREATE UNIQUE INDEX IF NOT EXISTS idx_statutes_citation_unique ON utah_statutes(citation)').run(); } catch { /* exists */ }
+
+  const insert = db.prepare(`
+    INSERT INTO utah_statutes (title, chapter, section, subsection, citation, short_title, description, offense_level, category, subcategory, citation_fine)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(citation) DO UPDATE SET
+      short_title = excluded.short_title,
+      description = excluded.description,
+      offense_level = excluded.offense_level,
+      subcategory = excluded.subcategory,
+      citation_fine = excluded.citation_fine
+  `);
+
+  const tx = db.transaction(() => {
+    for (const s of statutes) {
+      insert.run(s.title, s.chapter, s.section, s.subsection, s.citation, s.short_title, s.description, s.offense_level, s.category, s.subcategory, s.citation_fine ?? null);
+    }
+  });
+
+  tx();
+}
+
 export function seedUtahStatutes(db: any): void {
   // Ensure unique index on citation BEFORE preparing the ON CONFLICT statement
   try { db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_statutes_citation_unique ON utah_statutes(citation)'); } catch { /* exists */ }

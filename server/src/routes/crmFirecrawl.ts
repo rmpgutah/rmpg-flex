@@ -222,7 +222,7 @@ router.post(
           source: 'firecrawl_bulk',
           source_id: item.source_id || `fc_bulk_${Date.now()}_${i}`,
           source_url: item.source_url,
-          business_name: item.business_name.trim(),
+          business_name: (item.business_name || '').trim(),
           industry: item.industry,
           sic_code: item.sic_code,
           business_type: item.business_type,

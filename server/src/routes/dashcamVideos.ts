@@ -16,7 +16,7 @@ import { localNow } from '../utils/timeUtils';
 import { escapeLike } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 import { broadcast } from '../utils/websocket';
-import { validateParamId } from '../middleware/sanitize';
+import { validateParamId, validateParamIdMiddleware } from '../middleware/sanitize';
 import { sendCsv } from '../utils/csvExport';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -128,7 +128,7 @@ router.get('/', authenticateToken, (req: Request, res: Response) => {
 // ============================================================
 // GET /api/fleet/dashcam-videos/:id — Single video detail
 // ============================================================
-router.get('/:id', validateParamId, authenticateToken, (req: Request, res: Response) => {
+router.get('/:id', validateParamIdMiddleware, authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const video = db.prepare(`
@@ -267,7 +267,7 @@ router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor'
 // ============================================================
 // PUT /api/fleet/dashcam-videos/:id — Update video metadata
 // ============================================================
-router.put('/:id', validateParamId, authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/:id', validateParamIdMiddleware, authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(String(req.params.id), 10);
@@ -342,7 +342,7 @@ router.put('/:id', validateParamId, authenticateToken, requireRole('admin', 'man
 // ============================================================
 // DELETE /api/fleet/dashcam-videos/:id — Delete video + file
 // ============================================================
-router.delete('/:id', validateParamId, authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
+router.delete('/:id', validateParamIdMiddleware, authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(String(req.params.id), 10);
@@ -374,7 +374,7 @@ router.delete('/:id', validateParamId, authenticateToken, requireRole('admin'), 
 // ============================================================
 // GET /api/fleet/dashcam-videos/:id/stream — Stream with Range
 // ============================================================
-router.get('/:id/stream', validateParamId, (req: Request, res: Response, next) => {
+router.get('/:id/stream', validateParamIdMiddleware, (req: Request, res: Response, next) => {
   // Accept token from query string for <video> elements (can't set Authorization header)
   if (!req.headers['authorization'] && typeof req.query.token === 'string' && req.query.token.length < 2048) {
     req.headers['authorization'] = `Bearer ${req.query.token}`;
@@ -446,7 +446,7 @@ router.get('/:id/stream', validateParamId, (req: Request, res: Response, next) =
 // ============================================================
 // GET /api/fleet/dashcam-videos/:id/links — List linked entities
 // ============================================================
-router.get('/:id/links', validateParamId, authenticateToken, (req: Request, res: Response) => {
+router.get('/:id/links', validateParamIdMiddleware, authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const videoId = parseInt(String(req.params.id), 10);
@@ -466,7 +466,7 @@ router.get('/:id/links', validateParamId, authenticateToken, (req: Request, res:
 // ============================================================
 // POST /api/fleet/dashcam-videos/:id/links — Link video to entity
 // ============================================================
-router.post('/:id/links', validateParamId, authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/:id/links', validateParamIdMiddleware, authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const videoId = parseInt(String(req.params.id), 10);
@@ -533,7 +533,7 @@ router.post('/:id/links', validateParamId, authenticateToken, requireRole('admin
 // ============================================================
 // DELETE /api/fleet/dashcam-videos/:id/links/:linkId — Remove link
 // ============================================================
-router.delete('/:id/links/:linkId', validateParamId, authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.delete('/:id/links/:linkId', validateParamIdMiddleware, authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const linkId = parseInt(String(req.params.linkId), 10);

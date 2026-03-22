@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../../models/database';
 import { requireRole } from '../../middleware/auth';
-import { validateParamId, escapeLike } from '../../middleware/sanitize';
+import { validateParamId, validateParamIdMiddleware, escapeLike } from '../../middleware/sanitize';
 import { generateCallNumber, generateCaseNumber } from '../../utils/caseNumbers';
 import { sendCsv } from '../../utils/csvExport';
 import { localNow, localToday } from '../../utils/timeUtils';
@@ -517,7 +517,7 @@ router.get('/calls/check-duplicate', requireRole('admin', 'manager', 'supervisor
 });
 
 // GET /api/dispatch/calls/:id - Get single call with details
-router.get('/calls/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare(`
@@ -592,7 +592,7 @@ router.get('/calls/:id', validateParamId, requireRole('admin', 'manager', 'super
 });
 
 // PUT /api/dispatch/calls/:id - Update call
-router.put('/calls/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -836,7 +836,7 @@ router.put('/calls/:id', validateParamId, requireRole('admin', 'manager', 'super
 });
 
 // POST /api/dispatch/calls/:id/redispatch - Re-dispatch a PSO call (increment attempt)
-router.post('/calls/:id/redispatch', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+router.post('/calls/:id/redispatch', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
   // Note: primary handler is now at top-level in index.ts — this is a fallback
   try {
     const db = getDb();
@@ -956,7 +956,7 @@ router.post('/calls/:id/redispatch', validateParamId, requireRole('admin', 'mana
 });
 
 // GET /api/dispatch/calls/:id/visit-history - Get visit history for a PSO call
-router.get('/calls/:id/visit-history', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+router.get('/calls/:id/visit-history', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT id, incident_type FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -973,7 +973,7 @@ router.get('/calls/:id/visit-history', validateParamId, requireRole('admin', 'ma
 });
 
 // GET /api/dispatch/calls/:id/pso-compliance - Check PSO service window compliance
-router.get('/calls/:id/pso-compliance', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+router.get('/calls/:id/pso-compliance', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT id, incident_type, pso_service_windows, pso_attempt_number, pso_72hr_deadline, created_at FROM calls_for_service WHERE id = ?').get(req.params.id) as any;

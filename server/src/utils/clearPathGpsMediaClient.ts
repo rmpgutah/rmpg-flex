@@ -124,6 +124,7 @@ async function cpgMediaFetch<T>(
   };
 
   const token = await getAuthToken();
+  if (!token) throw new Error('ClearPathGPS authentication failed — no token');
   try {
     return await doFetch(token);
   } catch (err: any) {
@@ -134,6 +135,7 @@ async function cpgMediaFetch<T>(
       );
       clearCachedAuth();
       const newToken = await getAuthToken();
+      if (!newToken) throw new Error('ClearPathGPS re-authentication failed');
       return doFetch(newToken);
     }
     throw err;

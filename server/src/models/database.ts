@@ -2762,6 +2762,98 @@ function migrateSchema(): void {
     `);
   } catch { /* tables already exist */ }
 
+  // ── EMAIL SYSTEM — Templates, Logs, Preferences ────────────
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS email_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        category TEXT DEFAULT 'internal' CHECK(category IN ('billing','case_updates','marketing','internal','legal','onboarding')),
+        subject TEXT NOT NULL,
+        html_body TEXT NOT NULL,
+        plain_text TEXT,
+        variables TEXT DEFAULT '[]',
+        is_active INTEGER DEFAULT 1,
+        version INTEGER DEFAULT 1,
+        created_by INTEGER,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (created_by) REFERENCES users(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS email_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        template_id INTEGER,
+        recipient_email TEXT NOT NULL,
+        recipient_name TEXT,
+        subject TEXT NOT NULL,
+        status TEXT DEFAULT 'queued' CHECK(status IN ('queued','sent','delivered','opened','clicked','bounced','failed')),
+        sent_at TEXT,
+        opened_at TEXT,
+        clicked_at TEXT,
+        error_message TEXT,
+        retry_count INTEGER DEFAULT 0,
+        context_type TEXT,
+        context_id TEXT,
+        sent_by TEXT,
+        scheduled_for TEXT,
+        attachments TEXT DEFAULT '[]',
+        metadata TEXT DEFAULT '{}',
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (template_id) REFERENCES email_templates(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS email_preferences (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        client_id INTEGER NOT NULL UNIQUE,
+        case_updates INTEGER DEFAULT 1,
+        payment_receipts INTEGER DEFAULT 1,
+        invoice_reminders INTEGER DEFAULT 1,
+        new_messages INTEGER DEFAULT 1,
+        marketing INTEGER DEFAULT 1,
+        weekly_digest INTEGER DEFAULT 0,
+        unsubscribed_all INTEGER DEFAULT 0,
+        updated_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (client_id) REFERENCES clients(id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_email_logs_recipient ON email_logs(recipient_email);
+      CREATE INDEX IF NOT EXISTS idx_email_logs_status ON email_logs(status);
+      CREATE INDEX IF NOT EXISTS idx_email_logs_context ON email_logs(context_type, context_id);
+      CREATE INDEX IF NOT EXISTS idx_email_templates_category ON email_templates(category);
+    `);
+  } catch { /* tables already exist */ }
+
+  // ── MESSAGES — thread + type fields ───────────────────────
+  addCol('messages', 'case_id', 'INTEGER');
+  addCol('messages', 'thread_id', 'TEXT');
+  addCol('messages', 'message_type', "TEXT DEFAULT 'text'");
+  addCol('messages', 'file_url', 'TEXT');
+  addCol('messages', 'status', "TEXT DEFAULT 'open'");
+  addCol('messages', 'edited_at', 'TEXT');
+  addCol('messages', 'reactions', "TEXT DEFAULT '[]'");
+  addCol('messages', 'subject', 'TEXT');
+
+  // ── CLIENTS — engagement fields ───────────────────────────
+  addCol('clients', 'email_verified', 'INTEGER DEFAULT 0');
+  addCol('clients', 'verification_token', 'TEXT');
+  addCol('clients', 'language_preference', "TEXT DEFAULT 'en'");
+  addCol('clients', 'avatar', 'TEXT');
+  addCol('clients', 'last_active_at', 'TEXT');
+
+  // ── CASES — audit + assignment fields ─────────────────────
+  addCol('cases', 'audit_log', "TEXT DEFAULT '[]'");
+  addCol('cases', 'assigned_employees', "TEXT DEFAULT '[]'");
+  addCol('cases', 'deadline', 'TEXT');
+  addCol('cases', 'sla_hours', 'INTEGER');
+
+  // ── USERS/EMPLOYEES — territory + performance fields ──────
+  addCol('users', 'photo', 'TEXT');
+  addCol('users', 'territory_zips', "TEXT DEFAULT '[]'");
+  addCol('users', 'availability', "TEXT DEFAULT '{}'");
+  addCol('users', 'active_case_count', 'INTEGER DEFAULT 0');
+  addCol('users', 'performance', "TEXT DEFAULT '{}'");
+
   console.log('Schema migration completed.');
 }
 

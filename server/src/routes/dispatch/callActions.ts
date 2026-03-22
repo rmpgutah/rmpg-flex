@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { Router, Request, Response } from 'express';
 import { getDb } from '../../models/database';
 import { requireRole } from '../../middleware/auth';
-import { validateParamId } from '../../middleware/sanitize';
+import { validateParamId, validateParamIdMiddleware } from '../../middleware/sanitize';
 import { broadcast, broadcastDispatchUpdate, broadcastUnitUpdate } from '../../utils/websocket';
 import { localNow, localToday } from '../../utils/timeUtils';
 import { generateIncidentNumber } from '../../utils/caseNumbers';
@@ -67,7 +67,7 @@ function isPsoCompliant(windows: PsoServiceWindows): boolean {
 }
 
 // POST /api/dispatch/calls/:id/dispatch - Dispatch unit(s) to call
-router.post('/calls/:id/dispatch', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+router.post('/calls/:id/dispatch', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -160,7 +160,7 @@ router.post('/calls/:id/dispatch', validateParamId, requireRole('admin', 'manage
             unitRow.officer_id, 'dispatch',
             `Dispatched: ${call.call_number}`,
             `${call.incident_type} — ${call.location_address || 'No address'}`,
-            'call', call.id, 'high', 'dispatch.unit_dispatched',
+            'call', call.id, 'high',
           );
         }
       }
@@ -176,7 +176,7 @@ router.post('/calls/:id/dispatch', validateParamId, requireRole('admin', 'manage
 });
 
 // POST /api/dispatch/calls/:id/assign-unit - Attach a single unit to a call (dispatchers + officers for self-dispatch)
-router.post('/calls/:id/assign-unit', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+router.post('/calls/:id/assign-unit', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -274,7 +274,7 @@ router.post('/calls/:id/assign-unit', validateParamId, requireRole('admin', 'man
 });
 
 // POST /api/dispatch/calls/:id/unassign-unit - Detach a single unit from a call
-router.post('/calls/:id/unassign-unit', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+router.post('/calls/:id/unassign-unit', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -348,7 +348,7 @@ router.post('/calls/:id/unassign-unit', validateParamId, requireRole('admin', 'm
 });
 
 // POST /api/dispatch/calls/:id/status - Update call status with timestamp
-router.post('/calls/:id/status', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -577,7 +577,7 @@ router.post('/calls/:id/status', validateParamId, requireRole('admin', 'manager'
 });
 
 // POST /api/dispatch/calls/:id/revert-status - Revert call to previous status
-router.post('/calls/:id/revert-status', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+router.post('/calls/:id/revert-status', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -673,7 +673,7 @@ router.post('/calls/:id/revert-status', validateParamId, requireRole('admin', 'm
 });
 
 // POST /api/dispatch/calls/:id/hold - Put call on hold (saves previous status)
-router.post('/calls/:id/hold', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+router.post('/calls/:id/hold', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -715,7 +715,7 @@ router.post('/calls/:id/hold', validateParamId, requireRole('admin', 'manager', 
 });
 
 // POST /api/dispatch/calls/:id/resume - Resume a held call (restores previous status)
-router.post('/calls/:id/resume', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+router.post('/calls/:id/resume', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -755,7 +755,7 @@ router.post('/calls/:id/resume', validateParamId, requireRole('admin', 'manager'
 });
 
 // POST /api/dispatch/calls/:id/promote-to-incident - Create incident from call
-router.post('/calls/:id/promote-to-incident', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+router.post('/calls/:id/promote-to-incident', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -807,7 +807,7 @@ router.post('/calls/:id/promote-to-incident', validateParamId, requireRole('admi
 });
 
 // POST /api/dispatch/calls/:id/le-notification - Notify external agency
-router.post('/calls/:id/le-notification', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+router.post('/calls/:id/le-notification', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -856,7 +856,7 @@ router.post('/calls/:id/le-notification', validateParamId, requireRole('admin', 
 // ═══════════════════════════════════════════════════════════
 
 // GET /api/dispatch/calls/:id/persons — List linked persons
-router.get('/calls/:id/persons', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/calls/:id/persons', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const rows = db.prepare(`
@@ -878,7 +878,7 @@ router.get('/calls/:id/persons', validateParamId, requireRole('admin', 'manager'
 });
 
 // POST /api/dispatch/calls/:id/persons — Link a person to a call
-router.post('/calls/:id/persons', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.post('/calls/:id/persons', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT id, call_number FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -947,7 +947,7 @@ router.post('/calls/:id/persons', validateParamId, requireRole('admin', 'manager
 });
 
 // PUT /api/dispatch/calls/:id/persons/:linkId — Update person link role/notes
-router.put('/calls/:id/persons/:linkId', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.put('/calls/:id/persons/:linkId', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const link = db.prepare('SELECT * FROM call_persons WHERE id = ? AND call_id = ?').get(req.params.linkId, req.params.id) as any;
@@ -984,7 +984,7 @@ router.put('/calls/:id/persons/:linkId', validateParamId, requireRole('admin', '
 });
 
 // DELETE /api/dispatch/calls/:id/persons/:linkId — Unlink person from call
-router.delete('/calls/:id/persons/:linkId', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.delete('/calls/:id/persons/:linkId', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const link = db.prepare('SELECT cp.*, p.first_name, p.last_name FROM call_persons cp LEFT JOIN persons p ON cp.person_id = p.id WHERE cp.id = ? AND cp.call_id = ?')
@@ -1015,7 +1015,7 @@ router.delete('/calls/:id/persons/:linkId', validateParamId, requireRole('admin'
 // ═══════════════════════════════════════════════════════════
 
 // GET /api/dispatch/calls/:id/vehicles — List linked vehicles
-router.get('/calls/:id/vehicles', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/calls/:id/vehicles', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const rows = db.prepare(`
@@ -1039,7 +1039,7 @@ router.get('/calls/:id/vehicles', validateParamId, requireRole('admin', 'manager
 });
 
 // POST /api/dispatch/calls/:id/vehicles — Link a vehicle to a call
-router.post('/calls/:id/vehicles', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.post('/calls/:id/vehicles', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT id, call_number FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -1087,7 +1087,7 @@ router.post('/calls/:id/vehicles', validateParamId, requireRole('admin', 'manage
 });
 
 // PUT /api/dispatch/calls/:id/vehicles/:linkId — Update vehicle link role/notes
-router.put('/calls/:id/vehicles/:linkId', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.put('/calls/:id/vehicles/:linkId', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const link = db.prepare('SELECT * FROM call_vehicles WHERE id = ? AND call_id = ?').get(req.params.linkId, req.params.id) as any;
@@ -1126,7 +1126,7 @@ router.put('/calls/:id/vehicles/:linkId', validateParamId, requireRole('admin', 
 });
 
 // DELETE /api/dispatch/calls/:id/vehicles/:linkId — Unlink vehicle from call
-router.delete('/calls/:id/vehicles/:linkId', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.delete('/calls/:id/vehicles/:linkId', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const link = db.prepare(`SELECT cv.*, v.make, v.model, v.year, v.plate_number
@@ -1154,7 +1154,7 @@ router.delete('/calls/:id/vehicles/:linkId', validateParamId, requireRole('admin
 });
 
 // POST /calls/:id/send-to-serve — Create serve queue entry from PSO dispatch call
-router.post('/calls/:id/send-to-serve', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+router.post('/calls/:id/send-to-serve', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -1257,7 +1257,7 @@ router.post('/calls/:id/send-to-serve', validateParamId, requireRole('admin', 'm
 });
 
 // GET /calls/:id/serve-link — Get linked serve queue entry for a call
-router.get('/calls/:id/serve-link', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+router.get('/calls/:id/serve-link', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const job = db.prepare('SELECT * FROM serve_queue WHERE call_id = ?').get(req.params.id) as any;

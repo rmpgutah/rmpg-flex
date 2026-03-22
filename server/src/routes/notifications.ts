@@ -37,6 +37,41 @@ export function createNotification(
   }
 }
 
+// ─── HELPER: CREATE NOTIFICATION FOR ROLES ──────────
+
+/**
+ * Create a notification for all users matching any of the given roles.
+ * Optionally exclude a specific user (e.g. the actor who triggered the event).
+ */
+export function createNotificationForRoles(
+  roles: string[],
+  type: string,
+  title: string,
+  body: string | null,
+  entityType: string | null,
+  entityId: number | null,
+  priority: 'normal' | 'high' | 'critical',
+  _eventKey?: string,
+  excludeUserId?: number,
+): void {
+  try {
+    const db = getDb();
+    const placeholders = roles.map(() => '?').join(',');
+    let query = `SELECT id FROM users WHERE role IN (${placeholders}) AND active = 1`;
+    const params: any[] = [...roles];
+    if (excludeUserId) {
+      query += ' AND id != ?';
+      params.push(excludeUserId);
+    }
+    const users = db.prepare(query).all(...params) as { id: number }[];
+    for (const user of users) {
+      createNotification(user.id, type, title, body, entityType, entityId, priority);
+    }
+  } catch (error) {
+    console.error('Error creating notification for roles:', error);
+  }
+}
+
 // ─── ROUTES ──────────────────────────────────────────
 
 // GET /api/notifications - Get current user's notifications (paginated)

@@ -27,9 +27,20 @@ function decrypt(stored: string): string {
   return decrypted;
 }
 
+// ─── Config keys ────────────────────────────────────────────
+
+export const CONFIG_KEYS = {
+  account: 'clearpathgps_account',
+  user: 'clearpathgps_user',
+  password: 'clearpathgps_password',
+  baseUrl: 'clearpathgps_base_url',
+  enabled: 'clearpathgps_enabled',
+  pollInterval: 'clearpathgps_poll_interval',
+} as const;
+
 // ─── Config helpers ─────────────────────────────────────────
 
-function getConfigValue(key: string): string | null {
+export function getConfigValue(key: string): string | null {
   try {
     const db = getDb();
     const row = db.prepare(
@@ -192,4 +203,82 @@ export function generateDateChunks(startDate: Date, endDate: Date = new Date()):
   }
 
   return chunks.reverse();
+}
+
+// ─── Fleet event types ──────────────────────────────────────
+
+export interface CpgEventData {
+  deviceId: string;
+  latitude: number;
+  longitude: number;
+  heading?: number;
+  speedMph?: number;
+  timestamp?: string | number;
+  statusCode?: string;
+  statusCodeText?: string;
+  address?: string;
+  streetAddress?: string;
+  odometer?: number;
+  reportedOdometer?: number;
+  satelliteCount?: number;
+  ignition?: boolean;
+  driverName?: string;
+}
+
+export interface CpgFleetEvent {
+  eventData?: CpgEventData[];
+  device?: {
+    id?: string;
+    name?: string;
+    dashcam_id?: string;
+    [key: string]: any;
+  };
+}
+
+// ─── Enabled check ──────────────────────────────────────────
+
+export function isEnabled(): boolean {
+  const val = getConfigValue(CONFIG_KEYS.enabled);
+  return val === '1' || val === 'true';
+}
+
+// ─── Fleet latest positions ─────────────────────────────────
+
+export async function getFleetLatest(): Promise<CpgFleetEvent[]> {
+  const creds = getCredentials();
+  if (!creds) return [];
+  const data = await apiRequest(creds, '/fleet/latest');
+  return Array.isArray(data) ? data : (data?.events || data?.data || []);
+}
+
+// ─── Device history ─────────────────────────────────────────
+
+export async function getDeviceHistory(
+  deviceId: string,
+  startDate: string,
+  endDate: string,
+): Promise<CpgFleetEvent[]> {
+  const creds = getCredentials();
+  if (!creds) return [];
+  const data = await apiRequest(creds, `/devices/${deviceId}/history`, {
+    startDate,
+    endDate,
+  });
+  return Array.isArray(data) ? data : (data?.events || data?.data || []);
+}
+
+// ─── Auth token helpers (for media API) ─────────────────────
+
+let cachedAuthToken: string | null = null;
+
+export async function getAuthToken(): Promise<string | null> {
+  if (cachedAuthToken) return cachedAuthToken;
+  const creds = getCredentials();
+  if (!creds) return null;
+  cachedAuthToken = Buffer.from(`${creds.account}/${creds.user}:${creds.password}`).toString('base64');
+  return cachedAuthToken;
+}
+
+export function clearCachedAuth(): void {
+  cachedAuthToken = null;
 }

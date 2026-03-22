@@ -293,7 +293,7 @@ router.post(
 
         changeId = Number(changeResult.lastInsertRowid);
 
-        broadcast('competitor:change_detected', {
+        broadcast('admin', 'competitor:change_detected', {
           monitored_url_id: id,
           url: monitored.url,
           label: monitored.label,

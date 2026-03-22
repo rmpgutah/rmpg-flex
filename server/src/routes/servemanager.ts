@@ -108,7 +108,7 @@ function requireApiKey(_req: Request, res: Response): boolean {
   return true;
 }
 
-function upsertJobFromApi(job: any): void {
+export function upsertJobFromApi(job: any): void {
   ensureTables();
   const db = getDb();
   const now = localNow();
@@ -168,7 +168,7 @@ function upsertJobFromApi(job: any): void {
   );
 }
 
-function upsertAttemptFromApi(attempt: any): void {
+export function upsertAttemptFromApi(attempt: any): void {
   ensureTables();
   const db = getDb();
   const now = localNow();
