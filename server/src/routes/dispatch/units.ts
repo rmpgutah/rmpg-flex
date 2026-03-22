@@ -76,10 +76,10 @@ router.post('/units', requireRole('admin', 'manager', 'dispatcher'), (req: Reque
       VALUES (?, ?, ?, ?, ?)
     `).run(call_sign, officer_id || null, status || 'off_duty', localNow(), localNow());
 
-    const unit = db.prepare('SELECT u.*, usr.full_name as officer_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.id = ?').get(result.lastInsertRowid);
+    const unit = db.prepare('SELECT u.*, usr.full_name as officer_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.id = ?').get(Number(result.lastInsertRowid));
     if (!unit) { res.status(500).json({ error: 'Failed to retrieve created unit' }); return; }
 
-    auditLog(req, 'CREATE', 'unit', result.lastInsertRowid as number, `Created unit: ${call_sign}`);
+    auditLog(req, 'CREATE', 'unit', Number(result.lastInsertRowid) as number, `Created unit: ${call_sign}`);
 
     broadcastUnitUpdate({ action: 'unit_created', unit });
     res.status(201).json(unit);

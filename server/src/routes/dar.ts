@@ -259,7 +259,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       safety_concerns || null, recommendations || null, now, now);
 
     auditLog(req, 'CREATE' as any, 'dar' as any, Number(result.lastInsertRowid), `Created DAR ${dar_number} for ${shift_date}`);
-    res.status(201).json({ data: { id: result.lastInsertRowid, dar_number } });
+    res.status(201).json({ data: { id: Number(result.lastInsertRowid), dar_number } });
   } catch (error: any) {
     console.error('Create DAR error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });

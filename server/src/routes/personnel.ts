@@ -410,9 +410,9 @@ router.post('/', requireRole('admin', 'manager'), personnelCreateRateLimit, (req
         employee_id, certifications, notes, profile_image,
         created_at, updated_at
       FROM users WHERE id = ?
-    `).get(result.lastInsertRowid);
+    `).get(Number(result.lastInsertRowid));
 
-    auditLog(req, 'user_created', 'user', result.lastInsertRowid, `Created user: ${username} (${role})`);
+    auditLog(req, 'user_created', 'user', Number(result.lastInsertRowid), `Created user: ${username} (${role})`);
 
     res.status(201).json(user);
   } catch (error: any) {
@@ -883,7 +883,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         LEFT JOIN users u ON s.officer_id = u.id
         LEFT JOIN properties p ON s.property_id = p.id
         WHERE s.id = ?
-      `).get(result.lastInsertRowid);
+      `).get(Number(result.lastInsertRowid));
 
       res.status(201).json(schedule);
     } catch (error: any) {
@@ -929,12 +929,12 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       }
 
       const officerName = (db.prepare('SELECT full_name FROM users WHERE id = ?').get(targetId) as any)?.full_name || targetId;
-      auditLog(req, 'clock_in', 'time_entry', result.lastInsertRowid, isSelf ? 'Clocked in' : `Clocked in ${officerName}`);
+      auditLog(req, 'clock_in', 'time_entry', Number(result.lastInsertRowid), isSelf ? 'Clocked in' : `Clocked in ${officerName}`);
 
       const entry = db.prepare(`
         SELECT t.*, u.full_name as officer_name, u.badge_number
         FROM time_entries t LEFT JOIN users u ON t.officer_id = u.id WHERE t.id = ?
-      `).get(result.lastInsertRowid);
+      `).get(Number(result.lastInsertRowid));
       res.status(201).json(entry);
     } catch (error: any) {
       console.error('Clock in error:', error?.message || 'Unknown error');
@@ -1255,7 +1255,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         VALUES (?, ?, ?, ?, ?, ?)
       `).run(officer_id, credential_type, credential_number || null, issued_date || null, expiry_date || null, notes || null);
 
-      const credential = db.prepare('SELECT * FROM credentials WHERE id = ?').get(result.lastInsertRowid);
+      const credential = db.prepare('SELECT * FROM credentials WHERE id = ?').get(Number(result.lastInsertRowid));
       res.status(201).json(credential);
     } catch (error: any) {
       console.error('Create credential error:', error?.message || 'Unknown error');
@@ -1529,7 +1529,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         description || null,
       );
 
-      const requirement = db.prepare('SELECT * FROM training_requirements WHERE id = ?').get(result.lastInsertRowid) as any;
+      const requirement = db.prepare('SELECT * FROM training_requirements WHERE id = ?').get(Number(result.lastInsertRowid)) as any;
       let parsedRoles: any = [];
       try { parsedRoles = typeof requirement.required_for_roles === 'string' ? JSON.parse(requirement.required_for_roles) : requirement.required_for_roles; } catch { parsedRoles = []; }
       res.status(201).json({
@@ -1638,7 +1638,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         FROM training_records t
         LEFT JOIN users u ON t.officer_id = u.id
         WHERE t.id = ?
-      `).get(result.lastInsertRowid);
+      `).get(Number(result.lastInsertRowid));
 
       res.status(201).json(record);
     } catch (error: any) {
@@ -1819,7 +1819,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         LEFT JOIN properties p ON d.property_id = p.id
         LEFT JOIN clients c ON p.client_id = c.id
         WHERE d.id = ?
-      `).get(result.lastInsertRowid);
+      `).get(Number(result.lastInsertRowid));
 
       res.status(201).json(deployment);
     } catch (error: any) {
@@ -2010,7 +2010,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         FROM officer_equipment e
         LEFT JOIN users u ON e.officer_id = u.id
         WHERE e.id = ?
-      `).get(result.lastInsertRowid);
+      `).get(Number(result.lastInsertRowid));
 
       res.status(201).json(equipment);
     } catch (error: any) {
@@ -2152,7 +2152,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         FROM body_cameras c
         LEFT JOIN users u ON c.officer_id = u.id
         WHERE c.id = ?
-      `).get(result.lastInsertRowid);
+      `).get(Number(result.lastInsertRowid));
 
       res.status(201).json(camera);
     } catch (error: any) {
@@ -2543,7 +2543,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         classification || 'routine', notes || null, String(user?.userId || 'system')
       );
 
-      const videoId = result.lastInsertRowid;
+      const videoId = Number(result.lastInsertRowid);
 
       // Clean up chunk session
       try {
@@ -2659,7 +2659,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
             classification || 'routine', notes || null, String(req.user!.userId)
           );
 
-          const videoId = result.lastInsertRowid;
+          const videoId = Number(result.lastInsertRowid);
 
           const video = db.prepare(`
             SELECT v.*, u.full_name as officer_name, c.camera_id as camera_serial

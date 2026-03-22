@@ -148,8 +148,8 @@ router.post('/violations', requireRole('admin', 'manager', 'supervisor', 'office
     const { result, violation_number } = createViolation();
 
     auditLog(req, 'CREATE', 'code_violation', Number(result.lastInsertRowid), 'Created code enforcement violation');
-    broadcast('records', 'violation:created', { id: result.lastInsertRowid, violation_number, violation_type, location });
-    res.status(201).json({ data: { id: result.lastInsertRowid, violation_number } });
+    broadcast('records', 'violation:created', { id: Number(result.lastInsertRowid), violation_number, violation_type, location });
+    res.status(201).json({ data: { id: Number(result.lastInsertRowid), violation_number } });
   } catch (error: any) {
     console.error('Create violation error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -272,8 +272,8 @@ router.post('/tows', requireRole('admin', 'manager', 'supervisor', 'officer'), (
     const { result, tow_number } = createTow();
 
     auditLog(req, 'CREATE', 'vehicle_tow', Number(result.lastInsertRowid), 'Created tow record');
-    broadcast('records', 'tow:created', { id: result.lastInsertRowid, tow_number, tow_from, tow_reason });
-    res.status(201).json({ data: { id: result.lastInsertRowid, tow_number } });
+    broadcast('records', 'tow:created', { id: Number(result.lastInsertRowid), tow_number, tow_from, tow_reason });
+    res.status(201).json({ data: { id: Number(result.lastInsertRowid), tow_number } });
   } catch (error: any) {
     console.error('Create tow error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });

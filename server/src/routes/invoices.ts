@@ -319,7 +319,7 @@ router.post('/', requireRole('admin', 'manager', 'contract_manager'), (req: Requ
     );
 
     auditLog(req, 'invoice_created', 'invoice', Number(result.lastInsertRowid), `Created invoice ${invoice_number} for client ${client.name}`);
-    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(result.lastInsertRowid);
+    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(Number(result.lastInsertRowid));
     if (!invoice) { res.status(500).json({ error: 'Failed to retrieve created invoice' }); return; }
     res.status(201).json({ data: invoice });
   } catch (error: any) {
@@ -693,8 +693,8 @@ router.post('/:id/line-items', validateParamId, requireRole('admin', 'manager', 
     recalculateInvoiceTotals(req.params.id);
 
     auditLog(req, 'CREATE', 'invoice_line_item', Number(result.lastInsertRowid), `Added line item to invoice ${req.params.id}: ${description}`);
-    const item = db.prepare('SELECT * FROM invoice_line_items WHERE id = ?').get(result.lastInsertRowid);
-    res.status(201).json({ data: item || { id: result.lastInsertRowid } });
+    const item = db.prepare('SELECT * FROM invoice_line_items WHERE id = ?').get(Number(result.lastInsertRowid));
+    res.status(201).json({ data: item || { id: Number(result.lastInsertRowid) } });
   } catch (error: any) {
     console.error('Add line item error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -800,8 +800,8 @@ router.post('/:id/payments', validateParamId, requireRole('admin', 'manager'), (
       SELECT p.*, u.full_name as recorded_by_name
       FROM payments p LEFT JOIN users u ON p.recorded_by = u.id
       WHERE p.id = ?
-    `).get(result.lastInsertRowid);
-    res.status(201).json({ data: payment || { id: result.lastInsertRowid } });
+    `).get(Number(result.lastInsertRowid));
+    res.status(201).json({ data: payment || { id: Number(result.lastInsertRowid) } });
   } catch (error: any) {
     console.error('Record payment error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });

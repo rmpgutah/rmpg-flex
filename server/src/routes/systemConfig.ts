@@ -82,10 +82,10 @@ router.post('/config', requireRole('admin', 'manager'), (req: Request, res: Resp
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(config_key, config_value, category, sortOrder, now, now);
 
-    const item = db.prepare('SELECT * FROM system_config WHERE id = ?').get(result.lastInsertRowid);
+    const item = db.prepare('SELECT * FROM system_config WHERE id = ?').get(Number(result.lastInsertRowid));
     if (!item) { res.status(500).json({ error: 'Failed to retrieve created config' }); return; }
 
-    auditLog(req, 'CREATE', 'system_config', result.lastInsertRowid as number,
+    auditLog(req, 'CREATE', 'system_config', Number(result.lastInsertRowid) as number,
       `Added config: ${config_key} = ${/secret|password|token|key|smtp_pass/i.test(config_key) ? '[REDACTED]' : config_value}`);
 
     auditLog(req, 'CREATE' as any, 'system_config' as any, Number(result.lastInsertRowid), `Added config: ${config_key} in category ${category}`);

@@ -365,7 +365,7 @@ router.post('/dossiers', requireRole('admin', 'manager', 'supervisor', 'officer'
       now,
     );
 
-    const id = result.lastInsertRowid;
+    const id = Number(result.lastInsertRowid);
 
     auditLog(req, 'CREATE', 'skiptracer', String(id), `Dossier created for "${subjectName}"`);
 

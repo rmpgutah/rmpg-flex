@@ -116,11 +116,11 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       LEFT JOIN users u ON d.created_by = u.id
       LEFT JOIN attachments a ON d.file_id = a.file_id
       WHERE d.id = ?
-    `).get(result.lastInsertRowid);
+    `).get(Number(result.lastInsertRowid));
     if (!doc) { res.status(500).json({ error: 'Failed to retrieve created document' }); return; }
 
     auditLog(req, 'CREATE', 'company_documents', Number(result.lastInsertRowid), `Created company document: ${title}`);
-    res.status(201).json(doc || { id: result.lastInsertRowid });
+    res.status(201).json(doc || { id: Number(result.lastInsertRowid) });
   } catch (error: any) {
     console.error('Create company document error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });

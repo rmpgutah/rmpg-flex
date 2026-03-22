@@ -8,6 +8,14 @@ import { auditLog } from '../utils/auditLogger';
 const router = Router();
 router.use(authenticateToken);
 
+/** Recalculate net_pay = gross_pay - total_deductions for a payroll entry */
+function recalculateNetPay(db: any, entryId: number): void {
+  const entry = db.prepare('SELECT gross_pay, total_deductions FROM hr_payroll_entries WHERE id = ?').get(entryId) as any;
+  if (!entry) return;
+  const netPay = Math.max(0, (entry.gross_pay || 0) - (entry.total_deductions || 0));
+  db.prepare('UPDATE hr_payroll_entries SET net_pay = ? WHERE id = ?').run(Math.round(netPay * 100) / 100, entryId);
+}
+
 const isManagerOrAbove = (role: string) => ['admin', 'manager', 'supervisor'].includes(role);
 
 // ─── Dashboard ───────────────────────────────────────────────────────────────
@@ -146,7 +154,7 @@ router.post('/leave', (req: Request, res: Response) => {
     auditLog(req, 'CREATE' as any, 'leave_request' as any, Number(result.lastInsertRowid),
       `Leave request created: ${type} ${start_date} to ${end_date}`);
 
-    res.status(201).json({ success: true, id: result.lastInsertRowid });
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
     console.error('[HR] Leave create error:', error?.message);
     res.status(500).json({ error: 'Failed to create leave request' });
@@ -502,7 +510,8 @@ router.post('/disciplinary', requireRole('admin', 'manager'), (req: Request, res
     if (!officer_id || !incident_date || !description) {
       return res.status(400).json({ error: 'officer_id, incident_date, and description are required' });
     }
-    const VALID_DISCIPLINARY_TYPES = ['verbal_warning', 'written_warning', 'suspension', 'demotion', 'termination', 'other'];
+    // Must match database CHECK constraint on disciplinary_actions.type
+    const VALID_DISCIPLINARY_TYPES = ['verbal_warning', 'written_warning', 'suspension', 'termination', 'commendation', 'counseling'];
     if (type && !VALID_DISCIPLINARY_TYPES.includes(type)) {
       return res.status(400).json({ error: `Invalid disciplinary type. Must be one of: ${VALID_DISCIPLINARY_TYPES.join(', ')}` });
     }
@@ -519,7 +528,7 @@ router.post('/disciplinary', requireRole('admin', 'manager'), (req: Request, res
     auditLog(req, 'CREATE' as any, 'disciplinary_record' as any, Number(result.lastInsertRowid),
       `Disciplinary record created for officer ${officer_id}: ${type || 'verbal_warning'}`);
 
-    res.status(201).json({ success: true, id: result.lastInsertRowid });
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
     console.error('[HR] Disciplinary create error:', error?.message);
     res.status(500).json({ error: 'Failed to create disciplinary record' });
@@ -623,6 +632,14 @@ router.post('/reviews', requireRole('admin', 'manager', 'supervisor'), (req: Req
       return res.status(400).json({ error: 'review_period_start must be on or before review_period_end' });
     }
 
+    // Validate overall_rating range (1-5 scale)
+    if (overall_rating !== undefined && overall_rating !== null) {
+      const rating = parseFloat(overall_rating);
+      if (isNaN(rating) || rating < 1 || rating > 5) {
+        return res.status(400).json({ error: 'overall_rating must be between 1 and 5' });
+      }
+    }
+
     const now = localNow();
     const user = (req as any).user;
     const result = db.prepare(
@@ -639,7 +656,7 @@ router.post('/reviews', requireRole('admin', 'manager', 'supervisor'), (req: Req
     auditLog(req, 'CREATE' as any, 'performance_review' as any, Number(result.lastInsertRowid),
       `Performance review created for officer ${officer_id}`);
 
-    res.status(201).json({ success: true, id: result.lastInsertRowid });
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
     console.error('[HR] Review create error:', error?.message);
     res.status(500).json({ error: 'Failed to create review' });
@@ -961,15 +978,20 @@ router.post('/payroll/entries', requireRole('admin', 'manager'), (req: Request, 
       user_id, pay_period_id, payRate?.id ?? null,
       regHrs, otHrs, holHrs,
       pto_hours ?? 0, sick_hours ?? 0, other_hours ?? 0, other_hours_description || null,
-      basePay, overtimePay, holidayPay, grossPay, grossPay,
+      basePay, overtimePay, holidayPay, grossPay, grossPay, // net_pay = gross_pay when total_deductions = 0
       notes || null, now, now
     );
 
+    const entryId = Number(result.lastInsertRowid);
+
+    // Recalculate net_pay after applying any deductions for this user
+    recalculateNetPay(db, entryId);
+
     const entry = db.prepare(`
       SELECT pe.*, u.full_name as officer_name FROM hr_payroll_entries pe JOIN users u ON u.id = pe.user_id WHERE pe.id = ?
-    `).get(Number(result.lastInsertRowid));
+    `).get(entryId);
 
-    auditLog(req, 'CREATE' as any, 'hr_payroll_entry' as any, Number(result.lastInsertRowid), `Payroll entry for user ${user_id}, gross: $${grossPay.toFixed(2)}`);
+    auditLog(req, 'CREATE' as any, 'hr_payroll_entry' as any, entryId, `Payroll entry for user ${user_id}, gross: $${grossPay.toFixed(2)}`);
     res.json(entry);
   } catch (error: any) {
     console.error('[HR] Create payroll entry error:', error?.message);
@@ -1026,6 +1048,9 @@ router.put('/payroll/entries/:id', validateParamId, requireRole('admin', 'manage
       status ?? existing.status, notes ?? existing.notes,
       status, userId, status, now, now, id
     );
+
+    // Recalculate net_pay after gross_pay change
+    recalculateNetPay(db, id);
 
     const updated = db.prepare(`
       SELECT pe.*, u.full_name as officer_name FROM hr_payroll_entries pe JOIN users u ON u.id = pe.user_id WHERE pe.id = ?

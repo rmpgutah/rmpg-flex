@@ -167,12 +167,12 @@ router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, r
       } catch { /* silent — person may not exist */ }
     }
 
-    auditLog(req, 'CREATE', 'person', result.lastInsertRowid as number,
+    auditLog(req, 'CREATE', 'person', Number(result.lastInsertRowid) as number,
       JSON.stringify({ first_name, last_name, tier, registration_status: registration_status || 'compliant' }));
 
     auditLog(req, 'CREATE' as any, 'colorado_doc_offenders' as any, Number(result.lastInsertRowid), `Created SOR entry: ${first_name} ${last_name}`);
 
-    res.status(201).json({ data: { id: result.lastInsertRowid } });
+    res.status(201).json({ data: { id: Number(result.lastInsertRowid) } });
   } catch (error: any) {
     console.error('SOR create error:', error?.message || 'Unknown error');
     if (error.message?.includes('UNIQUE constraint')) {

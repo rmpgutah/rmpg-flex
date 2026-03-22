@@ -499,6 +499,13 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Reque
       }
     }
 
+    // Validate status enum if provided
+    const VALID_FLEET_STATUSES = ['in_service', 'maintenance', 'out_of_service', 'retired'];
+    if (req.body.status && !VALID_FLEET_STATUSES.includes(req.body.status)) {
+      res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_FLEET_STATUSES.join(', ')}` });
+      return;
+    }
+
     // Build dynamic SET clause — only update fields explicitly provided
     const fFields: string[] = [];
     const fValues: any[] = [];
@@ -1043,7 +1050,28 @@ router.post('/:id/fuel', validateParamId, requireRole('admin', 'manager', 'super
       return;
     }
 
-    const computedTotal = total_cost != null ? total_cost : (cost_per_gallon ? gallons * cost_per_gallon : null);
+    // Validate numeric fields
+    const gal = parseFloat(gallons);
+    if (isNaN(gal) || gal <= 0 || gal > 500) {
+      res.status(400).json({ error: 'gallons must be a positive number (max 500)' });
+      return;
+    }
+    if (cost_per_gallon !== undefined && cost_per_gallon !== null) {
+      const cpg = parseFloat(cost_per_gallon);
+      if (isNaN(cpg) || cpg < 0 || cpg > 20) {
+        res.status(400).json({ error: 'cost_per_gallon must be between 0 and 20' });
+        return;
+      }
+    }
+    if (odometer_reading !== undefined && odometer_reading !== null) {
+      const odo = parseFloat(odometer_reading);
+      if (isNaN(odo) || odo < 0) {
+        res.status(400).json({ error: 'odometer_reading must be a non-negative number' });
+        return;
+      }
+    }
+
+    const computedTotal = total_cost != null ? total_cost : (cost_per_gallon ? gal * cost_per_gallon : null);
 
     const result = db.prepare(`
       INSERT INTO fleet_fuel_logs (

@@ -467,7 +467,7 @@ router.post('/persons', requireRole('admin', 'manager', 'supervisor', 'officer',
     );
 
     // SELECT after screening so watchlist_match is included in response (safe column list excludes ssn_full)
-    const person = db.prepare(`SELECT ${PERSON_COLUMNS}, watchlist_match, watchlist_checked_at FROM persons WHERE id = ?`).get(result.lastInsertRowid);
+    const person = db.prepare(`SELECT ${PERSON_COLUMNS}, watchlist_match, watchlist_checked_at FROM persons WHERE id = ?`).get(Number(result.lastInsertRowid));
     if (!person) { res.status(500).json({ error: 'Failed to retrieve created person' }); return; }
     res.status(201).json(person);
   } catch (error: any) {
@@ -860,7 +860,7 @@ router.post('/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer'
       JSON.stringify(flags || []), notes || null,
     );
 
-    const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(result.lastInsertRowid);
+    const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(Number(result.lastInsertRowid));
     if (!vehicle) { res.status(500).json({ error: 'Failed to retrieve created vehicle' }); return; }
 
     auditLog(req, 'vehicle_created', 'vehicle', Number(result.lastInsertRowid), `Created vehicle record: ${plate_number || 'No plate'}`);
@@ -1195,7 +1195,7 @@ router.post('/properties', requireRole('admin', 'manager', 'supervisor', 'office
       FROM properties p
       LEFT JOIN clients c ON p.client_id = c.id
       WHERE p.id = ?
-    `).get(result.lastInsertRowid);
+    `).get(Number(result.lastInsertRowid));
     res.status(201).json(property);
   } catch (error: any) {
     console.error('Create property error:', error?.message || 'Unknown error');
@@ -1769,7 +1769,7 @@ router.post('/evidence', requireRole('admin', 'manager', 'supervisor', 'officer'
       notes || null
     );
 
-    auditLog(req, 'evidence_created', 'evidence', Number(result.lastInsertRowid), `Created evidence #${result.lastInsertRowid}: ${evidenceNumber}`);
+    auditLog(req, 'evidence_created', 'evidence', Number(result.lastInsertRowid), `Created evidence #${Number(result.lastInsertRowid)}: ${evidenceNumber}`);
 
     const created = db.prepare(`
       SELECT e.*, i.incident_number, u.full_name as collected_by_name,
@@ -1779,7 +1779,7 @@ router.post('/evidence', requireRole('admin', 'manager', 'supervisor', 'officer'
       LEFT JOIN users u ON e.collected_by = u.id
       LEFT JOIN cases c ON e.case_id = c.id
       WHERE e.id = ?
-    `).get(result.lastInsertRowid);
+    `).get(Number(result.lastInsertRowid));
     res.status(201).json(created);
   } catch (error: any) {
     console.error('Create evidence error:', error?.message || 'Unknown error');
@@ -1894,7 +1894,7 @@ router.post('/links', requireRole('admin', 'manager', 'supervisor', 'officer', '
       FROM record_links rl
       LEFT JOIN users u ON rl.created_by = u.id
       WHERE rl.id = ?
-    `).get(result.lastInsertRowid);
+    `).get(Number(result.lastInsertRowid));
     res.status(201).json(created);
   } catch (error: any) {
     if (error.message?.includes('UNIQUE constraint failed')) {
@@ -2073,7 +2073,7 @@ router.post('/persons/:id/criminal-history', validateParamId, requireRole('admin
 
     auditLog(req, 'criminal_history_created', 'criminal_history', Number(result.lastInsertRowid), `Created criminal history entry for person #${personId}: ${offense}`);
 
-    const newRecord = db.prepare('SELECT * FROM criminal_history WHERE id = ?').get(result.lastInsertRowid);
+    const newRecord = db.prepare('SELECT * FROM criminal_history WHERE id = ?').get(Number(result.lastInsertRowid));
     res.status(201).json(newRecord);
   } catch (error: any) {
     console.error('Create criminal history error:', error?.message || 'Unknown error');
@@ -2222,7 +2222,7 @@ router.post('/client-persons', requireRole('admin', 'manager', 'supervisor', 'of
 
     auditLog(req, 'client_person_linked', 'person', person_id, `Linked person ${person.first_name} ${person.last_name} to client ${client.name}`);
 
-    const link = db.prepare('SELECT * FROM client_persons WHERE id = ?').get(result.lastInsertRowid);
+    const link = db.prepare('SELECT * FROM client_persons WHERE id = ?').get(Number(result.lastInsertRowid));
     if (!link) { res.status(500).json({ error: 'Failed to retrieve created link' }); return; }
     res.status(201).json(link);
   } catch (error: any) {

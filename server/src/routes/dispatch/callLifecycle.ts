@@ -365,7 +365,7 @@ router.post('/calls/:id/generate-incident', validateParamId, requireRole('admin'
         'INSERT OR IGNORE INTO incident_persons (incident_id, person_id, role, notes, added_by) VALUES (?, ?, ?, ?, ?)'
       );
       for (const cp of callPersons) {
-        insertPerson.run(result.lastInsertRowid, cp.person_id, cp.role, cp.notes, req.user!.userId);
+        insertPerson.run(Number(result.lastInsertRowid), cp.person_id, cp.role, cp.notes, req.user!.userId);
       }
     }
 
@@ -376,7 +376,7 @@ router.post('/calls/:id/generate-incident', validateParamId, requireRole('admin'
         'INSERT OR IGNORE INTO incident_vehicles (incident_id, vehicle_id, role, added_by) VALUES (?, ?, ?, ?)'
       );
       for (const cv of callVehicles) {
-        insertVehicle.run(result.lastInsertRowid, cv.vehicle_id, cv.role || 'involved', req.user!.userId);
+        insertVehicle.run(Number(result.lastInsertRowid), cv.vehicle_id, cv.role || 'involved', req.user!.userId);
       }
     }
 
@@ -386,10 +386,10 @@ router.post('/calls/:id/generate-incident', validateParamId, requireRole('admin'
       LEFT JOIN users o ON i.officer_id = o.id
       LEFT JOIN calls_for_service c ON i.call_id = c.id
       WHERE i.id = ?
-    `).get(result.lastInsertRowid);
+    `).get(Number(result.lastInsertRowid));
     if (!incident) { res.status(500).json({ error: 'Failed to retrieve created incident' }); return; }
 
-    auditLog(req, 'incident_created', 'incident', result.lastInsertRowid, `Generated ${incidentNumber} from call ${call.call_number}`);
+    auditLog(req, 'incident_created', 'incident', Number(result.lastInsertRowid), `Generated ${incidentNumber} from call ${call.call_number}`);
 
     res.status(201).json(incident);
   } catch (error: any) {

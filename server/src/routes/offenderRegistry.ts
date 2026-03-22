@@ -148,10 +148,10 @@ router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, r
       source_incident_id || null, source_citation_id || null, source_case_id || null,
       req.user!.userId, notes || null, now, now);
 
-    auditLog(req, 'CREATE', 'person', result.lastInsertRowid as number, JSON.stringify({ person_id, alert_type, severity }));
+    auditLog(req, 'CREATE', 'person', Number(result.lastInsertRowid) as number, JSON.stringify({ person_id, alert_type, severity }));
 
     auditLog(req, 'CREATE' as any, 'offender_alert' as any, Number(result.lastInsertRowid), `Created ${severity} ${alert_type} alert for person ${person_id}`);
-    res.status(201).json({ data: { id: result.lastInsertRowid } });
+    res.status(201).json({ data: { id: Number(result.lastInsertRowid) } });
   } catch (error: any) {
     console.error('Create offender alert error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });

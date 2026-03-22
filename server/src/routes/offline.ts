@@ -266,7 +266,7 @@ function pushCallForService(db: any, body: any, userId: number) {
     body.dispatcher_id || userId, now, now
   );
 
-  return { id: result.lastInsertRowid, call_number: callNumber };
+  return { id: Number(result.lastInsertRowid), call_number: callNumber };
 }
 
 function pushIncident(db: any, body: any, userId: number) {
@@ -282,7 +282,7 @@ function pushIncident(db: any, body: any, userId: number) {
     body.officer_id || userId, body.supervisor_id, body.call_id, now, now
   );
 
-  return { id: result.lastInsertRowid, incident_number: incidentNumber };
+  return { id: Number(result.lastInsertRowid), incident_number: incidentNumber };
 }
 
 function pushTimeEntry(db: any, body: any) {
@@ -297,7 +297,7 @@ function pushTimeEntry(db: any, body: any) {
     body.total_hours, body.break_minutes ?? 0, body.status || 'active'
   );
 
-  return { id: result.lastInsertRowid };
+  return { id: Number(result.lastInsertRowid) };
 }
 
 function pushGpsBreadcrumbs(db: any, body: any) {

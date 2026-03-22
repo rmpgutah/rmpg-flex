@@ -429,7 +429,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
         force_type || null, force_justification || null, subject_injuries || null, officer_injuries || null, de_escalation_attempts || null,
       );
 
-      return db.prepare('SELECT * FROM incidents WHERE id = ?').get(result.lastInsertRowid);
+      return db.prepare('SELECT * FROM incidents WHERE id = ?').get(Number(result.lastInsertRowid));
     });
 
     const incident = createTx();
@@ -826,7 +826,7 @@ router.post('/:id/persons', validateParamId, requireRole('admin', 'manager', 'su
       LEFT JOIN persons p ON ip.person_id = p.id
       LEFT JOIN users u ON ip.added_by = u.id
       WHERE ip.id = ?
-    `).get(result.lastInsertRowid);
+    `).get(Number(result.lastInsertRowid));
     if (!linked) { res.status(500).json({ error: 'Failed to retrieve linked person' }); return; }
 
     auditLog(req, 'incident_updated', 'incident', incident.id, `Added person to incident #${incident.incident_number}`);
@@ -972,7 +972,7 @@ router.post('/:id/vehicles', validateParamId, requireRole('admin', 'manager', 's
       LEFT JOIN persons p ON v.owner_person_id = p.id
       LEFT JOIN users u ON iv.added_by = u.id
       WHERE iv.id = ?
-    `).get(result.lastInsertRowid);
+    `).get(Number(result.lastInsertRowid));
     if (!linked) { res.status(500).json({ error: 'Failed to retrieve linked vehicle' }); return; }
 
     auditLog(req, 'incident_updated', 'incident', incident.id, `Added vehicle to incident #${incident.incident_number}`);
@@ -1111,7 +1111,7 @@ router.post('/:id/evidence', validateParamId, requireRole('admin', 'manager', 's
       serial_number || null, brand || null, model || null, estimated_value ?? null, category || null
     );
 
-    const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(result.lastInsertRowid);
+    const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(Number(result.lastInsertRowid));
     if (!evidence) { res.status(500).json({ error: 'Failed to retrieve created evidence' }); return; }
 
     auditLog(req, 'incident_updated', 'incident', incident.id, `Added evidence to incident #${incident.incident_number}`);
@@ -1200,7 +1200,7 @@ router.post('/:id/supplements', validateParamId, requireRole('admin', 'manager',
       FROM supplemental_reports sr
       LEFT JOIN users u ON sr.author_id = u.id
       WHERE sr.id = ?
-    `).get(result.lastInsertRowid);
+    `).get(Number(result.lastInsertRowid));
     if (!supplement) { res.status(500).json({ error: 'Failed to retrieve created supplement' }); return; }
 
     auditLog(req, 'supplement_added', 'incident', incident.id, `Added supplement to incident #${incident.incident_number}`);

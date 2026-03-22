@@ -97,10 +97,10 @@ router.post('/checkpoints', requireRole('admin', 'manager', 'supervisor'), (req:
       FROM patrol_checkpoints pc
       LEFT JOIN properties p ON pc.property_id = p.id
       WHERE pc.id = ?
-    `).get(result.lastInsertRowid);
+    `).get(Number(result.lastInsertRowid));
     if (!checkpoint) { res.status(500).json({ error: 'Failed to retrieve created checkpoint' }); return; }
 
-    auditLog(req, 'checkpoint_created', 'checkpoint', result.lastInsertRowid, `Created checkpoint: ${name}`);
+    auditLog(req, 'checkpoint_created', 'checkpoint', Number(result.lastInsertRowid), `Created checkpoint: ${name}`);
 
     broadcast('patrol', 'checkpoint:created', checkpoint);
     res.status(201).json(checkpoint);
@@ -288,7 +288,7 @@ router.post('/scan', requireRole('admin', 'manager', 'supervisor', 'officer'), (
       status
     );
 
-    const scan = db.prepare('SELECT * FROM patrol_scans WHERE id = ?').get(result.lastInsertRowid);
+    const scan = db.prepare('SELECT * FROM patrol_scans WHERE id = ?').get(Number(result.lastInsertRowid));
     if (!scan) { res.status(500).json({ error: 'Failed to retrieve created scan' }); return; }
 
     auditLog(req, 'patrol_scan_logged', 'patrol_scan', checkpoint.id, `Scanned checkpoint: ${checkpoint.name} (${status})`);

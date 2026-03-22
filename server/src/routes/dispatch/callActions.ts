@@ -738,11 +738,11 @@ router.post('/calls/:id/promote-to-incident', validateParamId, requireRole('admi
       call.injuries_reported ?? 0
     );
 
-    const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(result.lastInsertRowid);
+    const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(Number(result.lastInsertRowid));
     if (!incident) { res.status(500).json({ error: 'Failed to retrieve created incident' }); return; }
 
     // Audit log the incident creation
-    auditLog(req, 'incident_created', 'incident', result.lastInsertRowid, `Promoted call ${call.call_number} to incident ${incidentNumber}`);
+    auditLog(req, 'incident_created', 'incident', Number(result.lastInsertRowid), `Promoted call ${call.call_number} to incident ${incidentNumber}`);
 
     res.status(201).json(incident);
   } catch (error: any) {
@@ -842,7 +842,7 @@ router.post('/calls/:id/persons', validateParamId, requireRole('admin', 'manager
       LEFT JOIN persons p ON cp.person_id = p.id
       LEFT JOIN users u ON cp.added_by = u.id
       WHERE cp.id = ?
-    `).get(result.lastInsertRowid) || { id: result.lastInsertRowid };
+    `).get(Number(result.lastInsertRowid)) || { id: Number(result.lastInsertRowid) };
 
     auditLog(req, 'person_linked', 'call', call.id,
       `Linked ${person.first_name} ${person.last_name} as ${role} to call ${call.call_number}`);
@@ -993,7 +993,7 @@ router.post('/calls/:id/vehicles', validateParamId, requireRole('admin', 'manage
       LEFT JOIN persons op ON v.owner_person_id = op.id
       LEFT JOIN users u ON cv.added_by = u.id
       WHERE cv.id = ?
-    `).get(result.lastInsertRowid) || { id: result.lastInsertRowid };
+    `).get(Number(result.lastInsertRowid)) || { id: Number(result.lastInsertRowid) };
 
     auditLog(req, 'vehicle_linked', 'call', call.id,
       `Linked ${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''} PLT:${vehicle.plate_number || 'N/A'} as ${role} to call ${call.call_number}`);

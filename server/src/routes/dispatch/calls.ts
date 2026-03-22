@@ -359,7 +359,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         customDisposition || null,
       );
 
-      const call = (db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(result.lastInsertRowid) as any) || { id: result.lastInsertRowid };
+      const call = (db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(Number(result.lastInsertRowid)) as any) || { id: Number(result.lastInsertRowid) };
 
       // Create a corresponding case record for bidirectional linkage
       const caseNow = customCreatedAt || localNow();

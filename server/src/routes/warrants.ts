@@ -845,7 +845,7 @@ router.post('/', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (r
       statute_citation || null,
     );
 
-    const warrantId = result.lastInsertRowid;
+    const warrantId = Number(result.lastInsertRowid);
 
     // Auto-generate warrant_number: WRN-YYYY-NNNNN
     const currentYear = parseInt(localNow().slice(0, 4), 10);

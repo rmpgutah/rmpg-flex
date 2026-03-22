@@ -135,7 +135,7 @@ router.post('/clients', (req: Request, res: Response) => {
       account_manager || null, priority_client ? 1 : 0, client_since || null,
     );
 
-    const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(result.lastInsertRowid);
+    const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(Number(result.lastInsertRowid));
     if (!client) { res.status(500).json({ error: 'Failed to retrieve created client' }); return; }
 
     auditLog(req, 'client_created', 'client', Number(result.lastInsertRowid), `Created client: ${name}`);
@@ -335,7 +335,7 @@ router.post('/call-templates', (req: Request, res: Response) => {
       sortOrder, req.user!.userId,
     );
 
-    const template = db.prepare('SELECT * FROM call_templates WHERE id = ?').get(result.lastInsertRowid) || { id: result.lastInsertRowid };
+    const template = db.prepare('SELECT * FROM call_templates WHERE id = ?').get(Number(result.lastInsertRowid)) || { id: Number(result.lastInsertRowid) };
 
     auditLog(req, 'CREATE', 'config', Number(result.lastInsertRowid), `Created call template: ${name}`);
 

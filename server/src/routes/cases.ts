@@ -128,12 +128,12 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
         const callId = parseInt(String(linked_call_id), 10);
         if (isNaN(callId)) throw new Error('Invalid linked_call_id');
         db.prepare('UPDATE calls_for_service SET case_id = ?, case_number = ? WHERE id = ?')
-          .run(result.lastInsertRowid, case_number, callId);
+          .run(Number(result.lastInsertRowid), case_number, callId);
       }
 
-      auditLog(req, 'CREATE', 'case', result.lastInsertRowid as number, JSON.stringify({ case_number, title }));
+      auditLog(req, 'CREATE', 'case', Number(result.lastInsertRowid) as number, JSON.stringify({ case_number, title }));
 
-      return { id: result.lastInsertRowid, case_number };
+      return { id: Number(result.lastInsertRowid), case_number };
     });
 
     const caseData = createCase();
@@ -221,7 +221,7 @@ router.post('/:id/notes', validateParamId, requireRole('admin', 'manager', 'supe
 
     db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(now, req.params.id);
     auditLog(req, 'CREATE' as any, 'case_note' as any, Number(result.lastInsertRowid), `Added ${note_type} note to case ${req.params.id}`);
-    res.status(201).json({ data: { id: result.lastInsertRowid } });
+    res.status(201).json({ data: { id: Number(result.lastInsertRowid) } });
   } catch (error: any) {
     console.error('Create case note error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });

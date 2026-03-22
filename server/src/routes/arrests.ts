@@ -186,7 +186,7 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
       user?.userId || null, now, now,
     );
 
-    const newId = result.lastInsertRowid as number;
+    const newId = Number(result.lastInsertRowid) as number;
 
     auditLog(req, 'arrest_created', 'arrest_record', newId,
       `Manual booking: ${fullName}`);
