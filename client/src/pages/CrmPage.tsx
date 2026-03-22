@@ -177,6 +177,18 @@ export default function CrmPage() {
     client_id: '', activity_type: 'note', subject: '', details: '',
   });
 
+  // Quick-action modals (Log Call / Log Email / New Task)
+  const [quickActionType, setQuickActionType] = useState<'call' | 'email' | 'task' | null>(null);
+  const [quickActionForm, setQuickActionForm] = useState<{ notes: string; due_date: string; priority: string }>({
+    notes: '', due_date: '', priority: 'normal',
+  });
+
+  // Client detail sub-tab (activity | incidents)
+  const [clientDetailTab, setClientDetailTab] = useState<'activity' | 'incidents'>('activity');
+  const [clientIncidents, setClientIncidents] = useState<any[]>([]);
+  const [incidentsLoading, setIncidentsLoading] = useState(false);
+  const [incidentsFetched, setIncidentsFetched] = useState<string | null>(null); // clientId last fetched
+
   // Persist active section
   useEffect(() => { try { localStorage.setItem('crm_active_section', activeSection); } catch { /* ignore */ } }, [activeSection]);
 
@@ -272,9 +284,14 @@ export default function CrmPage() {
   // Live sync
   useLiveSync('admin', useCallback(() => { fetchClients(); fetchDashboard(); }, [fetchClients, fetchDashboard]));
 
-  // When selected client changes, fetch their activity
+  // When selected client changes, fetch their activity and reset sub-tabs
   useEffect(() => {
-    if (selectedClientId) fetchClientActivity(selectedClientId);
+    if (selectedClientId) {
+      fetchClientActivity(selectedClientId);
+      setClientDetailTab('activity');
+      setIncidentsFetched(null);
+      setClientIncidents([]);
+    }
   }, [selectedClientId, fetchClientActivity]);
 
   // ── Task Handlers ──────────────────────────────────────
@@ -340,6 +357,64 @@ export default function CrmPage() {
       addToast(err?.message || 'Failed to log activity', 'error');
     }
   };
+
+  // ── Quick-Action Handlers ─────────────────────────────
+  const openQuickAction = (type: 'call' | 'email' | 'task') => {
+    setQuickActionForm({ notes: '', due_date: '', priority: 'normal' });
+    setQuickActionType(type);
+  };
+
+  const submitQuickAction = async () => {
+    if (!selectedClientId || !quickActionType) return;
+    try {
+      if (quickActionType === 'call' || quickActionType === 'email') {
+        await apiFetch('/crm/activity', {
+          method: 'POST',
+          body: JSON.stringify({
+            client_id: selectedClientId,
+            activity_type: quickActionType,
+            subject: quickActionType === 'call' ? 'Phone Call' : 'Email',
+            details: quickActionForm.notes,
+          }),
+        });
+        addToast(`${quickActionType === 'call' ? 'Call' : 'Email'} logged`, 'success');
+        fetchClientActivity(selectedClientId);
+        fetchDashboard();
+      } else {
+        await apiFetch('/crm/tasks', {
+          method: 'POST',
+          body: JSON.stringify({
+            title: quickActionForm.notes || `Follow up with ${selectedClient?.name}`,
+            related_client_id: Number(selectedClientId),
+            due_date: quickActionForm.due_date || undefined,
+            priority: quickActionForm.priority,
+            task_type: 'follow_up',
+          }),
+        });
+        addToast('Task created', 'success');
+        fetchTasks();
+      }
+      setQuickActionType(null);
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to save', 'error');
+    }
+  };
+
+  // ── Incidents Fetch ───────────────────────────────────
+  const fetchClientIncidents = useCallback(async (clientId: string) => {
+    if (incidentsFetched === clientId) return;
+    setIncidentsLoading(true);
+    try {
+      const res = await apiFetch<any[]>(`/crm/clients/${clientId}/incidents`);
+      setClientIncidents(Array.isArray(res) ? res : []);
+      setIncidentsFetched(clientId);
+    } catch {
+      setClientIncidents([]);
+      setIncidentsFetched(clientId);
+    } finally {
+      setIncidentsLoading(false);
+    }
+  }, [incidentsFetched]);
 
   // ── Filtered Data ──────────────────────────────────────
   const filteredClients = useMemo(() => {
@@ -833,6 +908,7 @@ export default function CrmPage() {
 
   function renderClients() {
     return (
+      <>
       <div className="flex h-full">
         {/* Client List */}
         <div className="w-80 border-r border-rmpg-600 flex flex-col flex-shrink-0">
@@ -864,114 +940,319 @@ export default function CrmPage() {
 
         {/* Client Detail */}
         <div className="flex-1 overflow-y-auto">
-          {selectedClient ? (
-            <div>
-              <div className="panel-title-bar flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-bold text-white">{selectedClient.name}</span>
-                  {(selectedClient as any).priority_client && (
-                    <span className="text-[9px] font-bold px-1.5 py-0.5 text-amber-400 bg-amber-900/30 border border-amber-700/50">PRIORITY</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-1">
-                  <button onClick={() => { setEditingClient(selectedClient); setShowClientModal(true); }} className="toolbar-btn"><Edit3 className="w-3 h-3" /> Edit</button>
-                  <button onClick={() => openNewTask(selectedClientId!)} className="toolbar-btn"><Plus className="w-3 h-3" /> Task</button>
-                  <button onClick={() => { setActivityForm({ client_id: selectedClientId!, activity_type: 'note', subject: '', details: '' }); setShowActivityModal(true); }} className="toolbar-btn">
-                    <Activity className="w-3 h-3" /> Log
-                  </button>
-                </div>
-              </div>
+          {selectedClient ? (() => {
+            // ── Contract Status Banner ────────────────────
+            const contractEndRaw = (selectedClient as any).contract_end as string | undefined;
+            let contractBanner: React.ReactNode = null;
+            if (contractEndRaw) {
+              const now = new Date();
+              const end = new Date(contractEndRaw);
+              const diffMs = end.getTime() - now.getTime();
+              const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+              if (diffDays > 90) {
+                contractBanner = (
+                  <div className="px-4 py-1.5 text-[10px] font-bold tracking-wide bg-green-900/30 border-b border-green-700/40 text-green-400 flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
+                    CONTRACT ACTIVE — Expires {formatDate(contractEndRaw)}
+                  </div>
+                );
+              } else if (diffDays > 30) {
+                contractBanner = (
+                  <div className="px-4 py-1.5 text-[10px] font-bold tracking-wide bg-amber-900/30 border-b border-amber-700/40 text-amber-400 flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />
+                    CONTRACT EXPIRING SOON — {diffDays} days remaining
+                  </div>
+                );
+              } else if (diffDays >= 0) {
+                contractBanner = (
+                  <div className="px-4 py-1.5 text-[10px] font-bold tracking-wide bg-red-900/30 border-b border-red-700/40 text-red-400 flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-400 inline-block animate-pulse" />
+                    CONTRACT EXPIRES IN {diffDays} DAY{diffDays !== 1 ? 'S' : ''}
+                  </div>
+                );
+              } else {
+                const expiredDays = Math.abs(diffDays);
+                contractBanner = (
+                  <div className="px-4 py-1.5 text-[10px] font-bold tracking-wide bg-red-900/40 border-b border-red-700/50 text-red-400 flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block animate-pulse" />
+                    CONTRACT EXPIRED {expiredDays} day{expiredDays !== 1 ? 's' : ''} ago
+                  </div>
+                );
+              }
+            }
 
-              <div className="p-4 space-y-4">
-                {/* Contact Info */}
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="panel-inset p-3">
-                    <div className="field-label mb-1">Contact</div>
-                    <div className="text-xs text-rmpg-200">{selectedClient.contact_name || '—'}</div>
-                    {selectedClient.contact_phone && (
-                      <div className="flex items-center gap-1 text-[10px] text-rmpg-400 mt-0.5"><Phone className="w-2.5 h-2.5" />{selectedClient.contact_phone}</div>
-                    )}
-                    {selectedClient.contact_email && (
-                      <div className="flex items-center gap-1 text-[10px] text-rmpg-400 mt-0.5"><Mail className="w-2.5 h-2.5" />{selectedClient.contact_email}</div>
+            return (
+              <div>
+                <div className="panel-title-bar flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-bold text-white">{selectedClient.name}</span>
+                    {(selectedClient as any).priority_client && (
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 text-amber-400 bg-amber-900/30 border border-amber-700/50">PRIORITY</span>
                     )}
                   </div>
-                  <div className="panel-inset p-3">
-                    <div className="field-label mb-1">Contract</div>
-                    <div className="text-xs text-rmpg-200">{(selectedClient as any).contract_type || 'Standard'}</div>
-                    <div className="text-[10px] text-rmpg-400 mt-0.5">
-                      {selectedClient.contract_start && formatDate(selectedClient.contract_start)} — {selectedClient.contract_end && formatDate(selectedClient.contract_end)}
-                    </div>
-                    {(selectedClient as any).contract_value && (
-                      <div className="text-[10px] text-green-400 mt-0.5">{formatCurrency((selectedClient as any).contract_value)}</div>
-                    )}
-                  </div>
-                  <div className="panel-inset p-3">
-                    <div className="field-label mb-1">Billing</div>
-                    <div className="text-xs text-rmpg-200">
-                      Outstanding: <span className="text-amber-400">{formatCurrency((selectedClient as any).outstanding_balance || 0)}</span>
-                    </div>
-                    <div className="text-[10px] text-rmpg-400 mt-0.5">
-                      Total: {formatCurrency((selectedClient as any).total_invoiced || 0)} | Paid: {formatCurrency((selectedClient as any).total_paid || 0)}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Address */}
-                {selectedClient.address && (
-                  <div className="panel-inset p-3">
-                    <div className="field-label mb-1">Address</div>
-                    <div className="text-xs text-rmpg-200">{selectedClient.address}</div>
-                  </div>
-                )}
-
-                {/* Activity Feed */}
-                <div className="panel-inset p-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-white">Activity Timeline</span>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => { setEditingClient(selectedClient); setShowClientModal(true); }} className="toolbar-btn"><Edit3 className="w-3 h-3" /> Edit</button>
+                    <button onClick={() => openNewTask(selectedClientId!)} className="toolbar-btn"><Plus className="w-3 h-3" /> Task</button>
                     <button onClick={() => { setActivityForm({ client_id: selectedClientId!, activity_type: 'note', subject: '', details: '' }); setShowActivityModal(true); }} className="toolbar-btn">
-                      <Plus className="w-3 h-3" /> Log
+                      <Activity className="w-3 h-3" /> Log
                     </button>
                   </div>
-                  {clientActivity.length === 0 ? (
-                    <p className="text-xs text-rmpg-400">No activity recorded</p>
-                  ) : (
-                    <div className="space-y-1.5 max-h-64 overflow-y-auto">
-                      {clientActivity.map((a: any) => (
-                        <div key={a.id} className="text-xs p-1.5 bg-surface-sunken border border-rmpg-700/30">
-                          <div className="flex items-center justify-between">
-                            <span className={`inline-block px-1 py-0.5 text-[9px] font-bold border ${
-                              a.activity_type === 'call' ? 'text-green-400 border-green-700/50 bg-green-900/20' :
-                              a.activity_type === 'email' ? 'text-blue-400 border-blue-700/50 bg-blue-900/20' :
-                              a.activity_type === 'meeting' ? 'text-purple-400 border-purple-700/50 bg-purple-900/20' :
-                              'text-rmpg-300 border-rmpg-600 bg-rmpg-800/20'
-                            }`}>{toDisplayLabel(a.activity_type)}</span>
-                            <span className="text-rmpg-400 font-mono">{formatDateTime(a.created_at)}</span>
+                </div>
+
+                {/* Contract Status Banner */}
+                {contractBanner}
+
+                {/* Quick-Action Bar */}
+                <div className="flex items-center gap-1 px-4 py-2 border-b border-rmpg-700/40 bg-surface-sunken">
+                  <button
+                    onClick={() => openQuickAction('call')}
+                    className="toolbar-btn flex items-center gap-1.5 text-[10px]"
+                    title="Log a phone call"
+                  >
+                    <Phone className="w-3 h-3 text-green-400" /> Log Call
+                  </button>
+                  <button
+                    onClick={() => openQuickAction('email')}
+                    className="toolbar-btn flex items-center gap-1.5 text-[10px]"
+                    title="Log an email"
+                  >
+                    <Mail className="w-3 h-3 text-blue-400" /> Log Email
+                  </button>
+                  <button
+                    onClick={() => openQuickAction('task')}
+                    className="toolbar-btn toolbar-btn-primary flex items-center gap-1.5 text-[10px]"
+                    title="Create a task for this client"
+                  >
+                    <CheckSquare className="w-3 h-3" /> New Task
+                  </button>
+                </div>
+
+                <div className="p-4 space-y-4">
+                  {/* Contact Info */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="panel-inset p-3">
+                      <div className="field-label mb-1">Contact</div>
+                      <div className="text-xs text-rmpg-200">{selectedClient.contact_name || '—'}</div>
+                      {selectedClient.contact_phone && (
+                        <div className="flex items-center gap-1 text-[10px] text-rmpg-400 mt-0.5"><Phone className="w-2.5 h-2.5" />{selectedClient.contact_phone}</div>
+                      )}
+                      {selectedClient.contact_email && (
+                        <div className="flex items-center gap-1 text-[10px] text-rmpg-400 mt-0.5"><Mail className="w-2.5 h-2.5" />{selectedClient.contact_email}</div>
+                      )}
+                    </div>
+                    <div className="panel-inset p-3">
+                      <div className="field-label mb-1">Contract</div>
+                      <div className="text-xs text-rmpg-200">{(selectedClient as any).contract_type || 'Standard'}</div>
+                      <div className="text-[10px] text-rmpg-400 mt-0.5">
+                        {selectedClient.contract_start && formatDate(selectedClient.contract_start)} — {selectedClient.contract_end && formatDate(selectedClient.contract_end)}
+                      </div>
+                      {(selectedClient as any).contract_value && (
+                        <div className="text-[10px] text-green-400 mt-0.5">{formatCurrency((selectedClient as any).contract_value)}</div>
+                      )}
+                    </div>
+                    <div className="panel-inset p-3">
+                      <div className="field-label mb-1">Billing</div>
+                      <div className="text-xs text-rmpg-200">
+                        Outstanding: <span className="text-amber-400">{formatCurrency((selectedClient as any).outstanding_balance || 0)}</span>
+                      </div>
+                      <div className="text-[10px] text-rmpg-400 mt-0.5">
+                        Total: {formatCurrency((selectedClient as any).total_invoiced || 0)} | Paid: {formatCurrency((selectedClient as any).total_paid || 0)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Address */}
+                  {selectedClient.address && (
+                    <div className="panel-inset p-3">
+                      <div className="field-label mb-1">Address</div>
+                      <div className="text-xs text-rmpg-200">{selectedClient.address}</div>
+                    </div>
+                  )}
+
+                  {/* Activity / Incidents Tab Panel */}
+                  <div className="panel-inset">
+                    {/* Sub-tab bar */}
+                    <div className="flex border-b border-rmpg-700/40">
+                      <button
+                        onClick={() => setClientDetailTab('activity')}
+                        className={`px-3 py-1.5 text-[10px] font-bold tracking-wide border-b-2 transition-colors ${
+                          clientDetailTab === 'activity'
+                            ? 'border-brand-400 text-brand-400 bg-brand-900/10'
+                            : 'border-transparent text-rmpg-400 hover:text-rmpg-200'
+                        }`}
+                      >
+                        <Activity className="w-3 h-3 inline mr-1" />ACTIVITY
+                      </button>
+                      <button
+                        onClick={() => {
+                          setClientDetailTab('incidents');
+                          if (selectedClientId) fetchClientIncidents(selectedClientId);
+                        }}
+                        className={`px-3 py-1.5 text-[10px] font-bold tracking-wide border-b-2 transition-colors ${
+                          clientDetailTab === 'incidents'
+                            ? 'border-brand-400 text-brand-400 bg-brand-900/10'
+                            : 'border-transparent text-rmpg-400 hover:text-rmpg-200'
+                        }`}
+                      >
+                        <AlertCircle className="w-3 h-3 inline mr-1" />INCIDENTS
+                      </button>
+                      {clientDetailTab === 'activity' && (
+                        <button
+                          onClick={() => { setActivityForm({ client_id: selectedClientId!, activity_type: 'note', subject: '', details: '' }); setShowActivityModal(true); }}
+                          className="toolbar-btn ml-auto mr-2 my-1"
+                        >
+                          <Plus className="w-3 h-3" /> Log
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Activity content */}
+                    {clientDetailTab === 'activity' && (
+                      <div className="p-3">
+                        {clientActivity.length === 0 ? (
+                          <p className="text-xs text-rmpg-400">No activity recorded</p>
+                        ) : (
+                          <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                            {clientActivity.map((a: any) => (
+                              <div key={a.id} className="text-xs p-1.5 bg-surface-sunken border border-rmpg-700/30">
+                                <div className="flex items-center justify-between">
+                                  <span className={`inline-block px-1 py-0.5 text-[9px] font-bold border ${
+                                    a.activity_type === 'call' ? 'text-green-400 border-green-700/50 bg-green-900/20' :
+                                    a.activity_type === 'email' ? 'text-blue-400 border-blue-700/50 bg-blue-900/20' :
+                                    a.activity_type === 'meeting' ? 'text-purple-400 border-purple-700/50 bg-purple-900/20' :
+                                    'text-rmpg-300 border-rmpg-600 bg-rmpg-800/20'
+                                  }`}>{toDisplayLabel(a.activity_type)}</span>
+                                  <span className="text-rmpg-400 font-mono">{formatDateTime(a.created_at)}</span>
+                                </div>
+                                {a.subject && <div className="text-rmpg-200 font-medium mt-0.5">{a.subject}</div>}
+                                {a.details && <div className="text-rmpg-300 mt-0.5">{a.details}</div>}
+                                {a.created_by_name && <div className="text-rmpg-500 mt-0.5">— {a.created_by_name}</div>}
+                              </div>
+                            ))}
                           </div>
-                          {a.subject && <div className="text-rmpg-200 font-medium mt-0.5">{a.subject}</div>}
-                          {a.details && <div className="text-rmpg-300 mt-0.5">{a.details}</div>}
-                          {a.created_by_name && <div className="text-rmpg-500 mt-0.5">— {a.created_by_name}</div>}
-                        </div>
-                      ))}
+                        )}
+                      </div>
+                    )}
+
+                    {/* Incidents content */}
+                    {clientDetailTab === 'incidents' && (
+                      <div className="p-3">
+                        {incidentsLoading ? (
+                          <div className="flex items-center gap-2 text-xs text-rmpg-400">
+                            <Loader2 className="w-3 h-3 animate-spin" /> Loading incidents…
+                          </div>
+                        ) : clientIncidents.length === 0 ? (
+                          <p className="text-xs text-rmpg-400">No recent incidents</p>
+                        ) : (
+                          <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                            {clientIncidents.map((inc: any) => (
+                              <div key={inc.id ?? inc.call_number} className="text-xs p-1.5 bg-surface-sunken border border-rmpg-700/30">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-mono text-brand-400">{inc.call_number || '—'}</span>
+                                  <span className="text-rmpg-400 font-mono">{formatDateTime(inc.reported_at)}</span>
+                                </div>
+                                {inc.incident_type && <div className="text-rmpg-200 font-medium mt-0.5">{inc.incident_type}</div>}
+                                {inc.location_address && (
+                                  <div className="flex items-center gap-1 text-[10px] text-rmpg-400 mt-0.5">
+                                    <MapPin className="w-2.5 h-2.5" />{inc.location_address}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Notes */}
+                  {selectedClient.notes && (
+                    <div className="panel-inset p-3">
+                      <div className="field-label mb-1">Notes</div>
+                      <div className="text-xs text-rmpg-300 whitespace-pre-wrap">{selectedClient.notes}</div>
                     </div>
                   )}
                 </div>
-
-                {/* Notes */}
-                {selectedClient.notes && (
-                  <div className="panel-inset p-3">
-                    <div className="field-label mb-1">Notes</div>
-                    <div className="text-xs text-rmpg-300 whitespace-pre-wrap">{selectedClient.notes}</div>
-                  </div>
-                )}
               </div>
-            </div>
-          ) : (
+            );
+          })() : (
             <div className="flex items-center justify-center h-full text-rmpg-400 text-sm">
               Select a client to view details
             </div>
           )}
         </div>
       </div>
+
+      {/* ── Quick-Action Modal ─────────────────────────────── */}
+      {quickActionType && selectedClient && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="panel-raised w-80 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-white">
+                {quickActionType === 'call' ? '📞 Log Call' : quickActionType === 'email' ? '✉ Log Email' : '📋 New Task'}
+                {' '}— {selectedClient.name}
+              </span>
+              <button onClick={() => setQuickActionType(null)} className="p-1 text-rmpg-400 hover:text-rmpg-200"><X className="w-3.5 h-3.5" /></button>
+            </div>
+
+            {(quickActionType === 'call' || quickActionType === 'email') && (
+              <div>
+                <label className="field-label mb-1 block">Notes</label>
+                <textarea
+                  className="input-dark w-full text-xs resize-none"
+                  rows={3}
+                  placeholder={quickActionType === 'call' ? 'Call summary…' : 'Email summary…'}
+                  value={quickActionForm.notes}
+                  onChange={e => setQuickActionForm(f => ({ ...f, notes: e.target.value }))}
+                />
+              </div>
+            )}
+
+            {quickActionType === 'task' && (
+              <>
+                <div>
+                  <label className="field-label mb-1 block">Task Title</label>
+                  <input
+                    className="input-dark w-full text-xs"
+                    placeholder={`Follow up with ${selectedClient.name}`}
+                    value={quickActionForm.notes}
+                    onChange={e => setQuickActionForm(f => ({ ...f, notes: e.target.value }))}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="field-label mb-1 block">Due Date</label>
+                    <input
+                      type="date"
+                      className="input-dark w-full text-xs"
+                      value={quickActionForm.due_date}
+                      onChange={e => setQuickActionForm(f => ({ ...f, due_date: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="field-label mb-1 block">Priority</label>
+                    <select
+                      className="input-dark w-full text-xs"
+                      value={quickActionForm.priority}
+                      onChange={e => setQuickActionForm(f => ({ ...f, priority: e.target.value }))}
+                    >
+                      {TASK_PRIORITIES.map(p => <option key={p} value={p}>{toDisplayLabel(p)}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </>
+            )}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button onClick={() => setQuickActionType(null)} className="toolbar-btn">Cancel</button>
+              <button onClick={submitQuickAction} className="toolbar-btn toolbar-btn-primary">
+                <Save className="w-3 h-3" /> Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      </>
     );
   }
 
