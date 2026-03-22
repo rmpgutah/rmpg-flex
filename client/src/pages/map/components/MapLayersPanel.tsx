@@ -84,6 +84,16 @@ interface MapLayersPanelProps {
 
   // Event planning
   eventPlanning: any;
+
+  // Traffic layer
+  showTraffic: boolean;
+  onToggleTraffic: () => void;
+
+  // Measurement tool
+  measuring: boolean;
+  measureMode: MeasureMode | null;
+  onStartMeasure: (mode: MeasureMode) => void;
+  onClearMeasurement: () => void;
 }
 
 export default function MapLayersPanel(props: MapLayersPanelProps) {
@@ -117,6 +127,8 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
     geoLayerStates, geoConfigs, toggleGeoLayer, ensureLayerLoaded,
     districtSections,
     shiftPlanning, eventPlanning,
+    showTraffic, onToggleTraffic,
+    measuring, measureMode, onStartMeasure, onClearMeasurement,
   } = props;
 
   if (!layersPanelOpen) {
