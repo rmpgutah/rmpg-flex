@@ -508,7 +508,7 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
     });
     delTx();
 
-    auditLog(req, 'TERMINATE' as any, 'user' as any, Number(req.params.id),
+    auditLog(req, 'TERMINATE', 'user', Number(req.params.id),
       `Terminated user: ${user.username} (${user.full_name || 'N/A'})`);
     broadcast('personnel', 'user:updated', { id: Number(req.params.id), status: 'terminated' });
     res.json({ success: true, id: req.params.id });

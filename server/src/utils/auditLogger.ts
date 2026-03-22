@@ -217,7 +217,8 @@ export type AuditAction =
   | 'integration_key_created'
   | 'integration_key_revoked'
   | 'integration_key_activated'
-  | 'integration_key_deleted';
+  | 'integration_key_deleted'
+  | (string & {}); // Accept custom action strings while preserving autocomplete
 
 export type AuditEntityType =
   | 'user'
@@ -313,7 +314,8 @@ export type AuditEntityType =
   | 'invoice_line_item'
   | 'scheduled_email'
   | 'integration_service_request'
-  | 'integration_api_key';
+  | 'integration_api_key'
+  | (string & {}); // Accept custom entity types while preserving autocomplete
 
 // Sensitive field patterns that must never appear in audit log details
 const SENSITIVE_PATTERNS = [

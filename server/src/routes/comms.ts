@@ -91,7 +91,7 @@ router.post('/messages', requireRole('admin', 'manager', 'dispatcher', 'supervis
     `).get(Number(result.lastInsertRowid)) as any;
     if (!message) { res.status(500).json({ error: 'Failed to retrieve created message' }); return; }
 
-    auditLog(req, 'message_sent' as any, 'message' as any, Number(result.lastInsertRowid), `Sent ${msgChannel} message #${Number(result.lastInsertRowid)}`);
+    auditLog(req, 'message_sent', 'message', Number(result.lastInsertRowid), `Sent ${msgChannel} message #${Number(result.lastInsertRowid)}`);
 
     // Send via WebSocket
     if (msgChannel === 'direct' && to_user_id) {
@@ -196,7 +196,7 @@ router.post('/messages/mark-all-read', (req: Request, res: Response) => {
       UPDATE messages SET read_at = ? WHERE to_user_id = ? AND read_at IS NULL
     `).run(now, req.user!.userId);
 
-    auditLog(req, 'UPDATE' as any, 'message' as any, 0, `Marked ${result.changes} messages as read`);
+    auditLog(req, 'UPDATE', 'message', 0, `Marked ${result.changes} messages as read`);
 
     res.json({ message: 'All messages marked as read', count: result.changes });
   } catch (error: any) {

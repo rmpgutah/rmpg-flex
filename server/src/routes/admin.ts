@@ -366,7 +366,7 @@ router.put('/call-templates/:id', (req: Request, res: Response) => {
       db.prepare(`UPDATE call_templates SET ${tmplSet.join(', ')} WHERE id = ?`).run(...tmplVals);
     }
 
-    auditLog(req, 'UPDATE' as any, 'config' as any, Number(req.params.id), `Updated call template: ${existing.name}`);
+    auditLog(req, 'UPDATE', 'config', Number(req.params.id), `Updated call template: ${existing.name}`);
 
     const updated = db.prepare('SELECT * FROM call_templates WHERE id = ?').get(req.params.id);
     res.json(updated);
@@ -606,7 +606,7 @@ router.delete('/sessions/:id', requireRole('admin', 'manager'), (req: Request, r
   try {
     const db = getDb();
     db.prepare('UPDATE sessions SET is_active = 0 WHERE id = ?').run(req.params.id);
-    auditLog(req, 'DELETE' as any, 'user' as any, Number(req.params.id), `Revoked session #${req.params.id}`);
+    auditLog(req, 'DELETE', 'user', Number(req.params.id), `Revoked session #${req.params.id}`);
     res.json({ message: 'Session revoked' });
   } catch (error: any) {
     console.error('Admin revoke session error:', error?.message || 'Unknown error');

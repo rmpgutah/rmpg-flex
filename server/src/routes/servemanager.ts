@@ -282,7 +282,7 @@ router.put('/api-key', requireRole('admin'), (req: Request, res: Response) => {
       'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
     ).run(req.user!.userId, 'sm_api_key_updated', 'system_config', 0, 'Updated ServeManager API key', req.ip || 'unknown', now);
 
-    auditLog(req, 'UPDATE' as any, 'integration' as any, 0, 'Updated ServeManager API key');
+    auditLog(req, 'UPDATE', 'integration', 0, 'Updated ServeManager API key');
 
     res.json({ success: true, message: 'API key saved' });
   } catch (error: any) {
@@ -305,7 +305,7 @@ router.delete('/api-key', requireRole('admin'), (req: Request, res: Response) =>
       'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
     ).run(req.user!.userId, 'sm_api_key_cleared', 'system_config', 0, 'Cleared ServeManager API key', req.ip || 'unknown', now);
 
-    auditLog(req, 'DELETE' as any, 'integration' as any, 0, 'Cleared ServeManager API key');
+    auditLog(req, 'DELETE', 'integration', 0, 'Cleared ServeManager API key');
 
     res.json({ success: true });
   } catch (error: any) {
@@ -439,7 +439,7 @@ router.post('/jobs', requireRole('admin', 'manager'), async (req: Request, res: 
     ).run(req.user!.userId, 'sm_job_created', 'sm_job', result.data.id,
       `Created SM job #${result.data.servemanager_job_number}`, req.ip || 'unknown', now);
 
-    auditLog(req, 'CREATE' as any, 'serve_queue' as any, result.data.id, `Created SM job #${result.data.servemanager_job_number}`);
+    auditLog(req, 'CREATE', 'serve_queue', result.data.id, `Created SM job #${result.data.servemanager_job_number}`);
     broadcast('dispatch', 'serve:created', result.data);
     res.status(201).json({ data: result.data });
   } catch (error: any) {
@@ -475,7 +475,7 @@ router.put('/jobs/:id', validateParamId, requireRole('admin', 'manager'), async 
     ).run(req.user!.userId, 'sm_job_updated', 'sm_job', req.params.id,
       `Updated SM job #${result.data.servemanager_job_number}`, req.ip || 'unknown', now);
 
-    auditLog(req, 'UPDATE' as any, 'serve_queue' as any, req.params.id, `Updated SM job #${result.data.servemanager_job_number}`);
+    auditLog(req, 'UPDATE', 'serve_queue', req.params.id, `Updated SM job #${result.data.servemanager_job_number}`);
     broadcast('dispatch', 'serve:updated', result.data);
     res.json({ data: result.data });
   } catch (error: any) {
@@ -508,7 +508,7 @@ router.post('/jobs/:id/cancel', validateParamId, requireRole('admin', 'manager')
     ).run(req.user!.userId, 'sm_job_cancelled', 'sm_job', req.params.id,
       `Cancelled SM job ${req.params.id}`, req.ip || 'unknown', now);
 
-    auditLog(req, 'UPDATE' as any, 'serve_queue' as any, req.params.id, `Cancelled SM job #${req.params.id}`);
+    auditLog(req, 'UPDATE', 'serve_queue', req.params.id, `Cancelled SM job #${req.params.id}`);
 
     res.json({ success: true, data: result.data });
   } catch (error: any) {
@@ -580,7 +580,7 @@ router.post('/attempts', requireRole('admin', 'manager'), async (req: Request, r
     ).run(req.user!.userId, 'sm_attempt_created', 'sm_attempt', result.data.id,
       `Created attempt on SM job ${result.data.job_id}`, req.ip || 'unknown', now);
 
-    auditLog(req, 'CREATE' as any, 'serve_queue' as any, result.data.id, `Created attempt on SM job #${result.data.job_id}`);
+    auditLog(req, 'CREATE', 'serve_queue', result.data.id, `Created attempt on SM job #${result.data.job_id}`);
 
     res.status(201).json({ data: result.data });
   } catch (error: any) {
@@ -611,7 +611,7 @@ router.post('/jobs/:jobId/notes', requireRole('admin', 'manager'), async (req: R
     }
     const result = await smPost(`/jobs/${req.params.jobId}/notes`, sanitizedNote);
 
-    auditLog(req, 'CREATE' as any, 'serve_queue' as any, req.params.jobId, `Added note to SM job #${req.params.jobId}`);
+    auditLog(req, 'CREATE', 'serve_queue', req.params.jobId, `Added note to SM job #${req.params.jobId}`);
 
     res.status(201).json({ data: result.data });
   } catch (error: any) {
@@ -748,7 +748,7 @@ router.post('/sync', requireRole('admin', 'manager'), async (req: Request, res: 
       ).run(req.user!.userId, 'sm_sync_completed', 'sm_sync', syncId,
         `${type} sync: ${jobsSynced} jobs, ${attemptsSynced} attempts`, req.ip || 'unknown', now);
 
-      auditLog(req, 'UPDATE' as any, 'integration' as any, Number(syncId), `SM ${type} sync completed: ${jobsSynced} jobs, ${attemptsSynced} attempts`);
+      auditLog(req, 'UPDATE', 'integration', Number(syncId), `SM ${type} sync completed: ${jobsSynced} jobs, ${attemptsSynced} attempts`);
 
       res.json({ success: true, sync_id: syncId, type, jobs_synced: jobsSynced, attempts_synced: attemptsSynced });
     } catch (syncErr: any) {
@@ -808,7 +808,7 @@ router.put('/jobs/:id/link', validateParamId, requireRole('admin', 'manager'), (
     ).run(req.user!.userId, 'sm_job_linked', 'sm_job', req.params.id,
       'Linked SM job to local records', req.ip || 'unknown', now);
 
-    auditLog(req, 'UPDATE' as any, 'serve_queue' as any, req.params.id, `Linked SM job #${req.params.id} to local records`);
+    auditLog(req, 'UPDATE', 'serve_queue', req.params.id, `Linked SM job #${req.params.id} to local records`);
 
     const updated = db.prepare('SELECT * FROM sm_jobs WHERE id = ?').get(req.params.id);
     res.json({ data: updated });
@@ -899,7 +899,7 @@ router.put('/poller/settings', requireRole('admin'), (req: Request, res: Respons
       `SM poller: enabled=${isEnabled}, interval=${poll_interval || 'unchanged'}, client=${target_client || 'unchanged'}`,
       req.ip || 'unknown', localNow());
 
-    auditLog(req, 'UPDATE' as any, 'integration' as any, 0, `Updated SM poller settings: enabled=${isEnabled}`);
+    auditLog(req, 'UPDATE', 'integration', 0, `Updated SM poller settings: enabled=${isEnabled}`);
 
     res.json({ success: true, message: isEnabled ? 'Poller restarted' : 'Poller stopped' });
   } catch (error: any) {
@@ -914,7 +914,7 @@ router.post('/poller/poll-now', requireRole('admin', 'manager'), async (req: Req
     if (!requireApiKey(req, res)) return;
     const result = await pollServeManagerNow();
 
-    auditLog(req, 'UPDATE' as any, 'integration' as any, 0, 'Triggered immediate SM poll');
+    auditLog(req, 'UPDATE', 'integration', 0, 'Triggered immediate SM poll');
 
     res.json(result);
   } catch (error: any) {

@@ -1570,7 +1570,7 @@ router.post('/evidence/:id/chain-action', validateParamId, requireRole('admin', 
     db.prepare(`UPDATE evidence SET chain_of_custody = ?, status = ?, storage_location = ?, updated_at = ? WHERE id = ?`)
       .run(JSON.stringify(chain), newStatus, storageLocation, localNow(), evidence.id);
 
-    auditLog(req, `evidence_${action}` as any, 'evidence', evidence.id, `Evidence #${evidence.id} chain action: ${action}${to_location ? ` to ${to_location}` : ''}`);
+    auditLog(req, `evidence_${action}`, 'evidence', evidence.id, `Evidence #${evidence.id} chain action: ${action}${to_location ? ` to ${to_location}` : ''}`);
 
     res.json({ data: { id: evidence.id, status: newStatus, chain_of_custody: chain } });
   } catch (error: any) {

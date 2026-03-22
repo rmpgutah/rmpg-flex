@@ -345,7 +345,7 @@ router.put('/:id/read', validateParamId, (req: Request, res: Response) => {
 
     sendToUser(req.user!.userId, 'notification:read', { id: Number(req.params.id) });
 
-    auditLog(req, 'UPDATE' as any, 'user' as any, req.params.id, `Marked notification #${req.params.id} as read`);
+    auditLog(req, 'UPDATE', 'user', req.params.id, `Marked notification #${req.params.id} as read`);
 
     res.json({ message: 'Marked as read' });
   } catch (error: any) {
@@ -366,7 +366,7 @@ router.post('/mark-all-read', (req: Request, res: Response) => {
 
     sendToUser(req.user!.userId, 'notification:allRead', { count: result.changes });
 
-    auditLog(req, 'UPDATE' as any, 'user' as any, req.user!.userId, `Marked all notifications as read (${result.changes} updated)`);
+    auditLog(req, 'UPDATE', 'user', req.user!.userId, `Marked all notifications as read (${result.changes} updated)`);
 
     res.json({ message: 'All notifications marked as read', count: result.changes });
   } catch (error: any) {
@@ -393,7 +393,7 @@ router.delete('/:id', validateParamId, (req: Request, res: Response) => {
 
     sendToUser(req.user!.userId, 'notification:deleted', { id: Number(req.params.id) });
 
-    auditLog(req, 'DELETE' as any, 'user' as any, req.params.id, `Deleted notification #${req.params.id}`);
+    auditLog(req, 'DELETE', 'user', req.params.id, `Deleted notification #${req.params.id}`);
 
     res.json({ message: 'Notification deleted' });
   } catch (error: any) {

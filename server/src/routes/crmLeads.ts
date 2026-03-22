@@ -199,7 +199,7 @@ router.post('/leads', requireRole('admin', 'manager', 'contract_manager'), (req:
     );
 
     const leadId = Number(result.lastInsertRowid);
-    auditLog(req, 'CREATE', 'crm_leads' as any, leadId, `Created lead: ${business_name.trim()}`);
+    auditLog(req, 'CREATE', 'crm_leads', leadId, `Created lead: ${business_name.trim()}`);
 
     // Log creation activity
     db.prepare(`
@@ -269,7 +269,7 @@ router.put('/leads/:id', validateParamId, requireRole('admin', 'manager', 'contr
     params.push(id);
 
     db.prepare(`UPDATE crm_leads SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    auditLog(req, 'UPDATE', 'crm_leads' as any, String(id), `Updated lead: ${existing.business_name}`);
+    auditLog(req, 'UPDATE', 'crm_leads', String(id), `Updated lead: ${existing.business_name}`);
 
     const lead = db.prepare(`
       SELECT l.*, u.full_name as assigned_to_name
@@ -299,7 +299,7 @@ router.delete('/leads/:id', validateParamId, requireRole('admin', 'manager'), (r
     // Cascade: delete activity (handled by FK ON DELETE CASCADE, but be explicit)
     db.prepare('DELETE FROM crm_lead_activity WHERE lead_id = ?').run(id);
     db.prepare('DELETE FROM crm_leads WHERE id = ?').run(id);
-    auditLog(req, 'DELETE', 'crm_leads' as any, String(id), `Deleted lead: ${existing.business_name}`);
+    auditLog(req, 'DELETE', 'crm_leads', String(id), `Deleted lead: ${existing.business_name}`);
     broadcast('admin', 'lead:deleted', { id: Number(id) });
     res.json({ success: true });
   } catch (err: any) {
@@ -345,7 +345,7 @@ router.put('/leads/:id/stage', validateParamId, requireRole('admin', 'manager', 
       VALUES (?, 'stage_change', ?, ?, ?, ?, ?)
     `).run(id, `Pipeline: ${existing.pipeline_stage} → ${pipeline_stage}`, existing.pipeline_stage, pipeline_stage, req.user?.userId || null, now);
 
-    auditLog(req, 'UPDATE', 'crm_leads' as any, String(id), `Stage: ${existing.pipeline_stage} → ${pipeline_stage}`);
+    auditLog(req, 'UPDATE', 'crm_leads', String(id), `Stage: ${existing.pipeline_stage} → ${pipeline_stage}`);
 
     const lead = db.prepare(`
       SELECT l.*, u.full_name as assigned_to_name
@@ -389,7 +389,7 @@ router.put('/leads/:id/assign', validateParamId, requireRole('admin', 'manager',
       VALUES (?, 'assignment', ?, ?, ?, ?, ?)
     `).run(id, `Assigned to ${assigneeName}`, String(existing.assigned_to || ''), String(assigned_to || ''), req.user?.userId || null, now);
 
-    auditLog(req, 'UPDATE', 'crm_leads' as any, String(id), `Assigned lead to ${assigneeName}`);
+    auditLog(req, 'UPDATE', 'crm_leads', String(id), `Assigned lead to ${assigneeName}`);
 
     const lead = db.prepare(`
       SELECT l.*, u.full_name as assigned_to_name
@@ -464,7 +464,7 @@ router.post('/leads/:id/convert', validateParamId, requireRole('admin', 'manager
     `).run(id, String(clientId), req.user?.userId || null, now);
 
     auditLog(req, 'CREATE', 'client', clientId, `Converted lead "${lead.business_name}" to client`);
-    auditLog(req, 'UPDATE', 'crm_leads' as any, String(id), `Converted to client #${clientId}`);
+    auditLog(req, 'UPDATE', 'crm_leads', String(id), `Converted to client #${clientId}`);
 
     const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(clientId);
     broadcast('admin', 'lead:updated', { id: Number(id), converted: true, client_id: clientId });
@@ -522,7 +522,7 @@ router.post('/leads/bulk-action', requireRole('admin', 'manager', 'contract_mana
         return;
     }
 
-    auditLog(req, 'UPDATE', 'crm_leads' as any, lead_ids.join(','), `Bulk ${action}: ${updated} leads`);
+    auditLog(req, 'UPDATE', 'crm_leads', lead_ids.join(','), `Bulk ${action}: ${updated} leads`);
     broadcast('admin', 'lead:updated', { action, updated, lead_ids });
     res.json({ success: true, updated });
   } catch (err: any) {

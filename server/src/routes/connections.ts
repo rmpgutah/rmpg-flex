@@ -419,7 +419,7 @@ router.get('/graph', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
     const maxDepth = Math.min(Math.max(Number(depth) || 2, 1), 3);
     const graph = buildGraph(db, String(type), Number(id), maxDepth);
 
-    auditLog(req, 'SEARCH' as any, 'record_link' as any, Number(id), `Connection graph: ${type} #${id} (depth ${maxDepth}, ${graph.nodes.length} nodes)`);
+    auditLog(req, 'SEARCH', 'record_link', Number(id), `Connection graph: ${type} #${id} (depth ${maxDepth}, ${graph.nodes.length} nodes)`);
 
     res.json(graph);
   } catch (error: any) {

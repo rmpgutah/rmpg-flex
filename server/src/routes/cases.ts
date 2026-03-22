@@ -139,7 +139,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
     });
 
     const caseData = createCase();
-    auditLog(req, 'CREATE' as any, 'case' as any, caseData.id, `Created case ${caseData.case_number}`);
+    auditLog(req, 'CREATE', 'case', caseData.id, `Created case ${caseData.case_number}`);
     broadcast('records', 'case:created', caseData);
     res.status(201).json({ data: caseData });
   } catch (error: any) {
@@ -190,7 +190,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, 'update', 'case', ?, ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ fields: Object.keys(req.body) }), req.ip || 'unknown', now);
 
-    auditLog(req, 'UPDATE' as any, 'case' as any, req.params.id, `Updated case fields: ${Object.keys(req.body).join(', ')}`);
+    auditLog(req, 'UPDATE', 'case', req.params.id, `Updated case fields: ${Object.keys(req.body).join(', ')}`);
     broadcast('records', 'case:updated', { id: parseInt(req.params.id as string, 10) });
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) {
@@ -222,7 +222,7 @@ router.put('/:id/status', validateParamId, requireRole('admin', 'manager', 'supe
       VALUES (?, 'status_change', 'case', ?, ?, ?, ?)`).run(
       req.user!.userId, req.params.id, JSON.stringify({ from: existing.status, to: status }), req.ip || 'unknown', now);
 
-    auditLog(req, 'UPDATE' as any, 'case' as any, req.params.id, `Case status changed from ${existing.status} to ${status}`);
+    auditLog(req, 'UPDATE', 'case', req.params.id, `Case status changed from ${existing.status} to ${status}`);
     broadcast('records', 'case:updated', { id: parseInt(req.params.id as string, 10), status });
     res.json({ data: { id: parseInt(req.params.id as string, 10), status } });
   } catch (error: any) {
@@ -246,7 +246,7 @@ router.post('/:id/notes', validateParamId, requireRole('admin', 'manager', 'supe
     `).run(req.params.id, req.user!.userId, user?.full_name || '', note_type, content, now);
 
     db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(now, req.params.id);
-    auditLog(req, 'CREATE' as any, 'case_note' as any, Number(result.lastInsertRowid), `Added ${note_type} note to case ${req.params.id}`);
+    auditLog(req, 'CREATE', 'case_note', Number(result.lastInsertRowid), `Added ${note_type} note to case ${req.params.id}`);
     broadcast('records', 'case:updated', { id: parseInt(req.params.id as string, 10) });
     res.status(201).json({ data: { id: Number(result.lastInsertRowid) } });
   } catch (error: any) {
@@ -289,7 +289,7 @@ router.post('/:id/calculate-solvability', validateParamId, requireRole('admin', 
     db.prepare('UPDATE cases SET solvability_score = ?, solvability_factors = ?, updated_at = ? WHERE id = ?')
       .run(score, JSON.stringify(factors), now, req.params.id);
 
-    auditLog(req, 'UPDATE' as any, 'case' as any, req.params.id, `Calculated solvability score: ${score}`);
+    auditLog(req, 'UPDATE', 'case', req.params.id, `Calculated solvability score: ${score}`);
     broadcast('records', 'case:updated', { id: parseInt(req.params.id as string, 10), score });
     res.json({ data: { score, factors } });
   } catch (error: any) {

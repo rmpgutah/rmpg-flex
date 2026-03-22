@@ -159,7 +159,7 @@ router.post('/leave', (req: Request, res: Response) => {
        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
     ).run(user.id, validType, validStart, validEnd, validHours, validReason, now, now);
 
-    auditLog(req, 'CREATE' as any, 'leave_request' as any, Number(result.lastInsertRowid),
+    auditLog(req, 'CREATE', 'leave_request', Number(result.lastInsertRowid),
       `Leave request created: ${type} ${start_date} to ${end_date}`);
     broadcast('admin', 'hr:updated', { entity: 'leave', action: 'created', id: Number(result.lastInsertRowid) });
     res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
@@ -192,7 +192,7 @@ router.put('/leave/:id', validateParamId, (req: Request, res: Response) => {
        reason = COALESCE(?, reason), updated_at = ? WHERE id = ?`
     ).run(type || null, start_date || null, end_date || null, hours_requested ?? null, reason ?? null, now, id);
 
-    auditLog(req, 'UPDATE' as any, 'leave_request' as any, id, `Leave request updated`);
+    auditLog(req, 'UPDATE', 'leave_request', id, `Leave request updated`);
     broadcast('admin', 'hr:updated', { entity: 'leave', action: 'updated', id });
     res.json({ success: true });
   } catch (error: any) {
@@ -236,7 +236,7 @@ router.post('/leave/:id/approve', validateParamId, requireRole('admin', 'manager
       ).run(existing.hours_requested, now, existing.officer_id, year);
     }
 
-    auditLog(req, 'UPDATE' as any, 'leave_request' as any, id, `Leave request approved`);
+    auditLog(req, 'UPDATE', 'leave_request', id, `Leave request approved`);
     broadcast('admin', 'hr:updated', { entity: 'leave', action: 'approved', id });
     res.json({ success: true });
   } catch (error: any) {
@@ -262,7 +262,7 @@ router.post('/leave/:id/deny', validateParamId, requireRole('admin', 'manager', 
        review_notes = ?, updated_at = ? WHERE id = ?`
     ).run(user.id, now, review_notes || null, now, id);
 
-    auditLog(req, 'UPDATE' as any, 'leave_request' as any, id, `Leave request denied`);
+    auditLog(req, 'UPDATE', 'leave_request', id, `Leave request denied`);
     res.json({ success: true });
   } catch (error: any) {
     console.error('[HR] Leave deny error:', error?.message);
@@ -301,7 +301,7 @@ router.post('/leave/bulk-approve', requireRole('admin', 'manager', 'supervisor')
               .run(req_row.hours_requested, now, req_row.officer_id, new Date(req_row.start_date).getFullYear());
           }
         }
-        auditLog(req, 'UPDATE' as any, 'leave_request' as any, Number(id), `Leave request bulk approved`);
+        auditLog(req, 'UPDATE', 'leave_request', Number(id), `Leave request bulk approved`);
       }
     }
 
@@ -326,7 +326,7 @@ router.delete('/leave/:id', validateParamId, (req: Request, res: Response) => {
     const now = localNow();
     db.prepare(`UPDATE leave_requests SET status = 'cancelled', updated_at = ? WHERE id = ?`).run(now, id);
 
-    auditLog(req, 'DELETE' as any, 'leave_request' as any, id, `Leave request cancelled`);
+    auditLog(req, 'DELETE', 'leave_request', id, `Leave request cancelled`);
     res.json({ success: true });
   } catch (error: any) {
     console.error('[HR] Leave cancel error:', error?.message);
@@ -416,7 +416,7 @@ router.put('/leave/balances/:id', validateParamId, requireRole('admin'), (req: R
     ).run(vacation_total ?? null, vacation_used ?? null, sick_total ?? null, sick_used ?? null,
       personal_total ?? null, personal_used ?? null, now, id);
 
-    auditLog(req, 'UPDATE' as any, 'leave_balance' as any, id, `Leave balance overridden`);
+    auditLog(req, 'UPDATE', 'leave_balance', id, `Leave balance overridden`);
     res.json({ success: true });
   } catch (error: any) {
     console.error('[HR] Balance update error:', error?.message);
@@ -550,7 +550,7 @@ router.post('/disciplinary', requireRole('admin', 'manager'), (req: Request, res
       action_taken || null, follow_up_date || null, follow_up_notes || null,
       validDiscStatus, user.id, witness || null, attachments || '[]', now, now);
 
-    auditLog(req, 'CREATE' as any, 'disciplinary_record' as any, Number(result.lastInsertRowid),
+    auditLog(req, 'CREATE', 'disciplinary_record', Number(result.lastInsertRowid),
       `Disciplinary record created for officer ${officer_id}: ${type || 'verbal_warning'}`);
     broadcast('admin', 'hr:updated', { entity: 'disciplinary', action: 'created', id: Number(result.lastInsertRowid) });
     res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
@@ -587,7 +587,7 @@ router.put('/disciplinary/:id', validateParamId, requireRole('admin', 'manager')
       action_taken ?? null, follow_up_date ?? null, follow_up_notes ?? null,
       status || null, witness ?? null, attachments ?? null, now, id);
 
-    auditLog(req, 'UPDATE' as any, 'disciplinary_record' as any, id, `Disciplinary record updated`);
+    auditLog(req, 'UPDATE', 'disciplinary_record', id, `Disciplinary record updated`);
     broadcast('admin', 'hr:updated', { entity: 'disciplinary', action: 'updated', id });
     res.json({ success: true });
   } catch (error: any) {
@@ -606,7 +606,7 @@ router.delete('/disciplinary/:id', validateParamId, requireRole('admin'), (req: 
 
     db.prepare('DELETE FROM disciplinary_records WHERE id = ?').run(id);
 
-    auditLog(req, 'DELETE' as any, 'disciplinary_record' as any, id, `Disciplinary record deleted`);
+    auditLog(req, 'DELETE', 'disciplinary_record', id, `Disciplinary record deleted`);
     res.json({ success: true });
   } catch (error: any) {
     console.error('[HR] Disciplinary delete error:', error?.message);
@@ -683,7 +683,7 @@ router.post('/reviews', requireRole('admin', 'manager', 'supervisor'), (req: Req
       strengths || null, areas_for_improvement || null, goals || null,
       validRevStatus, now, now);
 
-    auditLog(req, 'CREATE' as any, 'performance_review' as any, Number(result.lastInsertRowid),
+    auditLog(req, 'CREATE', 'performance_review', Number(result.lastInsertRowid),
       `Performance review created for officer ${officer_id}`);
     broadcast('admin', 'hr:updated', { entity: 'review', action: 'created', id: Number(result.lastInsertRowid) });
     res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
@@ -738,7 +738,7 @@ router.put('/reviews/:id', validateParamId, (req: Request, res: Response) => {
       catValue, strengths ?? null, areas_for_improvement ?? null,
       goals ?? null, status || null, now, id);
 
-    auditLog(req, 'UPDATE' as any, 'performance_review' as any, id, `Performance review updated`);
+    auditLog(req, 'UPDATE', 'performance_review', id, `Performance review updated`);
     res.json({ success: true });
   } catch (error: any) {
     console.error('[HR] Review update error:', error?.message);
@@ -763,7 +763,7 @@ router.post('/reviews/:id/acknowledge', validateParamId, (req: Request, res: Res
        status = 'acknowledged', updated_at = ? WHERE id = ?`
     ).run(officer_comments || null, now, now, id);
 
-    auditLog(req, 'UPDATE' as any, 'performance_review' as any, id, `Performance review acknowledged`);
+    auditLog(req, 'UPDATE', 'performance_review', id, `Performance review acknowledged`);
     res.json({ success: true });
   } catch (error: any) {
     console.error('[HR] Review acknowledge error:', error?.message);
@@ -782,7 +782,7 @@ router.delete('/reviews/:id', validateParamId, requireRole('admin'), (req: Reque
 
     db.prepare('DELETE FROM performance_reviews WHERE id = ?').run(id);
 
-    auditLog(req, 'DELETE' as any, 'performance_review' as any, id, `Draft performance review deleted`);
+    auditLog(req, 'DELETE', 'performance_review', id, `Draft performance review deleted`);
     res.json({ success: true });
   } catch (error: any) {
     console.error('[HR] Review delete error:', error?.message);
@@ -835,7 +835,7 @@ router.post('/payroll/periods', requireRole('admin', 'manager'), (req: Request, 
     ).run(name || `Pay Period ${start_date} - ${end_date}`, start_date, end_date, pay_date, userId);
 
     const period = db.prepare('SELECT * FROM hr_pay_periods WHERE id = ?').get(Number(result.lastInsertRowid));
-    auditLog(req, 'CREATE' as any, 'hr_pay_period' as any, Number(result.lastInsertRowid), `Created pay period: ${start_date} to ${end_date}`);
+    auditLog(req, 'CREATE', 'hr_pay_period', Number(result.lastInsertRowid), `Created pay period: ${start_date} to ${end_date}`);
     res.json(period);
   } catch (error: any) {
     console.error('[HR] Create pay period error:', error?.message);
@@ -864,7 +864,7 @@ router.put('/payroll/periods/:id', validateParamId, requireRole('admin', 'manage
     db.prepare(`UPDATE hr_pay_periods SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
     const updated = db.prepare('SELECT * FROM hr_pay_periods WHERE id = ?').get(id);
-    auditLog(req, 'UPDATE' as any, 'hr_pay_period' as any, id, `Updated pay period`);
+    auditLog(req, 'UPDATE', 'hr_pay_period', id, `Updated pay period`);
     res.json(updated);
   } catch (error: any) {
     console.error('[HR] Update pay period error:', error?.message);
@@ -883,7 +883,7 @@ router.delete('/payroll/periods/:id', validateParamId, requireRole('admin'), (re
     db.prepare('DELETE FROM hr_payroll_entries WHERE pay_period_id = ?').run(id);
     db.prepare('DELETE FROM hr_pay_periods WHERE id = ?').run(id);
 
-    auditLog(req, 'DELETE' as any, 'hr_pay_period' as any, id, `Deleted pay period: ${existing.name}`);
+    auditLog(req, 'DELETE', 'hr_pay_period', id, `Deleted pay period: ${existing.name}`);
     res.json({ success: true });
   } catch (error: any) {
     console.error('[HR] Delete pay period error:', error?.message);
@@ -936,7 +936,7 @@ router.post('/payroll/rates', requireRole('admin', 'manager'), (req: Request, re
     `).run(user_id, pay_type, rate, overtime_rate ?? 1.5, holiday_rate ?? 1.5, effective_date, notes || null, userId);
 
     const newRate = db.prepare('SELECT pr.*, u.full_name as officer_name FROM hr_pay_rates pr JOIN users u ON u.id = pr.user_id WHERE pr.id = ?').get(Number(result.lastInsertRowid));
-    auditLog(req, 'CREATE' as any, 'hr_pay_rate' as any, Number(result.lastInsertRowid), `Set pay rate for user ${user_id}: ${pay_type} $${rate}`);
+    auditLog(req, 'CREATE', 'hr_pay_rate', Number(result.lastInsertRowid), `Set pay rate for user ${user_id}: ${pay_type} $${rate}`);
     res.json(newRate);
   } catch (error: any) {
     console.error('[HR] Create pay rate error:', error?.message);
@@ -1019,7 +1019,7 @@ router.post('/payroll/entries', requireRole('admin', 'manager'), (req: Request, 
       SELECT pe.*, u.full_name as officer_name FROM hr_payroll_entries pe JOIN users u ON u.id = pe.user_id WHERE pe.id = ?
     `).get(Number(result.lastInsertRowid));
 
-    auditLog(req, 'CREATE' as any, 'hr_payroll_entry' as any, Number(result.lastInsertRowid), `Payroll entry for user ${user_id}, gross: $${grossPay.toFixed(2)}`);
+    auditLog(req, 'CREATE', 'hr_payroll_entry', Number(result.lastInsertRowid), `Payroll entry for user ${user_id}, gross: $${grossPay.toFixed(2)}`);
     res.json(entry);
   } catch (error: any) {
     console.error('[HR] Create payroll entry error:', error?.message);
@@ -1081,7 +1081,7 @@ router.put('/payroll/entries/:id', validateParamId, requireRole('admin', 'manage
       SELECT pe.*, u.full_name as officer_name FROM hr_payroll_entries pe JOIN users u ON u.id = pe.user_id WHERE pe.id = ?
     `).get(id);
 
-    auditLog(req, 'UPDATE' as any, 'hr_payroll_entry' as any, id, `Updated payroll entry, gross: $${grossPay.toFixed(2)}`);
+    auditLog(req, 'UPDATE', 'hr_payroll_entry', id, `Updated payroll entry, gross: $${grossPay.toFixed(2)}`);
     res.json(updated);
   } catch (error: any) {
     console.error('[HR] Update payroll entry error:', error?.message);
@@ -1129,7 +1129,7 @@ router.post('/payroll/periods/:id/populate', validateParamId, requireRole('admin
       created++;
     }
 
-    auditLog(req, 'CREATE' as any, 'hr_payroll_entry' as any, id, `Auto-populated ${created} entries for pay period ${period.name}`);
+    auditLog(req, 'CREATE', 'hr_payroll_entry', id, `Auto-populated ${created} entries for pay period ${period.name}`);
     res.json({ success: true, created, total: activeUsers.length });
   } catch (error: any) {
     console.error('[HR] Populate pay period error:', error?.message);

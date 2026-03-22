@@ -405,7 +405,7 @@ router.post('/hash/batch', requireRole('admin', 'manager'), async (req: Request,
     }
 
     const result = await hashEvidenceAttachments(evidenceId);
-    auditLog(req, 'iped_hash_computed' as any, 'evidence' as any, Number(evidenceId), `Batch hashed evidence #${evidenceId}: ${result.hashed} files`);
+    auditLog(req, 'iped_hash_computed', 'evidence', Number(evidenceId), `Batch hashed evidence #${evidenceId}: ${result.hashed} files`);
     res.json({ success: true, ...result });
   } catch (err: any) {
     console.error('[IPED] operation error:', err?.message || err);
@@ -524,7 +524,7 @@ router.post('/hash-sets/import-iped', requireRole('admin'), async (req: Request,
       return res.status(400).json({ error: 'Invalid file path' });
     }
     const output = await importToIpedHashDb(filePath);
-    auditLog(req, 'iped_hashset_imported' as any, 'iped_hashset' as any, filePath, `Imported hash set from ${filePath} to IPED native DB`);
+    auditLog(req, 'iped_hashset_imported', 'iped_hashset', filePath, `Imported hash set from ${filePath} to IPED native DB`);
     res.json({ success: true, output });
   } catch (err: any) {
     console.error('[IPED] operation error:', err?.message || err);

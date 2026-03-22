@@ -256,7 +256,7 @@ router.post('/register-verify', authenticateToken, mfaRateLimit, async (req: Req
 
     const lastRow = db.prepare('SELECT last_insert_rowid() as id').get() as { id: number } | undefined;
 
-    auditLog(req, 'CREATE' as any, 'user' as any, req.user!.userId, `Registered WebAuthn security key: ${credName}`);
+    auditLog(req, 'CREATE', 'user', req.user!.userId, `Registered WebAuthn security key: ${credName}`);
 
     res.json({
       success: true,
@@ -320,7 +320,7 @@ router.delete('/credentials/:id', validateParamId, authenticateToken, (req: Requ
       req.ip || 'unknown',
     );
 
-    auditLog(req, 'DELETE' as any, 'user' as any, credId, `Removed WebAuthn security key: ${cred.name}`);
+    auditLog(req, 'DELETE', 'user', credId, `Removed WebAuthn security key: ${cred.name}`);
 
     res.json({ message: 'Security key removed' });
   } catch (error: any) {
@@ -567,7 +567,7 @@ router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Resp
       UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = ? WHERE id = ?
     `).run(localNow(), user.id);
 
-    auditLog(req, 'user_login' as any, 'user' as any, user.id, `WebAuthn 2FA login completed for ${user.username}`);
+    auditLog(req, 'user_login', 'user', user.id, `WebAuthn 2FA login completed for ${user.username}`);
 
     res.json({
       token: accessToken,

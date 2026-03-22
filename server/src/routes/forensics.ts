@@ -1396,7 +1396,7 @@ router.post('/cases/:id/custody', validateParamId, (req: Request, res: Response)
       LEFT JOIN users tu ON tu.id = cl.to_user_id WHERE cl.id = ?
     `).get(Number(result.lastInsertRowid));
 
-    auditLog(req, 'CREATE' as any, 'forensic_custody' as any, Number(result.lastInsertRowid), `Custody: ${action} for case ${caseId}`);
+    auditLog(req, 'CREATE', 'forensic_custody', Number(result.lastInsertRowid), `Custody: ${action} for case ${caseId}`);
     res.json(entry);
   } catch (error: any) {
     console.error('Custody create error:', error?.message);
@@ -1446,7 +1446,7 @@ router.post('/tools', requireRole('admin', 'manager'), (req: Request, res: Respo
     `).run(name, category, serial_number||null, license_key||null, version||null, vendor||null,
       purchase_date||null, license_expiry||null, status||'active', assigned_to||null, notes||null, now, now);
     const tool = db.prepare('SELECT * FROM forensic_tools WHERE id = ?').get(Number(result.lastInsertRowid));
-    auditLog(req, 'CREATE' as any, 'forensic_tool' as any, Number(result.lastInsertRowid), `Added tool: ${name}`);
+    auditLog(req, 'CREATE', 'forensic_tool', Number(result.lastInsertRowid), `Added tool: ${name}`);
     res.json(tool);
   } catch (error: any) {
     console.error('Create tool error:', error?.message);
@@ -1484,7 +1484,7 @@ router.delete('/tools/:id', validateParamId, requireRole('admin'), (req: Request
     const existing = db.prepare('SELECT * FROM forensic_tools WHERE id = ?').get(id) as any;
     if (!existing) return res.status(404).json({ error: 'Tool not found' });
     db.prepare('DELETE FROM forensic_tools WHERE id = ?').run(id);
-    auditLog(req, 'DELETE' as any, 'forensic_tool' as any, id, `Deleted tool: ${existing.name}`);
+    auditLog(req, 'DELETE', 'forensic_tool', id, `Deleted tool: ${existing.name}`);
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete tool error:', error?.message);

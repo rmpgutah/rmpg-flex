@@ -599,7 +599,7 @@ router.post('/announcements', requireRole('admin', 'manager'), (req: Request, re
       VALUES (?, 'announcement_created', 'announcement', ?, ?, ?)
     `).run(req.user!.userId, Number(result.lastInsertRowid), `Created announcement: ${title}`, req.ip || 'unknown');
 
-    auditLog(req, 'CREATE' as any, 'system_config' as any, Number(result.lastInsertRowid), `Created announcement: ${title}`);
+    auditLog(req, 'CREATE', 'system_config', Number(result.lastInsertRowid), `Created announcement: ${title}`);
 
     res.status(201).json(announcement || { id: Number(result.lastInsertRowid) });
   } catch (error: any) {
@@ -650,7 +650,7 @@ router.put('/announcements/:id', validateParamId, requireRole('admin', 'manager'
 
     const updated = db.prepare('SELECT * FROM system_announcements WHERE id = ?').get(req.params.id);
 
-    auditLog(req, 'UPDATE' as any, 'system_config' as any, req.params.id, `Updated announcement #${req.params.id}`);
+    auditLog(req, 'UPDATE', 'system_config', req.params.id, `Updated announcement #${req.params.id}`);
 
     res.json(updated);
   } catch (error: any) {
@@ -676,7 +676,7 @@ router.delete('/announcements/:id', validateParamId, requireRole('admin'), (req:
       VALUES (?, 'announcement_deleted', 'announcement', ?, ?, ?)
     `).run(req.user!.userId, existing.id, `Deleted announcement: ${existing.title}`, req.ip || 'unknown');
 
-    auditLog(req, 'DELETE' as any, 'system_config' as any, existing.id, `Deleted announcement: ${existing.title}`);
+    auditLog(req, 'DELETE', 'system_config', existing.id, `Deleted announcement: ${existing.title}`);
 
     res.json({ message: 'Announcement deleted' });
   } catch (error: any) {
@@ -740,7 +740,7 @@ router.put('/retention/:id', validateParamId, requireRole('admin', 'manager'), (
 
     const updated = db.prepare('SELECT * FROM retention_policies WHERE id = ?').get(req.params.id);
 
-    auditLog(req, 'UPDATE' as any, 'system_config' as any, req.params.id, `Updated retention policy #${req.params.id} for ${existing.entity_type}`);
+    auditLog(req, 'UPDATE', 'system_config', req.params.id, `Updated retention policy #${req.params.id} for ${existing.entity_type}`);
 
     res.json(updated);
   } catch (error: any) {
@@ -833,7 +833,7 @@ router.post('/retention/run', requireRole('admin'), (req: Request, res: Response
       VALUES (?, 'retention_run', 'system', 0, ?, ?)
     `).run(req.user!.userId, `Retention policies executed: ${results.length} actions`, req.ip || 'unknown');
 
-    auditLog(req, 'UPDATE' as any, 'system_config' as any, 0, `Executed retention policies: ${results.length} actions`);
+    auditLog(req, 'UPDATE', 'system_config', 0, `Executed retention policies: ${results.length} actions`);
 
     res.json({ executed_at: now, results });
   } catch (error: any) {
@@ -970,7 +970,7 @@ router.post('/departments', requireRole('admin', 'manager'), (req: Request, res:
       VALUES (?, 'department_created', 'department', ?, ?, ?)
     `).run(req.user!.userId, Number(result.lastInsertRowid), `Created department: ${name}`, req.ip || 'unknown');
 
-    auditLog(req, 'CREATE' as any, 'system_config' as any, Number(result.lastInsertRowid), `Created department: ${name}`);
+    auditLog(req, 'CREATE', 'system_config', Number(result.lastInsertRowid), `Created department: ${name}`);
 
     res.status(201).json(department || { id: Number(result.lastInsertRowid) });
   } catch (error: any) {
@@ -1025,7 +1025,7 @@ router.put('/departments/:id', validateParamId, requireRole('admin', 'manager'),
       WHERE d.id = ?
     `).get(req.params.id);
 
-    auditLog(req, 'UPDATE' as any, 'system_config' as any, req.params.id, `Updated department #${req.params.id}`);
+    auditLog(req, 'UPDATE', 'system_config', req.params.id, `Updated department #${req.params.id}`);
 
     res.json(updated);
   } catch (error: any) {
@@ -1071,7 +1071,7 @@ router.delete('/departments/:id', validateParamId, requireRole('admin'), (req: R
       VALUES (?, 'department_deleted', 'department', ?, ?, ?)
     `).run(req.user!.userId, existing.id, `Deleted department: ${existing.name}`, req.ip || 'unknown');
 
-    auditLog(req, 'DELETE' as any, 'system_config' as any, existing.id, `Deleted department: ${existing.name}`);
+    auditLog(req, 'DELETE', 'system_config', existing.id, `Deleted department: ${existing.name}`);
 
     res.json({ message: 'Department deleted' });
   } catch (error: any) {
@@ -1152,7 +1152,7 @@ router.post('/notification-rules', requireRole('admin', 'manager'), (req: Reques
       VALUES (?, 'notification_rule_created', 'notification_rule', ?, ?, ?)
     `).run(req.user!.userId, Number(result.lastInsertRowid), `Created notification rule: ${name}`, req.ip || 'unknown');
 
-    auditLog(req, 'CREATE' as any, 'system_config' as any, Number(result.lastInsertRowid), `Created notification rule: ${name}`);
+    auditLog(req, 'CREATE', 'system_config', Number(result.lastInsertRowid), `Created notification rule: ${name}`);
 
     res.status(201).json(rule);
   } catch (error: any) {
@@ -1206,7 +1206,7 @@ router.put('/notification-rules/:id', validateParamId, requireRole('admin', 'man
       WHERE nr.id = ?
     `).get(req.params.id);
 
-    auditLog(req, 'UPDATE' as any, 'system_config' as any, req.params.id, `Updated notification rule #${req.params.id}`);
+    auditLog(req, 'UPDATE', 'system_config', req.params.id, `Updated notification rule #${req.params.id}`);
 
     res.json(updated);
   } catch (error: any) {
@@ -1232,7 +1232,7 @@ router.delete('/notification-rules/:id', validateParamId, requireRole('admin', '
       VALUES (?, 'notification_rule_deleted', 'notification_rule', ?, ?, ?)
     `).run(req.user!.userId, existing.id, `Deleted notification rule: ${existing.name}`, req.ip || 'unknown');
 
-    auditLog(req, 'DELETE' as any, 'system_config' as any, existing.id, `Deleted notification rule: ${existing.name}`);
+    auditLog(req, 'DELETE', 'system_config', existing.id, `Deleted notification rule: ${existing.name}`);
 
     res.json({ message: 'Notification rule deleted' });
   } catch (error: any) {
@@ -1320,7 +1320,7 @@ router.post('/notification-rules/:id/test', validateParamId, requireRole('admin'
       VALUES (?, 'notification_rule_tested', 'notification_rule', ?, ?, ?)
     `).run(req.user!.userId, rule.id, `Test notification sent to ${sentCount} user(s) for rule: ${rule.name}`, req.ip || 'unknown');
 
-    auditLog(req, 'CREATE' as any, 'system_config' as any, rule.id, `Tested notification rule: ${rule.name} — sent to ${sentCount} user(s)`);
+    auditLog(req, 'CREATE', 'system_config', rule.id, `Tested notification rule: ${rule.name} — sent to ${sentCount} user(s)`);
 
     res.json({ message: `Test notification sent to ${sentCount} user(s)`, sent_to: targetUserIds });
   } catch (error: any) {

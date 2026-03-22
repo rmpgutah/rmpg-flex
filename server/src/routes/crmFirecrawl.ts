@@ -54,7 +54,7 @@ router.post(
         scrapeOptions: { formats: ['markdown'], onlyMainContent: true },
       });
 
-      auditLog(req, 'SEARCH' as any, 'crm_leads', 0, `Firecrawl search: ${query.trim()} (limit: ${cappedLimit})`);
+      auditLog(req, 'SEARCH', 'crm_leads', 0, `Firecrawl search: ${query.trim()} (limit: ${cappedLimit})`);
 
       res.json({ results: result.data || [] });
     } catch (err: unknown) {
@@ -90,7 +90,7 @@ router.post(
         extract: extract_schema ? { schema: extract_schema } : undefined,
       });
 
-      auditLog(req, 'SEARCH' as any, 'crm_leads', 0, `Firecrawl scrape: ${url.trim()}`);
+      auditLog(req, 'SEARCH', 'crm_leads', 0, `Firecrawl scrape: ${url.trim()}`);
 
       res.json({ data: result.data || {} });
     } catch (err: unknown) {
@@ -146,10 +146,7 @@ router.post(
 
       const { inserted, id } = upsertLead(leadData);
 
-      auditLog(req, 'CREATE', 'crm_leads', id, null, {
-        business_name: leadData.business_name,
-        source: 'firecrawl_manual',
-      });
+      auditLog(req, 'CREATE', 'crm_leads', id, `Created lead from Firecrawl: ${leadData.business_name || 'unknown'}`);
 
       res.json({ success: true, id, inserted });
     } catch (err: unknown) {

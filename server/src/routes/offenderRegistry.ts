@@ -181,7 +181,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, r
       VALUES (?, 'create', 'offender_alert', ?, ?, ?, ?)`).run(
       req.user!.userId, Number(result.lastInsertRowid), JSON.stringify({ person_id, alert_type, severity }), req.ip || 'unknown', now);
 
-    auditLog(req, 'CREATE' as any, 'offender_alert' as any, Number(result.lastInsertRowid), `Created ${severity} ${alert_type} alert for person ${person_id}`);
+    auditLog(req, 'CREATE', 'offender_alert', Number(result.lastInsertRowid), `Created ${severity} ${alert_type} alert for person ${person_id}`);
     broadcast('records', 'offender:created', { id: Number(result.lastInsertRowid), person_id, alert_type, severity });
     res.status(201).json({ data: { id: Number(result.lastInsertRowid) } });
   } catch (error: any) {
@@ -232,7 +232,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
 
     params.push(id);
     db.prepare(`UPDATE offender_alerts SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    auditLog(req, 'UPDATE' as any, 'offender_alert' as any, id, `Updated offender alert ${id}`);
+    auditLog(req, 'UPDATE', 'offender_alert', id, `Updated offender alert ${id}`);
     broadcast('records', 'offender:updated', { id });
     res.json({ data: { id } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
@@ -254,7 +254,7 @@ router.put('/:id/clear', validateParamId, requireRole('admin', 'manager', 'super
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, 'clear', 'offender_alert', ?, '{}', ?, ?)`).run(req.user!.userId, id, req.ip || 'unknown', now);
 
-    auditLog(req, 'UPDATE' as any, 'offender_alert' as any, id, `Cleared offender alert ${id}`);
+    auditLog(req, 'UPDATE', 'offender_alert', id, `Cleared offender alert ${id}`);
     broadcast('records', 'offender:updated', { id, status: 'cleared' });
     res.json({ data: { id, status: 'cleared' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }

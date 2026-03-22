@@ -338,7 +338,7 @@ router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', '
 
     broadcastDispatchUpdate({ action: 'call_created', call: enrichedCall || call });
 
-    auditLog(req, 'panic_activated' as any, 'call' as any, call.id, `PANIC alert by ${user.full_name} (${user.badge_number || 'N/A'}) — call ${callNumber} created`);
+    auditLog(req, 'panic_activated', 'call', call.id, `PANIC alert by ${user.full_name} (${user.badge_number || 'N/A'}) — call ${callNumber} created`);
 
     res.json({
       success: true,

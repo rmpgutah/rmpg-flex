@@ -142,7 +142,7 @@ router.delete('/trusted-devices/:id', validateParamId, authenticateToken, (req: 
       req.ip || 'unknown'
     );
 
-    auditLog(req, 'DELETE' as any, 'user' as any, deviceId, `Removed trusted device #${deviceId}`);
+    auditLog(req, 'DELETE', 'user', deviceId, `Removed trusted device #${deviceId}`);
     broadcast('admin', 'security:updated', { action: 'device_removed', deviceId });
     res.json({ message: 'Trusted device removed' });
   } catch (error: any) {
@@ -191,7 +191,7 @@ router.put('/notifications/:id/read', validateParamId, authenticateToken, (req: 
 
     if (result.changes === 0) { res.status(404).json({ error: 'Notification not found' }); return; }
 
-    auditLog(req, 'UPDATE' as any, 'user' as any, notifId, `Marked security notification #${notifId} as read`);
+    auditLog(req, 'UPDATE', 'user', notifId, `Marked security notification #${notifId} as read`);
 
     res.json({ message: 'Marked as read' });
   } catch (error: any) {
@@ -209,7 +209,7 @@ router.put('/notifications/read-all', authenticateToken, (req: Request, res: Res
       'UPDATE security_notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0'
     ).run(req.user!.userId);
 
-    auditLog(req, 'UPDATE' as any, 'user' as any, req.user!.userId, 'Marked all security notifications as read');
+    auditLog(req, 'UPDATE', 'user', req.user!.userId, 'Marked all security notifications as read');
 
     res.json({ message: 'All marked as read' });
   } catch (error: any) {
@@ -253,7 +253,7 @@ router.post('/unblock-ip', authenticateToken, requireRole('admin'), (req: Reques
     const msg = ip ? `Unblocked IP ${ip}` : `Unblocked all ${count} IPs`;
     console.log(`[Security] ${msg} — by ${req.user!.username}`);
 
-    auditLog(req, 'UPDATE' as any, 'user' as any, 0, msg);
+    auditLog(req, 'UPDATE', 'user', 0, msg);
     broadcast('admin', 'security:updated', { action: 'ip_unblocked', ip, count });
     res.json({ success: true, message: msg, unblocked: count });
   } catch (error: any) {

@@ -446,7 +446,7 @@ router.delete('/gps/breadcrumbs/cleanup', requireRole('admin'), (req: Request, r
     const result = db.prepare(
       `DELETE FROM gps_breadcrumbs WHERE recorded_at < datetime('now', 'localtime', '-' || ? || ' days')`
     ).run(days);
-    auditLog(req, 'DELETE' as any, 'unit' as any, 0, `Purged ${result.changes} GPS breadcrumbs older than ${days} days`);
+    auditLog(req, 'DELETE', 'unit', 0, `Purged ${result.changes} GPS breadcrumbs older than ${days} days`);
     res.json({ deleted: result.changes });
   } catch (error: any) {
     console.error('[GPS] breadcrumb cleanup error:', error?.message || 'Unknown error');
