@@ -20,6 +20,7 @@ import EquipmentDetailTab from './detail-tabs/EquipmentDetailTab';
 import BodyCameraDetailTab from './detail-tabs/BodyCameraDetailTab';
 import DashCameraDetailTab from './detail-tabs/DashCameraDetailTab';
 import DeploymentDetailTab from './detail-tabs/DeploymentDetailTab';
+import FitnessCommendationsTab from './tabs/FitnessCommendationsTab';
 import PrintRecordButton from '../../components/PrintRecordButton';
 
 interface ActivityEntry {
@@ -511,6 +512,9 @@ export default function PersonnelDetailPanel({
             onAddDeployment={onAddDeployment}
             officerId={officer.id}
           />
+        )}
+        {activeTab === 'fitness' && (
+          <FitnessCommendationsTab officerId={officer.id} />
         )}
       </div>
     </div>

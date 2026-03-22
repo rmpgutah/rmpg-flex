@@ -37,6 +37,8 @@ const DEFAULTS = {
   dashboard_widgets: null,
   dispatch_sort: 'priority',
   dispatch_show_cleared: 0,
+  theme_preference: 'dark',
+  font_size_preference: 'medium',
 };
 
 // Allowed fields for update — prevents SQL injection via dynamic column names
@@ -185,6 +187,82 @@ router.post('/reset', (req: Request, res: Response) => {
     console.error('[UserPreferences] RESET error:', error?.message);
     res.status(500).json({ error: 'Failed to reset user preferences' });
   }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Feature 37: Recently viewed items
+// ═══════════════════════════════════════════════════════════
+router.get('/recently-viewed', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.user!.userId;
+    const user = db.prepare('SELECT recently_viewed FROM users WHERE id = ?').get(userId) as any;
+    const items = JSON.parse(user?.recently_viewed || '[]');
+    res.json({ data: items });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+router.post('/recently-viewed', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.user!.userId;
+    const { entity_type, entity_id, title } = req.body;
+    if (!entity_type || !entity_id) return res.status(400).json({ error: 'entity_type and entity_id required' });
+
+    const user = db.prepare('SELECT recently_viewed FROM users WHERE id = ?').get(userId) as any;
+    let items = JSON.parse(user?.recently_viewed || '[]');
+    // Remove duplicates and add to front
+    items = items.filter((i: any) => !(i.entity_type === entity_type && i.entity_id === entity_id));
+    items.unshift({ entity_type, entity_id, title: title || '', viewed_at: new Date().toISOString() });
+    items = items.slice(0, 20); // Keep max 20 items
+
+    db.prepare('UPDATE users SET recently_viewed = ? WHERE id = ?').run(JSON.stringify(items), userId);
+    res.json({ data: items });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Feature 38: Favorites/bookmarks
+// ═══════════════════════════════════════════════════════════
+router.get('/favorites', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.user!.userId;
+    const user = db.prepare('SELECT favorites FROM users WHERE id = ?').get(userId) as any;
+    const items = JSON.parse(user?.favorites || '[]');
+    res.json({ data: items });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+router.post('/favorites', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.user!.userId;
+    const { entity_type, entity_id, title } = req.body;
+    if (!entity_type || !entity_id) return res.status(400).json({ error: 'entity_type and entity_id required' });
+
+    const user = db.prepare('SELECT favorites FROM users WHERE id = ?').get(userId) as any;
+    let items = JSON.parse(user?.favorites || '[]');
+    // Don't add duplicates
+    if (!items.find((i: any) => i.entity_type === entity_type && i.entity_id === entity_id)) {
+      items.push({ entity_type, entity_id, title: title || '', added_at: new Date().toISOString() });
+    }
+
+    db.prepare('UPDATE users SET favorites = ? WHERE id = ?').run(JSON.stringify(items), userId);
+    res.json({ data: items });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+router.delete('/favorites/:entity_type/:entity_id', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.user!.userId;
+    const user = db.prepare('SELECT favorites FROM users WHERE id = ?').get(userId) as any;
+    let items = JSON.parse(user?.favorites || '[]');
+    items = items.filter((i: any) => !(i.entity_type === req.params.entity_type && String(i.entity_id) === req.params.entity_id));
+    db.prepare('UPDATE users SET favorites = ? WHERE id = ?').run(JSON.stringify(items), userId);
+    res.json({ data: items });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 export default router;

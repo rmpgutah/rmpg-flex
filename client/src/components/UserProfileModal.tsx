@@ -906,6 +906,41 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       </span>
                     </div>
                     <div className="space-y-2">
+                      {/* Feature 32: Dark/Light Theme Toggle */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-rmpg-200">Theme</span>
+                        <select
+                          value={prefs.theme_preference || 'dark'}
+                          onChange={e => {
+                            const theme = e.target.value;
+                            setPrefs({ ...prefs, theme_preference: theme });
+                            document.documentElement.classList.remove('theme-dark', 'theme-light');
+                            document.documentElement.classList.add(`theme-${theme}`);
+                          }}
+                          className="input-dark text-[10px] py-0.5 px-1 w-24"
+                        >
+                          <option value="dark">Dark</option>
+                          <option value="light">Light</option>
+                        </select>
+                      </div>
+                      {/* Feature 33: Font Size Adjustment */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-rmpg-200">Font Size</span>
+                        <select
+                          value={prefs.font_size_preference || 'medium'}
+                          onChange={e => {
+                            const size = e.target.value;
+                            setPrefs({ ...prefs, font_size_preference: size });
+                            document.documentElement.classList.remove('font-small', 'font-medium', 'font-large');
+                            document.documentElement.classList.add(`font-${size}`);
+                          }}
+                          className="input-dark text-[10px] py-0.5 px-1 w-24"
+                        >
+                          <option value="small">Small</option>
+                          <option value="medium">Medium</option>
+                          <option value="large">Large</option>
+                        </select>
+                      </div>
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] text-rmpg-200">Font Scale</span>
                         <div className="flex items-center gap-2">

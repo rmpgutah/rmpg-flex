@@ -287,4 +287,206 @@ router.post('/events/from-citation', (req: Request, res: Response) => {
   }
 });
 
+// ─── Feature 2: Officer schedule conflict check ────────
+router.get('/events/:id/conflicts', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const evt = db.prepare('SELECT * FROM court_events WHERE id = ?').get(req.params.id) as any;
+    if (!evt) return res.status(404).json({ error: 'Court event not found' });
+
+    const officers = JSON.parse(evt.officers_required || '[]');
+    const conflicts: any[] = [];
+    for (const officerId of officers) {
+      // Check schedules for conflicts
+      const shift = db.prepare(`
+        SELECT s.* FROM schedules s
+        WHERE s.officer_id = ? AND s.shift_date = ? AND s.status != 'cancelled'
+      `).get(officerId, evt.event_date) as any;
+      if (shift) {
+        const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(officerId) as any;
+        conflicts.push({
+          officer_id: officerId,
+          officer_name: user?.full_name || 'Unknown',
+          conflict_type: 'shift',
+          details: `Shift scheduled: ${shift.start_time || ''} - ${shift.end_time || ''}`,
+        });
+      }
+      // Check other court events on same date
+      const otherCourt = db.prepare(`
+        SELECT * FROM court_events
+        WHERE id != ? AND event_date = ? AND status = 'scheduled'
+        AND officers_required LIKE ?
+      `).all(evt.id, evt.event_date, `%${officerId}%`) as any[];
+      if (otherCourt.length > 0) {
+        const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(officerId) as any;
+        for (const oc of otherCourt) {
+          conflicts.push({
+            officer_id: officerId,
+            officer_name: user?.full_name || 'Unknown',
+            conflict_type: 'court',
+            details: `Also assigned to ${oc.event_number} at ${oc.event_time || 'TBD'}`,
+          });
+        }
+      }
+    }
+    res.json({ data: conflicts });
+  } catch (error: any) {
+    console.error('Court conflict check error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── Feature 3: Continuance tracking ────────────────────
+router.post('/events/:id/continuance', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const { reason, new_date, new_time } = req.body;
+    if (!reason) return res.status(400).json({ error: 'Continuance reason is required' });
+
+    const evt = db.prepare('SELECT * FROM court_events WHERE id = ?').get(req.params.id) as any;
+    if (!evt) return res.status(404).json({ error: 'Court event not found' });
+
+    const log = JSON.parse(evt.continuance_log || '[]');
+    log.push({
+      date: now,
+      reason,
+      old_date: evt.event_date,
+      old_time: evt.event_time,
+      new_date: new_date || null,
+      new_time: new_time || null,
+      requested_by: req.user!.userId,
+    });
+
+    const updates: any = {
+      continuance_count: (evt.continuance_count || 0) + 1,
+      continuance_log: JSON.stringify(log),
+      status: 'continued',
+      updated_at: now,
+    };
+    if (new_date) { updates.event_date = new_date; updates.status = 'scheduled'; }
+    if (new_time) updates.event_time = new_time;
+
+    const setClauses = Object.keys(updates).map(k => `${k} = ?`).join(', ');
+    db.prepare(`UPDATE court_events SET ${setClauses} WHERE id = ?`).run(...Object.values(updates), req.params.id);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'continuance', 'court_event', ?, ?, ?)`).run(
+      req.user!.userId, req.params.id, JSON.stringify({ reason, new_date }), now);
+
+    res.json({ data: { id: parseInt(req.params.id), continuance_count: updates.continuance_count } });
+  } catch (error: any) {
+    console.error('Continuance error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── Feature 5: Officer appearance confirmation ─────────
+router.put('/events/:id/confirm', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const evt = db.prepare('SELECT * FROM court_events WHERE id = ?').get(req.params.id) as any;
+    if (!evt) return res.status(404).json({ error: 'Court event not found' });
+
+    const confirmations = JSON.parse(evt.officer_confirmations || '{}');
+    confirmations[String(req.user!.userId)] = { confirmed: true, at: now };
+    db.prepare('UPDATE court_events SET officer_confirmations = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(confirmations), now, req.params.id);
+
+    res.json({ data: { confirmations } });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ─── Feature 6: Bail/bond tracking ──────────────────────
+router.put('/events/:id/bail', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const { bail_amount, bond_status, surety_info } = req.body;
+    db.prepare(`UPDATE court_events SET bail_amount = ?, bond_status = ?, surety_info = ?, updated_at = ? WHERE id = ?`)
+      .run(bail_amount ?? null, bond_status ?? null, surety_info ?? null, now, req.params.id);
+    res.json({ data: { id: parseInt(req.params.id) } });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ─── Feature 7: Court document upload ───────────────────
+router.post('/events/:id/documents', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const { file_url, file_name, doc_type } = req.body;
+    if (!file_url || !file_name) return res.status(400).json({ error: 'file_url and file_name required' });
+
+    const evt = db.prepare('SELECT * FROM court_events WHERE id = ?').get(req.params.id) as any;
+    if (!evt) return res.status(404).json({ error: 'Court event not found' });
+
+    const docs = JSON.parse(evt.documents || '[]');
+    docs.push({ file_url, file_name, doc_type: doc_type || 'other', uploaded_by: req.user!.userId, uploaded_at: now });
+    db.prepare('UPDATE court_events SET documents = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(docs), now, req.params.id);
+
+    res.json({ data: { documents: docs } });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ─── Feature 8: Judge preferences/notes ─────────────────
+router.put('/events/:id/judge-notes', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const { judge_notes } = req.body;
+    db.prepare('UPDATE court_events SET judge_notes = ?, updated_at = ? WHERE id = ?')
+      .run(judge_notes ?? null, now, req.params.id);
+    res.json({ data: { id: parseInt(req.params.id) } });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ─── Feature 10: Case disposition statistics ────────────
+router.get('/statistics', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { period = '12' } = req.query; // months
+    const months = parseInt(period as string, 10) || 12;
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - months);
+    const cutoffStr = cutoff.toISOString().split('T')[0];
+
+    const byOutcome = db.prepare(`
+      SELECT outcome, COUNT(*) as count FROM court_events
+      WHERE outcome IS NOT NULL AND event_date >= ?
+      GROUP BY outcome ORDER BY count DESC
+    `).all(cutoffStr);
+
+    const byType = db.prepare(`
+      SELECT event_type, COUNT(*) as count FROM court_events
+      WHERE event_date >= ?
+      GROUP BY event_type ORDER BY count DESC
+    `).all(cutoffStr);
+
+    const byMonth = db.prepare(`
+      SELECT strftime('%Y-%m', event_date) as month, outcome, COUNT(*) as count
+      FROM court_events
+      WHERE outcome IS NOT NULL AND event_date >= ?
+      GROUP BY month, outcome
+      ORDER BY month ASC
+    `).all(cutoffStr);
+
+    const totals = db.prepare(`
+      SELECT
+        COUNT(*) as total,
+        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+        SUM(CASE WHEN status = 'scheduled' THEN 1 ELSE 0 END) as scheduled,
+        SUM(continuance_count) as total_continuances,
+        AVG(fine_amount) as avg_fine
+      FROM court_events WHERE event_date >= ?
+    `).get(cutoffStr);
+
+    res.json({ data: { byOutcome, byType, byMonth, totals } });
+  } catch (error: any) {
+    console.error('Court statistics error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

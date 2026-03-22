@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Plus, Search, ShieldBan, MapPin, User, Clock, Ban,
+  Plus, Search, ShieldBan, MapPin, User, Clock, Ban, Calendar,
   Archive, RotateCcw, X, Save, Loader2, CheckCircle, AlertTriangle,
 } from 'lucide-react';
 import type { TrespassOrder, TrespassOrderType, TrespassOrderStatus } from '../types';
@@ -96,6 +96,46 @@ export default function TrespassOrdersPage() {
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
   useLiveSync('alerts', () => fetchOrders({ silent: true }));
+
+  // ── Feature 18: Expiration Calendar ──
+  const [expirationCalendar, setExpirationCalendar] = useState<any>(null);
+  const handleLoadExpirationCalendar = async () => {
+    try {
+      const data = await apiFetch<any>('/trespass-orders/expiration-calendar');
+      setExpirationCalendar(data);
+    } catch { /* ignore */ }
+  };
+
+  // ── Feature 19: Bulk Creation state ──
+  const [bulkMode, setBulkMode] = useState(false);
+  const [bulkPersons, setBulkPersons] = useState<{ first_name: string; last_name: string; dob?: string; description?: string }[]>([]);
+  const handleAddBulkPerson = () => {
+    setBulkPersons(prev => [...prev, { first_name: '', last_name: '' }]);
+  };
+  const handleBulkCreate = async () => {
+    if (bulkPersons.length === 0 || !formData.location) { addToast('Add persons and location', 'error'); return; }
+    try {
+      await apiFetch('/trespass-orders/bulk', {
+        method: 'POST',
+        body: JSON.stringify({
+          persons: bulkPersons.filter(p => p.first_name && p.last_name),
+          property_id: formData.property_id || null,
+          property_name: properties.find(p => String(p.id) === formData.property_id)?.name || '',
+          location: formData.location,
+          order_type: formData.order_type,
+          reason: formData.reason,
+          conditions: formData.conditions,
+          duration_days: formData.duration_days,
+          authorized_by: formData.authorized_by,
+          notes: formData.notes,
+        }),
+      });
+      addToast(`Created ${bulkPersons.length} trespass orders`, 'success');
+      setBulkMode(false);
+      setBulkPersons([]);
+      fetchOrders();
+    } catch (err: any) { addToast(err?.message || 'Bulk create failed', 'error'); }
+  };
 
   // Fetch properties for dropdown
   useEffect(() => {
@@ -269,10 +309,68 @@ export default function TrespassOrdersPage() {
         <span className="text-[9px] font-mono text-rmpg-400">{totalCount} TOTAL</span>
         <span className="toolbar-separator" />
         <ExportButton exportUrl="/trespass-orders?per_page=9999" exportFilename="trespass_orders_export.csv" />
+        {/* Feature 18: Expiration Calendar */}
+        <button onClick={handleLoadExpirationCalendar} className="toolbar-btn" title="Expiration calendar">
+          <Calendar style={{ width: 11, height: 11 }} /> Expirations
+        </button>
+        {/* Feature 19: Bulk Create */}
+        <button onClick={() => { setBulkMode(!bulkMode); if (!bulkMode) setBulkPersons([{ first_name: '', last_name: '' }]); }} className="toolbar-btn" title="Bulk create orders">
+          <Plus style={{ width: 11, height: 11 }} /> Bulk
+        </button>
         <button onClick={handleOpenNew} className="toolbar-btn">
           <Plus style={{ width: 11, height: 11 }} /> New Order
         </button>
       </PanelTitleBar>
+
+      {/* Feature 18: Expiration Calendar Panel */}
+      {expirationCalendar && (
+        <div className="px-3 py-2 border-b border-amber-700/50 bg-amber-900/10 text-xs">
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-amber-400 font-bold text-[10px] uppercase">Expiring Orders ({expirationCalendar.total})</span>
+            <button onClick={() => setExpirationCalendar(null)} className="text-amber-500 hover:text-amber-300"><X style={{ width: 12, height: 12 }} /></button>
+          </div>
+          {Object.entries(expirationCalendar.by_month || {}).map(([month, orders]: [string, any]) => (
+            <div key={month} className="mb-1">
+              <div className="text-[9px] text-rmpg-400 font-bold">{month}</div>
+              {orders.slice(0, 5).map((o: any) => (
+                <div key={o.id} className="text-[10px] flex gap-2 py-0.5">
+                  <span className={o.days_remaining < 0 ? 'text-red-400' : o.days_remaining < 14 ? 'text-amber-400' : 'text-green-400'}>
+                    {Math.round(o.days_remaining)}d
+                  </span>
+                  <span className="text-white">{o.subject_first_name} {o.subject_last_name}</span>
+                  <span className="text-rmpg-500">{o.property_name || o.location}</span>
+                  <span className="text-rmpg-500 ml-auto">{o.expiration_date}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Feature 19: Bulk Create Panel */}
+      {bulkMode && (
+        <div className="px-3 py-2 border-b border-blue-700/50 bg-blue-900/10 text-xs">
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-blue-400 font-bold text-[10px] uppercase">Bulk Trespass Order Creation</span>
+            <button onClick={() => { setBulkMode(false); setBulkPersons([]); }} className="text-blue-500 hover:text-blue-300"><X style={{ width: 12, height: 12 }} /></button>
+          </div>
+          <div className="space-y-1 mb-2">
+            {bulkPersons.map((p, i) => (
+              <div key={i} className="flex gap-1">
+                <input className="input-dark flex-1 text-xs" placeholder="First name" value={p.first_name}
+                  onChange={e => { const arr = [...bulkPersons]; arr[i] = { ...arr[i], first_name: e.target.value }; setBulkPersons(arr); }} />
+                <input className="input-dark flex-1 text-xs" placeholder="Last name" value={p.last_name}
+                  onChange={e => { const arr = [...bulkPersons]; arr[i] = { ...arr[i], last_name: e.target.value }; setBulkPersons(arr); }} />
+                <button onClick={() => setBulkPersons(prev => prev.filter((_, j) => j !== i))} className="text-red-500 hover:text-red-300 px-1"><X style={{ width: 10, height: 10 }} /></button>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={handleAddBulkPerson} className="toolbar-btn text-[10px]"><Plus style={{ width: 10, height: 10 }} /> Add Person</button>
+            <button onClick={handleBulkCreate} className="toolbar-btn toolbar-btn-primary text-[10px]">Create {bulkPersons.filter(p => p.first_name && p.last_name).length} Orders</button>
+          </div>
+        </div>
+      )}
 
       {/* Toolbar */}
       <div className={`flex ${isMobile ? 'flex-col gap-1.5' : 'items-center gap-2'} px-3 py-1.5 border-b border-rmpg-700`} style={{ background: '#141e2b' }}>

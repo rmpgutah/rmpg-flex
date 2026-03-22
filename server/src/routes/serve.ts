@@ -837,4 +837,388 @@ router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: R
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// FEATURE 9: Serve Attempt GPS Logging
+// (Already implemented in POST /:id/attempt via gps_lat/gps_lng)
+// This endpoint returns GPS trail for all attempts on a job.
+// ════════════════════════════════════════════════════════════
+
+router.get('/:id/gps-trail', validateParamIdMiddleware, requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const trail = db.prepare(`
+      SELECT sa.id, sa.attempt_number, sa.attempt_at, sa.latitude, sa.longitude,
+             sa.result, sa.attempt_type, u.full_name as officer_name
+      FROM serve_attempts sa
+      LEFT JOIN users u ON sa.officer_id = u.id
+      WHERE sa.serve_queue_id = ? AND sa.latitude IS NOT NULL AND sa.longitude IS NOT NULL
+      ORDER BY sa.attempt_at ASC
+    `).all(req.params.id);
+    res.json(trail);
+  } catch (err: any) {
+    console.error('[SERVE] GPS trail error:', err);
+    res.status(500).json({ error: 'Failed to fetch GPS trail' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 10: Service Affidavit Generation (data for PDF)
+// ════════════════════════════════════════════════════════════
+
+router.get('/:id/affidavit', validateParamIdMiddleware, requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
+    if (!job) { res.status(404).json({ error: 'Serve job not found' }); return; }
+
+    const attempts = db.prepare(`
+      SELECT sa.*, u.full_name as officer_name, u.badge_number
+      FROM serve_attempts sa
+      LEFT JOIN users u ON sa.officer_id = u.id
+      WHERE sa.serve_queue_id = ?
+      ORDER BY sa.attempt_number ASC
+    `).all(req.params.id) as any[];
+
+    const server = db.prepare('SELECT full_name, badge_number FROM users WHERE id = ?').get(job.officer_id) as any;
+
+    const affidavit = {
+      title: 'AFFIDAVIT OF SERVICE',
+      case_number: job.case_number || '',
+      court_name: job.court_name || '',
+      jurisdiction: job.jurisdiction || '',
+      recipient: {
+        name: job.recipient_name,
+        address: `${job.recipient_address || ''}, ${job.recipient_city || ''}, ${job.recipient_state || ''} ${job.recipient_zip || ''}`.trim(),
+      },
+      document_type: job.document_type || '',
+      client_name: job.client_name || '',
+      attorney_name: job.attorney_name || '',
+      server_name: server?.full_name || '',
+      server_badge: server?.badge_number || '',
+      service_result: job.status === 'served' ? 'SERVED' : 'NOT SERVED',
+      total_attempts: attempts.length,
+      attempts: attempts.map((a: any) => ({
+        number: a.attempt_number,
+        date: a.attempt_at,
+        result: a.result,
+        method: a.attempt_type,
+        gps: a.latitude && a.longitude ? `${a.latitude}, ${a.longitude}` : null,
+        notes: a.notes,
+        officer: a.officer_name,
+      })),
+      final_result: job.status,
+      served_at: attempts.find((a: any) => a.result === 'served')?.attempt_at || null,
+      generated_at: localNow(),
+    };
+
+    res.json(affidavit);
+  } catch (err: any) {
+    console.error('[SERVE] Affidavit error:', err);
+    res.status(500).json({ error: 'Failed to generate affidavit data' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 11: Skip Trace Auto-trigger (after 3 failed attempts)
+// (Implemented as logic in POST /:id/attempt — returns autoSkipTrace flag)
+// Also: endpoint to check and auto-trigger pending skip traces
+// ════════════════════════════════════════════════════════════
+
+router.post('/auto-skip-trace', requireRole(...WRITE_ROLES), async (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    // Find jobs that have 3+ failed attempts and no skip trace yet
+    const candidates = db.prepare(`
+      SELECT sq.id, sq.recipient_name, sq.recipient_address, sq.attempt_count
+      FROM serve_queue sq
+      WHERE sq.status IN ('in_progress', 'failed')
+        AND sq.attempt_count >= 3
+        AND sq.id NOT IN (SELECT DISTINCT serve_queue_id FROM serve_skip_traces)
+    `).all() as any[];
+
+    const triggered: any[] = [];
+    for (const job of candidates) {
+      try {
+        const port = config.port;
+        const authHeader = req.headers['authorization'];
+        let endpoint = `http://localhost:${port}/api/skiptracer/search/byname?name=${encodeURIComponent(job.recipient_name)}`;
+        if (job.recipient_address) {
+          endpoint = `http://localhost:${port}/api/skiptracer/search/bynameaddress?name=${encodeURIComponent(job.recipient_name)}&address=${encodeURIComponent(job.recipient_address)}`;
+        }
+
+        const stResponse = await fetch(endpoint, {
+          headers: { Authorization: authHeader || '' },
+          signal: AbortSignal.timeout(15000),
+        });
+
+        if (stResponse.ok) {
+          const stData = await stResponse.json() as any;
+          const addresses: any[] = [];
+          if (stData?.PeopleDetails) {
+            for (const person of stData.PeopleDetails) {
+              if (person.Addresses) {
+                for (const addr of person.Addresses) {
+                  addresses.push({ address: addr.Address1 || '', city: addr.City || '', state: addr.State || '', zip: addr.Zip || '' });
+                }
+              }
+            }
+          }
+
+          const now = localNow();
+          db.prepare(`
+            INSERT INTO serve_skip_traces (serve_queue_id, searched_at, search_type, search_query, results_json, addresses_found_json, searched_by, created_at)
+            VALUES (?, ?, 'auto', ?, ?, ?, ?, ?)
+          `).run(job.id, now, job.recipient_name, JSON.stringify(stData), JSON.stringify(addresses), req.user!.userId, now);
+
+          triggered.push({ job_id: job.id, recipient: job.recipient_name, addresses_found: addresses.length });
+        }
+      } catch { /* skip failed skip traces */ }
+    }
+
+    res.json({ triggered: triggered.length, jobs: triggered });
+  } catch (err: any) {
+    console.error('[SERVE] Auto skip trace error:', err);
+    res.status(500).json({ error: 'Failed to run auto skip traces' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 12: Serve Deadline Tracking
+// ════════════════════════════════════════════════════════════
+
+router.get('/deadlines', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT sq.id, sq.recipient_name, sq.deadline, sq.status, sq.attempt_count, sq.max_attempts,
+             sq.document_type, sq.case_number, sq.client_name,
+             u.full_name as officer_name,
+             JULIANDAY(sq.deadline) - JULIANDAY('now') as days_remaining
+      FROM serve_queue sq
+      LEFT JOIN users u ON sq.officer_id = u.id
+      WHERE sq.deadline IS NOT NULL AND sq.status NOT IN ('served', 'cancelled')
+      ORDER BY sq.deadline ASC
+    `).all() as any[];
+
+    const overdue = rows.filter((r: any) => r.days_remaining < 0);
+    const urgent = rows.filter((r: any) => r.days_remaining >= 0 && r.days_remaining <= 3);
+    const upcoming = rows.filter((r: any) => r.days_remaining > 3 && r.days_remaining <= 14);
+    const safe = rows.filter((r: any) => r.days_remaining > 14);
+
+    res.json({ all: rows, overdue, urgent, upcoming, safe, total: rows.length });
+  } catch (err: any) {
+    console.error('[SERVE] Deadlines error:', err);
+    res.status(500).json({ error: 'Failed to fetch deadlines' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 13: Client Billing Integration
+// ════════════════════════════════════════════════════════════
+
+router.post('/:id/create-invoice-item', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
+    if (!job) { res.status(404).json({ error: 'Serve job not found' }); return; }
+
+    const attempts = db.prepare('SELECT COUNT(*) as cnt FROM serve_attempts WHERE serve_queue_id = ?').get(req.params.id) as any;
+
+    const { rate_per_attempt, flat_fee, mileage_rate, mileage_total, description } = req.body;
+    const ratePerAttempt = parseFloat(rate_per_attempt) || 0;
+    const flatFee = parseFloat(flat_fee) || 0;
+    const mileageRate = parseFloat(mileage_rate) || 0;
+    const mileageTotal = parseFloat(mileage_total) || 0;
+
+    const attemptCharges = ratePerAttempt * (attempts?.cnt || 0);
+    const mileageCharges = mileageRate * mileageTotal;
+    const totalAmount = flatFee + attemptCharges + mileageCharges;
+
+    const now = localNow();
+    const lineItem = {
+      serve_queue_id: job.id,
+      client_name: job.client_name,
+      recipient_name: job.recipient_name,
+      case_number: job.case_number,
+      description: description || `Process service: ${job.recipient_name} - ${job.document_type}`,
+      attempts_count: attempts?.cnt || 0,
+      rate_per_attempt: ratePerAttempt,
+      flat_fee: flatFee,
+      mileage_rate: mileageRate,
+      mileage_total: mileageTotal,
+      attempt_charges: attemptCharges,
+      mileage_charges: mileageCharges,
+      total_amount: totalAmount,
+      status: job.status,
+      created_at: now,
+    };
+
+    // Try to insert into invoice_line_items if table exists
+    try {
+      const info = db.prepare(`
+        INSERT INTO invoice_line_items (
+          description, quantity, unit_price, total, category, reference_type, reference_id, created_at
+        ) VALUES (?, ?, ?, ?, 'serve', 'serve_queue', ?, ?)
+      `).run(
+        lineItem.description, lineItem.attempts_count || 1, ratePerAttempt || flatFee,
+        totalAmount, job.id, now
+      );
+      lineItem.serve_queue_id = Number(info.lastInsertRowid);
+    } catch { /* table may not exist */ }
+
+    auditLog(req, 'CREATE', 'serve_queue', String(req.params.id), `Created billing item: $${totalAmount.toFixed(2)}`);
+    res.json(lineItem);
+  } catch (err: any) {
+    console.error('[SERVE] Billing error:', err);
+    res.status(500).json({ error: 'Failed to create invoice item' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 14: Serve Success Rate Stats
+// ════════════════════════════════════════════════════════════
+
+router.get('/success-rates', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { days = '90' } = req.query;
+    const cutoff = new Date(Date.now() - parseInt(days as string, 10) * 24 * 60 * 60 * 1000).toISOString();
+
+    // Overall stats
+    const overall = db.prepare(`
+      SELECT
+        COUNT(*) as total,
+        SUM(CASE WHEN status = 'served' THEN 1 ELSE 0 END) as served,
+        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
+        AVG(attempt_count) as avg_attempts
+      FROM serve_queue WHERE created_at >= ?
+    `).get(cutoff) as any;
+
+    // By officer
+    const byOfficer = db.prepare(`
+      SELECT u.full_name as officer_name, sq.officer_id,
+        COUNT(*) as total,
+        SUM(CASE WHEN sq.status = 'served' THEN 1 ELSE 0 END) as served,
+        SUM(CASE WHEN sq.status = 'failed' THEN 1 ELSE 0 END) as failed,
+        ROUND(AVG(sq.attempt_count), 1) as avg_attempts
+      FROM serve_queue sq
+      LEFT JOIN users u ON sq.officer_id = u.id
+      WHERE sq.created_at >= ?
+      GROUP BY sq.officer_id
+      ORDER BY served DESC
+    `).all(cutoff) as any[];
+
+    // By document type
+    const byDocType = db.prepare(`
+      SELECT document_type,
+        COUNT(*) as total,
+        SUM(CASE WHEN status = 'served' THEN 1 ELSE 0 END) as served,
+        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
+      FROM serve_queue WHERE created_at >= ? AND document_type != ''
+      GROUP BY document_type ORDER BY total DESC
+    `).all(cutoff) as any[];
+
+    // By method
+    const byMethod = db.prepare(`
+      SELECT attempt_type as method, COUNT(*) as count,
+        SUM(CASE WHEN result = 'served' THEN 1 ELSE 0 END) as successful
+      FROM serve_attempts WHERE created_at >= ?
+      GROUP BY attempt_type ORDER BY count DESC
+    `).all(cutoff) as any[];
+
+    const successRate = overall.total > 0 ? Math.round((overall.served / overall.total) * 100) : 0;
+
+    res.json({
+      overall: { ...overall, success_rate: successRate },
+      by_officer: byOfficer.map((o: any) => ({
+        ...o,
+        success_rate: o.total > 0 ? Math.round((o.served / o.total) * 100) : 0,
+      })),
+      by_document_type: byDocType.map((d: any) => ({
+        ...d,
+        success_rate: d.total > 0 ? Math.round((d.served / d.total) * 100) : 0,
+      })),
+      by_method: byMethod,
+      period_days: parseInt(days as string, 10),
+    });
+  } catch (err: any) {
+    console.error('[SERVE] Success rates error:', err);
+    res.status(500).json({ error: 'Failed to fetch success rates' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 15: Substitute Service Tracking
+// ════════════════════════════════════════════════════════════
+
+router.post('/:id/substitute-service', validateParamIdMiddleware, requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
+    if (!job) { res.status(404).json({ error: 'Serve job not found' }); return; }
+
+    const {
+      substitute_name, substitute_relationship, substitute_description,
+      substitute_age_estimate, gps_lat, gps_lng, notes, photo_url, signature_url,
+    } = req.body;
+
+    if (!substitute_name) {
+      res.status(400).json({ error: 'substitute_name is required for substitute service' });
+      return;
+    }
+
+    // Validate GPS coords
+    if (gps_lat != null) {
+      const lat = parseFloat(gps_lat);
+      if (isNaN(lat) || lat < -90 || lat > 90) { return res.status(400).json({ error: 'Invalid gps_lat' }); }
+    }
+    if (gps_lng != null) {
+      const lng = parseFloat(gps_lng);
+      if (isNaN(lng) || lng < -180 || lng > 180) { return res.status(400).json({ error: 'Invalid gps_lng' }); }
+    }
+
+    const now = localNow();
+    const attemptNumber = (job.attempt_count ?? 0) + 1;
+
+    // Record the attempt as substitute service
+    const attemptInfo = db.prepare(`
+      INSERT INTO serve_attempts (
+        serve_queue_id, attempt_number, attempt_at, officer_id,
+        result, latitude, longitude, notes, attempt_type,
+        photo_ids, signature_data, created_at
+      ) VALUES (?, ?, ?, ?, 'served', ?, ?, ?, 'substitute', ?, ?, ?)
+    `).run(
+      req.params.id, attemptNumber, now, req.user!.userId,
+      gps_lat ?? null, gps_lng ?? null,
+      JSON.stringify({
+        type: 'substitute_service',
+        substitute_name,
+        substitute_relationship: substitute_relationship || '',
+        substitute_description: substitute_description || '',
+        substitute_age_estimate: substitute_age_estimate || '',
+        notes: notes || '',
+      }),
+      photo_url ? JSON.stringify([photo_url]) : '[]',
+      signature_url ?? null, now,
+    );
+
+    // Mark job as served
+    db.prepare(`
+      UPDATE serve_queue SET status = 'served', attempt_count = ?, updated_at = ? WHERE id = ?
+    `).run(attemptNumber, now, req.params.id);
+
+    const attempt = db.prepare('SELECT * FROM serve_attempts WHERE id = ?').get(attemptInfo.lastInsertRowid);
+    const updatedJob = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id);
+
+    auditLog(req, 'UPDATE', 'serve_queue', String(req.params.id),
+      `Substitute service on ${job.recipient_name} via ${substitute_name} (${substitute_relationship || 'unknown relationship'})`);
+    broadcast('serve', 'serve_attempt', { job: updatedJob, attempt });
+
+    res.status(201).json({ attempt, job: updatedJob });
+  } catch (err: any) {
+    console.error('[SERVE] Substitute service error:', err);
+    res.status(500).json({ error: 'Failed to record substitute service' });
+  }
+});
+
 export default router;

@@ -508,6 +508,62 @@ const PatrolPage: React.FC = () => {
     return new Date(nextDue) < new Date();
   };
 
+  // ── Feature 1: Route Optimization ──
+  const [optimizedRoute, setOptimizedRoute] = useState<any>(null);
+  const [optimizing, setOptimizing] = useState(false);
+  const handleOptimizeRoute = async (propertyId?: string) => {
+    setOptimizing(true);
+    try {
+      const params = new URLSearchParams();
+      if (propertyId) params.set('property_id', propertyId);
+      const data = await apiFetch<any>(`/patrol/optimize-route?${params}`);
+      setOptimizedRoute(data);
+      addToast(`Route optimized: ${data.optimized_order?.length || 0} checkpoints, ${data.total_distance_km} km`, 'success');
+    } catch (err: any) { addToast(err?.message || 'Failed to optimize route', 'error'); }
+    setOptimizing(false);
+  };
+
+  // ── Feature 2: Auto-generate Patrol Log ──
+  const [patrolLog, setPatrolLog] = useState<any>(null);
+  const handleGenerateLog = async (date?: string) => {
+    try {
+      const params = new URLSearchParams();
+      if (date) params.set('date', date);
+      const data = await apiFetch<any>(`/patrol/log/generate?${params}`);
+      setPatrolLog(data);
+      addToast('Patrol log generated', 'success');
+    } catch (err: any) { addToast(err?.message || 'Failed to generate log', 'error'); }
+  };
+
+  // ── Feature 6: Exception Report ──
+  const [exceptions, setExceptions] = useState<any>(null);
+  const handleLoadExceptions = async () => {
+    try {
+      const data = await apiFetch<any>('/patrol/exceptions?days=7');
+      setExceptions(data);
+    } catch (err: any) { addToast(err?.message || 'Failed to load exceptions', 'error'); }
+  };
+
+  // ── Feature 7: Time Tracking ──
+  const [timeTracking, setTimeTracking] = useState<any>(null);
+  const handleLoadTimeTracking = async (date?: string) => {
+    try {
+      const params = new URLSearchParams();
+      if (date) params.set('date', date);
+      const data = await apiFetch<any>(`/patrol/time-tracking?${params}`);
+      setTimeTracking(data);
+    } catch (err: any) { addToast(err?.message || 'Failed to load time tracking', 'error'); }
+  };
+
+  // ── Feature 4: Coverage Heatmap data ──
+  const [coverageData, setCoverageData] = useState<any>(null);
+  const handleLoadCoverage = async () => {
+    try {
+      const data = await apiFetch<any>('/patrol/coverage-heatmap?days=7');
+      setCoverageData(data);
+    } catch (err: any) { addToast(err?.message || 'Failed to load coverage data', 'error'); }
+  };
+
   const patrolTabs = [
     { id: 'checkpoints' as const, label: 'Checkpoints', icon: QrCode },
     { id: 'scans' as const, label: 'Scan Log', icon: Clock },
@@ -593,6 +649,126 @@ const PatrolPage: React.FC = () => {
             <MapPin className="w-3 h-3 text-purple-400" />
             <span className="text-rmpg-400">Total Scans:</span>
             <span className="text-purple-400 font-bold">{scans.length}</span>
+          </div>
+          {/* Feature 1: Route Optimization */}
+          <button onClick={() => handleOptimizeRoute()} disabled={optimizing} className="toolbar-btn ml-auto" title="Optimize patrol route">
+            {optimizing ? <Loader2 className="w-3 h-3 animate-spin" /> : <MapIcon className="w-3 h-3" />}
+            <span className="text-[9px]">Optimize Route</span>
+          </button>
+          {/* Feature 2: Generate Patrol Log */}
+          <button onClick={() => handleGenerateLog()} className="toolbar-btn" title="Generate patrol log">
+            <Clock className="w-3 h-3" /><span className="text-[9px]">Gen Log</span>
+          </button>
+          {/* Feature 6: Exception Report */}
+          <button onClick={handleLoadExceptions} className="toolbar-btn" title="Exception report">
+            <AlertTriangle className="w-3 h-3" /><span className="text-[9px]">Exceptions</span>
+          </button>
+          {/* Feature 7: Time Tracking */}
+          <button onClick={() => handleLoadTimeTracking()} className="toolbar-btn" title="Time tracking">
+            <Clock className="w-3 h-3" /><span className="text-[9px]">Time Track</span>
+          </button>
+        </div>
+      )}
+
+      {/* Feature 1: Route Optimization Results */}
+      {optimizedRoute && (
+        <div className="mx-3 mt-2 p-2 bg-blue-900/20 border border-blue-700/50 text-xs text-blue-300">
+          <div className="flex items-center justify-between mb-1">
+            <span className="font-bold">Optimized Route — {optimizedRoute.optimized_order?.length || 0} checkpoints, {optimizedRoute.total_distance_km} km total</span>
+            <button onClick={() => setOptimizedRoute(null)} className="text-blue-500 hover:text-blue-300"><X className="w-3 h-3" /></button>
+          </div>
+          <div className="space-y-0.5 text-[10px] max-h-32 overflow-y-auto">
+            {optimizedRoute.optimized_order?.map((cp: any, i: number) => (
+              <div key={cp.id} className="flex gap-2">
+                <span className="text-blue-500 w-4">{i + 1}.</span>
+                <span className="text-white">{cp.name}</span>
+                <span className="text-blue-500 ml-auto">{cp.distance_from_previous_km} km</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Feature 2: Patrol Log Panel */}
+      {patrolLog && (
+        <div className="mx-3 mt-2 p-2 bg-green-900/20 border border-green-700/50 text-xs text-green-300">
+          <div className="flex items-center justify-between mb-1">
+            <span className="font-bold">Patrol Log — {patrolLog.officer_name} ({patrolLog.date})</span>
+            <button onClick={() => setPatrolLog(null)} className="text-green-500 hover:text-green-300"><X className="w-3 h-3" /></button>
+          </div>
+          <div className="grid grid-cols-4 gap-2 text-[10px] mb-2">
+            <div><span className="text-rmpg-400">Checkpoints:</span> <span className="text-white">{patrolLog.total_checkpoints_scanned}</span></div>
+            <div><span className="text-rmpg-400">Total Time:</span> <span className="text-white">{patrolLog.total_time_minutes} min</span></div>
+            <div><span className="text-rmpg-400">On Time:</span> <span className="text-green-400">{patrolLog.on_time}</span></div>
+            <div><span className="text-rmpg-400">Late:</span> <span className="text-amber-400">{patrolLog.late}</span></div>
+          </div>
+          <div className="space-y-0.5 text-[10px] max-h-32 overflow-y-auto">
+            {patrolLog.entries?.map((e: any, i: number) => (
+              <div key={i} className="flex gap-2">
+                <span className="text-rmpg-500 w-24">{new Date(e.time).toLocaleTimeString()}</span>
+                <span className="text-white flex-1">{e.checkpoint}</span>
+                <span className={e.status === 'on_time' ? 'text-green-400' : 'text-amber-400'}>{e.status}</span>
+                {e.time_since_prev_min != null && <span className="text-rmpg-500">{e.time_since_prev_min}m</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Feature 6: Exception Report Panel */}
+      {exceptions && (
+        <div className="mx-3 mt-2 p-2 bg-amber-900/20 border border-amber-700/50 text-xs text-amber-300">
+          <div className="flex items-center justify-between mb-1">
+            <span className="font-bold">Exception Report — {exceptions.period_days} days ({exceptions.late_count} late / {exceptions.total_scans} total = {exceptions.late_rate}% late)</span>
+            <button onClick={() => setExceptions(null)} className="text-amber-500 hover:text-amber-300"><X className="w-3 h-3" /></button>
+          </div>
+          {exceptions.missed_checkpoints?.length > 0 && (
+            <div className="mb-1">
+              <div className="text-[9px] text-red-400 font-bold uppercase">Missed Checkpoints ({exceptions.missed_checkpoints.length})</div>
+              {exceptions.missed_checkpoints.slice(0, 5).map((mc: any) => (
+                <div key={mc.id} className="text-[10px] flex gap-2">
+                  <span className="text-red-300">{mc.name}</span>
+                  <span className="text-rmpg-500">{mc.property_name}</span>
+                  <span className="text-rmpg-500 ml-auto">Last: {mc.last_scan ? formatTimeAgo(mc.last_scan) : 'Never'}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="text-[9px] text-amber-400 font-bold uppercase">Late Scans ({exceptions.late_scans?.length || 0})</div>
+          <div className="max-h-24 overflow-y-auto space-y-0.5">
+            {exceptions.late_scans?.slice(0, 10).map((ls: any) => (
+              <div key={ls.id} className="text-[10px] flex gap-2">
+                <span className="text-rmpg-500">{new Date(ls.scanned_at).toLocaleDateString()}</span>
+                <span className="text-amber-300">{ls.checkpoint_name}</span>
+                <span className="text-rmpg-500">{ls.officer_name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Feature 7: Time Tracking Panel */}
+      {timeTracking && (
+        <div className="mx-3 mt-2 p-2 bg-purple-900/20 border border-purple-700/50 text-xs text-purple-300">
+          <div className="flex items-center justify-between mb-1">
+            <span className="font-bold">Time Tracking — {timeTracking.date}</span>
+            <button onClick={() => setTimeTracking(null)} className="text-purple-500 hover:text-purple-300"><X className="w-3 h-3" /></button>
+          </div>
+          <div className="grid grid-cols-4 gap-2 text-[10px] mb-2">
+            <div><span className="text-rmpg-400">Total Patrol:</span> <span className="text-white">{timeTracking.total_patrol_minutes} min</span></div>
+            <div><span className="text-rmpg-400">Checkpoints:</span> <span className="text-white">{timeTracking.total_checkpoints}</span></div>
+            <div><span className="text-rmpg-400">Avg Between:</span> <span className="text-white">{timeTracking.average_between_minutes} min</span></div>
+            <div><span className="text-rmpg-400">Longest Gap:</span> <span className="text-amber-400">{timeTracking.longest_gap_minutes} min</span></div>
+          </div>
+          <div className="max-h-24 overflow-y-auto space-y-0.5">
+            {timeTracking.segments?.map((s: any, i: number) => (
+              <div key={i} className="text-[10px] flex gap-2">
+                <span className="text-rmpg-500">{s.from}</span>
+                <span className="text-purple-500">→</span>
+                <span className="text-white">{s.to}</span>
+                <span className="text-purple-400 ml-auto">{s.duration_minutes} min</span>
+              </div>
+            ))}
           </div>
         </div>
       )}

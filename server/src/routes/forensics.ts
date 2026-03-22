@@ -729,4 +729,329 @@ router.post('/hash-sets/check', (req: Request, res: Response) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// FEATURE 26: Evidence Intake Form (standardized)
+// ════════════════════════════════════════════════════════════
+
+router.post('/:caseId/evidence-intake', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    const fc = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.caseId) as any;
+    if (!fc) return res.status(404).json({ error: 'Forensic case not found' });
+
+    const {
+      item_description, item_type, item_make, item_model, item_serial,
+      condition_on_receipt, packaging_type, packaging_sealed,
+      collected_by, collected_date, collected_location,
+      chain_of_custody_from, storage_location, storage_requirements,
+      hazardous, biohazard, notes,
+    } = req.body;
+
+    if (!item_description) return res.status(400).json({ error: 'item_description is required' });
+
+    const now = localNow();
+    // Auto-generate exhibit number
+    const exhibitCount = (db.prepare('SELECT COUNT(*) as cnt FROM forensic_exhibits WHERE forensic_case_id = ?').get(req.params.caseId) as any).cnt;
+    const exhibit_number = `${fc.lab_number}-E${String(exhibitCount + 1).padStart(3, '0')}`;
+
+    const info = db.prepare(`
+      INSERT INTO forensic_exhibits (
+        forensic_case_id, exhibit_number, description, evidence_type,
+        device_make, device_model, device_serial,
+        condition_on_receipt, packaging_type, packaging_sealed,
+        collected_by, collected_date, collected_location,
+        received_from, storage_location, storage_requirements,
+        is_hazardous, is_biohazard, notes,
+        status, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'received', ?, ?)
+    `).run(
+      req.params.caseId, exhibit_number, item_description, item_type || 'other',
+      item_make || null, item_model || null, item_serial || null,
+      condition_on_receipt || 'good', packaging_type || 'sealed_bag',
+      packaging_sealed ? 1 : 0,
+      collected_by || user.full_name, collected_date || now, collected_location || '',
+      chain_of_custody_from || '', storage_location || 'Evidence Locker',
+      storage_requirements || 'standard',
+      hazardous ? 1 : 0, biohazard ? 1 : 0, notes || '',
+      now, now
+    );
+
+    logActivity(parseInt(req.params.caseId), 'evidence_intake', `Evidence intake: ${exhibit_number} — ${item_description}`, user.id, user.full_name, Number(info.lastInsertRowid));
+
+    const exhibit = db.prepare('SELECT * FROM forensic_exhibits WHERE id = ?').get(info.lastInsertRowid);
+    res.status(201).json({ data: exhibit });
+  } catch (error: any) {
+    console.error('Evidence intake error:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 27: Lab Queue Management
+// ════════════════════════════════════════════════════════════
+
+router.get('/queue/priority', (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const queue = db.prepare(`
+      SELECT fc.id, fc.lab_number, fc.title, fc.case_type, fc.priority, fc.status,
+             fc.received_date, fc.due_date, fc.lead_examiner_id,
+             u.full_name as lead_examiner_name,
+             (SELECT COUNT(*) FROM forensic_exhibits WHERE forensic_case_id = fc.id) as exhibit_count,
+             (SELECT COUNT(*) FROM forensic_analyses WHERE forensic_case_id = fc.id AND status IN ('pending','in_progress')) as pending_analyses,
+             CASE fc.priority
+               WHEN 'rush' THEN 1 WHEN 'urgent' THEN 2 WHEN 'expedited' THEN 3 ELSE 4
+             END as priority_order,
+             JULIANDAY(COALESCE(fc.due_date, '9999-12-31')) - JULIANDAY('now') as days_until_due
+      FROM forensic_cases fc
+      LEFT JOIN users u ON fc.lead_examiner_id = u.id
+      WHERE fc.status NOT IN ('closed', 'cancelled', 'released')
+      ORDER BY priority_order ASC, days_until_due ASC, fc.received_date ASC
+    `).all();
+
+    res.json({ data: queue });
+  } catch (error: any) {
+    console.error('Lab queue error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.put('/queue/reorder', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { case_id, new_priority } = req.body;
+    if (!case_id || !new_priority) return res.status(400).json({ error: 'case_id and new_priority required' });
+
+    const valid = ['routine', 'expedited', 'urgent', 'rush'];
+    if (!valid.includes(new_priority)) return res.status(400).json({ error: 'Invalid priority' });
+
+    db.prepare('UPDATE forensic_cases SET priority = ?, updated_at = ? WHERE id = ?')
+      .run(new_priority, localNow(), case_id);
+
+    const user = (req as any).user;
+    logActivity(case_id, 'priority_changed', `Priority changed to ${new_priority}`, user.id, user.full_name);
+
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 28: Chain of Custody Transfer (digital signature)
+// ════════════════════════════════════════════════════════════
+
+router.post('/:caseId/exhibits/:exhibitId/custody-transfer', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    const exhibit = db.prepare('SELECT * FROM forensic_exhibits WHERE id = ? AND forensic_case_id = ?')
+      .get(req.params.exhibitId, req.params.caseId) as any;
+    if (!exhibit) return res.status(404).json({ error: 'Exhibit not found' });
+
+    const { transferred_to_id, transferred_to_name, reason, signature_data, location } = req.body;
+    if (!transferred_to_name && !transferred_to_id) return res.status(400).json({ error: 'transferred_to is required' });
+
+    const now = localNow();
+    const transferData = {
+      exhibit_id: exhibit.id,
+      exhibit_number: exhibit.exhibit_number,
+      transferred_from_id: user.id,
+      transferred_from_name: user.full_name,
+      transferred_to_id: transferred_to_id || null,
+      transferred_to_name: transferred_to_name || '',
+      reason: reason || 'examination',
+      signature_data: signature_data || null,
+      location: location || '',
+      transferred_at: now,
+    };
+
+    logActivity(
+      parseInt(req.params.caseId),
+      'custody_transfer',
+      `Custody transfer: ${exhibit.exhibit_number} from ${user.full_name} to ${transferred_to_name || 'unknown'}. Reason: ${reason || 'examination'}`,
+      user.id, user.full_name, exhibit.id
+    );
+
+    // Update exhibit current custodian
+    db.prepare('UPDATE forensic_exhibits SET current_custodian = ?, current_custodian_id = ?, updated_at = ? WHERE id = ?')
+      .run(transferred_to_name || '', transferred_to_id || null, now, exhibit.id);
+
+    res.status(201).json({ data: transferData });
+  } catch (error: any) {
+    console.error('Custody transfer error:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 29: Exam Report Template
+// ════════════════════════════════════════════════════════════
+
+router.get('/templates/report', (_req: Request, res: Response) => {
+  const templates: Record<string, any> = {
+    digital: {
+      title: 'Digital Forensics Examination Report',
+      sections: [
+        { name: 'Case Information', fields: ['lab_number', 'case_type', 'requesting_agency', 'requesting_officer', 'received_date'] },
+        { name: 'Evidence Description', fields: ['device_type', 'make', 'model', 'serial', 'condition'] },
+        { name: 'Examination Methodology', fields: ['tools_used', 'imaging_method', 'hash_algorithm', 'source_hash', 'image_hash'] },
+        { name: 'Findings', fields: ['files_recovered', 'artifacts_found', 'timeline_events', 'notable_items'] },
+        { name: 'Conclusions', fields: ['summary', 'opinion'] },
+        { name: 'Examiner Certification', fields: ['examiner_name', 'examiner_credentials', 'signature', 'date'] },
+      ],
+    },
+    biological: {
+      title: 'Biological Evidence Examination Report',
+      sections: [
+        { name: 'Case Information', fields: ['lab_number', 'requesting_agency', 'received_date'] },
+        { name: 'Evidence Description', fields: ['sample_type', 'quantity', 'collection_method', 'storage_conditions'] },
+        { name: 'Testing Methodology', fields: ['test_type', 'reagents_used', 'controls'] },
+        { name: 'Results', fields: ['positive_findings', 'negative_findings', 'quantitative_results'] },
+        { name: 'Conclusions', fields: ['interpretation', 'statistical_analysis'] },
+        { name: 'Examiner Certification', fields: ['examiner_name', 'credentials', 'signature', 'date'] },
+      ],
+    },
+    latent_prints: {
+      title: 'Latent Print Examination Report',
+      sections: [
+        { name: 'Case Information', fields: ['lab_number', 'requesting_agency', 'received_date'] },
+        { name: 'Evidence Processed', fields: ['surface_type', 'processing_method', 'prints_developed'] },
+        { name: 'Comparison Results', fields: ['identified_prints', 'inconclusive_prints', 'eliminated_prints'] },
+        { name: 'Conclusions', fields: ['identification_summary'] },
+        { name: 'Examiner Certification', fields: ['examiner_name', 'signature', 'date'] },
+      ],
+    },
+    drug_analysis: {
+      title: 'Controlled Substance Analysis Report',
+      sections: [
+        { name: 'Case Information', fields: ['lab_number', 'requesting_agency', 'received_date'] },
+        { name: 'Evidence Description', fields: ['appearance', 'packaging', 'gross_weight', 'net_weight'] },
+        { name: 'Analysis', fields: ['presumptive_test', 'confirmatory_test', 'instrument_used'] },
+        { name: 'Results', fields: ['substance_identified', 'schedule', 'purity'] },
+        { name: 'Examiner Certification', fields: ['examiner_name', 'signature', 'date'] },
+      ],
+    },
+  };
+
+  res.json({ data: templates });
+});
+
+router.post('/:caseId/generate-report', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    const fc = db.prepare(`
+      SELECT fc.*, u.full_name as lead_examiner_name
+      FROM forensic_cases fc LEFT JOIN users u ON fc.lead_examiner_id = u.id
+      WHERE fc.id = ?
+    `).get(req.params.caseId) as any;
+    if (!fc) return res.status(404).json({ error: 'Case not found' });
+
+    const exhibits = db.prepare('SELECT * FROM forensic_exhibits WHERE forensic_case_id = ?').all(req.params.caseId);
+    const analyses = db.prepare('SELECT * FROM forensic_analyses WHERE forensic_case_id = ?').all(req.params.caseId);
+    const activity = db.prepare('SELECT * FROM forensic_activity_log WHERE forensic_case_id = ? ORDER BY performed_at ASC').all(req.params.caseId);
+
+    const { findings, conclusions, additional_notes } = req.body;
+
+    const report = {
+      lab_number: fc.lab_number,
+      title: fc.title,
+      case_type: fc.case_type,
+      requesting_agency: fc.requesting_agency,
+      requesting_officer: fc.requesting_officer,
+      received_date: fc.received_date,
+      completed_date: fc.completed_date || localNow(),
+      examiner: fc.lead_examiner_name || user.full_name,
+      exhibits,
+      analyses,
+      chain_of_custody: activity.filter((a: any) => a.action === 'custody_transfer'),
+      findings: findings || '',
+      conclusions: conclusions || '',
+      additional_notes: additional_notes || '',
+      generated_at: localNow(),
+      generated_by: user.full_name,
+    };
+
+    // Update case status
+    const now = localNow();
+    db.prepare('UPDATE forensic_cases SET status = ?, completed_date = COALESCE(completed_date, ?), updated_at = ? WHERE id = ?')
+      .run('report_draft', now, now, req.params.caseId);
+    logActivity(parseInt(req.params.caseId), 'report_generated', 'Examination report generated', user.id, user.full_name);
+
+    res.json({ data: report });
+  } catch (error: any) {
+    console.error('Generate report error:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 30: Lab Capacity Planning
+// ════════════════════════════════════════════════════════════
+
+router.get('/capacity/planning', (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    // Get all examiners with active caseloads
+    const examiners = db.prepare(`
+      SELECT u.id, u.full_name,
+        COUNT(CASE WHEN fc.status NOT IN ('closed', 'cancelled', 'released') THEN 1 END) as active_cases,
+        COUNT(CASE WHEN fc.priority = 'rush' AND fc.status NOT IN ('closed', 'cancelled', 'released') THEN 1 END) as rush_cases,
+        COUNT(CASE WHEN fc.priority = 'urgent' AND fc.status NOT IN ('closed', 'cancelled', 'released') THEN 1 END) as urgent_cases
+      FROM users u
+      LEFT JOIN forensic_cases fc ON fc.lead_examiner_id = u.id
+      WHERE u.is_active = 1 AND (u.role IN ('admin', 'officer') OR fc.lead_examiner_id IS NOT NULL)
+      GROUP BY u.id
+      HAVING active_cases > 0
+      ORDER BY active_cases DESC
+    `).all() as any[];
+
+    // Cases by week (next 4 weeks)
+    const weeklyLoad: any[] = [];
+    for (let w = 0; w < 4; w++) {
+      const weekStart = new Date(Date.now() + w * 7 * 24 * 60 * 60 * 1000);
+      const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const dueThisWeek = db.prepare(`
+        SELECT COUNT(*) as cnt FROM forensic_cases
+        WHERE due_date BETWEEN ? AND ? AND status NOT IN ('closed', 'cancelled', 'released')
+      `).get(weekStart.toISOString().split('T')[0], weekEnd.toISOString().split('T')[0]) as any;
+
+      weeklyLoad.push({
+        week: w + 1,
+        start: weekStart.toISOString().split('T')[0],
+        end: weekEnd.toISOString().split('T')[0],
+        cases_due: dueThisWeek?.cnt || 0,
+      });
+    }
+
+    // Pending analyses count
+    const pendingAnalyses = (db.prepare(`
+      SELECT COUNT(*) as cnt FROM forensic_analyses WHERE status IN ('pending', 'in_progress')
+    `).get() as any)?.cnt || 0;
+
+    // Average turnaround time
+    const avgTurnaround = db.prepare(`
+      SELECT AVG(JULIANDAY(completed_date) - JULIANDAY(received_date)) as avg_days
+      FROM forensic_cases
+      WHERE completed_date IS NOT NULL AND received_date IS NOT NULL
+    `).get() as any;
+
+    res.json({
+      data: {
+        examiners,
+        weekly_load: weeklyLoad,
+        pending_analyses: pendingAnalyses,
+        avg_turnaround_days: Math.round((avgTurnaround?.avg_days || 0) * 10) / 10,
+        total_active_cases: examiners.reduce((s: number, e: any) => s + e.active_cases, 0),
+      },
+    });
+  } catch (error: any) {
+    console.error('Capacity planning error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

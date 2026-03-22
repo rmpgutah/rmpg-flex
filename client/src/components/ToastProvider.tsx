@@ -53,7 +53,8 @@ const TOAST_CONFIG = {
   },
 };
 
-const MAX_TOASTS = 5;
+// Feature 16: Toast notification improvements — Max 3 visible, auto-dismiss 5s, stack from bottom
+const MAX_TOASTS = 3;
 const DEFAULT_DURATION = 5000;
 
 interface ToastItemProps {

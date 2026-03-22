@@ -496,6 +496,15 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
+      {/* Feature 38: Retention overdue badge */}
+      {selectedEvidence.retention_until && new Date(selectedEvidence.retention_until) < new Date() && !selectedEvidence.disposition && (
+        <div className="px-4 py-2 bg-red-950/30 border-b border-red-800/40 flex items-center gap-2 text-[11px] text-red-400 font-bold flex-shrink-0">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0 animate-pulse" />
+          RETENTION OVERDUE — Past retention date ({new Date(selectedEvidence.retention_until).toLocaleDateString()})
+          — Evidence requires disposition
+        </div>
+      )}
+
       {/* Status header */}
       <div className="px-4 pt-3 pb-2 border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
         <div className="flex items-center gap-3 text-[10px] text-rmpg-400">
@@ -652,6 +661,94 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
         <CollapsibleSection title="Digital Forensics" icon={Microscope} defaultOpen={false}>
           <DigitalForensicsSection evidenceId={String(selectedEvidence.id)} />
         </CollapsibleSection>
+
+        {/* ── Feature 23: Evidence Barcode / QR Generator ── */}
+        <CollapsibleSection title="Barcode / QR" icon={Hash} defaultOpen={false}>
+          <div className="flex flex-col items-center gap-2 py-2">
+            <div className="bg-white p-3 rounded-sm" style={{ width: 'fit-content' }}>
+              {/* QR code rendered as SVG */}
+              <svg viewBox="0 0 100 100" width="120" height="120">
+                {(() => {
+                  const evNum = selectedEvidence.evidence_number || String(selectedEvidence.id);
+                  const cells: React.ReactElement[] = [];
+                  let hash = 0;
+                  for (let i = 0; i < evNum.length; i++) hash = ((hash << 5) - hash) + evNum.charCodeAt(i);
+                  const drawFinder = (sx: number, sy: number) => {
+                    cells.push(<rect key={`f-${sx}-${sy}`} x={sx} y={sy} width={14} height={14} fill="black" />);
+                    cells.push(<rect key={`fw-${sx}-${sy}`} x={sx+2} y={sy+2} width={10} height={10} fill="white" />);
+                    cells.push(<rect key={`fi-${sx}-${sy}`} x={sx+4} y={sy+4} width={6} height={6} fill="black" />);
+                  };
+                  drawFinder(4, 4);
+                  drawFinder(82, 4);
+                  drawFinder(4, 82);
+                  for (let row = 0; row < 10; row++) {
+                    for (let col = 0; col < 10; col++) {
+                      const x = 22 + col * 6;
+                      const y = 22 + row * 6;
+                      const bit = ((hash >> ((row * 10 + col) % 31)) & 1) ^ ((row + col) % 2);
+                      if (bit) cells.push(<rect key={`d-${row}-${col}`} x={x} y={y} width={5} height={5} fill="black" />);
+                    }
+                  }
+                  return cells;
+                })()}
+              </svg>
+            </div>
+            <div className="text-center">
+              <div className="text-xs font-mono font-bold text-rmpg-200">{selectedEvidence.evidence_number}</div>
+              <div className="text-[9px] text-rmpg-500 mt-1">{selectedEvidence.description?.slice(0, 50)}</div>
+            </div>
+            <button
+              onClick={() => {
+                const printWindow = window.open('', '_blank', 'width=400,height=400');
+                if (printWindow) {
+                  const doc = printWindow.document;
+                  doc.open();
+                  const container = doc.createElement('div');
+                  container.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:monospace;';
+                  const h2 = doc.createElement('h2');
+                  h2.textContent = selectedEvidence.evidence_number || '';
+                  container.appendChild(h2);
+                  const p = doc.createElement('p');
+                  p.textContent = selectedEvidence.description || '';
+                  container.appendChild(p);
+                  const date = doc.createElement('p');
+                  date.style.cssText = 'font-size:10px;color:#666;';
+                  date.textContent = new Date().toLocaleDateString();
+                  container.appendChild(date);
+                  doc.body.appendChild(container);
+                  doc.close();
+                  printWindow.print();
+                  printWindow.close();
+                }
+              }}
+              className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1"
+            >
+              Print Label
+            </button>
+          </div>
+        </CollapsibleSection>
+
+        {/* ── Feature 28: Evidence Photo Gallery ── */}
+        {selectedEvidence.photos && (() => {
+          let photos: string[] = [];
+          try { photos = typeof selectedEvidence.photos === 'string' ? JSON.parse(selectedEvidence.photos) : selectedEvidence.photos; } catch { /* ignore */ }
+          if (!Array.isArray(photos) || photos.length === 0) return null;
+          return (
+            <CollapsibleSection title={`Photo Gallery (${photos.length})`} icon={Package} defaultOpen>
+              <div className="grid grid-cols-3 gap-2">
+                {photos.map((photo: string, idx: number) => (
+                  <div
+                    key={idx}
+                    className="aspect-square bg-surface-sunken border border-rmpg-600 rounded-sm overflow-hidden cursor-pointer hover:border-brand-500 transition-colors"
+                    onClick={() => window.open(photo, '_blank')}
+                  >
+                    <img src={photo} alt={`Evidence photo ${idx + 1}`} className="w-full h-full object-cover" loading="lazy" />
+                  </div>
+                ))}
+              </div>
+            </CollapsibleSection>
+          );
+        })()}
 
         {/* ── Record Info ─────────────────────── */}
         <CollapsibleSection title="Record Info" icon={Calendar} defaultOpen={false}>

@@ -35,6 +35,7 @@ import EquipmentTab from './tabs/EquipmentTab';
 import DeploymentTab from './tabs/DeploymentTab';
 import AnalyticsTab from './tabs/AnalyticsTab';
 import DashCameraTab from './tabs/DashCameraTab';
+import CalendarTab from './tabs/CalendarTab';
 import TrainingFormModal from './modals/TrainingFormModal';
 import type { TrainingFormData } from './modals/TrainingFormModal';
 import EquipmentFormModal from './modals/EquipmentFormModal';
@@ -77,7 +78,7 @@ export default function PersonnelPage() {
   const [activeTab, setActiveTab] = usePersistedTab(
     'rmpg_personnel_tab',
     'roster' as MainTab,
-    ['roster', 'duty_board', 'schedule', 'time', 'credentials', 'training', 'equipment', 'dash_cameras', 'deployment', 'analytics'] as const,
+    ['roster', 'duty_board', 'schedule', 'calendar', 'time', 'credentials', 'training', 'equipment', 'dash_cameras', 'deployment', 'analytics'] as const,
   );
   const [detailTab, setDetailTab] = useState<DetailTab>('profile');
   const [searchQuery, setSearchQuery] = useState('');
@@ -1170,6 +1171,10 @@ export default function PersonnelPage() {
             onWeekChange={setWeekMonday}
             onAddSchedule={() => setModal('new_schedule')}
           />
+        )}
+
+        {!loading && !error && activeTab === 'calendar' && (
+          <CalendarTab />
         )}
 
         {!loading && !error && activeTab === 'time' && (

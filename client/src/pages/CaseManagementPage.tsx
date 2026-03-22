@@ -68,6 +68,132 @@ const EMPTY_FORM = {
   summary: '', lead_investigator_id: '',
 };
 
+// ── Feature 29: Solvability Score Card (server-side analysis) ──
+function SolvabilityScoreCard({ caseId }: { caseId: string | number }) {
+  const [data, setData] = useState<{ score: number; rating: string; factors: string[]; evidence_count: number; witness_count: number; suspect_identified: boolean } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    apiFetch<any>(`/records/cases/${caseId}/solvability`)
+      .then(d => setData(d))
+      .catch(() => setData(null))
+      .finally(() => setLoading(false));
+  }, [caseId]);
+
+  if (loading) return <div className="flex items-center gap-2 text-[10px] text-rmpg-500 p-3"><Loader2 className="w-3 h-3 animate-spin" /> Analyzing solvability...</div>;
+  if (!data) return null;
+
+  const ratingColor = data.rating === 'high' ? '#22c55e' : data.rating === 'medium' ? '#f59e0b' : '#ef4444';
+
+  return (
+    <div className="panel-beveled p-4">
+      <div className="text-[10px] font-mono text-rmpg-500 uppercase mb-3">Server Analysis</div>
+      <div className="flex items-center gap-4">
+        <div className="relative w-16 h-16">
+          <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
+            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#1a2636" strokeWidth="3" />
+            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke={ratingColor} strokeWidth="3" strokeDasharray={`${data.score}, 100`} strokeLinecap="round" />
+          </svg>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="text-sm font-bold" style={{ color: ratingColor }}>{data.score}</span>
+          </div>
+        </div>
+        <div className="flex-1">
+          <div className="text-xs font-bold uppercase mb-1" style={{ color: ratingColor }}>{data.rating} solvability</div>
+          <div className="space-y-0.5">
+            {data.factors.map((f, i) => (
+              <div key={i} className="text-[9px] text-rmpg-300 flex items-center gap-1">
+                <CheckCircle className="w-2.5 h-2.5 text-green-400 flex-shrink-0" /> {f}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Feature 40: Linked Incidents Relationship Graph ──
+function LinkedIncidentsGraph({ caseId }: { caseId: string | number }) {
+  const [links, setLinks] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    apiFetch<any>(`/cases/${caseId}`)
+      .then(data => {
+        const related = [
+          ...(data?.linked_incidents || []).map((i: any) => ({ ...i, rel_type: 'incident' })),
+          ...(data?.linked_cases || []).map((c: any) => ({ ...c, rel_type: 'case' })),
+          ...(data?.linked_warrants || []).map((w: any) => ({ ...w, rel_type: 'warrant' })),
+          ...(data?.linked_persons || []).map((p: any) => ({ ...p, rel_type: 'person' })),
+        ];
+        setLinks(related);
+      })
+      .catch(() => setLinks([]))
+      .finally(() => setLoading(false));
+  }, [caseId]);
+
+  if (loading) return <div className="flex items-center gap-2 text-[10px] text-rmpg-500 p-3"><Loader2 className="w-3 h-3 animate-spin" /> Loading relationships...</div>;
+  if (links.length === 0) return null;
+
+  const typeColors: Record<string, string> = {
+    incident: '#3b82f6',
+    case: '#8b5cf6',
+    warrant: '#ef4444',
+    person: '#22c55e',
+  };
+
+  const typeIcons: Record<string, string> = {
+    incident: 'INC',
+    case: 'CASE',
+    warrant: 'WAR',
+    person: 'PER',
+  };
+
+  return (
+    <div className="panel-beveled p-4">
+      <div className="text-[10px] font-mono text-rmpg-500 uppercase mb-3">Linked Records ({links.length})</div>
+      {/* Visual relationship display */}
+      <div className="flex flex-wrap gap-2">
+        {/* Center node = current case */}
+        <div className="flex items-center gap-1 px-2 py-1 bg-brand-900/40 border border-brand-600/50 text-brand-300 text-[10px] font-bold">
+          <Target className="w-3 h-3" /> THIS CASE
+        </div>
+        {links.map((link: any, idx: number) => {
+          const color = typeColors[link.rel_type] || '#5a6e80';
+          return (
+            <div key={idx} className="flex items-center gap-1">
+              <ArrowRight className="w-3 h-3 text-rmpg-600" />
+              <div
+                className="flex items-center gap-1 px-2 py-1 text-[10px] font-bold border"
+                style={{ background: `${color}15`, borderColor: `${color}50`, color }}
+              >
+                <span className="text-[8px] font-mono opacity-70">{typeIcons[link.rel_type]}</span>
+                {link.incident_number || link.case_number || link.warrant_number || `${link.first_name || ''} ${link.last_name || ''}`.trim() || `#${link.id}`}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {/* Legend */}
+      <div className="flex gap-3 mt-2 text-[8px] text-rmpg-500">
+        {Object.entries(typeColors).map(([type, color]) => {
+          const count = links.filter(l => l.rel_type === type).length;
+          if (count === 0) return null;
+          return (
+            <div key={type} className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full" style={{ background: color }} />
+              {type} ({count})
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function CaseManagementPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
@@ -586,6 +712,12 @@ export default function CaseManagementPage() {
 
               {detailTab === 'solvability' && (
                 <div className="space-y-4">
+                  {/* Feature 29: Enhanced Solvability Score from server analysis */}
+                  <SolvabilityScoreCard caseId={selected.id} />
+
+                  {/* Feature 40: Linked Incidents Relationship Graph */}
+                  <LinkedIncidentsGraph caseId={selected.id} />
+
                   <div className="panel-beveled p-4">
                     <div className="text-[10px] font-mono text-rmpg-500 uppercase mb-3">Solvability Factors</div>
                     <div className="space-y-2">

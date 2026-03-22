@@ -2540,4 +2540,771 @@ router.get('/ncic-query', (req: Request, res: Response) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════
+// Feature 21: Person Merge Tool — Detect and merge duplicate persons
+// ═══════════════════════════════════════════════════════════════════
+
+// GET /api/records/persons/duplicates - Find potential duplicate persons
+router.get('/persons/duplicates', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    // Find persons who share the same last_name+first_name or last_name+dob
+    const duplicates = db.prepare(`
+      SELECT a.id as id1, a.first_name as first_name1, a.last_name as last_name1, a.dob as dob1,
+             b.id as id2, b.first_name as first_name2, b.last_name as last_name2, b.dob as dob2
+      FROM persons a
+      JOIN persons b ON a.id < b.id
+        AND LOWER(a.last_name) = LOWER(b.last_name)
+        AND (LOWER(a.first_name) = LOWER(b.first_name) OR a.dob = b.dob)
+      WHERE a.archived_at IS NULL AND b.archived_at IS NULL
+      ORDER BY a.last_name, a.first_name
+      LIMIT 100
+    `).all();
+    res.json(duplicates);
+  } catch (error: any) {
+    console.error('Get duplicates error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/records/persons/merge - Merge two person records
+router.post('/persons/merge', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { keep_id, merge_id } = req.body;
+    if (!keep_id || !merge_id || keep_id === merge_id) {
+      res.status(400).json({ error: 'keep_id and merge_id are required and must be different' });
+      return;
+    }
+    const keepPerson = db.prepare('SELECT * FROM persons WHERE id = ?').get(keep_id) as any;
+    const mergePerson = db.prepare('SELECT * FROM persons WHERE id = ?').get(merge_id) as any;
+    if (!keepPerson || !mergePerson) { res.status(404).json({ error: 'Person not found' }); return; }
+
+    const now = localNow();
+    const mergeTx = db.transaction(() => {
+      // Re-link all records from merge_id to keep_id
+      try { db.prepare('UPDATE call_persons SET person_id = ? WHERE person_id = ?').run(keep_id, merge_id); } catch { /* table may not exist */ }
+      try { db.prepare('UPDATE incident_persons SET person_id = ? WHERE person_id = ?').run(keep_id, merge_id); } catch { /* table may not exist */ }
+      try { db.prepare('UPDATE record_links SET source_id = ? WHERE source_type = ? AND source_id = ?').run(String(keep_id), 'person', String(merge_id)); } catch { /* ignore */ }
+      try { db.prepare('UPDATE record_links SET target_id = ? WHERE target_type = ? AND target_id = ?').run(String(keep_id), 'person', String(merge_id)); } catch { /* ignore */ }
+
+      // Merge aliases — combine into kept record
+      const keepAliases = keepPerson.aliases ? String(keepPerson.aliases) : '';
+      const mergeAliases = mergePerson.aliases ? String(mergePerson.aliases) : '';
+      const mergeName = `${mergePerson.first_name || ''} ${mergePerson.last_name || ''}`.trim();
+      const combinedAliases = [keepAliases, mergeAliases, mergeName].filter(Boolean).join('; ');
+      db.prepare('UPDATE persons SET aliases = ?, updated_at = ? WHERE id = ?').run(combinedAliases, now, keep_id);
+
+      // Soft-delete the merged person
+      db.prepare('UPDATE persons SET archived_at = ?, notes = COALESCE(notes, \'\') || ? WHERE id = ?').run(
+        now, `\n[MERGED into person #${keep_id} on ${now}]`, merge_id
+      );
+
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'person_merged', 'person', ?, ?, ?)`).run(
+        req.user!.userId, keep_id, `Merged person #${merge_id} (${mergeName}) into #${keep_id}`, req.ip || 'unknown');
+    });
+    mergeTx();
+
+    const result = db.prepare('SELECT * FROM persons WHERE id = ?').get(keep_id);
+    res.json(result);
+  } catch (error: any) {
+    console.error('Merge persons error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Feature 22: Vehicle Registration Lookup
+// ═══════════════════════════════════════════════════════════════════
+router.get('/vehicles/plate-lookup', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { plate, state } = req.query;
+    if (!plate || typeof plate !== 'string' || plate.trim().length < 2) {
+      res.status(400).json({ error: 'plate parameter required (min 2 chars)' });
+      return;
+    }
+    let query = `SELECT * FROM vehicles WHERE LOWER(plate_number) LIKE LOWER(?)`;
+    const params: any[] = [`%${plate.trim()}%`];
+    if (state && typeof state === 'string') {
+      query += ` AND LOWER(state) = LOWER(?)`;
+      params.push(state.trim());
+    }
+    query += ` ORDER BY updated_at DESC LIMIT 20`;
+    const vehicles = db.prepare(query).all(...params);
+    res.json(vehicles);
+  } catch (error: any) {
+    console.error('Plate lookup error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Feature 27: Report Approval Queue
+// ═══════════════════════════════════════════════════════════════════
+router.get('/reports/approval-queue', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const reports = db.prepare(`
+      SELECT i.id, i.incident_number, i.incident_type, i.status, i.priority, i.created_at,
+        i.location_address, i.narrative, i.officer_id,
+        u.full_name as officer_name, u.badge_number
+      FROM incidents i
+      LEFT JOIN users u ON i.officer_id = u.id
+      WHERE i.status = 'pending_review' AND i.archived_at IS NULL
+      ORDER BY i.created_at ASC
+    `).all();
+    res.json(reports);
+  } catch (error: any) {
+    console.error('Approval queue error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/records/reports/:id/approve - Approve a report
+router.post('/reports/:id/approve', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID' }); return; }
+
+    const now = localNow();
+    db.prepare(`UPDATE incidents SET status = 'approved', supervisor_id = ?, approved_at = ?, updated_at = ? WHERE id = ?`).run(
+      req.user!.userId, now, now, id
+    );
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'report_approved', 'incident', ?, ?, ?)`).run(
+      req.user!.userId, id, `Report approved by supervisor`, req.ip || 'unknown');
+
+    // Notify the officer
+    const incident = db.prepare('SELECT officer_id, incident_number FROM incidents WHERE id = ?').get(id) as any;
+    if (incident?.officer_id) {
+      try {
+        db.prepare(`INSERT INTO notifications (user_id, type, priority, title, message, entity_type, entity_id, created_at)
+          VALUES (?, 'system', 'normal', ?, ?, 'incident', ?, ?)`).run(
+          incident.officer_id, `Report ${incident.incident_number} Approved`, 'Your report has been approved by a supervisor.', id, now);
+      } catch { /* notifications table may not exist */ }
+    }
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Approve report error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/records/reports/:id/return - Return report for revision
+router.post('/reports/:id/return', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID' }); return; }
+
+    const { reason } = req.body;
+    const now = localNow();
+    db.prepare(`UPDATE incidents SET status = 'returned', supervisor_id = ?, updated_at = ? WHERE id = ?`).run(
+      req.user!.userId, now, id
+    );
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'report_returned', 'incident', ?, ?, ?)`).run(
+      req.user!.userId, id, `Report returned: ${reason || 'No reason given'}`, req.ip || 'unknown');
+
+    const incident = db.prepare('SELECT officer_id, incident_number FROM incidents WHERE id = ?').get(id) as any;
+    if (incident?.officer_id) {
+      try {
+        db.prepare(`INSERT INTO notifications (user_id, type, priority, title, message, entity_type, entity_id, created_at)
+          VALUES (?, 'system', 'high', ?, ?, 'incident', ?, ?)`).run(
+          incident.officer_id, `Report ${incident.incident_number} Returned`, reason || 'Report returned for revision by supervisor.', id, now);
+      } catch { /* notifications table may not exist */ }
+    }
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Return report error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Feature 29: Case Solvability Score
+// ═══════════════════════════════════════════════════════════════════
+router.get('/cases/:id/solvability', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID' }); return; }
+
+    const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(id) as any;
+    if (!incident) { res.status(404).json({ error: 'Case not found' }); return; }
+
+    let score = 0;
+    const factors: string[] = [];
+
+    // Evidence exists
+    let evidenceCount = 0;
+    try { evidenceCount = (db.prepare('SELECT COUNT(*) as c FROM evidence WHERE incident_id = ?').get(id) as any)?.c || 0; } catch { /* ignore */ }
+    if (evidenceCount > 0) { score += 20; factors.push(`Physical evidence (${evidenceCount} items)`); }
+
+    // Witnesses
+    let witnessCount = 0;
+    try { witnessCount = (db.prepare("SELECT COUNT(*) as c FROM incident_persons WHERE incident_id = ? AND role = 'witness'").get(id) as any)?.c || 0; } catch { /* ignore */ }
+    if (witnessCount > 0) { score += 15; factors.push(`Witnesses (${witnessCount})`); }
+
+    // Suspect identified
+    let suspectCount = 0;
+    try { suspectCount = (db.prepare("SELECT COUNT(*) as c FROM incident_persons WHERE incident_id = ? AND role = 'suspect'").get(id) as any)?.c || 0; } catch { /* ignore */ }
+    if (suspectCount > 0) { score += 25; factors.push('Suspect identified'); }
+
+    // Narrative quality
+    const narrative = incident.narrative || '';
+    if (narrative.length > 500) { score += 10; factors.push('Detailed narrative'); }
+    if (narrative.length > 200) { score += 5; factors.push('Narrative present'); }
+
+    // Vehicle description
+    if (incident.vehicle_description) { score += 10; factors.push('Vehicle description'); }
+
+    // Location data
+    if (incident.latitude && incident.longitude) { score += 5; factors.push('GPS coordinates'); }
+
+    // Linked records
+    let linkCount = 0;
+    try { linkCount = (db.prepare("SELECT COUNT(*) as c FROM record_links WHERE (source_type = 'incident' AND source_id = ?) OR (target_type = 'incident' AND target_id = ?)").get(String(id), String(id)) as any)?.c || 0; } catch { /* ignore */ }
+    if (linkCount > 0) { score += 10; factors.push(`Linked records (${linkCount})`); }
+
+    score = Math.min(100, score);
+
+    res.json({
+      score,
+      rating: score >= 70 ? 'high' : score >= 40 ? 'medium' : 'low',
+      factors,
+      evidence_count: evidenceCount,
+      witness_count: witnessCount,
+      suspect_identified: suspectCount > 0,
+    });
+  } catch (error: any) {
+    console.error('Solvability score error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Feature 31: Person Alias Tracking — search aliases
+// ═══════════════════════════════════════════════════════════════════
+router.get('/persons/alias-search', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { q } = req.query;
+    if (!q || typeof q !== 'string' || q.trim().length < 2) {
+      res.json([]);
+      return;
+    }
+    const term = `%${q.trim()}%`;
+    const results = db.prepare(`
+      SELECT id, first_name, last_name, dob, aliases, notes
+      FROM persons
+      WHERE aliases LIKE ? AND archived_at IS NULL
+      ORDER BY last_name, first_name LIMIT 20
+    `).all(term);
+    res.json(results);
+  } catch (error: any) {
+    console.error('Alias search error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Feature 32: Vehicle BOLO Check
+// ═══════════════════════════════════════════════════════════════════
+router.get('/vehicles/bolo-check', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { plate, make, model, color } = req.query;
+    if (!plate && !make) {
+      res.json({ matches: [] });
+      return;
+    }
+    // Check warrants/BOLOs for vehicle matches
+    let query = `SELECT id, bolo_number, suspect_name, vehicle_description, priority, status, created_at
+      FROM bolos WHERE status = 'active' AND (1=0`;
+    const params: any[] = [];
+    if (plate) {
+      query += ` OR LOWER(vehicle_description) LIKE LOWER(?)`;
+      params.push(`%${plate}%`);
+    }
+    if (make) {
+      query += ` OR LOWER(vehicle_description) LIKE LOWER(?)`;
+      params.push(`%${make}%`);
+    }
+    if (model) {
+      query += ` OR LOWER(vehicle_description) LIKE LOWER(?)`;
+      params.push(`%${model}%`);
+    }
+    if (color) {
+      query += ` OR LOWER(vehicle_description) LIKE LOWER(?)`;
+      params.push(`%${color}%`);
+    }
+    query += `) LIMIT 10`;
+
+    let matches: any[] = [];
+    try { matches = db.prepare(query).all(...params); } catch { /* bolos table may not exist */ }
+    res.json({ matches });
+  } catch (error: any) {
+    console.error('BOLO check error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Feature 35: Person Photo Upload
+// ═══════════════════════════════════════════════════════════════════
+router.post('/persons/:id/photo', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID' }); return; }
+
+    const { photo } = req.body; // Base64 data URL
+    if (!photo || typeof photo !== 'string') {
+      res.status(400).json({ error: 'photo (base64 data URL) is required' });
+      return;
+    }
+
+    const now = localNow();
+    db.prepare('UPDATE persons SET photo = ?, updated_at = ? WHERE id = ?').run(photo, now, id);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'photo_uploaded', 'person', ?, ?, ?)`).run(
+      req.user!.userId, id, 'Person photo uploaded', req.ip || 'unknown');
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Photo upload error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Feature 36: Incident Location Autocomplete — addresses from prior calls
+// ═══════════════════════════════════════════════════════════════════
+router.get('/location-suggest', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { q } = req.query;
+    if (!q || typeof q !== 'string' || q.trim().length < 3) {
+      res.json([]);
+      return;
+    }
+    const term = `%${q.trim()}%`;
+    const locations = db.prepare(`
+      SELECT DISTINCT location_address as address, latitude, longitude, COUNT(*) as call_count
+      FROM calls_for_service
+      WHERE location_address LIKE ? AND location_address IS NOT NULL AND location_address != ''
+      GROUP BY LOWER(location_address)
+      ORDER BY call_count DESC
+      LIMIT 10
+    `).all(term);
+    res.json(locations);
+  } catch (error: any) {
+    console.error('Location suggest error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Feature 37: Case Assignment Notification
+// ═══════════════════════════════════════════════════════════════════
+router.post('/cases/:id/assign', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID' }); return; }
+
+    const { detective_id } = req.body;
+    if (!detective_id) { res.status(400).json({ error: 'detective_id is required' }); return; }
+
+    const now = localNow();
+    db.prepare('UPDATE incidents SET assigned_detective_id = ?, updated_at = ? WHERE id = ?').run(detective_id, now, id);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'case_assigned', 'incident', ?, ?, ?)`).run(
+      req.user!.userId, id, `Case assigned to detective #${detective_id}`, req.ip || 'unknown');
+
+    // Notify the detective
+    const incident = db.prepare('SELECT incident_number, incident_type FROM incidents WHERE id = ?').get(id) as any;
+    try {
+      db.prepare(`INSERT INTO notifications (user_id, type, priority, title, message, entity_type, entity_id, created_at)
+        VALUES (?, 'system', 'high', ?, ?, 'incident', ?, ?)`).run(
+        detective_id, `Case Assigned: ${incident?.incident_number || ''}`,
+        `You have been assigned to investigate ${incident?.incident_type || 'case'} #${incident?.incident_number || id}`, id, now);
+    } catch { /* notifications table may not exist */ }
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Assign case error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Feature 38: Evidence Disposition Reminder
+// ═══════════════════════════════════════════════════════════════════
+router.get('/evidence/overdue', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    let overdue: any[] = [];
+    try {
+      overdue = db.prepare(`
+        SELECT e.id, e.evidence_number, e.description, e.category, e.retention_until, e.incident_id,
+          i.incident_number
+        FROM evidence e
+        LEFT JOIN incidents i ON e.incident_id = i.id
+        WHERE e.retention_until IS NOT NULL AND e.retention_until < ? AND e.disposition IS NULL
+        ORDER BY e.retention_until ASC
+        LIMIT 50
+      `).all(localNow());
+    } catch { /* evidence table may not have retention_until */ }
+    res.json(overdue);
+  } catch (error: any) {
+    console.error('Evidence overdue error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 41: Vehicle History Report
+// ════════════════════════════════════════════════════════════
+
+router.get('/vehicles/:id/history', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
+    if (!vehicle) return res.status(404).json({ error: 'Vehicle not found' });
+
+    // Incidents mentioning this vehicle
+    let incidents: any[] = [];
+    try {
+      incidents = db.prepare(`
+        SELECT id, incident_number, incident_type, status, description, occurred_at, location
+        FROM incidents
+        WHERE description LIKE ? OR description LIKE ? OR description LIKE ?
+        ORDER BY occurred_at DESC LIMIT 50
+      `).all(`%${vehicle.plate_number}%`, `%${vehicle.vin || 'NOMATCH'}%`, `%${vehicle.make} ${vehicle.model}%`);
+    } catch { /* table may not exist */ }
+
+    // Citations for this vehicle
+    let citations: any[] = [];
+    try {
+      citations = db.prepare(`
+        SELECT id, citation_number, violation_description, violation_date, fine_amount, status
+        FROM citations
+        WHERE vehicle_plate LIKE ? OR vehicle_vin LIKE ?
+        ORDER BY violation_date DESC LIMIT 50
+      `).all(`%${vehicle.plate_number}%`, `%${vehicle.vin || 'NOMATCH'}%`);
+    } catch { /* table may not exist */ }
+
+    // BOLOs
+    let bolos: any[] = [];
+    try {
+      bolos = db.prepare(`
+        SELECT id, bolo_number, description, status, created_at
+        FROM bolos
+        WHERE description LIKE ? OR description LIKE ?
+        ORDER BY created_at DESC LIMIT 20
+      `).all(`%${vehicle.plate_number}%`, `%${vehicle.vin || 'NOMATCH'}%`);
+    } catch { /* bolos table may not exist */ }
+
+    // Tows
+    let tows: any[] = [];
+    try {
+      tows = db.prepare(`
+        SELECT id, tow_number, tow_reason, status, tow_from, created_at
+        FROM vehicle_tows
+        WHERE vehicle_plate = ? OR vehicle_vin = ?
+        ORDER BY created_at DESC LIMIT 20
+      `).all(vehicle.plate_number, vehicle.vin || '');
+    } catch { /* table may not exist */ }
+
+    res.json({
+      data: {
+        vehicle,
+        incidents,
+        citations,
+        bolos,
+        tows,
+        total_records: incidents.length + citations.length + bolos.length + tows.length,
+      },
+    });
+  } catch (error: any) {
+    console.error('Vehicle history error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 42: Registration Expiration Alerts
+// ════════════════════════════════════════════════════════════
+
+router.get('/vehicles/alerts/expired-registration', (_req: Request, _res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow().split('T')[0];
+
+    // Vehicles with expired registration
+    let expired: any[] = [];
+    try {
+      expired = db.prepare(`
+        SELECT v.id, v.plate_number, v.state, v.make, v.model, v.year, v.color, v.vin,
+               v.registration_expiry, v.owner_person_id,
+               p.first_name || ' ' || p.last_name as owner_name,
+               JULIANDAY(?) - JULIANDAY(v.registration_expiry) as days_expired
+        FROM vehicles_records v
+        LEFT JOIN persons p ON v.owner_person_id = p.id
+        WHERE v.registration_expiry IS NOT NULL AND v.registration_expiry < ?
+        ORDER BY v.registration_expiry ASC
+        LIMIT 100
+      `).all(now, now);
+    } catch { /* column may not exist */ }
+
+    // Vehicles expiring within 30 days
+    let expiringSoon: any[] = [];
+    try {
+      const thirtyDays = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      expiringSoon = db.prepare(`
+        SELECT v.id, v.plate_number, v.state, v.make, v.model, v.year, v.color,
+               v.registration_expiry,
+               p.first_name || ' ' || p.last_name as owner_name,
+               JULIANDAY(v.registration_expiry) - JULIANDAY(?) as days_remaining
+        FROM vehicles_records v
+        LEFT JOIN persons p ON v.owner_person_id = p.id
+        WHERE v.registration_expiry IS NOT NULL
+          AND v.registration_expiry >= ? AND v.registration_expiry <= ?
+        ORDER BY v.registration_expiry ASC
+        LIMIT 100
+      `).all(now, now, thirtyDays);
+    } catch { /* column may not exist */ }
+
+    _res.json({ data: { expired, expiring_soon: expiringSoon, total_expired: expired.length, total_expiring: expiringSoon.length } });
+  } catch (error: any) {
+    console.error('Registration alerts error:', error);
+    _res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 43: Insurance Verification
+// ════════════════════════════════════════════════════════════
+
+router.post('/vehicles/:id/insurance', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
+    if (!vehicle) return res.status(404).json({ error: 'Vehicle not found' });
+
+    const { insurance_company, policy_number, insurance_status, expiration_date, verified_by_document, notes } = req.body;
+
+    const now = localNow();
+
+    // Update vehicle with insurance info
+    try {
+      db.prepare(`
+        UPDATE vehicles_records SET
+          insurance_company = COALESCE(?, insurance_company),
+          insurance_policy = COALESCE(?, insurance_policy),
+          insurance_status = COALESCE(?, insurance_status),
+          insurance_expiry = COALESCE(?, insurance_expiry),
+          insurance_verified_at = ?,
+          insurance_verified_by = ?,
+          updated_at = ?
+        WHERE id = ?
+      `).run(
+        insurance_company || null, policy_number || null,
+        insurance_status || 'verified', expiration_date || null,
+        now, req.user!.userId, now, req.params.id
+      );
+    } catch {
+      // If columns don't exist, store in notes
+      const insData = JSON.stringify({ insurance_company, policy_number, insurance_status, expiration_date, verified_by_document });
+      db.prepare('UPDATE vehicles_records SET notes = COALESCE(notes, \'\') || ?, updated_at = ? WHERE id = ?')
+        .run(`\n[INSURANCE] ${insData}`, now, req.params.id);
+    }
+
+    // Activity log
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'insurance_verified', 'vehicle', ?, ?, ?)
+    `).run(req.user!.userId, req.params.id, JSON.stringify({
+      plate: vehicle.plate_number, insurance_company, policy_number, insurance_status, expiration_date,
+    }), now);
+
+    res.json({ success: true, message: 'Insurance information updated' });
+  } catch (error: any) {
+    console.error('Insurance verification error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 44: Stolen Vehicle Check
+// ════════════════════════════════════════════════════════════
+
+router.post('/vehicles/stolen-check', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { plate_number, vin, state } = req.body;
+
+    if (!plate_number && !vin) return res.status(400).json({ error: 'plate_number or vin required' });
+
+    // Check local stolen vehicle database
+    let stolenMatch: any = null;
+    let localMatches: any[] = [];
+
+    // Check against local BOLO/stolen entries
+    try {
+      if (plate_number) {
+        localMatches = db.prepare(`
+          SELECT * FROM vehicles_records
+          WHERE plate_number = ? AND (flags LIKE '%stolen%' OR flags LIKE '%BOLO%' OR is_stolen = 1)
+        `).all(plate_number) as any[];
+      }
+      if (vin && localMatches.length === 0) {
+        localMatches = db.prepare(`
+          SELECT * FROM vehicles_records
+          WHERE vin = ? AND (flags LIKE '%stolen%' OR flags LIKE '%BOLO%' OR is_stolen = 1)
+        `).all(vin) as any[];
+      }
+    } catch {
+      // Fallback without is_stolen column
+      if (plate_number) {
+        localMatches = db.prepare(`
+          SELECT * FROM vehicles_records
+          WHERE plate_number = ? AND notes LIKE '%stolen%'
+        `).all(plate_number) as any[];
+      }
+    }
+
+    if (localMatches.length > 0) {
+      stolenMatch = localMatches[0];
+    }
+
+    // Also check BOLOs table
+    let boloMatches: any[] = [];
+    try {
+      const searchTerm = plate_number || vin;
+      boloMatches = db.prepare(`
+        SELECT * FROM bolos
+        WHERE status = 'active' AND (description LIKE ? OR description LIKE ?)
+        ORDER BY created_at DESC LIMIT 5
+      `).all(`%${plate_number || 'NOMATCH'}%`, `%${vin || 'NOMATCH'}%`) as any[];
+    } catch { /* bolos table may not exist */ }
+
+    // Log the check
+    const now = localNow();
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'stolen_vehicle_check', 'vehicle', 0, ?, ?)
+    `).run(req.user!.userId, JSON.stringify({ plate_number, vin, state, match: stolenMatch ? 'HIT' : 'CLEAR' }), now);
+
+    res.json({
+      data: {
+        status: stolenMatch || boloMatches.length > 0 ? 'HIT' : 'CLEAR',
+        is_stolen: !!stolenMatch,
+        has_bolo: boloMatches.length > 0,
+        stolen_match: stolenMatch,
+        bolo_matches: boloMatches,
+        checked_at: now,
+        message: stolenMatch ? 'ALERT: Vehicle matches stolen vehicle records!' : boloMatches.length > 0 ? 'ALERT: Vehicle matches active BOLO!' : 'No stolen vehicle match found.',
+      },
+    });
+  } catch (error: any) {
+    console.error('Stolen vehicle check error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 45: Fleet-to-person Linking
+// ════════════════════════════════════════════════════════════
+
+router.post('/vehicles/:id/link-person', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
+    if (!vehicle) return res.status(404).json({ error: 'Vehicle not found' });
+
+    const { person_id, relationship } = req.body;
+    if (!person_id) return res.status(400).json({ error: 'person_id required' });
+
+    const person = db.prepare('SELECT id, first_name, last_name FROM persons WHERE id = ?').get(person_id) as any;
+    if (!person) return res.status(404).json({ error: 'Person not found' });
+
+    const now = localNow();
+
+    // Set owner
+    db.prepare('UPDATE vehicles_records SET owner_person_id = ?, updated_at = ? WHERE id = ?')
+      .run(person_id, now, req.params.id);
+
+    // Activity log
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'vehicle_person_linked', 'vehicle', ?, ?, ?)
+    `).run(req.user!.userId, req.params.id, JSON.stringify({
+      vehicle_id: vehicle.id, plate: vehicle.plate_number,
+      person_id, person_name: `${person.first_name} ${person.last_name}`,
+      relationship: relationship || 'owner',
+    }), now);
+
+    res.json({ success: true, vehicle_id: vehicle.id, person_id, person_name: `${person.first_name} ${person.last_name}` });
+  } catch (error: any) {
+    console.error('Vehicle-person link error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/vehicles/auto-link-suggestions', (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    // Find vehicles without owners that appear in incidents/citations with known persons
+    const suggestions: any[] = [];
+
+    // Vehicles without owners
+    const unlinked = db.prepare(`
+      SELECT id, plate_number, make, model, year, color, vin
+      FROM vehicles_records
+      WHERE owner_person_id IS NULL
+      ORDER BY updated_at DESC LIMIT 50
+    `).all() as any[];
+
+    for (const v of unlinked) {
+      // Check citations for matching plate
+      try {
+        const citMatch = db.prepare(`
+          SELECT DISTINCT violator_name, person_id
+          FROM citations
+          WHERE vehicle_plate = ? AND person_id IS NOT NULL
+          LIMIT 3
+        `).all(v.plate_number) as any[];
+
+        for (const m of citMatch) {
+          if (m.person_id) {
+            const person = db.prepare('SELECT id, first_name, last_name FROM persons WHERE id = ?').get(m.person_id) as any;
+            if (person) {
+              suggestions.push({
+                vehicle: v,
+                person: { id: person.id, name: `${person.first_name} ${person.last_name}` },
+                source: 'citation',
+                confidence: 'high',
+              });
+            }
+          }
+        }
+      } catch { /* table may not exist */ }
+    }
+
+    res.json({ data: suggestions, total: suggestions.length });
+  } catch (error: any) {
+    console.error('Auto-link suggestions error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

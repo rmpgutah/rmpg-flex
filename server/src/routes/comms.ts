@@ -665,4 +665,208 @@ router.get('/radio-channels', (req: Request, res: Response) => {
   }
 });
 
+// ─── Feature 11: Message read receipts ──────────────────
+router.put('/messages/:id/read-receipt', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const msg = db.prepare('SELECT * FROM messages WHERE id = ?').get(req.params.id) as any;
+    if (!msg) return res.status(404).json({ error: 'Message not found' });
+
+    const receipts = JSON.parse(msg.read_receipts || '{}');
+    receipts[String(req.user!.userId)] = { at: now, name: req.user!.fullName };
+    db.prepare('UPDATE messages SET read_receipts = ?, read_at = COALESCE(read_at, ?) WHERE id = ?')
+      .run(JSON.stringify(receipts), now, req.params.id);
+
+    res.json({ data: { receipts } });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ─── Feature 13: BOLO expiration tracking ───────────────
+router.post('/bolos/expire-check', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    // Auto-expire BOLOs that have passed their expires_at
+    const result = db.prepare(`
+      UPDATE bolos SET status = 'expired', expired_at = ?
+      WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at <= ?
+    `).run(now, now);
+
+    // Also auto-expire BOLOs with auto_expire_hours set
+    const result2 = db.prepare(`
+      UPDATE bolos SET status = 'expired', expired_at = ?
+      WHERE status = 'active' AND auto_expire_hours IS NOT NULL
+      AND datetime(created_at, '+' || auto_expire_hours || ' hours') <= ?
+    `).run(now, now);
+
+    res.json({ expired: (result.changes || 0) + (result2.changes || 0) });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ─── Feature 14: Broadcast templates ────────────────────
+router.get('/templates', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const templates = db.prepare(`
+      SELECT bt.*, u.full_name as created_by_name
+      FROM broadcast_templates bt
+      LEFT JOIN users u ON bt.created_by = u.id
+      ORDER BY bt.category ASC, bt.name ASC
+    `).all();
+    res.json({ data: templates });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+router.post('/templates', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { name, category, subject, content, priority } = req.body;
+    if (!name || !content) return res.status(400).json({ error: 'name and content required' });
+
+    const result = db.prepare(`
+      INSERT INTO broadcast_templates (name, category, subject, content, priority, created_by)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(name, category || 'general', subject || null, content, priority || 'routine', req.user!.userId);
+
+    const template = db.prepare('SELECT * FROM broadcast_templates WHERE id = ?').get(result.lastInsertRowid);
+    res.status(201).json({ data: template });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+router.delete('/templates/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM broadcast_templates WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ─── Feature 16: Officer acknowledgment tracking ────────
+router.put('/messages/:id/acknowledge', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const msg = db.prepare('SELECT * FROM messages WHERE id = ?').get(req.params.id) as any;
+    if (!msg) return res.status(404).json({ error: 'Message not found' });
+
+    const acks = JSON.parse(msg.acknowledgments || '{}');
+    acks[String(req.user!.userId)] = { at: now, name: req.user!.fullName };
+    db.prepare('UPDATE messages SET acknowledgments = ? WHERE id = ?')
+      .run(JSON.stringify(acks), req.params.id);
+
+    res.json({ data: { acknowledgments: acks } });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ─── Feature 17: Broadcast scheduling ───────────────────
+router.post('/messages/scheduled', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { content, subject, priority, channel, scheduled_at } = req.body;
+    if (!content || !scheduled_at) return res.status(400).json({ error: 'content and scheduled_at required' });
+
+    const result = db.prepare(`
+      INSERT INTO messages (from_user_id, channel, content, priority, subject, scheduled_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(req.user!.userId, channel || 'broadcast', content, priority || 'routine', subject || null, scheduled_at);
+
+    res.status(201).json({ data: { id: result.lastInsertRowid, scheduled_at } });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ─── Feature 18: Message search with filters ────────────
+router.get('/messages/search', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { q, date_from, date_to, sender_id, channel, priority, limit = '50' } = req.query;
+    const limitNum = Math.min(200, parseInt(limit as string, 10) || 50);
+
+    let where = 'WHERE 1=1';
+    const params: any[] = [];
+
+    if (q) {
+      where += ' AND (m.content LIKE ? OR m.subject LIKE ?)';
+      const s = `%${q}%`; params.push(s, s);
+    }
+    if (date_from) { where += ' AND m.created_at >= ?'; params.push(date_from); }
+    if (date_to) { where += ' AND m.created_at <= ?'; params.push(date_to); }
+    if (sender_id) { where += ' AND m.from_user_id = ?'; params.push(sender_id); }
+    if (channel) { where += ' AND m.channel = ?'; params.push(channel); }
+    if (priority) { where += ' AND m.priority = ?'; params.push(priority); }
+
+    const messages = db.prepare(`
+      SELECT m.*, f.full_name as from_name, t.full_name as to_name
+      FROM messages m
+      LEFT JOIN users f ON m.from_user_id = f.id
+      LEFT JOIN users t ON m.to_user_id = t.id
+      ${where}
+      ORDER BY m.created_at DESC
+      LIMIT ?
+    `).all(...params, limitNum);
+
+    res.json({ data: messages });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ─── Feature 19: Alert escalation check ─────────────────
+router.post('/alerts/escalation-check', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { minutes = 15 } = req.body;
+    const cutoff = new Date(Date.now() - minutes * 60 * 1000).toISOString();
+
+    // Find emergency/urgent broadcast messages not acknowledged
+    const unacked = db.prepare(`
+      SELECT m.*, f.full_name as from_name
+      FROM messages m
+      LEFT JOIN users f ON m.from_user_id = f.id
+      WHERE m.channel = 'broadcast'
+      AND m.priority IN ('urgent', 'emergency')
+      AND m.created_at <= ?
+      AND (m.acknowledgments IS NULL OR m.acknowledgments = '{}')
+    `).all(cutoff);
+
+    // Broadcast escalation alert for each
+    for (const msg of unacked as any[]) {
+      broadcastAlert({
+        type: 'escalation',
+        message: `UNACKNOWLEDGED ${(msg.priority || '').toUpperCase()} ALERT: ${msg.content?.substring(0, 100)}`,
+        original_message_id: msg.id,
+        from: msg.from_name || 'System',
+      });
+    }
+
+    res.json({ escalated: (unacked as any[]).length });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ─── Feature 20: Broadcast history archive ──────────────
+router.get('/messages/archive', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { date_from, date_to, channel = 'broadcast', page = '1', limit = '50' } = req.query;
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const limitNum = Math.min(200, parseInt(limit as string, 10) || 50);
+    const offset = (pageNum - 1) * limitNum;
+
+    let where = 'WHERE m.channel = ?';
+    const params: any[] = [channel];
+    if (date_from) { where += ' AND m.created_at >= ?'; params.push(date_from); }
+    if (date_to) { where += ' AND m.created_at <= ?'; params.push(date_to); }
+
+    const total = (db.prepare(`SELECT COUNT(*) as count FROM messages m ${where}`).get(...params) as any).count;
+    const messages = db.prepare(`
+      SELECT m.*, f.full_name as from_name
+      FROM messages m
+      LEFT JOIN users f ON m.from_user_id = f.id
+      ${where}
+      ORDER BY m.created_at DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, limitNum, offset);
+
+    res.json({ data: messages, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
 export default router;

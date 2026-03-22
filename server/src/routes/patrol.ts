@@ -514,4 +514,496 @@ router.get('/checkpoints/map', (req: Request, res: Response) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// FEATURE 1: Patrol Route Optimization (nearest-neighbor)
+// ════════════════════════════════════════════════════════════
+
+router.get('/optimize-route', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { property_id, start_lat, start_lng } = req.query;
+
+    let where = 'WHERE pc.is_active = 1 AND pc.latitude IS NOT NULL AND pc.longitude IS NOT NULL';
+    const params: any[] = [];
+    if (property_id) { where += ' AND pc.property_id = ?'; params.push(property_id); }
+
+    const checkpoints = db.prepare(`
+      SELECT pc.id, pc.name, pc.latitude, pc.longitude, pc.property_id, p.name as property_name
+      FROM patrol_checkpoints pc
+      LEFT JOIN properties p ON pc.property_id = p.id
+      ${where}
+    `).all(...params) as any[];
+
+    if (checkpoints.length === 0) {
+      res.json({ optimized_order: [], total_distance_km: 0 });
+      return;
+    }
+
+    // Haversine distance in km
+    function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
+      const R = 6371;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLng = (lng2 - lng1) * Math.PI / 180;
+      const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    // Nearest-neighbor algorithm
+    const startLat = parseFloat(start_lat as string) || checkpoints[0].latitude;
+    const startLng = parseFloat(start_lng as string) || checkpoints[0].longitude;
+    const visited = new Set<number>();
+    const order: any[] = [];
+    let currentLat = startLat;
+    let currentLng = startLng;
+    let totalDist = 0;
+
+    while (visited.size < checkpoints.length) {
+      let nearest: any = null;
+      let nearestDist = Infinity;
+      for (const cp of checkpoints) {
+        if (visited.has(cp.id)) continue;
+        const dist = haversine(currentLat, currentLng, cp.latitude, cp.longitude);
+        if (dist < nearestDist) {
+          nearestDist = dist;
+          nearest = cp;
+        }
+      }
+      if (!nearest) break;
+      visited.add(nearest.id);
+      order.push({ ...nearest, distance_from_previous_km: Math.round(nearestDist * 100) / 100 });
+      totalDist += nearestDist;
+      currentLat = nearest.latitude;
+      currentLng = nearest.longitude;
+    }
+
+    res.json({ optimized_order: order, total_distance_km: Math.round(totalDist * 100) / 100 });
+  } catch (error) {
+    console.error('Error optimizing route:', error);
+    res.status(500).json({ error: 'Failed to optimize route' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 2: Patrol Log Auto-generation
+// ════════════════════════════════════════════════════════════
+
+router.get('/log/generate', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { officer_id, date } = req.query;
+    const targetDate = date as string || new Date().toISOString().split('T')[0];
+    const officerId = officer_id ? parseInt(officer_id as string, 10) : req.user!.userId;
+
+    const officer = db.prepare('SELECT full_name, badge_number FROM users WHERE id = ?').get(officerId) as any;
+
+    const dayScans = db.prepare(`
+      SELECT ps.*, pc.name as checkpoint_name, p.name as property_name,
+             pc.latitude as cp_lat, pc.longitude as cp_lng
+      FROM patrol_scans ps
+      LEFT JOIN patrol_checkpoints pc ON ps.checkpoint_id = pc.id
+      LEFT JOIN properties p ON pc.property_id = p.id
+      WHERE ps.officer_id = ? AND DATE(ps.scanned_at) = ?
+      ORDER BY ps.scanned_at ASC
+    `).all(officerId, targetDate) as any[];
+
+    // Calculate patrol stats
+    let totalTimeMinutes = 0;
+    const checkpointTimes: { checkpoint: string; property: string; time: string; status: string; notes: string; time_since_prev_min: number | null }[] = [];
+    for (let i = 0; i < dayScans.length; i++) {
+      const scan = dayScans[i];
+      let timeSincePrev: number | null = null;
+      if (i > 0) {
+        const prev = new Date(dayScans[i - 1].scanned_at).getTime();
+        const curr = new Date(scan.scanned_at).getTime();
+        timeSincePrev = Math.round((curr - prev) / 60000);
+        totalTimeMinutes += timeSincePrev;
+      }
+      checkpointTimes.push({
+        checkpoint: scan.checkpoint_name,
+        property: scan.property_name || '',
+        time: scan.scanned_at,
+        status: scan.status,
+        notes: scan.notes || '',
+        time_since_prev_min: timeSincePrev,
+      });
+    }
+
+    const startTime = dayScans.length > 0 ? dayScans[0].scanned_at : null;
+    const endTime = dayScans.length > 0 ? dayScans[dayScans.length - 1].scanned_at : null;
+    const onTimeCount = dayScans.filter((s: any) => s.status === 'on_time').length;
+    const lateCount = dayScans.filter((s: any) => s.status === 'late').length;
+
+    res.json({
+      officer_name: officer?.full_name || 'Unknown',
+      badge_number: officer?.badge_number || '',
+      date: targetDate,
+      total_checkpoints_scanned: dayScans.length,
+      total_time_minutes: totalTimeMinutes,
+      start_time: startTime,
+      end_time: endTime,
+      on_time: onTimeCount,
+      late: lateCount,
+      compliance_rate: dayScans.length > 0 ? Math.round((onTimeCount / dayScans.length) * 100) : 0,
+      entries: checkpointTimes,
+    });
+  } catch (error) {
+    console.error('Error generating patrol log:', error);
+    res.status(500).json({ error: 'Failed to generate patrol log' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 3: Incident Report from Scan
+// ════════════════════════════════════════════════════════════
+
+router.post('/scan/:scanId/create-incident', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const scan = db.prepare(`
+      SELECT ps.*, pc.name as checkpoint_name, pc.property_id, pc.latitude, pc.longitude,
+             p.name as property_name
+      FROM patrol_scans ps
+      LEFT JOIN patrol_checkpoints pc ON ps.checkpoint_id = pc.id
+      LEFT JOIN properties p ON pc.property_id = p.id
+      WHERE ps.id = ?
+    `).get(req.params.scanId) as any;
+
+    if (!scan) {
+      res.status(404).json({ error: 'Scan not found' });
+      return;
+    }
+
+    const { incident_type, description, priority } = req.body;
+
+    // Generate incident number
+    const yy = String(new Date().getFullYear()).slice(-2);
+    const prefix = `INC-${yy}-`;
+    const last = db.prepare(`SELECT incident_number FROM incidents WHERE incident_number LIKE ? ORDER BY id DESC LIMIT 1`).get(`${prefix}%`) as any;
+    let seq = 1;
+    if (last) { const m = last.incident_number.match(/INC-\d{2}-(\d{5})/); if (m) seq = parseInt(m[1], 10) + 1; }
+    const incidentNumber = `${prefix}${String(seq).padStart(5, '0')}`;
+
+    const now = localNow();
+    const info = db.prepare(`
+      INSERT INTO incidents (
+        incident_number, incident_type, status, priority, description,
+        location, latitude, longitude, reporting_officer_id, property_id,
+        occurred_at, reported_at, created_at, updated_at
+      ) VALUES (?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      incidentNumber,
+      incident_type || 'patrol_observation',
+      priority || 'low',
+      description || `Incident observed during patrol scan at ${scan.checkpoint_name}`,
+      scan.property_name || scan.checkpoint_name,
+      scan.latitude, scan.longitude,
+      req.user!.userId,
+      scan.property_id || null,
+      scan.scanned_at, now, now, now
+    );
+
+    const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(info.lastInsertRowid);
+
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'incident_from_patrol_scan', 'incident', ?, ?, ?, ?)
+    `).run(req.user!.userId, info.lastInsertRowid, `Created incident ${incidentNumber} from patrol scan #${req.params.scanId}`, req.ip || 'unknown', now);
+
+    res.status(201).json(incident);
+  } catch (error) {
+    console.error('Error creating incident from scan:', error);
+    res.status(500).json({ error: 'Failed to create incident' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 4: Patrol Coverage Heat Map data
+// ════════════════════════════════════════════════════════════
+
+router.get('/coverage-heatmap', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { days = '7' } = req.query;
+    const daysNum = Math.min(90, Math.max(1, parseInt(days as string, 10) || 7));
+    const cutoff = new Date(Date.now() - daysNum * 24 * 60 * 60 * 1000).toISOString();
+
+    const points = db.prepare(`
+      SELECT ps.latitude, ps.longitude, COUNT(*) as weight,
+             pc.name as checkpoint_name, p.name as property_name,
+             MAX(ps.scanned_at) as last_scan
+      FROM patrol_scans ps
+      LEFT JOIN patrol_checkpoints pc ON ps.checkpoint_id = pc.id
+      LEFT JOIN properties p ON pc.property_id = p.id
+      WHERE ps.latitude IS NOT NULL AND ps.longitude IS NOT NULL
+        AND ps.scanned_at >= ?
+      GROUP BY ROUND(ps.latitude, 4), ROUND(ps.longitude, 4)
+      ORDER BY weight DESC
+    `).all(cutoff);
+
+    // Also get checkpoints with no scans in the period (coverage gaps)
+    const unpatrolled = db.prepare(`
+      SELECT pc.id, pc.name, pc.latitude, pc.longitude, p.name as property_name
+      FROM patrol_checkpoints pc
+      LEFT JOIN properties p ON pc.property_id = p.id
+      WHERE pc.is_active = 1 AND pc.latitude IS NOT NULL
+        AND pc.id NOT IN (
+          SELECT DISTINCT checkpoint_id FROM patrol_scans WHERE scanned_at >= ?
+        )
+    `).all(cutoff);
+
+    res.json({ heatmap_points: points, unpatrolled_checkpoints: unpatrolled, days: daysNum });
+  } catch (error) {
+    console.error('Error fetching coverage heatmap:', error);
+    res.status(500).json({ error: 'Failed to fetch coverage data' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 5: Guard Tour Verification (supervisor sign-off)
+// ════════════════════════════════════════════════════════════
+
+router.post('/verify-tour', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { officer_id, date, notes, status } = req.body;
+
+    if (!officer_id || !date) {
+      res.status(400).json({ error: 'officer_id and date are required' });
+      return;
+    }
+
+    const now = localNow();
+
+    // Check if verification already exists
+    const existing = db.prepare(
+      'SELECT id FROM patrol_tour_verifications WHERE officer_id = ? AND tour_date = ?'
+    ).get(officer_id, date) as any;
+
+    if (existing) {
+      db.prepare(`
+        UPDATE patrol_tour_verifications
+        SET verified_by = ?, verified_at = ?, status = ?, notes = ?, updated_at = ?
+        WHERE id = ?
+      `).run(req.user!.userId, now, status || 'approved', notes || '', now, existing.id);
+      const updated = db.prepare('SELECT * FROM patrol_tour_verifications WHERE id = ?').get(existing.id);
+      res.json(updated);
+    } else {
+      // Get scan stats for this tour
+      const scanStats = db.prepare(`
+        SELECT COUNT(*) as total, SUM(CASE WHEN status = 'on_time' THEN 1 ELSE 0 END) as on_time
+        FROM patrol_scans WHERE officer_id = ? AND DATE(scanned_at) = ?
+      `).get(officer_id, date) as any;
+
+      const info = db.prepare(`
+        INSERT INTO patrol_tour_verifications (
+          officer_id, tour_date, verified_by, verified_at, status, notes,
+          total_scans, on_time_scans, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(officer_id, date, req.user!.userId, now, status || 'approved', notes || '',
+        scanStats?.total || 0, scanStats?.on_time || 0, now, now);
+
+      const verification = db.prepare('SELECT * FROM patrol_tour_verifications WHERE id = ?').get(info.lastInsertRowid);
+      res.status(201).json(verification);
+    }
+
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'patrol_tour_verified', 'patrol_verification', ?, ?, ?, ?)
+    `).run(req.user!.userId, officer_id, `Tour verification for ${date}: ${status || 'approved'}`, req.ip || 'unknown', now);
+
+    res.status(200);
+  } catch (error) {
+    console.error('Error verifying tour:', error);
+    res.status(500).json({ error: 'Failed to verify tour' });
+  }
+});
+
+router.get('/verifications', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { officer_id, start_date, end_date } = req.query;
+    let where = 'WHERE 1=1';
+    const params: any[] = [];
+    if (officer_id) { where += ' AND ptv.officer_id = ?'; params.push(officer_id); }
+    if (start_date) { where += ' AND ptv.tour_date >= ?'; params.push(start_date); }
+    if (end_date) { where += ' AND ptv.tour_date <= ?'; params.push(end_date); }
+
+    const rows = db.prepare(`
+      SELECT ptv.*, u.full_name as officer_name, v.full_name as verified_by_name
+      FROM patrol_tour_verifications ptv
+      LEFT JOIN users u ON ptv.officer_id = u.id
+      LEFT JOIN users v ON ptv.verified_by = v.id
+      ${where}
+      ORDER BY ptv.tour_date DESC
+      LIMIT 200
+    `).all(...params);
+    res.json(rows);
+  } catch (error) {
+    console.error('Error fetching verifications:', error);
+    res.status(500).json({ error: 'Failed to fetch verifications' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 6: Patrol Exception Report
+// ════════════════════════════════════════════════════════════
+
+router.get('/exceptions', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { days = '7' } = req.query;
+    const daysNum = Math.min(90, Math.max(1, parseInt(days as string, 10) || 7));
+    const cutoff = new Date(Date.now() - daysNum * 24 * 60 * 60 * 1000).toISOString();
+
+    // Late scans
+    const lateScans = db.prepare(`
+      SELECT ps.*, pc.name as checkpoint_name, p.name as property_name,
+             u.full_name as officer_name, pc.scan_required_interval_minutes
+      FROM patrol_scans ps
+      LEFT JOIN patrol_checkpoints pc ON ps.checkpoint_id = pc.id
+      LEFT JOIN properties p ON pc.property_id = p.id
+      LEFT JOIN users u ON ps.officer_id = u.id
+      WHERE ps.status = 'late' AND ps.scanned_at >= ?
+      ORDER BY ps.scanned_at DESC
+    `).all(cutoff) as any[];
+
+    // Missed checkpoints (active checkpoints with no scans in last interval)
+    const missedCheckpoints = db.prepare(`
+      SELECT pc.id, pc.name, p.name as property_name, pc.scan_required_interval_minutes,
+             MAX(ps.scanned_at) as last_scan
+      FROM patrol_checkpoints pc
+      LEFT JOIN properties p ON pc.property_id = p.id
+      LEFT JOIN patrol_scans ps ON ps.checkpoint_id = pc.id
+      WHERE pc.is_active = 1
+      GROUP BY pc.id
+      HAVING last_scan IS NULL OR last_scan < datetime('now', '-' || pc.scan_required_interval_minutes || ' minutes')
+    `).all() as any[];
+
+    // Summary stats
+    const totalScans = db.prepare(`
+      SELECT COUNT(*) as total, SUM(CASE WHEN status = 'late' THEN 1 ELSE 0 END) as late_count
+      FROM patrol_scans WHERE scanned_at >= ?
+    `).get(cutoff) as any;
+
+    res.json({
+      late_scans: lateScans,
+      missed_checkpoints: missedCheckpoints,
+      period_days: daysNum,
+      total_scans: totalScans?.total || 0,
+      late_count: totalScans?.late_count || 0,
+      late_rate: totalScans?.total > 0 ? Math.round((totalScans.late_count / totalScans.total) * 100) : 0,
+    });
+  } catch (error) {
+    console.error('Error fetching exceptions:', error);
+    res.status(500).json({ error: 'Failed to fetch exception report' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 7: Patrol Time Tracking
+// ════════════════════════════════════════════════════════════
+
+router.get('/time-tracking', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { officer_id, date } = req.query;
+    const targetDate = date as string || new Date().toISOString().split('T')[0];
+    const officerId = officer_id ? parseInt(officer_id as string, 10) : req.user!.userId;
+
+    const dayScans = db.prepare(`
+      SELECT ps.scanned_at, pc.name as checkpoint_name, p.name as property_name
+      FROM patrol_scans ps
+      LEFT JOIN patrol_checkpoints pc ON ps.checkpoint_id = pc.id
+      LEFT JOIN properties p ON pc.property_id = p.id
+      WHERE ps.officer_id = ? AND DATE(ps.scanned_at) = ?
+      ORDER BY ps.scanned_at ASC
+    `).all(officerId, targetDate) as any[];
+
+    const segments: { from: string; to: string; from_time: string; to_time: string; duration_minutes: number }[] = [];
+    let totalPatrolMinutes = 0;
+    let longestGapMinutes = 0;
+    let shortestGapMinutes = Infinity;
+
+    for (let i = 1; i < dayScans.length; i++) {
+      const prev = dayScans[i - 1];
+      const curr = dayScans[i];
+      const diffMs = new Date(curr.scanned_at).getTime() - new Date(prev.scanned_at).getTime();
+      const diffMin = Math.round(diffMs / 60000);
+      totalPatrolMinutes += diffMin;
+      if (diffMin > longestGapMinutes) longestGapMinutes = diffMin;
+      if (diffMin < shortestGapMinutes) shortestGapMinutes = diffMin;
+      segments.push({
+        from: prev.checkpoint_name,
+        to: curr.checkpoint_name,
+        from_time: prev.scanned_at,
+        to_time: curr.scanned_at,
+        duration_minutes: diffMin,
+      });
+    }
+
+    res.json({
+      date: targetDate,
+      officer_id: officerId,
+      total_patrol_minutes: totalPatrolMinutes,
+      total_checkpoints: dayScans.length,
+      average_between_minutes: segments.length > 0 ? Math.round(totalPatrolMinutes / segments.length) : 0,
+      longest_gap_minutes: longestGapMinutes,
+      shortest_gap_minutes: shortestGapMinutes === Infinity ? 0 : shortestGapMinutes,
+      first_scan: dayScans.length > 0 ? dayScans[0].scanned_at : null,
+      last_scan: dayScans.length > 0 ? dayScans[dayScans.length - 1].scanned_at : null,
+      segments,
+    });
+  } catch (error) {
+    console.error('Error fetching time tracking:', error);
+    res.status(500).json({ error: 'Failed to fetch time tracking' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 8: Weather Conditions Logging
+// ════════════════════════════════════════════════════════════
+
+router.post('/scan/:scanId/weather', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const scan = db.prepare('SELECT * FROM patrol_scans WHERE id = ?').get(req.params.scanId) as any;
+    if (!scan) {
+      res.status(404).json({ error: 'Scan not found' });
+      return;
+    }
+
+    const { conditions, temperature_f, wind_mph, visibility, precipitation, humidity_pct } = req.body;
+
+    // Store weather data in scan notes as structured JSON
+    const weatherData = {
+      conditions: conditions || 'clear',
+      temperature_f: temperature_f ?? null,
+      wind_mph: wind_mph ?? null,
+      visibility: visibility || 'good',
+      precipitation: precipitation || 'none',
+      humidity_pct: humidity_pct ?? null,
+      recorded_at: localNow(),
+      recorded_by: req.user!.userId,
+    };
+
+    // Append weather data to existing notes
+    const existingNotes = scan.notes || '';
+    const updatedNotes = existingNotes
+      ? `${existingNotes}\n[WEATHER] ${JSON.stringify(weatherData)}`
+      : `[WEATHER] ${JSON.stringify(weatherData)}`;
+
+    db.prepare('UPDATE patrol_scans SET notes = ? WHERE id = ?').run(updatedNotes, scan.id);
+
+    // Also try to store in a dedicated weather column if it exists
+    try {
+      db.prepare('UPDATE patrol_scans SET weather_json = ? WHERE id = ?').run(JSON.stringify(weatherData), scan.id);
+    } catch { /* column may not exist yet */ }
+
+    res.json({ success: true, weather: weatherData });
+  } catch (error) {
+    console.error('Error logging weather:', error);
+    res.status(500).json({ error: 'Failed to log weather conditions' });
+  }
+});
+
 export default router;

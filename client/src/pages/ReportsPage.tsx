@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BarChart3,
@@ -253,6 +253,514 @@ function exportToCSV(
 // Main Component
 // ============================================================
 
+// ═══════════════════════════════════════════════════════════
+// Feature 27: Report Approval Queue Component
+// ═══════════════════════════════════════════════════════════
+function ReportApprovalQueue() {
+  const [reports, setReports] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [processing, setProcessing] = useState<string | null>(null);
+
+  const fetchQueue = useCallback(async () => {
+    try {
+      const data = await apiFetch<any[]>('/records/reports/approval-queue');
+      setReports(Array.isArray(data) ? data : []);
+    } catch { setReports([]); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { fetchQueue(); }, [fetchQueue]);
+
+  const handleApprove = async (id: string) => {
+    setProcessing(id);
+    try {
+      await apiFetch(`/records/reports/${id}/approve`, { method: 'POST' });
+      setReports(prev => prev.filter(r => String(r.id) !== id));
+    } catch { /* ignore */ }
+    finally { setProcessing(null); }
+  };
+
+  const handleReturn = async (id: string) => {
+    const reason = prompt('Return reason:');
+    if (!reason) return;
+    setProcessing(id);
+    try {
+      await apiFetch(`/records/reports/${id}/return`, { method: 'POST', body: JSON.stringify({ reason }) });
+      setReports(prev => prev.filter(r => String(r.id) !== id));
+    } catch { /* ignore */ }
+    finally { setProcessing(null); }
+  };
+
+  if (loading) return <div className="flex items-center gap-2 text-[10px] text-rmpg-500"><Loader2 className="w-3 h-3 animate-spin" /> Loading queue...</div>;
+  if (reports.length === 0) return <div className="text-[10px] text-rmpg-500 text-center py-4">No reports pending review</div>;
+
+  return (
+    <div className="space-y-2">
+      {reports.map((r: any) => (
+        <div key={r.id} className="panel-beveled p-3 flex items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-green-400 font-mono">{r.incident_number}</span>
+              <span className="text-[10px] text-rmpg-300">{formatIncidentType(r.incident_type)}</span>
+              <span className="px-1 py-0 text-[8px] font-bold bg-purple-900/40 text-purple-400 border border-purple-700/50">PENDING REVIEW</span>
+            </div>
+            <div className="text-[9px] text-rmpg-400 mt-0.5">
+              {r.officer_name && <span>{r.officer_name}</span>}
+              {r.badge_number && <span className="ml-1">#{r.badge_number}</span>}
+              <span className="ml-2">{r.created_at ? new Date(r.created_at).toLocaleDateString() : ''}</span>
+            </div>
+            {r.narrative && <div className="text-[9px] text-rmpg-500 mt-0.5 truncate max-w-[300px]">{r.narrative.slice(0, 100)}</div>}
+          </div>
+          <div className="flex gap-1.5 flex-shrink-0">
+            <button
+              onClick={() => handleApprove(String(r.id))}
+              disabled={processing === String(r.id)}
+              className="toolbar-btn text-[9px] bg-green-900/30 text-green-400 border-green-700/30 hover:bg-green-800/40"
+            >
+              Approve
+            </button>
+            <button
+              onClick={() => handleReturn(String(r.id))}
+              disabled={processing === String(r.id)}
+              className="toolbar-btn text-[9px] bg-red-900/30 text-red-400 border-red-700/30 hover:bg-red-800/40"
+            >
+              Return
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Feature 11: Daily Briefing Generator Component
+// ═══════════════════════════════════════════════════════════════
+function DailyBriefingCard() {
+  const [briefing, setBriefing] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  const loadBriefing = async () => {
+    setLoading(true);
+    try {
+      const data = await apiFetch<any>('/reports/daily-briefing');
+      setBriefing(data);
+      setExpanded(true);
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div className="bg-surface-base panel-beveled">
+      <div className="px-4 pt-3 pb-1 border-b border-rmpg-700/50 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <FileText className="w-3.5 h-3.5 text-green-400" />
+          <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Daily Shift Briefing</h3>
+        </div>
+        <button onClick={loadBriefing} disabled={loading} className="toolbar-btn text-[9px]">
+          {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Generate'}
+        </button>
+      </div>
+      {expanded && briefing && (
+        <div className="p-4 space-y-3 text-xs">
+          <div>
+            <div className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-1.5">Previous Day Stats</div>
+            <div className="grid grid-cols-4 gap-2">
+              <div className="panel-beveled bg-surface-sunken p-2 text-center">
+                <div className="text-lg font-bold font-mono text-brand-400">{briefing.prevDayStats?.total_calls || 0}</div>
+                <div className="text-[8px] text-rmpg-500 uppercase">Calls</div>
+              </div>
+              <div className="panel-beveled bg-surface-sunken p-2 text-center">
+                <div className="text-lg font-bold font-mono text-red-400">{briefing.prevDayStats?.p1_calls || 0}</div>
+                <div className="text-[8px] text-rmpg-500 uppercase">P1 Calls</div>
+              </div>
+              <div className="panel-beveled bg-surface-sunken p-2 text-center">
+                <div className="text-lg font-bold font-mono text-amber-400">{briefing.prevDayStats?.p2_calls || 0}</div>
+                <div className="text-[8px] text-rmpg-500 uppercase">P2 Calls</div>
+              </div>
+              <div className="panel-beveled bg-surface-sunken p-2 text-center">
+                <div className="text-lg font-bold font-mono text-blue-400">{briefing.prevDayStats?.avg_response || 'N/A'}m</div>
+                <div className="text-[8px] text-rmpg-500 uppercase">Avg Response</div>
+              </div>
+            </div>
+          </div>
+          {briefing.activeBolos?.length > 0 && (
+            <div>
+              <div className="text-[9px] text-red-400 uppercase font-bold tracking-wider mb-1">Active BOLOs ({briefing.activeBolos.length})</div>
+              {briefing.activeBolos.slice(0, 5).map((b: any) => (
+                <div key={b.id} className="text-[10px] text-rmpg-300 py-0.5">
+                  <span className="text-red-400 font-mono mr-1">{b.bolo_number}</span> {b.title}
+                </div>
+              ))}
+            </div>
+          )}
+          {briefing.activeWarrants?.length > 0 && (
+            <div>
+              <div className="text-[9px] text-amber-400 uppercase font-bold tracking-wider mb-1">Active Warrants ({briefing.activeWarrants.length})</div>
+              {briefing.activeWarrants.slice(0, 5).map((w: any) => (
+                <div key={w.id} className="text-[10px] text-rmpg-300 py-0.5">
+                  <span className="text-amber-400 font-mono mr-1">{w.warrant_number}</span> {w.charge_description}
+                </div>
+              ))}
+            </div>
+          )}
+          {briefing.trendingIncidents?.length > 0 && (
+            <div>
+              <div className="text-[9px] text-brand-400 uppercase font-bold tracking-wider mb-1">Trending (7-day)</div>
+              {briefing.trendingIncidents.map((t: any, i: number) => (
+                <div key={i} className="flex items-center justify-between text-[10px] text-rmpg-300 py-0.5">
+                  <span>{formatIncidentType(t.incident_type)}</span>
+                  <span className="font-mono font-bold">{t.count}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {briefing.personnelOnDuty?.length > 0 && (
+            <div>
+              <div className="text-[9px] text-green-400 uppercase font-bold tracking-wider mb-1">Personnel On Duty ({briefing.personnelOnDuty.length})</div>
+              <div className="flex flex-wrap gap-1.5">
+                {briefing.personnelOnDuty.map((p: any, i: number) => (
+                  <span key={i} className="px-1.5 py-0.5 bg-green-900/20 border border-green-700/30 text-[9px] text-green-400 font-mono">{p.call_sign} ({p.full_name})</span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Feature 12: Weekly Activity Digest Component
+// ═══════════════════════════════════════════════════════════════
+function WeeklyDigestCard() {
+  const [digest, setDigest] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  const loadDigest = async () => {
+    setLoading(true);
+    try {
+      const data = await apiFetch<any>('/reports/weekly-digest');
+      setDigest(data);
+      setExpanded(true);
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div className="bg-surface-base panel-beveled">
+      <div className="px-4 pt-3 pb-1 border-b border-rmpg-700/50 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Calendar className="w-3.5 h-3.5 text-purple-400" />
+          <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Weekly Activity Digest</h3>
+        </div>
+        <button onClick={loadDigest} disabled={loading} className="toolbar-btn text-[9px]">
+          {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Generate'}
+        </button>
+      </div>
+      {expanded && digest && (
+        <div className="p-4 space-y-3 text-xs">
+          <div className="grid grid-cols-5 gap-2">
+            {[
+              { label: 'Calls', value: digest.summary?.totalCalls || 0, color: '#3b82f6' },
+              { label: 'Incidents', value: digest.summary?.totalIncidents || 0, color: '#22c55e' },
+              { label: 'Citations', value: digest.summary?.totalCitations || 0, color: '#f59e0b' },
+              { label: 'Arrests', value: digest.summary?.totalArrests || 0, color: '#ef4444' },
+              { label: 'Avg Response', value: digest.summary?.avgResponseMinutes ? `${digest.summary.avgResponseMinutes}m` : 'N/A', color: '#1a5a9e' },
+            ].map(s => (
+              <div key={s.label} className="panel-beveled bg-surface-sunken p-2 text-center">
+                <div className="text-lg font-bold font-mono" style={{ color: s.color }}>{s.value}</div>
+                <div className="text-[8px] text-rmpg-500 uppercase">{s.label}</div>
+              </div>
+            ))}
+          </div>
+          {digest.byDay?.length > 0 && (
+            <div>
+              <div className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-1.5">Daily Breakdown</div>
+              <ResponsiveContainer width="100%" height={120}>
+                <BarChart data={digest.byDay}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#2a3e58" />
+                  <XAxis dataKey="day" tick={{ fill: '#8a9aaa', fontSize: 9 }} tickFormatter={(d: string) => new Date(d).toLocaleDateString('en-US', { weekday: 'short' })} />
+                  <YAxis tick={{ fill: '#8a9aaa', fontSize: 9 }} allowDecimals={false} />
+                  <Tooltip {...CHART_TOOLTIP_STYLE} />
+                  <Bar dataKey="count" fill="#1a5a9e" radius={[2, 2, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+          {digest.topIncidentTypes?.length > 0 && (
+            <div>
+              <div className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-1">Top Incident Types</div>
+              {digest.topIncidentTypes.slice(0, 5).map((t: any, i: number) => (
+                <div key={i} className="flex items-center justify-between text-[10px] text-rmpg-300 py-0.5">
+                  <span>{formatIncidentType(t.incident_type)}</span>
+                  <span className="font-mono font-bold">{t.count}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Features 3, 7, 8, 9, 10: Specialized Report Cards
+// ═══════════════════════════════════════════════════════════════
+function CrimeTrendCard() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try { setData(await apiFetch<any>('/reports/crime-trends')); } catch { /* ignore */ }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  if (loading) return <div className="bg-surface-base panel-beveled p-4 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin text-brand-400" /> <span className="text-xs text-rmpg-400">Loading crime trends...</span></div>;
+  if (!data) return null;
+
+  return (
+    <div className="bg-surface-base panel-beveled">
+      <div className="px-4 pt-3 pb-1 border-b border-rmpg-700/50 flex items-center gap-2">
+        <TrendingUp className="w-3.5 h-3.5 text-red-400" />
+        <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Crime Trend Analysis</h3>
+      </div>
+      <div className="p-4 space-y-3">
+        {data.monthlyTrend?.length > 0 && (
+          <ResponsiveContainer width="100%" height={180}>
+            <AreaChart data={data.monthlyTrend}>
+              <defs>
+                <linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#ef4444" stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#2a3e58" />
+              <XAxis dataKey="month" tick={{ fill: '#8a9aaa', fontSize: 9 }} />
+              <YAxis tick={{ fill: '#8a9aaa', fontSize: 9 }} allowDecimals={false} />
+              <Tooltip {...CHART_TOOLTIP_STYLE} />
+              <Area type="monotone" dataKey="count" stroke="#ef4444" strokeWidth={2} fill="url(#trendGrad)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+        {data.trends?.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[10px]">
+              <thead>
+                <tr className="border-b border-rmpg-600">
+                  <th className="px-2 py-1.5 text-left text-rmpg-400 font-bold uppercase">Type</th>
+                  <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Current</th>
+                  <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Prev Month</th>
+                  <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">MoM %</th>
+                  <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Last Year</th>
+                  <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">YoY %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.trends.slice(0, 10).map((t: any) => (
+                  <tr key={t.type} className="border-b border-rmpg-700/50 hover:bg-surface-raised">
+                    <td className="px-2 py-1.5 text-rmpg-200">{formatIncidentType(t.type)}</td>
+                    <td className="px-2 py-1.5 text-right font-mono text-rmpg-200">{t.current}</td>
+                    <td className="px-2 py-1.5 text-right font-mono text-rmpg-400">{t.previous}</td>
+                    <td className={`px-2 py-1.5 text-right font-mono font-bold ${t.momChange > 0 ? 'text-red-400' : t.momChange < 0 ? 'text-green-400' : 'text-rmpg-400'}`}>
+                      {t.momChange > 0 ? '+' : ''}{t.momChange}%
+                    </td>
+                    <td className="px-2 py-1.5 text-right font-mono text-rmpg-400">{t.lastYear}</td>
+                    <td className={`px-2 py-1.5 text-right font-mono font-bold ${t.yoyChange > 0 ? 'text-red-400' : t.yoyChange < 0 ? 'text-green-400' : 'text-rmpg-400'}`}>
+                      {t.yoyChange > 0 ? '+' : ''}{t.yoyChange}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CitationRevenueCard() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    apiFetch<any>('/reports/citation-revenue').then(setData).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div className="bg-surface-base panel-beveled p-4 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin text-brand-400" /> <span className="text-xs text-rmpg-400">Loading citation revenue...</span></div>;
+  if (!data) return null;
+
+  return (
+    <div className="bg-surface-base panel-beveled">
+      <div className="px-4 pt-3 pb-1 border-b border-rmpg-700/50 flex items-center gap-2">
+        <Database className="w-3.5 h-3.5 text-green-400" />
+        <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Citation Revenue Report</h3>
+      </div>
+      <div className="p-4 space-y-3">
+        <div className="grid grid-cols-4 gap-2">
+          {[
+            { label: 'Total Fines', value: `$${(data.summary?.total_fines || 0).toLocaleString()}`, color: '#3b82f6' },
+            { label: 'Collected', value: `$${(data.summary?.collected || 0).toLocaleString()}`, color: '#22c55e' },
+            { label: 'Outstanding', value: `$${(data.summary?.outstanding || 0).toLocaleString()}`, color: '#f59e0b' },
+            { label: 'Dismissed', value: `$${(data.summary?.dismissed || 0).toLocaleString()}`, color: '#ef4444' },
+          ].map(s => (
+            <div key={s.label} className="panel-beveled bg-surface-sunken p-2 text-center">
+              <div className="text-sm font-bold font-mono" style={{ color: s.color }}>{s.value}</div>
+              <div className="text-[8px] text-rmpg-500 uppercase">{s.label}</div>
+            </div>
+          ))}
+        </div>
+        {data.monthlyRevenue?.length > 0 && (
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart data={data.monthlyRevenue}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#2a3e58" />
+              <XAxis dataKey="month" tick={{ fill: '#8a9aaa', fontSize: 9 }} />
+              <YAxis tick={{ fill: '#8a9aaa', fontSize: 9 }} />
+              <Tooltip {...CHART_TOOLTIP_STYLE} />
+              <Legend wrapperStyle={{ color: '#8a9aaa', fontSize: '9px' }} />
+              <Bar dataKey="collected" name="Collected" fill="#22c55e" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="outstanding" name="Outstanding" fill="#f59e0b" radius={[2, 2, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function BeatActivityCard() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    apiFetch<any>('/reports/beat-activity').then(setData).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+
+  if (loading || !data) return null;
+
+  return (
+    <div className="bg-surface-base panel-beveled">
+      <div className="px-4 pt-3 pb-1 border-b border-rmpg-700/50 flex items-center gap-2">
+        <MapPin className="w-3.5 h-3.5 text-cyan-400" />
+        <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Beat Activity Report</h3>
+      </div>
+      <div className="p-4">
+        {data.beats?.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[10px]">
+              <thead>
+                <tr className="border-b border-rmpg-600">
+                  <th className="px-2 py-1.5 text-left text-rmpg-400 font-bold uppercase">Beat</th>
+                  <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Calls</th>
+                  <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Incidents</th>
+                  <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Citations</th>
+                  <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Arrests</th>
+                  <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Avg Resp</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.beats.map((b: any) => (
+                  <tr key={b.beat} className="border-b border-rmpg-700/50 hover:bg-surface-raised">
+                    <td className="px-2 py-1.5 text-rmpg-200 font-mono font-bold">{b.beat}</td>
+                    <td className="px-2 py-1.5 text-right font-mono text-blue-400">{b.calls}</td>
+                    <td className="px-2 py-1.5 text-right font-mono text-rmpg-200">{b.incidents}</td>
+                    <td className="px-2 py-1.5 text-right font-mono text-rmpg-200">{b.citations}</td>
+                    <td className="px-2 py-1.5 text-right font-mono text-rmpg-200">{b.arrests}</td>
+                    <td className="px-2 py-1.5 text-right font-mono text-brand-400">{b.avg_response_min ? `${b.avg_response_min}m` : 'N/A'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : <div className="text-xs text-rmpg-500 text-center py-4">No beat activity data available</div>}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Feature 14 & 15: Report Scheduling + Templates UI
+// ═══════════════════════════════════════════════════════════════
+function ReportSchedulesCard() {
+  const [schedules, setSchedules] = useState<any[]>([]);
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      apiFetch<any[]>('/reports/schedules').catch(() => []),
+      apiFetch<any[]>('/reports/templates').catch(() => []),
+    ]).then(([s, t]) => {
+      setSchedules(Array.isArray(s) ? s : []);
+      setTemplates(Array.isArray(t) ? t : []);
+    }).finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return null;
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="bg-surface-base panel-beveled">
+        <div className="px-4 pt-3 pb-1 border-b border-rmpg-700/50 flex items-center gap-2">
+          <Calendar className="w-3.5 h-3.5 text-amber-400" />
+          <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Scheduled Reports ({schedules.length})</h3>
+        </div>
+        <div className="p-3">
+          {schedules.length === 0 ? (
+            <div className="text-[10px] text-rmpg-500 text-center py-4">No scheduled reports configured</div>
+          ) : (
+            <div className="space-y-1.5">
+              {schedules.map((s: any) => (
+                <div key={s.id} className="flex items-center gap-2 panel-beveled bg-surface-sunken p-2">
+                  <span className={`led-dot ${s.is_active ? 'led-green' : 'led-off'}`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[10px] text-rmpg-200 font-bold truncate">{s.name}</div>
+                    <div className="text-[9px] text-rmpg-500">{s.frequency} &middot; {s.report_type}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="bg-surface-base panel-beveled">
+        <div className="px-4 pt-3 pb-1 border-b border-rmpg-700/50 flex items-center gap-2">
+          <Database className="w-3.5 h-3.5 text-purple-400" />
+          <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Report Templates ({templates.length})</h3>
+        </div>
+        <div className="p-3">
+          {templates.length === 0 ? (
+            <div className="text-[10px] text-rmpg-500 text-center py-4">No report templates saved</div>
+          ) : (
+            <div className="space-y-1.5">
+              {templates.map((t: any) => (
+                <div key={t.id} className="flex items-center gap-2 panel-beveled bg-surface-sunken p-2">
+                  <FileText className="w-3 h-3 text-purple-400 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[10px] text-rmpg-200 font-bold truncate">{t.name}</div>
+                    <div className="text-[9px] text-rmpg-500">{t.report_type}{t.description ? ` - ${t.description}` : ''}</div>
+                  </div>
+                  {t.is_default ? <span className="text-[8px] text-green-400 font-bold uppercase">Default</span> : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ReportsPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
@@ -461,6 +969,15 @@ export default function ReportsPage() {
             ))}
           </div>
 
+          {/* Feature 27: Report Approval Queue */}
+          <div className="panel-beveled p-4 bg-surface-base">
+            <div className="flex items-center gap-2 mb-3">
+              <FileText className="w-4 h-4 text-purple-400" />
+              <span className="text-xs font-bold text-white uppercase">Report Approval Queue</span>
+            </div>
+            <ReportApprovalQueue />
+          </div>
+
           {/* Charts Grid */}
           <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-2 gap-4'}`}>
             {/* Incidents by Type (Pie) */}
@@ -632,6 +1149,24 @@ export default function ReportsPage() {
 
           {/* ── Patrol Tracking Report Generator ── */}
           <PatrolTrackingCard />
+
+          {/* ═══ Feature 3: Crime Trend Analysis ═══ */}
+          <CrimeTrendCard />
+
+          {/* ═══ Feature 4: Beat Activity Report ═══ */}
+          <BeatActivityCard />
+
+          {/* ═══ Feature 9: Citation Revenue Report ═══ */}
+          <CitationRevenueCard />
+
+          {/* ═══ Feature 11 & 12: Briefing & Digest ═══ */}
+          <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-2 gap-4'}`}>
+            <DailyBriefingCard />
+            <WeeklyDigestCard />
+          </div>
+
+          {/* ═══ Feature 14 & 15: Schedules & Templates ═══ */}
+          <ReportSchedulesCard />
         </>
       )}
     </div>

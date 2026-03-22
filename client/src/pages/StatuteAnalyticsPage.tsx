@@ -75,6 +75,52 @@ export default function StatuteAnalyticsPage() {
     !search || s.statute_number.toLowerCase().includes(search.toLowerCase()) || s.title.toLowerCase().includes(search.toLowerCase())
   );
 
+  // ── Feature 36: Penalty Lookup ──
+  const [penaltyResult, setPenaltyResult] = useState<any>(null);
+  const [penaltySearch, setPenaltySearch] = useState('');
+  const handlePenaltyLookup = async () => {
+    if (!penaltySearch.trim()) return;
+    try {
+      const data = await apiFetch<any>(`/statutes/penalty/${encodeURIComponent(penaltySearch.trim())}`);
+      setPenaltyResult(data?.data || data);
+    } catch { setPenaltyResult(null); addToast('Statute not found', 'error'); }
+  };
+
+  // ── Feature 37: Top Charged (loaded with analytics data) ──
+  const [topCharged, setTopCharged] = useState<any[]>([]);
+  const handleLoadTopCharged = async () => {
+    try {
+      const data = await apiFetch<any>('/statutes/analytics/top-charged?days=365&limit=20');
+      setTopCharged(data?.data || []);
+    } catch { /* ignore */ }
+  };
+
+  // ── Feature 39: Enhancement Calculator ──
+  const [enhancementResult, setEnhancementResult] = useState<any>(null);
+  const [enhancementFactors, setEnhancementFactors] = useState({
+    repeat_offender: false, weapon_used: false, vulnerable_victim: false, gang_related: false, domestic_violence: false,
+  });
+  const handleCalculateEnhancement = async (citation: string) => {
+    try {
+      const data = await apiFetch<any>('/statutes/calculate-enhancement', {
+        method: 'POST',
+        body: JSON.stringify({ citation, factors: enhancementFactors }),
+      });
+      setEnhancementResult(data?.data || data);
+    } catch { addToast('Enhancement calculation failed', 'error'); }
+  };
+
+  // ── Feature 40: Statute Comparison ──
+  const [compareIds, setCompareIds] = useState<number[]>([]);
+  const [comparisonResult, setComparisonResult] = useState<any>(null);
+  const handleCompareStatutes = async () => {
+    if (compareIds.length < 2) { addToast('Select at least 2 statutes', 'error'); return; }
+    try {
+      const data = await apiFetch<any>('/statutes/compare', { method: 'POST', body: JSON.stringify({ statute_ids: compareIds }) });
+      setComparisonResult(data?.data || data);
+    } catch { addToast('Comparison failed', 'error'); }
+  };
+
   return (
     <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
       {fetchError && (
@@ -96,11 +142,53 @@ export default function StatuteAnalyticsPage() {
               {d}d
             </button>
           ))}
+          <button onClick={handleLoadTopCharged} className="toolbar-btn" title="Top Charged">
+            <BarChart3 className="w-3.5 h-3.5" />
+          </button>
           <button onClick={fetchData} className="toolbar-btn" title="Refresh">
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
         </div>
       </PanelTitleBar>}
+
+      {/* Feature 36: Penalty Lookup Bar */}
+      <div className="px-3 py-1.5 border-b border-rmpg-700/50 flex items-center gap-2 bg-surface-sunken flex-shrink-0">
+        <Search className="w-3 h-3 text-rmpg-500" />
+        <input type="text" placeholder="Penalty lookup — enter statute (e.g. 76-5-102)" className="input-dark text-xs flex-1 max-w-xs"
+          value={penaltySearch} onChange={e => setPenaltySearch(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handlePenaltyLookup()} />
+        <button onClick={handlePenaltyLookup} className="toolbar-btn text-[10px]">Lookup</button>
+        {penaltyResult && (
+          <div className="flex items-center gap-2 text-[10px] ml-2">
+            <span className="text-white font-bold">{penaltyResult.citation}</span>
+            <span className="text-rmpg-400">{penaltyResult.short_title}</span>
+            <span className="text-amber-400">{penaltyResult.offense_level?.replace(/_/g, ' ')}</span>
+            <span className="text-rmpg-400">Jail: {penaltyResult.penalty_range?.jail_max}</span>
+            <span className="text-rmpg-400">Fine: {penaltyResult.penalty_range?.fine_max}</span>
+            <button onClick={() => setPenaltyResult(null)} className="text-rmpg-500 hover:text-rmpg-300 ml-1">x</button>
+          </div>
+        )}
+      </div>
+
+      {/* Feature 37: Top Charged Panel */}
+      {topCharged.length > 0 && (
+        <div className="px-3 py-2 border-b border-blue-700/50 bg-blue-900/10 text-xs flex-shrink-0">
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-blue-400 font-bold text-[10px] uppercase">Top {topCharged.length} Most Charged Statutes</span>
+            <button onClick={() => setTopCharged([])} className="text-blue-500 hover:text-blue-300 text-[10px]">Close</button>
+          </div>
+          <div className="max-h-40 overflow-y-auto space-y-0.5">
+            {topCharged.map((s, i) => (
+              <div key={i} className="text-[10px] flex gap-2 items-center">
+                <span className="text-rmpg-500 w-5">{i + 1}.</span>
+                <span className="text-white font-mono w-24">{s.citation}</span>
+                <span className="text-rmpg-300 flex-1 truncate">{s.short_title}</span>
+                <span className="text-brand-400 font-bold">{s.total_count || s.citation_count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Mobile: day selector */}
       {isMobile && (

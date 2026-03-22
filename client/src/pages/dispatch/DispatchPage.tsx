@@ -1598,6 +1598,196 @@ export default function DispatchPage() {
     setEditData((prev) => ({ ...prev, [field]: value }));
   }, []);
 
+  // ═══════════════════════════════════════════════════════════════
+  // NEW DISPATCH FEATURES
+  // ═══════════════════════════════════════════════════════════════
+
+  // Feature 1: Auto-escalation timer — check pending calls and auto-escalate
+  const escalatedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const checkEscalation = () => {
+      const now = Date.now();
+      for (const c of calls) {
+        if (c.status !== 'pending' || escalatedRef.current.has(c.id)) continue;
+        const age = now - new Date(c.created_at).getTime();
+        const ageMins = age / 60000;
+        let shouldEscalate = false;
+        if (c.priority === 'P3' && ageMins >= 15) shouldEscalate = true;
+        if (c.priority === 'P2' && ageMins >= 30) shouldEscalate = true;
+        if (c.priority === 'P4' && ageMins >= 20) shouldEscalate = true;
+        if (shouldEscalate && c.assigned_units.length === 0) {
+          escalatedRef.current.add(c.id);
+          apiFetch(`/dispatch/calls/${c.id}/escalate`, { method: 'POST' })
+            .then((result: any) => {
+              if (result) {
+                const updated = mapDbCall(result);
+                setCalls(prev => prev.map(pc => pc.id === c.id ? updated : pc));
+                addToast(`Call ${c.call_number} auto-escalated from ${c.priority} to ${updated.priority}`, 'warning');
+              }
+            })
+            .catch(() => { escalatedRef.current.delete(c.id); });
+        }
+      }
+    };
+    const interval = setInterval(checkEscalation, 30000); // Check every 30s
+    return () => clearInterval(interval);
+  }, [calls, addToast]);
+
+  // Feature 4: Unit availability counter
+  const unitAvailability = useMemo(() => {
+    const available = units.filter(u => u.status === 'available').length;
+    const total = units.filter(u => u.status !== 'off_duty').length;
+    return { available, total };
+  }, [units]);
+
+  // Feature 5: Stacked calls count by address
+  const stackedCallCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    calls.filter(c => ['pending', 'dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status)).forEach(c => {
+      if (c.location) {
+        const loc = c.location.toLowerCase().trim();
+        counts.set(loc, (counts.get(loc) || 0) + 1);
+      }
+    });
+    return counts;
+  }, [calls]);
+
+  // Feature 6: Quick note add handler (from CallCard)
+  const handleQuickNote = useCallback(async (callId: string, noteText: string) => {
+    const call = calls.find(c => c.id === callId);
+    if (!call) return;
+    try {
+      const existingNotes = call.notes || [];
+      const note = { id: `qn-${Date.now()}`, author: 'Dispatch', text: noteText, timestamp: new Date().toISOString() };
+      const allNotes = [...existingNotes, note];
+      const result = await apiFetch<any>(`/dispatch/calls/${callId}`, {
+        method: 'PUT', body: JSON.stringify({ notes: JSON.stringify(allNotes) }),
+      });
+      const updatedCall = mapDbCall(result);
+      setCalls(prev => prev.map(c => c.id === callId ? updatedCall : c));
+      if (selectedCall?.id === callId) setSelectedCall(updatedCall);
+    } catch { addToast('Failed to add note', 'error'); }
+  }, [calls, selectedCall, addToast]);
+
+  // Feature 9: Call type statistics
+  const callTypeStats = useMemo(() => {
+    const active = calls.filter(c => ['pending', 'dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status));
+    const typeCounts = new Map<string, number>();
+    active.forEach(c => {
+      const type = c.incident_type || 'other';
+      typeCounts.set(type, (typeCounts.get(type) || 0) + 1);
+    });
+    return [...typeCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([type, count]) => ({ type, count }));
+  }, [calls]);
+
+  // Feature 11: Auto-assign nearest unit handler
+  const handleAutoAssign = useCallback(async (callId: string) => {
+    try {
+      const result = await apiFetch<any>(`/dispatch/calls/${callId}/auto-assign`, { method: 'POST' });
+      const updatedCall = mapDbCall(result);
+      setCalls(prev => prev.map(c => c.id === callId ? updatedCall : c));
+      setSelectedCall(prev => prev?.id === callId ? updatedCall : prev);
+      const unitsRes = await apiFetch<any[]>('/dispatch/units');
+      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
+      addToast(`Auto-assigned ${result.auto_assigned_unit} (${result.distance_miles} mi)`, 'success');
+    } catch (err: any) {
+      addToast(err?.message || err?.error || 'No available units', 'error');
+    }
+  }, [addToast]);
+
+  // Feature 13: Unit workload — count active calls per unit
+  const unitWorkload = useMemo(() => {
+    const workload = new Map<string, number>();
+    calls.filter(c => ['dispatched', 'enroute', 'onscene'].includes(c.status)).forEach(c => {
+      (c.assigned_units || []).forEach(uid => {
+        workload.set(String(uid), (workload.get(String(uid)) || 0) + 1);
+      });
+    });
+    return workload;
+  }, [calls]);
+
+  // Feature 14: Disposition statistics for current shift
+  const [dispositionStats, setDispositionStats] = useState<{disposition: string; count: number}[]>([]);
+  useEffect(() => {
+    apiFetch<any[]>('/dispatch/disposition-stats')
+      .then(data => setDispositionStats(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, [calls.filter(c => c.disposition).length]); // Re-fetch when dispositions change
+
+  // Feature 17: Auto-archive cleared calls after 5 minutes
+  useEffect(() => {
+    const checkAutoArchive = () => {
+      const now = Date.now();
+      const fiveMinMs = 5 * 60 * 1000;
+      calls.filter(c => ['cleared'].includes(c.status) && c.cleared_at).forEach(c => {
+        const clearedTime = new Date(c.cleared_at!).getTime();
+        if (now - clearedTime > fiveMinMs) {
+          handleArchive(c.id).catch(() => {});
+        }
+      });
+    };
+    const interval = setInterval(checkAutoArchive, 60000); // Check every minute
+    return () => clearInterval(interval);
+  }, [calls]);
+
+  // Feature 18: Multi-unit dispatch
+  const [multiSelectUnits, setMultiSelectUnits] = useState<string[]>([]);
+  const handleMultiUnitDispatch = useCallback(async (callId: string, unitIds: string[]) => {
+    if (unitIds.length === 0) return;
+    try {
+      const result = await apiFetch<any>(`/dispatch/calls/${callId}/dispatch`, {
+        method: 'POST', body: JSON.stringify({ unit_ids: unitIds.map(Number) }),
+      });
+      const updatedCall = mapDbCall(result);
+      setCalls(prev => prev.map(c => c.id === callId ? updatedCall : c));
+      setSelectedCall(prev => prev?.id === callId ? updatedCall : prev);
+      const unitsRes = await apiFetch<any[]>('/dispatch/units');
+      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
+      setMultiSelectUnits([]);
+      addToast(`${unitIds.length} units dispatched`, 'success');
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to dispatch units', 'error');
+    }
+  }, [addToast]);
+
+  // Feature 19: Call transfer handler
+  const handleTransferCall = useCallback(async (callId: string, fromUnitId: string, toUnitId: string) => {
+    try {
+      const result = await apiFetch<any>(`/dispatch/calls/${callId}/transfer`, {
+        method: 'POST', body: JSON.stringify({ from_unit_id: fromUnitId, to_unit_id: toUnitId }),
+      });
+      const updatedCall = mapDbCall(result);
+      setCalls(prev => prev.map(c => c.id === callId ? updatedCall : c));
+      setSelectedCall(prev => prev?.id === callId ? updatedCall : prev);
+      const unitsRes = await apiFetch<any[]>('/dispatch/units');
+      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
+      addToast('Call transferred', 'success');
+    } catch (err: any) {
+      addToast(err?.message || 'Transfer failed', 'error');
+    }
+  }, [addToast]);
+
+  // Feature 20: Broadcast note handler
+  const [broadcastNoteText, setBroadcastNoteText] = useState('');
+  const handleBroadcastNote = useCallback(async () => {
+    if (!selectedCall || !broadcastNoteText.trim()) return;
+    try {
+      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/broadcast-note`, {
+        method: 'POST', body: JSON.stringify({ message: broadcastNoteText.trim() }),
+      });
+      const updatedCall = mapDbCall(result);
+      setCalls(prev => prev.map(c => c.id === selectedCall.id ? updatedCall : c));
+      setSelectedCall(updatedCall);
+      setBroadcastNoteText('');
+      addToast('Note broadcast to all units', 'success');
+    } catch (err: any) {
+      addToast(err?.message || 'Broadcast failed', 'error');
+    }
+  }, [selectedCall, broadcastNoteText, addToast]);
+
   // ── Dispatch alarm interval — check overdue calls every 5s ──
   const alarmPlayedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
@@ -2448,6 +2638,12 @@ export default function DispatchPage() {
                   }
                   return null;
                 })()}
+                {/* Feature 4: Unit availability counter */}
+                <span className="text-rmpg-400">
+                  Units: <strong className={unitAvailability.available > 0 ? 'text-green-400' : 'text-red-400'}>
+                    {unitAvailability.available}/{unitAvailability.total}
+                  </strong> avail
+                </span>
                 <span className="text-rmpg-500 ml-auto">
                   {filteredCalls.length} calls
                 </span>
@@ -2455,6 +2651,39 @@ export default function DispatchPage() {
             );
           })()}
         </div>
+
+        {/* Feature 9: Call Type Statistics Bar */}
+        {callTypeStats.length > 0 && (
+          <div className="px-3 py-1 border-b border-rmpg-700/30 flex items-center gap-1 flex-shrink-0 bg-surface-sunken/50">
+            {callTypeStats.map(({ type, count }) => {
+              const total = callTypeStats.reduce((sum, s) => sum + s.count, 0);
+              const pct = total > 0 ? (count / total * 100) : 0;
+              return (
+                <div key={type} className="flex items-center gap-0.5" title={`${formatIncidentType(type)}: ${count}`}>
+                  <div
+                    className="h-2 rounded-sm bg-brand-500"
+                    style={{ width: `${Math.max(pct * 0.8, 4)}px`, minWidth: 4, opacity: 0.7 + pct * 0.003 }}
+                  />
+                  <span className="text-[7px] font-mono text-rmpg-400 truncate max-w-[60px]">
+                    {formatIncidentType(type).slice(0, 8)} {count}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Feature 14: Disposition Statistics (collapsed by default) */}
+        {dispositionStats.length > 0 && filterTab === 'cleared' && (
+          <div className="px-3 py-1 border-b border-rmpg-700/30 flex items-center gap-2 flex-wrap text-[8px] font-mono flex-shrink-0 bg-surface-sunken/50">
+            <span className="text-rmpg-500 font-bold">DISPS:</span>
+            {dispositionStats.slice(0, 5).map(d => (
+              <span key={d.disposition} className="text-rmpg-400">
+                {d.disposition}: <strong className="text-rmpg-200">{d.count}</strong>
+              </span>
+            ))}
+          </div>
+        )}
 
         {/* Call List */}
         <div className="flex-1 overflow-y-auto p-3 space-y-2">
@@ -2473,6 +2702,8 @@ export default function DispatchPage() {
                 onUnitDrop={handleDragAssignUnit}
                 onStatusChange={(callId, newStatus) => handleStatusChange(callId, newStatus as CallStatus)}
                 onContextMenu={(e, c) => setContextMenu({ x: e.clientX, y: e.clientY, call: c })}
+                stackCount={call.location ? stackedCallCounts.get(call.location.toLowerCase().trim()) : undefined}
+                onQuickNote={handleQuickNote}
               />
             ))
           )}
@@ -2876,11 +3107,28 @@ export default function DispatchPage() {
                             onChange={(e) => updateEditField('disposition', e.target.value)}
                           >
                             <option value="">— Select Disposition —</option>
-                            {dispositionCodes.map((d) => (
-                              <option key={d.code} value={d.code}>
-                                {d.code} — {d.description}
-                              </option>
-                            ))}
+                            {/* Feature 2: Common disposition quick-picks (always available) */}
+                            <optgroup label="Common Dispositions">
+                              <option value="Report Taken">Report Taken</option>
+                              <option value="Unfounded">Unfounded</option>
+                              <option value="GOA">Gone on Arrival</option>
+                              <option value="Referred">Referred</option>
+                              <option value="No Action">No Action Required</option>
+                              <option value="Arrest">Arrest</option>
+                              <option value="Warning">Warning Issued</option>
+                              <option value="Citation">Citation Issued</option>
+                              <option value="Trespass Warning">Trespass Warning</option>
+                              <option value="Civil Matter">Civil Matter</option>
+                            </optgroup>
+                            {dispositionCodes.length > 0 && (
+                              <optgroup label="Custom Codes">
+                                {dispositionCodes.map((d) => (
+                                  <option key={d.code} value={d.code}>
+                                    {d.code} — {d.description}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
                           </select>
                         </div>
                       </>
@@ -3025,6 +3273,40 @@ export default function DispatchPage() {
                           </div>
                         )}
                       </div>
+                      {/* Feature 11: Auto-assign + Feature 18: Multi-unit buttons */}
+                      {!isEditing && !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status) && (
+                        <div className="flex gap-1 mt-1 mb-1">
+                          <button
+                            onClick={() => handleAutoAssign(selectedCall.id)}
+                            className="toolbar-btn text-[8px]"
+                            style={{ padding: '1px 4px' }}
+                            title="Auto-assign nearest available unit"
+                          >
+                            <Navigation style={{ width: 8, height: 8 }} /> Auto-assign
+                          </button>
+                          {/* Feature 19: Transfer button (only if a unit is assigned) */}
+                          {(selectedCall.assigned_units || []).length > 0 && (
+                            <div className="relative">
+                              <select
+                                className="input-dark text-[8px] py-0 px-1"
+                                style={{ maxWidth: 120 }}
+                                defaultValue=""
+                                onChange={(e) => {
+                                  if (e.target.value && selectedCall.assigned_units.length > 0) {
+                                    handleTransferCall(selectedCall.id, String(selectedCall.assigned_units[0]), e.target.value);
+                                    e.target.value = '';
+                                  }
+                                }}
+                              >
+                                <option value="" disabled>Transfer to...</option>
+                                {units.filter(u => u.status === 'available' && !selectedCall.assigned_units.includes(u.id)).map(u => (
+                                  <option key={u.id} value={u.id}>{u.call_sign}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                        </div>
+                      )}
                       {(selectedCall.assigned_units || []).length > 0 ? (
                         <div className="flex flex-wrap gap-1.5 mt-1">
                           {(selectedCall.assigned_units || []).map((unitIdStr) => {
@@ -3924,6 +4206,29 @@ export default function DispatchPage() {
                         Add
                       </button>
                     </div>
+                    {/* Feature 20: Broadcast Note to all assigned units */}
+                    {(selectedCall.assigned_units || []).length > 0 && (
+                      <div className="flex gap-2 mt-2 pt-2 border-t border-rmpg-700/50">
+                        <input
+                          type="text"
+                          className="input-dark flex-1 text-xs"
+                          placeholder="Broadcast to all units on call..."
+                          maxLength={500}
+                          value={broadcastNoteText}
+                          onChange={(e) => setBroadcastNoteText(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleBroadcastNote(); } }}
+                        />
+                        <button
+                          onClick={handleBroadcastNote}
+                          className="toolbar-btn self-end"
+                          disabled={!broadcastNoteText.trim()}
+                          style={{ background: '#7c3aed20', borderColor: '#7c3aed50', color: '#a78bfa', padding: '2px 8px', fontSize: '9px' }}
+                          title="Send note to all assigned unit officers"
+                        >
+                          <Radio style={{ width: 9, height: 9 }} /> Broadcast
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
 

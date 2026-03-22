@@ -617,28 +617,32 @@ export default function MenuBar({
 
   return (
     <>
-      <div className="flex items-center gap-0" ref={menuBarRef}>
+      <nav className="flex items-center gap-0" ref={menuBarRef} role="menubar" aria-label="Main application menu">
         {menus.map((menu) => (
-          <div key={menu.label} className="relative">
+          <div key={menu.label} className="relative" role="none">
             <button
               className={`menu-bar-btn ${openMenu === menu.label ? 'menu-bar-btn-active' : ''}`}
               onClick={() => handleMenuClick(menu.label)}
               onMouseEnter={() => handleMenuHover(menu.label)}
+              role="menuitem"
+              aria-haspopup="true"
+              aria-expanded={openMenu === menu.label}
+              aria-label={`${menu.label} menu`}
             >
               {menu.label}
             </button>
             {openMenu === menu.label && (
-              <div className="menu-dropdown menu-dropdown-root">
+              <div className="menu-dropdown menu-dropdown-root" role="menu" aria-label={`${menu.label} submenu`}>
                 {menu.items.map((item, i) => renderMenuItem(item, i))}
               </div>
             )}
           </div>
         ))}
-      </div>
+      </nav>
 
       {/* ── 10-Codes Reference Modal ── */}
       {show10Codes && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60" onClick={() => setShow10Codes(false)}>
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60" onClick={() => setShow10Codes(false)} role="dialog" aria-modal="true" aria-label="10-Codes Quick Reference">
           <div
             className="panel-beveled w-[700px] max-h-[80vh] overflow-hidden flex flex-col"
             style={{ background: '#141e2b' }}

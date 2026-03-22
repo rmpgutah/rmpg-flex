@@ -194,4 +194,295 @@ router.put('/:id/clear', (req: Request, res: Response) => {
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// ════════════════════════════════════════════════════════════
+// FEATURE 21: Proximity Alert Configuration
+// ════════════════════════════════════════════════════════════
+
+router.put('/:id/proximity-alert', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { alert_radius_ft, alert_latitude, alert_longitude, alert_address, alert_enabled } = req.body;
+    const now = localNow();
+
+    const existing = db.prepare('SELECT id FROM offender_alerts WHERE id = ?').get(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Alert not found' });
+
+    db.prepare(`
+      UPDATE offender_alerts SET
+        restriction_radius_ft = COALESCE(?, restriction_radius_ft),
+        alert_latitude = ?,
+        alert_longitude = ?,
+        alert_address = ?,
+        alert_enabled = ?,
+        updated_at = ?
+      WHERE id = ?
+    `).run(
+      alert_radius_ft ?? null,
+      alert_latitude ?? null,
+      alert_longitude ?? null,
+      alert_address ?? null,
+      alert_enabled !== undefined ? (alert_enabled ? 1 : 0) : 1,
+      now, req.params.id
+    );
+
+    res.json({ data: { id: parseInt(req.params.id), alert_radius_ft, alert_enabled } });
+  } catch (error: any) {
+    console.error('Set proximity alert error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 22: Compliance Check Scheduling
+// ════════════════════════════════════════════════════════════
+
+router.post('/:id/schedule-check', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const alert = db.prepare('SELECT * FROM offender_alerts WHERE id = ?').get(req.params.id) as any;
+    if (!alert) return res.status(404).json({ error: 'Alert not found' });
+
+    const { check_date, check_type, assigned_officer_id, notes } = req.body;
+    if (!check_date) return res.status(400).json({ error: 'check_date is required' });
+
+    const now = localNow();
+
+    // Store compliance check in activity log with structured data
+    const checkData = {
+      offender_alert_id: parseInt(req.params.id),
+      person_id: alert.person_id,
+      check_type: check_type || 'address_verification',
+      scheduled_date: check_date,
+      assigned_officer_id: assigned_officer_id || req.user!.userId,
+      status: 'scheduled',
+      notes: notes || '',
+    };
+
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'compliance_check_scheduled', 'offender_alert', ?, ?, ?)
+    `).run(req.user!.userId, req.params.id, JSON.stringify(checkData), now);
+
+    res.status(201).json({ data: checkData });
+  } catch (error: any) {
+    console.error('Schedule compliance check error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/:id/compliance-checks', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const checks = db.prepare(`
+      SELECT al.*, u.full_name as scheduled_by_name
+      FROM activity_log al
+      LEFT JOIN users u ON al.user_id = u.id
+      WHERE al.entity_type = 'offender_alert' AND al.entity_id = ? AND al.action = 'compliance_check_scheduled'
+      ORDER BY al.created_at DESC
+    `).all(req.params.id) as any[];
+
+    const parsed = checks.map((c: any) => {
+      try { return { ...JSON.parse(c.details), id: c.id, created_at: c.created_at, scheduled_by: c.scheduled_by_name }; }
+      catch { return c; }
+    });
+
+    res.json({ data: parsed });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 23: Offender Contact Log
+// ════════════════════════════════════════════════════════════
+
+router.post('/:id/contact', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const alert = db.prepare('SELECT * FROM offender_alerts WHERE id = ?').get(req.params.id) as any;
+    if (!alert) return res.status(404).json({ error: 'Alert not found' });
+
+    const { contact_type, contact_date, location, gps_lat, gps_lng, outcome, notes } = req.body;
+    const now = localNow();
+
+    const contactData = {
+      offender_alert_id: parseInt(req.params.id),
+      person_id: alert.person_id,
+      contact_type: contact_type || 'field_contact',
+      contact_date: contact_date || now,
+      officer_id: req.user!.userId,
+      location: location || '',
+      gps_lat: gps_lat ?? null,
+      gps_lng: gps_lng ?? null,
+      outcome: outcome || 'compliant',
+      notes: notes || '',
+    };
+
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'offender_contact', 'offender_alert', ?, ?, ?, ?)
+    `).run(req.user!.userId, req.params.id, JSON.stringify(contactData), req.ip || 'unknown', now);
+
+    res.status(201).json({ data: contactData });
+  } catch (error: any) {
+    console.error('Log offender contact error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/:id/contacts', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const contacts = db.prepare(`
+      SELECT al.*, u.full_name as officer_name
+      FROM activity_log al
+      LEFT JOIN users u ON al.user_id = u.id
+      WHERE al.entity_type = 'offender_alert' AND al.entity_id = ? AND al.action = 'offender_contact'
+      ORDER BY al.created_at DESC
+      LIMIT 100
+    `).all(req.params.id) as any[];
+
+    const parsed = contacts.map((c: any) => {
+      try { return { ...JSON.parse(c.details), id: c.id, created_at: c.created_at, officer_name: c.officer_name }; }
+      catch { return c; }
+    });
+
+    res.json({ data: parsed });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 24: Risk Assessment Scoring
+// ════════════════════════════════════════════════════════════
+
+router.get('/:id/risk-score', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const alert = db.prepare(`
+      SELECT oa.*, p.first_name, p.last_name, p.dob, p.caution_flags, p.is_sex_offender, p.gang_affiliation
+      FROM offender_alerts oa
+      LEFT JOIN persons p ON oa.person_id = p.id
+      WHERE oa.id = ?
+    `).get(req.params.id) as any;
+    if (!alert) return res.status(404).json({ error: 'Alert not found' });
+
+    // Count related records
+    const alertCount = (db.prepare(
+      'SELECT COUNT(*) as cnt FROM offender_alerts WHERE person_id = ? AND status = \'active\''
+    ).get(alert.person_id) as any)?.cnt || 0;
+
+    const incidentCount = (db.prepare(
+      'SELECT COUNT(*) as cnt FROM incidents WHERE reporting_officer_id IS NOT NULL AND description LIKE ?'
+    ).get(`%${alert.first_name}%${alert.last_name}%`) as any)?.cnt || 0;
+
+    const citationCount = (db.prepare(
+      'SELECT COUNT(*) as cnt FROM citations WHERE violator_name LIKE ?'
+    ).get(`%${alert.last_name}%`) as any)?.cnt || 0;
+
+    // Calculate risk score (0-100)
+    let riskScore = 0;
+    const factors: { factor: string; points: number; description: string }[] = [];
+
+    // Severity-based points
+    const severityPoints: Record<string, number> = { danger: 30, warning: 20, caution: 10, info: 5 };
+    const sp = severityPoints[alert.severity] || 5;
+    riskScore += sp;
+    factors.push({ factor: 'Alert severity', points: sp, description: `${alert.severity} level` });
+
+    // Alert type points
+    const typePoints: Record<string, number> = {
+      violent_history: 20, sex_offender: 20, gang_member: 15, warrant_flag: 15,
+      ban_zone: 10, probation: 10, parole: 10, mental_health: 5, watch_list: 5,
+    };
+    const tp = typePoints[alert.alert_type] || 5;
+    riskScore += tp;
+    factors.push({ factor: 'Alert type', points: tp, description: alert.alert_type });
+
+    // Multiple active alerts
+    if (alertCount > 1) {
+      const mp = Math.min(alertCount * 5, 20);
+      riskScore += mp;
+      factors.push({ factor: 'Multiple active alerts', points: mp, description: `${alertCount} active alerts` });
+    }
+
+    // Incident history
+    if (incidentCount > 0) {
+      const ip = Math.min(incidentCount * 3, 15);
+      riskScore += ip;
+      factors.push({ factor: 'Incident history', points: ip, description: `${incidentCount} related incidents` });
+    }
+
+    // Citation history
+    if (citationCount > 0) {
+      const cp = Math.min(citationCount * 2, 10);
+      riskScore += cp;
+      factors.push({ factor: 'Citation history', points: cp, description: `${citationCount} citations` });
+    }
+
+    // Special flags
+    if (alert.is_sex_offender) { riskScore += 10; factors.push({ factor: 'Sex offender', points: 10, description: 'Registered sex offender' }); }
+    if (alert.gang_affiliation) { riskScore += 10; factors.push({ factor: 'Gang affiliation', points: 10, description: alert.gang_affiliation }); }
+
+    riskScore = Math.min(100, riskScore);
+
+    const riskLevel = riskScore >= 75 ? 'critical' : riskScore >= 50 ? 'high' : riskScore >= 25 ? 'medium' : 'low';
+
+    res.json({
+      data: {
+        person_id: alert.person_id,
+        person_name: `${alert.first_name} ${alert.last_name}`,
+        risk_score: riskScore,
+        risk_level: riskLevel,
+        factors,
+        alert_count: alertCount,
+        incident_count: incidentCount,
+        citation_count: citationCount,
+      },
+    });
+  } catch (error: any) {
+    console.error('Risk assessment error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 25: Multi-offender Map View data
+// ════════════════════════════════════════════════════════════
+
+router.get('/map/all', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT oa.id, oa.alert_type, oa.severity, oa.description,
+             oa.restriction_radius_ft, oa.alert_latitude, oa.alert_longitude, oa.alert_address,
+             p.first_name, p.last_name, p.photo_url,
+             p.first_name || ' ' || p.last_name as person_name
+      FROM offender_alerts oa
+      LEFT JOIN persons p ON oa.person_id = p.id
+      WHERE oa.status = 'active'
+        AND (oa.alert_latitude IS NOT NULL OR p.latitude IS NOT NULL)
+    `).all() as any[];
+
+    // Also get alerts with known addresses from persons
+    const withAddresses = db.prepare(`
+      SELECT oa.id, oa.alert_type, oa.severity, oa.description,
+             oa.restriction_radius_ft,
+             p.first_name, p.last_name, p.photo_url, p.address, p.city, p.state,
+             p.first_name || ' ' || p.last_name as person_name
+      FROM offender_alerts oa
+      LEFT JOIN persons p ON oa.person_id = p.id
+      WHERE oa.status = 'active' AND oa.alert_latitude IS NULL AND p.address IS NOT NULL AND p.address != ''
+    `).all() as any[];
+
+    res.json({
+      data: {
+        with_coordinates: rows,
+        with_addresses: withAddresses,
+        total: rows.length + withAddresses.length,
+      },
+    });
+  } catch (error: any) {
+    console.error('Map offenders error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

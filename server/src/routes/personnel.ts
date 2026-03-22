@@ -495,6 +495,436 @@ router.get('/bodycam-videos/:videoId/stream', (req: Request, res: Response) => {
 // These routes are handled via mountScheduleRoutes() in index.ts
 // to avoid /:id route conflicts in this sub-router.
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// PERSONNEL FEATURES (1-15)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── 1. Officer Schedule Calendar View ───────────────────────────────────────
+router.get('/calendar/shifts', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { month, year, officer_id } = req.query;
+    const y = year ? Number(year) : new Date().getFullYear();
+    const m = month ? Number(month) : new Date().getMonth() + 1;
+    const startDate = `${y}-${String(m).padStart(2, '0')}-01`;
+    const endDate = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
+
+    let sql = `SELECT s.*, u.full_name as officer_name, u.badge_number, p.name as property_name
+               FROM schedules s
+               JOIN users u ON u.id = s.officer_id
+               LEFT JOIN properties p ON p.id = s.property_id
+               WHERE s.shift_date >= ? AND s.shift_date < ?`;
+    const params: any[] = [startDate, endDate];
+    if (officer_id) { sql += ' AND s.officer_id = ?'; params.push(Number(officer_id)); }
+    sql += ' ORDER BY s.shift_date, s.start_time';
+
+    res.json(db.prepare(sql).all(...params));
+  } catch (error: any) {
+    console.error('Calendar shifts error:', error);
+    res.status(500).json({ error: 'Failed to load calendar shifts' });
+  }
+});
+
+// ─── 2. Emergency Contact Display — already in user fields, just a getter ────
+router.get('/emergency-contacts', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const users = db.prepare(`
+      SELECT id, full_name, badge_number, emergency_contact_name, emergency_contact_phone, emergency_contact_relationship
+      FROM users WHERE status = 'active' AND archived_at IS NULL
+      ORDER BY full_name
+    `).all();
+    res.json(users);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load emergency contacts' });
+  }
+});
+
+// ─── 3. Disciplinary Action History Timeline — see HR routes ─────────────────
+
+// ─── 4. Officer Fitness Tracking ─────────────────────────────────────────────
+router.get('/fitness/:officerId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = db.prepare('SELECT fitness_scores FROM users WHERE id = ?').get(Number(req.params.officerId)) as any;
+    if (!user) return res.status(404).json({ error: 'Officer not found' });
+    res.json(JSON.parse(user.fitness_scores || '[]'));
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load fitness scores' });
+  }
+});
+
+router.post('/fitness/:officerId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const officerId = Number(req.params.officerId);
+    const user = db.prepare('SELECT fitness_scores FROM users WHERE id = ?').get(officerId) as any;
+    if (!user) return res.status(404).json({ error: 'Officer not found' });
+
+    const scores = JSON.parse(user.fitness_scores || '[]');
+    const { date, score, run_time, pushups, situps, notes } = req.body;
+    scores.push({ date: date || localNow().substring(0, 10), score, run_time, pushups, situps, notes, recorded_by: req.user!.userId });
+    scores.sort((a: any, b: any) => b.date.localeCompare(a.date));
+
+    db.prepare('UPDATE users SET fitness_scores = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(scores), localNow(), officerId);
+    res.json({ success: true, scores });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to save fitness score' });
+  }
+});
+
+// ─── 5. Badge Number Search ──────────────────────────────────────────────────
+router.get('/search/badge', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { q } = req.query;
+    if (!q) return res.json([]);
+    const rows = db.prepare(`
+      SELECT id, full_name, badge_number, rank, role, status, avatar_url, profile_image
+      FROM users WHERE badge_number LIKE ? AND archived_at IS NULL
+      ORDER BY badge_number LIMIT 20
+    `).all(`%${q}%`);
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Badge search failed' });
+  }
+});
+
+// ─── 6. Personnel Export to CSV ──────────────────────────────────────────────
+router.get('/export/csv', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT id, full_name, first_name, last_name, badge_number, rank, role, department,
+        email, phone, status, hire_date, termination_date, uniform_size,
+        emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
+        created_at
+      FROM users WHERE archived_at IS NULL ORDER BY full_name
+    `).all();
+
+    // Build CSV manually
+    const headers = ['Name','Badge','Rank','Role','Department','Email','Phone','Status','Hire Date','Uniform Size','Emergency Contact','Emergency Phone'];
+    const csvRows = rows.map((r: any) =>
+      [r.full_name, r.badge_number, r.rank, r.role, r.department, r.email, r.phone, r.status,
+       r.hire_date, r.uniform_size, r.emergency_contact_name, r.emergency_contact_phone]
+        .map(v => `"${(v || '').toString().replace(/"/g, '""')}"`)
+        .join(',')
+    );
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename=personnel.csv');
+    res.send([headers.join(','), ...csvRows].join('\n'));
+  } catch (error: any) {
+    res.status(500).json({ error: 'Export failed' });
+  }
+});
+
+// ─── 7. Officer Skills/Certifications Matrix ─────────────────────────────────
+router.get('/certifications-matrix', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const officers = db.prepare(`
+      SELECT u.id, u.full_name, u.badge_number, u.certifications
+      FROM users u WHERE u.status = 'active' AND u.archived_at IS NULL
+      ORDER BY u.full_name
+    `).all() as any[];
+
+    const creds = db.prepare(`
+      SELECT c.officer_id, c.credential_type, c.status, c.expiry_date
+      FROM credentials c
+      JOIN users u ON u.id = c.officer_id
+      WHERE u.status = 'active'
+    `).all() as any[];
+
+    // Build a map: officer_id → list of credential types
+    const matrix: Record<number, Record<string, string>> = {};
+    const allTypes = new Set<string>();
+
+    for (const c of creds) {
+      if (!matrix[c.officer_id]) matrix[c.officer_id] = {};
+      matrix[c.officer_id][c.credential_type] = c.status;
+      allTypes.add(c.credential_type);
+    }
+
+    res.json({
+      officers: officers.map((o: any) => ({
+        id: o.id, full_name: o.full_name, badge_number: o.badge_number,
+        certs: matrix[o.id] || {},
+      })),
+      credential_types: Array.from(allTypes).sort(),
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to build certifications matrix' });
+  }
+});
+
+// ─── 8. Uniform Size Tracking — already in user fields, provide summary ──────
+router.get('/uniform-sizes', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT id, full_name, badge_number, uniform_size
+      FROM users WHERE status = 'active' AND archived_at IS NULL
+      ORDER BY full_name
+    `).all();
+
+    // Size summary for ordering
+    const summary: Record<string, number> = {};
+    for (const r of rows as any[]) {
+      if (r.uniform_size) {
+        summary[r.uniform_size] = (summary[r.uniform_size] || 0) + 1;
+      }
+    }
+
+    res.json({ personnel: rows, size_summary: summary });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load uniform sizes' });
+  }
+});
+
+// ─── 9. Personnel Anniversary Reminder ───────────────────────────────────────
+router.get('/anniversaries', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { days = '30' } = req.query;
+    const lookAhead = Math.min(Number(days) || 30, 365);
+
+    const officers = db.prepare(`
+      SELECT id, full_name, badge_number, hire_date
+      FROM users WHERE status = 'active' AND archived_at IS NULL AND hire_date IS NOT NULL
+    `).all() as any[];
+
+    const today = new Date();
+    const upcoming: any[] = [];
+
+    for (const o of officers) {
+      const hireDate = new Date(o.hire_date);
+      const thisYearAnniv = new Date(today.getFullYear(), hireDate.getMonth(), hireDate.getDate());
+      if (thisYearAnniv < today) {
+        thisYearAnniv.setFullYear(thisYearAnniv.getFullYear() + 1);
+      }
+      const daysUntil = Math.floor((thisYearAnniv.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysUntil <= lookAhead) {
+        const years = thisYearAnniv.getFullYear() - hireDate.getFullYear();
+        upcoming.push({ ...o, anniversary_date: thisYearAnniv.toISOString().slice(0, 10), years_of_service: years, days_until: daysUntil });
+      }
+    }
+
+    upcoming.sort((a, b) => a.days_until - b.days_until);
+    res.json(upcoming);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load anniversaries' });
+  }
+});
+
+// ─── 10. Officer Assignment History ──────────────────────────────────────────
+router.get('/assignment-history/:officerId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = db.prepare('SELECT assignment_history FROM users WHERE id = ?').get(Number(req.params.officerId)) as any;
+    if (!user) return res.status(404).json({ error: 'Officer not found' });
+    res.json(JSON.parse(user.assignment_history || '[]'));
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load assignment history' });
+  }
+});
+
+router.post('/assignment-history/:officerId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const officerId = Number(req.params.officerId);
+    const user = db.prepare('SELECT assignment_history FROM users WHERE id = ?').get(officerId) as any;
+    if (!user) return res.status(404).json({ error: 'Officer not found' });
+
+    const history = JSON.parse(user.assignment_history || '[]');
+    const { date, unit, shift, notes } = req.body;
+    history.unshift({ date: date || localNow().substring(0, 10), unit, shift, notes, assigned_by: req.user!.userId, assigned_at: localNow() });
+
+    db.prepare('UPDATE users SET assignment_history = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(history), localNow(), officerId);
+    res.json({ success: true, history });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to save assignment' });
+  }
+});
+
+// ─── 11. Photo ID Card Generator ─────────────────────────────────────────────
+router.get('/id-card/:officerId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const officer = db.prepare(`
+      SELECT id, full_name, first_name, last_name, badge_number, rank, role,
+        department, hire_date, profile_image, avatar_url, photo
+      FROM users WHERE id = ?
+    `).get(Number(req.params.officerId)) as any;
+    if (!officer) return res.status(404).json({ error: 'Officer not found' });
+
+    // Return the data needed for client-side ID card rendering / PDF generation
+    res.json({
+      ...officer,
+      company: 'Rocky Mountain Protective Group',
+      id_number: `RMPG-${String(officer.id).padStart(4, '0')}`,
+      issued_date: new Date().toISOString().slice(0, 10),
+      expiry_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to generate ID card data' });
+  }
+});
+
+// ─── 12. Personnel Status Timeline ───────────────────────────────────────────
+router.get('/status-timeline/:officerId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = db.prepare('SELECT status_history, status FROM users WHERE id = ?').get(Number(req.params.officerId)) as any;
+    if (!user) return res.status(404).json({ error: 'Officer not found' });
+    res.json(JSON.parse(user.status_history || '[]'));
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load status timeline' });
+  }
+});
+
+// ─── 13. Commendation Tracking ───────────────────────────────────────────────
+router.get('/commendations/:officerId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = db.prepare('SELECT commendations FROM users WHERE id = ?').get(Number(req.params.officerId)) as any;
+    if (!user) return res.status(404).json({ error: 'Officer not found' });
+    res.json(JSON.parse(user.commendations || '[]'));
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load commendations' });
+  }
+});
+
+router.post('/commendations/:officerId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const officerId = Number(req.params.officerId);
+    const user = db.prepare('SELECT commendations FROM users WHERE id = ?').get(officerId) as any;
+    if (!user) return res.status(404).json({ error: 'Officer not found' });
+
+    const commendations = JSON.parse(user.commendations || '[]');
+    const { date, type, description, awarded_by_name } = req.body;
+    commendations.unshift({
+      id: Date.now(),
+      date: date || localNow().substring(0, 10),
+      type: type || 'commendation',
+      description,
+      awarded_by: req.user!.userId,
+      awarded_by_name: awarded_by_name || null,
+      created_at: localNow(),
+    });
+
+    db.prepare('UPDATE users SET commendations = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(commendations), localNow(), officerId);
+    res.json({ success: true, commendations });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to save commendation' });
+  }
+});
+
+// ─── 14. Officer Response Time Stats ─────────────────────────────────────────
+router.get('/response-times/:officerId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const officerId = Number(req.params.officerId);
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    // Find calls where this officer was dispatched and arrived on scene
+    const unitRow = db.prepare('SELECT id, call_sign FROM units WHERE officer_id = ?').get(officerId) as any;
+    if (!unitRow) return res.json({ officer_id: officerId, avg_response_minutes: null, calls_responded: 0, times: [] });
+
+    const calls = db.prepare(`
+      SELECT c.id, c.call_number, c.incident_type, c.priority,
+        c.dispatched_at, c.enroute_at, c.onscene_at
+      FROM calls_for_service c
+      WHERE c.assigned_unit_ids LIKE ? AND c.dispatched_at >= ? AND c.onscene_at IS NOT NULL
+      ORDER BY c.dispatched_at DESC
+    `).all(`%${unitRow.id}%`, thirtyDaysAgo) as any[];
+
+    const times: any[] = [];
+    let totalMinutes = 0;
+    for (const c of calls) {
+      const dispatched = new Date(c.dispatched_at).getTime();
+      const onscene = new Date(c.onscene_at).getTime();
+      const minutes = (onscene - dispatched) / 60000;
+      if (minutes > 0 && minutes < 180) { // Filter outliers
+        times.push({ call_number: c.call_number, incident_type: c.incident_type, priority: c.priority, response_minutes: Math.round(minutes * 10) / 10 });
+        totalMinutes += minutes;
+      }
+    }
+
+    res.json({
+      officer_id: officerId,
+      avg_response_minutes: times.length > 0 ? Math.round((totalMinutes / times.length) * 10) / 10 : null,
+      calls_responded: times.length,
+      times,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load response times' });
+  }
+});
+
+// ─── 15. Personnel Comparison View ───────────────────────────────────────────
+router.get('/compare', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { ids } = req.query;
+    if (!ids) return res.status(400).json({ error: 'ids query param required (comma-separated)' });
+
+    const idList = String(ids).split(',').map(Number).filter(n => !isNaN(n));
+    if (idList.length < 2) return res.status(400).json({ error: 'At least 2 IDs required' });
+    if (idList.length > 5) return res.status(400).json({ error: 'Maximum 5 officers to compare' });
+
+    const placeholders = idList.map(() => '?').join(',');
+    const officers = db.prepare(`
+      SELECT id, full_name, badge_number, rank, role, department, status, hire_date,
+        fitness_scores, commendations, certifications
+      FROM users WHERE id IN (${placeholders})
+    `).all(...idList) as any[];
+
+    // Get credential counts
+    const credCounts = db.prepare(`
+      SELECT officer_id, COUNT(*) as total, SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_count
+      FROM credentials WHERE officer_id IN (${placeholders})
+      GROUP BY officer_id
+    `).all(...idList) as any[];
+
+    // Get training counts
+    const trainingCounts = db.prepare(`
+      SELECT officer_id, COUNT(*) as total, SUM(hours) as total_hours
+      FROM training_records WHERE officer_id IN (${placeholders})
+      GROUP BY officer_id
+    `).all(...idList) as any[];
+
+    // Get time entry totals (last 30 days)
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const timeTotals = db.prepare(`
+      SELECT officer_id, SUM(total_hours) as total_hours, COUNT(*) as shifts
+      FROM time_entries WHERE officer_id IN (${placeholders}) AND clock_in >= ?
+      GROUP BY officer_id
+    `).all(...idList, thirtyDaysAgo) as any[];
+
+    const credMap = Object.fromEntries(credCounts.map((c: any) => [c.officer_id, c]));
+    const trainMap = Object.fromEntries(trainingCounts.map((t: any) => [t.officer_id, t]));
+    const timeMap = Object.fromEntries(timeTotals.map((t: any) => [t.officer_id, t]));
+
+    const comparison = officers.map((o: any) => ({
+      ...o,
+      fitness_scores: JSON.parse(o.fitness_scores || '[]'),
+      commendations: JSON.parse(o.commendations || '[]'),
+      credential_stats: credMap[o.id] || { total: 0, active_count: 0 },
+      training_stats: trainMap[o.id] || { total: 0, total_hours: 0 },
+      time_stats: timeMap[o.id] || { total_hours: 0, shifts: 0 },
+    }));
+
+    res.json(comparison);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to compare personnel' });
+  }
+});
+
 export default router;
 
 // We export schedule and time routes separately for cleaner organization

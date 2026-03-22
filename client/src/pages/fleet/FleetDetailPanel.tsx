@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Car, Fuel, ClipboardCheck, Radio, BarChart3, Settings, Wrench, X, Clock, Users,
-  Archive, RotateCcw, Trash2, Printer, ChevronDown,
+  Archive, RotateCcw, Trash2, Printer, ChevronDown, Circle, AlertTriangle, AlertOctagon,
 } from 'lucide-react';
 import type {
   FleetVehicle, FleetMaintenance, FleetFuelLog, FleetFuelSummary,
@@ -14,10 +14,13 @@ import FleetInspectionsTab from './tabs/FleetInspectionsTab';
 import FleetAssignmentsTab from './tabs/FleetAssignmentsTab';
 import FleetPersonnelTab from './tabs/FleetPersonnelTab';
 import FleetAnalyticsTab from './tabs/FleetAnalyticsTab';
+import FleetTiresTab from './tabs/FleetTiresTab';
+import FleetDamageTab from './tabs/FleetDamageTab';
+import FleetRecallsTab from './tabs/FleetRecallsTab';
 import { formatMilitary } from './utils/fleetFormatters';
 import PrintRecordButton from '../../components/PrintRecordButton';
 
-export type DetailTab = 'overview' | 'fuel' | 'inspections' | 'assignments' | 'personnel' | 'analytics';
+export type DetailTab = 'overview' | 'fuel' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'tires' | 'damage' | 'recalls';
 
 const STATUS_LED: Record<FleetVehicleStatus, string> = {
   in_service: 'led-dot led-green', maintenance: 'led-dot led-amber',
@@ -51,6 +54,9 @@ const TABS: { key: DetailTab; label: string; icon: React.ComponentType<{ classNa
   { key: 'inspections', label: 'Inspections', icon: ClipboardCheck },
   { key: 'assignments', label: 'Assignments', icon: Radio },
   { key: 'personnel', label: 'Personnel', icon: Users },
+  { key: 'tires', label: 'Tires', icon: Circle },
+  { key: 'damage', label: 'Damage', icon: AlertTriangle },
+  { key: 'recalls', label: 'Recalls', icon: AlertOctagon },
   { key: 'analytics', label: 'Analytics', icon: BarChart3 },
 ];
 
@@ -323,6 +329,9 @@ export default function FleetDetailPanel({
             onRefresh={onRefreshPersonnel}
           />
         )}
+        {activeTab === 'tires' && <FleetTiresTab vehicleId={detail.id} />}
+        {activeTab === 'damage' && <FleetDamageTab vehicleId={detail.id} />}
+        {activeTab === 'recalls' && <FleetRecallsTab vehicleId={detail.id} />}
         {activeTab === 'analytics' && <FleetAnalyticsTab analytics={analytics} loading={analyticsLoading} />}
       </div>
     </div>

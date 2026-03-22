@@ -1322,4 +1322,238 @@ router.get('/calls/actions/export/csv', requireRole('admin', 'manager', 'supervi
   }
 });
 
+// ── Feature 1: Call Priority Escalation Timer ────────────────────
+// POST /api/dispatch/calls/:id/escalate - Auto-escalate call priority
+router.post('/calls/:id/escalate', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+
+    const escalationMap: Record<string, string> = { P4: 'P3', P3: 'P2', P2: 'P1' };
+    const newPriority = escalationMap[call.priority];
+    if (!newPriority) { res.status(400).json({ error: 'Call is already P1 or cannot be escalated' }); return; }
+
+    const now = localNow();
+    db.prepare('UPDATE calls_for_service SET priority = ?, updated_at = ? WHERE id = ?').run(newPriority, now, call.id);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'priority_escalated', 'call', ?, ?, ?)`).run(
+      req.user!.userId, call.id, `Escalated ${call.call_number} from ${call.priority} to ${newPriority}`, req.ip || 'unknown');
+
+    const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
+    broadcastDispatchUpdate({ action: 'call_updated', call: updated });
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Escalate priority error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Feature 10: Duplicate Call Warning ────────────────────────────
+// GET /api/dispatch/calls/check-duplicate - Check for recent calls at same address
+router.get('/calls/check-duplicate', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { address } = req.query;
+    if (!address || typeof address !== 'string' || address.trim().length < 3) {
+      res.json({ duplicates: [] });
+      return;
+    }
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const duplicates = db.prepare(`
+      SELECT id, call_number, incident_type, priority, status, location_address, created_at
+      FROM calls_for_service
+      WHERE LOWER(location_address) = LOWER(?) AND created_at >= ? AND status != 'archived'
+      ORDER BY created_at DESC LIMIT 5
+    `).all(address.trim(), oneHourAgo);
+    res.json({ duplicates });
+  } catch (error: any) {
+    console.error('Check duplicate error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Feature 11: Auto-assign Nearest Unit ─────────────────────────
+// POST /api/dispatch/calls/:id/auto-assign - Dispatch closest available unit
+router.post('/calls/:id/auto-assign', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+    if (!call.latitude || !call.longitude) {
+      res.status(400).json({ error: 'Call has no GPS coordinates — cannot auto-assign' });
+      return;
+    }
+
+    // Find available units with GPS
+    const availableUnits = db.prepare(`
+      SELECT u.id, u.call_sign, u.latitude, u.longitude
+      FROM units u
+      WHERE u.status = 'available' AND u.latitude IS NOT NULL AND u.longitude IS NOT NULL
+    `).all() as any[];
+
+    if (availableUnits.length === 0) {
+      res.status(404).json({ error: 'No available units with GPS positions' });
+      return;
+    }
+
+    // Haversine distance
+    const toRad = (d: number) => d * Math.PI / 180;
+    const haversine = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+      const R = 3959; // miles
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    };
+
+    let nearest = availableUnits[0];
+    let minDist = Infinity;
+    for (const u of availableUnits) {
+      const d = haversine(call.latitude, call.longitude, u.latitude, u.longitude);
+      if (d < minDist) { minDist = d; nearest = u; }
+    }
+
+    // Assign the nearest unit
+    const now = localNow();
+    let currentUnits: number[] = [];
+    try { currentUnits = JSON.parse(call.assigned_unit_ids || '[]'); } catch { /* ignore */ }
+    if (!currentUnits.includes(Number(nearest.id))) currentUnits.push(Number(nearest.id));
+
+    const assignTx = db.transaction(() => {
+      db.prepare(`UPDATE calls_for_service SET status = CASE WHEN status = 'pending' THEN 'dispatched' ELSE status END,
+        assigned_unit_ids = ?, dispatched_at = COALESCE(dispatched_at, ?) WHERE id = ?`).run(JSON.stringify(currentUnits), now, call.id);
+      db.prepare(`UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = ? WHERE id = ?`).run(call.id, now, nearest.id);
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'auto_assigned', 'call', ?, ?, ?)`).run(
+        req.user!.userId, call.id, `Auto-assigned nearest unit ${nearest.call_sign} (${minDist.toFixed(2)} mi) to ${call.call_number}`, req.ip || 'unknown');
+    });
+    assignTx();
+
+    const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id) as any;
+    broadcastDispatchUpdate({ action: 'unit_assigned', call: updated, unit_id: nearest.id });
+    res.json({ ...(updated || {}), auto_assigned_unit: nearest.call_sign, distance_miles: Math.round(minDist * 100) / 100 });
+  } catch (error: any) {
+    console.error('Auto-assign error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Feature 14: Disposition Statistics ───────────────────────────
+// GET /api/dispatch/disposition-stats - Disposition counts for current shift
+router.get('/disposition-stats', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const shiftStart = new Date();
+    shiftStart.setHours(shiftStart.getHours() - 12);
+    const stats = db.prepare(`
+      SELECT disposition, COUNT(*) as count
+      FROM calls_for_service
+      WHERE disposition IS NOT NULL AND disposition != '' AND cleared_at >= ?
+      GROUP BY disposition ORDER BY count DESC
+    `).all(shiftStart.toISOString());
+    res.json(stats);
+  } catch (error: any) {
+    console.error('Disposition stats error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Feature 19: Call Transfer ────────────────────────────────────
+// POST /api/dispatch/calls/:id/transfer - Transfer call from one unit to another
+router.post('/calls/:id/transfer', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+
+    const { from_unit_id, to_unit_id } = req.body;
+    if (!from_unit_id || !to_unit_id) {
+      res.status(400).json({ error: 'from_unit_id and to_unit_id are required' });
+      return;
+    }
+
+    const fromUnit = db.prepare('SELECT * FROM units WHERE id = ?').get(from_unit_id) as any;
+    const toUnit = db.prepare('SELECT * FROM units WHERE id = ?').get(to_unit_id) as any;
+    if (!fromUnit || !toUnit) { res.status(404).json({ error: 'Unit not found' }); return; }
+
+    const now = localNow();
+    let currentUnits: number[] = [];
+    try { currentUnits = JSON.parse(call.assigned_unit_ids || '[]'); } catch { /* ignore */ }
+
+    // Remove source, add target
+    currentUnits = currentUnits.filter(id => id !== Number(from_unit_id));
+    if (!currentUnits.includes(Number(to_unit_id))) currentUnits.push(Number(to_unit_id));
+
+    const transferTx = db.transaction(() => {
+      db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?').run(JSON.stringify(currentUnits), call.id);
+      db.prepare(`UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ?`).run(now, from_unit_id);
+      db.prepare(`UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = ? WHERE id = ?`).run(call.id, now, to_unit_id);
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'call_transferred', 'call', ?, ?, ?)`).run(
+        req.user!.userId, call.id, `Transferred ${call.call_number} from ${fromUnit.call_sign} to ${toUnit.call_sign}`, req.ip || 'unknown');
+    });
+    transferTx();
+
+    const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
+    broadcastDispatchUpdate({ action: 'call_updated', call: updated });
+    broadcastUnitUpdate({ action: 'unit_status_changed', unit: db.prepare('SELECT u.*, usr.full_name as officer_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.id = ?').get(from_unit_id) });
+    broadcastUnitUpdate({ action: 'unit_status_changed', unit: db.prepare('SELECT u.*, usr.full_name as officer_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.id = ?').get(to_unit_id) });
+
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Transfer call error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Feature 20: Dispatch Notes Broadcast ─────────────────────────
+// POST /api/dispatch/calls/:id/broadcast-note - Add a note that broadcasts to all assigned units
+router.post('/calls/:id/broadcast-note', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+
+    const { message } = req.body;
+    if (!message || typeof message !== 'string' || message.trim().length < 2) {
+      res.status(400).json({ error: 'message is required (min 2 chars)' });
+      return;
+    }
+
+    const now = localNow();
+    // Add note to call
+    let notes: any[] = [];
+    try { notes = JSON.parse(call.notes || '[]'); } catch { /* ignore */ }
+    notes.push({ id: `bn-${Date.now()}`, author: 'DISPATCH BROADCAST', text: message.trim(), timestamp: now, broadcast: true });
+    db.prepare('UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(notes), now, call.id);
+
+    // Notify all assigned units' officers
+    let unitIds: number[] = [];
+    try { unitIds = JSON.parse(call.assigned_unit_ids || '[]'); } catch { /* ignore */ }
+    for (const unitId of unitIds) {
+      const unit = db.prepare('SELECT officer_id, call_sign FROM units WHERE id = ?').get(unitId) as any;
+      if (unit?.officer_id) {
+        try {
+          createNotification(
+            unit.officer_id, 'dispatch',
+            `BROADCAST: ${call.call_number}`,
+            message.trim(),
+            'call', call.id, 'high',
+          );
+        } catch { /* non-fatal */ }
+      }
+    }
+
+    const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
+    broadcastDispatchUpdate({ action: 'call_updated', call: updated });
+    broadcast('dispatch', 'dispatch_broadcast', { call_id: call.id, call_number: call.call_number, message: message.trim(), unit_ids: unitIds });
+
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Broadcast note error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

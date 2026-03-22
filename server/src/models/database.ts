@@ -2649,6 +2649,16 @@ function migrateSchema(): void {
   // ── Person watchlist auto-screening flag ──
   addCol('persons', 'watchlist_match', 'TEXT DEFAULT NULL');
   addCol('persons', 'watchlist_checked_at', 'TEXT DEFAULT NULL');
+  addCol('persons', 'aliases', 'TEXT');
+  addCol('persons', 'photo', 'TEXT');
+
+  // Feature 27/37: Report approval and case assignment columns
+  addCol('incidents', 'approved_at', 'TEXT');
+  addCol('incidents', 'assigned_detective_id', 'INTEGER');
+
+  // Feature 38: Evidence retention tracking
+  addCol('evidence', 'retention_until', 'TEXT');
+  addCol('evidence', 'disposition', 'TEXT');
 
   // ── FORENSICS — Lab case management tables ─────────────────
   try {
@@ -2853,6 +2863,390 @@ function migrateSchema(): void {
   addCol('users', 'availability', "TEXT DEFAULT '{}'");
   addCol('users', 'active_case_count', 'INTEGER DEFAULT 0');
   addCol('users', 'performance', "TEXT DEFAULT '{}'");
+
+  // ── COURT EVENTS — continuance, bail, confirmation, judge notes, documents ──
+  addCol('court_events', 'continuance_count', 'INTEGER DEFAULT 0');
+  addCol('court_events', 'continuance_log', "TEXT DEFAULT '[]'");
+  addCol('court_events', 'bail_amount', 'REAL');
+  addCol('court_events', 'bond_status', 'TEXT');
+  addCol('court_events', 'surety_info', 'TEXT');
+  addCol('court_events', 'officer_confirmations', "TEXT DEFAULT '{}'");
+  addCol('court_events', 'judge_notes', 'TEXT');
+  addCol('court_events', 'documents', "TEXT DEFAULT '[]'");
+
+  // ── MESSAGES — read receipts, acknowledgments, scheduling, attachments, priority ──
+  addCol('messages', 'read_receipts', "TEXT DEFAULT '{}'");
+  addCol('messages', 'acknowledgments', "TEXT DEFAULT '{}'");
+  addCol('messages', 'scheduled_at', 'TEXT');
+  addCol('messages', 'attachment_url', 'TEXT');
+  addCol('messages', 'attachment_name', 'TEXT');
+  addCol('messages', 'is_template', 'INTEGER DEFAULT 0');
+  addCol('messages', 'template_name', 'TEXT');
+
+  // ── BOLOS — expiration config ──
+  addCol('bolos', 'auto_expire_hours', 'INTEGER');
+  addCol('bolos', 'expired_at', 'TEXT');
+
+  // ── USERS — notification prefs, theme, font size, favorites, recently viewed ──
+  addCol('users', 'notification_prefs', "TEXT DEFAULT '{}'");
+  addCol('users', 'theme_preference', "TEXT DEFAULT 'dark'");
+  addCol('users', 'font_size_preference', "TEXT DEFAULT 'medium'");
+  addCol('users', 'favorites', "TEXT DEFAULT '[]'");
+  addCol('users', 'recently_viewed', "TEXT DEFAULT '[]'");
+
+  // ── CONFIG CHANGE HISTORY table ──
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS config_change_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        config_key TEXT NOT NULL,
+        old_value TEXT,
+        new_value TEXT,
+        changed_by INTEGER NOT NULL,
+        changed_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (changed_by) REFERENCES users(id)
+      );
+    `);
+  } catch { /* already exists */ }
+
+  // ── RECORD LOCKS table ──
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS record_locks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_type TEXT NOT NULL,
+        entity_id INTEGER NOT NULL,
+        locked_by INTEGER NOT NULL,
+        locked_at TEXT DEFAULT (datetime('now','localtime')),
+        expires_at TEXT NOT NULL,
+        FOREIGN KEY (locked_by) REFERENCES users(id),
+        UNIQUE(entity_type, entity_id)
+      );
+    `);
+  } catch { /* already exists */ }
+
+  // ── BROADCAST TEMPLATES table ──
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS broadcast_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        category TEXT NOT NULL DEFAULT 'general',
+        subject TEXT,
+        content TEXT NOT NULL,
+        priority TEXT DEFAULT 'routine',
+        created_by INTEGER,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (created_by) REFERENCES users(id)
+      );
+    `);
+  } catch { /* already exists */ }
+
+  // ── SYSTEM ANNOUNCEMENTS table ──
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS system_announcements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        priority TEXT DEFAULT 'info',
+        active INTEGER DEFAULT 1,
+        show_on_login INTEGER DEFAULT 1,
+        created_by INTEGER,
+        expires_at TEXT,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (created_by) REFERENCES users(id)
+      );
+    `);
+  } catch { /* already exists */ }
+
+  // ── PERSONNEL — fitness tracking, commendations, status history ──────
+  addCol('users', 'fitness_scores', "TEXT DEFAULT '[]'");
+  addCol('users', 'commendations', "TEXT DEFAULT '[]'");
+  addCol('users', 'status_history', "TEXT DEFAULT '[]'");
+  addCol('users', 'assignment_history', "TEXT DEFAULT '[]'");
+
+  // ── HR — new tracking tables ────────────────────────────────────────
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS hr_documents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        category TEXT NOT NULL DEFAULT 'policy',
+        description TEXT,
+        file_path TEXT,
+        file_name TEXT,
+        file_size INTEGER DEFAULT 0,
+        uploaded_by INTEGER,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (uploaded_by) REFERENCES users(id)
+      );
+      CREATE TABLE IF NOT EXISTS hr_handbook_acknowledgments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        officer_id INTEGER NOT NULL,
+        document_id INTEGER NOT NULL,
+        acknowledged_at TEXT NOT NULL,
+        signature TEXT,
+        ip_address TEXT,
+        FOREIGN KEY (officer_id) REFERENCES users(id),
+        FOREIGN KEY (document_id) REFERENCES hr_documents(id),
+        UNIQUE(officer_id, document_id)
+      );
+      CREATE TABLE IF NOT EXISTS hr_grievances (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        officer_id INTEGER NOT NULL,
+        type TEXT NOT NULL DEFAULT 'general',
+        subject TEXT NOT NULL,
+        description TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'filed' CHECK(status IN ('filed','under_review','investigation','mediation','resolved','dismissed','appealed')),
+        priority TEXT DEFAULT 'normal',
+        assigned_to INTEGER,
+        resolution TEXT,
+        filed_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        resolved_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (officer_id) REFERENCES users(id),
+        FOREIGN KEY (assigned_to) REFERENCES users(id)
+      );
+      CREATE TABLE IF NOT EXISTS hr_workers_comp (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        officer_id INTEGER NOT NULL,
+        incident_date TEXT NOT NULL,
+        injury_type TEXT NOT NULL,
+        body_part TEXT,
+        description TEXT NOT NULL,
+        location TEXT,
+        witnesses TEXT,
+        treatment TEXT,
+        physician TEXT,
+        lost_days INTEGER DEFAULT 0,
+        osha_recordable INTEGER DEFAULT 0,
+        osha_case_number TEXT,
+        status TEXT NOT NULL DEFAULT 'reported' CHECK(status IN ('reported','under_review','approved','denied','closed')),
+        claim_number TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (officer_id) REFERENCES users(id)
+      );
+      CREATE TABLE IF NOT EXISTS hr_exit_interviews (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        officer_id INTEGER NOT NULL,
+        interview_date TEXT NOT NULL,
+        interviewer_id INTEGER,
+        reason_for_leaving TEXT,
+        satisfaction_rating INTEGER,
+        would_return INTEGER DEFAULT 0,
+        what_liked TEXT,
+        what_disliked TEXT,
+        suggestions TEXT,
+        management_feedback TEXT,
+        work_environment_rating INTEGER,
+        compensation_rating INTEGER,
+        training_rating INTEGER,
+        notes TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (officer_id) REFERENCES users(id),
+        FOREIGN KEY (interviewer_id) REFERENCES users(id)
+      );
+      CREATE TABLE IF NOT EXISTS hr_salary_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        officer_id INTEGER NOT NULL,
+        effective_date TEXT NOT NULL,
+        salary_amount REAL NOT NULL,
+        pay_type TEXT DEFAULT 'hourly',
+        reason TEXT,
+        approved_by INTEGER,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (officer_id) REFERENCES users(id),
+        FOREIGN KEY (approved_by) REFERENCES users(id)
+      );
+      CREATE TABLE IF NOT EXISTS hr_benefits (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        officer_id INTEGER NOT NULL,
+        benefit_type TEXT NOT NULL,
+        plan_name TEXT,
+        provider TEXT,
+        coverage_level TEXT,
+        employee_cost REAL DEFAULT 0,
+        employer_cost REAL DEFAULT 0,
+        effective_date TEXT,
+        end_date TEXT,
+        status TEXT DEFAULT 'active',
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (officer_id) REFERENCES users(id)
+      );
+      CREATE TABLE IF NOT EXISTS hr_pips (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        officer_id INTEGER NOT NULL,
+        supervisor_id INTEGER,
+        start_date TEXT NOT NULL,
+        end_date TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        goals TEXT NOT NULL DEFAULT '[]',
+        milestones TEXT NOT NULL DEFAULT '[]',
+        status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','completed','extended','failed','cancelled')),
+        outcome TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (officer_id) REFERENCES users(id),
+        FOREIGN KEY (supervisor_id) REFERENCES users(id)
+      );
+      CREATE TABLE IF NOT EXISTS hr_attendance (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        officer_id INTEGER NOT NULL,
+        date TEXT NOT NULL,
+        type TEXT NOT NULL DEFAULT 'absent' CHECK(type IN ('absent','tardy','early_departure','no_call_no_show')),
+        minutes_late INTEGER DEFAULT 0,
+        reason TEXT,
+        excused INTEGER DEFAULT 0,
+        documented_by INTEGER,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (officer_id) REFERENCES users(id),
+        FOREIGN KEY (documented_by) REFERENCES users(id)
+      );
+    `);
+  } catch { /* tables already exist */ }
+
+  // ── FLEET — tire tracking, damage, recalls, fuel cards ──────────────
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS fleet_tires (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        vehicle_id INTEGER NOT NULL,
+        position TEXT NOT NULL,
+        brand TEXT,
+        model TEXT,
+        size TEXT,
+        install_date TEXT,
+        tread_depth REAL,
+        last_measured TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id)
+      );
+      CREATE TABLE IF NOT EXISTS fleet_damage_reports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        vehicle_id INTEGER NOT NULL,
+        reported_by INTEGER,
+        damage_date TEXT NOT NULL,
+        damage_type TEXT NOT NULL,
+        location_on_vehicle TEXT,
+        severity TEXT DEFAULT 'minor' CHECK(severity IN ('minor','moderate','major','totaled')),
+        description TEXT NOT NULL,
+        repair_estimate REAL,
+        repair_cost REAL,
+        repair_status TEXT DEFAULT 'reported' CHECK(repair_status IN ('reported','estimated','approved','in_repair','completed','insurance_claim')),
+        photos TEXT DEFAULT '[]',
+        insurance_claim_number TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id),
+        FOREIGN KEY (reported_by) REFERENCES users(id)
+      );
+      CREATE TABLE IF NOT EXISTS fleet_recalls (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        vehicle_id INTEGER NOT NULL,
+        recall_number TEXT NOT NULL,
+        manufacturer TEXT,
+        description TEXT NOT NULL,
+        severity TEXT DEFAULT 'standard',
+        status TEXT DEFAULT 'open' CHECK(status IN ('open','scheduled','completed','not_applicable')),
+        remedy TEXT,
+        scheduled_date TEXT,
+        completed_date TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id)
+      );
+      CREATE TABLE IF NOT EXISTS fleet_fuel_cards (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        card_number TEXT NOT NULL UNIQUE,
+        vehicle_id INTEGER,
+        provider TEXT,
+        status TEXT DEFAULT 'active' CHECK(status IN ('active','suspended','cancelled','lost')),
+        monthly_limit REAL,
+        pin_last4 TEXT,
+        expiry_date TEXT,
+        notes TEXT,
+        assigned_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id)
+      );
+    `);
+  } catch { /* tables already exist */ }
+
+  addCol('fleet_vehicles', 'total_maintenance_cost', 'REAL DEFAULT 0');
+  addCol('fleet_vehicles', 'total_fuel_cost', 'REAL DEFAULT 0');
+  addCol('fleet_vehicles', 'total_trips', 'INTEGER DEFAULT 0');
+  addCol('fleet_vehicles', 'avg_mpg', 'REAL');
+  addCol('fleet_inspections', 'checklist', "TEXT DEFAULT '[]'");
+
+  // ── HR — performance review template field ──
+  addCol('performance_reviews', 'template_name', 'TEXT');
+
+  // ══════════════════════════════════════════════════════════
+  // NEW FEATURES — Schema extensions (features 1-45)
+  // ══════════════════════════════════════════════════════════
+
+  // Feature 5: Guard Tour Verification
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS patrol_tour_verifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      officer_id INTEGER NOT NULL,
+      tour_date TEXT NOT NULL,
+      verified_by INTEGER,
+      verified_at TEXT,
+      status TEXT DEFAULT 'approved',
+      notes TEXT,
+      total_scans INTEGER DEFAULT 0,
+      on_time_scans INTEGER DEFAULT 0,
+      created_at TEXT,
+      updated_at TEXT,
+      UNIQUE(officer_id, tour_date)
+    )`);
+  } catch { /* already exists */ }
+
+  // Feature 8: Weather on patrol scans
+  addCol('patrol_scans', 'weather_json', 'TEXT');
+
+  // Feature 16: Photo on trespass orders
+  addCol('trespass_orders', 'subject_photo_url', 'TEXT');
+
+  // Feature 21: Proximity alerts on offenders
+  addCol('offender_alerts', 'alert_latitude', 'REAL');
+  addCol('offender_alerts', 'alert_longitude', 'REAL');
+  addCol('offender_alerts', 'alert_address', 'TEXT');
+  addCol('offender_alerts', 'alert_enabled', 'INTEGER DEFAULT 1');
+
+  // Feature 26: Evidence intake extended fields
+  addCol('forensic_exhibits', 'condition_on_receipt', 'TEXT');
+  addCol('forensic_exhibits', 'packaging_type', 'TEXT');
+  addCol('forensic_exhibits', 'packaging_sealed', 'INTEGER DEFAULT 0');
+  addCol('forensic_exhibits', 'collected_by', 'TEXT');
+  addCol('forensic_exhibits', 'collected_date', 'TEXT');
+  addCol('forensic_exhibits', 'collected_location', 'TEXT');
+  addCol('forensic_exhibits', 'received_from', 'TEXT');
+  addCol('forensic_exhibits', 'storage_location', 'TEXT');
+  addCol('forensic_exhibits', 'storage_requirements', 'TEXT');
+  addCol('forensic_exhibits', 'is_hazardous', 'INTEGER DEFAULT 0');
+  addCol('forensic_exhibits', 'is_biohazard', 'INTEGER DEFAULT 0');
+  addCol('forensic_exhibits', 'current_custodian', 'TEXT');
+  addCol('forensic_exhibits', 'current_custodian_id', 'INTEGER');
+
+  // Feature 42-43: Vehicle registration & insurance
+  addCol('vehicles_records', 'registration_expiry', 'TEXT');
+  addCol('vehicles_records', 'insurance_company', 'TEXT');
+  addCol('vehicles_records', 'insurance_policy', 'TEXT');
+  addCol('vehicles_records', 'insurance_status', 'TEXT');
+  addCol('vehicles_records', 'insurance_expiry', 'TEXT');
+  addCol('vehicles_records', 'insurance_verified_at', 'TEXT');
+  addCol('vehicles_records', 'insurance_verified_by', 'INTEGER');
+  addCol('vehicles_records', 'is_stolen', 'INTEGER DEFAULT 0');
 
   console.log('Schema migration completed.');
 }

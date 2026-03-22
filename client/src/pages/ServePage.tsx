@@ -118,6 +118,34 @@ export default function ServePage() {
   });
   const [formSubmitting, setFormSubmitting] = useState(false);
 
+  // ── Feature 10: Affidavit Generation ──
+  const [affidavitData, setAffidavitData] = useState<any>(null);
+  // ── Feature 12: Deadline Tracking ──
+  const [deadlines, setDeadlines] = useState<any>(null);
+  // ── Feature 14: Success Rate Stats ──
+  const [successRates, setSuccessRates] = useState<any>(null);
+
+  const handleGenerateAffidavit = async (jobId: number) => {
+    try {
+      const data = await apiFetch<any>(`/process-server/${jobId}/affidavit`);
+      setAffidavitData(data);
+    } catch { /* ignore */ }
+  };
+
+  const handleLoadDeadlines = async () => {
+    try {
+      const data = await apiFetch<any>('/process-server/deadlines');
+      setDeadlines(data);
+    } catch { /* ignore */ }
+  };
+
+  const handleLoadSuccessRates = async () => {
+    try {
+      const data = await apiFetch<any>('/process-server/success-rates?days=90');
+      setSuccessRates(data);
+    } catch { /* ignore */ }
+  };
+
   // ── Map state ──────────────────────────────────────────────────────
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
@@ -738,6 +766,78 @@ export default function ServePage() {
                 )}
               </div>
             </div>
+
+            {/* Feature 12: Deadline Tracking + Feature 14: Success Rates */}
+            <div className="flex gap-2">
+              <button onClick={handleLoadDeadlines} className="toolbar-btn toolbar-btn-primary text-xs px-3 py-1.5">
+                <Calendar className="w-3.5 h-3.5" /> Deadline Tracker
+              </button>
+              <button onClick={handleLoadSuccessRates} className="toolbar-btn text-xs px-3 py-1.5">
+                <BarChart3 className="w-3.5 h-3.5" /> Success Rates
+              </button>
+            </div>
+
+            {/* Feature 12: Deadline Tracking Panel */}
+            {deadlines && (
+              <div className="p-3 bg-[#141e2b] border border-[#1e3048] rounded-sm space-y-2">
+                <div className="flex justify-between items-center">
+                  <div className="text-[10px] text-rmpg-400 uppercase font-semibold">Deadline Tracker ({deadlines.total} active)</div>
+                  <button onClick={() => setDeadlines(null)} className="text-rmpg-500 hover:text-rmpg-300 text-xs">Close</button>
+                </div>
+                {deadlines.overdue?.length > 0 && (
+                  <div>
+                    <div className="text-[9px] text-red-400 font-bold uppercase">Overdue ({deadlines.overdue.length})</div>
+                    {deadlines.overdue.map((d: any) => (
+                      <div key={d.id} className="text-[10px] flex gap-2 py-0.5 text-red-300">
+                        <span>{d.recipient_name}</span>
+                        <span className="text-rmpg-500">{d.document_type}</span>
+                        <span className="ml-auto">{Math.abs(Math.round(d.days_remaining))}d overdue</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {deadlines.urgent?.length > 0 && (
+                  <div>
+                    <div className="text-[9px] text-amber-400 font-bold uppercase">Due within 3 days ({deadlines.urgent.length})</div>
+                    {deadlines.urgent.map((d: any) => (
+                      <div key={d.id} className="text-[10px] flex gap-2 py-0.5 text-amber-300">
+                        <span>{d.recipient_name}</span>
+                        <span className="text-rmpg-500">{d.deadline}</span>
+                        <span className="ml-auto">{Math.round(d.days_remaining)}d left</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Feature 14: Success Rate Stats Panel */}
+            {successRates && (
+              <div className="p-3 bg-[#141e2b] border border-[#1e3048] rounded-sm space-y-2">
+                <div className="flex justify-between items-center">
+                  <div className="text-[10px] text-rmpg-400 uppercase font-semibold">Success Rates ({successRates.period_days}d)</div>
+                  <button onClick={() => setSuccessRates(null)} className="text-rmpg-500 hover:text-rmpg-300 text-xs">Close</button>
+                </div>
+                <div className="grid grid-cols-4 gap-2 text-center">
+                  <div><div className="text-lg font-bold text-green-400">{successRates.overall?.success_rate}%</div><div className="text-[9px] text-rmpg-400">Overall</div></div>
+                  <div><div className="text-lg font-bold text-white">{successRates.overall?.total}</div><div className="text-[9px] text-rmpg-400">Total Jobs</div></div>
+                  <div><div className="text-lg font-bold text-green-400">{successRates.overall?.served}</div><div className="text-[9px] text-rmpg-400">Served</div></div>
+                  <div><div className="text-lg font-bold text-white">{successRates.overall?.avg_attempts?.toFixed(1)}</div><div className="text-[9px] text-rmpg-400">Avg Attempts</div></div>
+                </div>
+                {successRates.by_officer?.length > 0 && (
+                  <div>
+                    <div className="text-[9px] text-rmpg-400 uppercase font-semibold mb-1">By Officer</div>
+                    {successRates.by_officer.map((o: any) => (
+                      <div key={o.officer_id} className="text-[10px] flex gap-2 py-0.5">
+                        <span className="text-white flex-1">{o.officer_name || 'Unassigned'}</span>
+                        <span className="text-green-400">{o.success_rate}%</span>
+                        <span className="text-rmpg-500">{o.served}/{o.total}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

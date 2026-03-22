@@ -1,11 +1,45 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Clock, MapPin, Users, AlertTriangle } from 'lucide-react';
+import { Clock, MapPin, Users, AlertTriangle, Phone, Radio, UserCheck, Globe, Layers, MessageSquare } from 'lucide-react';
 import type { CallForService } from '../types';
 import StatusBadge from './StatusBadge';
 import { formatIncidentType } from '../utils/caseNumbers';
 import WarningTags from './WarningTags';
 import type { WarningTag } from './WarningTags';
 import { getTimerState, isActiveStatus, type TimerSeverity } from '../utils/dispatchTimers';
+
+// Feature 15: Call Source Icons
+const SOURCE_ICONS: Record<string, React.ElementType> = {
+  phone: Phone,
+  radio: Radio,
+  walk_in: UserCheck,
+  online: Globe,
+  alarm: AlertTriangle,
+  patrol: Radio,
+};
+
+// Feature 3: Elapsed time formatter
+function formatCallDuration(createdAt: string): string {
+  const elapsed = Date.now() - new Date(createdAt).getTime();
+  if (elapsed < 0 || !isFinite(elapsed)) return '0:00';
+  const totalSec = Math.floor(elapsed / 1000);
+  const hrs = Math.floor(totalSec / 3600);
+  const mins = Math.floor((totalSec % 3600) / 60);
+  const secs = totalSec % 60;
+  if (hrs > 0) return `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  return `${mins}:${String(secs).padStart(2, '0')}`;
+}
+
+// Feature 8: Response time calculation
+function calcResponseTime(call: CallForService): string | null {
+  if (!call.dispatched_at || !call.created_at) return null;
+  if (!['cleared', 'closed', 'archived'].includes(call.status) && !call.onscene_at) return null;
+  const endTime = call.onscene_at || call.cleared_at || call.dispatched_at;
+  const diff = new Date(endTime).getTime() - new Date(call.created_at).getTime();
+  if (diff < 0 || !isFinite(diff)) return null;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins}m`;
+  return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+}
 
 interface CallCardProps {
   call: CallForService;
@@ -15,18 +49,27 @@ interface CallCardProps {
   onStatusChange?: (callId: string, newStatus: string) => void;
   onContextMenu?: (e: React.MouseEvent, call: CallForService) => void;
   warnings?: WarningTag[];
+  /** Feature 5: Number of stacked calls at this address */
+  stackCount?: number;
+  /** Feature 6: Quick note add handler */
+  onQuickNote?: (callId: string, note: string) => void;
 }
 
 const NON_DROPPABLE_STATUSES = ['cleared', 'closed', 'cancelled', 'archived'];
 
-export default React.memo(function CallCard({ call, isSelected = false, onClick, onUnitDrop, onStatusChange, onContextMenu, warnings }: CallCardProps) {
+export default React.memo(function CallCard({ call, isSelected = false, onClick, onUnitDrop, onStatusChange, onContextMenu, warnings, stackCount, onQuickNote }: CallCardProps) {
   const isEmergency = call.priority === 'P1';
   const [isDragOver, setIsDragOver] = useState(false);
   const timerRef = useRef<HTMLSpanElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLSpanElement>(null);
+  const durationRef = useRef<HTMLSpanElement>(null);
+  const holdTimerRef = useRef<HTMLSpanElement>(null);
   const [isOverdue, setIsOverdue] = useState(false);
   const [shouldEscalate, setShouldEscalate] = useState(false);
+  // Feature 6: Quick note inline input
+  const [showQuickNote, setShowQuickNote] = useState(false);
+  const [quickNoteText, setQuickNoteText] = useState('');
 
   // Status-aware timer — updates every second via direct DOM manipulation
   useEffect(() => {
@@ -55,6 +98,23 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
       }
 
       setIsOverdue(state.isOverdue);
+
+      // Feature 3: Update call duration display
+      if (durationRef.current && call.created_at) {
+        durationRef.current.textContent = formatCallDuration(call.created_at);
+      }
+
+      // Feature 12: Update hold timer
+      if (holdTimerRef.current) {
+        if (call.status === 'pending' && !call.assigned_units?.length) {
+          const holdMs = Date.now() - new Date(call.created_at).getTime();
+          const holdMins = Math.floor(holdMs / 60000);
+          holdTimerRef.current.textContent = `HOLD ${holdMins}m`;
+          holdTimerRef.current.style.display = 'inline-flex';
+        } else {
+          holdTimerRef.current.style.display = 'none';
+        }
+      }
 
       // Legacy escalation logic — guard against missing/invalid created_at
       const createdTime = call.created_at ? new Date(call.created_at).getTime() : NaN;
@@ -125,6 +185,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         ${isEmergency ? 'animate-emergency-pulse' : ''}
         ${isOverdue ? 'timer-overdue' : ''}
         ${call.status === 'on_hold' ? 'call-on-hold' : ''}
+        ${call.priority === 'P1' ? 'p1-pulse-border' : ''}
       `}
       style={{
         background: call.status === 'on_hold'
@@ -208,6 +269,14 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           >
             OVERDUE
           </span>
+          {/* Feature 12: Hold timer badge */}
+          <span
+            ref={holdTimerRef}
+            className="text-[8px] font-bold font-mono text-yellow-400 bg-yellow-900/30 border border-yellow-700/50 px-1 py-0"
+            style={{ display: call.status === 'pending' && !call.assigned_units?.length ? 'inline-flex' : 'none' }}
+          >
+            HOLD 0m
+          </span>
         </div>
       </div>
 
@@ -229,6 +298,28 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             {call.incident_number}
           </span>
         )}
+      </div>
+
+      {/* Feature 15: Source icon + Feature 5: Stack count + Feature 3: Duration */}
+      <div className="flex items-center gap-1.5 text-[9px] text-rmpg-400 mb-1">
+        {/* Source icon */}
+        {call.source && (() => {
+          const SourceIcon = SOURCE_ICONS[call.source] || Phone;
+          return <SourceIcon className="w-3 h-3 flex-shrink-0" title={call.source?.replace('_', ' ')} />;
+        })()}
+        {/* Feature 3: Call duration */}
+        <span ref={durationRef} className="font-mono">{call.created_at ? formatCallDuration(call.created_at) : ''}</span>
+        {/* Feature 5: Stacked calls badge */}
+        {stackCount && stackCount > 1 && (
+          <span className="flex items-center gap-0.5 px-1 py-0 bg-purple-900/40 text-purple-300 border border-purple-700/40 font-bold text-[8px]">
+            <Layers className="w-2.5 h-2.5" /> {stackCount}
+          </span>
+        )}
+        {/* Feature 8: Response time for cleared calls */}
+        {['cleared', 'closed', 'archived'].includes(call.status) && (() => {
+          const rt = calcResponseTime(call);
+          return rt ? <span className="font-mono text-cyan-400 ml-auto">RT: {rt}</span> : null;
+        })()}
       </div>
 
       {/* Location */}
@@ -273,6 +364,50 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
       {warnings && warnings.length > 0 && (
         <div className="mt-1.5 pt-1 border-t border-red-900/40">
           <WarningTags warnings={warnings} compact />
+        </div>
+      )}
+
+      {/* Feature 6: Quick Note Add */}
+      {onQuickNote && !showQuickNote && (
+        <button
+          onClick={(e) => { e.stopPropagation(); setShowQuickNote(true); }}
+          className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-70 hover:!opacity-100 transition-opacity text-[8px] text-rmpg-400 hover:text-rmpg-200 z-10"
+          title="Quick note"
+        >
+          <MessageSquare className="w-3 h-3" />
+        </button>
+      )}
+      {showQuickNote && onQuickNote && (
+        <div className="mt-1.5 pt-1 border-t border-rmpg-700/50 flex gap-1" onClick={(e) => e.stopPropagation()}>
+          <input
+            type="text"
+            className="flex-1 bg-surface-sunken border border-rmpg-600 text-[10px] text-rmpg-200 px-1.5 py-0.5 rounded-sm"
+            placeholder="Add note..."
+            maxLength={500}
+            value={quickNoteText}
+            onChange={(e) => setQuickNoteText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && quickNoteText.trim()) {
+                onQuickNote(call.id, quickNoteText.trim());
+                setQuickNoteText('');
+                setShowQuickNote(false);
+              }
+              if (e.key === 'Escape') { setShowQuickNote(false); setQuickNoteText(''); }
+            }}
+            autoFocus
+          />
+          <button
+            onClick={() => {
+              if (quickNoteText.trim()) {
+                onQuickNote(call.id, quickNoteText.trim());
+                setQuickNoteText('');
+                setShowQuickNote(false);
+              }
+            }}
+            className="text-[8px] px-1.5 py-0.5 bg-brand-600 text-white border border-brand-500 rounded-sm"
+          >
+            Add
+          </button>
         </div>
       )}
 

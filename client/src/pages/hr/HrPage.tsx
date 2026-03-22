@@ -13,8 +13,13 @@ import LeaveTab from './tabs/LeaveTab';
 import DisciplinaryTab from './tabs/DisciplinaryTab';
 import ReviewsTab from './tabs/ReviewsTab';
 import PayrollTab from './tabs/PayrollTab';
+import GrievancesTab from './tabs/GrievancesTab';
+import DocumentsTab from './tabs/DocumentsTab';
+import AttendanceTab from './tabs/AttendanceTab';
+import BenefitsTab from './tabs/BenefitsTab';
+import PIPsTab from './tabs/PIPsTab';
 
-const VALID_TABS: readonly HRTab[] = ['dashboard', 'leave', 'disciplinary', 'reviews', 'payroll'] as const;
+const VALID_TABS: readonly HRTab[] = ['dashboard', 'leave', 'disciplinary', 'reviews', 'payroll', 'grievances', 'documents', 'attendance', 'benefits', 'pips'] as const;
 
 export default function HRPage() {
   const { user } = useAuth();
@@ -45,6 +50,16 @@ export default function HRPage() {
         return <ReviewsTab userRole={userRole} userId={userId} />;
       case 'payroll':
         return <PayrollTab userRole={userRole} />;
+      case 'grievances':
+        return <GrievancesTab />;
+      case 'documents':
+        return <DocumentsTab userRole={userRole} />;
+      case 'attendance':
+        return <AttendanceTab userRole={userRole} />;
+      case 'benefits':
+        return <BenefitsTab userRole={userRole} />;
+      case 'pips':
+        return <PIPsTab userRole={userRole} />;
       default:
         return null;
     }

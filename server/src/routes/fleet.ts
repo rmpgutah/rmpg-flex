@@ -2030,4 +2030,472 @@ function safeParseJson(value: string | null | undefined, fallback: any): any {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// FLEET FEATURES (31-40)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── 31. Vehicle Assignment History ──────────────────────────────────────────
+router.get('/:id/assignment-history', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { id } = req.params;
+    const rows = db.prepare(`
+      SELECT fa.*, u.full_name as officer_name_lookup
+      FROM fleet_assignments fa
+      LEFT JOIN units un ON un.id = fa.unit_id
+      LEFT JOIN users u ON u.id = un.officer_id
+      WHERE fa.vehicle_id = ?
+      ORDER BY fa.assigned_at DESC
+    `).all(id);
+    res.json(rows);
+  } catch (error: any) {
+    console.error('Assignment history error:', error);
+    res.status(500).json({ error: 'Failed to load assignment history' });
+  }
+});
+
+// ─── 32. Fuel Efficiency Tracking ────────────────────────────────────────────
+router.get('/:id/fuel-efficiency', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { id } = req.params;
+
+    const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(id) as any;
+    if (!vehicle) return res.status(404).json({ error: 'Vehicle not found' });
+
+    const fuelLogs = db.prepare(`
+      SELECT id, fuel_date, gallons, odometer_reading, total_cost
+      FROM fleet_fuel_logs
+      WHERE vehicle_id = ? AND odometer_reading IS NOT NULL
+      ORDER BY fuel_date ASC, id ASC
+    `).all(id) as any[];
+
+    const efficiencyData: any[] = [];
+    for (let i = 1; i < fuelLogs.length; i++) {
+      const prev = fuelLogs[i - 1];
+      const curr = fuelLogs[i];
+      if (curr.odometer_reading > prev.odometer_reading && curr.gallons > 0) {
+        const miles = curr.odometer_reading - prev.odometer_reading;
+        const mpg = miles / curr.gallons;
+        const costPerMile = curr.total_cost ? curr.total_cost / miles : null;
+        efficiencyData.push({
+          date: curr.fuel_date,
+          miles_driven: miles,
+          gallons: curr.gallons,
+          mpg: Math.round(mpg * 10) / 10,
+          cost_per_mile: costPerMile ? Math.round(costPerMile * 100) / 100 : null,
+        });
+      }
+    }
+
+    const avgMpg = efficiencyData.length > 0
+      ? Math.round(efficiencyData.reduce((s, e) => s + e.mpg, 0) / efficiencyData.length * 10) / 10
+      : null;
+
+    res.json({ vehicle_id: Number(id), avg_mpg: avgMpg, data: efficiencyData });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load fuel efficiency' });
+  }
+});
+
+// ─── 33. Vehicle Inspection Checklist ────────────────────────────────────────
+router.get('/inspection-checklist', (_req: Request, res: Response) => {
+  // Standard daily vehicle inspection checklist
+  const checklist = [
+    { category: 'Exterior', items: [
+      { id: 'body_damage', label: 'Body damage (dents, scratches)', type: 'pass_fail' },
+      { id: 'lights_front', label: 'Headlights / turn signals', type: 'pass_fail' },
+      { id: 'lights_rear', label: 'Taillights / brake lights', type: 'pass_fail' },
+      { id: 'lights_emergency', label: 'Emergency lights / lightbar', type: 'pass_fail' },
+      { id: 'windshield', label: 'Windshield condition', type: 'pass_fail' },
+      { id: 'mirrors', label: 'Mirrors', type: 'pass_fail' },
+      { id: 'tires', label: 'Tire condition / pressure', type: 'pass_fail' },
+      { id: 'antenna', label: 'Radio antenna', type: 'pass_fail' },
+    ]},
+    { category: 'Interior', items: [
+      { id: 'seatbelts', label: 'Seatbelts', type: 'pass_fail' },
+      { id: 'horn', label: 'Horn', type: 'pass_fail' },
+      { id: 'radio', label: 'Radio / communication equipment', type: 'pass_fail' },
+      { id: 'mdt', label: 'MDT / laptop', type: 'pass_fail' },
+      { id: 'dashcam', label: 'Dash camera', type: 'pass_fail' },
+      { id: 'siren', label: 'Siren', type: 'pass_fail' },
+      { id: 'ac_heat', label: 'A/C & heating', type: 'pass_fail' },
+      { id: 'cleanliness', label: 'Interior cleanliness', type: 'pass_fail' },
+    ]},
+    { category: 'Safety Equipment', items: [
+      { id: 'first_aid', label: 'First aid kit', type: 'pass_fail' },
+      { id: 'fire_extinguisher', label: 'Fire extinguisher', type: 'pass_fail' },
+      { id: 'flares', label: 'Road flares / triangles', type: 'pass_fail' },
+      { id: 'spare_tire', label: 'Spare tire / jack', type: 'pass_fail' },
+    ]},
+    { category: 'Fluids', items: [
+      { id: 'fuel_level', label: 'Fuel level (minimum 1/2 tank)', type: 'pass_fail' },
+      { id: 'oil_level', label: 'Oil level', type: 'pass_fail' },
+      { id: 'coolant', label: 'Coolant level', type: 'pass_fail' },
+      { id: 'washer_fluid', label: 'Windshield washer fluid', type: 'pass_fail' },
+    ]},
+  ];
+  res.json(checklist);
+});
+
+// ─── 34. Maintenance Cost Tracking ───────────────────────────────────────────
+router.get('/:id/maintenance-costs', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { id } = req.params;
+
+    const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(id) as any;
+    if (!vehicle) return res.status(404).json({ error: 'Vehicle not found' });
+
+    const totalCost = db.prepare(
+      `SELECT COALESCE(SUM(cost), 0) as total, COALESCE(SUM(labor_cost), 0) as labor_total,
+       COUNT(*) as record_count
+       FROM fleet_maintenance WHERE vehicle_id = ?`
+    ).get(id) as any;
+
+    const byType = db.prepare(`
+      SELECT type, COALESCE(SUM(cost), 0) as total_cost, COUNT(*) as count
+      FROM fleet_maintenance WHERE vehicle_id = ? AND cost IS NOT NULL
+      GROUP BY type ORDER BY total_cost DESC
+    `).all(id) as any[];
+
+    const monthly = db.prepare(`
+      SELECT strftime('%Y-%m', performed_at) as month,
+        COALESCE(SUM(cost), 0) as cost, COUNT(*) as count
+      FROM fleet_maintenance WHERE vehicle_id = ?
+      GROUP BY month ORDER BY month DESC LIMIT 12
+    `).all(id) as any[];
+
+    res.json({
+      vehicle_id: Number(id),
+      total_parts_cost: totalCost.total || 0,
+      total_labor_cost: totalCost.labor_total || 0,
+      total_cost: (totalCost.total || 0) + (totalCost.labor_total || 0),
+      record_count: totalCost.record_count,
+      by_type: byType,
+      monthly_trend: monthly.reverse(),
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load maintenance costs' });
+  }
+});
+
+// ─── 35. Vehicle Status Dashboard ────────────────────────────────────────────
+router.get('/status-dashboard', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    const vehicles = db.prepare(`
+      SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year, fv.status,
+        fv.current_mileage, fv.next_service_due, fv.insurance_expiry, fv.registration_expiry,
+        u.call_sign as assigned_unit
+      FROM fleet_vehicles fv
+      LEFT JOIN units u ON u.id = fv.assigned_unit_id
+      WHERE fv.archived_at IS NULL
+      ORDER BY fv.vehicle_number
+    `).all() as any[];
+
+    const now = new Date().toISOString().slice(0, 10);
+    const statusSummary: Record<string, number> = {};
+
+    const enriched = vehicles.map((v: any) => {
+      statusSummary[v.status] = (statusSummary[v.status] || 0) + 1;
+      const alerts: string[] = [];
+      if (v.insurance_expiry && v.insurance_expiry <= now) alerts.push('insurance_expired');
+      if (v.registration_expiry && v.registration_expiry <= now) alerts.push('registration_expired');
+      if (v.next_service_due && v.next_service_due <= now) alerts.push('service_overdue');
+      return { ...v, alerts };
+    });
+
+    // Recall count
+    let openRecalls = 0;
+    try {
+      const rc = db.prepare(`SELECT COUNT(*) as cnt FROM fleet_recalls WHERE status = 'open'`).get() as any;
+      openRecalls = rc?.cnt || 0;
+    } catch { /* table may not exist */ }
+
+    res.json({ vehicles: enriched, status_summary: statusSummary, open_recalls: openRecalls });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load status dashboard' });
+  }
+});
+
+// ─── 36. Tire Tracking ───────────────────────────────────────────────────────
+router.get('/:id/tires', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare('SELECT * FROM fleet_tires WHERE vehicle_id = ? ORDER BY position').all(req.params.id);
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load tires' });
+  }
+});
+
+router.post('/:id/tires', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const vehicleId = req.params.id;
+    const { position, brand, model, size, install_date, tread_depth, notes } = req.body;
+    if (!position) return res.status(400).json({ error: 'position is required' });
+    const now = localNow();
+    const result = db.prepare(
+      `INSERT INTO fleet_tires (vehicle_id, position, brand, model, size, install_date, tread_depth, last_measured, notes, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(vehicleId, position, brand || null, model || null, size || null,
+      install_date || null, tread_depth || null, tread_depth ? now.substring(0, 10) : null, notes || null, now, now);
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to add tire' });
+  }
+});
+
+router.put('/tires/:tireId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { tread_depth, brand, model, notes } = req.body;
+    const now = localNow();
+    const sets: string[] = ['updated_at = ?'];
+    const vals: any[] = [now];
+    if (tread_depth !== undefined) { sets.push('tread_depth = ?'); vals.push(tread_depth); sets.push('last_measured = ?'); vals.push(now.substring(0, 10)); }
+    if (brand !== undefined) { sets.push('brand = ?'); vals.push(brand); }
+    if (model !== undefined) { sets.push('model = ?'); vals.push(model); }
+    if (notes !== undefined) { sets.push('notes = ?'); vals.push(notes); }
+    vals.push(req.params.tireId);
+    db.prepare(`UPDATE fleet_tires SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to update tire' });
+  }
+});
+
+// ─── 37. Vehicle Damage Reporting ────────────────────────────────────────────
+router.get('/:id/damage-reports', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT dr.*, u.full_name as reported_by_name
+      FROM fleet_damage_reports dr
+      LEFT JOIN users u ON u.id = dr.reported_by
+      WHERE dr.vehicle_id = ? ORDER BY dr.damage_date DESC
+    `).all(req.params.id);
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load damage reports' });
+  }
+});
+
+router.post('/:id/damage-reports', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const vehicleId = req.params.id;
+    const { damage_date, damage_type, location_on_vehicle, severity, description,
+            repair_estimate, photos, insurance_claim_number } = req.body;
+    if (!damage_date || !damage_type || !description) {
+      return res.status(400).json({ error: 'damage_date, damage_type, and description are required' });
+    }
+    const now = localNow();
+    const result = db.prepare(
+      `INSERT INTO fleet_damage_reports (vehicle_id, reported_by, damage_date, damage_type, location_on_vehicle,
+       severity, description, repair_estimate, photos, insurance_claim_number, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(vehicleId, req.user!.userId, damage_date, damage_type, location_on_vehicle || null,
+      severity || 'minor', description, repair_estimate || null,
+      JSON.stringify(photos || []), insurance_claim_number || null, now, now);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'fleet_damage_reported', 'fleet_vehicle', ?, ?, ?)`).run(
+      req.user!.userId, vehicleId, `Damage reported: ${damage_type} - ${description}`, req.ip || 'unknown');
+
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create damage report' });
+  }
+});
+
+router.put('/damage-reports/:reportId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { repair_status, repair_cost, insurance_claim_number } = req.body;
+    const now = localNow();
+    const sets: string[] = ['updated_at = ?'];
+    const vals: any[] = [now];
+    if (repair_status) { sets.push('repair_status = ?'); vals.push(repair_status); }
+    if (repair_cost !== undefined) { sets.push('repair_cost = ?'); vals.push(repair_cost); }
+    if (insurance_claim_number !== undefined) { sets.push('insurance_claim_number = ?'); vals.push(insurance_claim_number); }
+    vals.push(req.params.reportId);
+    db.prepare(`UPDATE fleet_damage_reports SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to update damage report' });
+  }
+});
+
+// ─── 38. Fleet Utilization Report ────────────────────────────────────────────
+router.get('/utilization-report', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { days = '30' } = req.query;
+    const cutoff = new Date(Date.now() - Number(days) * 24 * 60 * 60 * 1000).toISOString();
+
+    const vehicles = db.prepare(`
+      SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year, fv.status
+      FROM fleet_vehicles fv WHERE fv.archived_at IS NULL
+      ORDER BY fv.vehicle_number
+    `).all() as any[];
+
+    const result = vehicles.map((v: any) => {
+      const fuelLogs = db.prepare(
+        `SELECT COUNT(*) as cnt FROM fleet_fuel_logs WHERE vehicle_id = ? AND fuel_date >= ?`
+      ).get(v.id, cutoff.substring(0, 10)) as any;
+
+      const assignments = db.prepare(
+        `SELECT COUNT(*) as cnt FROM fleet_assignments WHERE vehicle_id = ? AND assigned_at >= ?`
+      ).get(v.id, cutoff) as any;
+
+      const inspections = db.prepare(
+        `SELECT COUNT(*) as cnt FROM fleet_inspections WHERE vehicle_id = ? AND inspection_date >= ?`
+      ).get(v.id, cutoff.substring(0, 10)) as any;
+
+      return {
+        ...v,
+        fuel_log_count: fuelLogs?.cnt || 0,
+        assignment_count: assignments?.cnt || 0,
+        inspection_count: inspections?.cnt || 0,
+        utilization_score: (fuelLogs?.cnt || 0) + (assignments?.cnt || 0) * 2,
+      };
+    });
+
+    result.sort((a: any, b: any) => b.utilization_score - a.utilization_score);
+    const avgScore = result.length > 0
+      ? Math.round(result.reduce((s: number, v: any) => s + v.utilization_score, 0) / result.length)
+      : 0;
+
+    res.json({
+      period_days: Number(days),
+      vehicles: result,
+      most_used: result[0] || null,
+      least_used: result[result.length - 1] || null,
+      avg_utilization_score: avgScore,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to generate utilization report' });
+  }
+});
+
+// ─── 39. Vehicle Recall Alerts ───────────────────────────────────────────────
+router.get('/recalls', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { vehicle_id, status } = req.query;
+    let sql = `SELECT r.*, fv.vehicle_number, fv.make, fv.model, fv.year, fv.vin
+               FROM fleet_recalls r
+               JOIN fleet_vehicles fv ON fv.id = r.vehicle_id WHERE 1=1`;
+    const params: any[] = [];
+    if (vehicle_id) { sql += ' AND r.vehicle_id = ?'; params.push(Number(vehicle_id)); }
+    if (status) { sql += ' AND r.status = ?'; params.push(status); }
+    sql += ' ORDER BY r.created_at DESC';
+    res.json(db.prepare(sql).all(...params));
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load recalls' });
+  }
+});
+
+router.post('/recalls', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { vehicle_id, recall_number, manufacturer, description, severity, remedy } = req.body;
+    if (!vehicle_id || !recall_number || !description) {
+      return res.status(400).json({ error: 'vehicle_id, recall_number, and description are required' });
+    }
+    const now = localNow();
+    const result = db.prepare(
+      `INSERT INTO fleet_recalls (vehicle_id, recall_number, manufacturer, description, severity, remedy, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(vehicle_id, recall_number, manufacturer || null, description, severity || 'standard', remedy || null, now, now);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'fleet_recall_created', 'fleet_vehicle', ?, ?, ?)`).run(
+      req.user!.userId, vehicle_id, `Recall: ${recall_number} - ${description}`, req.ip || 'unknown');
+
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create recall' });
+  }
+});
+
+router.put('/recalls/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = Number(req.params.id);
+    const { status, scheduled_date, completed_date } = req.body;
+    const now = localNow();
+    const sets: string[] = ['updated_at = ?'];
+    const vals: any[] = [now];
+    if (status) { sets.push('status = ?'); vals.push(status); }
+    if (scheduled_date !== undefined) { sets.push('scheduled_date = ?'); vals.push(scheduled_date); }
+    if (completed_date !== undefined) { sets.push('completed_date = ?'); vals.push(completed_date); }
+    vals.push(id);
+    db.prepare(`UPDATE fleet_recalls SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to update recall' });
+  }
+});
+
+// ─── 40. Fuel Card Assignment ────────────────────────────────────────────────
+router.get('/fuel-cards', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { vehicle_id, status } = req.query;
+    let sql = `SELECT fc.*, fv.vehicle_number
+               FROM fleet_fuel_cards fc
+               LEFT JOIN fleet_vehicles fv ON fv.id = fc.vehicle_id WHERE 1=1`;
+    const params: any[] = [];
+    if (vehicle_id) { sql += ' AND fc.vehicle_id = ?'; params.push(Number(vehicle_id)); }
+    if (status) { sql += ' AND fc.status = ?'; params.push(status); }
+    sql += ' ORDER BY fc.card_number';
+    res.json(db.prepare(sql).all(...params));
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load fuel cards' });
+  }
+});
+
+router.post('/fuel-cards', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { card_number, vehicle_id, provider, monthly_limit, pin_last4, expiry_date, notes } = req.body;
+    if (!card_number) return res.status(400).json({ error: 'card_number is required' });
+    const now = localNow();
+    const result = db.prepare(
+      `INSERT INTO fleet_fuel_cards (card_number, vehicle_id, provider, monthly_limit, pin_last4, expiry_date, notes, assigned_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(card_number, vehicle_id || null, provider || null, monthly_limit || null,
+      pin_last4 || null, expiry_date || null, notes || null, vehicle_id ? now : null, now, now);
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+  } catch (error: any) {
+    if (error.message?.includes('UNIQUE')) return res.status(409).json({ error: 'Card number already exists' });
+    res.status(500).json({ error: 'Failed to create fuel card' });
+  }
+});
+
+router.put('/fuel-cards/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = Number(req.params.id);
+    const { vehicle_id, status, monthly_limit, notes } = req.body;
+    const now = localNow();
+    const sets: string[] = ['updated_at = ?'];
+    const vals: any[] = [now];
+    if (vehicle_id !== undefined) { sets.push('vehicle_id = ?'); vals.push(vehicle_id); sets.push('assigned_at = ?'); vals.push(vehicle_id ? now : null); }
+    if (status) { sets.push('status = ?'); vals.push(status); }
+    if (monthly_limit !== undefined) { sets.push('monthly_limit = ?'); vals.push(monthly_limit); }
+    if (notes !== undefined) { sets.push('notes = ?'); vals.push(notes); }
+    vals.push(id);
+    db.prepare(`UPDATE fleet_fuel_cards SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to update fuel card' });
+  }
+});
+
 export default router;

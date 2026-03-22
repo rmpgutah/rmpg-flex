@@ -288,6 +288,105 @@ export function useVehiclesTab(props: VehiclesTabProps): VehiclesTabState {
 }
 
 // ════════════════════════════════════════════════════
+// Feature 22: Plate Lookup Panel
+// ════════════════════════════════════════════════════
+
+function PlateLookupPanel() {
+  const [plate, setPlate] = useState('');
+  const [plateState, setPlateState] = useState('');
+  const [results, setResults] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  // Feature 32: BOLO matches
+  const [boloMatches, setBoloMatches] = useState<any[]>([]);
+
+  const handleLookup = async () => {
+    if (plate.trim().length < 2) return;
+    setLoading(true);
+    try {
+      const [vehicleRes, boloRes] = await Promise.all([
+        apiFetch<any[]>(`/records/vehicles/plate-lookup?plate=${encodeURIComponent(plate.trim())}${plateState ? `&state=${encodeURIComponent(plateState)}` : ''}`),
+        apiFetch<any>(`/records/vehicles/bolo-check?plate=${encodeURIComponent(plate.trim())}`),
+      ]);
+      setResults(Array.isArray(vehicleRes) ? vehicleRes : []);
+      setBoloMatches(boloRes?.matches || []);
+    } catch {
+      setResults([]);
+      setBoloMatches([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="border-b border-rmpg-600">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full px-3 py-1.5 flex items-center gap-2 text-[10px] text-rmpg-400 hover:text-rmpg-200 hover:bg-rmpg-700/30 transition-colors"
+      >
+        <Shield className="w-3 h-3" />
+        <span className="font-bold">Plate Lookup / BOLO Check</span>
+        <span className="ml-auto">{expanded ? '−' : '+'}</span>
+      </button>
+      {expanded && (
+        <div className="px-3 pb-2 space-y-2">
+          <div className="flex gap-1.5">
+            <input
+              type="text"
+              className="input-dark flex-1 text-[10px]"
+              placeholder="Plate number..."
+              value={plate}
+              onChange={(e) => setPlate(e.target.value.toUpperCase())}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleLookup(); }}
+            />
+            <input
+              type="text"
+              className="input-dark text-[10px]"
+              style={{ width: 40 }}
+              placeholder="ST"
+              maxLength={2}
+              value={plateState}
+              onChange={(e) => setPlateState(e.target.value.toUpperCase())}
+            />
+            <button onClick={handleLookup} className="toolbar-btn text-[9px]" disabled={loading || plate.trim().length < 2}>
+              {loading ? '...' : 'Search'}
+            </button>
+          </div>
+          {/* BOLO Warning */}
+          {boloMatches.length > 0 && (
+            <div className="p-2 bg-red-950/40 border border-red-700/50 text-[10px]">
+              <div className="flex items-center gap-1.5 text-red-400 font-bold mb-1">
+                <AlertTriangle className="w-3.5 h-3.5" /> BOLO MATCH ({boloMatches.length})
+              </div>
+              {boloMatches.map((b: any) => (
+                <div key={b.id} className="text-red-300 text-[9px] mt-0.5">
+                  {b.bolo_number}: {b.vehicle_description} — {b.suspect_name || 'Unknown'}
+                </div>
+              ))}
+            </div>
+          )}
+          {/* Results */}
+          {results.length > 0 && (
+            <div className="space-y-1 max-h-32 overflow-y-auto">
+              {results.map((v: any) => (
+                <div key={v.id} className="text-[10px] p-1.5 bg-surface-sunken border border-rmpg-600 rounded-sm">
+                  <div className="font-bold text-green-400 font-mono">{v.plate_number} {v.state}</div>
+                  <div className="text-rmpg-300">{v.year} {v.make} {v.model} {v.color}</div>
+                  {v.owner_first_name && <div className="text-rmpg-400">Owner: {v.owner_first_name} {v.owner_last_name}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+          {results.length === 0 && plate.trim().length >= 2 && !loading && (
+            <div className="text-[9px] text-rmpg-500">No records found</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════
 // LIST — VehiclesTabList (left panel content)
 // ════════════════════════════════════════════════════
 
@@ -319,6 +418,9 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
           )}
         </div>
       </div>
+
+      {/* Feature 22: Plate Lookup Section */}
+      <PlateLookupPanel />
 
       {/* Vehicle List */}
       <div className="flex-1 overflow-auto">
@@ -438,6 +540,28 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
     linkRefreshKey, openLinkModal,
   } = state;
 
+  // ── Feature 41: Vehicle History Report ──
+  const [vehicleHistory, setVehicleHistory] = React.useState<any>(null);
+  const handleLoadHistory = async (vId: string) => {
+    try {
+      const data = await apiFetch<any>(`/records/vehicles/${vId}/history`);
+      setVehicleHistory(data?.data || data);
+    } catch { /* ignore */ }
+  };
+
+  // ── Feature 44: Stolen Vehicle Check ──
+  const [stolenCheckResult, setStolenCheckResult] = React.useState<any>(null);
+  const handleStolenCheck = async () => {
+    if (!selectedVehicle) return;
+    try {
+      const data = await apiFetch<any>('/records/vehicles/stolen-check', {
+        method: 'POST',
+        body: JSON.stringify({ plate_number: selectedVehicle.license_plate, vin: selectedVehicle.vin }),
+      });
+      setStolenCheckResult(data?.data || data);
+    } catch { /* ignore */ }
+  };
+
   if (!selectedVehicle) return null;
 
   return (
@@ -452,6 +576,34 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
           {selectedVehicle.body_style && <span>{selectedVehicle.body_style}</span>}
           <span>({selectedVehicle.plate_state})</span>
         </div>
+        {/* Feature 41+44 Action Buttons */}
+        <div className="flex gap-1 mt-1">
+          <button onClick={() => handleLoadHistory(selectedVehicle.id)} className="text-[9px] px-2 py-0.5 bg-blue-900/30 border border-blue-700/50 text-blue-400 hover:bg-blue-900/50">
+            <FileText style={{ width: 10, height: 10, display: 'inline' }} /> History Report
+          </button>
+          <button onClick={handleStolenCheck} className="text-[9px] px-2 py-0.5 bg-red-900/30 border border-red-700/50 text-red-400 hover:bg-red-900/50">
+            <Shield style={{ width: 10, height: 10, display: 'inline' }} /> Stolen Check
+          </button>
+        </div>
+        {/* Feature 44: Stolen Check Result */}
+        {stolenCheckResult && (
+          <div className={`mt-1 p-1.5 text-[10px] border ${stolenCheckResult.status === 'HIT' ? 'bg-red-900/30 border-red-700/50 text-red-300' : 'bg-green-900/30 border-green-700/50 text-green-300'}`}>
+            <span className="font-bold">{stolenCheckResult.status}</span> — {stolenCheckResult.message}
+            <button onClick={() => setStolenCheckResult(null)} className="ml-2 text-rmpg-500">x</button>
+          </div>
+        )}
+        {/* Feature 41: History Panel */}
+        {vehicleHistory && (
+          <div className="mt-1 p-1.5 text-[10px] bg-blue-900/10 border border-blue-700/30">
+            <div className="flex justify-between">
+              <span className="text-blue-400 font-bold">Vehicle History ({vehicleHistory.total_records} records)</span>
+              <button onClick={() => setVehicleHistory(null)} className="text-rmpg-500">x</button>
+            </div>
+            {vehicleHistory.incidents?.length > 0 && <div className="text-rmpg-400 mt-0.5">{vehicleHistory.incidents.length} incidents</div>}
+            {vehicleHistory.citations?.length > 0 && <div className="text-rmpg-400">{vehicleHistory.citations.length} citations</div>}
+            {vehicleHistory.tows?.length > 0 && <div className="text-rmpg-400">{vehicleHistory.tows.length} tows</div>}
+          </div>
+        )}
         {/* Flags */}
         {selectedVehicle.flags.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-1">

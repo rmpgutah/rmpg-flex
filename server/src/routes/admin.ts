@@ -880,4 +880,353 @@ router.put('/users/:id/totp-exempt', authenticateToken, requireRole('admin'), (r
   }
 });
 
+// ═══════════════════════════════════════════════════════════
+// Feature 22: User activity heatmap
+// ═══════════════════════════════════════════════════════════
+router.get('/user-activity-heatmap', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { days = '30' } = req.query;
+    const daysNum = parseInt(days as string, 10) || 30;
+    const cutoff = new Date(Date.now() - daysNum * 86400000).toISOString();
+
+    const rows = db.prepare(`
+      SELECT
+        CAST(strftime('%w', created_at) AS INTEGER) as day_of_week,
+        CAST(strftime('%H', created_at) AS INTEGER) as hour,
+        COUNT(*) as count
+      FROM activity_log
+      WHERE created_at >= ?
+      GROUP BY day_of_week, hour
+      ORDER BY day_of_week, hour
+    `).all(cutoff);
+
+    res.json({ data: rows });
+  } catch (error: any) {
+    console.error('User activity heatmap error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Feature 23: Audit log export
+// ═══════════════════════════════════════════════════════════
+router.get('/audit/export', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { date_from, date_to, action, entity_type } = req.query;
+
+    let where = 'WHERE 1=1';
+    const params: any[] = [];
+    if (date_from) { where += ' AND al.created_at >= ?'; params.push(date_from); }
+    if (date_to) { where += ' AND al.created_at <= ?'; params.push(date_to); }
+    if (action) { where += ' AND al.action = ?'; params.push(action); }
+    if (entity_type) { where += ' AND al.entity_type = ?'; params.push(entity_type); }
+
+    const rows = db.prepare(`
+      SELECT al.id, al.action, al.entity_type, al.entity_id, al.details, al.ip_address, al.created_at,
+        u.full_name as user_name, u.username, u.role
+      FROM activity_log al
+      LEFT JOIN users u ON al.user_id = u.id
+      ${where}
+      ORDER BY al.created_at DESC
+      LIMIT 10000
+    `).all(...params) as any[];
+
+    // Build CSV
+    const headers = ['ID', 'Timestamp', 'User', 'Username', 'Role', 'Action', 'Entity Type', 'Entity ID', 'Details', 'IP Address'];
+    const csvRows = [headers.join(',')];
+    for (const r of rows) {
+      csvRows.push([
+        r.id, `"${r.created_at || ''}"`, `"${(r.user_name || '').replace(/"/g, '""')}"`,
+        `"${r.username || ''}"`, r.role || '', `"${r.action || ''}"`,
+        `"${r.entity_type || ''}"`, r.entity_id || '',
+        `"${(r.details || '').replace(/"/g, '""')}"`, r.ip_address || '',
+      ].join(','));
+    }
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="audit-log.csv"');
+    res.send(csvRows.join('\n'));
+  } catch (error: any) {
+    console.error('Audit export error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Feature 24: Config change history
+// ═══════════════════════════════════════════════════════════
+router.get('/config-history', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { limit = '50' } = req.query;
+    const limitNum = Math.min(500, parseInt(limit as string, 10) || 50);
+
+    const rows = db.prepare(`
+      SELECT cch.*, u.full_name as changed_by_name
+      FROM config_change_history cch
+      LEFT JOIN users u ON cch.changed_by = u.id
+      ORDER BY cch.changed_at DESC
+      LIMIT ?
+    `).all(limitNum);
+
+    res.json({ data: rows });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Feature 25: API usage statistics
+// ═══════════════════════════════════════════════════════════
+router.get('/api-stats', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { days = '7' } = req.query;
+    const daysNum = parseInt(days as string, 10) || 7;
+    const cutoff = new Date(Date.now() - daysNum * 86400000).toISOString();
+
+    // Group activity by action to approximate API usage
+    const byAction = db.prepare(`
+      SELECT action, COUNT(*) as count
+      FROM activity_log
+      WHERE created_at >= ?
+      GROUP BY action
+      ORDER BY count DESC
+      LIMIT 50
+    `).all(cutoff);
+
+    const byUser = db.prepare(`
+      SELECT u.full_name, COUNT(*) as count
+      FROM activity_log al
+      LEFT JOIN users u ON al.user_id = u.id
+      WHERE al.created_at >= ?
+      GROUP BY al.user_id
+      ORDER BY count DESC
+      LIMIT 20
+    `).all(cutoff);
+
+    const byHour = db.prepare(`
+      SELECT CAST(strftime('%H', created_at) AS INTEGER) as hour, COUNT(*) as count
+      FROM activity_log
+      WHERE created_at >= ?
+      GROUP BY hour
+      ORDER BY hour
+    `).all(cutoff);
+
+    res.json({ data: { byAction, byUser, byHour } });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Feature 27: Database backup status
+// ═══════════════════════════════════════════════════════════
+router.get('/backup-status', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const fs = require('fs');
+    const path = require('path');
+    const DATA_DIR = process.env.RMPG_DATA_DIR || path.resolve(__dirname, '../../data');
+    const dbPath = path.join(DATA_DIR, 'rmpg-flex.db');
+
+    let dbSize = 0;
+    let lastModified = null;
+    try {
+      const stat = fs.statSync(dbPath);
+      dbSize = stat.size;
+      lastModified = stat.mtime.toISOString();
+    } catch { /* file may not exist */ }
+
+    // Check for backup files
+    const backups: any[] = [];
+    try {
+      const files = fs.readdirSync(DATA_DIR);
+      for (const f of files) {
+        if (f.includes('backup') || f.endsWith('.bak')) {
+          const stat = fs.statSync(path.join(DATA_DIR, f));
+          backups.push({ filename: f, size: stat.size, created: stat.mtime.toISOString() });
+        }
+      }
+    } catch { /* ignore */ }
+
+    res.json({ data: { dbSize, lastModified, backups, walSize: 0 } });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Feature 28: Error log viewer
+// ═══════════════════════════════════════════════════════════
+router.get('/error-logs', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { limit = '50' } = req.query;
+    const limitNum = Math.min(200, parseInt(limit as string, 10) || 50);
+
+    // Use activity_log entries that contain 'error' in action/details
+    const rows = db.prepare(`
+      SELECT al.*, u.full_name as user_name
+      FROM activity_log al
+      LEFT JOIN users u ON al.user_id = u.id
+      WHERE al.action LIKE '%error%' OR al.details LIKE '%error%' OR al.details LIKE '%failed%'
+        OR al.action LIKE '%fail%'
+      ORDER BY al.created_at DESC
+      LIMIT ?
+    `).all(limitNum);
+
+    res.json({ data: rows });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Feature 29: System announcements
+// ═══════════════════════════════════════════════════════════
+router.get('/announcements', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { active_only } = req.query;
+    let where = '';
+    if (active_only === 'true') where = 'WHERE a.active = 1 AND (a.expires_at IS NULL OR a.expires_at > datetime("now","localtime"))';
+
+    const rows = db.prepare(`
+      SELECT a.*, u.full_name as created_by_name
+      FROM system_announcements a
+      LEFT JOIN users u ON a.created_by = u.id
+      ${where}
+      ORDER BY a.created_at DESC
+    `).all();
+    res.json({ data: rows });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+router.post('/announcements', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { title, message, priority, show_on_login, expires_at } = req.body;
+    if (!title || !message) return res.status(400).json({ error: 'title and message required' });
+
+    const result = db.prepare(`
+      INSERT INTO system_announcements (title, message, priority, show_on_login, expires_at, created_by)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(title, message, priority || 'info', show_on_login !== false ? 1 : 0, expires_at || null, req.user!.userId);
+
+    const row = db.prepare('SELECT * FROM system_announcements WHERE id = ?').get(result.lastInsertRowid);
+    res.status(201).json({ data: row });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+router.put('/announcements/:id', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { title, message, priority, active, show_on_login, expires_at } = req.body;
+    const fields: string[] = [];
+    const values: any[] = [];
+    if (title !== undefined) { fields.push('title = ?'); values.push(title); }
+    if (message !== undefined) { fields.push('message = ?'); values.push(message); }
+    if (priority !== undefined) { fields.push('priority = ?'); values.push(priority); }
+    if (active !== undefined) { fields.push('active = ?'); values.push(active ? 1 : 0); }
+    if (show_on_login !== undefined) { fields.push('show_on_login = ?'); values.push(show_on_login ? 1 : 0); }
+    if (expires_at !== undefined) { fields.push('expires_at = ?'); values.push(expires_at); }
+    if (fields.length > 0) {
+      values.push(req.params.id);
+      db.prepare(`UPDATE system_announcements SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+    }
+    const row = db.prepare('SELECT * FROM system_announcements WHERE id = ?').get(req.params.id);
+    res.json({ data: row });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+router.delete('/announcements/:id', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM system_announcements WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Feature 30: Maintenance mode toggle
+// ═══════════════════════════════════════════════════════════
+router.get('/maintenance-mode', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const row = db.prepare("SELECT config_value FROM system_config WHERE config_key = 'maintenance_mode'").get() as any;
+    res.json({ enabled: row?.config_value === 'true', message: '' });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+router.put('/maintenance-mode', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { enabled, message } = req.body;
+    const now = localNow();
+
+    // Delete old maintenance_mode rows and insert fresh
+    db.prepare("DELETE FROM system_config WHERE config_key = 'maintenance_mode'").run();
+    db.prepare(`
+      INSERT INTO system_config (config_key, config_value, category, updated_at)
+      VALUES ('maintenance_mode', ?, 'system', ?)
+    `).run(enabled ? 'true' : 'false', now);
+
+    if (message) {
+      db.prepare("DELETE FROM system_config WHERE config_key = 'maintenance_message'").run();
+      db.prepare(`
+        INSERT INTO system_config (config_key, config_value, category, updated_at)
+        VALUES ('maintenance_message', ?, 'system', ?)
+      `).run(message, now);
+    }
+
+    // Log change
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'maintenance_mode', 'system', 0, ?, ?)`).run(
+      req.user!.userId, `Maintenance mode ${enabled ? 'enabled' : 'disabled'}`, req.ip || 'unknown');
+
+    res.json({ enabled: !!enabled });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Feature 36: Record locking
+// ═══════════════════════════════════════════════════════════
+router.post('/record-locks', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const { entity_type, entity_id } = req.body;
+    if (!entity_type || !entity_id) return res.status(400).json({ error: 'entity_type and entity_id required' });
+
+    // Check existing lock
+    const existing = db.prepare(`
+      SELECT rl.*, u.full_name as locked_by_name
+      FROM record_locks rl LEFT JOIN users u ON rl.locked_by = u.id
+      WHERE rl.entity_type = ? AND rl.entity_id = ? AND rl.expires_at > ?
+    `).get(entity_type, entity_id, now) as any;
+
+    if (existing && existing.locked_by !== req.user!.userId) {
+      return res.status(409).json({
+        error: 'Record is locked',
+        locked_by: existing.locked_by_name,
+        expires_at: existing.expires_at,
+      });
+    }
+
+    // Create/update lock (5 min expiry)
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    db.prepare(`
+      INSERT INTO record_locks (entity_type, entity_id, locked_by, locked_at, expires_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(entity_type, entity_id) DO UPDATE SET locked_by = ?, locked_at = ?, expires_at = ?
+    `).run(entity_type, entity_id, req.user!.userId, now, expiresAt, req.user!.userId, now, expiresAt);
+
+    res.json({ data: { entity_type, entity_id, locked_by: req.user!.userId, expires_at: expiresAt } });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+router.delete('/record-locks/:entity_type/:entity_id', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM record_locks WHERE entity_type = ? AND entity_id = ? AND locked_by = ?')
+      .run(req.params.entity_type, req.params.entity_id, req.user!.userId);
+    res.json({ success: true });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
 export default router;

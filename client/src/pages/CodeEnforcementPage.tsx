@@ -114,6 +114,51 @@ export default function CodeEnforcementPage() {
   const [tFormData, setTFormData] = useState({ ...EMPTY_TOW });
   const [submitting, setSubmitting] = useState(false);
 
+  // ── Feature 31: Severity Score ──
+  const [severityScore, setSeverityScore] = useState<any>(null);
+  const handleSeverityScore = async (id: number) => {
+    try {
+      const data = await apiFetch<any>(`/code-enforcement/violations/${id}/severity-score`);
+      setSeverityScore(data?.data || data);
+    } catch { addToast('Failed to calculate severity', 'error'); }
+  };
+
+  // ── Feature 32: Compliance Timeline ──
+  const [compTimeline, setCompTimeline] = useState<any>(null);
+  const handleCompTimeline = async (id: number) => {
+    try {
+      const data = await apiFetch<any>(`/code-enforcement/violations/${id}/timeline`);
+      setCompTimeline(data?.data || data);
+    } catch { addToast('Failed to load timeline', 'error'); }
+  };
+
+  // ── Feature 34: Fine Calculation ──
+  const [fineCalc, setFineCalc] = useState<any>(null);
+  const handleCalcFine = async (id: number) => {
+    try {
+      const data = await apiFetch<any>(`/code-enforcement/violations/${id}/calculate-fine`);
+      setFineCalc(data?.data || data);
+    } catch { addToast('Failed to calculate fine', 'error'); }
+  };
+
+  // ── Feature 35: Compliance Dashboard ──
+  const [compDashboard, setCompDashboard] = useState<any>(null);
+  const handleLoadCompDashboard = async () => {
+    try {
+      const data = await apiFetch<any>('/code-enforcement/compliance-dashboard?days=90');
+      setCompDashboard(data?.data || data);
+    } catch { addToast('Failed to load compliance dashboard', 'error'); }
+  };
+
+  // ── Feature 33: Geographic Clustering ──
+  const [geoClusters, setGeoClusters] = useState<any>(null);
+  const handleLoadClusters = async () => {
+    try {
+      const data = await apiFetch<any>('/code-enforcement/violations/geo/clusters?days=90');
+      setGeoClusters(data?.data || data);
+    } catch { addToast('Failed to load clusters', 'error'); }
+  };
+
   // Fetch violations
   const fetchViolations = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setVLoading(true);

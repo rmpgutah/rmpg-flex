@@ -449,6 +449,37 @@ export default function IncidentFormModal({
                   </optgroup>
                 ))}
               </select>
+              {/* Feature 30: Incident Type Auto-suggest based on narrative keywords */}
+              {formData.narrative && !formData.incident_type && (() => {
+                const text = formData.narrative.toLowerCase();
+                const suggestions: { type: string; label: string }[] = [];
+                if (text.includes('theft') || text.includes('stole') || text.includes('shoplifting')) suggestions.push({ type: 'theft', label: 'Theft' });
+                if (text.includes('assault') || text.includes('hit') || text.includes('punch') || text.includes('fight')) suggestions.push({ type: 'assault', label: 'Assault' });
+                if (text.includes('burglary') || text.includes('break in') || text.includes('broken window')) suggestions.push({ type: 'burglary', label: 'Burglary' });
+                if (text.includes('trespass') || text.includes('trespassing')) suggestions.push({ type: 'trespass', label: 'Trespass' });
+                if (text.includes('vandal') || text.includes('graffiti') || text.includes('damage')) suggestions.push({ type: 'vandalism', label: 'Vandalism' });
+                if (text.includes('drug') || text.includes('narcotic') || text.includes('substance')) suggestions.push({ type: 'drugs', label: 'Drug Offense' });
+                if (text.includes('domestic') || text.includes('dv')) suggestions.push({ type: 'domestic_violence', label: 'Domestic Violence' });
+                if (text.includes('accident') || text.includes('collision') || text.includes('crash')) suggestions.push({ type: 'traffic_accident', label: 'Traffic Accident' });
+                if (text.includes('suspicious') || text.includes('prowler')) suggestions.push({ type: 'suspicious_activity', label: 'Suspicious Activity' });
+                if (text.includes('alarm')) suggestions.push({ type: 'alarm', label: 'Alarm' });
+                if (suggestions.length === 0) return null;
+                return (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    <span className="text-[8px] text-rmpg-500">Suggested:</span>
+                    {suggestions.slice(0, 3).map(s => (
+                      <button
+                        key={s.type}
+                        type="button"
+                        className="px-1.5 py-0.5 text-[8px] bg-brand-900/30 text-brand-300 border border-brand-600/30 hover:bg-brand-800/40 transition-colors"
+                        onClick={() => update('incident_type', s.type)}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Section ID</label>
@@ -667,17 +698,34 @@ export default function IncidentFormModal({
             </div>
           </div>
 
-          {/* Damage */}
+          {/* Damage — Feature 25: Property Damage Calculator */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Damage Estimate ($)</label>
               <input
                 type="text"
                 className="input-dark mt-1"
-                placeholder="e.g. 500.00"
+                placeholder="e.g. 500.00 — separate items with + (100+250+150)"
                 value={formData.damage_estimate}
                 onChange={(e) => update('damage_estimate', e.target.value)}
               />
+              {/* Feature 25: Auto-sum if user enters multiple values with + */}
+              {formData.damage_estimate && formData.damage_estimate.includes('+') && (() => {
+                const parts = formData.damage_estimate.split('+').map(p => parseFloat(p.trim())).filter(n => !isNaN(n));
+                const total = parts.reduce((sum, n) => sum + n, 0);
+                return parts.length > 1 ? (
+                  <div className="mt-1 flex items-center gap-2">
+                    <span className="text-[9px] text-rmpg-400">Total: ${total.toFixed(2)}</span>
+                    <button
+                      type="button"
+                      className="text-[8px] text-brand-400 hover:text-brand-300 underline"
+                      onClick={() => update('damage_estimate', total.toFixed(2))}
+                    >
+                      Apply total
+                    </button>
+                  </div>
+                ) : null;
+              })()}
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Damage Description</label>
@@ -1057,16 +1105,49 @@ export default function IncidentFormModal({
       {activeSection === 'narrative' && (
         <div>
           <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Narrative</label>
+          {/* Feature 24: Narrative quality indicators */}
+          {(() => {
+            const narrative = formData.narrative;
+            const wordCount = narrative.split(/\s+/).filter(Boolean).length;
+            const issues: string[] = [];
+            if (wordCount > 0 && wordCount < 20) issues.push('Very short narrative — add more detail');
+            if (narrative === narrative.toUpperCase() && narrative.length > 20) issues.push('ALL CAPS detected — use normal case');
+            if (narrative.length > 0 && !narrative.includes('.')) issues.push('No periods — check for proper sentences');
+            return issues.length > 0 ? (
+              <div className="mt-1 mb-1 px-2 py-1 bg-amber-950/30 border border-amber-700/30 text-[9px] text-amber-400 flex items-center gap-1.5">
+                <span style={{ fontSize: 12 }}>!</span>
+                {issues.join(' | ')}
+              </div>
+            ) : null;
+          })()}
           <textarea
             className="textarea-dark mt-1"
             rows={12}
             placeholder="Describe the incident in detail. Include who, what, when, where, why, and how..."
             value={formData.narrative}
             onChange={(e) => update('narrative', e.target.value)}
+            spellCheck={true}
           />
           <p className="text-[10px] text-rmpg-500 mt-1">
+            {/* Feature 39: Word count display */}
             {formData.narrative.length} characters | {formData.narrative.split(/\s+/).filter(Boolean).length} words
+            {formData.narrative.split(/\s+/).filter(Boolean).length >= 100 && (
+              <span className="text-green-400 ml-2">Sufficient detail</span>
+            )}
           </p>
+          {/* Feature 26: Witness Statement Template */}
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              className="toolbar-btn text-[9px]"
+              onClick={() => {
+                const template = `WITNESS STATEMENT\n\nI, [Witness Name], state the following:\n\nOn ${formData.occurred_date || '[Date]'} at approximately ${formData.occurred_time || '[Time]'}, at ${formData.location_address || '[Location]'}, I observed the following:\n\n[Describe what you saw, heard, or experienced in your own words]\n\nI declare under penalty of perjury that the foregoing is true and correct.\n\nSignature: ____________________\nDate: ${new Date().toLocaleDateString()}\nWitness Contact: `;
+                update('narrative', formData.narrative + (formData.narrative ? '\n\n' : '') + template);
+              }}
+            >
+              <FileText className="w-3 h-3" /> Insert Witness Template
+            </button>
+          </div>
         </div>
       )}
     </FormModal>

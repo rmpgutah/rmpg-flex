@@ -229,6 +229,34 @@ export default function OffenderRegistryPage() {
   const [selectedPerson, setSelectedPerson] = useState<any>(null);
   const personSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ── Feature 24: Risk Assessment ──
+  const [riskScore, setRiskScore] = useState<any>(null);
+  const handleRiskAssessment = async (alertId: number) => {
+    try {
+      const data = await apiFetch<any>(`/offender-registry/${alertId}/risk-score`);
+      setRiskScore(data?.data || data);
+    } catch (err: any) { addToast(err?.message || 'Risk assessment failed', 'error'); }
+  };
+
+  // ── Feature 23: Contact Log ──
+  const [contactLog, setContactLog] = useState<any[]>([]);
+  const handleLoadContacts = async (alertId: number) => {
+    try {
+      const data = await apiFetch<any>(`/offender-registry/${alertId}/contacts`);
+      setContactLog(data?.data || []);
+    } catch { /* ignore */ }
+  };
+  const handleLogContact = async (alertId: number, contactType: string, notes: string) => {
+    try {
+      await apiFetch(`/offender-registry/${alertId}/contact`, {
+        method: 'POST',
+        body: JSON.stringify({ contact_type: contactType, notes }),
+      });
+      addToast('Contact logged', 'success');
+      handleLoadContacts(alertId);
+    } catch (err: any) { addToast(err?.message || 'Failed to log contact', 'error'); }
+  };
+
   const fetchAlerts = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
     setFetchError('');

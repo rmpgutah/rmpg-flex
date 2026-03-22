@@ -463,6 +463,15 @@
     border-left: 4px solid #707070;
   }
 
+  /* Feature 16: P1 Priority Red Pulse Border */
+  .p1-pulse-border {
+    animation: p1-border-pulse 2s ease-in-out infinite;
+  }
+  @keyframes p1-border-pulse {
+    0%, 100% { border-left-color: #dc2626; box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+    50% { border-left-color: #ff4444; box-shadow: -4px 0 12px rgba(220, 38, 38, 0.3); }
+  }
+
   /* --- Input Styles (Blocky) --- Motorola Blue focus accent */
   .input-dark {
     @apply w-full px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none;
@@ -2861,3 +2870,130 @@ html.compact-mode .mb-4 { margin-bottom: 8px; }
 html.compact-mode .py-2 { padding-top: 4px; padding-bottom: 4px; }
 html.compact-mode .text-sm { font-size: 0.8125rem; }
 html.compact-mode .text-xs { font-size: 0.6875rem; }
+
+/* ============================================================
+   Feature 33: Font Size Preferences
+   ============================================================ */
+html.font-small { font-size: 13px; }
+html.font-medium { font-size: 16px; }
+html.font-large { font-size: 19px; }
+
+/* ============================================================
+   Feature 32: Light Theme Support
+   ============================================================ */
+html.theme-light {
+  --surface-base: #f0f2f5;
+  --surface-raised: #ffffff;
+  --surface-sunken: #e4e7eb;
+  --surface-overlay: rgba(255, 255, 255, 0.95);
+  --surface-deep: #d1d5db;
+  --border-default: #c0c4cc;
+  --border-subtle: #d1d5db;
+  --border-strong: #9ca3af;
+  --text-primary: #111827;
+  --text-secondary: #374151;
+  --text-muted: #6b7280;
+}
+
+html.theme-light body {
+  background: #f0f2f5 !important;
+  color: #111827 !important;
+}
+
+html.theme-light .bg-surface-base { background: var(--surface-base) !important; }
+html.theme-light .bg-surface-raised { background: var(--surface-raised) !important; }
+html.theme-light .bg-surface-sunken { background: var(--surface-sunken) !important; }
+html.theme-light .text-white { color: var(--text-primary) !important; }
+html.theme-light .text-rmpg-300 { color: var(--text-secondary) !important; }
+html.theme-light .text-rmpg-400 { color: var(--text-secondary) !important; }
+html.theme-light .text-rmpg-500 { color: var(--text-muted) !important; }
+html.theme-light .border-rmpg-700 { border-color: var(--border-default) !important; }
+html.theme-light .border-rmpg-800 { border-color: var(--border-subtle) !important; }
+html.theme-light .panel-beveled { background: var(--surface-raised) !important; border-color: var(--border-default) !important; }
+html.theme-light .panel-surface { background: var(--surface-raised) !important; }
+
+/* ============================================================
+   Feature 39: Enhanced Print Stylesheet for Detail Views
+   ============================================================ */
+@media print {
+  /* Hide interactive elements in detail views */
+  .toolbar-btn,
+  .toolbar-btn-primary,
+  .toolbar-btn-danger,
+  button[aria-label="Close"],
+  button[title="Close"],
+  .animate-pulse,
+  .animate-spin { display: none !important; }
+
+  /* Make detail panels print-friendly */
+  .panel-beveled {
+    border: 1px solid #ccc !important;
+    margin-bottom: 8px !important;
+    page-break-inside: avoid;
+  }
+
+  /* Ensure grid layouts don't break across pages */
+  .grid { page-break-inside: avoid; }
+
+  /* Print badge styles */
+  [class*="bg-red-900"],
+  [class*="bg-green-900"],
+  [class*="bg-blue-900"],
+  [class*="bg-amber-900"],
+  [class*="bg-purple-900"] {
+    background: transparent !important;
+    border: 1px solid #999 !important;
+    color: #333 !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Feature 19: Responsive table horizontal scroll on mobile
+   ═══════════════════════════════════════════════════════════════ */
+.table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: #2a3e58 transparent;
+}
+.table-responsive::-webkit-scrollbar {
+  height: 4px;
+}
+.table-responsive::-webkit-scrollbar-track {
+  background: transparent;
+}
+.table-responsive::-webkit-scrollbar-thumb {
+  background: #2a3e58;
+  border-radius: 2px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Feature 22: Page transition animations
+   ═══════════════════════════════════════════════════════════════ */
+@keyframes page-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-page-enter {
+  animation: page-fade-in 0.2s ease-out both;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Feature 28: Sticky table headers
+   ═══════════════════════════════════════════════════════════════ */
+.table-sticky-header thead th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--grid-header-bg, #0f1a28);
+  box-shadow: 0 1px 0 0 var(--border-default, #1e3048);
+}
+.table-sticky-header thead th::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--border-default, #1e3048);
+}

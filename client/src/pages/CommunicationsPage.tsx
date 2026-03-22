@@ -931,6 +931,30 @@ export default function CommunicationsPage() {
                               <div className="text-sm text-rmpg-200 leading-relaxed whitespace-pre-wrap pl-8">
                                 {msg.body}
                               </div>
+                              {/* Feature 16: Acknowledge button for broadcast messages */}
+                              {msg.is_broadcast && msg.from_user_id !== currentUserId && (
+                                <div className="pl-8 mt-2 flex items-center gap-2">
+                                  <button
+                                    onClick={async (e) => {
+                                      e.stopPropagation();
+                                      try {
+                                        await apiFetch(`/comms/messages/${msg.id}/acknowledge`, { method: 'PUT' });
+                                        addToast('Message acknowledged', 'success');
+                                      } catch { addToast('Failed to acknowledge', 'error'); }
+                                    }}
+                                    className="text-[9px] px-2 py-0.5 border border-green-700/50 bg-green-900/20 text-green-400 hover:bg-green-900/40 transition-colors"
+                                    title="Acknowledge this message"
+                                  >
+                                    ACK
+                                  </button>
+                                </div>
+                              )}
+                              {/* Feature 11: Read receipt indicator for own messages */}
+                              {msg.from_user_id === currentUserId && msg.is_read && (
+                                <div className="pl-8 mt-1">
+                                  <span className="text-[9px] text-green-500">Read</span>
+                                </div>
+                              )}
                             </div>
                           </div>
                         );
@@ -1085,6 +1109,15 @@ export default function CommunicationsPage() {
                       </span>
                     </div>
                   </div>
+                  {/* Feature 13: BOLO expiration tracking */}
+                  {bolo.expires_at && bolo.status === 'active' && (
+                    <div className="mb-2 flex items-center gap-2">
+                      <Clock className="w-3 h-3 text-amber-400" />
+                      <span className={`text-[10px] font-mono ${new Date(bolo.expires_at) <= new Date() ? 'text-red-400 font-bold' : 'text-amber-400'}`}>
+                        {new Date(bolo.expires_at) <= new Date() ? 'EXPIRED' : `Expires: ${formatDateTime(bolo.expires_at)}`}
+                      </span>
+                    </div>
+                  )}
                   <p className="text-sm text-rmpg-200 mb-3 leading-relaxed">{bolo.description}</p>
                   {bolo.photo_url && (
                     <div className="mb-3">
@@ -1188,11 +1221,18 @@ export default function CommunicationsPage() {
         </div>
         <div>
           <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Priority:</label>
-          <select className="select-dark" value={composePriority} onChange={(e) => setComposePriority(e.target.value)}>
+          <select className={`select-dark ${composePriority === 'emergency' ? 'border-red-500 text-red-400' : composePriority === 'urgent' ? 'border-amber-500 text-amber-400' : ''}`} value={composePriority} onChange={(e) => setComposePriority(e.target.value)}>
             <option value="routine">Normal</option>
             <option value="urgent">Urgent</option>
             <option value="emergency">Emergency</option>
           </select>
+          {/* Feature 12: Priority visual indicator */}
+          {composePriority === 'emergency' && (
+            <p className="text-[9px] text-red-400 mt-0.5 font-bold animate-pulse">EMERGENCY: This will trigger an alert to all officers</p>
+          )}
+          {composePriority === 'urgent' && (
+            <p className="text-[9px] text-amber-400 mt-0.5">Urgent priority message</p>
+          )}
         </div>
         <div>
           <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Subject:</label>

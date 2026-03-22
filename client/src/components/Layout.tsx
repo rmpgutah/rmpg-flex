@@ -800,6 +800,7 @@ export default function Layout() {
               <button
                 onClick={() => navigate('/dispatch')}
                 className="flex items-center gap-1 px-2 py-0.5 panel-inset cursor-pointer transition-colors bg-surface-sunken hover:bg-rmpg-800"
+                aria-label={`Active calls: ${activeCallCount}. Click to open dispatch.`}
               >
                 <Phone style={{ width: 9, height: 9 }} className="text-red-500" />
                 <span className="text-[9px] font-mono font-bold text-rmpg-400">CALLS:</span>
@@ -812,6 +813,7 @@ export default function Layout() {
                   onClick={() => navigate('/communications')}
                   className="flex items-center gap-1 px-2 py-0.5 cursor-pointer"
                   style={{ background: 'rgba(220, 38, 38, 0.25)', border: '1px solid #991b1b' }}
+                  aria-label={`${activeBOLOs} active BOLOs. Click to open communications.`}
                 >
                   <span className="led-dot led-red animate-led-blink" />
                   <span className="text-[9px] font-mono font-bold" style={{ color: '#ef7a7a' }}>

@@ -98,7 +98,7 @@ export default React.memo(function StatusBadge({ status, type, size = 'md', clas
     // Unknown status -- render with neutral gray styling
     const label = status.replace(/_/g, ' ');
     return (
-      <span className={`inline-flex items-center font-bold tracking-wide uppercase panel-beveled ${sizeClasses} bg-rmpg-700 text-rmpg-300 border border-rmpg-600 ${className}`}>
+      <span className={`inline-flex items-center font-bold tracking-wide uppercase panel-beveled ${sizeClasses} bg-rmpg-700 text-rmpg-300 border border-rmpg-600 ${className}`} role="status" aria-label={`Status: ${label}`}>
         {label}
       </span>
     );
@@ -107,6 +107,8 @@ export default React.memo(function StatusBadge({ status, type, size = 'md', clas
   return (
     <span
       className={`inline-flex items-center font-bold tracking-wide uppercase panel-beveled ${sizeClasses} ${config.classes} ${className}`}
+      role="status"
+      aria-label={`Status: ${config.label}`}
     >
       {config.label}
     </span>

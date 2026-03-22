@@ -156,6 +156,32 @@ export function addConfidentialWatermark(doc: jsPDF) {
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 }
 
+// Feature 34: Add "DRAFT" watermark to unapproved reports
+export function addDraftWatermark(doc: jsPDF) {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+
+  doc.saveGraphicsState();
+  // @ts-expect-error jsPDF GState
+  doc.setGState(new doc.GState({ opacity: 0.12 }));
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(220, 38, 38); // Red
+
+  const cx = pageWidth / 2;
+  const cy = pageHeight / 2;
+  doc.setFontSize(72);
+  doc.text('DRAFT', cx, cy, { align: 'center', angle: 45 });
+
+  // Add border warning
+  doc.setDrawColor(220, 38, 38);
+  doc.setLineWidth(2);
+  doc.rect(10, 10, pageWidth - 20, pageHeight - 20);
+
+  doc.restoreGraphicsState();
+  // @ts-expect-error jsPDF GState
+  doc.setGState(new doc.GState({ opacity: 1.0 }));
+}
+
 export function addClassificationBar(doc: jsPDF, priority: string, yStart: number): number {
   const cw = getContentWidth(doc);
   const prio = PRIORITY_COLORS[priority?.toLowerCase()] || PRIORITY_COLORS['routine'];

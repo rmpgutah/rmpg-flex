@@ -290,6 +290,43 @@ export default function ForensicLabPage() {
   const [showCustodyModal, setShowCustodyModal] = useState(false);
   const [custodyForm, setCustodyForm] = useState({ from_person: '', to_person: '', action: 'received' as CustodyEvent['action'], notes: '' });
 
+  // ── Feature 27: Lab Queue ──
+  const [labQueue, setLabQueue] = useState<any[]>([]);
+  const handleLoadLabQueue = async () => {
+    try {
+      const data = await apiFetch<any>('/forensics/queue/priority');
+      setLabQueue(data?.data || []);
+    } catch { addToast('Failed to load lab queue', 'error'); }
+  };
+
+  // ── Feature 29: Report Templates ──
+  const [reportTemplates, setReportTemplates] = useState<any>(null);
+  const handleLoadTemplates = async () => {
+    try {
+      const data = await apiFetch<any>('/forensics/templates/report');
+      setReportTemplates(data?.data || data);
+    } catch { addToast('Failed to load templates', 'error'); }
+  };
+
+  // ── Feature 30: Capacity Planning ──
+  const [capacity, setCapacity] = useState<any>(null);
+  const handleLoadCapacity = async () => {
+    try {
+      const data = await apiFetch<any>('/forensics/capacity/planning');
+      setCapacity(data?.data || data);
+    } catch { addToast('Failed to load capacity data', 'error'); }
+  };
+
+  // ── Feature 26: Evidence Intake ──
+  const handleEvidenceIntake = async (caseId: number, formData: any) => {
+    try {
+      await apiFetch(`/forensics/${caseId}/evidence-intake`, {
+        method: 'POST', body: JSON.stringify(formData),
+      });
+      addToast('Evidence intake recorded', 'success');
+    } catch (err: any) { addToast(err?.message || 'Intake failed', 'error'); }
+  };
+
   // ── Fetch ──────────────────────────────────────────────
 
   const fetchCases = useCallback(async (tab?: Tab) => {

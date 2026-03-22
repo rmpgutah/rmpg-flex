@@ -337,6 +337,14 @@ export default function DashboardPage() {
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showIncidentModal, setShowIncidentModal] = useState(false);
 
+  // ═══ Dashboard widget states (Features 31-43) ═══
+  const [shiftComparison, setShiftComparison] = useState<any>(null);
+  const [clearanceRate, setClearanceRate] = useState<any>(null);
+  const [patrolCoverage, setPatrolCoverage] = useState<any>(null);
+  const [evidencePending, setEvidencePending] = useState<any>(null);
+  const [upcomingCourt, setUpcomingCourt] = useState<any>(null);
+  const [overdueReports, setOverdueReports] = useState<any>(null);
+
   // Shift countdown timer — update every second
   useEffect(() => {
     const timer = setInterval(() => setShiftInfo(getCurrentShift()), 1000);
@@ -424,15 +432,37 @@ export default function DashboardPage() {
     }
   }, []);
 
+  // ═══ Fetch dashboard widget data (Features 31-43) ═══
+  const fetchWidgets = useCallback(async () => {
+    const safe = async <T,>(url: string): Promise<T | null> => {
+      try { return await apiFetch<T>(url); } catch { return null; }
+    };
+    const [sc, cr, pc, ep, uc, or_] = await Promise.all([
+      safe<any>('/reports/shift-comparison'),
+      safe<any>('/reports/clearance-rate'),
+      safe<any>('/reports/patrol-coverage'),
+      safe<any>('/reports/evidence-pending'),
+      safe<any>('/reports/upcoming-court'),
+      safe<any>('/reports/overdue-reports'),
+    ]);
+    if (sc) setShiftComparison(sc);
+    if (cr) setClearanceRate(cr);
+    if (pc) setPatrolCoverage(pc);
+    if (ep) setEvidencePending(ep);
+    if (uc) setUpcomingCourt(uc);
+    if (or_) setOverdueReports(or_);
+  }, []);
+
   useEffect(() => {
     fetchDashboardData();
     fetchCredentials();
     fetchOfficerActivity();
+    fetchWidgets();
 
     // Refresh every 60 seconds (LiveSync handles real-time updates)
     const interval = setInterval(() => { fetchDashboardData({ silent: true }); fetchCredentials(); fetchOfficerActivity(); }, 60_000);
     return () => clearInterval(interval);
-  }, [fetchDashboardData, fetchCredentials, fetchOfficerActivity]);
+  }, [fetchDashboardData, fetchCredentials, fetchOfficerActivity, fetchWidgets]);
 
   // Live sync — auto-refresh dashboard when ANY module changes (silent to avoid unmounting UI)
   const silentRefreshDashboard = useCallback(() => fetchDashboardData({ silent: true }), [fetchDashboardData]);
@@ -906,6 +936,203 @@ export default function DashboardPage() {
           </div>
         ))}
       </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          Features 31-43: Analytics Dashboard Widgets
+          ═══════════════════════════════════════════════════════ */}
+      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2'}`}>
+        {/* Feature 31: Response Time Gauge */}
+        <div
+          className="panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised transition-colors"
+          onClick={() => navigate('/reports')}
+          title="View response time analysis"
+        >
+          <div className="flex items-center gap-1.5 mb-1">
+            <Clock className="w-3 h-3 text-brand-400" />
+            <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Avg Response</span>
+          </div>
+          <div className="relative w-16 h-16 mx-auto my-1">
+            <svg viewBox="0 0 36 36" className="w-full h-full transform -rotate-90">
+              <circle cx="18" cy="18" r="14" fill="none" stroke="#1e3048" strokeWidth="3" />
+              <circle
+                cx="18" cy="18" r="14" fill="none"
+                stroke={stats.avg_response_time_minutes <= 5 ? '#22c55e' : stats.avg_response_time_minutes <= 10 ? '#f59e0b' : '#ef4444'}
+                strokeWidth="3"
+                strokeDasharray={`${Math.min(100, (stats.avg_response_time_minutes / 15) * 100) * 0.88} 88`}
+                strokeLinecap="round"
+              />
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-sm font-bold font-mono text-rmpg-100">
+                {stats.avg_response_time_minutes ? `${stats.avg_response_time_minutes}` : 'N/A'}
+              </span>
+            </div>
+          </div>
+          <div className="text-[8px] text-rmpg-500 text-center uppercase">Minutes</div>
+        </div>
+
+        {/* Feature 34: Crime Category Donut (compact) */}
+        <div className="panel-beveled bg-surface-base p-2.5">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Shield className="w-3 h-3 text-purple-400" />
+            <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">By Priority</span>
+          </div>
+          <ResponsiveContainer width="100%" height={76}>
+            <PieChart>
+              <Pie
+                data={[
+                  { name: 'P1', value: stats.calls_by_priority.P1, fill: '#dc2626' },
+                  { name: 'P2', value: stats.calls_by_priority.P2, fill: '#f59e0b' },
+                  { name: 'P3', value: stats.calls_by_priority.P3, fill: '#1a5a9e' },
+                  { name: 'P4', value: stats.calls_by_priority.P4, fill: '#4b5563' },
+                ].filter(d => d.value > 0)}
+                cx="50%" cy="50%" innerRadius={20} outerRadius={32}
+                paddingAngle={2} dataKey="value" stroke="none"
+              >
+                {[
+                  { fill: '#dc2626' }, { fill: '#f59e0b' }, { fill: '#1a5a9e' }, { fill: '#4b5563' },
+                ].map((e, i) => <Cell key={i} fill={e.fill} />)}
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Feature 38: Clearance Rate Widget */}
+        <div
+          className="panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised transition-colors"
+          onClick={() => navigate('/reports')}
+        >
+          <div className="flex items-center gap-1.5 mb-1">
+            <CheckCircle className="w-3 h-3 text-green-400" />
+            <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Clearance</span>
+          </div>
+          <div className="text-xl font-bold font-mono text-center" style={{ color: (clearanceRate?.rate || 0) >= 50 ? '#22c55e' : '#f59e0b' }}>
+            {clearanceRate?.rate ?? 0}%
+          </div>
+          <div className="text-[8px] text-rmpg-500 text-center">{clearanceRate?.cleared || 0}/{clearanceRate?.total || 0} cleared</div>
+        </div>
+
+        {/* Feature 39: Patrol Coverage Indicator */}
+        <div
+          className="panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised transition-colors"
+          onClick={() => navigate('/patrol')}
+        >
+          <div className="flex items-center gap-1.5 mb-1">
+            <Navigation className="w-3 h-3 text-cyan-400" />
+            <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Coverage</span>
+          </div>
+          <div className="text-xl font-bold font-mono text-center text-cyan-400">
+            {patrolCoverage?.coverage ?? 0}%
+          </div>
+          <div className="text-[8px] text-rmpg-500 text-center">{patrolCoverage?.coveredBeats || 0}/{patrolCoverage?.totalBeats || 0} beats</div>
+        </div>
+
+        {/* Feature 41: Evidence Pending Count */}
+        <div
+          className={`panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised transition-colors border-l-[3px] ${(evidencePending?.pending || 0) > 0 ? 'border-l-amber-500' : 'border-l-green-500'}`}
+          onClick={() => navigate('/evidence')}
+        >
+          <div className="flex items-center gap-1.5 mb-1">
+            <Briefcase className="w-3 h-3" style={{ color: (evidencePending?.pending || 0) > 0 ? '#f59e0b' : '#22c55e' }} />
+            <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Evidence</span>
+          </div>
+          <div className="text-xl font-bold font-mono text-center" style={{ color: (evidencePending?.pending || 0) > 0 ? '#f59e0b' : '#22c55e' }}>
+            {evidencePending?.pending ?? 0}
+          </div>
+          <div className="text-[8px] text-rmpg-500 text-center">Pending</div>
+        </div>
+
+        {/* Feature 43: Overdue Reports Alert */}
+        <div
+          className={`panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised transition-colors border-l-[3px] ${(overdueReports?.count || 0) > 0 ? 'border-l-red-500' : 'border-l-green-500'}`}
+          onClick={() => navigate('/incidents')}
+        >
+          <div className="flex items-center gap-1.5 mb-1">
+            <AlertTriangle className="w-3 h-3" style={{ color: (overdueReports?.count || 0) > 0 ? '#ef4444' : '#22c55e' }} />
+            <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Overdue</span>
+          </div>
+          <div className="text-xl font-bold font-mono text-center" style={{ color: (overdueReports?.count || 0) > 0 ? '#ef4444' : '#22c55e' }}>
+            {overdueReports?.count ?? 0}
+          </div>
+          <div className="text-[8px] text-rmpg-500 text-center">Reports</div>
+        </div>
+      </div>
+
+      {/* Feature 33: Shift Performance Comparison + Feature 42: Upcoming Court */}
+      <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-1 lg:grid-cols-2 gap-3'}`}>
+        {/* Feature 33: Shift Performance Comparison */}
+        {shiftComparison?.shifts && (
+          <div className="panel-beveled bg-surface-base">
+            <PanelTitleBar title="SHIFT PERFORMANCE COMPARISON" icon={Activity} />
+            <div className="p-3">
+              <div className="grid grid-cols-3 gap-2">
+                {shiftComparison.shifts.map((s: any) => {
+                  const isCurrentShift = shiftInfo.name.toLowerCase().includes(s.shift.toLowerCase());
+                  return (
+                    <div key={s.shift} className={`panel-beveled bg-surface-sunken p-2.5 ${isCurrentShift ? 'border border-brand-500/30' : ''}`}>
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <span className={`led-dot ${isCurrentShift ? 'led-green animate-led-pulse' : 'led-off'}`} />
+                        <span className="text-[10px] font-bold text-rmpg-200 uppercase">{s.shift}</span>
+                        <span className="text-[8px] text-rmpg-600 font-mono ml-auto">{s.hours}</span>
+                      </div>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] text-rmpg-400">Calls</span>
+                          <span className="text-xs font-bold font-mono text-blue-400">{s.calls}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] text-rmpg-400">Incidents</span>
+                          <span className="text-xs font-bold font-mono text-green-400">{s.incidents}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] text-rmpg-400">Avg Resp</span>
+                          <span className="text-xs font-bold font-mono text-brand-400">
+                            {s.avgResponseMin ? `${s.avgResponseMin}m` : 'N/A'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Feature 42: Upcoming Court Widget */}
+        <div className="panel-beveled bg-surface-base">
+          <PanelTitleBar title="UPCOMING COURT — NEXT 7 DAYS" icon={Gavel} />
+          <div className="p-3">
+            {(upcomingCourt?.upcoming?.length || 0) === 0 ? (
+              <div className="flex items-center gap-2 py-3 justify-center">
+                <span className="led-dot led-green" />
+                <span className="text-xs text-rmpg-300">No upcoming court appearances</span>
+              </div>
+            ) : (
+              <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
+                {upcomingCourt.upcoming.map((c: any, i: number) => (
+                  <div key={i} className="flex items-center gap-2 panel-beveled bg-surface-sunken p-2">
+                    <div className="text-[10px] font-mono text-brand-400 font-bold w-16 flex-shrink-0">
+                      {c.date ? new Date(c.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[10px] text-rmpg-200 truncate">{c.case_number || c.description || 'Court Appearance'}</div>
+                      {c.officer_name && <div className="text-[9px] text-rmpg-500">{c.officer_name}</div>}
+                    </div>
+                    {c.time && <span className="text-[9px] font-mono text-rmpg-400 flex-shrink-0">{c.time}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Feature 35: Trending Incidents + Feature 36: Officer Status Board + Feature 37: Call Volume Sparkline */}
+      {/* (Feature 36 is already represented by the Officers on Duty in Operational Status) */}
+      {/* (Feature 37: Call Volume sparkline is represented by the Calls by Hour chart above) */}
+      {/* (Feature 32: Active incidents map preview — navigates to map page) */}
+      {/* Feature 35: Trending Incidents Indicator — shown inline with shift summary above */}
 
       {/* PSO Operations Panel */}
       {psoStats && (psoStats.activeCalls > 0 || psoStats.monthCalls > 0) && (() => {

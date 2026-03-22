@@ -72,6 +72,28 @@ export default function DlSearchPage() {
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [isManualSubmitting, setIsManualSubmitting] = useState(false);
 
+  // ── Feature 42: Registration Alerts ──
+  const [regAlerts, setRegAlerts] = useState<any>(null);
+  const handleCheckRegistration = async () => {
+    try {
+      const data = await apiFetch<any>('/records/vehicles/alerts/expired-registration');
+      setRegAlerts(data?.data || data);
+    } catch { addToast('Failed to check registration alerts', 'error'); }
+  };
+
+  // ── Feature 44: Stolen Vehicle Check ──
+  const [stolenResult, setStolenResult] = useState<any>(null);
+  const [stolenPlate, setStolenPlate] = useState('');
+  const handleStolenCheck = async () => {
+    if (!stolenPlate.trim()) return;
+    try {
+      const data = await apiFetch<any>('/records/vehicles/stolen-check', {
+        method: 'POST', body: JSON.stringify({ plate_number: stolenPlate.trim() }),
+      });
+      setStolenResult(data?.data || data);
+    } catch (err: any) { addToast(err?.message || 'Stolen check failed', 'error'); }
+  };
+
   const handleSearch = useCallback(async () => {
     if (!lastName.trim() && !dlNumber.trim()) return;
     setLoading(true);

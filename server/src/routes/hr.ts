@@ -1332,4 +1332,675 @@ router.put('/payroll/overtime/:id', requireRole('admin', 'manager', 'supervisor'
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// HR FEATURES (16-30)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── 16. Payroll Period Summary ──────────────────────────────────────────────
+router.get('/payroll/periods/:id/summary', validateParamIdMiddleware, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = Number(req.params.id);
+    const period = db.prepare('SELECT * FROM hr_pay_periods WHERE id = ?').get(id) as any;
+    if (!period) return res.status(404).json({ error: 'Pay period not found' });
+
+    const entries = db.prepare(`
+      SELECT pe.*, u.full_name as officer_name
+      FROM hr_payroll_entries pe
+      JOIN users u ON u.id = pe.user_id
+      WHERE pe.pay_period_id = ?
+    `).all(id) as any[];
+
+    const summary = {
+      period,
+      employee_count: entries.length,
+      total_regular_hours: entries.reduce((s: number, e: any) => s + (e.regular_hours || 0), 0),
+      total_overtime_hours: entries.reduce((s: number, e: any) => s + (e.overtime_hours || 0), 0),
+      total_holiday_hours: entries.reduce((s: number, e: any) => s + (e.holiday_hours || 0), 0),
+      total_pto_hours: entries.reduce((s: number, e: any) => s + (e.pto_hours || 0), 0),
+      total_sick_hours: entries.reduce((s: number, e: any) => s + (e.sick_hours || 0), 0),
+      total_comp_time: entries.reduce((s: number, e: any) => s + (e.other_hours || 0), 0),
+      total_gross_pay: entries.reduce((s: number, e: any) => s + (e.gross_pay || 0), 0),
+      total_net_pay: entries.reduce((s: number, e: any) => s + (e.net_pay || 0), 0),
+      entries,
+    };
+
+    res.json(summary);
+  } catch (error: any) {
+    console.error('[HR] Period summary error:', error?.message);
+    res.status(500).json({ error: 'Failed to load period summary' });
+  }
+});
+
+// ─── 17. Performance Review Templates ────────────────────────────────────────
+router.get('/review-templates', requireRole('admin', 'manager', 'supervisor'), (_req: Request, res: Response) => {
+  try {
+    const templates = [
+      {
+        id: 'annual',
+        name: 'Annual Performance Review',
+        type: 'annual',
+        categories: {
+          job_knowledge: { label: 'Job Knowledge', weight: 20 },
+          quality_of_work: { label: 'Quality of Work', weight: 20 },
+          communication: { label: 'Communication', weight: 15 },
+          teamwork: { label: 'Teamwork', weight: 15 },
+          dependability: { label: 'Dependability', weight: 15 },
+          initiative: { label: 'Initiative', weight: 15 },
+        },
+      },
+      {
+        id: 'quarterly',
+        name: 'Quarterly Check-In',
+        type: 'quarterly',
+        categories: {
+          goals_progress: { label: 'Goals Progress', weight: 40 },
+          performance: { label: 'Performance', weight: 30 },
+          development: { label: 'Development', weight: 30 },
+        },
+      },
+      {
+        id: 'probationary',
+        name: 'Probationary Period Review',
+        type: 'probationary',
+        categories: {
+          job_knowledge: { label: 'Job Knowledge', weight: 20 },
+          attendance: { label: 'Attendance & Punctuality', weight: 20 },
+          following_orders: { label: 'Following Orders', weight: 20 },
+          professional_conduct: { label: 'Professional Conduct', weight: 20 },
+          physical_fitness: { label: 'Physical Fitness', weight: 20 },
+        },
+      },
+    ];
+    res.json(templates);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load templates' });
+  }
+});
+
+// ─── 18. Performance Score Trends ────────────────────────────────────────────
+router.get('/reviews/trends/:officerId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const officerId = Number(req.params.officerId);
+
+    const reviews = db.prepare(`
+      SELECT id, type, overall_rating, review_date, review_period_start, review_period_end, status, template_name
+      FROM performance_reviews
+      WHERE officer_id = ? AND overall_rating IS NOT NULL
+      ORDER BY review_period_end ASC
+    `).all(officerId) as any[];
+
+    res.json(reviews);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load review trends' });
+  }
+});
+
+// ─── 19. Disciplinary Escalation Tracking ────────────────────────────────────
+router.get('/disciplinary/:officerId/escalation', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const officerId = Number(req.params.officerId);
+
+    const records = db.prepare(`
+      SELECT id, type, severity, incident_date, status, description, action_taken
+      FROM disciplinary_records
+      WHERE officer_id = ?
+      ORDER BY incident_date ASC
+    `).all(officerId) as any[];
+
+    // Escalation levels
+    const escalationOrder = ['counseling', 'verbal_warning', 'written_warning', 'suspension', 'probation', 'termination'];
+    const escalation = records.map((r: any, i: number) => ({
+      ...r,
+      escalation_level: escalationOrder.indexOf(r.type) + 1,
+      step: i + 1,
+    }));
+
+    // Determine current escalation state
+    const latestType = records.length > 0 ? records[records.length - 1].type : null;
+    const nextStep = latestType ? escalationOrder[escalationOrder.indexOf(latestType) + 1] || 'termination' : 'verbal_warning';
+
+    res.json({ records: escalation, current_level: latestType, next_step: nextStep, total_actions: records.length });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load escalation' });
+  }
+});
+
+// ─── 20. Training Completion Certificates — return data for client PDF gen ───
+router.get('/training-certificate/:trainingId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const record = db.prepare(`
+      SELECT tr.*, u.full_name as officer_name, u.badge_number
+      FROM training_records tr
+      JOIN users u ON u.id = tr.officer_id
+      WHERE tr.id = ?
+    `).get(Number(req.params.trainingId)) as any;
+
+    if (!record) return res.status(404).json({ error: 'Training record not found' });
+    if (record.status !== 'completed') return res.status(400).json({ error: 'Certificate only for completed training' });
+
+    res.json({
+      ...record,
+      company: 'Rocky Mountain Protective Group',
+      certificate_number: `RMPG-CERT-${String(record.id).padStart(6, '0')}`,
+      issued_date: record.completed_date || new Date().toISOString().slice(0, 10),
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to generate certificate' });
+  }
+});
+
+// ─── 21. HR Document Library ─────────────────────────────────────────────────
+router.get('/documents', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { category } = req.query;
+    let sql = `SELECT d.*, u.full_name as uploaded_by_name FROM hr_documents d LEFT JOIN users u ON u.id = d.uploaded_by WHERE 1=1`;
+    const params: any[] = [];
+    if (category) { sql += ' AND d.category = ?'; params.push(category); }
+    sql += ' ORDER BY d.created_at DESC';
+    res.json(db.prepare(sql).all(...params));
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load documents' });
+  }
+});
+
+router.post('/documents', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { title, category, description, file_path, file_name, file_size } = req.body;
+    if (!title) return res.status(400).json({ error: 'title is required' });
+    const now = localNow();
+    const result = db.prepare(
+      `INSERT INTO hr_documents (title, category, description, file_path, file_name, file_size, uploaded_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(title, category || 'policy', description || null, file_path || null, file_name || null, file_size || 0, (req as any).user?.id, now, now);
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create document' });
+  }
+});
+
+router.delete('/documents/:id', validateParamIdMiddleware, requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM hr_documents WHERE id = ?').run(Number(req.params.id));
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to delete document' });
+  }
+});
+
+// ─── 22. Employee Handbook Acknowledgment ────────────────────────────────────
+router.get('/acknowledgments', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { document_id } = req.query;
+    let sql = `SELECT a.*, u.full_name as officer_name, d.title as document_title
+               FROM hr_handbook_acknowledgments a
+               JOIN users u ON u.id = a.officer_id
+               JOIN hr_documents d ON d.id = a.document_id WHERE 1=1`;
+    const params: any[] = [];
+    if (document_id) { sql += ' AND a.document_id = ?'; params.push(Number(document_id)); }
+    sql += ' ORDER BY a.acknowledged_at DESC';
+    res.json(db.prepare(sql).all(...params));
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load acknowledgments' });
+  }
+});
+
+router.post('/acknowledgments', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    const { document_id, signature } = req.body;
+    if (!document_id) return res.status(400).json({ error: 'document_id is required' });
+
+    db.prepare(
+      `INSERT OR REPLACE INTO hr_handbook_acknowledgments (officer_id, document_id, acknowledged_at, signature, ip_address)
+       VALUES (?, ?, ?, ?, ?)`
+    ).run(user.id, document_id, localNow(), signature || null, req.ip || 'unknown');
+
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to save acknowledgment' });
+  }
+});
+
+// ─── 23. Grievance Filing System ─────────────────────────────────────────────
+router.get('/grievances', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    const { status, officer_id } = req.query;
+    let sql = `SELECT g.*, u.full_name as officer_name, a.full_name as assigned_to_name
+               FROM hr_grievances g
+               JOIN users u ON u.id = g.officer_id
+               LEFT JOIN users a ON a.id = g.assigned_to WHERE 1=1`;
+    const params: any[] = [];
+    if (!isManagerOrAbove(user.role)) { sql += ' AND g.officer_id = ?'; params.push(user.id); }
+    else if (officer_id) { sql += ' AND g.officer_id = ?'; params.push(Number(officer_id)); }
+    if (status) { sql += ' AND g.status = ?'; params.push(status); }
+    sql += ' ORDER BY g.created_at DESC';
+    res.json(db.prepare(sql).all(...params));
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load grievances' });
+  }
+});
+
+router.post('/grievances', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    const { type, subject, description, priority } = req.body;
+    if (!subject || !description) return res.status(400).json({ error: 'subject and description are required' });
+    const now = localNow();
+    const result = db.prepare(
+      `INSERT INTO hr_grievances (officer_id, type, subject, description, priority, filed_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(user.id, type || 'general', subject, description, priority || 'normal', now, now, now);
+    auditLog(req, 'CREATE', 'hr_grievance', Number(result.lastInsertRowid), `Grievance filed: ${subject}`);
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to file grievance' });
+  }
+});
+
+router.put('/grievances/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = Number(req.params.id);
+    const { status, assigned_to, resolution } = req.body;
+    const now = localNow();
+    const sets: string[] = ['updated_at = ?'];
+    const vals: any[] = [now];
+    if (status) { sets.push('status = ?'); vals.push(status); if (status === 'resolved' || status === 'dismissed') { sets.push('resolved_at = ?'); vals.push(now); } }
+    if (assigned_to !== undefined) { sets.push('assigned_to = ?'); vals.push(assigned_to); }
+    if (resolution !== undefined) { sets.push('resolution = ?'); vals.push(resolution); }
+    vals.push(id);
+    db.prepare(`UPDATE hr_grievances SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    auditLog(req, 'UPDATE', 'hr_grievance', id, `Grievance updated`);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to update grievance' });
+  }
+});
+
+// ─── 24. Workers Comp Incident Tracking ──────────────────────────────────────
+router.get('/workers-comp', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { officer_id, status } = req.query;
+    let sql = `SELECT w.*, u.full_name as officer_name FROM hr_workers_comp w JOIN users u ON u.id = w.officer_id WHERE 1=1`;
+    const params: any[] = [];
+    if (officer_id) { sql += ' AND w.officer_id = ?'; params.push(Number(officer_id)); }
+    if (status) { sql += ' AND w.status = ?'; params.push(status); }
+    sql += ' ORDER BY w.incident_date DESC';
+    res.json(db.prepare(sql).all(...params));
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load workers comp incidents' });
+  }
+});
+
+router.post('/workers-comp', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { officer_id, incident_date, injury_type, body_part, description, location,
+            witnesses, treatment, physician, osha_recordable, osha_case_number, claim_number } = req.body;
+    if (!officer_id || !incident_date || !injury_type || !description) {
+      return res.status(400).json({ error: 'officer_id, incident_date, injury_type, and description are required' });
+    }
+    const now = localNow();
+    const result = db.prepare(
+      `INSERT INTO hr_workers_comp (officer_id, incident_date, injury_type, body_part, description, location,
+       witnesses, treatment, physician, osha_recordable, osha_case_number, claim_number, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(officer_id, incident_date, injury_type, body_part || null, description, location || null,
+      witnesses || null, treatment || null, physician || null, osha_recordable ? 1 : 0,
+      osha_case_number || null, claim_number || null, now, now);
+    auditLog(req, 'CREATE', 'hr_workers_comp', Number(result.lastInsertRowid), `Workers comp incident reported`);
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create workers comp record' });
+  }
+});
+
+router.put('/workers-comp/:id', validateParamIdMiddleware, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = Number(req.params.id);
+    const { status, lost_days, treatment, physician, claim_number } = req.body;
+    const now = localNow();
+    const sets: string[] = ['updated_at = ?'];
+    const vals: any[] = [now];
+    if (status) { sets.push('status = ?'); vals.push(status); }
+    if (lost_days !== undefined) { sets.push('lost_days = ?'); vals.push(lost_days); }
+    if (treatment !== undefined) { sets.push('treatment = ?'); vals.push(treatment); }
+    if (physician !== undefined) { sets.push('physician = ?'); vals.push(physician); }
+    if (claim_number !== undefined) { sets.push('claim_number = ?'); vals.push(claim_number); }
+    vals.push(id);
+    db.prepare(`UPDATE hr_workers_comp SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to update workers comp record' });
+  }
+});
+
+// ─── 25. Exit Interview Form ─────────────────────────────────────────────────
+router.get('/exit-interviews', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { officer_id } = req.query;
+    let sql = `SELECT ei.*, u.full_name as officer_name, iv.full_name as interviewer_name
+               FROM hr_exit_interviews ei
+               JOIN users u ON u.id = ei.officer_id
+               LEFT JOIN users iv ON iv.id = ei.interviewer_id WHERE 1=1`;
+    const params: any[] = [];
+    if (officer_id) { sql += ' AND ei.officer_id = ?'; params.push(Number(officer_id)); }
+    sql += ' ORDER BY ei.interview_date DESC';
+    res.json(db.prepare(sql).all(...params));
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load exit interviews' });
+  }
+});
+
+router.post('/exit-interviews', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { officer_id, interview_date, reason_for_leaving, satisfaction_rating, would_return,
+            what_liked, what_disliked, suggestions, management_feedback,
+            work_environment_rating, compensation_rating, training_rating, notes } = req.body;
+    if (!officer_id || !interview_date) return res.status(400).json({ error: 'officer_id and interview_date are required' });
+    const result = db.prepare(
+      `INSERT INTO hr_exit_interviews (officer_id, interview_date, interviewer_id, reason_for_leaving,
+       satisfaction_rating, would_return, what_liked, what_disliked, suggestions, management_feedback,
+       work_environment_rating, compensation_rating, training_rating, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(officer_id, interview_date, (req as any).user?.id, reason_for_leaving || null,
+      satisfaction_rating || null, would_return ? 1 : 0, what_liked || null, what_disliked || null,
+      suggestions || null, management_feedback || null, work_environment_rating || null,
+      compensation_rating || null, training_rating || null, notes || null);
+    auditLog(req, 'CREATE', 'hr_exit_interview', Number(result.lastInsertRowid), `Exit interview recorded`);
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create exit interview' });
+  }
+});
+
+// ─── 26. Salary History Tracking ─────────────────────────────────────────────
+router.get('/salary-history/:officerId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT sh.*, u.full_name as approved_by_name
+      FROM hr_salary_history sh
+      LEFT JOIN users u ON u.id = sh.approved_by
+      WHERE sh.officer_id = ? ORDER BY sh.effective_date DESC
+    `).all(Number(req.params.officerId));
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load salary history' });
+  }
+});
+
+router.post('/salary-history', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { officer_id, effective_date, salary_amount, pay_type, reason } = req.body;
+    if (!officer_id || !effective_date || salary_amount === undefined) {
+      return res.status(400).json({ error: 'officer_id, effective_date, and salary_amount are required' });
+    }
+    const result = db.prepare(
+      `INSERT INTO hr_salary_history (officer_id, effective_date, salary_amount, pay_type, reason, approved_by)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(officer_id, effective_date, salary_amount, pay_type || 'hourly', reason || null, (req as any).user?.id);
+    auditLog(req, 'CREATE', 'hr_salary_history', Number(result.lastInsertRowid),
+      `Salary change: $${salary_amount} effective ${effective_date}`);
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to save salary history' });
+  }
+});
+
+// ─── 27. Benefits Enrollment Tracker ─────────────────────────────────────────
+router.get('/benefits', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    const { officer_id } = req.query;
+    let sql = `SELECT b.*, u.full_name as officer_name FROM hr_benefits b JOIN users u ON u.id = b.officer_id WHERE 1=1`;
+    const params: any[] = [];
+    if (!isManagerOrAbove(user.role)) { sql += ' AND b.officer_id = ?'; params.push(user.id); }
+    else if (officer_id) { sql += ' AND b.officer_id = ?'; params.push(Number(officer_id)); }
+    sql += ' ORDER BY b.benefit_type';
+    res.json(db.prepare(sql).all(...params));
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load benefits' });
+  }
+});
+
+router.post('/benefits', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { officer_id, benefit_type, plan_name, provider, coverage_level,
+            employee_cost, employer_cost, effective_date, end_date } = req.body;
+    if (!officer_id || !benefit_type) return res.status(400).json({ error: 'officer_id and benefit_type are required' });
+    const now = localNow();
+    const result = db.prepare(
+      `INSERT INTO hr_benefits (officer_id, benefit_type, plan_name, provider, coverage_level,
+       employee_cost, employer_cost, effective_date, end_date, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(officer_id, benefit_type, plan_name || null, provider || null, coverage_level || null,
+      employee_cost || 0, employer_cost || 0, effective_date || null, end_date || null, now, now);
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create benefit record' });
+  }
+});
+
+router.put('/benefits/:id', validateParamIdMiddleware, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = Number(req.params.id);
+    const { status, end_date, plan_name, coverage_level, employee_cost, employer_cost } = req.body;
+    const now = localNow();
+    const sets: string[] = ['updated_at = ?'];
+    const vals: any[] = [now];
+    if (status !== undefined) { sets.push('status = ?'); vals.push(status); }
+    if (end_date !== undefined) { sets.push('end_date = ?'); vals.push(end_date); }
+    if (plan_name !== undefined) { sets.push('plan_name = ?'); vals.push(plan_name); }
+    if (coverage_level !== undefined) { sets.push('coverage_level = ?'); vals.push(coverage_level); }
+    if (employee_cost !== undefined) { sets.push('employee_cost = ?'); vals.push(employee_cost); }
+    if (employer_cost !== undefined) { sets.push('employer_cost = ?'); vals.push(employer_cost); }
+    vals.push(id);
+    db.prepare(`UPDATE hr_benefits SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to update benefit' });
+  }
+});
+
+// ─── 28. Performance Improvement Plan (PIP) ──────────────────────────────────
+router.get('/pips', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { officer_id, status } = req.query;
+    let sql = `SELECT p.*, u.full_name as officer_name, s.full_name as supervisor_name
+               FROM hr_pips p
+               JOIN users u ON u.id = p.officer_id
+               LEFT JOIN users s ON s.id = p.supervisor_id WHERE 1=1`;
+    const params: any[] = [];
+    if (officer_id) { sql += ' AND p.officer_id = ?'; params.push(Number(officer_id)); }
+    if (status) { sql += ' AND p.status = ?'; params.push(status); }
+    sql += ' ORDER BY p.created_at DESC';
+    const rows = db.prepare(sql).all(...params) as any[];
+    res.json(rows.map((r: any) => ({ ...r, goals: JSON.parse(r.goals || '[]'), milestones: JSON.parse(r.milestones || '[]') })));
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load PIPs' });
+  }
+});
+
+router.post('/pips', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { officer_id, start_date, end_date, reason, goals, milestones } = req.body;
+    if (!officer_id || !start_date || !end_date || !reason) {
+      return res.status(400).json({ error: 'officer_id, start_date, end_date, and reason are required' });
+    }
+    const now = localNow();
+    const result = db.prepare(
+      `INSERT INTO hr_pips (officer_id, supervisor_id, start_date, end_date, reason, goals, milestones, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(officer_id, (req as any).user?.id, start_date, end_date, reason,
+      JSON.stringify(goals || []), JSON.stringify(milestones || []), now, now);
+    auditLog(req, 'CREATE', 'hr_pip', Number(result.lastInsertRowid), `PIP created for officer ${officer_id}`);
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create PIP' });
+  }
+});
+
+router.put('/pips/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = Number(req.params.id);
+    const { status, goals, milestones, outcome, end_date } = req.body;
+    const now = localNow();
+    const sets: string[] = ['updated_at = ?'];
+    const vals: any[] = [now];
+    if (status) { sets.push('status = ?'); vals.push(status); }
+    if (goals) { sets.push('goals = ?'); vals.push(JSON.stringify(goals)); }
+    if (milestones) { sets.push('milestones = ?'); vals.push(JSON.stringify(milestones)); }
+    if (outcome !== undefined) { sets.push('outcome = ?'); vals.push(outcome); }
+    if (end_date) { sets.push('end_date = ?'); vals.push(end_date); }
+    vals.push(id);
+    db.prepare(`UPDATE hr_pips SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    auditLog(req, 'UPDATE', 'hr_pip', id, `PIP updated`);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to update PIP' });
+  }
+});
+
+// ─── 29. Training ROI Calculator ─────────────────────────────────────────────
+router.get('/training-roi/:officerId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const officerId = Number(req.params.officerId);
+
+    // Training costs
+    const training = db.prepare(`
+      SELECT SUM(hours) as total_hours, COUNT(*) as total_courses,
+        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed
+      FROM training_records WHERE officer_id = ?
+    `).get(officerId) as any;
+
+    // Performance improvement (compare first vs last review)
+    const reviews = db.prepare(`
+      SELECT overall_rating, review_date FROM performance_reviews
+      WHERE officer_id = ? AND overall_rating IS NOT NULL
+      ORDER BY review_date ASC
+    `).all(officerId) as any[];
+
+    const firstRating = reviews.length > 0 ? reviews[0].overall_rating : null;
+    const lastRating = reviews.length > 1 ? reviews[reviews.length - 1].overall_rating : null;
+    const ratingImprovement = firstRating && lastRating ? lastRating - firstRating : null;
+
+    // Estimated cost: $50/hr training cost assumption
+    const estimatedCost = (training?.total_hours || 0) * 50;
+
+    res.json({
+      officer_id: officerId,
+      total_training_hours: training?.total_hours || 0,
+      total_courses: training?.total_courses || 0,
+      completed_courses: training?.completed || 0,
+      estimated_training_cost: estimatedCost,
+      first_performance_rating: firstRating,
+      latest_performance_rating: lastRating,
+      rating_improvement: ratingImprovement,
+      roi_indicator: ratingImprovement && ratingImprovement > 0 ? 'positive' : ratingImprovement === 0 ? 'neutral' : 'needs_review',
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to calculate training ROI' });
+  }
+});
+
+// ─── 30. Attendance Tracking ─────────────────────────────────────────────────
+router.get('/attendance', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    const { officer_id, start_date, end_date, type } = req.query;
+    let sql = `SELECT a.*, u.full_name as officer_name, d.full_name as documented_by_name
+               FROM hr_attendance a
+               JOIN users u ON u.id = a.officer_id
+               LEFT JOIN users d ON d.id = a.documented_by WHERE 1=1`;
+    const params: any[] = [];
+    if (!isManagerOrAbove(user.role)) { sql += ' AND a.officer_id = ?'; params.push(user.id); }
+    else if (officer_id) { sql += ' AND a.officer_id = ?'; params.push(Number(officer_id)); }
+    if (start_date) { sql += ' AND a.date >= ?'; params.push(start_date); }
+    if (end_date) { sql += ' AND a.date <= ?'; params.push(end_date); }
+    if (type) { sql += ' AND a.type = ?'; params.push(type); }
+    sql += ' ORDER BY a.date DESC';
+    res.json(db.prepare(sql).all(...params));
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load attendance' });
+  }
+});
+
+router.post('/attendance', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { officer_id, date, type, minutes_late, reason, excused } = req.body;
+    if (!officer_id || !date || !type) return res.status(400).json({ error: 'officer_id, date, and type are required' });
+    const result = db.prepare(
+      `INSERT INTO hr_attendance (officer_id, date, type, minutes_late, reason, excused, documented_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(officer_id, date, type, minutes_late || 0, reason || null, excused ? 1 : 0, (req as any).user?.id);
+    auditLog(req, 'CREATE', 'hr_attendance', Number(result.lastInsertRowid), `Attendance incident: ${type} for officer ${officer_id}`);
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to log attendance' });
+  }
+});
+
+router.get('/attendance/summary/:officerId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const officerId = Number(req.params.officerId);
+    const { year } = req.query;
+    const targetYear = year || new Date().getFullYear();
+
+    const summary = db.prepare(`
+      SELECT type, COUNT(*) as count, SUM(CASE WHEN excused = 1 THEN 1 ELSE 0 END) as excused_count
+      FROM hr_attendance
+      WHERE officer_id = ? AND date LIKE ?
+      GROUP BY type
+    `).all(officerId, `${targetYear}%`) as any[];
+
+    const total = summary.reduce((s: number, r: any) => s + r.count, 0);
+
+    // Pattern detection: 3+ Monday/Friday absences = pattern
+    const mondayFriday = db.prepare(`
+      SELECT COUNT(*) as cnt FROM hr_attendance
+      WHERE officer_id = ? AND date LIKE ? AND type IN ('absent','tardy')
+        AND (CAST(strftime('%w', date) AS INTEGER) IN (1, 5))
+    `).get(officerId, `${targetYear}%`) as any;
+
+    res.json({
+      officer_id: officerId,
+      year: targetYear,
+      by_type: summary,
+      total_incidents: total,
+      monday_friday_pattern: (mondayFriday?.cnt || 0) >= 3,
+      monday_friday_count: mondayFriday?.cnt || 0,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load attendance summary' });
+  }
+});
+
 export default router;

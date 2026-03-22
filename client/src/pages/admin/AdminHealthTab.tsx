@@ -501,7 +501,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
         </div>
       </div>
 
-      {/* Recent Errors */}
+      {/* Recent Errors (Feature 28) */}
       <div className="panel-beveled bg-surface-base p-3 space-y-2">
         <div className="flex items-center gap-2 text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">
           <FileWarning className="w-3.5 h-3.5" />
@@ -527,6 +527,256 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
           </div>
         )}
       </div>
+
+      {/* Feature 22: User Activity Heatmap */}
+      <UserActivityHeatmap />
+
+      {/* Feature 25: API Usage Statistics */}
+      <ApiUsageStats />
+
+      {/* Feature 24: Config Change History */}
+      <ConfigChangeHistory />
+
+      {/* Feature 27: Database Backup Status */}
+      <DatabaseBackupStatus />
+
+      {/* Feature 30: Maintenance Mode Toggle */}
+      <MaintenanceModeToggle />
+    </div>
+  );
+}
+
+// ── Feature 22: User Activity Heatmap ──────────────────
+function UserActivityHeatmap() {
+  const [data, setData] = useState<any[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    apiFetch<{ data: any[] }>('/admin/user-activity-heatmap?days=30')
+      .then(res => { setData(res.data || []); setLoaded(true); })
+      .catch(() => setLoaded(true));
+  }, []);
+
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const maxCount = Math.max(1, ...data.map((d: any) => d.count));
+
+  const getColor = (count: number) => {
+    if (count === 0) return 'bg-rmpg-800';
+    const intensity = count / maxCount;
+    if (intensity > 0.75) return 'bg-brand-500';
+    if (intensity > 0.5) return 'bg-brand-600';
+    if (intensity > 0.25) return 'bg-brand-700';
+    return 'bg-brand-800';
+  };
+
+  const grid: Record<string, number> = {};
+  for (const d of data) grid[`${d.day_of_week}-${d.hour}`] = d.count;
+
+  if (!loaded) return null;
+
+  return (
+    <div className="panel-beveled bg-surface-base p-3">
+      <div className="flex items-center gap-2 text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-2">
+        <Activity className="w-3.5 h-3.5" />
+        User Activity Heatmap (Last 30 Days)
+      </div>
+      <div className="overflow-x-auto">
+        <div className="grid gap-px" style={{ gridTemplateColumns: 'auto repeat(24, 1fr)' }}>
+          <div />
+          {Array.from({ length: 24 }, (_, h) => (
+            <div key={h} className="text-[7px] text-rmpg-500 text-center">{h}</div>
+          ))}
+          {dayNames.map((day, dayIdx) => (
+            <React.Fragment key={day}>
+              <div className="text-[8px] text-rmpg-400 pr-1 flex items-center">{day}</div>
+              {Array.from({ length: 24 }, (_, hour) => {
+                const count = grid[`${dayIdx}-${hour}`] || 0;
+                return (
+                  <div
+                    key={hour}
+                    className={`w-3 h-3 ${getColor(count)}`}
+                    title={`${day} ${hour}:00 - ${count} actions`}
+                  />
+                );
+              })}
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Feature 25: API Usage Statistics ───────────────────
+function ApiUsageStats() {
+  const [stats, setStats] = useState<any>(null);
+  useEffect(() => {
+    apiFetch<{ data: any }>('/admin/api-stats?days=7')
+      .then(res => setStats(res.data))
+      .catch(() => {});
+  }, []);
+
+  if (!stats) return null;
+
+  return (
+    <div className="panel-beveled bg-surface-base p-3">
+      <div className="flex items-center gap-2 text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-2">
+        <Globe className="w-3.5 h-3.5" />
+        API Usage (Last 7 Days)
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <div className="text-[9px] text-rmpg-500 mb-1">Top Actions</div>
+          {(stats.byAction || []).slice(0, 8).map((a: any) => (
+            <div key={a.action} className="flex items-center justify-between py-0.5">
+              <span className="text-[10px] text-rmpg-300 truncate">{a.action}</span>
+              <span className="text-[10px] font-mono text-white ml-2">{a.count}</span>
+            </div>
+          ))}
+        </div>
+        <div>
+          <div className="text-[9px] text-rmpg-500 mb-1">Top Users</div>
+          {(stats.byUser || []).slice(0, 8).map((u: any, i: number) => (
+            <div key={i} className="flex items-center justify-between py-0.5">
+              <span className="text-[10px] text-rmpg-300 truncate">{u.full_name || 'System'}</span>
+              <span className="text-[10px] font-mono text-white ml-2">{u.count}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Feature 24: Config Change History ──────────────────
+function ConfigChangeHistory() {
+  const [history, setHistory] = useState<any[]>([]);
+  useEffect(() => {
+    apiFetch<{ data: any[] }>('/admin/config-history?limit=20')
+      .then(res => setHistory(res.data || []))
+      .catch(() => {});
+  }, []);
+
+  if (history.length === 0) return null;
+
+  return (
+    <div className="panel-beveled bg-surface-base p-3">
+      <div className="flex items-center gap-2 text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-2">
+        <Zap className="w-3.5 h-3.5" />
+        Recent Config Changes
+      </div>
+      <div className="space-y-1 max-h-40 overflow-y-auto">
+        {history.map((h: any) => (
+          <div key={h.id} className="flex items-center gap-2 text-[10px] py-1 border-b border-rmpg-800 last:border-0">
+            <span className="text-rmpg-400 w-16 shrink-0">{new Date(h.changed_at).toLocaleDateString()}</span>
+            <span className="text-brand-400 font-mono">{h.config_key}</span>
+            <span className="text-rmpg-500">by</span>
+            <span className="text-white">{h.changed_by_name || 'Unknown'}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Feature 27: Database Backup Status ─────────────────
+function DatabaseBackupStatus() {
+  const [backup, setBackup] = useState<any>(null);
+  useEffect(() => {
+    apiFetch<{ data: any }>('/admin/backup-status')
+      .then(res => setBackup(res.data))
+      .catch(() => {});
+  }, []);
+
+  if (!backup) return null;
+
+  return (
+    <div className="panel-beveled bg-surface-base p-3">
+      <div className="flex items-center gap-2 text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-2">
+        <Disc className="w-3.5 h-3.5" />
+        Database Backup Status
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <div className="text-[9px] text-rmpg-500">Database Size</div>
+          <div className="text-sm font-bold text-white">{formatFileSize(backup.dbSize || 0)}</div>
+        </div>
+        <div>
+          <div className="text-[9px] text-rmpg-500">Last Modified</div>
+          <div className="text-sm font-bold text-white">
+            {backup.lastModified ? new Date(backup.lastModified).toLocaleString() : 'N/A'}
+          </div>
+        </div>
+      </div>
+      {backup.backups && backup.backups.length > 0 && (
+        <div className="mt-2">
+          <div className="text-[9px] text-rmpg-500 mb-1">Backup Files</div>
+          {backup.backups.map((b: any, i: number) => (
+            <div key={i} className="flex items-center justify-between text-[10px] py-0.5">
+              <span className="text-rmpg-300">{b.filename}</span>
+              <span className="text-rmpg-400">{formatFileSize(b.size)} - {new Date(b.created).toLocaleDateString()}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Feature 30: Maintenance Mode Toggle ────────────────
+function MaintenanceModeToggle() {
+  const [enabled, setEnabled] = useState(false);
+  const [message, setMessage] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    apiFetch<{ enabled: boolean; message: string }>('/admin/maintenance-mode')
+      .then(res => { setEnabled(res.enabled); setMessage(res.message || ''); })
+      .catch(() => {});
+  }, []);
+
+  const toggle = async () => {
+    setSaving(true);
+    try {
+      const res = await apiFetch<{ enabled: boolean }>('/admin/maintenance-mode', {
+        method: 'PUT',
+        body: JSON.stringify({ enabled: !enabled, message }),
+      });
+      setEnabled(res.enabled);
+    } catch { /* silent */ }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className={`panel-beveled bg-surface-base p-3 ${enabled ? 'border-l-2 border-l-amber-500' : ''}`}>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2 text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">
+          <AlertTriangle className={`w-3.5 h-3.5 ${enabled ? 'text-amber-400' : 'text-rmpg-500'}`} />
+          Maintenance Mode
+        </div>
+        <button
+          onClick={toggle}
+          disabled={saving}
+          className={`px-3 py-1 text-[10px] font-bold border ${
+            enabled
+              ? 'bg-red-900/30 text-red-400 border-red-700/50 hover:bg-red-900/50'
+              : 'bg-green-900/30 text-green-400 border-green-700/50 hover:bg-green-900/50'
+          }`}
+          aria-label={enabled ? 'Disable maintenance mode' : 'Enable maintenance mode'}
+        >
+          {saving ? 'Saving...' : enabled ? 'DISABLE' : 'ENABLE'}
+        </button>
+      </div>
+      {enabled && (
+        <div className="text-[10px] text-amber-400 mb-2">
+          Maintenance mode is ACTIVE. Users will see a maintenance banner.
+        </div>
+      )}
+      <input
+        value={message}
+        onChange={e => setMessage(e.target.value)}
+        placeholder="Maintenance message shown to users..."
+        className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none"
+      />
     </div>
   );
 }

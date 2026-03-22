@@ -271,4 +271,298 @@ router.delete('/entity/:id', (req: Request, res: Response) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// FEATURE 36: Statute Penalty Lookup
+// ════════════════════════════════════════════════════════════
+
+router.get('/penalty/:citation', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const citation = decodeURIComponent(req.params.citation);
+
+    const statute = db.prepare(`
+      SELECT id, citation, short_title, description, offense_level, category,
+             citation_fine, min_penalty, max_penalty, penalty_notes
+      FROM utah_statutes
+      WHERE citation = ? AND is_active = 1
+    `).get(citation) as any;
+
+    if (!statute) return res.status(404).json({ error: 'Statute not found' });
+
+    // Penalty info based on offense level
+    const penaltyRanges: Record<string, { jail_max: string; fine_max: string }> = {
+      'first_degree_felony': { jail_max: '5 years to life', fine_max: '$10,000' },
+      'second_degree_felony': { jail_max: '1-15 years', fine_max: '$10,000' },
+      'third_degree_felony': { jail_max: '0-5 years', fine_max: '$5,000' },
+      'class_a_misdemeanor': { jail_max: 'Up to 364 days', fine_max: '$2,500' },
+      'class_b_misdemeanor': { jail_max: 'Up to 6 months', fine_max: '$1,000' },
+      'class_c_misdemeanor': { jail_max: 'Up to 90 days', fine_max: '$750' },
+      'infraction': { jail_max: 'None', fine_max: '$750' },
+      'felony': { jail_max: 'Varies', fine_max: '$10,000' },
+      'misdemeanor_a': { jail_max: 'Up to 364 days', fine_max: '$2,500' },
+      'misdemeanor_b': { jail_max: 'Up to 6 months', fine_max: '$1,000' },
+      'misdemeanor_c': { jail_max: 'Up to 90 days', fine_max: '$750' },
+    };
+
+    const penalty = penaltyRanges[statute.offense_level] || { jail_max: 'Unknown', fine_max: 'Unknown' };
+
+    res.json({
+      data: {
+        ...statute,
+        penalty_range: penalty,
+        citation_fine: statute.citation_fine || null,
+        min_penalty: statute.min_penalty || null,
+        max_penalty: statute.max_penalty || null,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 37: Commonly Charged Statutes
+// ════════════════════════════════════════════════════════════
+
+router.get('/analytics/top-charged', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { days = '365', limit = '20' } = req.query;
+    const cutoff = new Date(Date.now() - parseInt(days as string, 10) * 24 * 60 * 60 * 1000).toISOString();
+    const limitNum = Math.min(50, parseInt(limit as string, 10) || 20);
+
+    // From citations
+    const topFromCitations = db.prepare(`
+      SELECT us.citation, us.short_title, us.offense_level, us.category,
+             COUNT(*) as citation_count
+      FROM entity_statutes es
+      JOIN utah_statutes us ON es.statute_id = us.id
+      WHERE es.entity_type = 'citation' AND es.created_at >= ?
+      GROUP BY us.id
+      ORDER BY citation_count DESC
+      LIMIT ?
+    `).all(cutoff, limitNum) as any[];
+
+    // From incidents
+    const topFromIncidents = db.prepare(`
+      SELECT us.citation, us.short_title, us.offense_level, us.category,
+             COUNT(*) as incident_count
+      FROM entity_statutes es
+      JOIN utah_statutes us ON es.statute_id = us.id
+      WHERE es.entity_type = 'incident' AND es.created_at >= ?
+      GROUP BY us.id
+      ORDER BY incident_count DESC
+      LIMIT ?
+    `).all(cutoff, limitNum) as any[];
+
+    // Combined top
+    const combined = new Map<string, any>();
+    for (const s of topFromCitations) {
+      combined.set(s.citation, { ...s, total_count: s.citation_count, incident_count: 0 });
+    }
+    for (const s of topFromIncidents) {
+      if (combined.has(s.citation)) {
+        const existing = combined.get(s.citation);
+        existing.incident_count = s.incident_count;
+        existing.total_count = (existing.citation_count || 0) + s.incident_count;
+      } else {
+        combined.set(s.citation, { ...s, citation_count: 0, total_count: s.incident_count });
+      }
+    }
+
+    const sorted = Array.from(combined.values()).sort((a, b) => b.total_count - a.total_count).slice(0, limitNum);
+
+    res.json({ data: sorted, period_days: parseInt(days as string, 10) });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 38: Statute Amendment Tracking
+// ════════════════════════════════════════════════════════════
+
+router.post('/:id/amendment', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const statute = db.prepare('SELECT * FROM utah_statutes WHERE id = ?').get(req.params.id) as any;
+    if (!statute) return res.status(404).json({ error: 'Statute not found' });
+
+    const { amendment_date, amendment_type, description, effective_date, previous_text, new_text } = req.body;
+    if (!amendment_type || !description) return res.status(400).json({ error: 'amendment_type and description required' });
+
+    const now = localNow();
+
+    // Store amendment in activity_log with structured data
+    const amendmentData = {
+      statute_id: parseInt(req.params.id),
+      citation: statute.citation,
+      amendment_type: amendment_type, // 'amended', 'repealed', 'enacted', 'renumbered'
+      description,
+      amendment_date: amendment_date || now.split('T')[0],
+      effective_date: effective_date || null,
+      previous_text: previous_text || null,
+      new_text: new_text || null,
+      recorded_by: req.user!.userId,
+    };
+
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'statute_amendment', 'utah_statute', ?, ?, ?)
+    `).run(req.user!.userId, req.params.id, JSON.stringify(amendmentData), now);
+
+    // If repealed, deactivate
+    if (amendment_type === 'repealed') {
+      db.prepare('UPDATE utah_statutes SET is_active = 0 WHERE id = ?').run(req.params.id);
+    }
+
+    res.status(201).json({ data: amendmentData });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/:id/amendments', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const amendments = db.prepare(`
+      SELECT al.*, u.full_name as recorded_by_name
+      FROM activity_log al
+      LEFT JOIN users u ON al.user_id = u.id
+      WHERE al.entity_type = 'utah_statute' AND al.entity_id = ? AND al.action = 'statute_amendment'
+      ORDER BY al.created_at DESC
+    `).all(req.params.id) as any[];
+
+    const parsed = amendments.map((a: any) => {
+      try { return { ...JSON.parse(a.details), id: a.id, recorded_by_name: a.recorded_by_name, created_at: a.created_at }; }
+      catch { return a; }
+    });
+
+    res.json({ data: parsed });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 39: Charge Enhancement Calculator
+// ════════════════════════════════════════════════════════════
+
+router.post('/calculate-enhancement', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { statute_id, citation, factors } = req.body;
+
+    let statute: any = null;
+    if (statute_id) {
+      statute = db.prepare('SELECT * FROM utah_statutes WHERE id = ?').get(statute_id);
+    } else if (citation) {
+      statute = db.prepare('SELECT * FROM utah_statutes WHERE citation = ? AND is_active = 1').get(citation);
+    }
+    if (!statute) return res.status(404).json({ error: 'Statute not found' });
+
+    const enhancementFactors = factors || {};
+    let baseLevel = statute.offense_level || 'class_b_misdemeanor';
+    const enhancements: { factor: string; description: string; effect: string }[] = [];
+
+    // Enhancement hierarchy
+    const levels = [
+      'infraction', 'class_c_misdemeanor', 'class_b_misdemeanor', 'class_a_misdemeanor',
+      'third_degree_felony', 'second_degree_felony', 'first_degree_felony',
+    ];
+    let currentIdx = levels.indexOf(baseLevel);
+    if (currentIdx === -1) currentIdx = 2; // default to class_b_misdemeanor
+
+    // Repeat offender
+    if (enhancementFactors.repeat_offender) {
+      currentIdx = Math.min(currentIdx + 1, levels.length - 1);
+      enhancements.push({ factor: 'Repeat Offender', description: 'Prior conviction for same or similar offense', effect: 'Elevated one level' });
+    }
+
+    // Weapon used
+    if (enhancementFactors.weapon_used) {
+      currentIdx = Math.min(currentIdx + 2, levels.length - 1);
+      enhancements.push({ factor: 'Weapon Used', description: 'Use of a dangerous weapon during offense', effect: 'Elevated two levels' });
+    }
+
+    // Vulnerable victim
+    if (enhancementFactors.vulnerable_victim) {
+      currentIdx = Math.min(currentIdx + 1, levels.length - 1);
+      enhancements.push({ factor: 'Vulnerable Victim', description: 'Victim is elderly, disabled, or minor', effect: 'Elevated one level' });
+    }
+
+    // Gang enhancement
+    if (enhancementFactors.gang_related) {
+      currentIdx = Math.min(currentIdx + 1, levels.length - 1);
+      enhancements.push({ factor: 'Gang Enhancement', description: 'Offense committed in furtherance of gang activity', effect: 'Elevated one level' });
+    }
+
+    // DV enhancement
+    if (enhancementFactors.domestic_violence) {
+      enhancements.push({ factor: 'Domestic Violence', description: 'DV enhancement applies — mandatory arrest, no-contact order', effect: 'DV designation added' });
+    }
+
+    const enhancedLevel = levels[currentIdx];
+
+    res.json({
+      data: {
+        base_offense: statute.citation,
+        base_title: statute.short_title,
+        base_level: baseLevel,
+        enhanced_level: enhancedLevel,
+        was_enhanced: enhancedLevel !== baseLevel,
+        enhancements,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FEATURE 40: Statute Comparison Tool
+// ════════════════════════════════════════════════════════════
+
+router.post('/compare', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { statute_ids } = req.body;
+    if (!Array.isArray(statute_ids) || statute_ids.length < 2) {
+      return res.status(400).json({ error: 'Provide at least 2 statute_ids to compare' });
+    }
+    if (statute_ids.length > 5) {
+      return res.status(400).json({ error: 'Maximum 5 statutes for comparison' });
+    }
+
+    const placeholders = statute_ids.map(() => '?').join(',');
+    const statutes = db.prepare(`
+      SELECT * FROM utah_statutes WHERE id IN (${placeholders})
+    `).all(...statute_ids) as any[];
+
+    if (statutes.length < 2) return res.status(404).json({ error: 'One or more statutes not found' });
+
+    // Build comparison
+    const comparison = {
+      statutes: statutes.map((s: any) => ({
+        id: s.id,
+        citation: s.citation,
+        short_title: s.short_title,
+        description: s.description,
+        offense_level: s.offense_level,
+        category: s.category,
+        subcategory: s.subcategory,
+        is_active: s.is_active,
+      })),
+      differences: {
+        offense_levels: [...new Set(statutes.map((s: any) => s.offense_level))],
+        categories: [...new Set(statutes.map((s: any) => s.category))],
+        same_level: statutes.every((s: any) => s.offense_level === statutes[0].offense_level),
+        same_category: statutes.every((s: any) => s.category === statutes[0].category),
+      },
+    };
+
+    res.json({ data: comparison });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;
