@@ -17,6 +17,7 @@ import { generateCallNumber, generateCaseNumber } from '../utils/caseNumbers';
 import { broadcastDispatchUpdate } from '../utils/websocket';
 import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
+import { encryptApiKey, decryptApiKey } from '../utils/serveManagerClient';
 
 const router = Router();
 
@@ -313,5 +314,102 @@ adminRouter.get('/request-log', (req: Request, res: Response): void => {
 
 // Mount admin routes under /keys
 router.use('/keys', adminRouter);
+
+
+// ═════════════════════════════════════════════════════════════
+// SECTION C — Connected Services Config (JWT Auth)
+// ═════════════════════════════════════════════════════════════
+
+const servicesRouter = Router();
+servicesRouter.use(authenticateToken);
+servicesRouter.use(requireRole('admin', 'manager'));
+
+const CONNECTED_SERVICE_KEYS = ['rmpgutahps_api_key', 'rmpgutahps_url'] as const;
+
+// GET /services/rmpgutahps — Get connection status for rmpgutahps.us
+servicesRouter.get('/rmpgutahps', (_req: Request, res: Response): void => {
+  try {
+    const db = getDb();
+    const keyRow = db.prepare(
+      "SELECT config_value FROM system_config WHERE config_key = 'rmpgutahps_api_key' AND category = 'integrations' AND is_active = 1 LIMIT 1"
+    ).get() as { config_value: string } | undefined;
+
+    const urlRow = db.prepare(
+      "SELECT config_value FROM system_config WHERE config_key = 'rmpgutahps_url' AND category = 'integrations' AND is_active = 1 LIMIT 1"
+    ).get() as { config_value: string } | undefined;
+
+    res.json({
+      configured: !!keyRow,
+      url: urlRow?.config_value || 'https://rmpgutahps.us',
+      key_preview: keyRow ? '••••••••' + decryptApiKey(keyRow.config_value).slice(-8) : null,
+    });
+  } catch (err: any) {
+    console.error('[Integrations] Get rmpgutahps config error:', err);
+    res.status(500).json({ error: 'Failed to get service config.' });
+  }
+});
+
+// PUT /services/rmpgutahps — Save API key and URL for rmpgutahps.us
+servicesRouter.put('/rmpgutahps', (req: Request, res: Response): void => {
+  try {
+    const db = getDb();
+    const { api_key, url } = req.body;
+    const now = localNow();
+
+    if (!api_key || typeof api_key !== 'string' || !api_key.trim()) {
+      res.status(400).json({ error: 'api_key is required.' });
+      return;
+    }
+
+    const encrypted = encryptApiKey(api_key.trim());
+
+    // Upsert API key
+    db.prepare(
+      "DELETE FROM system_config WHERE config_key = 'rmpgutahps_api_key' AND category = 'integrations'"
+    ).run();
+    db.prepare(`
+      INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at)
+      VALUES ('rmpgutahps_api_key', ?, 'integrations', 0, 1, ?, ?)
+    `).run(encrypted, now, now);
+
+    // Upsert URL
+    const siteUrl = (url && typeof url === 'string' && url.trim()) ? url.trim() : 'https://rmpgutahps.us';
+    db.prepare(
+      "DELETE FROM system_config WHERE config_key = 'rmpgutahps_url' AND category = 'integrations'"
+    ).run();
+    db.prepare(`
+      INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at)
+      VALUES ('rmpgutahps_url', ?, 'integrations', 0, 1, ?, ?)
+    `).run(siteUrl, now, now);
+
+    auditLog(req, 'integration_key_created', 'integration_api_key', 0,
+      `Updated rmpgutahps.us API key and URL (${siteUrl})`);
+
+    res.json({ success: true, message: 'rmpgutahps.us API key saved.' });
+  } catch (err: any) {
+    console.error('[Integrations] Save rmpgutahps config error:', err);
+    res.status(500).json({ error: 'Failed to save service config.' });
+  }
+});
+
+// DELETE /services/rmpgutahps — Clear rmpgutahps.us API key
+servicesRouter.delete('/rmpgutahps', (req: Request, res: Response): void => {
+  try {
+    const db = getDb();
+    db.prepare(
+      "DELETE FROM system_config WHERE config_key IN ('rmpgutahps_api_key', 'rmpgutahps_url') AND category = 'integrations'"
+    ).run();
+
+    auditLog(req, 'integration_key_deleted', 'integration_api_key', 0,
+      'Cleared rmpgutahps.us API key');
+
+    res.json({ success: true, message: 'rmpgutahps.us API key cleared.' });
+  } catch (err: any) {
+    console.error('[Integrations] Clear rmpgutahps config error:', err);
+    res.status(500).json({ error: 'Failed to clear service config.' });
+  }
+});
+
+router.use('/services', servicesRouter);
 
 export default router;

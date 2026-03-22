@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Trash2, Copy, CheckCircle2, XCircle, Key, AlertTriangle,
-  Loader2, RotateCcw, ShieldCheck, ShieldOff,
+  Loader2, RotateCcw, ShieldCheck, ShieldOff, Globe, Eye, EyeOff, Save, Link2,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 
@@ -44,6 +44,16 @@ function timeAgo(dateStr: string): string {
 }
 
 export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }: Props) {
+  // ── Connected Service: rmpgutahps.us ──
+  const [svcConfigured, setSvcConfigured] = useState(false);
+  const [svcUrl, setSvcUrl] = useState('https://rmpgutahps.us');
+  const [svcKeyPreview, setSvcKeyPreview] = useState<string | null>(null);
+  const [svcApiKey, setSvcApiKey] = useState('');
+  const [svcUrlInput, setSvcUrlInput] = useState('https://rmpgutahps.us');
+  const [showSvcKey, setShowSvcKey] = useState(false);
+  const [savingSvc, setSavingSvc] = useState(false);
+  const [loadingSvc, setLoadingSvc] = useState(true);
+
   // ── API Keys ──
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [loadingKeys, setLoadingKeys] = useState(true);
@@ -63,6 +73,47 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
   // ── Data fetching ──
+
+  const fetchSvcConfig = useCallback(async () => {
+    try {
+      const data = await apiFetch<{ configured: boolean; url: string; key_preview: string | null }>('/integrations/services/rmpgutahps');
+      setSvcConfigured(data.configured);
+      setSvcUrl(data.url);
+      setSvcUrlInput(data.url);
+      setSvcKeyPreview(data.key_preview);
+    } catch (err) {
+      console.error('Failed to fetch rmpgutahps config:', err);
+    } finally {
+      setLoadingSvc(false);
+    }
+  }, []);
+
+  const handleSaveSvc = async () => {
+    if (!svcApiKey.trim()) return;
+    setSavingSvc(true);
+    try {
+      await apiFetch('/integrations/services/rmpgutahps', {
+        method: 'PUT',
+        body: JSON.stringify({ api_key: svcApiKey.trim(), url: svcUrlInput.trim() }),
+      });
+      setSvcApiKey('');
+      setShowSvcKey(false);
+      await fetchSvcConfig();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save API key');
+    } finally {
+      setSavingSvc(false);
+    }
+  };
+
+  const handleClearSvc = async () => {
+    try {
+      await apiFetch('/integrations/services/rmpgutahps', { method: 'DELETE' });
+      await fetchSvcConfig();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to clear API key');
+    }
+  };
 
   const fetchKeys = useCallback(async () => {
     try {
@@ -88,9 +139,10 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
   }, []);
 
   useEffect(() => {
+    fetchSvcConfig();
     fetchKeys();
     fetchRequestLog();
-  }, [fetchKeys, fetchRequestLog]);
+  }, [fetchSvcConfig, fetchKeys, fetchRequestLog]);
 
   // ── Actions ──
 
@@ -168,6 +220,101 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
 
   return (
     <div className="space-y-6">
+      {/* ── Connected Service: rmpgutahps.us ── */}
+      <div className="panel-beveled bg-surface-base border border-[#1c2e42] rounded-sm">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[#1c2e42]">
+          <div className="flex items-center gap-2">
+            <Globe className="w-4 h-4 text-brand-400" />
+            <h2 className="text-sm font-semibold text-rmpg-300">rmpgutahps.us — Process Service Portal</h2>
+          </div>
+          <div className="flex items-center gap-2">
+            {svcConfigured ? (
+              <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-sm bg-green-900/30 text-green-400 border border-green-700/40">
+                <CheckCircle2 className="w-3 h-3" />
+                Connected
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-sm bg-yellow-900/30 text-yellow-400 border border-yellow-700/40">
+                <AlertTriangle className="w-3 h-3" />
+                Not Configured
+              </span>
+            )}
+          </div>
+        </div>
+
+        {loadingSvc ? (
+          <div className="flex justify-center py-8"><LoadingSpinner /></div>
+        ) : (
+          <div className="p-4 space-y-4">
+            {/* URL */}
+            <div>
+              <label className="block text-xs text-rmpg-500 mb-1">Portal URL</label>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 flex-1 px-3 py-2 bg-[#0d1520] border border-[#1c2e42] rounded-sm">
+                  <Link2 className="w-3.5 h-3.5 text-rmpg-500" />
+                  <input
+                    type="text"
+                    value={svcUrlInput}
+                    onChange={(e) => setSvcUrlInput(e.target.value)}
+                    placeholder="https://rmpgutahps.us"
+                    className="flex-1 bg-transparent text-sm text-rmpg-300 placeholder-rmpg-600 focus:outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* API Key */}
+            <div>
+              <label className="block text-xs text-rmpg-500 mb-1">
+                API Key {svcConfigured && svcKeyPreview && <span className="text-rmpg-600 ml-1">(current: {svcKeyPreview})</span>}
+              </label>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 flex-1 px-3 py-2 bg-[#0d1520] border border-[#1c2e42] rounded-sm">
+                  <Key className="w-3.5 h-3.5 text-rmpg-500" />
+                  <input
+                    type={showSvcKey ? 'text' : 'password'}
+                    value={svcApiKey}
+                    onChange={(e) => setSvcApiKey(e.target.value)}
+                    placeholder={svcConfigured ? 'Enter new key to replace' : 'Paste API key from rmpgutahps.us'}
+                    className="flex-1 bg-transparent text-sm text-rmpg-300 placeholder-rmpg-600 focus:outline-none font-mono"
+                    onKeyDown={(e) => e.key === 'Enter' && handleSaveSvc()}
+                  />
+                  <button
+                    onClick={() => setShowSvcKey(!showSvcKey)}
+                    className="text-rmpg-500 hover:text-rmpg-300 transition-colors"
+                  >
+                    {showSvcKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+                <button
+                  onClick={handleSaveSvc}
+                  disabled={savingSvc || !svcApiKey.trim()}
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm transition-colors disabled:opacity-50"
+                >
+                  {savingSvc ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  Save
+                </button>
+                {svcConfigured && (
+                  <button
+                    onClick={handleClearSvc}
+                    className="flex items-center gap-1.5 px-3 py-2 text-xs text-red-400 hover:text-red-300 bg-red-900/20 hover:bg-red-900/30 border border-red-700/30 rounded-sm transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {svcConfigured && (
+              <p className="text-xs text-rmpg-600">
+                API key is encrypted and stored securely. The portal at {svcUrl} can submit process service requests to this system.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* ── API Keys Panel ── */}
       <div className="panel-beveled bg-surface-base border border-[#1c2e42] rounded-sm">
         <div className="flex items-center justify-between px-4 py-3 border-b border-[#1c2e42]">
