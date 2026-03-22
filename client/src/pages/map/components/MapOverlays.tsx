@@ -3,6 +3,7 @@ import { Siren, Shield, Navigation2, Crosshair, Plus, Minus } from 'lucide-react
 import type { UnitStatus } from '../../../types';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, isLightMapStyle, isSatelliteStyle } from '../utils/mapConstants';
 import type { MapStyleId } from '../utils/mapConstants';
+import MapExportMenu from './MapExportMenu';
 
 interface MapOverlaysProps {
   mapInstanceRef: React.MutableRefObject<google.maps.Map | null>;
@@ -34,6 +35,10 @@ interface MapOverlaysProps {
     longitude: number | null;
     unitCallSign?: string | null;
   };
+
+  // Export
+  onScreenshot: () => Promise<boolean>;
+  onPrint: () => void;
 }
 
 export default function MapOverlays({
@@ -42,6 +47,7 @@ export default function MapOverlays({
   showTrackingLines, trackingLinesRef,
   activeRoute, routeLoading, clearRoute,
   gps,
+  onScreenshot, onPrint,
 }: MapOverlaysProps) {
   return (
     <>
@@ -234,6 +240,12 @@ export default function MapOverlays({
             <Navigation2 className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${isLightMapStyle(mapStyle) ? 'text-blue-600' : 'text-blue-400'}`} />
           </button>
         )}
+        <MapExportMenu
+          mapStyle={mapStyle}
+          isMobile={isMobile}
+          onScreenshot={onScreenshot}
+          onPrint={onPrint}
+        />
         <button
           onClick={() => {
             mapInstanceRef.current?.panTo({ lat: 40.7608, lng: -111.8910 });

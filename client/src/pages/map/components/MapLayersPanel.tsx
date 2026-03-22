@@ -4,7 +4,7 @@ import {
   Navigation2, Route, MapPin, Pencil, Square, Type, Trash2, Plus, X, Check,
   FileText, MousePointer2, CalendarDays, UserCheck, Copy, Save, Play, Pause,
   SkipForward, Gauge, Palette, PanelLeftClose, PanelLeftOpen, ChevronDown,
-  ChevronUp, Globe2, Loader2, Map as MapIcon,
+  ChevronUp, Globe2, Loader2, Map as MapIcon, Car, Ruler, Maximize2,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { formatIncidentType } from '../../../utils/caseNumbers';
@@ -16,6 +16,7 @@ import { PLAN_COLORS, PLAN_TYPE_LABELS, type PlanItemType } from '../../../hooks
 import { getSectionColor, type BeatDistrictEntry } from '../../../hooks/useGeoJsonLayers';
 import type { MapStyleId } from '../utils/mapConstants';
 import { MAP_STYLE_LABELS, MAP_STYLE_DESCRIPTIONS } from '../utils/mapConstants';
+import type { MeasureMode } from '../hooks/useMapMeasurement';
 
 interface MapLayersPanelProps {
   isConnected: boolean;

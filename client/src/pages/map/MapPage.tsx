@@ -26,12 +26,16 @@ import { useMapHeatmap } from './hooks/useMapHeatmap';
 import { useMapBreadcrumbs } from './hooks/useMapBreadcrumbs';
 import { useMapTrackingLines } from './hooks/useMapTrackingLines';
 import { useMapAddressSearch } from './hooks/useMapAddressSearch';
+import { useMapScreenshot } from './hooks/useMapScreenshot';
 
 // Components
 import MapLayersPanel from './components/MapLayersPanel';
 import MapSidebar from './components/MapSidebar';
 import MapOverlays from './components/MapOverlays';
 import MapMobileSheet from './components/MapMobileSheet';
+import MapLegend from './components/MapLegend';
+import MapScaleBar from './components/MapScaleBar';
+import MapCompassRose from './components/MapCompassRose';
 
 // ============================================================
 // Main Component
@@ -126,6 +130,9 @@ export default function MapPage() {
     setMapRetry,
     setRetryingGmaps,
   } = useMapInit(mapStyle);
+
+  // Map screenshot / export
+  const { downloadMapImage, printMap } = useMapScreenshot(mapInstanceRef);
 
   // Routing
   const { activeRoute, routeLoading, showRoute, clearRoute, updateOrigin } = useMapRouting({ map: mapInstanceRef.current });
@@ -702,7 +709,31 @@ export default function MapPage() {
           routeLoading={routeLoading}
           clearRoute={clearRoute}
           gps={gps}
+          onScreenshot={downloadMapImage}
+          onPrint={printMap}
         />
+
+        {/* Compass Rose - Top Right (desktop only) */}
+        {!isMobile && (
+          <div
+            className="absolute z-[999]"
+            style={{ top: 48, right: sidebarOpen ? 'calc(clamp(220px, 20vw, 300px) + 12px)' : 52 }}
+          >
+            <MapCompassRose mapInstance={mapInstanceRef.current} />
+          </div>
+        )}
+
+        {/* Legend + Scale Bar - Bottom Left (desktop only) */}
+        {!isMobile && (
+          <div className="absolute bottom-8 left-2 z-[999] flex flex-col items-start gap-2">
+            <MapLegend
+              layers={layers}
+              showBreadcrumbs={breadcrumbs.showBreadcrumbs}
+              breadcrumbColorMode={breadcrumbs.breadcrumbColorMode}
+            />
+            <MapScaleBar mapInstance={mapInstanceRef.current} />
+          </div>
+        )}
       </div>
 
       {/* Right Sidebar (Desktop only) */}
