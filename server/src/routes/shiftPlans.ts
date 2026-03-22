@@ -206,10 +206,7 @@ router.post('/shift-plans', requireRole('admin', 'manager', 'supervisor'), (req:
         id,
       );
 
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'shift_plan_updated', 'shift_plan', ?, ?, ?)
-      `).run(req.user!.userId, id, `Updated shift plan: ${name}`, req.ip || 'unknown');
+      auditLog(req, 'UPDATE', 'schedule', id, `Updated shift plan: ${name}`);
     } else {
       // Insert new plan
       db.prepare(`
@@ -227,10 +224,7 @@ router.post('/shift-plans', requireRole('admin', 'manager', 'supervisor'), (req:
         updatedAt || now,
       );
 
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'shift_plan_created', 'shift_plan', ?, ?, ?)
-      `).run(req.user!.userId, id, `Created shift plan: ${name}`, req.ip || 'unknown');
+      auditLog(req, 'CREATE', 'schedule', id, `Created shift plan: ${name}`);
     }
 
     const plan = db.prepare(`
@@ -288,10 +282,7 @@ router.put('/shift-plans/:id', validateParamId, requireRole('admin', 'manager', 
 
     db.prepare(`UPDATE shift_plans SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'shift_plan_updated', 'shift_plan', ?, ?, ?)
-    `).run(req.user!.userId, req.params.id, `Updated shift plan: ${existing.name}`, req.ip || 'unknown');
+    auditLog(req, 'UPDATE', 'schedule', req.params.id, `Updated shift plan: ${existing.name}`);
 
     const updated = db.prepare(`
       SELECT sp.*, u.full_name as created_by_name
@@ -324,10 +315,7 @@ router.delete('/shift-plans/:id', validateParamId, requireRole('admin', 'manager
 
     db.prepare('DELETE FROM shift_plans WHERE id = ?').run(req.params.id);
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'shift_plan_deleted', 'shift_plan', ?, ?, ?)
-    `).run(req.user!.userId, existing.id, `Deleted shift plan: ${existing.name}`, req.ip || 'unknown');
+    auditLog(req, 'DELETE', 'schedule', existing.id, `Deleted shift plan: ${existing.name}`);
 
     broadcast('admin', 'shiftPlan:deleted', { id: req.params.id });
     res.json({ message: 'Shift plan deleted' });
@@ -363,10 +351,7 @@ router.post('/shift-plans/:id/activate', validateParamId, requireRole('admin', '
       WHERE id = ?
     `).run(now, req.params.id);
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'shift_plan_activated', 'shift_plan', ?, ?, ?)
-    `).run(req.user!.userId, req.params.id, `Activated shift plan: ${existing.name} for ${existing.date}`, req.ip || 'unknown');
+    auditLog(req, 'UPDATE', 'schedule', req.params.id, `Activated shift plan: ${existing.name} for ${existing.date}`);
 
     const updated = db.prepare(`
       SELECT sp.*, u.full_name as created_by_name

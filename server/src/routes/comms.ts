@@ -207,10 +207,7 @@ router.delete('/messages/:id', validateParamId, (req: Request, res: Response) =>
     }
 
     db.prepare('DELETE FROM messages WHERE id = ?').run(req.params.id);
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'message_deleted', 'message', ?, ?, ?)`).run(
-      req.user!.userId, req.params.id, `Deleted message #${req.params.id}`, req.ip || 'unknown'
-    );
+    auditLog(req, 'DELETE', 'message', parseInt(String(req.params.id), 10), `Deleted message #${req.params.id}`);
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete message error:', error?.message || 'Unknown error');
@@ -456,10 +453,7 @@ router.post('/bolos', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       priority: bolo.priority,
     });
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'bolo_created', 'bolo', ?, ?, ?)
-    `).run(req.user!.userId, Number(result.lastInsertRowid), `Created BOLO: ${title}`, req.ip || 'unknown');
+    auditLog(req, 'bolo_created', 'bolo', Number(result.lastInsertRowid), `Created BOLO: ${title}`);
 
     res.status(201).json(bolo);
   } catch (error: any) {
@@ -519,10 +513,7 @@ router.put('/bolos/:id', validateParamId, requireRole('admin', 'manager', 'super
     }
 
     // Activity log
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'bolo_updated', 'bolo', ?, ?, ?)
-    `).run(req.user!.userId, req.params.id, `Updated BOLO: ${bolo.title}`, req.ip || 'unknown');
+    auditLog(req, 'bolo_updated', 'bolo', parseInt(String(req.params.id), 10), `Updated BOLO: ${bolo.title}`);
 
     const updated = db.prepare(`
       SELECT b.*, u.full_name as issued_by_name
@@ -549,10 +540,7 @@ router.delete('/bolos/:id', validateParamId, requireRole('admin', 'manager', 'su
 
     db.prepare("UPDATE bolos SET status = 'cancelled', updated_at = ? WHERE id = ?").run(localNow(), bolo.id);
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'bolo_cancelled', 'bolo', ?, ?, ?)
-    `).run(req.user!.userId, bolo.id, `Cancelled BOLO: ${bolo.title}`, req.ip || 'unknown');
+    auditLog(req, 'bolo_cancelled', 'bolo', bolo.id, `Cancelled BOLO: ${bolo.title}`);
 
     res.json({ message: 'BOLO cancelled' });
   } catch (error: any) {
@@ -572,9 +560,7 @@ router.post('/bolos/:id/archive', validateParamId, requireRole('admin', 'manager
     const now = localNow();
     db.prepare('UPDATE bolos SET archived_at = ? WHERE id = ?').run(now, bolo.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'bolo_archived', 'bolo', ?, ?, ?)`).run(
-      req.user!.userId, bolo.id, `Archived BOLO: ${bolo.title}`, req.ip || 'unknown');
+    auditLog(req, 'UPDATE', 'bolo', bolo.id, `Archived BOLO: ${bolo.title}`);
 
     const updated = db.prepare('SELECT b.*, u.full_name as issued_by_name FROM bolos b LEFT JOIN users u ON b.issued_by = u.id WHERE b.id = ?').get(bolo.id);
     res.json(updated);
@@ -594,9 +580,7 @@ router.post('/bolos/:id/unarchive', validateParamId, requireRole('admin', 'manag
 
     db.prepare('UPDATE bolos SET archived_at = NULL WHERE id = ?').run(bolo.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'bolo_unarchived', 'bolo', ?, ?, ?)`).run(
-      req.user!.userId, bolo.id, `Unarchived BOLO: ${bolo.title}`, req.ip || 'unknown');
+    auditLog(req, 'UPDATE', 'bolo', bolo.id, `Unarchived BOLO: ${bolo.title}`);
 
     const updated = db.prepare('SELECT b.*, u.full_name as issued_by_name FROM bolos b LEFT JOIN users u ON b.issued_by = u.id WHERE b.id = ?').get(bolo.id);
     res.json(updated);
