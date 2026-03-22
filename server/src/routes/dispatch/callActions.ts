@@ -8,7 +8,7 @@ import { localNow, localToday } from '../../utils/timeUtils';
 import { generateIncidentNumber } from '../../utils/caseNumbers';
 import { createNotification, createNotificationForRoles } from '../notifications';
 import { universalWarrantCheck } from '../../utils/universalWarrantScanner';
-import { auditLog } from '../../utils/auditLogger';
+import { auditLog, auditLogSystem } from '../../utils/auditLogger';
 import { getCallUnitIds, assignUnitsToCall, unassignUnitFromCall, unassignAllUnitsFromCall, getCallUnitsDetailed } from '../../utils/callUnits';
 
 const router = Router();
@@ -106,10 +106,7 @@ router.post('/calls/:id/dispatch', validateParamId, requireRole('admin', 'manage
         `).run(call.id, now, unitId, call.id);
 
         const unit = db.prepare('SELECT call_sign FROM units WHERE id = ?').get(unitId) as any;
-        db.prepare(`
-          INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-          VALUES (?, 'unit_dispatched', 'unit', ?, ?, ?)
-        `).run(req.user!.userId, unitId, `Dispatched ${unit?.call_sign || unitId} to ${call.call_number}`, req.ip || 'unknown');
+        auditLog(req, 'unit_dispatched', 'unit', unitId, `Dispatched ${unit?.call_sign || unitId} to ${call.call_number}`);
       }
 
       // Keep assigned_unit_ids in sync for backward compatibility
@@ -209,10 +206,7 @@ router.post('/calls/:id/assign-unit', validateParamId, requireRole('admin', 'man
         WHERE id = ? AND (current_call_id IS NULL OR current_call_id = ?)
       `).run(call.id, now, unit_id, call.id);
 
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'unit_dispatched', 'call', ?, ?, ?)
-      `).run(req.user!.userId, call.id, `Assigned ${unit.call_sign} to ${call.call_number}`, req.ip || 'unknown');
+      auditLog(req, 'unit_dispatched', 'call', call.id, `Assigned ${unit.call_sign} to ${call.call_number}`);
 
       // Keep assigned_unit_ids in sync
       const allUnitIds = getCallUnitIds(call.id);
@@ -277,10 +271,7 @@ router.post('/calls/:id/unassign-unit', validateParamId, requireRole('admin', 'm
       `).run(now, unit_id, call.id);
 
       // Log activity
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'unit_unassigned', 'call', ?, ?, ?)
-      `).run(req.user!.userId, call.id, `Removed ${unit.call_sign} from ${call.call_number}`, req.ip || 'unknown');
+      auditLog(req, 'unit_unassigned', 'call', call.id, `Removed ${unit.call_sign} from ${call.call_number}`);
 
       // Keep assigned_unit_ids in sync
       const allUnitIds = getCallUnitIds(call.id);
@@ -480,10 +471,7 @@ router.post('/calls/:id/status', validateParamId, requireRole('admin', 'manager'
       }
 
       // Log activity
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'status_change', 'call', ?, ?, ?)
-      `).run(req.user!.userId, call.id, `${call.call_number} status changed to ${status}`, req.ip || 'unknown');
+      auditLog(req, 'status_change', 'call', call.id, `${call.call_number} status changed to ${status}`);
     });
     statusTx();
 
@@ -618,10 +606,7 @@ router.post('/calls/:id/revert-status', validateParamId, requireRole('admin', 'm
       }
 
       // Log activity
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'status_reverted', 'call', ?, ?, ?)
-      `).run(req.user!.userId, call.id, `${call.call_number} status reverted from ${call.status} to ${previousStatus}`, req.ip || 'unknown');
+      auditLog(req, 'status_reverted', 'call', call.id, `${call.call_number} status reverted from ${call.status} to ${previousStatus}`);
     });
     revertTx();
 
@@ -668,10 +653,7 @@ router.post('/calls/:id/hold', validateParamId, requireRole('admin', 'manager', 
     `).run(call.status, call.id);
 
     // Log activity
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'call_held', 'call', ?, ?, ?)
-    `).run(req.user!.userId, call.id, `${call.call_number} put on hold from ${call.status}`, req.ip || 'unknown');
+    auditLog(req, 'call_held', 'call', call.id, `${call.call_number} put on hold from ${call.status}`);
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
     broadcastDispatchUpdate({ action: 'call_status_changed', call: updated, status: 'on_hold' });
@@ -708,10 +690,7 @@ router.post('/calls/:id/resume', validateParamId, requireRole('admin', 'manager'
     `).run(restoreStatus, call.id);
 
     // Log activity
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'call_resumed', 'call', ?, ?, ?)
-    `).run(req.user!.userId, call.id, `${call.call_number} resumed to ${restoreStatus}`, req.ip || 'unknown');
+    auditLog(req, 'call_resumed', 'call', call.id, `${call.call_number} resumed to ${restoreStatus}`);
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
     broadcastDispatchUpdate({ action: 'call_status_changed', call: updated, status: restoreStatus });
@@ -763,10 +742,7 @@ router.post('/calls/:id/promote-to-incident', validateParamId, requireRole('admi
     if (!incident) { res.status(500).json({ error: 'Failed to retrieve created incident' }); return; }
 
     // Audit log the incident creation
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'incident_created', 'incident', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Promoted call ${call.call_number} to incident ${incidentNumber}`, req.ip || 'unknown');
+    auditLog(req, 'incident_created', 'incident', result.lastInsertRowid, `Promoted call ${call.call_number} to incident ${incidentNumber}`);
 
     res.status(201).json(incident);
   } catch (error: any) {
@@ -800,16 +776,7 @@ router.post('/calls/:id/le-notification', validateParamId, requireRole('admin', 
     );
 
     // Audit log — LE notification is a significant action requiring compliance trail
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'le_notification', 'call', ?, ?, ?, ?)
-    `).run(
-      req.user!.userId,
-      call.id,
-      `LE notified: ${agency || 'Local PD'}${case_number ? ` (Case #${case_number})` : ''}`,
-      req.ip || 'unknown',
-      now
-    );
+    auditLog(req, 'le_notification', 'call', call.id, `LE notified: ${agency || 'Local PD'}${case_number ? ` (Case #${case_number})` : ''}`);
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id);
     broadcastDispatchUpdate({ action: 'call_updated', call: updated });
@@ -877,23 +844,15 @@ router.post('/calls/:id/persons', validateParamId, requireRole('admin', 'manager
       WHERE cp.id = ?
     `).get(result.lastInsertRowid) || { id: result.lastInsertRowid };
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'person_linked', 'call', ?, ?, ?)
-    `).run(req.user!.userId, call.id,
-      `Linked ${person.first_name} ${person.last_name} as ${role} to call ${call.call_number}`,
-      req.ip || 'unknown');
+    auditLog(req, 'person_linked', 'call', call.id,
+      `Linked ${person.first_name} ${person.last_name} as ${role} to call ${call.call_number}`);
 
     // Async warrant check for linked person — auto-add activity log note + broadcast alert on hits
     universalWarrantCheck(Number(person_id)).then(result => {
       if (result.hitsFound > 0 || result.warrantsCreated > 0) {
         try {
-          const db2 = getDb();
           const noteText = `⚠️ WARRANT ALERT: ${result.personName} — ${result.hitsFound} active warrant(s)`;
-          db2.prepare(`
-            INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-            VALUES (0, 'warrant_alert', 'call', ?, ?, 'system')
-          `).run(call.id, noteText);
+          auditLogSystem('warrant_alert', 'call', call.id, noteText);
 
           broadcast('dispatch', 'call:warrant_alert', {
             callId: call.id,
@@ -964,12 +923,8 @@ router.delete('/calls/:id/persons/:linkId', validateParamId, requireRole('admin'
 
     db.prepare('DELETE FROM call_persons WHERE id = ?').run(link.id);
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'person_unlinked', 'call', ?, ?, ?)
-    `).run(req.user!.userId, req.params.id,
-      `Unlinked ${link.first_name} ${link.last_name} from call ${call?.call_number || req.params.id}`,
-      req.ip || 'unknown');
+    auditLog(req, 'person_unlinked', 'call', req.params.id,
+      `Unlinked ${link.first_name} ${link.last_name} from call ${call?.call_number || req.params.id}`);
 
     broadcastDispatchUpdate({ action: 'call_person_unlinked', call_id: Number(req.params.id), link_id: link.id });
     res.json({ success: true });
@@ -1040,12 +995,8 @@ router.post('/calls/:id/vehicles', validateParamId, requireRole('admin', 'manage
       WHERE cv.id = ?
     `).get(result.lastInsertRowid) || { id: result.lastInsertRowid };
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'vehicle_linked', 'call', ?, ?, ?)
-    `).run(req.user!.userId, call.id,
-      `Linked ${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''} PLT:${vehicle.plate_number || 'N/A'} as ${role} to call ${call.call_number}`,
-      req.ip || 'unknown');
+    auditLog(req, 'vehicle_linked', 'call', call.id,
+      `Linked ${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''} PLT:${vehicle.plate_number || 'N/A'} as ${role} to call ${call.call_number}`);
 
     broadcastDispatchUpdate({ action: 'call_vehicle_linked', call_id: call.id, vehicle: linked });
     res.status(201).json(linked);
@@ -1107,12 +1058,8 @@ router.delete('/calls/:id/vehicles/:linkId', validateParamId, requireRole('admin
 
     db.prepare('DELETE FROM call_vehicles WHERE id = ?').run(link.id);
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'vehicle_unlinked', 'call', ?, ?, ?)
-    `).run(req.user!.userId, req.params.id,
-      `Unlinked ${link.year || ''} ${link.make || ''} ${link.model || ''} from call ${call?.call_number || req.params.id}`,
-      req.ip || 'unknown');
+    auditLog(req, 'vehicle_unlinked', 'call', req.params.id,
+      `Unlinked ${link.year || ''} ${link.make || ''} ${link.model || ''} from call ${call?.call_number || req.params.id}`);
 
     broadcastDispatchUpdate({ action: 'call_vehicle_unlinked', call_id: Number(req.params.id), link_id: link.id });
     res.json({ success: true });

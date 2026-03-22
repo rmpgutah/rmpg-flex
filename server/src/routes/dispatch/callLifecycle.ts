@@ -6,6 +6,7 @@ import { broadcastDispatchUpdate } from '../../utils/websocket';
 import { generateIncidentNumber } from '../../utils/caseNumbers';
 import { localNow } from '../../utils/timeUtils';
 import { getCallUnitIds, unassignAllUnitsFromCall } from '../../utils/callUnits';
+import { auditLog, auditLogBatch } from '../../utils/auditLogger';
 
 const router = Router();
 
@@ -64,10 +65,6 @@ router.post('/calls/archive-bulk', requireRole('admin', 'manager', 'dispatcher')
     const freeUnitStmt = db.prepare(
       `UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ? AND current_call_id = ?`
     );
-    const logStmt = db.prepare(
-      `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'call_archived', 'call', ?, ?, ?)`
-    );
-
     const archiveTransaction = db.transaction(() => {
       for (const call of callsToArchive) {
         archiveStmt.run('archived', now, call.id);
@@ -79,12 +76,18 @@ router.post('/calls/archive-bulk', requireRole('admin', 'manager', 'dispatcher')
         }
         unassignAllUnitsFromCall(call.id);
         db.prepare("UPDATE calls_for_service SET assigned_unit_ids = '[]' WHERE id = ?").run(call.id);
-
-        logStmt.run(req.user!.userId, call.id, `${call.call_number} bulk archived`, req.ip || 'unknown');
       }
     });
 
     archiveTransaction();
+
+    // Audit log each archived call
+    auditLogBatch(req, callsToArchive.map(call => ({
+      action: 'call_archived' as const,
+      entityType: 'call' as const,
+      entityId: call.id,
+      details: `${call.call_number} bulk archived`,
+    })));
 
     broadcastDispatchUpdate({ action: 'calls_bulk_archived', count: callsToArchive.length });
 
@@ -126,12 +129,10 @@ router.post('/calls/:id/archive', validateParamId, requireRole('admin', 'manager
       unassignAllUnitsFromCall(call.id);
       db.prepare("UPDATE calls_for_service SET assigned_unit_ids = '[]' WHERE id = ?").run(call.id);
 
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'call_archived', 'call', ?, ?, ?)
-      `).run(req.user!.userId, call.id, `${call.call_number} archived`, req.ip || 'unknown');
     });
     archiveTx();
+
+    auditLog(req, 'call_archived', 'call', call.id, `${call.call_number} archived`);
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
     broadcastDispatchUpdate({ action: 'call_archived', call: updated });
@@ -159,12 +160,10 @@ router.post('/calls/:id/unarchive', validateParamId, requireRole('admin', 'manag
 
     const unarchiveTx = db.transaction(() => {
       db.prepare('UPDATE calls_for_service SET status = ? WHERE id = ?').run('closed', call.id);
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'call_unarchived', 'call', ?, ?, ?)
-      `).run(req.user!.userId, call.id, `${call.call_number} restored from archive`, req.ip || 'unknown');
     });
     unarchiveTx();
+
+    auditLog(req, 'call_unarchived', 'call', call.id, `${call.call_number} restored from archive`);
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
     broadcastDispatchUpdate({ action: 'call_unarchived', call: updated });
@@ -216,11 +215,10 @@ router.delete('/calls/:id', validateParamId, requireRole('admin', 'manager'), (r
 
       db.prepare('DELETE FROM calls_for_service WHERE id = ?').run(call.id);
 
-      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'call_deleted', 'call', ?, ?, ?)`).run(
-        req.user!.userId, call.id, `Deleted call ${call.call_number}`, req.ip || 'unknown');
     });
     deleteTx();
+
+    auditLog(req, 'call_deleted', 'call', call.id, `Deleted call ${call.call_number}`);
 
     broadcastDispatchUpdate({ action: 'call_deleted', call_id: call.id });
     res.json({ success: true, id: req.params.id });
@@ -391,14 +389,7 @@ router.post('/calls/:id/generate-incident', validateParamId, requireRole('admin'
     `).get(result.lastInsertRowid);
     if (!incident) { res.status(500).json({ error: 'Failed to retrieve created incident' }); return; }
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'incident_created', 'incident', ?, ?, ?)
-    `).run(
-      req.user!.userId, result.lastInsertRowid,
-      `Generated ${incidentNumber} from call ${call.call_number}`,
-      req.ip || 'unknown'
-    );
+    auditLog(req, 'incident_created', 'incident', result.lastInsertRowid, `Generated ${incidentNumber} from call ${call.call_number}`);
 
     res.status(201).json(incident);
   } catch (error: any) {
@@ -443,10 +434,7 @@ router.put('/calls/:id/timeline/:entryId', validateParamId, requireRole('admin',
     db.prepare(`UPDATE activity_log SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
     // Audit the edit — record who modified which timeline entry
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'timeline_entry_edited', 'call', ?, ?, ?, ?)
-    `).run(req.user!.userId, req.params.id, `Edited timeline entry #${entry.id} on call #${req.params.id}`, req.ip || 'unknown', localNow());
+    auditLog(req, 'timeline_entry_edited', 'call', req.params.id, `Edited timeline entry #${entry.id} on call #${req.params.id}`);
 
     const updated = db.prepare('SELECT al.*, u.full_name as user_name FROM activity_log al LEFT JOIN users u ON al.user_id = u.id WHERE al.id = ?').get(entry.id);
     res.json(updated);
@@ -482,10 +470,7 @@ router.delete('/calls/:id/timeline/:entryId', validateParamId, requireRole('admi
     db.prepare('DELETE FROM activity_log WHERE id = ?').run(entry.id);
 
     // Audit the deletion — record who deleted which timeline entry
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'timeline_entry_deleted', 'call', ?, ?, ?, ?)
-    `).run(req.user!.userId, req.params.id, `Deleted timeline entry #${entry.id} on call #${req.params.id}: "${entryDetails}"`, req.ip || 'unknown', localNow());
+    auditLog(req, 'timeline_entry_deleted', 'call', req.params.id, `Deleted timeline entry #${entry.id} on call #${req.params.id}: "${entryDetails}"`);
 
     res.json({ success: true });
   } catch (error: any) {
@@ -514,13 +499,12 @@ router.post('/calls/:id/timeline', validateParamId, requireRole('admin', 'manage
     const ALLOWED_TIMELINE_ACTIONS = ['note_added', 'status_update', 'unit_note', 'supervisor_note', 'narrative_added'];
     const safeAction = ALLOWED_TIMELINE_ACTIONS.includes(action) ? action : 'note_added';
 
-    const timestamp = localNow();
-    const result = db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, ?, 'call', ?, ?, ?, ?)
-    `).run(req.user!.userId, safeAction, call.id, details, req.ip || 'unknown', timestamp);
+    auditLog(req, safeAction as any, 'call', call.id, details);
 
-    const entry = db.prepare('SELECT al.*, u.full_name as user_name FROM activity_log al LEFT JOIN users u ON al.user_id = u.id WHERE al.id = ?').get(result.lastInsertRowid);
+    // Retrieve the just-created timeline entry to return to client
+    const entry = db.prepare(
+      'SELECT al.*, u.full_name as user_name FROM activity_log al LEFT JOIN users u ON al.user_id = u.id WHERE al.user_id = ? AND al.entity_type = ? AND al.entity_id = ? ORDER BY al.id DESC LIMIT 1'
+    ).get(req.user!.userId, 'call', String(call.id));
     if (!entry) { res.status(500).json({ error: 'Failed to retrieve created entry' }); return; }
     res.status(201).json(entry);
   } catch (error: any) {
@@ -701,10 +685,7 @@ router.put('/calls/:id/mileage', validateParamId, requireRole('admin', 'manager'
     const details = [];
     if (starting_mileage !== undefined) details.push(`start: ${starting_mileage}`);
     if (ending_mileage !== undefined) details.push(`end: ${ending_mileage}`);
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'mileage_updated', 'call', ?, ?, ?)
-    `).run(req.user!.userId, req.params.id, `Mileage for ${call.call_number}: ${details.join(', ')}`, req.ip || 'unknown');
+    auditLog(req, 'mileage_updated', 'call', req.params.id, `Mileage for ${call.call_number}: ${details.join(', ')}`);
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id);
     broadcastDispatchUpdate({ action: 'call_updated', call: updated });

@@ -8,6 +8,7 @@ import { localNow, localToday } from '../../utils/timeUtils';
 import { geocodeCallIfNeeded } from '../../utils/geocode';
 import { identifyBeat } from '../../utils/geofence';
 import { broadcastDispatchUpdate } from '../../utils/websocket';
+import { auditLog } from '../../utils/auditLogger';
 import { createNotificationForRoles } from '../notifications';
 import { exportRateLimit } from '../../middleware/rateLimiter';
 import { getCallUnitIds, getCallUnitsDetailed, getUnitsForCalls } from '../../utils/callUnits';
@@ -381,10 +382,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
 
       // Log activity
       const isHistorical = !!customCreatedAt;
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'call_created', 'call', ?, ?, ?)
-      `).run(req.user!.userId, call.id, `${isHistorical ? 'Historical entry: ' : 'Created '}${callNumber} (Case ${caseNumber}): ${incident_type}`, req.ip || 'unknown');
+      auditLog(req, 'call_created', 'call', call.id, `${isHistorical ? 'Historical entry: ' : 'Created '}${callNumber} (Case ${caseNumber}): ${incident_type}`);
 
       return call;
     });
@@ -812,10 +810,7 @@ router.put('/calls/:id', validateParamId, requireRole('admin', 'manager', 'super
     db.prepare(`UPDATE calls_for_service SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
     // Activity log for call update
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'call_updated', 'call', ?, ?, ?)
-    `).run(req.user!.userId, req.params.id, `Updated call ${call.call_number}: ${updates.map(u => u.split(' = ')[0]).join(', ')}`, req.ip || 'unknown');
+    auditLog(req, 'call_updated', 'call', req.params.id, `Updated call ${call.call_number}: ${updates.map(u => u.split(' = ')[0]).join(', ')}`);
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
 
@@ -933,10 +928,7 @@ router.post('/calls/:id/redispatch', validateParamId, requireRole('admin', 'mana
     `).run(newAttempt, JSON.stringify(notes), now, req.params.id);
 
     // Activity log
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'call_redispatched', 'call', ?, ?, ?)
-    `).run(req.user!.userId, req.params.id, `Re-dispatched PSO call ${call.call_number} — ${ordinal(newAttempt)} visit${scheduled_note ? `. ${scheduled_note}` : ''}`, req.ip || 'unknown');
+    auditLog(req, 'call_updated', 'call', req.params.id, `Re-dispatched PSO call ${call.call_number} — ${ordinal(newAttempt)} visit${scheduled_note ? `. ${scheduled_note}` : ''}`);
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     // Attach visit history to the response

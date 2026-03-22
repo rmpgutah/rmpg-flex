@@ -412,10 +412,7 @@ router.post('/', requireRole('admin', 'manager'), personnelCreateRateLimit, (req
       FROM users WHERE id = ?
     `).get(result.lastInsertRowid);
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'user_created', 'user', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Created user: ${username} (${role})`, req.ip || 'unknown');
+    auditLog(req, 'user_created', 'user', result.lastInsertRowid, `Created user: ${username} (${role})`);
 
     res.status(201).json(user);
   } catch (error: any) {
@@ -573,11 +570,6 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
       db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(req.params.id);
       // Free assigned units
       db.prepare('UPDATE units SET officer_id = NULL, status = \'off_duty\' WHERE officer_id = ?').run(req.params.id);
-      // Log activity
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'user_terminated', 'user', ?, ?, ?)
-      `).run(req.user!.userId, req.params.id, `Terminated user: ${user.full_name || user.username}`, req.ip || 'unknown');
     });
     delTx();
 
@@ -605,9 +597,7 @@ router.post('/:id/archive', requireRole('admin', 'manager'), (req: Request, res:
     const now = localNow();
     db.prepare('UPDATE users SET archived_at = ? WHERE id = ?').run(now, user.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'user_archived', 'user', ?, ?, ?)`).run(
-      req.user!.userId, user.id, `Archived user: ${user.full_name}`, req.ip || 'unknown');
+    auditLog(req, 'user_archived', 'user', user.id, `Archived user: ${user.full_name}`);
 
     const updated = db.prepare(`
       SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, status, archived_at, created_at, updated_at
@@ -630,9 +620,7 @@ router.post('/:id/unarchive', requireRole('admin', 'manager'), (req: Request, re
 
     db.prepare('UPDATE users SET archived_at = NULL WHERE id = ?').run(user.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'user_unarchived', 'user', ?, ?, ?)`).run(
-      req.user!.userId, user.id, `Unarchived user: ${user.full_name}`, req.ip || 'unknown');
+    auditLog(req, 'user_unarchived', 'user', user.id, `Unarchived user: ${user.full_name}`);
 
     const updated = db.prepare(`
       SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, status, archived_at, created_at, updated_at
@@ -941,10 +929,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       }
 
       const officerName = (db.prepare('SELECT full_name FROM users WHERE id = ?').get(targetId) as any)?.full_name || targetId;
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'clock_in', 'time_entry', ?, ?, ?)
-      `).run(req.user!.userId, result.lastInsertRowid, isSelf ? 'Clocked in' : `Clocked in ${officerName}`, req.ip || 'unknown');
+      auditLog(req, 'clock_in', 'time_entry', result.lastInsertRowid, isSelf ? 'Clocked in' : `Clocked in ${officerName}`);
 
       const entry = db.prepare(`
         SELECT t.*, u.full_name as officer_name, u.badge_number
@@ -1006,10 +991,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       }
 
       const officerName = (db.prepare('SELECT full_name FROM users WHERE id = ?').get(targetId) as any)?.full_name || targetId;
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'clock_out', 'time_entry', ?, ?, ?)
-      `).run(req.user!.userId, activeEntry.id, isSelf ? `Clocked out. Total: ${totalHours}h` : `Clocked out ${officerName}. Total: ${totalHours}h`, req.ip || 'unknown');
+      auditLog(req, 'clock_out', 'time_entry', activeEntry.id, isSelf ? `Clocked out. Total: ${totalHours}h` : `Clocked out ${officerName}. Total: ${totalHours}h`);
 
       const entry = db.prepare(`
         SELECT t.*, u.full_name as officer_name, u.badge_number
@@ -1046,10 +1028,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const now = localNow();
       db.prepare(`UPDATE time_entries SET status = 'on_break', break_start = ? WHERE id = ?`).run(now, activeEntry.id);
 
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'break_start', 'time_entry', ?, 'Started break', ?)
-      `).run(req.user!.userId, activeEntry.id, req.ip || 'unknown');
+      auditLog(req, 'break_start', 'time_entry', activeEntry.id, 'Started break');
 
       const entry = db.prepare(`
         SELECT t.*, u.full_name as officer_name, u.badge_number
@@ -1095,10 +1074,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       db.prepare(`UPDATE time_entries SET status = 'active', break_start = NULL, break_minutes = ? WHERE id = ?`).run(breakMins, breakEntry.id);
 
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'break_end', 'time_entry', ?, ?, ?)
-      `).run(req.user!.userId, breakEntry.id, `Ended break. Break: ${(isNaN(breakMins) ? 0 : breakMins).toFixed(0)}min`, req.ip || 'unknown');
+      auditLog(req, 'break_end', 'time_entry', breakEntry.id, `Ended break. Break: ${(isNaN(breakMins) ? 0 : breakMins).toFixed(0)}min`);
 
       const entry = db.prepare(`
         SELECT t.*, u.full_name as officer_name, u.badge_number
@@ -1208,10 +1184,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         WHERE id = ?
       `).run(clock_in, clock_out || null, totalHours, newStatus, req.params.id);
 
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'time_entry_edited', 'time_entry', ?, ?, ?)
-      `).run(req.user!.userId, req.params.id, `Edited time entry for officer ${entry.officer_id}`, req.ip || 'unknown');
+      auditLog(req, 'time_entry_edited', 'time_entry', req.params.id, `Edited time entry for officer ${entry.officer_id}`);
 
       const updated = db.prepare(`
         SELECT t.*, u.full_name as officer_name, u.badge_number
@@ -1239,10 +1212,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       db.prepare('DELETE FROM time_entries WHERE id = ?').run(req.params.id);
 
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'time_entry_deleted', 'time_entry', ?, ?, ?)
-      `).run(req.user!.userId, req.params.id, `Deleted time entry for officer ${entry.officer_id}`, req.ip || 'unknown');
+      auditLog(req, 'time_entry_deleted', 'time_entry', req.params.id, `Deleted time entry for officer ${entry.officer_id}`);
 
       res.json({ success: true, id: req.params.id });
     } catch (error: any) {
@@ -1345,10 +1315,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       db.prepare('DELETE FROM credentials WHERE id = ?').run(req.params.id);
 
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'credential_deleted', 'credential', ?, ?, ?)
-      `).run(req.user!.userId, req.params.id, `Deleted credential: ${existing.credential_type} for officer ${existing.officer_id}`, req.ip || 'unknown');
+      auditLog(req, 'credential_deleted', 'credential', req.params.id, `Deleted credential: ${existing.credential_type} for officer ${existing.officer_id}`);
 
       res.json({ message: 'Credential deleted' });
     } catch (error: any) {
@@ -2106,10 +2073,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       db.prepare('DELETE FROM officer_equipment WHERE id = ?').run(req.params.equipId);
 
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'equipment_deleted', 'equipment', ?, ?, ?)
-      `).run(req.user!.userId, req.params.equipId, `Deleted equipment: ${existing.equipment_type} for officer ${existing.officer_id}`, req.ip || 'unknown');
+      auditLog(req, 'equipment_deleted', 'equipment', req.params.equipId, `Deleted equipment: ${existing.equipment_type} for officer ${existing.officer_id}`);
 
       res.json({ message: 'Equipment record deleted' });
     } catch (error: any) {

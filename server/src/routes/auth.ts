@@ -236,11 +236,9 @@ function issueTokens(user: any, ip: string, userAgent: string, deviceFingerprint
 
   const db = getDb();
 
-  // Log the login activity
-  db.prepare(`
-    INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-    VALUES (?, 'user_login', 'user', ?, 'User logged in', ?)
-  `).run(user.id, user.id, ip);
+  // Log the login activity (no req context in this helper — use direct SQL)
+  db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+    VALUES (?, 'user_login', 'user', ?, 'User logged in', ?, ?)`).run(user.id, user.id, ip, localNow());
 
   // Update login statistics
   db.prepare(`
@@ -703,12 +701,9 @@ router.post('/refresh', refreshRateLimit, (req: Request, res: Response) => {
     `).run(newTokenHash, tokenHash, now, session.id);
 
     // Audit log token refresh for security monitoring
-    try {
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-        VALUES (?, 'token_refresh', 'session', ?, ?, ?, ?)
-      `).run(user.id, session.id, `Session ${session.session_id} refreshed`, req.ip || 'unknown', now);
-    } catch { /* activity_log insert failure should not block the refresh */ }
+    // Note: req.user is not populated during refresh — temporarily set it for auditLog
+    (req as any).user = { userId: user.id };
+    auditLog(req, 'user_login', 'user', user.id, `Token refresh — session ${session.session_id} refreshed`);
 
     res.json({
       token: newAccessToken,
@@ -742,10 +737,7 @@ router.post('/logout', authenticateToken, (req: Request, res: Response) => {
         .run(req.user!.userId);
     }
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'user_logout', 'user', ?, 'User logged out', ?)
-    `).run(req.user!.userId, req.user!.userId, req.ip || 'unknown');
+    auditLog(req, 'user_logout', 'user', req.user!.userId, 'User logged out');
 
     res.json({ message: 'Logged out successfully' });
   } catch (error: any) {
@@ -876,10 +868,7 @@ router.post('/logout-all', authenticateToken, (req: Request, res: Response) => {
       .run(req.user!.userId);
 
     const ip = req.ip || 'unknown';
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'logout_all_sessions', 'user', ?, 'Revoked all active sessions', ?)
-    `).run(req.user!.userId, req.user!.userId, ip);
+    auditLog(req, 'user_logout', 'user', req.user!.userId, 'Revoked all active sessions');
 
     createSecurityNotification(
       req.user!.userId,
@@ -1025,10 +1014,7 @@ router.post('/change-password', passwordRateLimit, authenticateToken, async (req
     try { setPasswordExpiry(user.id); } catch { /* ignore if column missing */ }
 
     // Log the password change
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'password_changed', 'user', ?, 'Password changed', ?)
-    `).run(user.id, user.id, ip);
+    auditLog(req, 'password_changed', 'user', user.id, 'Password changed');
 
     createSecurityNotification(
       user.id,
@@ -1496,10 +1482,9 @@ router.post('/verify-2fa', mfaRateLimit, (req: Request, res: Response) => {
     const accessToken = generateAccessToken({ ...payload, sessionId });
 
     // Log activity
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'user_login_2fa', 'user', ?, '2FA login completed', ?)
-    `).run(user.id, user.id, ip);
+    // Note: req.user is not populated during 2FA verification — temporarily set it for auditLog
+    (req as any).user = { userId: user.id };
+    auditLog(req, 'user_login', 'user', user.id, '2FA login completed');
 
     db.prepare(`
       UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = ? WHERE id = ?
@@ -1571,10 +1556,7 @@ router.post('/unlock-account', authenticateToken, requireRole('admin'), (req: Re
       'DELETE FROM login_attempts WHERE username = ? AND success = 0'
     ).run(username);
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'account_unlocked', 'user', 0, ?, ?)
-    `).run(req.user!.userId, `Admin unlocked account: ${username}`, req.ip || 'unknown');
+    auditLog(req, 'UPDATE', 'user', 0, `Admin unlocked account: ${username}`);
 
     res.json({
       success: true,
@@ -1687,10 +1669,7 @@ router.post('/totp/verify-setup', authenticateToken, mfaRateLimit, (req: Request
     `).run(localNow(), user.id);
 
     // Log activity
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'totp_enabled', 'user', ?, 'Two-factor authentication enabled', ?)
-    `).run(user.id, user.id, req.ip || 'unknown');
+    auditLog(req, 'UPDATE', 'user', user.id, 'Two-factor authentication enabled');
 
     res.json({ enabled: true, message: 'Two-factor authentication is now active.' });
   } catch (error: any) {
@@ -1733,10 +1712,7 @@ router.post('/totp/disable', authenticateToken, (req: Request, res: Response) =>
         totp_pending_secret = NULL, updated_at = ? WHERE id = ?
     `).run(localNow(), user.id);
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'totp_disabled', 'user', ?, 'Two-factor authentication disabled', ?)
-    `).run(user.id, user.id, req.ip || 'unknown');
+    auditLog(req, 'UPDATE', 'user', user.id, 'Two-factor authentication disabled');
 
     res.json({ enabled: false, message: 'Two-factor authentication has been disabled.' });
   } catch (error: any) {
@@ -2429,10 +2405,7 @@ router.post('/login/change-password', passwordRateLimit, authenticateTempToken, 
     try { setPasswordExpiry(userId); } catch { /* ignore */ }
 
     // Log password change
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'password_changed', 'user', ?, 'Password changed during login', ?)
-    `).run(userId, userId, ip);
+    auditLog(req, 'password_changed', 'user', userId, 'Password changed during login');
 
     createSecurityNotification(
       userId,
@@ -2564,11 +2537,9 @@ router.post('/forgot-password', forgotPasswordRateLimit, async (req: Request, re
     }
 
     // Audit log
-    try {
-      db.prepare(
-        "INSERT INTO activity_log (user_id, action, description, ip_address, timestamp) VALUES (?, ?, ?, ?, ?)"
-      ).run(user.id, 'password_reset_requested', `Password reset requested for ${user.email}`, req.ip || 'unknown', localNow());
-    } catch { /* audit log failure should not block response */ }
+    // Note: req.user is not populated during forgot-password — temporarily set it for auditLog
+    (req as any).user = { userId: user.id };
+    auditLog(req, 'UPDATE', 'user', user.id, `Password reset requested for ${user.email}`);
 
     res.json(genericResponse);
   } catch (error: any) {
@@ -2679,11 +2650,9 @@ router.post('/reset-password', passwordRateLimit, async (req: Request, res: Resp
 
     // Audit log
     const user = db.prepare("SELECT username FROM users WHERE id = ?").get(record.user_id) as any;
-    try {
-      db.prepare(
-        "INSERT INTO activity_log (user_id, action, description, ip_address, timestamp) VALUES (?, ?, ?, ?, ?)"
-      ).run(record.user_id, 'password_reset_completed', `Password reset via email link for ${user?.username}`, req.ip || 'unknown', now);
-    } catch { /* audit log failure should not block response */ }
+    // Note: req.user is not populated during password reset — temporarily set it for auditLog
+    (req as any).user = { userId: record.user_id };
+    auditLog(req, 'password_changed', 'user', record.user_id, `Password reset via email link for ${user?.username}`);
 
     res.json({ success: true, message: 'Password has been reset. You can now log in.' });
   } catch (error: any) {
