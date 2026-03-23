@@ -1242,12 +1242,15 @@ router.post('/utah-search', (req: Request, res: Response) => {
         results = cached;
       }
 
-      // Also check local warrants for this person
+      // Also check local warrants for this person (join through persons table)
       const db = getDb();
       const localWarrants = db.prepare(`
-        SELECT w.*, u.full_name as entered_by_name FROM warrants w
+        SELECT w.*, u.full_name as entered_by_name,
+          p.first_name as subject_first_name, p.last_name as subject_last_name
+        FROM warrants w
         LEFT JOIN users u ON u.id = w.entered_by
-        WHERE LOWER(w.subject_first_name) = LOWER(?) AND LOWER(w.subject_last_name) = LOWER(?)
+        LEFT JOIN persons p ON p.id = w.subject_person_id
+        WHERE LOWER(p.first_name) = LOWER(?) AND LOWER(p.last_name) = LOWER(?)
           AND w.status = 'active'
         LIMIT 50
       `).all(first, last) as any[];
@@ -1291,14 +1294,17 @@ router.get('/utah-search/auto-poll-status', (req: Request, res: Response) => {
       SELECT * FROM warrant_watch_runs ORDER BY created_at DESC LIMIT 10
     `).all() as any[];
 
-    // Get persons with active warrant flags
+    // Get persons who have active warrants (local or Utah hits)
     const flaggedPersons = db.prepare(`
-      SELECT p.id, p.first_name, p.last_name, p.dob, p.warrant_status, p.warrant_severity,
+      SELECT p.id, p.first_name, p.last_name, p.dob,
         (SELECT COUNT(*) FROM warrants w WHERE w.subject_person_id = p.id AND w.status = 'active') as local_warrant_count,
-        (SELECT COUNT(*) FROM utah_warrants uw WHERE LOWER(uw.first_name) = LOWER(p.first_name) AND LOWER(uw.last_name) = LOWER(p.last_name)) as utah_hit_count
+        (SELECT COUNT(*) FROM utah_warrants uw WHERE LOWER(uw.first_name) = LOWER(p.first_name) AND LOWER(uw.last_name) = LOWER(p.last_name)) as utah_hit_count,
+        (SELECT w2.offense_level FROM warrants w2 WHERE w2.subject_person_id = p.id AND w2.status = 'active'
+         ORDER BY CASE w2.offense_level WHEN 'felony' THEN 1 WHEN 'misdemeanor' THEN 2 ELSE 3 END LIMIT 1) as warrant_severity
       FROM persons p
-      WHERE p.warrant_status = 'ACTIVE_WARRANT' OR p.warrant_severity IS NOT NULL
-      ORDER BY CASE p.warrant_severity WHEN 'felony' THEN 1 WHEN 'misdemeanor' THEN 2 ELSE 3 END, p.last_name
+      WHERE (SELECT COUNT(*) FROM warrants w WHERE w.subject_person_id = p.id AND w.status = 'active') > 0
+         OR (SELECT COUNT(*) FROM utah_warrants uw WHERE LOWER(uw.first_name) = LOWER(p.first_name) AND LOWER(uw.last_name) = LOWER(p.last_name)) > 0
+      ORDER BY warrant_severity NULLS LAST, p.last_name
       LIMIT 200
     `).all() as any[];
 
