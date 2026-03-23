@@ -927,6 +927,7 @@ export default function MapPage() {
     }
     // Fallback: OverlayView-based marker
     const Cls = getOverlayMarkerClass();
+    if (!Cls) return null as any;
     return new Cls(opts);
   }, []);
 

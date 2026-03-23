@@ -357,7 +357,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
       setPlaybackIdx(currentIdx);
       currentIdx++;
       const delay = 200 / playbackSpeed;
-      playbackAnimRef.current = window.setTimeout(step, delay) as ReturnType<typeof setTimeout> as unknown as number;
+      playbackAnimRef.current = window.setTimeout(step, delay) as unknown as number;
     };
 
     step();

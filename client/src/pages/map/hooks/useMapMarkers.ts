@@ -88,6 +88,7 @@ export function useMapMarkers({
       }
     }
     const Cls = getOverlayMarkerClass();
+    if (!Cls) return null as any;
     return new Cls(opts);
   }, [useAdvancedMarkersRef]);
 
@@ -234,11 +235,11 @@ export function useMapMarkers({
               try {
                 const details = await apiFetch<PropertyDetails>(`/records/properties/${prop.id}`);
                 // Only update content if info window is still open (user hasn't closed it)
-                if (infoWindowRef.current?.getMap()) {
+                if ((infoWindowRef.current as any)?.getMap?.()) {
                   infoWindowRef.current?.setContent(buildPropertyInfoWindow(prop, details));
                 }
               } catch {
-                if (infoWindowRef.current?.getMap()) {
+                if ((infoWindowRef.current as any)?.getMap?.()) {
                   infoWindowRef.current?.setContent(buildPropertyFallbackWindow(prop));
                 }
               }
