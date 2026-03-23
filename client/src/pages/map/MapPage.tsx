@@ -125,6 +125,8 @@ import SafetyZonesPanel from './components/SafetyZonesPanel';
 import TacticalSummaryPanel from './components/TacticalSummaryPanel';
 import AdvancedHeatmapPanel from './components/AdvancedHeatmapPanel';
 import WeatherPanel from './components/WeatherPanel';
+import AnalysisDashboardPanel from './components/AnalysisDashboardPanel';
+import { useAnalysisSummary } from './hooks/useAnalysisSummary';
 
 // ============================================================
 // Constants
@@ -434,6 +436,7 @@ export default function MapPage() {
   const [showPredictions, setShowPredictions] = useState(false);
   const [showSafetyZones, setShowSafetyZones] = useState(false);
   const [showGeofences, setShowGeofences] = useState(false);
+  const [showAnalysisDashboard, setShowAnalysisDashboard] = useState(false);
   const [dragDispatchMode, setDragDispatchMode] = useState(false);
   const [clusteringEnabled, setClusteringEnabled] = useState(false);
 
@@ -495,6 +498,7 @@ export default function MapPage() {
   const intelLayerData = useMapIntelLayers(mapInstanceRef.current, intelLayers);
   const safetyZones = useMapSafetyZones(mapInstanceRef.current, showSafetyZones);
   const geofences = useMapGeofences(mapInstanceRef.current, showGeofences);
+  const analysisSummary = useAnalysisSummary(showAnalysisDashboard);
   // Traffic layer
   const { showTraffic, toggleTraffic } = useMapTrafficLayer();
 
@@ -3249,6 +3253,23 @@ export default function MapPage() {
                   </button>
                 )}
               </div>
+
+              {/* Analysis Intel Dashboard */}
+              <button
+                onClick={() => setShowAnalysisDashboard(!showAnalysisDashboard)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showAnalysisDashboard ? 'panel-inset bg-purple-900/20 text-purple-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <Brain className="w-3 h-3" />
+                <span className="flex-1 text-left">Analysis Intel</span>
+                {showAnalysisDashboard && analysisSummary.data && (
+                  <span className="text-[9px] font-mono">{analysisSummary.data.overlapZones.count} overlaps</span>
+                )}
+                {showAnalysisDashboard && analysisSummary.loading && (
+                  <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                )}
+              </button>
             </div>
 
             {/* ── Tactical Layers ── */}
@@ -4286,6 +4307,8 @@ export default function MapPage() {
               onToggle={(id) => { addToast('Geofence toggle coming soon', 'info'); }}
               drawingMode={geofences.drawingMode}
               onClose={() => setShowGeofences(false)}
+              alerts={geofences.alerts}
+              onNavigate={(lat, lng) => panTo(lat, lng)}
             />
           </div>
         )}
@@ -4522,6 +4545,9 @@ export default function MapPage() {
               loading={incidentReports.loading}
               days={incidentDays}
               onClose={() => setShowIncidentReports(false)}
+              reports={incidentReports.incidents}
+              onDaysChange={setIncidentDays}
+              onNavigate={(lat, lng) => panTo(lat, lng)}
             />
           </div>
         )}
@@ -4537,6 +4563,19 @@ export default function MapPage() {
               onRefresh={safetyZones.refresh}
               onNavigate={(lat, lng) => panTo(lat, lng)}
               onClose={() => setShowSafetyZones(false)}
+            />
+          </div>
+        )}
+
+        {/* ── Analysis Intel Dashboard ── */}
+        {!isMobile && showAnalysisDashboard && (
+          <div className="absolute top-2 right-2 z-30" style={{ maxWidth: 320, top: showSafetyDashboard ? 340 : showThreatAssessment ? 340 : 8 }}>
+            <AnalysisDashboardPanel
+              data={analysisSummary.data}
+              loading={analysisSummary.loading}
+              onRefresh={analysisSummary.refresh}
+              onNavigate={(lat, lng) => panTo(lat, lng)}
+              onClose={() => setShowAnalysisDashboard(false)}
             />
           </div>
         )}

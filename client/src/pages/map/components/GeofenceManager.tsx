@@ -1,12 +1,12 @@
 // ============================================================
 // RMPG Flex — GeofenceManager Component
 // Panel for managing geofence zones: list, draw, toggle,
-// and delete operations.
+// delete, navigate-to, and alert history display.
 // ============================================================
 
-import React from 'react';
-import { Plus, Trash2, Pencil, Shield, Loader2, MapPin } from 'lucide-react';
-import type { Geofence } from '../hooks/useMapGeofences';
+import React, { useState, useMemo } from 'react';
+import { Plus, Trash2, Pencil, Shield, Loader2, MapPin, ChevronDown, ChevronRight, Bell, Navigation } from 'lucide-react';
+import type { Geofence, GeofenceAlert } from '../hooks/useMapGeofences';
 
 interface GeofenceManagerProps {
   geofences: Geofence[];
@@ -16,6 +16,8 @@ interface GeofenceManagerProps {
   onToggle: (id: number) => void;
   drawingMode?: boolean;
   onClose?: () => void;
+  alerts?: GeofenceAlert[];
+  onNavigate?: (lat: number, lng: number) => void;
 }
 
 // ─── Zone type badge colors ─────────────────────────────────
@@ -40,10 +42,54 @@ function getVertexCount(coordStr: string): number {
     const parsed = JSON.parse(coordStr);
     if (Array.isArray(parsed)) return parsed.length;
   } catch {
-    // Try semicolon-separated format
     return coordStr.split(';').filter(Boolean).length;
   }
   return 0;
+}
+
+// ─── Parse polygon coords and compute centroid ──────────────
+
+function getCentroid(coordStr: string): { lat: number; lng: number } | null {
+  if (!coordStr) return null;
+  let points: { lat: number; lng: number }[] = [];
+  try {
+    const parsed = JSON.parse(coordStr);
+    if (Array.isArray(parsed)) {
+      points = parsed
+        .map((p: any) => {
+          if (typeof p.lat === 'number' && typeof p.lng === 'number') return { lat: p.lat, lng: p.lng };
+          if (Array.isArray(p) && p.length >= 2) return { lat: p[0], lng: p[1] };
+          return null;
+        })
+        .filter(Boolean) as { lat: number; lng: number }[];
+    }
+  } catch {
+    points = coordStr
+      .split(';')
+      .filter(Boolean)
+      .map((s) => {
+        const [lat, lng] = s.split(',').map(Number);
+        return !isNaN(lat) && !isNaN(lng) ? { lat, lng } : null;
+      })
+      .filter(Boolean) as { lat: number; lng: number }[];
+  }
+  if (points.length === 0) return null;
+  const sumLat = points.reduce((s, p) => s + p.lat, 0);
+  const sumLng = points.reduce((s, p) => s + p.lng, 0);
+  return { lat: sumLat / points.length, lng: sumLng / points.length };
+}
+
+// ─── Time-ago helper ────────────────────────────────────────
+
+function timeAgo(ts: string): string {
+  const diff = Date.now() - new Date(ts).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
 }
 
 // ─── Component ──────────────────────────────────────────────
@@ -56,7 +102,36 @@ export default function GeofenceManager({
   onToggle,
   drawingMode,
   onClose,
+  alerts,
+  onNavigate,
 }: GeofenceManagerProps) {
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+
+  // Build per-geofence alert lookup
+  const alertsByFence = useMemo(() => {
+    if (!alerts || alerts.length === 0) return new Map<number, GeofenceAlert[]>();
+    const map = new Map<number, GeofenceAlert[]>();
+    for (const a of alerts) {
+      const list = map.get(a.geofenceId) || [];
+      list.push(a);
+      map.set(a.geofenceId, list);
+    }
+    // Sort each list newest-first
+    for (const [, list] of map) {
+      list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    }
+    return map;
+  }, [alerts]);
+
+  function toggleExpand(id: number) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   return (
     <div className="panel-beveled bg-surface-base overflow-hidden" style={{ width: 280 }}>
       {/* Header */}
@@ -125,71 +200,128 @@ export default function GeofenceManager({
           const typeStyle = getZoneTypeStyle(fence.zone_type);
           const vertexCount = getVertexCount(fence.polygon_coords);
           const isActive = Boolean(fence.is_active);
+          const expanded = expandedIds.has(fence.id);
+          const fenceAlerts = alertsByFence.get(fence.id) || [];
+          const alertCount = fenceAlerts.length;
+          const centroid = getCentroid(fence.polygon_coords);
 
           return (
             <div
               key={fence.id}
-              className="rounded-sm p-2"
+              className="rounded-sm"
               style={{
                 background: '#0d1520',
                 border: '1px solid #1e2a3a',
                 opacity: isActive ? 1 : 0.5,
               }}
             >
-              {/* Name + type badge */}
-              <div className="flex items-center justify-between mb-1.5">
-                <div className="flex items-center gap-2 min-w-0">
+              {/* Collapsed header row — click to expand */}
+              <button
+                onClick={() => toggleExpand(fence.id)}
+                className="flex items-center justify-between w-full px-2 py-1.5 text-left"
+                title={expanded ? 'Collapse' : 'Expand details'}
+              >
+                <div className="flex items-center gap-1.5 min-w-0">
+                  {expanded ? (
+                    <ChevronDown size={10} className="text-rmpg-500 flex-shrink-0" />
+                  ) : (
+                    <ChevronRight size={10} className="text-rmpg-500 flex-shrink-0" />
+                  )}
                   <div
-                    className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
+                    className="w-2 h-2 rounded-sm flex-shrink-0"
                     style={{ background: fence.color || '#3b82f6' }}
                   />
-                  <span className="text-xs text-rmpg-200 font-mono truncate" title={fence.name}>
+                  <span className="text-[10px] text-rmpg-200 font-mono truncate" title={fence.name}>
                     {fence.name}
                   </span>
                 </div>
-                <span
-                  className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm flex-shrink-0 uppercase"
-                  style={{
-                    background: typeStyle.bg,
-                    border: `1px solid ${typeStyle.border}`,
-                    color: typeStyle.text,
-                  }}
-                >
-                  {fence.zone_type || 'custom'}
-                </span>
-              </div>
+                <div className="flex items-center gap-1.5 flex-shrink-0 ml-1">
+                  <span
+                    className="text-[9px] font-mono px-1 py-0.5 rounded-sm uppercase"
+                    style={{
+                      background: typeStyle.bg,
+                      border: `1px solid ${typeStyle.border}`,
+                      color: typeStyle.text,
+                    }}
+                  >
+                    {fence.zone_type || 'custom'}
+                  </span>
+                  {alerts && alertCount > 0 && (
+                    <span className="text-[9px] font-mono font-bold text-amber-400 bg-amber-900/30 px-1 py-0.5 rounded-sm">
+                      {alertCount}
+                    </span>
+                  )}
+                </div>
+              </button>
 
-              {/* Meta row */}
-              <div className="flex items-center gap-3 text-[10px] text-rmpg-500 font-mono mb-2">
-                <span className="flex items-center gap-1">
-                  <MapPin size={9} />
-                  {vertexCount} vertices
-                </span>
-                {fence.alert_on_enter ? (
-                  <span className="text-amber-500">enter alert</span>
-                ) : null}
-                {fence.alert_on_exit ? (
-                  <span className="text-blue-400">exit alert</span>
-                ) : null}
-              </div>
+              {/* Expanded details */}
+              {expanded && (
+                <div className="px-2 pb-2 pt-0.5 space-y-1.5" style={{ borderTop: '1px solid #1e2a3a' }}>
+                  {/* Meta row */}
+                  <div className="flex items-center gap-3 text-[10px] text-rmpg-500 font-mono">
+                    <span className="flex items-center gap-1">
+                      <MapPin size={9} />
+                      {vertexCount} vertices
+                    </span>
+                    {fence.alert_on_enter ? (
+                      <span className="text-amber-500">enter alert</span>
+                    ) : null}
+                    {fence.alert_on_exit ? (
+                      <span className="text-blue-400">exit alert</span>
+                    ) : null}
+                  </div>
 
-              {/* Actions */}
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => onToggle(fence.id)}
-                  className="toolbar-btn flex-1 py-1 text-[10px]"
-                  title={isActive ? 'Deactivate zone' : 'Activate zone'}
-                >
-                  {isActive ? 'Active' : 'Inactive'}
-                </button>
-                <button
-                  onClick={() => { if (window.confirm('Delete this geofence?')) onDelete(fence.id); }}
-                  className="toolbar-btn p-1 text-red-400 hover:text-red-300"
-                  title="Delete zone"
-                >
-                  <Trash2 size={12} />
-                </button>
-              </div>
+                  {/* Alert history */}
+                  {alerts && alertCount > 0 && (
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-1 text-[9px] font-mono text-amber-400/70 uppercase">
+                        <Bell size={8} />
+                        Recent alerts ({alertCount})
+                      </div>
+                      {fenceAlerts.slice(0, 2).map((a, i) => (
+                        <div
+                          key={i}
+                          className="flex items-center justify-between text-[9px] font-mono px-1.5 py-0.5 rounded-sm"
+                          style={{ background: '#141e2b' }}
+                        >
+                          <span className="text-rmpg-300">{a.unitCallSign}</span>
+                          <span className={a.eventType === 'enter' ? 'text-amber-400' : 'text-blue-400'}>
+                            {a.eventType}
+                          </span>
+                          <span className="text-rmpg-600">{timeAgo(a.timestamp)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => onToggle(fence.id)}
+                      className="toolbar-btn flex-1 py-1 text-[10px]"
+                      title={isActive ? 'Deactivate zone' : 'Activate zone'}
+                    >
+                      {isActive ? 'Active' : 'Inactive'}
+                    </button>
+                    {onNavigate && centroid && (
+                      <button
+                        onClick={() => onNavigate(centroid.lat, centroid.lng)}
+                        className="toolbar-btn p-1 text-blue-400 hover:text-blue-300"
+                        title="Navigate to zone"
+                      >
+                        <Navigation size={12} />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => { if (window.confirm('Delete this geofence?')) onDelete(fence.id); }}
+                      className="toolbar-btn p-1 text-red-400 hover:text-red-300"
+                      title="Delete zone"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}

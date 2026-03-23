@@ -3,7 +3,7 @@ import { getDb } from '../../models/database';
 import { authenticateToken, requireRole } from '../../middleware/auth';
 import { broadcastDispatchUpdate, broadcastUnitUpdate, broadcastPanic } from '../../utils/websocket';
 import { generateCallNumber } from '../../utils/caseNumbers';
-import { localNow } from '../../utils/timeUtils';
+import { localNow, localHour, localDayOfWeek } from '../../utils/timeUtils';
 import { reverseGeocodeAddress } from '../../utils/geocode';
 import { identifyBeat } from '../../utils/geofence';
 import { escapeLike } from '../../middleware/sanitize';
@@ -1138,10 +1138,10 @@ router.get('/heatmap/predictions', requireRole('admin', 'manager', 'supervisor',
     if (shiftParam && validShifts.includes(shiftParam)) {
       targetShift = shiftParam;
     } else {
-      // Auto-detect current shift
-      const currentHour = new Date().getHours();
-      if (currentHour >= 6 && currentHour < 14) targetShift = 'day';
-      else if (currentHour >= 14 && currentHour < 22) targetShift = 'swing';
+      // Auto-detect current shift using Mountain Time
+      const currentHr = localHour();
+      if (currentHr >= 6 && currentHr < 14) targetShift = 'day';
+      else if (currentHr >= 14 && currentHr < 22) targetShift = 'swing';
       else targetShift = 'night';
     }
 
@@ -1153,7 +1153,7 @@ router.get('/heatmap/predictions', requireRole('admin', 'manager', 'supervisor',
     };
     const [shiftStart, shiftEnd] = shiftHours[targetShift];
 
-    const todayDow = new Date().getDay(); // 0=Sunday
+    const todayDow = localDayOfWeek(); // 0=Sunday, Mountain Time
 
     // Query last 90 days of calls with valid lat/lng
     const rows = db.prepare(`
@@ -1321,6 +1321,148 @@ router.get('/heatmap/safety-zones', requireRole('admin', 'manager', 'supervisor'
       return;
     }
     res.status(500).json({ error: 'Internal server error', code: 'SAFETY_ZONES_ERROR' });
+  }
+});
+
+// GET /api/dispatch/analysis/summary - Cross-feature intelligence dashboard
+router.get('/analysis/summary', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  const startMs = Date.now();
+  try {
+    const db = getDb();
+    setCacheHeaders(res, 120);
+
+    // ── Safety Zones (90d) ─────────────────────────────────
+    const safetyZones = db.prepare(`
+      SELECT ROUND(latitude, 3) as lat, ROUND(longitude, 3) as lng,
+        COUNT(*) as total_flagged,
+        SUM(CASE WHEN weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0' THEN 1 ELSE 0 END) as weapons,
+        SUM(CASE WHEN domestic_violence = 1 THEN 1 ELSE 0 END) as dv,
+        SUM(CASE WHEN injuries_reported = 1 THEN 1 ELSE 0 END) as injuries
+      FROM calls_for_service
+      WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        AND created_at >= datetime('now', 'localtime', '-90 days')
+        AND (weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0'
+             OR domestic_violence = 1 OR injuries_reported = 1)
+      GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
+      HAVING COUNT(*) >= 1
+      ORDER BY total_flagged DESC LIMIT 50
+    `).all() as any[];
+
+    // ── Prediction Hotspots (90d, current shift) ────────────
+    const currentHr = localHour();
+    const shift = currentHr >= 6 && currentHr < 14 ? 'day' : currentHr >= 14 && currentHr < 22 ? 'swing' : 'night';
+    const predictions = db.prepare(`
+      SELECT ROUND(latitude, 3) as lat, ROUND(longitude, 3) as lng,
+        COUNT(*) as incident_count
+      FROM calls_for_service
+      WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        AND created_at >= datetime('now', 'localtime', '-90 days')
+      GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
+      HAVING COUNT(*) >= 3
+      ORDER BY incident_count DESC LIMIT 20
+    `).all() as any[];
+
+    // ── Overlap: safety zones that are also prediction hotspots ─
+    const predGrid = new Set(predictions.map((p: any) => `${p.lat},${p.lng}`));
+    const overlapLocations = safetyZones
+      .filter((z: any) => predGrid.has(`${z.lat},${z.lng}`))
+      .map((z: any) => ({
+        latitude: z.lat, longitude: z.lng,
+        safetyRisk: (z.weapons >= 2 || z.total_flagged >= 3) ? 'high' : 'moderate',
+        predictionScore: predictions.find((p: any) => p.lat === z.lat && p.lng === z.lng)?.incident_count || 0,
+        totalFlagged: z.total_flagged,
+      }));
+
+    // ── Repeat Addresses in Risk Zones ──────────────────────
+    const repeats = db.prepare(`
+      SELECT location_address, ROUND(latitude, 3) as lat, ROUND(longitude, 3) as lng,
+        COUNT(*) as call_count
+      FROM calls_for_service
+      WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        AND created_at >= datetime('now', 'localtime', '-90 days')
+      GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
+      HAVING COUNT(*) >= 3
+      ORDER BY call_count DESC LIMIT 50
+    `).all() as any[];
+
+    const safetyGrid = new Map(safetyZones.map((z: any) => [
+      `${z.lat},${z.lng}`,
+      (z.weapons >= 2 || z.total_flagged >= 3) ? 'high' : 'moderate',
+    ]));
+    const repeatInRisk = repeats
+      .filter((r: any) => safetyGrid.has(`${r.lat},${r.lng}`))
+      .slice(0, 10)
+      .map((r: any) => ({
+        address: r.location_address || `${r.lat}, ${r.lng}`,
+        callCount: r.call_count,
+        nearestZoneRisk: safetyGrid.get(`${r.lat},${r.lng}`) || 'moderate',
+      }));
+
+    // ── Enforcement (30d) ───────────────────────────────────
+    let enforcementTotal = 0;
+    try {
+      const enfRow = db.prepare(`
+        SELECT COUNT(*) as cnt FROM calls_for_service
+        WHERE created_at >= datetime('now', 'localtime', '-30 days')
+          AND (disposition LIKE '%arrest%' OR disposition LIKE '%cite%' OR disposition LIKE '%citation%')
+      `).get() as any;
+      enforcementTotal = enfRow?.cnt || 0;
+    } catch { /* table may not have disposition column */ }
+
+    const enfInPredicted = repeats.filter((r: any) => predGrid.has(`${r.lat},${r.lng}`)).length;
+
+    // ── Shift Trend ─────────────────────────────────────────
+    const currentPeriod = db.prepare(`
+      SELECT COUNT(*) as cnt FROM calls_for_service
+      WHERE created_at >= datetime('now', 'localtime', '-7 days')
+    `).get() as any;
+    const previousPeriod = db.prepare(`
+      SELECT COUNT(*) as cnt FROM calls_for_service
+      WHERE created_at >= datetime('now', 'localtime', '-14 days')
+        AND created_at < datetime('now', 'localtime', '-7 days')
+    `).get() as any;
+
+    const currentCalls = currentPeriod?.cnt || 0;
+    const previousCalls = previousPeriod?.cnt || 0;
+    const changePercent = previousCalls > 0 ? Math.round(((currentCalls - previousCalls) / previousCalls) * 100) : 0;
+
+    // ── Geofence count ──────────────────────────────────────
+    let activeGeofences = 0;
+    try {
+      const geoRow = db.prepare('SELECT COUNT(*) as cnt FROM geofences WHERE is_active = 1').get() as any;
+      activeGeofences = geoRow?.cnt || 0;
+    } catch { /* table may not exist */ }
+
+    // ── Repeat address count ────────────────────────────────
+    const repeatCount = repeats.length;
+
+    logTiming('analysis/summary', startMs);
+    res.json({
+      overlapZones: { count: overlapLocations.length, locations: overlapLocations },
+      repeatInRiskZones: { count: repeatInRisk.length, addresses: repeatInRisk },
+      enforcement: {
+        total30d: enforcementTotal,
+        inPredictedAreas: enfInPredicted,
+        effectivenessRate: enforcementTotal > 0 ? Math.round((enfInPredicted / enforcementTotal) * 100) : 0,
+      },
+      shiftTrend: {
+        currentShift: shift,
+        currentPeriodCalls: currentCalls,
+        previousPeriodCalls: previousCalls,
+        changePercent,
+      },
+      metrics: {
+        totalSafetyZones: safetyZones.length,
+        highRiskZones: safetyZones.filter((z: any) => z.weapons >= 2 || z.total_flagged >= 3).length,
+        activePredictions: predictions.length,
+        activeGeofences,
+        totalEnforcement30d: enforcementTotal,
+        repeatAddressCount: repeatCount,
+      },
+    });
+  } catch (error: any) {
+    console.error('[Dispatch] analysis summary error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error', code: 'ANALYSIS_SUMMARY_ERROR' });
   }
 });
 
