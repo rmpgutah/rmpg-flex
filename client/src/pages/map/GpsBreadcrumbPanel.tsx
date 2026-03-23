@@ -382,6 +382,13 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
   }, [isPlaying, playbackSpeed, mapLoaded, map, trail]);
 
 
+  const currentPt = trail?.points[playbackIdx];
+  const totalPts = trail?.points.length || 0;
+
+  // Set document title
+  useEffect(() => { document.title = 'GPS Breadcrumb \u2014 RMPG Flex'; }, []);
+
+
   if (!isOpen) {
     return (
       <button type="button"
@@ -395,12 +402,6 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
       </button>
     );
   }
-
-  const currentPt = trail?.points[playbackIdx];
-  const totalPts = trail?.points.length || 0;
-
-  // Set document title
-  useEffect(() => { document.title = 'GPS Breadcrumb \u2014 RMPG Flex'; }, []);
 
   return (
     <div

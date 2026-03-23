@@ -1850,51 +1850,6 @@ export default function EmailPage() {
 
   // ─── Not Configured ───
 
-  if (status && !status.configured) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center space-y-4 max-w-md panel-beveled bg-surface-base p-8">
-          <div className="w-16 h-16 mx-auto rounded-full bg-red-500/10 flex items-center justify-center">
-            <WifiOff className="w-8 h-8 text-red-400/60" />
-          </div>
-          <h2 className="text-sm font-semibold text-white">Email Not Configured</h2>
-          <p className="text-xs text-rmpg-400 leading-relaxed">
-            Microsoft 365 email integration needs to be set up by an administrator.
-          </p>
-          <div className="panel-beveled bg-surface-sunken p-3 text-left space-y-1.5 text-[10px] text-rmpg-400">
-            <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">Setup Steps</div>
-            <div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-brand-500/20 text-brand-400 text-[8px] font-bold flex items-center justify-center flex-shrink-0">1</span> Go to Admin → Integrations</div>
-            <div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-brand-500/20 text-brand-400 text-[8px] font-bold flex items-center justify-center flex-shrink-0">2</span> Enter Microsoft Azure App credentials</div>
-            <div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-brand-500/20 text-brand-400 text-[8px] font-bold flex items-center justify-center flex-shrink-0">3</span> Complete OAuth authorization</div>
-          </div>
-          <a href="/admin?tab=integrations" className="btn-primary text-xs px-4 py-1.5 inline-flex items-center gap-1.5">
-            Go to Admin Settings
-          </a>
-        </div>
-      </div>
-    );
-  }
-
-  if (status && !status.authorized) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center space-y-4 max-w-md panel-beveled bg-surface-base p-8">
-          <div className="w-16 h-16 mx-auto rounded-full bg-amber-500/10 flex items-center justify-center">
-            <AlertTriangle className="w-8 h-8 text-amber-400/60" />
-          </div>
-          <h2 className="text-sm font-semibold text-white">Authorization Required</h2>
-          <p className="text-xs text-rmpg-400 leading-relaxed">
-            Microsoft email credentials are configured, but OAuth authorization hasn't been completed yet.
-            An administrator needs to sign in with the Microsoft 365 account.
-          </p>
-          <a href="/admin?tab=integrations" className="btn-primary text-xs px-4 py-1.5 inline-flex items-center gap-1.5">
-            Complete Authorization
-          </a>
-        </div>
-      </div>
-    );
-  }
-
   // ─── Folder helpers ───
   const getFolderKey = (f: EmailFolder) => {
     const map: Record<string, string> = { 'Inbox': 'inbox', 'Sent Items': 'sentitems', 'Deleted Items': 'deleteditems', 'Drafts': 'drafts', 'Junk Email': 'junkemail', 'Archive': 'archive' };
@@ -2001,6 +1956,52 @@ export default function EmailPage() {
 
   // Set document title
   useEffect(() => { document.title = 'Email \u2014 RMPG Flex'; }, []);
+
+
+  if (status && !status.authorized) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center space-y-4 max-w-md panel-beveled bg-surface-base p-8">
+          <div className="w-16 h-16 mx-auto rounded-full bg-amber-500/10 flex items-center justify-center">
+            <AlertTriangle className="w-8 h-8 text-amber-400/60" />
+          </div>
+          <h2 className="text-sm font-semibold text-white">Authorization Required</h2>
+          <p className="text-xs text-rmpg-400 leading-relaxed">
+            Microsoft email credentials are configured, but OAuth authorization hasn't been completed yet.
+            An administrator needs to sign in with the Microsoft 365 account.
+          </p>
+          <a href="/admin?tab=integrations" className="btn-primary text-xs px-4 py-1.5 inline-flex items-center gap-1.5">
+            Complete Authorization
+          </a>
+        </div>
+      </div>
+    );
+  }
+  if (status && !status.configured) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center space-y-4 max-w-md panel-beveled bg-surface-base p-8">
+          <div className="w-16 h-16 mx-auto rounded-full bg-red-500/10 flex items-center justify-center">
+            <WifiOff className="w-8 h-8 text-red-400/60" />
+          </div>
+          <h2 className="text-sm font-semibold text-white">Email Not Configured</h2>
+          <p className="text-xs text-rmpg-400 leading-relaxed">
+            Microsoft 365 email integration needs to be set up by an administrator.
+          </p>
+          <div className="panel-beveled bg-surface-sunken p-3 text-left space-y-1.5 text-[10px] text-rmpg-400">
+            <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">Setup Steps</div>
+            <div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-brand-500/20 text-brand-400 text-[8px] font-bold flex items-center justify-center flex-shrink-0">1</span> Go to Admin → Integrations</div>
+            <div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-brand-500/20 text-brand-400 text-[8px] font-bold flex items-center justify-center flex-shrink-0">2</span> Enter Microsoft Azure App credentials</div>
+            <div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-brand-500/20 text-brand-400 text-[8px] font-bold flex items-center justify-center flex-shrink-0">3</span> Complete OAuth authorization</div>
+          </div>
+          <a href="/admin?tab=integrations" className="btn-primary text-xs px-4 py-1.5 inline-flex items-center gap-1.5">
+            Go to Admin Settings
+          </a>
+        </div>
+      </div>
+    );
+  }
+
 
   return (
     <div className="flex h-full overflow-hidden">

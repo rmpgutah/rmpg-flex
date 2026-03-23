@@ -147,8 +147,6 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
     setSaving(false);
   };
 
-  if (loading) return <LoadingSpinner />;
-
   const ToggleButton = ({ toggleKey, label, description }: { toggleKey: keyof SecurityConfig; label: string; description?: string }) => (
     <button type="button"
       onClick={() => toggleBool(toggleKey)}
@@ -172,6 +170,9 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
 
   // Set document title
   useEffect(() => { document.title = 'Admin - Security \u2014 RMPG Flex'; }, []);
+
+
+  if (loading) return <LoadingSpinner />;
 
   return (
     <div className="p-4 space-y-6 max-w-4xl">

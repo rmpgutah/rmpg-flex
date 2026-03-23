@@ -698,6 +698,18 @@ export default function ForensicLabPage() {
     return new Date(c.due_date) < new Date();
   };
 
+  // Set document title
+  useEffect(() => { document.title = 'Forensic Lab \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setShowAnalysisModal(false); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   // ══════════════════════════════════════════════════════════
   // Case Detail View
   // ══════════════════════════════════════════════════════════
@@ -1667,18 +1679,6 @@ export default function ForensicLabPage() {
   // ══════════════════════════════════════════════════════════
   // Main View (List + Wizard)
   // ══════════════════════════════════════════════════════════
-
-  // Set document title
-  useEffect(() => { document.title = 'Forensic Lab \u2014 RMPG Flex'; }, []);
-
-  // Keyboard shortcut: Escape to close modals
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setShowAnalysisModal(false); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
 
   return (
     <div className="flex flex-col h-full bg-surface-base">

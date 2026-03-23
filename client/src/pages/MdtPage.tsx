@@ -506,6 +506,10 @@ export default function MdtPage() {
     }
   };
 
+  // Set document title
+  useEffect(() => { document.title = 'Mobile Data Terminal \u2014 RMPG Flex'; }, []);
+
+
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center bg-surface-base">
@@ -516,9 +520,6 @@ export default function MdtPage() {
       </div>
     );
   }
-
-  // Set document title
-  useEffect(() => { document.title = 'Mobile Data Terminal \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">

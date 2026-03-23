@@ -1002,6 +1002,11 @@ export default function InvoicesPage() {
   // ── Main render ──────────────────────────────────────────
 
   // Mobile: show either list or detail
+  // Desktop: split panel
+  // Set document title
+  useEffect(() => { document.title = 'Invoices \u2014 RMPG Flex'; }, []);
+
+
   if (isMobile) {
     return (
       <div className="app-grid-bg h-full flex flex-col">
@@ -1079,10 +1084,6 @@ export default function InvoicesPage() {
       </div>
     );
   }
-
-  // Desktop: split panel
-  // Set document title
-  useEffect(() => { document.title = 'Invoices \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="app-grid-bg h-full flex flex-col">

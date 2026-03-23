@@ -131,8 +131,6 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
 
   const activeUsers = users.filter((u) => u.is_active);
 
-  if (loading && departments.length === 0) return <LoadingSpinner />;
-
   // Set document title
   useEffect(() => { document.title = 'Admin - Departments \u2014 RMPG Flex'; }, []);
 
@@ -144,6 +142,8 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
+  if (loading && departments.length === 0) return <LoadingSpinner />;
+
 
   return (
     <div className="p-4 space-y-3">

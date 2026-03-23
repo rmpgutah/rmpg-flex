@@ -69,6 +69,9 @@ export default function FleetPersonnelTab({
     loadUnits();
   }, []);
 
+  // Set document title
+  useEffect(() => { document.title = 'Fleet - Personnel \u2014 RMPG Flex'; }, []);
+
   if (loading || !personnelData) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -109,9 +112,6 @@ export default function FleetPersonnelTab({
   // DL expiry info
   const dlDays = officer?.dl_expiry ? daysUntilExpiry(officer.dl_expiry) : null;
   const dlProgress = officer?.dl_expiry ? expiryProgress(officer.dl_expiry) : 0;
-
-  // Set document title
-  useEffect(() => { document.title = 'Fleet - Personnel \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">

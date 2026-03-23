@@ -173,8 +173,6 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
     setForm((f) => ({ ...f, target_roles: JSON.stringify(next) }));
   };
 
-  if (loading && announcements.length === 0) return <LoadingSpinner />;
-
   // Set document title
   useEffect(() => { document.title = 'Admin - Announcements \u2014 RMPG Flex'; }, []);
 
@@ -186,6 +184,8 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
+  if (loading && announcements.length === 0) return <LoadingSpinner />;
+
 
   return (
     <div className="p-4 space-y-3">

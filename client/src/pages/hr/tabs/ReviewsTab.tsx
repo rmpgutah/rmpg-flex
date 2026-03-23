@@ -246,13 +246,17 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
       })()
     : null;
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 size={24} className="animate-spin text-brand-500" />
-      </div>
-    );
-  }
+  // Set document title
+  useEffect(() => { document.title = 'HR - Reviews \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setModalOpen(false); setEditReview(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   // ════════════════════════════════════════════════════════
   // OFFICER VIEW
@@ -383,17 +387,14 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
   // ════════════════════════════════════════════════════════
   // MANAGER / ADMIN VIEW
   // ════════════════════════════════════════════════════════
-  // Set document title
-  useEffect(() => { document.title = 'HR - Reviews \u2014 RMPG Flex'; }, []);
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 size={24} className="animate-spin text-brand-500" />
+      </div>
+    );
+  }
 
-  // Keyboard shortcut: Escape to close modals
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setModalOpen(false); setEditReview(null); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
 
   return (
     <div className="p-4 space-y-4">

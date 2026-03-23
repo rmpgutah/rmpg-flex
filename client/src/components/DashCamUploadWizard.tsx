@@ -190,8 +190,6 @@ export default function DashCamUploadWizard({
     };
   }, []);
 
-  if (!isOpen) return null;
-
   const reset = () => {
     thumbnailUrlsRef.current.forEach((url) => {
       if (url) URL.revokeObjectURL(url);
@@ -414,6 +412,8 @@ export default function DashCamUploadWizard({
     setIsUploading(false);
     setAllDone(true);
   }, [files, uploadFile]);
+  if (!isOpen) return null;
+
 
   // ── Step Indicator ────────────────────────
 

@@ -632,6 +632,20 @@ export default function DashCamDetailPage() {
 
   // ── Loading / Error ──────────────────────────
 
+  // ── Render ────────────────────────────────────
+
+  // Set document title
+  useEffect(() => { document.title = 'Dash Cam Player \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setEditingVideo(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center" style={{ height: 'calc(100vh - 120px)' }}>
@@ -658,19 +672,6 @@ export default function DashCamDetailPage() {
     );
   }
 
-  // ── Render ────────────────────────────────────
-
-  // Set document title
-  useEffect(() => { document.title = 'Dash Cam Player \u2014 RMPG Flex'; }, []);
-
-  // Keyboard shortcut: Escape to close modals
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setEditingVideo(null); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
 
   return (
     <div id="hud-container" className="relative flex" style={{ height: 'calc(100vh - 120px)', background: '#000' }}>

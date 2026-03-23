@@ -128,8 +128,6 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
   const usersWithSecrets = secrets.filter(s => s.has_secret).length;
   const employeesWithoutSecrets = secrets.filter(s => !s.has_secret && s.username !== 'admin');
 
-  if (loading) return <LoadingSpinner />;
-
   // Set document title
   useEffect(() => { document.title = 'Admin - Offline \u2014 RMPG Flex'; }, []);
 
@@ -141,6 +139,8 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
+  if (loading) return <LoadingSpinner />;
+
 
   return (
     <div className="p-4 space-y-5 animate-fade-in">

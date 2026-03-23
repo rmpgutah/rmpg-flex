@@ -208,6 +208,18 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
   };
 
   // ─── Officer read-only view ──────────────────────────────
+  // ─── Manager / Admin view ────────────────────────────────
+  // Set document title
+  useEffect(() => { document.title = 'HR - Disciplinary \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setModalOpen(false); setEditRecord(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
   if (!manager) {
     const commendations = records.filter(r => r.type === 'commendation');
     const others = records.filter(r => r.type !== 'commendation');
@@ -270,18 +282,6 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
     );
   }
 
-  // ─── Manager / Admin view ────────────────────────────────
-  // Set document title
-  useEffect(() => { document.title = 'HR - Disciplinary \u2014 RMPG Flex'; }, []);
-
-  // Keyboard shortcut: Escape to close modals
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setModalOpen(false); setEditRecord(null); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
 
   return (
     <div className="p-4 space-y-4">

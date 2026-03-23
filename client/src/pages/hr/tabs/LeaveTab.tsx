@@ -239,13 +239,17 @@ export default function LeaveTab() {
 
   // ─── Loading State ─────────────────────────────────────
 
-  if (loading && requests.length === 0) {
-    return (
-      <div className="flex items-center justify-center py-16">
-        <Loader2 size={20} className="animate-spin text-rmpg-400" />
-      </div>
-    );
-  }
+  // Set document title
+  useEffect(() => { document.title = 'HR - Leave \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setModalOpen(false); setEditRequest(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   // ─── Officer View ──────────────────────────────────────
 
@@ -363,17 +367,14 @@ export default function LeaveTab() {
 
   // ─── Manager View ──────────────────────────────────────
 
-  // Set document title
-  useEffect(() => { document.title = 'HR - Leave \u2014 RMPG Flex'; }, []);
+  if (loading && requests.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 size={20} className="animate-spin text-rmpg-400" />
+      </div>
+    );
+  }
 
-  // Keyboard shortcut: Escape to close modals
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setModalOpen(false); setEditRequest(null); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
 
   return (
     <div className="p-4 space-y-4">

@@ -177,8 +177,6 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
     setForm((f) => ({ ...f, target_roles: JSON.stringify(next) }));
   };
 
-  if (loading && rules.length === 0) return <LoadingSpinner />;
-
   // Keyboard shortcut: Escape to close modals
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -187,6 +185,8 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
+  if (loading && rules.length === 0) return <LoadingSpinner />;
+
 
   return (
     <div className="p-4 space-y-3">

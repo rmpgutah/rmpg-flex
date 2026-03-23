@@ -258,8 +258,6 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
     }
   };
 
-  if (loading) return <LoadingSpinner />;
-
   const filteredCatalog = productSearch
     ? PRODUCT_CATALOG.map(cat => ({
         ...cat,
@@ -272,6 +270,9 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
 
   // Set document title
   useEffect(() => { document.title = 'Admin - MicroBilt \u2014 RMPG Flex'; }, []);
+
+
+  if (loading) return <LoadingSpinner />;
 
   return (
     <div className="p-4 space-y-4">

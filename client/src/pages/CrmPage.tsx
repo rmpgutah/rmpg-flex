@@ -414,14 +414,6 @@ export default function CrmPage() {
   // ════════════════════════════════════════════════════════
   // RENDER
   // ════════════════════════════════════════════════════════
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading" />
-      </div>
-    );
-  }
-
   // Set document title
   useEffect(() => { document.title = 'CRM \u2014 RMPG Flex'; }, []);
 
@@ -433,6 +425,14 @@ export default function CrmPage() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading" />
+      </div>
+    );
+  }
+
 
   return (
     <div className="flex h-full">

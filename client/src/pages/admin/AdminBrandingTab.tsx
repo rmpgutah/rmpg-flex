@@ -112,10 +112,11 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
     setSaving(false);
   };
 
-  if (loading) return <LoadingSpinner />;
-
   // Set document title
   useEffect(() => { document.title = 'Admin - Branding \u2014 RMPG Flex'; }, []);
+
+
+  if (loading) return <LoadingSpinner />;
 
   return (
     <div className="p-4 space-y-6 max-w-4xl">

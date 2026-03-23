@@ -307,8 +307,6 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
     finally { setSyncing(false); }
   };
 
-  if (loading) return <LoadingSpinner />;
-
   const totalPages = Math.ceil(recordsTotal / 25);
 
   // Set document title
@@ -322,6 +320,8 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
+  if (loading) return <LoadingSpinner />;
+
 
   return (
     <div className="p-4 space-y-4">

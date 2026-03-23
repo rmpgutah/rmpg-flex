@@ -133,21 +133,17 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
     return () => clearInterval(interval);
   }, [fetchHealth, fetchChangelog]);
 
-  if (loading && !health) return <LoadingSpinner />;
-
   const h = health;
-  if (!h) return <div className="p-6 text-rmpg-400 text-xs">Failed to load health data.</div>;
-
-  const heapPercent = h.server.memory.heapTotal > 0
+  const heapPercent = h?.server?.memory?.heapTotal && h.server.memory.heapTotal > 0
     ? Math.round((h.server.memory.heapUsed / h.server.memory.heapTotal) * 100)
     : 0;
   const heapColor = heapPercent > 85 ? 'text-red-400' : heapPercent > 65 ? 'text-amber-400' : 'text-green-400';
 
-  const failRate = h.loginStats.successful24h + h.loginStats.failed24h > 0
+  const failRate = h?.loginStats && (h.loginStats.successful24h + h.loginStats.failed24h) > 0
     ? Math.round((h.loginStats.failed24h / (h.loginStats.successful24h + h.loginStats.failed24h)) * 100)
     : 0;
 
-  const host = h.host;
+  const host = h?.host;
   const ramPercent = host && host.memory.total > 0
     ? Math.round((host.memory.used / host.memory.total) * 100) : 0;
   const diskPercent = host && host.disk.total > 0
@@ -179,6 +175,11 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
 
   // Set document title
   useEffect(() => { document.title = 'Admin - Health \u2014 RMPG Flex'; }, []);
+
+
+  if (!h) return <div className="p-6 text-rmpg-400 text-xs">Failed to load health data.</div>;
+  if (loading && !health) return <LoadingSpinner />;
+
 
   return (
     <div className="p-4 space-y-4">
