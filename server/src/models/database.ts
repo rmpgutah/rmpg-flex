@@ -3276,7 +3276,7 @@ function migrateSchema(): void {
   addCol('cpgps_locations', 'timestamp', 'TEXT');
 
   // Warrant watch
-  addCol('warrant_watch_runs', 'created_at', "TEXT DEFAULT (datetime('now','localtime'))");
+  addCol('warrant_watch_runs', 'created_at', 'TEXT');
   addCol('warrant_watch_log', 'run_id', 'INTEGER');
 
   // Record locks
