@@ -4303,8 +4303,29 @@ export default function MapPage() {
               geofences={geofences.geofences}
               loading={geofences.loading}
               onDraw={() => geofences.setDrawingMode(!geofences.drawingMode)}
-              onDelete={(id) => { addToast('Geofence delete coming soon', 'info'); }}
-              onToggle={(id) => { addToast('Geofence toggle coming soon', 'info'); }}
+              onDelete={async (id) => {
+                try {
+                  await apiFetch(`/map/geofences/${id}`, { method: 'DELETE' });
+                  addToast('Geofence deleted', 'success');
+                  // Refresh geofences by toggling
+                  setShowGeofences(false);
+                  setTimeout(() => setShowGeofences(true), 100);
+                } catch { addToast('Failed to delete geofence', 'error'); }
+              }}
+              onToggle={async (id) => {
+                const fence = geofences.geofences.find(g => g.id === id);
+                if (!fence) return;
+                try {
+                  await apiFetch(`/map/geofences/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_active: fence.is_active ? 0 : 1 }),
+                  });
+                  addToast(`Geofence ${fence.is_active ? 'deactivated' : 'activated'}`, 'success');
+                  setShowGeofences(false);
+                  setTimeout(() => setShowGeofences(true), 100);
+                } catch { addToast('Failed to toggle geofence', 'error'); }
+              }}
               drawingMode={geofences.drawingMode}
               onClose={() => setShowGeofences(false)}
               alerts={geofences.alerts}
