@@ -15,7 +15,7 @@ interface IncidentReport {
   latitude?: number;
   longitude?: number;
   created_at: string;
-  officer_name?: string;
+  officer_name?: string | null;
 }
 
 interface IncidentReportsPanelProps {

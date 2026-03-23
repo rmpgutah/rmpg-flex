@@ -48,11 +48,9 @@ export function useAnalysisSummary(enabled: boolean): UseAnalysisSummaryReturn {
     if (!mountedRef.current) return;
     setLoading(true);
     try {
-      const res = await apiFetch('/api/dispatch/analysis/summary');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
+      const json = await apiFetch<AnalysisSummary>('/dispatch/analysis/summary');
       if (mountedRef.current) {
-        setData(json);
+        setData(json || null);
         console.log('[useAnalysisSummary] Fetched analysis summary', json);
       }
     } catch (err) {
