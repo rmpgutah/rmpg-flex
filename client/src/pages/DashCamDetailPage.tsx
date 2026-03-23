@@ -394,7 +394,7 @@ export default function DashCamDetailPage() {
       disableDefaultUI: true,
       zoomControl: true,
       styles: DARK_MAP_STYLE,
-      backgroundColor: '#0a1220',
+      backgroundColor: '#17263c',
     });
     mapRef.current = map;
 

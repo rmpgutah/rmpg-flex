@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { loadGoogleMaps, DARK_MAP_STYLE, NIGHT_NAV_STYLE, TERRAIN_STYLE, registerMapInstance, unregisterMapInstance, updateMapStyles, onOnlineRetryMaps, monitorTileLoading, getFallbackMapImage, addOfflineTileLayer } from '../../utils/googleMapsLoader';
+import { loadGoogleMaps, DARK_MAP_STYLE, NIGHT_NAV_STYLE, TERRAIN_STYLE, registerMapInstance, unregisterMapInstance, updateMapStyles, onOnlineRetryMaps, monitorTileLoading, getFallbackMapImage } from '../../utils/googleMapsLoader';
 import { devLog, devWarn } from '../../utils/devLog';
 import {
   Layers,
@@ -212,7 +212,6 @@ export default function MapPage() {
   const isAuthError = mapError != null && (mapError.includes('API key') || mapError.includes('authentication') || mapError.includes('not configured'));
   const showOfflineFallback = mapError != null && !isAuthError;
   const tileMonitorCleanupRef = useRef<(() => void) | null>(null);
-  const offlineTileCleanupRef = useRef<(() => void) | null>(null);
 
   // Fix 28: restore layer toggle states from localStorage on mount
   const [layers, setLayers] = useState(() => {
@@ -795,7 +794,7 @@ export default function MapPage() {
         disableDefaultUI: true,
         zoomControl: false,
         styles: DARK_MAP_STYLE,
-        backgroundColor: '#060c14',
+        backgroundColor: '#17263c',
         // 'greedy' allows single-finger pan on mobile/tablet — critical for
         // in-vehicle use where two-finger gestures are awkward while driving.
         gestureHandling: 'greedy',
@@ -815,12 +814,6 @@ export default function MapPage() {
           }
         } catch { /* quota exceeded */ }
       });
-
-      // Attach offline tile layer — renders pre-downloaded CartoDB dark_matter
-      // tiles beneath Google tiles. When online, Google tiles cover them.
-      // When offline/stalled, the offline tiles show through instead of black.
-      if (offlineTileCleanupRef.current) offlineTileCleanupRef.current();
-      offlineTileCleanupRef.current = addOfflineTileLayer(map);
 
       infoWindowRef.current = new google.maps.InfoWindow();
 
@@ -943,7 +936,6 @@ export default function MapPage() {
       if (dismissTimer) clearTimeout(dismissTimer);
       if (dismissObserver) dismissObserver.disconnect();
       if (tileMonitorCleanupRef.current) { tileMonitorCleanupRef.current(); tileMonitorCleanupRef.current = null; }
-      if (offlineTileCleanupRef.current) { offlineTileCleanupRef.current(); offlineTileCleanupRef.current = null; }
       if (mapInstanceRef.current) unregisterMapInstance(mapInstanceRef.current);
       markersRef.current.forEach((m) => {
         if (m && typeof m.remove === 'function') m.remove();

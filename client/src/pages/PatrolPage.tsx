@@ -101,7 +101,7 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
         styles: DARK_MAP_STYLE,
         disableDefaultUI: true,
         zoomControl: true,
-        backgroundColor: '#060c14',
+        backgroundColor: '#17263c',
         gestureHandling: 'greedy',
       });
       mapInstanceRef.current = map;

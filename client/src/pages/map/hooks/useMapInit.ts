@@ -9,9 +9,6 @@ import {
   updateMapStyles,
   onOnlineRetryMaps,
   monitorTileLoading,
-  addOfflineTileLayer,
-  switchToOfflineMode,
-  restoreFromOfflineMode,
 } from '../../../utils/googleMapsLoader';
 import { devLog, devWarn } from '../../../utils/devLog';
 import { injectKeyframes, getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
@@ -51,9 +48,6 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
   const showOfflineFallback = mapError != null && !isAuthError;
 
   const tileMonitorCleanupRef = useRef<(() => void) | null>(null);
-  const offlineTileCleanupRef = useRef<(() => void) | null>(null);
-  const prevMapTypeRef = useRef<string | null>(null);
-  const isOfflineModeRef = useRef(false);
 
   // Google Maps Initialization
   useEffect(() => {
@@ -112,7 +106,7 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
         disableDefaultUI: true,
         zoomControl: false,
         styles: DARK_MAP_STYLE,
-        backgroundColor: '#0a1220',
+        backgroundColor: '#17263c',
         renderingType: 'RASTER' as any,
         isFractionalZoomEnabled: false,
         gestureHandling: 'greedy',
@@ -120,9 +114,6 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
 
       mapInstanceRef.current = map;
       registerMapInstance(map);
-
-      if (offlineTileCleanupRef.current) offlineTileCleanupRef.current();
-      offlineTileCleanupRef.current = addOfflineTileLayer(map);
 
       infoWindowRef.current = new google.maps.InfoWindow();
 
@@ -166,27 +157,15 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
       if (tileMonitorCleanupRef.current) tileMonitorCleanupRef.current();
       tileMonitorCleanupRef.current = monitorTileLoading(map, {
         onStalled: () => {
-          devWarn('[MapPage] Map tiles stalled — switching to offline base map');
+          devWarn('[MapPage] Map tiles stalled');
           setTilesStalled(true);
-          if (!isOfflineModeRef.current && mapInstanceRef.current) {
-            prevMapTypeRef.current = switchToOfflineMode(mapInstanceRef.current);
-            isOfflineModeRef.current = true;
-          }
         },
         onLoaded: () => {
           devLog('[MapPage] Map tiles loaded successfully');
           setTilesStalled(false);
-          if (isOfflineModeRef.current && mapInstanceRef.current && prevMapTypeRef.current) {
-            restoreFromOfflineMode(mapInstanceRef.current, prevMapTypeRef.current, DARK_MAP_STYLE);
-            isOfflineModeRef.current = false;
-          }
         },
         onRecovering: () => {
-          devLog('[MapPage] Attempting tile recovery — restoring Google tiles...');
-          if (isOfflineModeRef.current && mapInstanceRef.current && prevMapTypeRef.current) {
-            restoreFromOfflineMode(mapInstanceRef.current, prevMapTypeRef.current, DARK_MAP_STYLE);
-            isOfflineModeRef.current = false;
-          }
+          devLog('[MapPage] Attempting tile recovery...');
         },
       });
 
@@ -251,7 +230,6 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
       if (dismissTimer) clearTimeout(dismissTimer);
       if (dismissObserver) dismissObserver.disconnect();
       if (tileMonitorCleanupRef.current) { tileMonitorCleanupRef.current(); tileMonitorCleanupRef.current = null; }
-      if (offlineTileCleanupRef.current) { offlineTileCleanupRef.current(); offlineTileCleanupRef.current = null; }
       // Remove injected style element to prevent DOM leaks across re-mounts
       const hideStyle = document.getElementById('__rmpg_hide_gm_dialog__');
       if (hideStyle) hideStyle.remove();

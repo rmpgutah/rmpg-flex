@@ -11,7 +11,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Maximize2, MapPin, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, onOnlineRetryMaps, monitorTileLoading, addOfflineTileLayer } from '../utils/googleMapsLoader';
+import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, onOnlineRetryMaps, monitorTileLoading } from '../utils/googleMapsLoader';
 import { useMapRouting } from '../hooks/useMapRouting';
 import OfflineMapFallback from './OfflineMapFallback';
 import type { CallForService, Unit } from '../types';
@@ -70,7 +70,6 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   const [retryingGmaps, setRetryingGmaps] = useState(false);
   const [gmapsRetry, setGmapsRetry] = useState(0);
   const tileMonitorRef = useRef<(() => void) | null>(null);
-  const offlineTileCleanupRef = useRef<(() => void) | null>(null);
 
   // Classify error: auth/config vs connectivity
   const isAuthError = error != null && (error.includes('key') || error.includes('configured'));
@@ -134,11 +133,6 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       });
       mapRef.current = map;
       registerMapInstance(map);
-
-      // Attach offline tile layer — pre-downloaded dark tiles show through
-      // when Google tiles fail on vehicle WiFi
-      if (offlineTileCleanupRef.current) offlineTileCleanupRef.current();
-      offlineTileCleanupRef.current = addOfflineTileLayer(map);
 
       // Monitor tile loading for vehicle WiFi resilience
       if (tileMonitorRef.current) tileMonitorRef.current();
@@ -256,7 +250,6 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   useEffect(() => {
     return () => {
       if (tileMonitorRef.current) { tileMonitorRef.current(); tileMonitorRef.current = null; }
-      if (offlineTileCleanupRef.current) { offlineTileCleanupRef.current(); offlineTileCleanupRef.current = null; }
       if (mapRef.current) unregisterMapInstance(mapRef.current);
     };
   }, []);
