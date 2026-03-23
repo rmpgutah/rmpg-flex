@@ -156,6 +156,25 @@ export default function CourtRecordsPage() {
   const [showOutcomeModal, setShowOutcomeModal] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // ── UPGRADE: Verdict, Subpoena, Compliance, Links ──
+  const [showVerdictModal, setShowVerdictModal] = useState<number | null>(null);
+  const [verdictForm, setVerdictForm] = useState({
+    verdict: '', sentence_type: '', sentence_details: '', fine_amount: '',
+    probation_length: '', jail_time: '', community_service_hours: '', appeal_deadline: '',
+  });
+  const [showSubpoenaModal, setShowSubpoenaModal] = useState(false);
+  const [subpoenaForm, setSubpoenaForm] = useState({
+    officer_id: '', hearing_date: '', hearing_time: '', court_name: '',
+    court_case_number: '', served_date: '', served_method: '',
+  });
+  const [complianceData, setComplianceData] = useState<any>(null);
+  const [complianceLoading, setComplianceLoading] = useState(false);
+  const [showCompliancePanel, setShowCompliancePanel] = useState(false);
+  const [linkedRecords, setLinkedRecords] = useState<any>(null);
+  const [linksLoading, setLinksLoading] = useState(false);
+  const [showLinksPanel, setShowLinksPanel] = useState(false);
+  const [reminderResult, setReminderResult] = useState<string | null>(null);
+
   // ── Create form state ──
   const [formData, setFormData] = useState({
     event_type: '',
@@ -214,6 +233,68 @@ export default function CourtRecordsPage() {
     if (e.key === 'Enter') {
       setSearchTerm(searchInput);
     }
+  };
+
+  // ── UPGRADE: Verdict Handler ──
+  const handleVerdict = async () => {
+    if (!showVerdictModal || !verdictForm.verdict) return;
+    setSaving(true);
+    try {
+      await apiFetch(`/court/events/${showVerdictModal}/verdict`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          ...verdictForm,
+          fine_amount: verdictForm.fine_amount ? parseFloat(verdictForm.fine_amount) : undefined,
+          community_service_hours: verdictForm.community_service_hours ? parseInt(verdictForm.community_service_hours) : undefined,
+        }),
+      });
+      setShowVerdictModal(null);
+      setVerdictForm({ verdict: '', sentence_type: '', sentence_details: '', fine_amount: '', probation_length: '', jail_time: '', community_service_hours: '', appeal_deadline: '' });
+      fetchEvents(pagination.page);
+    } catch { /* silent */ } finally { setSaving(false); }
+  };
+
+  // ── UPGRADE: Subpoena Handler ──
+  const handleSubpoena = async () => {
+    if (!subpoenaForm.officer_id || !subpoenaForm.hearing_date) return;
+    setSaving(true);
+    try {
+      await apiFetch('/court/subpoenas', {
+        method: 'POST',
+        body: JSON.stringify(subpoenaForm),
+      });
+      setShowSubpoenaModal(false);
+      setSubpoenaForm({ officer_id: '', hearing_date: '', hearing_time: '', court_name: '', court_case_number: '', served_date: '', served_method: '' });
+      fetchEvents(pagination.page);
+    } catch { /* silent */ } finally { setSaving(false); }
+  };
+
+  // ── UPGRADE: Generate Reminders ──
+  const handleGenerateReminders = async (type: '1day' | '7day') => {
+    try {
+      const endpoint = type === '7day' ? '/court/events/generate-7day-reminders' : '/court/events/generate-reminders';
+      const res = await apiFetch<any>(endpoint, { method: 'POST' });
+      setReminderResult(`Sent ${res.reminders_sent || 0} ${type} reminders for ${res.events_tomorrow || res.events_in_7_days || 0} events`);
+      setTimeout(() => setReminderResult(null), 5000);
+    } catch { setReminderResult('Failed to send reminders'); }
+  };
+
+  // ── UPGRADE: Compliance Rate ──
+  const fetchCompliance = async () => {
+    setComplianceLoading(true);
+    try {
+      const res = await apiFetch<any>('/court/compliance-rate');
+      setComplianceData(res?.data || null);
+    } catch { setComplianceData(null); } finally { setComplianceLoading(false); }
+  };
+
+  // ── UPGRADE: Linked Records ──
+  const fetchLinkedRecords = async (eventId: number) => {
+    setLinksLoading(true);
+    try {
+      const res = await apiFetch<any>(`/court/events/${eventId}/linked-records`);
+      setLinkedRecords(res?.data || null);
+    } catch { setLinkedRecords(null); } finally { setLinksLoading(false); }
   };
 
   // ── Create event ──
@@ -282,6 +363,22 @@ export default function CourtRecordsPage() {
     <div className="app-grid-bg h-full flex flex-col overflow-hidden">
       {/* ── Header Panel ── */}
       <PanelTitleBar title="COURT RECORDS" icon={Gavel} statusLed="green" ledPulse>
+        <button type="button" onClick={() => setShowSubpoenaModal(true)}
+          className="toolbar-btn text-[10px]">
+          <Briefcase className="w-3 h-3" /> Subpoena
+        </button>
+        <button type="button" onClick={() => handleGenerateReminders('7day')}
+          className="toolbar-btn text-[10px]">
+          <AlertTriangle className="w-3 h-3" /> 7-Day Reminders
+        </button>
+        <button type="button" onClick={() => handleGenerateReminders('1day')}
+          className="toolbar-btn text-[10px]">
+          <Clock className="w-3 h-3" /> 1-Day Reminders
+        </button>
+        <button type="button" onClick={() => { setShowCompliancePanel(!showCompliancePanel); if (!complianceData) fetchCompliance(); }}
+          className="toolbar-btn text-[10px]">
+          <Scale className="w-3 h-3" /> Compliance
+        </button>
         <button type="button"
           onClick={() => setShowCreateModal(true)}
           className="toolbar-btn toolbar-btn-primary text-[10px]"
@@ -289,6 +386,59 @@ export default function CourtRecordsPage() {
           <Plus className="w-3 h-3" /> New Event
         </button>
       </PanelTitleBar>
+
+      {/* Reminder result banner */}
+      {reminderResult && (
+        <div className="mx-2 mt-1 px-3 py-1.5 bg-brand-900/30 border border-brand-700/50 rounded text-xs text-brand-300 flex items-center justify-between">
+          <span>{reminderResult}</span>
+          <button type="button" onClick={() => setReminderResult(null)} className="text-brand-500 hover:text-white"><X className="w-3 h-3" /></button>
+        </div>
+      )}
+
+      {/* Compliance Rate Panel */}
+      {showCompliancePanel && (
+        <div className="mx-2 mt-1 card-glass p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">Court Appearance Compliance</span>
+            <button type="button" onClick={() => setShowCompliancePanel(false)} className="text-rmpg-500 hover:text-white"><X className="w-3 h-3" /></button>
+          </div>
+          {complianceLoading ? (
+            <div className="flex items-center justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-brand-400" /></div>
+          ) : complianceData ? (
+            <div className="space-y-2">
+              <div className="grid grid-cols-4 gap-2">
+                <div className="panel-beveled p-2 text-center">
+                  <div className="text-sm font-bold text-white">{complianceData.overall?.total_events || 0}</div>
+                  <div className="text-[8px] text-rmpg-500 uppercase">Total Events</div>
+                </div>
+                <div className="panel-beveled p-2 text-center">
+                  <div className="text-sm font-bold text-green-400">{complianceData.overall?.completed || 0}</div>
+                  <div className="text-[8px] text-rmpg-500 uppercase">Completed</div>
+                </div>
+                <div className="panel-beveled p-2 text-center">
+                  <div className="text-sm font-bold text-amber-400">{complianceData.overall?.continued || 0}</div>
+                  <div className="text-[8px] text-rmpg-500 uppercase">Continued</div>
+                </div>
+                <div className="panel-beveled p-2 text-center">
+                  <div className="text-sm font-bold text-brand-400">{complianceData.overall?.compliance_rate || 0}%</div>
+                  <div className="text-[8px] text-rmpg-500 uppercase">Rate</div>
+                </div>
+              </div>
+              {complianceData.by_officer?.length > 0 && (
+                <div className="space-y-1">
+                  <div className="text-[9px] text-rmpg-500 uppercase font-bold">By Officer</div>
+                  {complianceData.by_officer.slice(0, 8).map((o: any) => (
+                    <div key={o.officer_id} className="flex justify-between text-[10px] py-0.5">
+                      <span className="text-rmpg-300">{o.officer_name}</span>
+                      <span className="text-rmpg-400 font-mono">{o.compliance_rate}% ({o.total_events} events)</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : <div className="text-xs text-rmpg-500">No data available</div>}
+        </div>
+      )}
 
       {/* ── Filters Bar ── */}
       <div className="card-glass mx-2 mt-2 p-2">
@@ -801,6 +951,71 @@ export default function CourtRecordsPage() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+      {/* ── Verdict Modal ── */}
+      {showVerdictModal !== null && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="card-glass w-full max-w-md p-4 space-y-3 max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-white">Record Verdict</h3>
+              <button type="button" onClick={() => setShowVerdictModal(null)} className="text-rmpg-500 hover:text-white"><X className="w-4 h-4" /></button>
+            </div>
+            <div>
+              <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Verdict *</label>
+              <select value={verdictForm.verdict} onChange={e => setVerdictForm(f => ({ ...f, verdict: e.target.value }))} className="input-dark text-[10px] w-full">
+                <option value="">Select verdict...</option>
+                <option value="guilty">Guilty</option>
+                <option value="not_guilty">Not Guilty</option>
+                <option value="dismissed">Dismissed</option>
+                <option value="plea_deal">Plea Deal</option>
+                <option value="nolle_prosequi">Nolle Prosequi</option>
+                <option value="deferred_adjudication">Deferred Adjudication</option>
+                <option value="mistrial">Mistrial</option>
+                <option value="no_contest">No Contest</option>
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div><label className="block text-[9px] text-rmpg-400 uppercase mb-0.5">Sentence Type</label><input type="text" value={verdictForm.sentence_type} onChange={e => setVerdictForm(f => ({ ...f, sentence_type: e.target.value }))} className="input-dark text-[10px] w-full" placeholder="Incarceration, probation..." /></div>
+              <div><label className="block text-[9px] text-rmpg-400 uppercase mb-0.5">Fine ($)</label><input type="number" step="0.01" value={verdictForm.fine_amount} onChange={e => setVerdictForm(f => ({ ...f, fine_amount: e.target.value }))} className="input-dark text-[10px] w-full" /></div>
+              <div><label className="block text-[9px] text-rmpg-400 uppercase mb-0.5">Probation</label><input type="text" value={verdictForm.probation_length} onChange={e => setVerdictForm(f => ({ ...f, probation_length: e.target.value }))} className="input-dark text-[10px] w-full" placeholder="12 months" /></div>
+              <div><label className="block text-[9px] text-rmpg-400 uppercase mb-0.5">Jail Time</label><input type="text" value={verdictForm.jail_time} onChange={e => setVerdictForm(f => ({ ...f, jail_time: e.target.value }))} className="input-dark text-[10px] w-full" placeholder="30 days" /></div>
+              <div><label className="block text-[9px] text-rmpg-400 uppercase mb-0.5">Community Service (hrs)</label><input type="number" value={verdictForm.community_service_hours} onChange={e => setVerdictForm(f => ({ ...f, community_service_hours: e.target.value }))} className="input-dark text-[10px] w-full" /></div>
+              <div><label className="block text-[9px] text-rmpg-400 uppercase mb-0.5">Appeal Deadline</label><input type="date" value={verdictForm.appeal_deadline} onChange={e => setVerdictForm(f => ({ ...f, appeal_deadline: e.target.value }))} className="input-dark text-[10px] w-full" /></div>
+            </div>
+            <div><label className="block text-[9px] text-rmpg-400 uppercase mb-0.5">Sentence Details</label><textarea value={verdictForm.sentence_details} onChange={e => setVerdictForm(f => ({ ...f, sentence_details: e.target.value }))} className="input-dark text-[10px] w-full h-16 resize-none" /></div>
+            <button type="button" onClick={handleVerdict} disabled={saving || !verdictForm.verdict} className="btn-primary w-full flex items-center justify-center gap-2 text-xs">
+              {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Scale className="w-3 h-3" />} Record Verdict
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Subpoena Modal ── */}
+      {showSubpoenaModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="card-glass w-full max-w-md p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-white">Track Subpoena</h3>
+              <button type="button" onClick={() => setShowSubpoenaModal(false)} className="text-rmpg-500 hover:text-white"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div><label className="block text-[9px] text-rmpg-400 uppercase mb-0.5">Officer ID *</label><input type="text" value={subpoenaForm.officer_id} onChange={e => setSubpoenaForm(f => ({ ...f, officer_id: e.target.value }))} className="input-dark text-[10px] w-full" /></div>
+              <div><label className="block text-[9px] text-rmpg-400 uppercase mb-0.5">Hearing Date *</label><input type="date" value={subpoenaForm.hearing_date} onChange={e => setSubpoenaForm(f => ({ ...f, hearing_date: e.target.value }))} className="input-dark text-[10px] w-full" /></div>
+              <div><label className="block text-[9px] text-rmpg-400 uppercase mb-0.5">Hearing Time</label><input type="time" value={subpoenaForm.hearing_time} onChange={e => setSubpoenaForm(f => ({ ...f, hearing_time: e.target.value }))} className="input-dark text-[10px] w-full" /></div>
+              <div><label className="block text-[9px] text-rmpg-400 uppercase mb-0.5">Court Name</label><input type="text" value={subpoenaForm.court_name} onChange={e => setSubpoenaForm(f => ({ ...f, court_name: e.target.value }))} className="input-dark text-[10px] w-full" /></div>
+              <div><label className="block text-[9px] text-rmpg-400 uppercase mb-0.5">Case Number</label><input type="text" value={subpoenaForm.court_case_number} onChange={e => setSubpoenaForm(f => ({ ...f, court_case_number: e.target.value }))} className="input-dark text-[10px] w-full" /></div>
+              <div><label className="block text-[9px] text-rmpg-400 uppercase mb-0.5">Served Date</label><input type="date" value={subpoenaForm.served_date} onChange={e => setSubpoenaForm(f => ({ ...f, served_date: e.target.value }))} className="input-dark text-[10px] w-full" /></div>
+            </div>
+            <div><label className="block text-[9px] text-rmpg-400 uppercase mb-0.5">Service Method</label>
+              <select value={subpoenaForm.served_method} onChange={e => setSubpoenaForm(f => ({ ...f, served_method: e.target.value }))} className="input-dark text-[10px] w-full">
+                <option value="">Not yet served</option><option value="personal">Personal Service</option><option value="mail">Mail</option><option value="email">Email</option>
+              </select>
+            </div>
+            <button type="button" onClick={handleSubpoena} disabled={saving || !subpoenaForm.officer_id || !subpoenaForm.hearing_date} className="btn-primary w-full flex items-center justify-center gap-2 text-xs">
+              {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Briefcase className="w-3 h-3" />} Create Subpoena
+            </button>
           </div>
         </div>
       )}

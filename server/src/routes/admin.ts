@@ -1254,4 +1254,457 @@ router.delete('/record-locks/:entity_type/:entity_id', (req: Request, res: Respo
   } catch (error: any) { res.status(500).json({ error: 'Server error in admin', code: 'ADMIN_ERROR' }); }
 });
 
+// ══════════════════════════════════════════════════════════════════
+// ADMIN UPGRADES
+// ══════════════════════════════════════════════════════════════════
+
+// ── Upgrade 22: System health dashboard data ────────────────────
+router.get('/system-health', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const fs = require('fs');
+    const path = require('path');
+    const os = require('os');
+
+    // Database size
+    const DATA_DIR = process.env.RMPG_DATA_DIR || path.resolve(__dirname, '../../data');
+    const dbPath = path.join(DATA_DIR, 'rmpg-flex.db');
+    let dbSizeBytes = 0;
+    try { dbSizeBytes = fs.statSync(dbPath).size; } catch { /* */ }
+
+    // Table row counts
+    const tables = ['users', 'incidents', 'calls_for_service', 'messages', 'bolos',
+      'notifications', 'activity_log', 'sessions', 'evidence', 'citations'];
+    const tableCounts: Record<string, number> = {};
+    for (const t of tables) {
+      try {
+        const row = db.prepare(`SELECT COUNT(*) as count FROM ${t}`).get() as any;
+        tableCounts[t] = row?.count || 0;
+      } catch { tableCounts[t] = -1; }
+    }
+
+    // Active sessions count
+    const activeSessions = db.prepare(
+      "SELECT COUNT(*) as count FROM sessions WHERE is_active = 1 AND expires_at > datetime('now')"
+    ).get() as any;
+
+    // Server uptime
+    const uptimeSeconds = process.uptime();
+
+    // Memory usage
+    const memUsage = process.memoryUsage();
+
+    // Recent errors (last 24h)
+    const recentErrors = db.prepare(`
+      SELECT COUNT(*) as count FROM activity_log
+      WHERE (action LIKE '%error%' OR details LIKE '%error%' OR details LIKE '%failed%')
+        AND created_at >= datetime('now', '-1 day')
+    `).get() as any;
+
+    // Activity in last hour
+    const activityLastHour = db.prepare(`
+      SELECT COUNT(*) as count FROM activity_log
+      WHERE created_at >= datetime('now', '-1 hour')
+    `).get() as any;
+
+    // OS info
+    const systemInfo = {
+      platform: os.platform(),
+      arch: os.arch(),
+      cpus: os.cpus().length,
+      totalMemoryMB: Math.round(os.totalmem() / 1024 / 1024),
+      freeMemoryMB: Math.round(os.freemem() / 1024 / 1024),
+      loadAvg: os.loadavg(),
+    };
+
+    res.json({
+      database: {
+        sizeBytes: dbSizeBytes,
+        sizeMB: Math.round(dbSizeBytes / 1024 / 1024 * 100) / 100,
+        tableCounts,
+      },
+      server: {
+        uptimeSeconds: Math.round(uptimeSeconds),
+        uptimeHours: Math.round(uptimeSeconds / 3600 * 10) / 10,
+        memoryUsageMB: {
+          rss: Math.round(memUsage.rss / 1024 / 1024),
+          heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024),
+          heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024),
+        },
+        nodeVersion: process.version,
+      },
+      activity: {
+        activeSessions: activeSessions?.count || 0,
+        activityLastHour: activityLastHour?.count || 0,
+        recentErrors: recentErrors?.count || 0,
+      },
+      system: systemInfo,
+    });
+  } catch (error: any) {
+    console.error('System health error:', error);
+    res.status(500).json({ error: 'Failed to get system health', code: 'SYSTEM_HEALTH_ERROR' });
+  }
+});
+
+// ── Upgrade 23: User activity tracking (detailed per-user) ─────
+router.get('/user-activity/:userId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = parseInt(req.params.userId, 10);
+    if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID', code: 'INVALID_USER_ID' }); return; }
+
+    const user = db.prepare(`
+      SELECT id, username, full_name, role, status, login_count, last_login_at, created_at
+      FROM users WHERE id = ?
+    `).get(userId) as any;
+    if (!user) { res.status(404).json({ error: 'User not found', code: 'USER_NOT_FOUND' }); return; }
+
+    // Action counts by type (last 30 days)
+    const actionCounts = db.prepare(`
+      SELECT action, COUNT(*) as count
+      FROM activity_log
+      WHERE user_id = ? AND created_at >= datetime('now', '-30 days')
+      GROUP BY action ORDER BY count DESC LIMIT 20
+    `).all(userId);
+
+    // Daily activity (last 30 days)
+    const dailyActivity = db.prepare(`
+      SELECT DATE(created_at) as date, COUNT(*) as count
+      FROM activity_log
+      WHERE user_id = ? AND created_at >= datetime('now', '-30 days')
+      GROUP BY date ORDER BY date
+    `).all(userId);
+
+    // Total actions
+    const totalActions = db.prepare(
+      'SELECT COUNT(*) as count FROM activity_log WHERE user_id = ?'
+    ).get(userId) as any;
+
+    // Recent sessions
+    const recentSessions = db.prepare(`
+      SELECT id, ip_address, user_agent, created_at, last_used_at, is_active
+      FROM sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT 10
+    `).all(userId);
+
+    // Incidents written
+    const incidentsWritten = db.prepare(
+      'SELECT COUNT(*) as count FROM incidents WHERE officer_id = ?'
+    ).get(userId) as any;
+
+    // Messages sent
+    const messagesSent = db.prepare(
+      'SELECT COUNT(*) as count FROM messages WHERE from_user_id = ?'
+    ).get(userId) as any;
+
+    res.json({
+      user,
+      totalActions: totalActions?.count || 0,
+      actionCounts,
+      dailyActivity,
+      recentSessions,
+      incidentsWritten: incidentsWritten?.count || 0,
+      messagesSent: messagesSent?.count || 0,
+    });
+  } catch (error: any) {
+    console.error('User activity error:', error);
+    res.status(500).json({ error: 'Failed to get user activity', code: 'USER_ACTIVITY_ERROR' });
+  }
+});
+
+// ── Upgrade 24: All users activity summary ──────────────────────
+router.get('/users-activity-summary', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { days = '30' } = req.query;
+    const daysNum = Math.max(1, Math.min(365, parseInt(days as string, 10) || 30));
+
+    const users = db.prepare(`
+      SELECT u.id, u.username, u.full_name, u.role, u.status,
+        u.login_count, u.last_login_at,
+        COALESCE(a.action_count, 0) as recent_action_count,
+        COALESCE(a.last_action_at, u.last_login_at) as last_active_at,
+        COALESCE(i.incident_count, 0) as incidents_30d,
+        COALESCE(m.message_count, 0) as messages_30d
+      FROM users u
+      LEFT JOIN (
+        SELECT user_id, COUNT(*) as action_count, MAX(created_at) as last_action_at
+        FROM activity_log WHERE created_at >= datetime('now', '-' || ? || ' days')
+        GROUP BY user_id
+      ) a ON u.id = a.user_id
+      LEFT JOIN (
+        SELECT officer_id, COUNT(*) as incident_count
+        FROM incidents WHERE created_at >= datetime('now', '-' || ? || ' days')
+        GROUP BY officer_id
+      ) i ON u.id = i.officer_id
+      LEFT JOIN (
+        SELECT from_user_id, COUNT(*) as message_count
+        FROM messages WHERE created_at >= datetime('now', '-' || ? || ' days') AND is_draft = 0
+        GROUP BY from_user_id
+      ) m ON u.id = m.from_user_id
+      WHERE u.status = 'active'
+      ORDER BY recent_action_count DESC
+    `).all(daysNum, daysNum, daysNum);
+
+    res.json({ data: users, period_days: daysNum });
+  } catch (error: any) {
+    console.error('Users activity summary error:', error);
+    res.status(500).json({ error: 'Failed to get users activity summary', code: 'USERS_ACTIVITY_SUMMARY_ERROR' });
+  }
+});
+
+// ── Upgrade 25: Real-time dashboard stats ───────────────────────
+router.get('/realtime-stats', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    const activeCalls = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service
+      WHERE status IN ('pending', 'dispatched', 'enroute', 'onscene')
+    `).get() as any;
+
+    const unitsOnDuty = db.prepare(`
+      SELECT COUNT(*) as count FROM units WHERE status != 'off_duty'
+    `).get() as any;
+
+    const pendingIncidents = db.prepare(`
+      SELECT COUNT(*) as count FROM incidents WHERE status IN ('submitted', 'under_review')
+    `).get() as any;
+
+    const activeBolos = db.prepare(`
+      SELECT COUNT(*) as count FROM bolos WHERE status = 'active'
+    `).get() as any;
+
+    const activeSessions = db.prepare(`
+      SELECT COUNT(*) as count FROM sessions WHERE is_active = 1 AND expires_at > datetime('now')
+    `).get() as any;
+
+    const todayActivity = db.prepare(`
+      SELECT COUNT(*) as count FROM activity_log WHERE DATE(created_at) = DATE('now')
+    `).get() as any;
+
+    const unreadNotifications = db.prepare(`
+      SELECT COUNT(*) as count FROM notifications WHERE is_read = 0
+    `).get() as any;
+
+    const todayCalls = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service WHERE DATE(created_at) = DATE('now')
+    `).get() as any;
+
+    res.json({
+      activeCalls: activeCalls?.count || 0,
+      unitsOnDuty: unitsOnDuty?.count || 0,
+      pendingIncidents: pendingIncidents?.count || 0,
+      activeBolos: activeBolos?.count || 0,
+      activeSessions: activeSessions?.count || 0,
+      todayActivity: todayActivity?.count || 0,
+      unreadNotifications: unreadNotifications?.count || 0,
+      todayCalls: todayCalls?.count || 0,
+      timestamp: localNow(),
+    });
+  } catch (error: any) {
+    console.error('Realtime stats error:', error);
+    res.status(500).json({ error: 'Failed to get realtime stats', code: 'REALTIME_STATS_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE: Dashboard - Shift-Aware Stats
+// Returns stats filtered to the current shift window.
+// ════════════════════════════════════════════════════════════
+router.get('/shift-stats', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    // Determine current shift based on time of day
+    const now = new Date();
+    const hour = now.getHours();
+    let shiftName: string;
+    let shiftStart: string;
+    let shiftEnd: string;
+
+    if (hour >= 6 && hour < 14) {
+      shiftName = 'Day Shift (0600-1400)';
+      shiftStart = localNow().split('T')[0] + 'T06:00:00';
+      shiftEnd = localNow().split('T')[0] + 'T14:00:00';
+    } else if (hour >= 14 && hour < 22) {
+      shiftName = 'Swing Shift (1400-2200)';
+      shiftStart = localNow().split('T')[0] + 'T14:00:00';
+      shiftEnd = localNow().split('T')[0] + 'T22:00:00';
+    } else {
+      shiftName = 'Graveyard Shift (2200-0600)';
+      if (hour >= 22) {
+        shiftStart = localNow().split('T')[0] + 'T22:00:00';
+        const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+        shiftEnd = tomorrow.toISOString().split('T')[0] + 'T06:00:00';
+      } else {
+        const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        shiftStart = yesterday.toISOString().split('T')[0] + 'T22:00:00';
+        shiftEnd = localNow().split('T')[0] + 'T06:00:00';
+      }
+    }
+
+    const shiftCalls = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service
+      WHERE created_at >= ? AND created_at < ?
+    `).get(shiftStart, shiftEnd) as any;
+
+    const shiftIncidents = db.prepare(`
+      SELECT COUNT(*) as count FROM incidents
+      WHERE created_at >= ? AND created_at < ?
+    `).get(shiftStart, shiftEnd) as any;
+
+    const shiftCitations = db.prepare(`
+      SELECT COUNT(*) as count FROM citations
+      WHERE created_at >= ? AND created_at < ?
+    `).get(shiftStart, shiftEnd) as any;
+
+    let shiftPatrolScans = { count: 0 } as any;
+    try {
+      shiftPatrolScans = db.prepare(`
+        SELECT COUNT(*) as count FROM patrol_scans
+        WHERE scanned_at >= ? AND scanned_at < ?
+      `).get(shiftStart, shiftEnd) as any;
+    } catch { /* patrol_scans may not exist */ }
+
+    res.json({
+      shift_name: shiftName,
+      shift_start: shiftStart,
+      shift_end: shiftEnd,
+      calls: shiftCalls?.count || 0,
+      incidents: shiftIncidents?.count || 0,
+      citations: shiftCitations?.count || 0,
+      patrol_scans: shiftPatrolScans?.count || 0,
+    });
+  } catch (error: any) {
+    console.error('Shift stats error:', error);
+    res.status(500).json({ error: 'Failed to get shift stats', code: 'SHIFT_STATS_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE: Dashboard - Upcoming Court Dates Widget Data
+// Returns court dates in the next 30 days.
+// ════════════════════════════════════════════════════════════
+router.get('/upcoming-court-dates', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.min(90, Math.max(1, parseInt(String(req.query.days || '30'), 10)));
+
+    let courtDates: any[] = [];
+    try {
+      courtDates = db.prepare(`
+        SELECT cit.id, cit.citation_number, cit.court_date, cit.court_location,
+          cit.violation_description, cit.defendant_name,
+          u.full_name as officer_name
+        FROM citations cit
+        LEFT JOIN users u ON cit.issuing_officer_id = u.id
+        WHERE cit.court_date IS NOT NULL
+          AND cit.court_date >= date('now')
+          AND cit.court_date <= date('now', '+' || ? || ' days')
+          AND cit.status NOT IN ('voided', 'dismissed')
+        ORDER BY cit.court_date ASC
+        LIMIT 50
+      `).all(days);
+    } catch { /* citations table may not have court_date */ }
+
+    res.json({
+      court_dates: courtDates,
+      count: courtDates.length,
+      period_days: days,
+    });
+  } catch (error: any) {
+    console.error('Upcoming court dates error:', error);
+    res.status(500).json({ error: 'Failed to get court dates', code: 'COURT_DATES_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE: Dashboard - Expiring Certifications Count
+// Returns count and list of personnel with expiring certs.
+// ════════════════════════════════════════════════════════════
+router.get('/expiring-certifications', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.min(180, Math.max(1, parseInt(String(req.query.days || '30'), 10)));
+
+    let expiring: any[] = [];
+    try {
+      expiring = db.prepare(`
+        SELECT pc.id, pc.officer_id, pc.certification_name, pc.expiration_date,
+          u.full_name as officer_name, u.badge_number,
+          CAST(julianday(pc.expiration_date) - julianday('now') AS INTEGER) as days_until_expiry
+        FROM personnel_certifications pc
+        LEFT JOIN users u ON pc.officer_id = u.id
+        WHERE pc.expiration_date IS NOT NULL
+          AND pc.expiration_date >= date('now')
+          AND pc.expiration_date <= date('now', '+' || ? || ' days')
+          AND u.status = 'active'
+        ORDER BY pc.expiration_date ASC
+        LIMIT 50
+      `).all(days);
+    } catch { /* table may not exist */ }
+
+    // Also check already-expired certs
+    let expired: any[] = [];
+    try {
+      expired = db.prepare(`
+        SELECT pc.id, pc.officer_id, pc.certification_name, pc.expiration_date,
+          u.full_name as officer_name, u.badge_number
+        FROM personnel_certifications pc
+        LEFT JOIN users u ON pc.officer_id = u.id
+        WHERE pc.expiration_date IS NOT NULL
+          AND pc.expiration_date < date('now')
+          AND u.status = 'active'
+        ORDER BY pc.expiration_date DESC
+        LIMIT 50
+      `).all();
+    } catch { /* table may not exist */ }
+
+    res.json({
+      expiring_soon: expiring,
+      expiring_count: expiring.length,
+      already_expired: expired,
+      expired_count: expired.length,
+      period_days: days,
+    });
+  } catch (error: any) {
+    console.error('Expiring certifications error:', error);
+    res.status(500).json({ error: 'Failed to get expiring certifications', code: 'EXPIRING_CERTS_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE: Dashboard - Weather Summary
+// Returns weather conditions from the most recent patrol scans.
+// ════════════════════════════════════════════════════════════
+router.get('/weather-summary', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    // Try to get the most recent weather data from patrol scan notes
+    let weatherData: any = null;
+    try {
+      const recentScan = db.prepare(`
+        SELECT notes FROM patrol_scans
+        WHERE notes LIKE '%[WEATHER]%'
+        ORDER BY scanned_at DESC LIMIT 1
+      `).get() as any;
+
+      if (recentScan?.notes) {
+        const weatherMatch = recentScan.notes.match(/\[WEATHER\]\s*({.*?})/);
+        if (weatherMatch) {
+          weatherData = JSON.parse(weatherMatch[1]);
+        }
+      }
+    } catch { /* ok */ }
+
+    res.json({
+      weather: weatherData,
+      source: weatherData ? 'patrol_scan' : 'unavailable',
+    });
+  } catch (error: any) {
+    console.error('Weather summary error:', error);
+    res.status(500).json({ error: 'Failed to get weather', code: 'WEATHER_SUMMARY_ERROR' });
+  }
+});
+
 export default router;

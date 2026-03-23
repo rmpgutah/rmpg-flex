@@ -251,6 +251,12 @@ export default function CitationsPage() {
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
   const dupCheckTimer = useRef<ReturnType<typeof setTimeout>>();
 
+  // Data completeness
+  const [completeness, setCompleteness] = useState<{ score: number; grade: string; missing_required: string[]; missing_recommended: string[] } | null>(null);
+
+  // Payment summary
+  const [paymentSummary, setPaymentSummary] = useState<{ payment_count: number; payment_total: number; outstanding_amount: number; collection_rate: number } | null>(null);
+
   // Payment plan tracking
   const [paymentData, setPaymentData] = useState<{ payments: any[]; total_amount: number; total_paid: number; remaining: number } | null>(null);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
@@ -373,6 +379,27 @@ export default function CitationsPage() {
       } catch { setPaymentData(null); }
     })();
   }, [selectedCitation?.id, selectedCitation?.fine_amount]);
+
+  // ── Fetch completeness when citation selected (UPGRADE 39) ──
+  useEffect(() => {
+    if (!selectedCitation) { setCompleteness(null); return; }
+    (async () => {
+      try {
+        const res = await apiFetch<{ data: any }>(`/citations/${selectedCitation.id}/completeness`);
+        setCompleteness(res.data);
+      } catch { setCompleteness(null); }
+    })();
+  }, [selectedCitation?.id]);
+
+  // ── Fetch payment summary on mount (UPGRADE 40) ──
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiFetch<{ data: any }>('/citations/payment-summary');
+        setPaymentSummary(res.data);
+      } catch { setPaymentSummary(null); }
+    })();
+  }, []);
 
   const handleRecordPayment = async () => {
     if (!selectedCitation || !paymentForm.amount) return;
@@ -624,6 +651,11 @@ export default function CitationsPage() {
         <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase border panel-beveled bg-rmpg-800/40 text-rmpg-300 border-rmpg-600/50">
           <Clock size={10} /> Today: {stats.today_count}
         </span>
+        {paymentSummary && paymentSummary.collection_rate > 0 && (
+          <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase border panel-beveled bg-brand-900/20 text-brand-400 border-brand-700/40">
+            <Check size={10} /> Collection: {paymentSummary.collection_rate}%
+          </span>
+        )}
       </div>
     );
   };
@@ -881,6 +913,27 @@ export default function CitationsPage() {
                       <button type="button" onClick={() => setShowPaymentForm(false)} className="toolbar-btn text-[10px]">Cancel</button>
                     </div>
                   </div>
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* Data Completeness (UPGRADE 41) */}
+          {completeness && (
+            <section>
+              <h3 className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2 flex items-center gap-1">
+                <Check size={10} /> Data Completeness
+              </h3>
+              <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className={`text-sm font-bold px-2 py-0.5 rounded ${completeness.grade === 'A' ? 'bg-green-900/50 text-green-400' : completeness.grade === 'B' ? 'bg-blue-900/50 text-blue-400' : completeness.grade === 'C' ? 'bg-amber-900/50 text-amber-400' : 'bg-red-900/50 text-red-400'}`}>{completeness.grade}</div>
+                  <div className="flex-1 h-1.5 bg-rmpg-700 rounded-sm overflow-hidden">
+                    <div className={`h-full transition-all ${completeness.score >= 80 ? 'bg-green-500' : completeness.score >= 60 ? 'bg-blue-500' : completeness.score >= 40 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${completeness.score}%` }} />
+                  </div>
+                  <span className="text-[10px] text-rmpg-400">{completeness.score}%</span>
+                </div>
+                {completeness.missing_required.length > 0 && (
+                  <div className="text-[10px] text-amber-400">Missing: {completeness.missing_required.join(', ')}</div>
                 )}
               </div>
             </section>

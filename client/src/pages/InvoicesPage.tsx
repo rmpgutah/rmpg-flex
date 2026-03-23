@@ -213,6 +213,12 @@ export default function InvoicesPage() {
   // Clients for dropdown
   const [clients, setClients] = useState<Client[]>([]);
 
+  // ═══ NEW: Aging Report + Revenue Stats ═══
+  const [agingReport, setAgingReport] = useState<{
+    total_overdue_amount: number; total_overdue_count: number;
+    buckets: Record<string, { total: number; invoices: any[] }>;
+  } | null>(null);
+
   // Detail state
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -314,6 +320,10 @@ export default function InvoicesPage() {
   useEffect(() => { fetchInvoices(); }, [fetchInvoices]);
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useEffect(() => { fetchClients(); }, [fetchClients]);
+  // Fetch aging report
+  useEffect(() => {
+    apiFetch<any>('/invoices/aging/report').then(d => { if (d) setAgingReport(d); }).catch(() => {});
+  }, []);
 
   // ── Actions ──────────────────────────────────────────────
 

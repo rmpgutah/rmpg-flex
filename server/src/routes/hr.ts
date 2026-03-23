@@ -2156,4 +2156,298 @@ router.put('/disciplinary-actions/:id', requireRole('admin', 'manager'), (req: R
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// UPGRADE BATCH — HR Management Enhancements
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── U24: Leave Balance Calculations ─────────────────────────────────
+router.get('/leave/balance-summary', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const year = req.query.year ? String(req.query.year) : new Date().getFullYear().toString();
+
+    const balances = db.prepare(`
+      SELECT lb.*, u.full_name, u.badge_number
+      FROM hr_leave_balances lb
+      JOIN users u ON u.id = lb.officer_id
+      WHERE u.status = 'active'
+      ORDER BY u.full_name
+      LIMIT 500
+    `).all() as any[];
+
+    // Calculate used leave per officer this year
+    const used = db.prepare(`
+      SELECT officer_id, leave_type, SUM(days_requested) as days_used, COUNT(*) as request_count
+      FROM hr_leave_requests WHERE status = 'approved' AND strftime('%Y', start_date) = ?
+      GROUP BY officer_id, leave_type
+    `).all(year) as any[];
+
+    const usedMap: Record<string, Record<string, number>> = {};
+    for (const u of used) {
+      if (!usedMap[u.officer_id]) usedMap[u.officer_id] = {};
+      usedMap[u.officer_id][u.leave_type] = u.days_used;
+    }
+
+    const enriched = balances.map((b: any) => {
+      const officerUsed = usedMap[b.officer_id] || {};
+      return {
+        ...b,
+        vacation_used: officerUsed['vacation'] || 0,
+        sick_used: officerUsed['sick'] || 0,
+        personal_used: officerUsed['personal'] || 0,
+        vacation_remaining: (b.vacation_balance || 0) - (officerUsed['vacation'] || 0),
+        sick_remaining: (b.sick_balance || 0) - (officerUsed['sick'] || 0),
+        personal_remaining: (b.personal_balance || 0) - (officerUsed['personal'] || 0),
+      };
+    });
+
+    // Utilization stats
+    const totalVacation = enriched.reduce((s: number, b: any) => s + (b.vacation_balance || 0), 0);
+    const usedVacation = enriched.reduce((s: number, b: any) => s + (b.vacation_used || 0), 0);
+
+    res.json({
+      balances: enriched, year,
+      utilization: {
+        vacation_allotted: totalVacation, vacation_used: usedVacation,
+        vacation_utilization_pct: totalVacation > 0 ? Math.round((usedVacation / totalVacation) * 100) : 0,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load leave balance summary', code: 'LEAVE_BALANCE_SUMMARY_ERROR' });
+  }
+});
+
+// ── U25: Overtime Tracking & Trends ─────────────────────────────────
+router.get('/overtime-trends', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { months = '6' } = req.query;
+    const monthCount = parseInt(months as string, 10) || 6;
+
+    // Monthly OT trends
+    const monthly = db.prepare(`
+      SELECT strftime('%Y-%m', requested_date) as month,
+        SUM(hours_requested) as total_hours, COUNT(*) as request_count,
+        SUM(CASE WHEN status = 'approved' THEN hours_requested ELSE 0 END) as approved_hours,
+        SUM(CASE WHEN status = 'denied' THEN 1 ELSE 0 END) as denied_count
+      FROM overtime_requests
+      WHERE requested_date >= date('now', '-' || ? || ' months')
+      GROUP BY month ORDER BY month
+    `).all(monthCount) as any[];
+
+    // Top OT earners
+    const topOfficers = db.prepare(`
+      SELECT officer_id, officer_name, SUM(hours_requested) as total_hours, COUNT(*) as request_count
+      FROM overtime_requests WHERE status = 'approved' AND requested_date >= date('now', '-' || ? || ' months')
+      GROUP BY officer_id ORDER BY total_hours DESC LIMIT 20
+    `).all(monthCount) as any[];
+
+    // Pending requests
+    const pending = db.prepare(`SELECT COUNT(*) as cnt, SUM(hours_requested) as hours FROM overtime_requests WHERE status = 'requested'`).get() as any;
+
+    res.json({
+      monthly_trend: monthly, top_officers: topOfficers,
+      pending: { count: pending?.cnt || 0, total_hours: pending?.hours || 0 },
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load overtime trends', code: 'OVERTIME_TRENDS_ERROR' });
+  }
+});
+
+// ── U26: Performance Review Scheduling Reminders ────────────────────
+router.get('/review-reminders', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localToday();
+    const reminders: any[] = [];
+
+    // Officers who haven't had a review in the past 6 months
+    const officers = db.prepare(`
+      SELECT u.id, u.full_name, u.badge_number, u.hire_date,
+        MAX(r.review_date) as last_review_date
+      FROM users u LEFT JOIN hr_reviews r ON r.officer_id = u.id
+      WHERE u.status = 'active' AND u.archived_at IS NULL
+      GROUP BY u.id
+      HAVING last_review_date IS NULL OR last_review_date < date(?, '-6 months')
+      ORDER BY last_review_date ASC
+      LIMIT 200
+    `).all(today) as any[];
+
+    for (const o of officers) {
+      const daysSince = o.last_review_date
+        ? Math.floor((new Date(today).getTime() - new Date(o.last_review_date).getTime()) / 86400000)
+        : null;
+      reminders.push({
+        officer_id: o.id, full_name: o.full_name, badge_number: o.badge_number,
+        last_review_date: o.last_review_date, days_since_review: daysSince,
+        severity: daysSince === null ? 'no_review' : daysSince > 365 ? 'critical' : 'due',
+      });
+    }
+
+    // Upcoming scheduled reviews
+    const upcoming = db.prepare(`
+      SELECT r.id, r.officer_id, r.review_date, r.review_type, u.full_name
+      FROM hr_reviews r JOIN users u ON u.id = r.officer_id
+      WHERE r.status = 'scheduled' AND r.review_date >= ? AND r.review_date <= date(?, '+30 days')
+      ORDER BY r.review_date ASC LIMIT 50
+    `).all(today, today) as any[];
+
+    res.json({ overdue_reviews: reminders, upcoming_reviews: upcoming, total_overdue: reminders.length });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load review reminders', code: 'REVIEW_REMINDERS_ERROR' });
+  }
+});
+
+// ── U27: Disciplinary Point System ──────────────────────────────────
+router.get('/disciplinary-points', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const POINT_VALUES: Record<string, number> = {
+      verbal_warning: 1, written_warning: 2, suspension: 5, final_warning: 8, termination: 10,
+      counseling: 0, commendation: -1,
+    };
+
+    const actions = db.prepare(`
+      SELECT d.officer_id, d.action_type, d.severity, d.status, d.issued_date,
+        u.full_name as officer_name, u.badge_number
+      FROM hr_disciplinary d
+      JOIN users u ON u.id = d.officer_id
+      WHERE u.status = 'active' AND d.status = 'active'
+      AND d.issued_date >= date('now', '-12 months')
+      ORDER BY d.officer_id, d.issued_date DESC
+      LIMIT 1000
+    `).all() as any[];
+
+    const byOfficer: Record<number, { officer_name: string; badge_number: string; points: number; actions: any[] }> = {};
+    for (const a of actions) {
+      if (!byOfficer[a.officer_id]) {
+        byOfficer[a.officer_id] = { officer_name: a.officer_name, badge_number: a.badge_number, points: 0, actions: [] };
+      }
+      const pts = POINT_VALUES[a.severity] || POINT_VALUES[a.action_type] || 1;
+      byOfficer[a.officer_id].points += pts;
+      byOfficer[a.officer_id].actions.push({ ...a, points: pts });
+    }
+
+    const result = Object.entries(byOfficer).map(([id, data]) => ({
+      officer_id: Number(id), ...data,
+      risk_level: data.points >= 8 ? 'high' : data.points >= 4 ? 'medium' : 'low',
+    })).sort((a, b) => b.points - a.points);
+
+    res.json({ officers: result, point_values: POINT_VALUES });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load disciplinary points', code: 'DISCIPLINARY_POINTS_ERROR' });
+  }
+});
+
+// ── U28: HR Notifications — combined alerts feed ────────────────────
+router.get('/notifications', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localToday();
+    const notifications: any[] = [];
+
+    // Pending leave requests
+    try {
+      const pending = db.prepare(`SELECT lr.id, lr.officer_id, lr.leave_type, lr.start_date, u.full_name FROM hr_leave_requests lr JOIN users u ON u.id = lr.officer_id WHERE lr.status = 'pending' ORDER BY lr.created_at ASC LIMIT 20`).all() as any[];
+      for (const p of pending) {
+        notifications.push({ type: 'leave_pending', severity: 'info', message: `${p.full_name}: ${p.leave_type} leave request pending (${p.start_date})`, officer_id: p.officer_id, id: p.id });
+      }
+    } catch { /* ok */ }
+
+    // Overdue reviews
+    try {
+      const overdue = db.prepare(`SELECT u.id, u.full_name, MAX(r.review_date) as last_review FROM users u LEFT JOIN hr_reviews r ON r.officer_id = u.id WHERE u.status = 'active' GROUP BY u.id HAVING last_review IS NULL OR last_review < date(?, '-12 months') LIMIT 20`).all(today) as any[];
+      for (const o of overdue) {
+        notifications.push({ type: 'review_overdue', severity: 'warning', message: `${o.full_name}: Performance review overdue`, officer_id: o.id });
+      }
+    } catch { /* ok */ }
+
+    // Pending OT requests
+    try {
+      const otPending = db.prepare(`SELECT COUNT(*) as cnt FROM overtime_requests WHERE status = 'requested'`).get() as any;
+      if (otPending?.cnt > 0) {
+        notifications.push({ type: 'overtime_pending', severity: 'info', message: `${otPending.cnt} overtime request(s) pending approval` });
+      }
+    } catch { /* ok */ }
+
+    notifications.sort((a, b) => ({ critical: 0, warning: 1, info: 2 }[a.severity as string] || 9) - ({ critical: 0, warning: 1, info: 2 }[b.severity as string] || 9));
+    res.json({ notifications, total: notifications.length });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load HR notifications', code: 'HR_NOTIFICATIONS_ERROR' });
+  }
+});
+
+// ── U29: HR Analytics Dashboard ─────────────────────────────────────
+router.get('/analytics', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localToday();
+
+    // Leave utilization rate
+    let leaveUtilization = { total_allotted: 0, total_used: 0, utilization_pct: 0 };
+    try {
+      const balances = db.prepare(`SELECT SUM(vacation_balance) as vb, SUM(sick_balance) as sb, SUM(personal_balance) as pb FROM hr_leave_balances`).get() as any;
+      const used = db.prepare(`SELECT SUM(days_requested) as total FROM hr_leave_requests WHERE status = 'approved' AND strftime('%Y', start_date) = strftime('%Y', 'now')`).get() as any;
+      const totalAllotted = (balances?.vb || 0) + (balances?.sb || 0) + (balances?.pb || 0);
+      const totalUsed = used?.total || 0;
+      leaveUtilization = { total_allotted: totalAllotted, total_used: totalUsed, utilization_pct: totalAllotted > 0 ? Math.round((totalUsed / totalAllotted) * 100) : 0 };
+    } catch { /* ok */ }
+
+    // Overtime trends
+    let overtimeTrends = { total_hours: 0, avg_monthly: 0 };
+    try {
+      const ot = db.prepare(`SELECT SUM(hours_requested) as total FROM overtime_requests WHERE status = 'approved' AND strftime('%Y', requested_date) = strftime('%Y', 'now')`).get() as any;
+      const month = new Date().getMonth() + 1;
+      overtimeTrends = { total_hours: Math.round((ot?.total || 0) * 10) / 10, avg_monthly: month > 0 ? Math.round(((ot?.total || 0) / month) * 10) / 10 : 0 };
+    } catch { /* ok */ }
+
+    // Disciplinary action counts
+    let disciplinaryStats = { total_active: 0, by_severity: {} as Record<string, number> };
+    try {
+      const active = db.prepare(`SELECT severity, COUNT(*) as count FROM hr_disciplinary WHERE status = 'active' GROUP BY severity`).all() as any[];
+      const totalActive = active.reduce((s: number, a: any) => s + a.count, 0);
+      const bySeverity: Record<string, number> = {};
+      for (const a of active) bySeverity[a.severity] = a.count;
+      disciplinaryStats = { total_active: totalActive, by_severity: bySeverity };
+    } catch { /* ok */ }
+
+    // Review completion rate
+    let reviewStats = { total_scheduled: 0, completed: 0, completion_pct: 0 };
+    try {
+      const reviews = db.prepare(`SELECT COUNT(*) as total, SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed FROM hr_reviews WHERE strftime('%Y', review_date) = strftime('%Y', 'now')`).get() as any;
+      reviewStats = { total_scheduled: reviews?.total || 0, completed: reviews?.completed || 0, completion_pct: reviews?.total > 0 ? Math.round((reviews.completed / reviews.total) * 100) : 0 };
+    } catch { /* ok */ }
+
+    res.json({ leave_utilization: leaveUtilization, overtime_trends: overtimeTrends, disciplinary_stats: disciplinaryStats, review_stats: reviewStats });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load HR analytics', code: 'HR_ANALYTICS_ERROR' });
+  }
+});
+
+// ── U30: Leave Utilization Rate ─────────────────────────────────────
+router.get('/leave/utilization', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const year = req.query.year ? String(req.query.year) : new Date().getFullYear().toString();
+
+    const byType = db.prepare(`
+      SELECT leave_type, COUNT(*) as request_count, SUM(days_requested) as total_days,
+        SUM(CASE WHEN status = 'approved' THEN days_requested ELSE 0 END) as approved_days,
+        SUM(CASE WHEN status = 'denied' THEN 1 ELSE 0 END) as denied_count
+      FROM hr_leave_requests WHERE strftime('%Y', start_date) = ?
+      GROUP BY leave_type ORDER BY total_days DESC
+    `).all(year) as any[];
+
+    const monthly = db.prepare(`
+      SELECT strftime('%Y-%m', start_date) as month, SUM(days_requested) as total_days, COUNT(*) as count
+      FROM hr_leave_requests WHERE status = 'approved' AND strftime('%Y', start_date) = ?
+      GROUP BY month ORDER BY month
+    `).all(year) as any[];
+
+    res.json({ year, by_type: byType, monthly_trend: monthly });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load leave utilization', code: 'LEAVE_UTILIZATION_ERROR' });
+  }
+});
+
 export default router;

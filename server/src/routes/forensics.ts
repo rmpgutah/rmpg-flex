@@ -1151,4 +1151,339 @@ router.get('/:caseId/hashes', (req: Request, res: Response) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// UPGRADE: Lab Turnaround Time Tracking
+// ════════════════════════════════════════════════════════════
+
+router.get('/turnaround-times', (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    // Average turnaround by case type
+    const byType = db.prepare(`
+      SELECT case_type,
+        COUNT(*) as cases_completed,
+        ROUND(AVG(JULIANDAY(completed_date) - JULIANDAY(received_date)), 1) as avg_days,
+        ROUND(MIN(JULIANDAY(completed_date) - JULIANDAY(received_date)), 1) as min_days,
+        ROUND(MAX(JULIANDAY(completed_date) - JULIANDAY(received_date)), 1) as max_days
+      FROM forensic_cases
+      WHERE completed_date IS NOT NULL AND received_date IS NOT NULL
+      GROUP BY case_type ORDER BY avg_days DESC
+    `).all();
+
+    // Average turnaround by priority
+    const byPriority = db.prepare(`
+      SELECT priority,
+        COUNT(*) as cases_completed,
+        ROUND(AVG(JULIANDAY(completed_date) - JULIANDAY(received_date)), 1) as avg_days
+      FROM forensic_cases
+      WHERE completed_date IS NOT NULL AND received_date IS NOT NULL
+      GROUP BY priority
+    `).all();
+
+    // Monthly turnaround trend
+    const monthlyTrend = db.prepare(`
+      SELECT strftime('%Y-%m', completed_date) as month,
+        COUNT(*) as cases_completed,
+        ROUND(AVG(JULIANDAY(completed_date) - JULIANDAY(received_date)), 1) as avg_days
+      FROM forensic_cases
+      WHERE completed_date IS NOT NULL AND received_date IS NOT NULL
+        AND completed_date >= datetime('now', '-12 months')
+      GROUP BY month ORDER BY month
+    `).all();
+
+    // Currently overdue cases
+    const overdue = db.prepare(`
+      SELECT id, lab_number, title, case_type, priority, due_date, received_date,
+        CAST(JULIANDAY('now') - JULIANDAY(due_date) AS INTEGER) as days_overdue
+      FROM forensic_cases
+      WHERE due_date IS NOT NULL AND due_date < DATE('now')
+        AND status NOT IN ('released', 'cancelled', 'closed')
+      ORDER BY days_overdue DESC
+      LIMIT 50
+    `).all();
+
+    // Analysis turnaround
+    const analysisTurnaround = db.prepare(`
+      SELECT analysis_type,
+        COUNT(*) as completed,
+        ROUND(AVG(JULIANDAY(completed_at) - JULIANDAY(created_at)), 1) as avg_days
+      FROM forensic_analyses
+      WHERE completed_at IS NOT NULL
+      GROUP BY analysis_type ORDER BY avg_days DESC
+    `).all();
+
+    res.json({
+      data: {
+        by_type: byType,
+        by_priority: byPriority,
+        monthly_trend: monthlyTrend,
+        overdue_cases: overdue,
+        analysis_turnaround: analysisTurnaround,
+      },
+    });
+  } catch (error: any) {
+    console.error('Turnaround times error:', error);
+    res.status(500).json({ error: 'Failed to get turnaround times', code: 'TURNAROUND_TIMES_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE: Exhibit Chain of Custody Validation
+// ════════════════════════════════════════════════════════════
+
+router.get('/:caseId/exhibits/:exhibitId/custody-audit', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const exhibit = db.prepare('SELECT * FROM forensic_exhibits WHERE id = ? AND forensic_case_id = ?')
+      .get(req.params.exhibitId, req.params.caseId) as any;
+    if (!exhibit) return res.status(404).json({ error: 'Exhibit not found', code: 'EXHIBIT_NOT_FOUND' });
+
+    let chain: any[] = [];
+    try { chain = JSON.parse(exhibit.chain_of_custody || '[]'); } catch { /* ignore */ }
+
+    // Get transfers from activity log
+    const transfers = db.prepare(`
+      SELECT * FROM forensic_activity_log
+      WHERE forensic_case_id = ? AND exhibit_id = ? AND action IN ('custody_transfer', 'received', 'check_in', 'check_out')
+      ORDER BY performed_at ASC
+    `).all(req.params.caseId, req.params.exhibitId) as any[];
+
+    const gaps: any[] = [];
+    const issues: string[] = [];
+
+    // Check for time gaps > 24 hours in chain
+    for (let i = 1; i < chain.length; i++) {
+      const prev = chain[i - 1];
+      const curr = chain[i];
+      const prevTime = prev.at || prev.timestamp;
+      const currTime = curr.at || curr.timestamp;
+      if (prevTime && currTime) {
+        const gapHours = (new Date(currTime).getTime() - new Date(prevTime).getTime()) / (1000 * 60 * 60);
+        if (gapHours > 24) {
+          gaps.push({ from_index: i - 1, to_index: i, gap_hours: Math.round(gapHours * 10) / 10 });
+        }
+      }
+    }
+
+    // Check for missing signatures
+    for (let i = 0; i < chain.length; i++) {
+      if (!chain[i].by && !chain[i].user_name && !chain[i].user_id) {
+        issues.push(`Entry ${i + 1}: Missing responsible party`);
+      }
+    }
+
+    // Verify exhibit still has current custodian
+    if (!exhibit.current_custodian && !exhibit.storage_location) {
+      issues.push('No current custodian or storage location recorded');
+    }
+
+    res.json({
+      data: {
+        exhibit_id: exhibit.id,
+        exhibit_number: exhibit.exhibit_number,
+        chain_entries: chain.length,
+        transfer_records: transfers.length,
+        gaps,
+        issues,
+        is_valid: gaps.length === 0 && issues.length === 0,
+        current_custodian: exhibit.current_custodian || null,
+        current_location: exhibit.storage_location || null,
+      },
+    });
+  } catch (error: any) {
+    console.error('Custody audit error:', error);
+    res.status(500).json({ error: 'Failed to audit custody', code: 'CUSTODY_AUDIT_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE: Analysis Result Templates
+// ════════════════════════════════════════════════════════════
+
+router.get('/analysis-templates', (_req: Request, res: Response) => {
+  const templates: Record<string, any> = {
+    dna: {
+      name: 'DNA Analysis',
+      result_fields: ['profile_type', 'loci_tested', 'allele_calls', 'match_probability', 'codis_eligible', 'mixture_detected'],
+      conclusion_options: ['match', 'exclusion', 'inconclusive', 'mixture_detected', 'insufficient_sample'],
+    },
+    fingerprint: {
+      name: 'Fingerprint Comparison',
+      result_fields: ['print_quality', 'ridge_detail', 'comparison_points', 'afis_searched', 'candidate_matches'],
+      conclusion_options: ['identification', 'exclusion', 'inconclusive', 'unsuitable_for_comparison'],
+    },
+    toxicology: {
+      name: 'Toxicology Screen',
+      result_fields: ['specimen_type', 'tests_performed', 'substances_detected', 'concentrations', 'detection_limits'],
+      conclusion_options: ['positive', 'negative', 'inconclusive', 'below_threshold'],
+    },
+    firearms: {
+      name: 'Firearms/Toolmarks',
+      result_fields: ['firearm_type', 'caliber', 'rifling_characteristics', 'nibin_entered', 'comparison_results'],
+      conclusion_options: ['identification', 'elimination', 'inconclusive', 'unsuitable'],
+    },
+    digital: {
+      name: 'Digital Forensics',
+      result_fields: ['device_type', 'os_version', 'encryption_status', 'data_recovered', 'artifacts_found', 'timeline_events'],
+      conclusion_options: ['evidence_found', 'no_relevant_evidence', 'partial_recovery', 'device_inaccessible'],
+    },
+    drug_analysis: {
+      name: 'Drug Analysis',
+      result_fields: ['presumptive_result', 'confirmatory_result', 'substance_identified', 'schedule', 'net_weight', 'purity'],
+      conclusion_options: ['controlled_substance_identified', 'no_controlled_substance', 'inconclusive'],
+    },
+    trace_evidence: {
+      name: 'Trace Evidence',
+      result_fields: ['material_type', 'microscopy_results', 'spectroscopy_results', 'comparison_results'],
+      conclusion_options: ['consistent', 'inconsistent', 'inconclusive', 'insufficient_sample'],
+    },
+  };
+  res.json({ data: templates });
+});
+
+// Apply template to an analysis
+router.post('/:caseId/analyses/:analysisId/apply-template', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    const existing = db.prepare('SELECT * FROM forensic_analyses WHERE id = ? AND forensic_case_id = ?')
+      .get(req.params.analysisId, req.params.caseId) as any;
+    if (!existing) return res.status(404).json({ error: 'Analysis not found', code: 'ANALYSIS_NOT_FOUND' });
+
+    const { template_name, result_data, conclusion } = req.body;
+    if (!template_name) return res.status(400).json({ error: 'template_name required', code: 'TEMPLATE_NAME_REQUIRED' });
+
+    const now = localNow();
+    db.prepare(`UPDATE forensic_analyses SET
+      template_name = ?, results = ?, conclusion = ?, updated_at = ? WHERE id = ?`)
+      .run(template_name, JSON.stringify(result_data || {}), conclusion || existing.conclusion, now, req.params.analysisId);
+
+    logActivity(parseInt(req.params.caseId), 'template_applied',
+      `Applied ${template_name} template to analysis`, user.id, user.full_name);
+
+    const updated = db.prepare('SELECT * FROM forensic_analyses WHERE id = ?').get(req.params.analysisId);
+    res.json({ data: updated });
+  } catch (error: any) {
+    console.error('Apply template error:', error);
+    res.status(500).json({ error: 'Failed to apply template', code: 'APPLY_TEMPLATE_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE: Quality Control Checks
+// ════════════════════════════════════════════════════════════
+
+router.post('/:caseId/qc-check', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    const fc = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.caseId) as any;
+    if (!fc) return res.status(404).json({ error: 'Forensic case not found', code: 'FORENSIC_CASE_NOT_FOUND' });
+
+    const { check_type, reviewer_notes, items_checked, pass } = req.body;
+    if (!check_type) return res.status(400).json({ error: 'check_type required', code: 'CHECK_TYPE_REQUIRED' });
+
+    const validTypes = ['peer_review', 'admin_review', 'technical_review', 'calibration_check', 'blank_check', 'positive_control', 'negative_control'];
+    if (!validTypes.includes(check_type)) return res.status(400).json({ error: 'Invalid check type', code: 'INVALID_CHECK_TYPE' });
+
+    const now = localNow();
+    const qcData = {
+      check_type,
+      reviewer_id: user.id,
+      reviewer_name: user.full_name,
+      items_checked: items_checked || [],
+      pass: pass !== false,
+      reviewer_notes: reviewer_notes || '',
+      performed_at: now,
+    };
+
+    logActivity(parseInt(req.params.caseId), 'qc_check',
+      `QC ${check_type}: ${pass !== false ? 'PASS' : 'FAIL'} by ${user.full_name}. ${reviewer_notes || ''}`,
+      user.id, user.full_name);
+
+    // If peer review and pass, advance status
+    if (check_type === 'peer_review' && pass !== false && fc.status === 'report_drafted') {
+      db.prepare('UPDATE forensic_cases SET status = ?, updated_at = ? WHERE id = ?')
+        .run('reviewed', now, req.params.caseId);
+      logActivity(parseInt(req.params.caseId), 'status_changed', 'Status: report_drafted → reviewed (QC passed)', user.id, user.full_name);
+    }
+
+    res.json({ data: qcData });
+  } catch (error: any) {
+    console.error('QC check error:', error);
+    res.status(500).json({ error: 'Failed to record QC check', code: 'QC_CHECK_ERROR' });
+  }
+});
+
+// Get QC history for a case
+router.get('/:caseId/qc-history', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const checks = db.prepare(`
+      SELECT * FROM forensic_activity_log
+      WHERE forensic_case_id = ? AND action = 'qc_check'
+      ORDER BY performed_at DESC
+      LIMIT 100
+    `).all(req.params.caseId);
+    res.json({ data: checks });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to get QC history', code: 'QC_HISTORY_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE: Forensic Backlog Metrics
+// ════════════════════════════════════════════════════════════
+
+router.get('/metrics/backlog', (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    const backlogByType = db.prepare(`
+      SELECT case_type, COUNT(*) as count,
+        ROUND(AVG(JULIANDAY('now') - JULIANDAY(received_date)), 1) as avg_age_days
+      FROM forensic_cases
+      WHERE status NOT IN ('released', 'cancelled', 'closed')
+      GROUP BY case_type ORDER BY count DESC
+    `).all();
+
+    const backlogByExaminer = db.prepare(`
+      SELECT u.full_name as examiner, COUNT(*) as active_cases,
+        ROUND(AVG(JULIANDAY('now') - JULIANDAY(fc.received_date)), 1) as avg_age_days
+      FROM forensic_cases fc
+      LEFT JOIN users u ON fc.lead_examiner_id = u.id
+      WHERE fc.status NOT IN ('released', 'cancelled', 'closed')
+      GROUP BY fc.lead_examiner_id ORDER BY active_cases DESC
+    `).all();
+
+    const unassigned = (db.prepare(`
+      SELECT COUNT(*) as count FROM forensic_cases
+      WHERE lead_examiner_id IS NULL AND status NOT IN ('released', 'cancelled', 'closed')
+    `).get() as any)?.count || 0;
+
+    const pendingAnalyses = (db.prepare(`
+      SELECT COUNT(*) as count FROM forensic_analyses WHERE status = 'pending'
+    `).get() as any)?.count || 0;
+
+    const inProgressAnalyses = (db.prepare(`
+      SELECT COUNT(*) as count FROM forensic_analyses WHERE status = 'in_progress'
+    `).get() as any)?.count || 0;
+
+    res.json({
+      data: {
+        backlog_by_type: backlogByType,
+        backlog_by_examiner: backlogByExaminer,
+        unassigned_cases: unassigned,
+        pending_analyses: pendingAnalyses,
+        in_progress_analyses: inProgressAnalyses,
+        total_backlog: (backlogByType as any[]).reduce((s: number, t: any) => s + t.count, 0),
+      },
+    });
+  } catch (error: any) {
+    console.error('Forensic backlog error:', error);
+    res.status(500).json({ error: 'Failed to get backlog metrics', code: 'BACKLOG_METRICS_ERROR' });
+  }
+});
+
 export default router;

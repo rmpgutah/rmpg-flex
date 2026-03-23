@@ -133,6 +133,12 @@ export default function DashCamerasPage() {
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [units, setUnits] = useState<any[]>([]);
 
+  // ═══ NEW: Quality + Storage Stats ═══
+  const [storageStats, setStorageStats] = useState<{
+    total_storage_gb: number; total_videos: number;
+    disk?: { free_gb: number; used_pct: number } | null;
+  } | null>(null);
+
   // ── Data Fetching ────────────────────────
   const fetchVideos = useCallback(async () => {
     try {
@@ -166,6 +172,19 @@ export default function DashCamerasPage() {
   useEffect(() => { fetchVideos(); }, [fetchVideos]);
   useEffect(() => { fetchRefData(); }, [fetchRefData]);
   useLiveSync('dashcam', fetchVideos);
+
+  // Fetch storage stats
+  useEffect(() => {
+    apiFetch<any>('/fleet/dashcam-videos/storage/usage')
+      .then(data => {
+        if (data) setStorageStats({
+          total_storage_gb: data.total_storage_gb || 0,
+          total_videos: data.total_videos || 0,
+          disk: data.disk || null,
+        });
+      })
+      .catch(() => { /* non-critical */ });
+  }, []);
 
   // ── Filters & Stats ─────────────────────
   const filtered = useMemo(() => {
@@ -655,6 +674,15 @@ export default function DashCamerasPage() {
           <span className="text-[8px] font-mono text-rmpg-500">
             {formatSize(stats.totalStorage)}
           </span>
+          {storageStats?.disk && (
+            <>
+              <span className="text-[8px] font-mono text-rmpg-600">|</span>
+              <HardDrive className="w-2.5 h-2.5 text-rmpg-500" />
+              <span className={`text-[8px] font-mono ${(storageStats.disk.used_pct || 0) > 85 ? 'text-red-400' : 'text-rmpg-500'}`}>
+                {storageStats.disk.free_gb}GB free ({storageStats.disk.used_pct}% used)
+              </span>
+            </>
+          )}
         </div>
 
         {/* View toggle */}

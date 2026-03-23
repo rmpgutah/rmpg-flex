@@ -451,6 +451,10 @@ export default function FieldInterviewsPage() {
               <div><span className="text-rmpg-500 text-[10px] uppercase">Build</span><div className="text-white">{[selectedFi.subject_height, selectedFi.subject_weight ? `${selectedFi.subject_weight} lbs` : ''].filter(Boolean).join(', ') || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Hair / Eyes</span><div className="text-white">{[selectedFi.subject_hair, selectedFi.subject_eye].filter(Boolean).join(' / ') || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Clothing</span><div className="text-white">{selectedFi.subject_clothing || '—'}</div></div>
+              {/* UPGRADE 45: Gang affiliation display */}
+              {selectedFi.gang_affiliation && (
+                <div><span className="text-rmpg-500 text-[10px] uppercase">Gang Affiliation</span><div className="text-red-400 font-bold">{selectedFi.gang_affiliation}</div></div>
+              )}
               <div className="col-span-2"><span className="text-rmpg-500 text-[10px] uppercase">Location</span><div className="text-white">{selectedFi.location}</div></div>
               {((selectedFi as any).section_id || (selectedFi as any).zone_id || (selectedFi as any).beat_id) && (
                 <div className="col-span-2"><span className="text-rmpg-500 text-[10px] uppercase">Section / Zone / Beat</span><div className="text-white">{[(selectedFi as any).section_id, (selectedFi as any).zone_id, (selectedFi as any).beat_id].filter(Boolean).join(' / ') || '—'}</div></div>
@@ -539,6 +543,14 @@ export default function FieldInterviewsPage() {
                   <input className="input-dark text-xs w-full min-h-[36px]" value={formData.subject_eye} onChange={e => update('subject_eye', e.target.value)} /></div>
                 <div><label className="field-label">Clothing</label>
                   <input className="input-dark text-xs w-full min-h-[36px]" placeholder="Dark hoodie, jeans" value={formData.subject_clothing} onChange={e => update('subject_clothing', e.target.value)} /></div>
+              </div>
+
+              {/* UPGRADE 44: Gang Affiliation field */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div><label className="field-label">Gang Affiliation</label>
+                  <input className="input-dark text-xs w-full min-h-[36px]" placeholder="Known gang affiliation (if any)" value={(formData as any).gang_affiliation || ''} onChange={e => update('gang_affiliation' as any, e.target.value)} /></div>
+                <div><label className="field-label">Description</label>
+                  <input className="input-dark text-xs w-full min-h-[36px]" placeholder="Physical description" value={formData.subject_description} onChange={e => update('subject_description', e.target.value)} /></div>
               </div>
 
               {/* Location + reason */}

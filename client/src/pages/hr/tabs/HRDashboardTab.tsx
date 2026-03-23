@@ -7,7 +7,7 @@
 import { useState, useEffect } from 'react';
 import {
   Users, UserPlus, CalendarOff, Clock, ShieldCheck, AlertTriangle,
-  Activity, ChevronRight, Loader2,
+  Activity, ChevronRight, Loader2, Bell, TrendingUp, DollarSign, Star,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
@@ -208,6 +208,9 @@ function ManagerDashboard({
         </div>
       </div>
 
+      {/* HR Notifications, OT Trends, Review Reminders, Disciplinary Points */}
+      <HREnhancedPanels />
+
       {/* Recent Activity */}
       <div className="bg-surface-base border border-rmpg-700 rounded-sm p-4">
         <h3 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
@@ -356,5 +359,141 @@ export default function HRDashboardTab({
         <OfficerDashboard userId={userId} onNavigateToLeave={onNavigateToLeave} />
       )}
     </div>
+  );
+}
+
+// ─── Enhanced HR Panels (Notifications, OT, Reviews, Discipline) ──
+function HREnhancedPanels() {
+  const [hrNotifs, setHrNotifs] = useState<any[]>([]);
+  const [overtimeTrends, setOvertimeTrends] = useState<any>(null);
+  const [reviewReminders, setReviewReminders] = useState<any>(null);
+  const [disciplinaryPoints, setDisciplinaryPoints] = useState<any>(null);
+  const [hrAnalytics, setHrAnalytics] = useState<any>(null);
+
+  useEffect(() => {
+    apiFetch('/hr/notifications').then((d: any) => d?.notifications && setHrNotifs(d.notifications)).catch(() => {});
+    apiFetch('/hr/overtime-trends').then((d: any) => d && setOvertimeTrends(d)).catch(() => {});
+    apiFetch('/hr/review-reminders').then((d: any) => d && setReviewReminders(d)).catch(() => {});
+    apiFetch('/hr/disciplinary-points').then((d: any) => d && setDisciplinaryPoints(d)).catch(() => {});
+    apiFetch('/hr/analytics').then((d: any) => d && setHrAnalytics(d)).catch(() => {});
+  }, []);
+
+  return (
+    <>
+      {/* HR Notifications */}
+      {hrNotifs.length > 0 && (
+        <div className="bg-surface-base border border-rmpg-700 rounded-sm p-4">
+          <h3 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
+            <Bell size={14} className="text-amber-400" />
+            HR Notifications ({hrNotifs.length})
+          </h3>
+          <div className="space-y-1 max-h-[200px] overflow-y-auto">
+            {hrNotifs.slice(0, 8).map((n: any, i: number) => (
+              <div key={i} className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${n.severity === 'critical' ? 'bg-red-900/20 text-red-400' : n.severity === 'warning' ? 'bg-amber-900/20 text-amber-400' : 'bg-blue-900/20 text-blue-400'}`}>
+                <AlertTriangle size={12} className="shrink-0" />
+                <span className="truncate">{n.message}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Analytics Summary */}
+      {hrAnalytics && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="bg-surface-base border border-rmpg-700 rounded-sm p-3 text-center">
+            <CalendarOff size={14} className="mx-auto text-amber-400 mb-1" />
+            <div className="text-lg font-bold text-white">{hrAnalytics.leave_utilization?.utilization_pct || 0}%</div>
+            <div className="text-[9px] text-rmpg-500 uppercase">Leave Utilization</div>
+          </div>
+          <div className="bg-surface-base border border-rmpg-700 rounded-sm p-3 text-center">
+            <Clock size={14} className="mx-auto text-blue-400 mb-1" />
+            <div className="text-lg font-bold text-white">{hrAnalytics.overtime_trends?.total_hours || 0}h</div>
+            <div className="text-[9px] text-rmpg-500 uppercase">OT This Year</div>
+          </div>
+          <div className="bg-surface-base border border-rmpg-700 rounded-sm p-3 text-center">
+            <Star size={14} className="mx-auto text-green-400 mb-1" />
+            <div className="text-lg font-bold text-white">{hrAnalytics.review_stats?.completion_pct || 0}%</div>
+            <div className="text-[9px] text-rmpg-500 uppercase">Review Completion</div>
+          </div>
+          <div className="bg-surface-base border border-rmpg-700 rounded-sm p-3 text-center">
+            <AlertTriangle size={14} className="mx-auto text-red-400 mb-1" />
+            <div className="text-lg font-bold text-white">{hrAnalytics.disciplinary_stats?.total_active || 0}</div>
+            <div className="text-[9px] text-rmpg-500 uppercase">Active Disciplinary</div>
+          </div>
+        </div>
+      )}
+
+      {/* Overtime Trends */}
+      {overtimeTrends && (overtimeTrends.pending?.count > 0 || overtimeTrends.top_officers?.length > 0) && (
+        <div className="bg-surface-base border border-rmpg-700 rounded-sm p-4">
+          <h3 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
+            <TrendingUp size={14} className="text-blue-400" />
+            Overtime Overview
+            {overtimeTrends.pending?.count > 0 && (
+              <span className="ml-auto text-xs bg-amber-900/30 text-amber-400 px-2 py-0.5 rounded">{overtimeTrends.pending.count} pending ({overtimeTrends.pending.total_hours}h)</span>
+            )}
+          </h3>
+          {overtimeTrends.top_officers?.length > 0 && (
+            <div className="space-y-1">
+              {overtimeTrends.top_officers.slice(0, 5).map((o: any) => (
+                <div key={o.officer_id} className="flex items-center justify-between px-2 py-1 bg-surface-sunken rounded text-xs">
+                  <span className="text-rmpg-200">{o.officer_name}</span>
+                  <span className="font-mono text-blue-400">{Math.round(o.total_hours * 10) / 10}h OT</span>
+                  <span className="text-rmpg-500">{o.request_count} requests</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Review Reminders */}
+      {reviewReminders && reviewReminders.total_overdue > 0 && (
+        <div className="bg-surface-base border border-rmpg-700 rounded-sm p-4">
+          <h3 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
+            <ShieldCheck size={14} className="text-amber-400" />
+            Performance Review Reminders ({reviewReminders.total_overdue} overdue)
+          </h3>
+          <div className="space-y-1 max-h-[150px] overflow-y-auto">
+            {reviewReminders.overdue_reviews?.slice(0, 8).map((r: any) => (
+              <div key={r.officer_id} className="flex items-center justify-between px-2 py-1.5 bg-surface-sunken rounded text-xs">
+                <span className="text-rmpg-200">{r.full_name}</span>
+                <span className="text-rmpg-500">{r.badge_number}</span>
+                <span className={`font-mono ${r.severity === 'critical' ? 'text-red-400' : r.severity === 'no_review' ? 'text-amber-400' : 'text-amber-400'}`}>
+                  {r.days_since_review != null ? `${r.days_since_review}d since review` : 'Never reviewed'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Disciplinary Points */}
+      {disciplinaryPoints?.officers?.length > 0 && (
+        <div className="bg-surface-base border border-rmpg-700 rounded-sm p-4">
+          <h3 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
+            <AlertTriangle size={14} className="text-red-400" />
+            Disciplinary Point System
+          </h3>
+          <div className="space-y-1">
+            {disciplinaryPoints.officers.slice(0, 8).map((o: any) => (
+              <div key={o.officer_id} className="flex items-center justify-between px-2 py-1.5 bg-surface-sunken rounded text-xs">
+                <span className="text-rmpg-200">{o.officer_name}</span>
+                <span className="text-rmpg-500">{o.badge_number}</span>
+                <div className="flex items-center gap-2">
+                  <span className={`font-mono font-bold ${o.risk_level === 'high' ? 'text-red-400' : o.risk_level === 'medium' ? 'text-amber-400' : 'text-green-400'}`}>
+                    {o.points} pts
+                  </span>
+                  <span className={`text-[8px] uppercase px-1.5 py-0.5 rounded ${o.risk_level === 'high' ? 'bg-red-900/30 text-red-400' : o.risk_level === 'medium' ? 'bg-amber-900/30 text-amber-400' : 'bg-green-900/30 text-green-400'}`}>
+                    {o.risk_level}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
   );
 }

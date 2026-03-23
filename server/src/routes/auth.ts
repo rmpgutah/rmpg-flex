@@ -1257,6 +1257,280 @@ router.put('/profile-image', authenticateToken, (req: Request, res: Response) =>
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// UPGRADE 1: Progressive Login Delay Info
+// Returns delay information for login rate limiting.
+// The delay increases exponentially with failed attempts.
+// ════════════════════════════════════════════════════════════
+router.get('/login-delay-info', (req: Request, res: Response) => {
+  try {
+    const { username } = req.query;
+    if (!username || typeof username !== 'string') {
+      res.json({ delay_seconds: 0, attempts_remaining: config.security.maxLoginAttempts });
+      return;
+    }
+
+    const db = getDb();
+    const windowStart = new Date(
+      Date.now() - config.security.lockoutDurationMinutes * 60 * 1000
+    ).toISOString();
+
+    const recentFailures = db.prepare(`
+      SELECT COUNT(*) as count FROM login_attempts
+      WHERE username = ? AND success = 0 AND created_at > ?
+    `).get(username, windowStart) as { count: number };
+
+    const failCount = recentFailures.count;
+    // Progressive delay: 0s, 2s, 4s, 8s, 16s, 30s cap
+    const delaySeconds = failCount <= 1 ? 0 : Math.min(Math.pow(2, failCount - 1), 30);
+    const attemptsRemaining = Math.max(0, config.security.maxLoginAttempts - failCount);
+
+    res.json({
+      delay_seconds: delaySeconds,
+      attempts_remaining: attemptsRemaining,
+      locked: attemptsRemaining <= 0,
+    });
+  } catch (error: any) {
+    console.error('Login delay info error:', error);
+    res.status(500).json({ error: 'Internal server error', code: 'LOGIN_DELAY_INFO_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 2: Device Fingerprint Registration
+// Stores a device fingerprint hash for session binding.
+// ════════════════════════════════════════════════════════════
+router.post('/register-device', authenticateToken, (req: Request, res: Response) => {
+  try {
+    const { device_fingerprint, device_name } = req.body;
+    if (!device_fingerprint || typeof device_fingerprint !== 'string') {
+      res.status(400).json({ error: 'device_fingerprint required', code: 'DEVICE_FINGERPRINT_REQUIRED' });
+      return;
+    }
+    if (device_fingerprint.length > 512) {
+      res.status(400).json({ error: 'device_fingerprint too long', code: 'DEVICE_FINGERPRINT_TOO_LONG' });
+      return;
+    }
+
+    const db = getDb();
+    const userId = req.user!.userId;
+    const now = localNow();
+    const ip = req.ip || 'unknown';
+
+    // Check if this fingerprint is already registered
+    const existing = db.prepare(
+      'SELECT id FROM trusted_devices WHERE user_id = ? AND device_fingerprint = ?'
+    ).get(userId, device_fingerprint) as any;
+
+    if (existing) {
+      // Update last_used
+      db.prepare('UPDATE trusted_devices SET last_used_at = ?, ip_address = ? WHERE id = ?')
+        .run(now, ip, existing.id);
+      res.json({ message: 'Device already registered', device_id: existing.id });
+      return;
+    }
+
+    const trustDays = config.twoFactor?.trustedDeviceDays || 30;
+    const trustedUntil = new Date(Date.now() + trustDays * 24 * 60 * 60 * 1000).toISOString();
+
+    const result = db.prepare(`
+      INSERT INTO trusted_devices (user_id, device_name, device_fingerprint, ip_address,
+        trusted_until, last_used_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(userId, device_name || 'Unknown Device', device_fingerprint, ip, trustedUntil, now, now);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'device_registered', 'user', ?, ?, ?)`).run(userId, userId, `Device registered: ${device_name || 'Unknown'}`, ip);
+
+    res.json({ message: 'Device registered', device_id: result.lastInsertRowid });
+  } catch (error: any) {
+    console.error('Register device error:', error);
+    res.status(500).json({ error: 'Internal server error', code: 'REGISTER_DEVICE_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 3: Concurrent Session Management
+// Returns active sessions with device info and allows
+// admins to force-terminate sessions for any user.
+// ════════════════════════════════════════════════════════════
+router.get('/session-count', authenticateToken, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.user!.userId;
+
+    const sessions = db.prepare(`
+      SELECT session_id, ip_address, user_agent, created_at, last_used_at
+      FROM sessions
+      WHERE user_id = ? AND is_active = 1
+      ORDER BY last_used_at DESC
+      LIMIT 20
+    `).all(userId) as any[];
+
+    const maxAllowed = config.session.maxPerUser;
+
+    res.json({
+      active_count: sessions.length,
+      max_allowed: maxAllowed,
+      sessions: sessions.map((s: any) => ({
+        ...s,
+        browser: parseBrowserInfo(s.user_agent),
+        is_current: s.session_id === (req.user as any)?.sessionId,
+      })),
+    });
+  } catch (error: any) {
+    console.error('Session count error:', error);
+    res.status(500).json({ error: 'Internal server error', code: 'SESSION_COUNT_ERROR' });
+  }
+});
+
+// Admin: terminate all sessions for a specific user
+router.post('/admin/terminate-sessions', authenticateToken, (req: Request, res: Response) => {
+  try {
+    if (req.user!.role !== 'admin') {
+      res.status(403).json({ error: 'Admin access required', code: 'ADMIN_ACCESS_REQUIRED' });
+      return;
+    }
+
+    const { user_id } = req.body;
+    if (!user_id) {
+      res.status(400).json({ error: 'user_id required', code: 'USER_ID_REQUIRED' });
+      return;
+    }
+
+    const db = getDb();
+    const result = db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ? AND is_active = 1')
+      .run(user_id);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'admin_terminate_sessions', 'user', ?, ?, ?)`).run(
+      req.user!.userId, user_id, `Admin terminated ${result.changes} session(s) for user #${user_id}`, req.ip || 'unknown');
+
+    broadcast('admin', 'security:updated', { action: 'sessions_terminated', user_id });
+    res.json({ success: true, terminated: result.changes });
+  } catch (error: any) {
+    console.error('Terminate sessions error:', error);
+    res.status(500).json({ error: 'Internal server error', code: 'TERMINATE_SESSIONS_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 4: Force Password Change After X Days
+// Admin endpoint to enforce password expiry.
+// ════════════════════════════════════════════════════════════
+router.post('/admin/enforce-password-expiry', authenticateToken, (req: Request, res: Response) => {
+  try {
+    if (req.user!.role !== 'admin') {
+      res.status(403).json({ error: 'Admin access required', code: 'ADMIN_ACCESS_REQUIRED' });
+      return;
+    }
+
+    const db = getDb();
+    const maxDays = config.password.expiryDays || 90;
+    const cutoff = new Date(Date.now() - maxDays * 24 * 60 * 60 * 1000).toISOString();
+
+    const staleUsers = db.prepare(`
+      SELECT id, username, password_changed_at FROM users
+      WHERE status = 'active' AND force_password_change = 0
+        AND (password_changed_at IS NULL OR password_changed_at < ?)
+    `).all(cutoff) as any[];
+
+    if (staleUsers.length === 0) {
+      res.json({ message: 'All passwords are up to date', enforced_count: 0 });
+      return;
+    }
+
+    const enforceStmt = db.prepare('UPDATE users SET force_password_change = 1 WHERE id = ?');
+    const tx = db.transaction(() => {
+      for (const u of staleUsers) {
+        enforceStmt.run(u.id);
+      }
+    });
+    tx();
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'enforce_password_expiry', 'system', 0, ?, ?)`).run(
+      req.user!.userId, `Forced password change for ${staleUsers.length} user(s) with passwords older than ${maxDays} days`, req.ip || 'unknown');
+
+    res.json({
+      success: true,
+      enforced_count: staleUsers.length,
+      affected_users: staleUsers.map((u: any) => ({ id: u.id, username: u.username, password_changed_at: u.password_changed_at })),
+    });
+  } catch (error: any) {
+    console.error('Enforce password expiry error:', error);
+    res.status(500).json({ error: 'Internal server error', code: 'ENFORCE_PASSWORD_EXPIRY_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 5: Login Attempt Analytics
+// ════════════════════════════════════════════════════════════
+router.get('/login-analytics', authenticateToken, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.user!.userId;
+    const userRow = db.prepare('SELECT username FROM users WHERE id = ?').get(userId) as { username: string } | undefined;
+    if (!userRow) { res.status(404).json({ error: 'User not found' }); return; }
+
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    const stats = db.prepare(`
+      SELECT
+        COUNT(*) as total_attempts,
+        SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successful,
+        SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) as failed,
+        COUNT(DISTINCT ip_address) as unique_ips,
+        MAX(CASE WHEN success = 1 THEN created_at END) as last_success,
+        MAX(CASE WHEN success = 0 THEN created_at END) as last_failure
+      FROM login_attempts
+      WHERE username = ? AND created_at >= ?
+    `).get(userRow.username, cutoff) as any;
+
+    const byDay = db.prepare(`
+      SELECT DATE(created_at) as date, COUNT(*) as count,
+        SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successes
+      FROM login_attempts
+      WHERE username = ? AND created_at >= ?
+      GROUP BY DATE(created_at) ORDER BY date
+    `).all(userRow.username, cutoff) as any[];
+
+    const uniqueIps = db.prepare(`
+      SELECT ip_address, COUNT(*) as count, MAX(created_at) as last_used
+      FROM login_attempts
+      WHERE username = ? AND success = 1 AND created_at >= ?
+      GROUP BY ip_address ORDER BY last_used DESC
+      LIMIT 10
+    `).all(userRow.username, cutoff) as any[];
+
+    res.json({
+      total_attempts: stats?.total_attempts || 0,
+      successful: stats?.successful || 0,
+      failed: stats?.failed || 0,
+      unique_ips: stats?.unique_ips || 0,
+      last_success: stats?.last_success || null,
+      last_failure: stats?.last_failure || null,
+      by_day: byDay,
+      known_ips: uniqueIps,
+    });
+  } catch (error: any) {
+    console.error('Login analytics error:', error);
+    res.status(500).json({ error: 'Internal server error', code: 'LOGIN_ANALYTICS_ERROR' });
+  }
+});
+
+/** Parse browser info from user agent */
+function parseBrowserInfo(ua?: string): string {
+  if (!ua) return 'Unknown';
+  if (ua.includes('Electron')) return 'RMPG Desktop';
+  if (ua.includes('Edg/')) return 'Edge';
+  if (ua.includes('Chrome/')) return 'Chrome';
+  if (ua.includes('Firefox/')) return 'Firefox';
+  if (ua.includes('Safari/') && !ua.includes('Chrome')) return 'Safari';
+  if (ua.includes('okhttp') || ua.includes('Capacitor')) return 'RMPG Mobile';
+  return 'Other';
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Signed URLs (for secure file access)
 // ═══════════════════════════════════════════════════════════════

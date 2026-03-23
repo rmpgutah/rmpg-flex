@@ -1377,4 +1377,137 @@ router.get('/person-intel', (req: Request, res: Response) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// UPGRADE 15: Warrant Expiration Warnings (within 30 days)
+// ════════════════════════════════════════════════════════════
+router.get('/expiring-soon', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = parseInt(req.query.days as string, 10) || 30;
+    const warrants = db.prepare(`
+      SELECT w.*, p.first_name as subject_first_name, p.last_name as subject_last_name,
+        (p.first_name || ' ' || p.last_name) as subject_name,
+        CAST(JULIANDAY(w.expires_at) - JULIANDAY('now', 'localtime') AS INTEGER) as days_until_expiry
+      FROM warrants w
+      LEFT JOIN persons p ON w.subject_person_id = p.id
+      WHERE w.status = 'active' AND w.expires_at IS NOT NULL
+        AND w.expires_at <= date('now', '+' || ? || ' days', 'localtime')
+        AND w.expires_at >= date('now', 'localtime')
+        AND w.archived_at IS NULL
+      ORDER BY w.expires_at ASC
+      LIMIT 100
+    `).all(days);
+    const expiredUnprocessed = db.prepare(`
+      SELECT w.*, p.first_name as subject_first_name, p.last_name as subject_last_name,
+        (p.first_name || ' ' || p.last_name) as subject_name
+      FROM warrants w LEFT JOIN persons p ON w.subject_person_id = p.id
+      WHERE w.status = 'active' AND w.expires_at IS NOT NULL
+        AND w.expires_at < date('now', 'localtime') AND w.archived_at IS NULL
+      ORDER BY w.expires_at ASC LIMIT 50
+    `).all();
+    res.json({ data: { expiring_soon: warrants, already_expired: expiredUnprocessed, expiring_count: warrants.length, expired_count: expiredUnprocessed.length } });
+  } catch (error: any) { console.error('Expiring warrants error:', error); res.status(500).json({ error: 'Failed to get expiring warrants', code: 'EXPIRING_WARRANTS_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 16: Service Attempt Tracking
+// ════════════════════════════════════════════════════════════
+try { const db = getDb(); db.prepare(`CREATE TABLE IF NOT EXISTS warrant_service_attempts (id INTEGER PRIMARY KEY AUTOINCREMENT, warrant_id INTEGER NOT NULL, attempted_by INTEGER NOT NULL, attempted_at TEXT NOT NULL, location TEXT, method TEXT DEFAULT 'in_person', result TEXT DEFAULT 'unsuccessful', notes TEXT, created_at TEXT NOT NULL)`).run(); } catch { /* already exists */ }
+
+router.get('/:id/service-attempts', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const warrant = db.prepare('SELECT id FROM warrants WHERE id = ?').get(req.params.id);
+    if (!warrant) { res.status(404).json({ error: 'Warrant not found', code: 'WARRANT_NOT_FOUND' }); return; }
+    const attempts = db.prepare(`SELECT wsa.*, u.full_name as attempted_by_name FROM warrant_service_attempts wsa LEFT JOIN users u ON wsa.attempted_by = u.id WHERE wsa.warrant_id = ? ORDER BY wsa.attempted_at DESC`).all(req.params.id);
+    res.json({ data: attempts });
+  } catch (error: any) { console.error('Get service attempts error:', error); res.status(500).json({ error: 'Failed to get service attempts', code: 'GET_SERVICE_ATTEMPTS_ERROR' }); }
+});
+
+router.post('/:id/service-attempts', requireRole('dispatcher', 'supervisor', 'admin', 'manager', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const warrant = db.prepare('SELECT id, warrant_number FROM warrants WHERE id = ?').get(req.params.id) as any;
+    if (!warrant) { res.status(404).json({ error: 'Warrant not found', code: 'WARRANT_NOT_FOUND' }); return; }
+    const { location, method, result: attemptResult, notes } = req.body;
+    const now = localNow();
+    const insertResult = db.prepare('INSERT INTO warrant_service_attempts (warrant_id, attempted_by, attempted_at, location, method, result, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(req.params.id, req.user!.userId, now, location || null, method || 'in_person', attemptResult || 'unsuccessful', notes || null, now);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'warrant_service_attempt', 'warrant', ?, ?, ?)`).run(req.user!.userId, req.params.id, `Service attempt on ${warrant.warrant_number}: ${attemptResult || 'unsuccessful'}`, req.ip || 'unknown');
+    if (attemptResult === 'served') {
+      db.prepare("UPDATE warrants SET status = 'served', served_by = ?, served_at = ?, served_location = ?, updated_at = ? WHERE id = ?").run(req.user!.userId, now, location || null, now, req.params.id);
+      broadcast('alerts', 'warrant_served', { id: parseInt(req.params.id), warrant_number: warrant.warrant_number });
+    }
+    res.status(201).json({ data: { id: insertResult.lastInsertRowid } });
+  } catch (error: any) { console.error('Create service attempt error:', error); res.status(500).json({ error: 'Failed to record service attempt', code: 'CREATE_SERVICE_ATTEMPT_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 17: Warrant Recall Workflow
+// ════════════════════════════════════════════════════════════
+router.put('/:id/recall', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const warrant = db.prepare('SELECT * FROM warrants WHERE id = ?').get(req.params.id) as any;
+    if (!warrant) { res.status(404).json({ error: 'Warrant not found', code: 'WARRANT_NOT_FOUND' }); return; }
+    if (warrant.status !== 'active') { res.status(400).json({ error: 'Only active warrants can be recalled', code: 'ONLY_ACTIVE_CAN_RECALL' }); return; }
+    const { recall_reason, recall_court_order } = req.body;
+    if (!recall_reason?.trim()) { res.status(400).json({ error: 'recall_reason is required', code: 'MISSING_RECALL_REASON' }); return; }
+    db.prepare("UPDATE warrants SET status = 'recalled', updated_at = ?, notes = COALESCE(notes, '') || ? WHERE id = ?").run(now, `\n[RECALLED ${now}] ${recall_reason}${recall_court_order ? ` | Court Order: ${recall_court_order}` : ''}`, req.params.id);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'warrant_recalled', 'warrant', ?, ?, ?)`).run(req.user!.userId, req.params.id, `Recalled warrant ${warrant.warrant_number}: ${recall_reason}`, req.ip || 'unknown');
+    broadcast('alerts', 'warrant_recalled', { id: warrant.id, warrant_number: warrant.warrant_number });
+    const updated = db.prepare('SELECT * FROM warrants WHERE id = ?').get(req.params.id);
+    res.json({ data: updated });
+  } catch (error: any) { console.error('Recall warrant error:', error); res.status(500).json({ error: 'Failed to recall warrant', code: 'RECALL_WARRANT_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 18: Warrant Stats by Status
+// ════════════════════════════════════════════════════════════
+router.get('/stats/by-status', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const byStatus = db.prepare(`SELECT w.status, COUNT(*) as count FROM warrants w WHERE w.archived_at IS NULL GROUP BY w.status`).all() as any[];
+    const byType = db.prepare(`SELECT w.type, w.status, COUNT(*) as count FROM warrants w WHERE w.archived_at IS NULL GROUP BY w.type, w.status`).all() as any[];
+    const byOffenseLevel = db.prepare(`SELECT w.offense_level, COUNT(*) as count FROM warrants w WHERE w.status = 'active' AND w.archived_at IS NULL GROUP BY w.offense_level`).all() as any[];
+    const avgServiceTime = db.prepare(`SELECT AVG(JULIANDAY(w.served_at) - JULIANDAY(w.created_at)) as avg_days FROM warrants w WHERE w.status = 'served' AND w.served_at IS NOT NULL`).get() as any;
+    res.json({ data: { by_status: Object.fromEntries(byStatus.map((r: any) => [r.status, r.count])), by_type_status: byType, by_offense_level: Object.fromEntries(byOffenseLevel.map((r: any) => [r.offense_level || 'unknown', r.count])), avg_service_days: avgServiceTime?.avg_days ? Math.round(avgServiceTime.avg_days) : null } });
+  } catch (error: any) { console.error('Warrant stats error:', error); res.status(500).json({ error: 'Failed to get warrant stats', code: 'WARRANT_STATS_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 19: Warrant Data Completeness
+// ════════════════════════════════════════════════════════════
+router.get('/:id/completeness', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const warrant = db.prepare('SELECT * FROM warrants WHERE id = ?').get(req.params.id) as any;
+    if (!warrant) { res.status(404).json({ error: 'Warrant not found', code: 'WARRANT_NOT_FOUND' }); return; }
+    const requiredFields = ['type', 'charge_description', 'subject_person_id'];
+    const recommendedFields = ['issuing_court', 'issuing_judge', 'offense_level', 'bail_amount', 'expires_at', 'statute_citation', 'notes'];
+    const filledRequired = requiredFields.filter(f => warrant[f] != null && String(warrant[f]).trim() !== '').length;
+    const filledRecommended = recommendedFields.filter(f => warrant[f] != null && String(warrant[f]).trim() !== '').length;
+    const score = Math.round(((filledRequired / requiredFields.length) * 60 + (filledRecommended / recommendedFields.length) * 40));
+    res.json({ data: { warrant_id: warrant.id, score, grade: score >= 80 ? 'A' : score >= 60 ? 'B' : score >= 40 ? 'C' : 'D', missing_required: requiredFields.filter(f => !warrant[f] || String(warrant[f]).trim() === ''), missing_recommended: recommendedFields.filter(f => !warrant[f] || String(warrant[f]).trim() === '') } });
+  } catch (error: any) { console.error('Warrant completeness error:', error); res.status(500).json({ error: 'Failed to get completeness', code: 'WARRANT_COMPLETENESS_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 20: Auto-expire active warrants past expiry date
+// ════════════════════════════════════════════════════════════
+router.post('/auto-expire', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const expired = db.prepare(`SELECT id, warrant_number FROM warrants WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at < date('now', 'localtime') AND archived_at IS NULL`).all() as any[];
+    if (expired.length === 0) { res.json({ data: { expired_count: 0 } }); return; }
+    db.prepare(`UPDATE warrants SET status = 'expired', updated_at = ? WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at < date('now', 'localtime') AND archived_at IS NULL`).run(now);
+    for (const w of expired) {
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'warrant_auto_expired', 'warrant', ?, ?, ?)`).run(req.user!.userId, w.id, `Auto-expired warrant ${w.warrant_number}`, req.ip || 'unknown');
+    }
+    broadcast('alerts', 'warrants_auto_expired', { count: expired.length });
+    res.json({ data: { expired_count: expired.length, expired_warrants: expired.map((w: any) => w.warrant_number) } });
+  } catch (error: any) { console.error('Auto-expire error:', error); res.status(500).json({ error: 'Failed to auto-expire warrants', code: 'AUTO_EXPIRE_ERROR' }); }
+});
+
 export default router;

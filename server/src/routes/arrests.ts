@@ -830,4 +830,313 @@ router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: R
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// UPGRADE: Booking Checklist
+// ════════════════════════════════════════════════════════════
+
+router.get('/manual/:id/checklist', validateParamIdMiddleware, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    const record = db.prepare('SELECT * FROM arrest_records WHERE id = ?').get(id) as any;
+    if (!record) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
+
+    let checklist: any = {};
+    try { checklist = JSON.parse(record.booking_checklist || '{}'); } catch { /* ignore */ }
+
+    // Define standard checklist items
+    const standardItems = [
+      { key: 'miranda_read', label: 'Miranda Rights Read', required: true },
+      { key: 'miranda_acknowledged', label: 'Miranda Acknowledged', required: true },
+      { key: 'personal_search', label: 'Personal Search Completed', required: true },
+      { key: 'property_inventory', label: 'Property Inventory Completed', required: true },
+      { key: 'fingerprinted', label: 'Fingerprinted', required: true },
+      { key: 'photographed', label: 'Booking Photo Taken', required: true },
+      { key: 'medical_screening', label: 'Medical Screening', required: true },
+      { key: 'phone_call_offered', label: 'Phone Call Offered', required: true },
+      { key: 'warrant_verified', label: 'Warrant Verified', required: false },
+      { key: 'vehicle_secured', label: 'Vehicle Secured/Towed', required: false },
+      { key: 'evidence_secured', label: 'Evidence Secured', required: false },
+      { key: 'supervisor_notified', label: 'Supervisor Notified', required: false },
+      { key: 'bail_info_provided', label: 'Bail Information Provided', required: false },
+    ];
+
+    const itemsWithStatus = standardItems.map(item => ({
+      ...item,
+      completed: !!checklist[item.key],
+      completed_at: checklist[item.key]?.at || null,
+      completed_by: checklist[item.key]?.by || null,
+      notes: checklist[item.key]?.notes || null,
+    }));
+
+    const completedCount = itemsWithStatus.filter(i => i.completed).length;
+    const requiredCount = standardItems.filter(i => i.required).length;
+    const requiredCompleted = itemsWithStatus.filter(i => i.required && i.completed).length;
+
+    res.json({
+      data: {
+        arrest_id: id,
+        items: itemsWithStatus,
+        total_items: standardItems.length,
+        completed_count: completedCount,
+        required_count: requiredCount,
+        required_completed: requiredCompleted,
+        is_complete: requiredCompleted >= requiredCount,
+      },
+    });
+  } catch (err: any) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to get booking checklist', code: 'BOOKING_CHECKLIST_ERROR' });
+  }
+});
+
+router.put('/manual/:id/checklist', validateParamIdMiddleware, requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    const record = db.prepare('SELECT * FROM arrest_records WHERE id = ?').get(id) as any;
+    if (!record) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
+
+    const { item_key, completed, notes } = req.body;
+    if (!item_key) return res.status(400).json({ error: 'item_key required', code: 'ITEM_KEY_REQUIRED' });
+
+    const now = localNow();
+    let checklist: any = {};
+    try { checklist = JSON.parse(record.booking_checklist || '{}'); } catch { /* ignore */ }
+
+    if (completed) {
+      const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
+      checklist[item_key] = { at: now, by: user?.full_name || '', by_id: req.user!.userId, notes: notes || '' };
+    } else {
+      delete checklist[item_key];
+    }
+
+    db.prepare('UPDATE arrest_records SET booking_checklist = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(checklist), now, id);
+
+    auditLog(req, 'checklist_updated', 'arrest_record', id, `Checklist item ${item_key}: ${completed ? 'completed' : 'unchecked'}`);
+    res.json({ data: { arrest_id: id, item_key, completed: !!completed } });
+  } catch (err: any) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to update checklist', code: 'CHECKLIST_UPDATE_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE: Property Inventory at Arrest
+// ════════════════════════════════════════════════════════════
+
+router.get('/manual/:id/property', validateParamIdMiddleware, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    const record = db.prepare('SELECT * FROM arrest_records WHERE id = ?').get(id) as any;
+    if (!record) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
+
+    let inventory: any[] = [];
+    try { inventory = JSON.parse(record.property_inventory || '[]'); } catch { /* ignore */ }
+
+    res.json({ data: { arrest_id: id, items: inventory, total_items: inventory.length } });
+  } catch (err: any) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to get property inventory', code: 'PROPERTY_INVENTORY_ERROR' });
+  }
+});
+
+router.post('/manual/:id/property', validateParamIdMiddleware, requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    const record = db.prepare('SELECT * FROM arrest_records WHERE id = ?').get(id) as any;
+    if (!record) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
+
+    const { description, category, quantity, serial_number, estimated_value, disposition, notes } = req.body;
+    if (!description) return res.status(400).json({ error: 'description required', code: 'DESCRIPTION_REQUIRED' });
+
+    const now = localNow();
+    const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
+
+    let inventory: any[] = [];
+    try { inventory = JSON.parse(record.property_inventory || '[]'); } catch { /* ignore */ }
+
+    const item = {
+      id: `PROP-${Date.now()}-${inventory.length + 1}`,
+      description,
+      category: category || 'personal_item',
+      quantity: quantity || 1,
+      serial_number: serial_number || null,
+      estimated_value: estimated_value || null,
+      disposition: disposition || 'held',
+      notes: notes || '',
+      logged_by: user?.full_name || '',
+      logged_by_id: req.user!.userId,
+      logged_at: now,
+    };
+
+    inventory.push(item);
+
+    db.prepare('UPDATE arrest_records SET property_inventory = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(inventory), now, id);
+
+    auditLog(req, 'property_added', 'arrest_record', id, `Property item added: ${description}`);
+    broadcastRecordUpdate({ type: 'arrest_property_added', id });
+    res.status(201).json({ data: item });
+  } catch (err: any) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to add property item', code: 'ADD_PROPERTY_ERROR' });
+  }
+});
+
+router.delete('/manual/:id/property/:itemId', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    const record = db.prepare('SELECT * FROM arrest_records WHERE id = ?').get(id) as any;
+    if (!record) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
+
+    let inventory: any[] = [];
+    try { inventory = JSON.parse(record.property_inventory || '[]'); } catch { /* ignore */ }
+
+    const newInventory = inventory.filter((i: any) => i.id !== req.params.itemId);
+    if (newInventory.length === inventory.length) return res.status(404).json({ error: 'Property item not found', code: 'ITEM_NOT_FOUND' });
+
+    db.prepare('UPDATE arrest_records SET property_inventory = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(newInventory), localNow(), id);
+
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to remove property item', code: 'REMOVE_PROPERTY_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE: Miranda Rights Acknowledgment Tracking
+// ════════════════════════════════════════════════════════════
+
+router.post('/manual/:id/miranda', validateParamIdMiddleware, requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    const record = db.prepare('SELECT * FROM arrest_records WHERE id = ?').get(id) as any;
+    if (!record) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
+
+    const { read_at, acknowledged, waived_rights, requested_attorney, language,
+      interpreter_used, interpreter_name, witness_officer_id, notes } = req.body;
+
+    const now = localNow();
+    const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
+    const witnessOfficer = witness_officer_id
+      ? db.prepare('SELECT full_name FROM users WHERE id = ?').get(witness_officer_id) as any
+      : null;
+
+    const mirandaData = {
+      read_at: read_at || now,
+      read_by: user?.full_name || '',
+      read_by_id: req.user!.userId,
+      acknowledged: acknowledged !== false,
+      waived_rights: !!waived_rights,
+      requested_attorney: !!requested_attorney,
+      language: language || 'English',
+      interpreter_used: !!interpreter_used,
+      interpreter_name: interpreter_name || null,
+      witness_officer_id: witness_officer_id || null,
+      witness_officer_name: witnessOfficer?.full_name || null,
+      notes: notes || '',
+      recorded_at: now,
+    };
+
+    db.prepare('UPDATE arrest_records SET miranda_data = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(mirandaData), now, id);
+
+    // Also update the booking checklist
+    let checklist: any = {};
+    try { checklist = JSON.parse(record.booking_checklist || '{}'); } catch { /* ignore */ }
+    checklist.miranda_read = { at: now, by: user?.full_name || '', by_id: req.user!.userId };
+    if (acknowledged !== false) {
+      checklist.miranda_acknowledged = { at: now, by: user?.full_name || '', by_id: req.user!.userId };
+    }
+    db.prepare('UPDATE arrest_records SET booking_checklist = ? WHERE id = ?')
+      .run(JSON.stringify(checklist), id);
+
+    auditLog(req, 'miranda_recorded', 'arrest_record', id,
+      `Miranda rights read: ${acknowledged !== false ? 'acknowledged' : 'refused'}${waived_rights ? ', rights waived' : ''}${requested_attorney ? ', attorney requested' : ''}`);
+
+    res.json({ data: mirandaData });
+  } catch (err: any) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to record Miranda rights', code: 'MIRANDA_ERROR' });
+  }
+});
+
+router.get('/manual/:id/miranda', validateParamIdMiddleware, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    const record = db.prepare('SELECT * FROM arrest_records WHERE id = ?').get(id) as any;
+    if (!record) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
+
+    let mirandaData: any = null;
+    try { mirandaData = JSON.parse(record.miranda_data || 'null'); } catch { /* ignore */ }
+
+    res.json({ data: { arrest_id: id, miranda: mirandaData } });
+  } catch (err: any) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to get Miranda data', code: 'MIRANDA_DATA_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE: Cross-Link Arrests to Court Events
+// ════════════════════════════════════════════════════════════
+
+router.get('/manual/:id/linked-records', validateParamIdMiddleware, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    const record = db.prepare('SELECT * FROM arrest_records WHERE id = ?').get(id) as any;
+    if (!record) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
+
+    // Get cross-links
+    const crossLinks = db.prepare(`
+      SELECT linked_type, linked_id, match_type, match_confidence, created_at
+      FROM arrest_cross_links WHERE arrest_record_id = ?
+      LIMIT 100
+    `).all(id) as any[];
+
+    const links: any = { warrants: [], court_events: [], citations: [], incidents: [], cross_links: crossLinks };
+
+    // Find warrants by name
+    if (record.full_name) {
+      try {
+        links.warrants = db.prepare(`
+          SELECT id, warrant_number, warrant_type, status, subject_name FROM warrants
+          WHERE subject_name LIKE ? AND status = 'active' LIMIT 10
+        `).all(`%${record.last_name}%`);
+      } catch { /* warrants table may not exist */ }
+    }
+
+    // Find court events by name
+    if (record.full_name) {
+      links.court_events = db.prepare(`
+        SELECT id, event_number, event_type, event_date, status, outcome FROM court_events
+        WHERE defendant_name LIKE ? ORDER BY event_date DESC LIMIT 10
+      `).all(`%${record.last_name}%`);
+    }
+
+    // Find citations by name
+    if (record.full_name) {
+      links.citations = db.prepare(`
+        SELECT id, citation_number, violation, person_name, status FROM citations
+        WHERE person_name LIKE ? ORDER BY created_at DESC LIMIT 10
+      `).all(`%${record.last_name}%`);
+    }
+
+    res.json({ data: links });
+  } catch (err: any) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to get linked records', code: 'LINKED_RECORDS_ERROR' });
+  }
+});
+
 export default router;

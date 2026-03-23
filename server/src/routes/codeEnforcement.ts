@@ -617,4 +617,259 @@ router.get('/compliance-dashboard', (req: Request, res: Response) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// UPGRADE: Violation Escalation Workflow (Warning → Citation → Court)
+// ════════════════════════════════════════════════════════════
+
+router.post('/violations/:id/escalate', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const violation = db.prepare('SELECT * FROM code_violations WHERE id = ?').get(req.params.id) as any;
+    if (!violation) return res.status(404).json({ error: 'Violation not found', code: 'VIOLATION_NOT_FOUND' });
+
+    const { escalation_type, notes } = req.body;
+    const validEscalations = ['warning', 'final_notice', 'citation', 'court_referral', 'abatement'];
+    if (!escalation_type || !validEscalations.includes(escalation_type))
+      return res.status(400).json({ error: 'Valid escalation_type required', code: 'INVALID_ESCALATION' });
+
+    // Define escalation path
+    const escalationPath: Record<string, string> = {
+      warning: 'notice_sent',
+      final_notice: 'notice_sent',
+      citation: 'referred',
+      court_referral: 'referred',
+      abatement: 'reinspection',
+    };
+
+    const newStatus = escalationPath[escalation_type] || violation.status;
+    const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
+
+    // Build escalation history
+    let escalationHistory: any[] = [];
+    try { escalationHistory = JSON.parse(violation.escalation_history || '[]'); } catch { /* ignore */ }
+    escalationHistory.push({
+      type: escalation_type,
+      date: now,
+      by_id: req.user!.userId,
+      by_name: user?.full_name || '',
+      notes: notes || '',
+      previous_status: violation.status,
+      new_status: newStatus,
+    });
+
+    db.prepare(`UPDATE code_violations SET status = ?, escalation_level = ?,
+      escalation_history = ?, updated_at = ? WHERE id = ?`)
+      .run(newStatus, escalation_type, JSON.stringify(escalationHistory), now, req.params.id);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'escalation', 'code_violation', ?, ?, ?)`).run(
+      req.user!.userId, req.params.id, JSON.stringify({ escalation_type, notes }), now);
+
+    broadcastRecordUpdate({ type: 'violation_escalated', id: parseInt(req.params.id), escalation_type });
+    res.json({ data: { id: parseInt(req.params.id), status: newStatus, escalation_level: escalation_type } });
+  } catch (error: any) {
+    console.error('Violation escalation error:', error);
+    res.status(500).json({ error: 'Failed to escalate violation', code: 'VIOLATION_ESCALATION_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE: Repeat Offender Flagging
+// ════════════════════════════════════════════════════════════
+
+router.get('/repeat-offenders', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { months = '12', min_violations = '3' } = req.query;
+    const cutoff = new Date(Date.now() - parseInt(months as string, 10) * 30 * 24 * 60 * 60 * 1000).toISOString();
+    const minViolations = parseInt(min_violations as string, 10) || 3;
+
+    // By location
+    const byLocation = db.prepare(`
+      SELECT location,
+        COUNT(*) as violation_count,
+        GROUP_CONCAT(DISTINCT violation_type) as types,
+        GROUP_CONCAT(DISTINCT violator_name) as violators,
+        SUM(COALESCE(fine_amount, 0)) as total_fines,
+        MIN(created_at) as first_violation,
+        MAX(created_at) as last_violation,
+        SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) as open_count
+      FROM code_violations
+      WHERE created_at >= ? AND location IS NOT NULL AND location != ''
+      GROUP BY location
+      HAVING COUNT(*) >= ?
+      ORDER BY violation_count DESC
+      LIMIT 50
+    `).all(cutoff, minViolations);
+
+    // By violator
+    const byViolator = db.prepare(`
+      SELECT violator_name,
+        COUNT(*) as violation_count,
+        GROUP_CONCAT(DISTINCT violation_type) as types,
+        GROUP_CONCAT(DISTINCT location) as locations,
+        SUM(COALESCE(fine_amount, 0)) as total_fines,
+        SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) as open_count
+      FROM code_violations
+      WHERE created_at >= ? AND violator_name IS NOT NULL AND violator_name != ''
+      GROUP BY violator_name
+      HAVING COUNT(*) >= ?
+      ORDER BY violation_count DESC
+      LIMIT 50
+    `).all(cutoff, minViolations);
+
+    res.json({
+      data: {
+        by_location: byLocation,
+        by_violator: byViolator,
+        period_months: parseInt(months as string, 10),
+        min_threshold: minViolations,
+      },
+    });
+  } catch (error: any) {
+    console.error('Repeat offenders error:', error);
+    res.status(500).json({ error: 'Failed to get repeat offenders', code: 'REPEAT_OFFENDERS_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE: Compliance Deadline Tracking
+// ════════════════════════════════════════════════════════════
+
+router.get('/compliance-deadlines', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localToday();
+
+    // Upcoming deadlines (next 30 days)
+    const upcoming = db.prepare(`
+      SELECT id, violation_number, violation_type, location, violator_name,
+        compliance_deadline, severity, status,
+        CAST(JULIANDAY(compliance_deadline) - JULIANDAY('now') AS INTEGER) as days_remaining
+      FROM code_violations
+      WHERE compliance_deadline IS NOT NULL AND compliance_deadline >= ?
+        AND compliance_deadline <= DATE(?, '+30 days')
+        AND status NOT IN ('resolved', 'voided')
+      ORDER BY compliance_deadline ASC
+      LIMIT 100
+    `).all(today, today);
+
+    // Overdue
+    const overdue = db.prepare(`
+      SELECT id, violation_number, violation_type, location, violator_name,
+        compliance_deadline, severity, status, fine_amount,
+        CAST(JULIANDAY('now') - JULIANDAY(compliance_deadline) AS INTEGER) as days_overdue
+      FROM code_violations
+      WHERE compliance_deadline IS NOT NULL AND compliance_deadline < ?
+        AND status NOT IN ('resolved', 'voided')
+      ORDER BY days_overdue DESC
+      LIMIT 100
+    `).all(today);
+
+    // Summary
+    const stats = db.prepare(`
+      SELECT
+        SUM(CASE WHEN compliance_deadline < ? AND status NOT IN ('resolved', 'voided') THEN 1 ELSE 0 END) as overdue_count,
+        SUM(CASE WHEN compliance_deadline >= ? AND compliance_deadline <= DATE(?, '+7 days') AND status NOT IN ('resolved', 'voided') THEN 1 ELSE 0 END) as due_this_week,
+        SUM(CASE WHEN compliance_deadline >= ? AND compliance_deadline <= DATE(?, '+30 days') AND status NOT IN ('resolved', 'voided') THEN 1 ELSE 0 END) as due_this_month
+      FROM code_violations WHERE compliance_deadline IS NOT NULL
+    `).get(today, today, today, today, today) as any;
+
+    res.json({
+      data: {
+        upcoming,
+        overdue,
+        stats: stats || { overdue_count: 0, due_this_week: 0, due_this_month: 0 },
+      },
+    });
+  } catch (error: any) {
+    console.error('Compliance deadlines error:', error);
+    res.status(500).json({ error: 'Failed to get compliance deadlines', code: 'COMPLIANCE_DEADLINES_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE: Inspection Scheduling
+// ════════════════════════════════════════════════════════════
+
+router.post('/violations/:id/schedule-inspection', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const { inspection_date, inspection_type, assigned_officer_id, notes } = req.body;
+    if (!inspection_date) return res.status(400).json({ error: 'inspection_date required', code: 'INSPECTION_DATE_REQUIRED' });
+
+    const violation = db.prepare('SELECT * FROM code_violations WHERE id = ?').get(req.params.id) as any;
+    if (!violation) return res.status(404).json({ error: 'Violation not found', code: 'VIOLATION_NOT_FOUND' });
+
+    const inspectionData = {
+      violation_id: parseInt(req.params.id),
+      inspection_type: inspection_type || 'reinspection',
+      scheduled_date: inspection_date,
+      assigned_officer_id: assigned_officer_id || req.user!.userId,
+      status: 'scheduled',
+      notes: notes || '',
+    };
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'inspection_scheduled', 'code_violation', ?, ?, ?)`).run(
+      req.user!.userId, req.params.id, JSON.stringify(inspectionData), now);
+
+    // Update violation status
+    db.prepare(`UPDATE code_violations SET status = 'reinspection', updated_at = ? WHERE id = ?`)
+      .run(now, req.params.id);
+
+    res.json({ data: inspectionData });
+  } catch (error: any) {
+    console.error('Schedule inspection error:', error);
+    res.status(500).json({ error: 'Failed to schedule inspection', code: 'SCHEDULE_INSPECTION_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE: Fine Payment Tracking
+// ════════════════════════════════════════════════════════════
+
+router.post('/violations/:id/payment', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const { amount, payment_method, receipt_number, notes } = req.body;
+
+    if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0)
+      return res.status(400).json({ error: 'Valid payment amount required', code: 'INVALID_PAYMENT_AMOUNT' });
+
+    const violation = db.prepare('SELECT * FROM code_violations WHERE id = ?').get(req.params.id) as any;
+    if (!violation) return res.status(404).json({ error: 'Violation not found', code: 'VIOLATION_NOT_FOUND' });
+
+    let paymentHistory: any[] = [];
+    try { paymentHistory = JSON.parse(violation.payment_history || '[]'); } catch { /* ignore */ }
+
+    paymentHistory.push({
+      amount: parseFloat(amount),
+      payment_method: payment_method || 'cash',
+      receipt_number: receipt_number || null,
+      notes: notes || '',
+      recorded_by: req.user!.userId,
+      recorded_at: now,
+    });
+
+    const totalPaid = paymentHistory.reduce((s: number, p: any) => s + (p.amount || 0), 0);
+    const balance = (violation.fine_amount || 0) - totalPaid;
+
+    db.prepare(`UPDATE code_violations SET payment_history = ?, amount_paid = ?, updated_at = ? WHERE id = ?`)
+      .run(JSON.stringify(paymentHistory), totalPaid, now, req.params.id);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'payment_received', 'code_violation', ?, ?, ?)`).run(
+      req.user!.userId, req.params.id, JSON.stringify({ amount: parseFloat(amount), payment_method }), now);
+
+    res.json({ data: { id: parseInt(req.params.id), total_paid: totalPaid, balance_due: balance } });
+  } catch (error: any) {
+    console.error('Payment recording error:', error);
+    res.status(500).json({ error: 'Failed to record payment', code: 'PAYMENT_ERROR' });
+  }
+});
+
 export default router;

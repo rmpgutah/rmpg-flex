@@ -468,7 +468,14 @@ export default function TrespassOrdersPage() {
                   {(order.section_id || order.zone_id || order.beat_id) && (
                     <span className="font-mono text-rmpg-500">{[order.section_id, order.zone_id, order.beat_id].filter(Boolean).join('/')}</span>
                   )}
-                  {order.expiration_date && <span className="text-amber-500/70">Exp: {new Date(order.expiration_date).toLocaleDateString()}</span>}
+                  {/* UPGRADE 43: Expiration countdown display */}
+                  {order.expiration_date && (() => {
+                    const daysLeft = Math.ceil((new Date(order.expiration_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                    if (daysLeft < 0 && order.status === 'active') return <span className="text-red-400 font-bold">EXPIRED {Math.abs(daysLeft)}d ago</span>;
+                    if (daysLeft <= 7 && order.status === 'active') return <span className="text-red-400 font-bold animate-pulse">{daysLeft}d left</span>;
+                    if (daysLeft <= 30 && order.status === 'active') return <span className="text-amber-400 font-bold">{daysLeft}d left</span>;
+                    return <span className="text-rmpg-500">Exp: {new Date(order.expiration_date).toLocaleDateString()}</span>;
+                  })()}
                 </div>
               </div>
             ))

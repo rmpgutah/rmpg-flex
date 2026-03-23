@@ -356,6 +356,13 @@ export default function DashboardPage() {
   const [upcomingCourt, setUpcomingCourt] = useState<any>(null);
   const [overdueReports, setOverdueReports] = useState<any>(null);
 
+  // ═══ NEW: Shift-aware stats, court dates, expiring certs ═══
+  const [shiftStats, setShiftStats] = useState<{
+    shift_name: string; calls: number; incidents: number; citations: number; patrol_scans: number;
+  } | null>(null);
+  const [courtDatesCount, setCourtDatesCount] = useState(0);
+  const [expiringCertsCount, setExpiringCertsCount] = useState(0);
+
   // Shift countdown timer — update every second
   useEffect(() => {
     const timer = setInterval(() => setShiftInfo(getCurrentShift()), 1000);
@@ -448,13 +455,16 @@ export default function DashboardPage() {
     const safe = async <T,>(url: string): Promise<T | null> => {
       try { return await apiFetch<T>(url); } catch { return null; }
     };
-    const [sc, cr, pc, ep, uc, or_] = await Promise.all([
+    const [sc, cr, pc, ep, uc, or_, ss, cd, ec] = await Promise.all([
       safe<any>('/reports/shift-comparison'),
       safe<any>('/reports/clearance-rate'),
       safe<any>('/reports/patrol-coverage'),
       safe<any>('/reports/evidence-pending'),
       safe<any>('/reports/upcoming-court'),
       safe<any>('/reports/overdue-reports'),
+      safe<any>('/admin/shift-stats'),
+      safe<any>('/admin/upcoming-court-dates?days=30'),
+      safe<any>('/admin/expiring-certifications?days=30'),
     ]);
     if (sc) setShiftComparison(sc);
     if (cr) setClearanceRate(cr);
@@ -462,6 +472,9 @@ export default function DashboardPage() {
     if (ep) setEvidencePending(ep);
     if (uc) setUpcomingCourt(uc);
     if (or_) setOverdueReports(or_);
+    if (ss) setShiftStats(ss);
+    if (cd) setCourtDatesCount(cd.count ?? 0);
+    if (ec) setExpiringCertsCount((ec.expiring_count ?? 0) + (ec.expired_count ?? 0));
   }, []);
 
   useEffect(() => {
@@ -794,6 +807,64 @@ export default function DashboardPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ═══ NEW: Shift-Aware Stats + Court Dates + Expiring Certs Row ═══ */}
+      {(shiftStats || courtDatesCount > 0 || expiringCertsCount > 0) && (
+        <div className={`grid ${isMobile ? 'grid-cols-1 gap-2' : 'grid-cols-1 sm:grid-cols-3 gap-3'}`}>
+          {shiftStats && (
+            <div className="panel-beveled bg-surface-base p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="led-dot led-green animate-led-pulse" />
+                <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">{shiftStats.shift_name} Stats</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-surface-sunken p-2 rounded-sm border border-[#1e3048]">
+                  <div className="text-lg font-bold font-mono text-brand-400">{shiftStats.calls}</div>
+                  <div className="text-[9px] text-rmpg-500 uppercase">Calls</div>
+                </div>
+                <div className="bg-surface-sunken p-2 rounded-sm border border-[#1e3048]">
+                  <div className="text-lg font-bold font-mono text-amber-400">{shiftStats.incidents}</div>
+                  <div className="text-[9px] text-rmpg-500 uppercase">Incidents</div>
+                </div>
+                <div className="bg-surface-sunken p-2 rounded-sm border border-[#1e3048]">
+                  <div className="text-lg font-bold font-mono text-purple-400">{shiftStats.citations}</div>
+                  <div className="text-[9px] text-rmpg-500 uppercase">Citations</div>
+                </div>
+                <div className="bg-surface-sunken p-2 rounded-sm border border-[#1e3048]">
+                  <div className="text-lg font-bold font-mono text-green-400">{shiftStats.patrol_scans}</div>
+                  <div className="text-[9px] text-rmpg-500 uppercase">Patrols</div>
+                </div>
+              </div>
+            </div>
+          )}
+          {courtDatesCount > 0 && (
+            <div
+              className="panel-beveled bg-surface-base p-3 cursor-pointer hover:bg-surface-raised transition-colors"
+              onClick={() => navigate('/citations')}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <Gavel className="w-4 h-4 text-amber-400" />
+                <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Court Dates (30d)</span>
+              </div>
+              <div className="text-3xl font-bold font-mono text-amber-400">{courtDatesCount}</div>
+              <div className="text-[10px] text-rmpg-500 mt-1">Upcoming court appearances</div>
+            </div>
+          )}
+          {expiringCertsCount > 0 && (
+            <div
+              className="panel-beveled bg-surface-base p-3 cursor-pointer hover:bg-surface-raised transition-colors border-l-4 border-l-red-500"
+              onClick={() => navigate('/personnel')}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle className="w-4 h-4 text-red-400" />
+                <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Cert Alerts</span>
+              </div>
+              <div className="text-3xl font-bold font-mono text-red-400">{expiringCertsCount}</div>
+              <div className="text-[10px] text-rmpg-500 mt-1">Expiring or expired certifications</div>
+            </div>
+          )}
         </div>
       )}
 

@@ -83,6 +83,14 @@ export default function TrainingPage() {
   const [editRecord, setEditRecord] = useState<TrainingRecord | null>(null);
   const [showRequirementModal, setShowRequirementModal] = useState(false);
   const [editRequirement, setEditRequirement] = useState<TrainingRequirement | null>(null);
+  const [showBulkAssign, setShowBulkAssign] = useState(false);
+  const [bulkCourseName, setBulkCourseName] = useState('');
+  const [bulkCategory, setBulkCategory] = useState<string>('other');
+  const [bulkProvider, setBulkProvider] = useState('');
+  const [bulkHours, setBulkHours] = useState('0');
+  const [bulkOfficerIds, setBulkOfficerIds] = useState<string[]>([]);
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [trainingCompletion, setTrainingCompletion] = useState<any>(null);
 
   const mountedRef = useRef(true);
   useEffect(() => () => { mountedRef.current = false; }, []);
@@ -110,6 +118,36 @@ export default function TrainingPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useLiveSync('training', fetchData);
+
+  // Fetch training completion data
+  useEffect(() => {
+    apiFetch('/personnel/training-completion').then(d => setTrainingCompletion(d)).catch(() => {});
+  }, [records]);
+
+  const handleBulkAssign = async () => {
+    if (!bulkCourseName || bulkOfficerIds.length === 0) return;
+    setBulkSaving(true);
+    try {
+      await apiFetch('/personnel/training-bulk-assign', {
+        method: 'POST',
+        body: JSON.stringify({
+          officer_ids: bulkOfficerIds,
+          course_name: bulkCourseName,
+          category: bulkCategory,
+          provider: bulkProvider || undefined,
+          hours: parseFloat(bulkHours) || 0,
+        }),
+      });
+      setShowBulkAssign(false);
+      setBulkCourseName('');
+      setBulkOfficerIds([]);
+      fetchData();
+    } catch (err) {
+      console.error('Bulk assign error:', err);
+    } finally {
+      setBulkSaving(false);
+    }
+  };
 
   // ── Record CRUD ──────────────────────────────────────
   const handleSaveRecord = async (data: Partial<TrainingRecord>) => {
@@ -206,13 +244,22 @@ export default function TrainingPage() {
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
           {isAdmin && (
-            <button type="button"
-              onClick={() => { setEditRecord(null); setShowRecordModal(true); }}
-              className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1"
-            >
-              <Plus className="w-3 h-3" />
-              Add Record
-            </button>
+            <>
+              <button type="button"
+                onClick={() => setShowBulkAssign(true)}
+                className="toolbar-btn text-[10px] px-3 py-1 flex items-center gap-1"
+              >
+                <Users className="w-3 h-3" />
+                Bulk Assign
+              </button>
+              <button type="button"
+                onClick={() => { setEditRecord(null); setShowRecordModal(true); }}
+                className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1"
+              >
+                <Plus className="w-3 h-3" />
+                Add Record
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -288,6 +335,74 @@ export default function TrainingPage() {
           onSave={handleSaveRequirement}
           onClose={() => { setShowRequirementModal(false); setEditRequirement(null); }}
         />
+      )}
+
+      {/* Bulk Assignment Modal */}
+      {showBulkAssign && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onClick={() => setShowBulkAssign(false)}>
+          <div className="bg-surface-base border border-rmpg-700 rounded-sm w-full max-w-lg p-4 space-y-3 shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold text-rmpg-100 uppercase flex items-center gap-2">
+                <Users className="w-4 h-4 text-brand-400" /> Bulk Training Assignment
+              </h2>
+              <button type="button" onClick={() => setShowBulkAssign(false)} className="text-rmpg-500 hover:text-rmpg-300">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-2">
+              <div>
+                <label className="text-[9px] text-rmpg-400 uppercase font-bold">Course Name</label>
+                <input type="text" value={bulkCourseName} onChange={e => setBulkCourseName(e.target.value)}
+                  className="input-dark w-full mt-1 text-xs" placeholder="e.g. Annual Firearms Qualification" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Category</label>
+                  <select value={bulkCategory} onChange={e => setBulkCategory(e.target.value)} className="input-dark w-full mt-1 text-xs">
+                    {CATEGORIES.map(c => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Hours</label>
+                  <input type="number" value={bulkHours} onChange={e => setBulkHours(e.target.value)}
+                    className="input-dark w-full mt-1 text-xs" />
+                </div>
+              </div>
+              <div>
+                <label className="text-[9px] text-rmpg-400 uppercase font-bold">Provider</label>
+                <input type="text" value={bulkProvider} onChange={e => setBulkProvider(e.target.value)}
+                  className="input-dark w-full mt-1 text-xs" placeholder="Optional" />
+              </div>
+              <div>
+                <label className="text-[9px] text-rmpg-400 uppercase font-bold">
+                  Select Officers ({bulkOfficerIds.length} selected)
+                  <button type="button" className="ml-2 text-brand-400 hover:text-brand-300"
+                    onClick={() => setBulkOfficerIds(bulkOfficerIds.length === officers.length ? [] : officers.map(o => o.id))}>
+                    {bulkOfficerIds.length === officers.length ? 'Deselect All' : 'Select All'}
+                  </button>
+                </label>
+                <div className="max-h-[150px] overflow-y-auto mt-1 border border-rmpg-700 rounded-sm bg-surface-sunken p-1 space-y-0.5">
+                  {officers.map(o => (
+                    <label key={o.id} className="flex items-center gap-2 px-2 py-1 text-[10px] text-rmpg-200 hover:bg-rmpg-700/50 cursor-pointer">
+                      <input type="checkbox"
+                        checked={bulkOfficerIds.includes(o.id)}
+                        onChange={e => setBulkOfficerIds(e.target.checked ? [...bulkOfficerIds, o.id] : bulkOfficerIds.filter(id => id !== o.id))}
+                        className="w-3 h-3" />
+                      {o.full_name} {o.badge_number ? `(#${o.badge_number})` : ''}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={() => setShowBulkAssign(false)} className="toolbar-btn text-[10px] px-3 py-1.5">Cancel</button>
+              <button type="button" onClick={handleBulkAssign} disabled={bulkSaving || !bulkCourseName || bulkOfficerIds.length === 0}
+                className="toolbar-btn-primary text-[10px] px-3 py-1.5 disabled:opacity-50">
+                {bulkSaving ? 'Assigning...' : `Assign to ${bulkOfficerIds.length} Officer(s)`}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
