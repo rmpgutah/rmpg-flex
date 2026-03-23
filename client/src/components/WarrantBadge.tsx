@@ -19,7 +19,7 @@ export default function WarrantBadge({ flags, size = 'sm', onClick }: WarrantBad
   const severityColors: Record<string, string> = {
     felony: 'bg-red-600 text-white',
     misdemeanor: 'bg-amber-600 text-white',
-    infraction: 'bg-yellow-500 text-black',
+    infraction: 'bg-yellow-500 text-yellow-950',
     unknown: 'bg-red-500 text-white',
   };
 

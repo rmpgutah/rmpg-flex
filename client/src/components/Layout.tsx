@@ -964,11 +964,11 @@ export default function Layout() {
                   style={{ minWidth: 200, zIndex: 9995 }}
                 >
                   {/* User info header */}
-                  <div className="px-3 py-2 border-b border-rmpg-700">
+                  <div className="px-3 py-2.5 border-b border-rmpg-700" style={{ background: 'rgba(13, 21, 32, 0.5)' }}>
                     <div className="text-xs font-bold text-white">
                       {user?.first_name} {user?.last_name}
                     </div>
-                    <div className="text-[9px] font-mono text-rmpg-500">
+                    <div className="text-[9px] font-mono text-rmpg-500 mt-0.5">
                       {user?.email}
                     </div>
                     <div className="flex items-center gap-2 mt-1">
@@ -1087,9 +1087,9 @@ export default function Layout() {
           disabled={!canGoBack}
           className="toolbar-btn"
           title="Back (Alt+←)"
-          style={{ height: 36, width: 30, padding: '2px 4px', opacity: canGoBack ? 1 : 0.3 }}
+          style={{ height: 36, width: 30, padding: '2px 4px', opacity: canGoBack ? 1 : 0.35 }}
         >
-          <ChevronLeft style={{ width: 16, height: 16 }} />
+          <ChevronLeft style={{ width: 14, height: 14 }} />
         </button>
         <button
           type="button"
@@ -1097,9 +1097,9 @@ export default function Layout() {
           disabled={!canGoForward}
           className="toolbar-btn"
           title="Forward (Alt+→)"
-          style={{ height: 36, width: 30, padding: '2px 4px', opacity: canGoForward ? 1 : 0.3 }}
+          style={{ height: 36, width: 30, padding: '2px 4px', opacity: canGoForward ? 1 : 0.35 }}
         >
-          <ChevronRight style={{ width: 16, height: 16 }} />
+          <ChevronRight style={{ width: 14, height: 14 }} />
         </button>
         <div
           className="self-stretch mx-0.5"
@@ -1284,10 +1284,22 @@ export default function Layout() {
                                 navigate(child.path);
                               }
                             }}
-                            className="flex items-center gap-2.5 w-full px-3 py-1.5 text-left transition-colors hover:bg-white/[0.06]"
+                            className="flex items-center gap-2.5 w-full px-3 py-1.5 text-left transition-colors"
                             style={{
                               color: childActive ? '#ffffff' : '#b0bcc8',
                               background: childActive ? 'rgba(26,90,158,0.15)' : 'transparent',
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!childActive) {
+                                (e.currentTarget as HTMLElement).style.background = 'linear-gradient(180deg, rgba(26,90,158,0.2) 0%, rgba(26,90,158,0.1) 100%)';
+                                (e.currentTarget as HTMLElement).style.color = '#ffffff';
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!childActive) {
+                                (e.currentTarget as HTMLElement).style.background = 'transparent';
+                                (e.currentTarget as HTMLElement).style.color = '#b0bcc8';
+                              }
                             }}
                           >
                             <ChildIcon style={{ width: 14, height: 14, color: childActive ? '#3b8ad4' : '#5a6e80', flexShrink: 0 }} />
@@ -1385,14 +1397,14 @@ export default function Layout() {
 
       {/* Feature 24: Auto-logout idle warning dialog */}
       {showIdleDialog && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70" role="dialog" aria-modal="true">
-          <div className="bg-surface-raised border border-rmpg-600 rounded p-6 w-[350px] text-center">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm" role="dialog" aria-modal="true">
+          <div className="bg-surface-base border border-rmpg-600 p-6 w-[350px] text-center shadow-2xl animate-scale-in" style={{ borderTop: '2px solid #f59e0b' }}>
             <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto mb-3" />
             <h3 className="text-white font-bold mb-2">Are you still there?</h3>
             <p className="text-sm text-rmpg-300 mb-4">You will be logged out in 5 minutes due to inactivity.</p>
             <button type="button"
               onClick={() => { lastActivityRef.current = Date.now(); setShowIdleDialog(false); }}
-              className="px-4 py-2 text-sm font-bold text-white bg-brand-600 hover:bg-brand-500 rounded"
+              className="btn-primary px-4 py-2"
             >
               I'm still here
             </button>
@@ -1403,9 +1415,9 @@ export default function Layout() {
       {/* Keyboard Shortcut Help Modal */}
       {showShortcutHelp && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setShowShortcutHelp(false)}>
-          <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm w-full max-w-md mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+          <div className="bg-[#141e2b] border border-[#2a3e58] w-full max-w-md mx-4 shadow-2xl animate-scale-in" style={{ borderTop: '2px solid #1a5a9e' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#1e3048] bg-[#0d1520]">
-              <h3 className="text-sm font-semibold text-white">Keyboard Shortcuts</h3>
+              <h3 className="text-xs font-bold text-white uppercase tracking-wider">Keyboard Shortcuts</h3>
               <button type="button" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-500 hover:text-white"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto">
@@ -1442,7 +1454,7 @@ export default function Layout() {
       {/* Command Palette */}
       {showCommandPalette && (
         <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm" onClick={() => setShowCommandPalette(false)}>
-          <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm w-full max-w-lg mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+          <div className="bg-[#141e2b] border border-[#2a3e58] w-full max-w-lg mx-4 shadow-2xl animate-scale-in" style={{ borderTop: '2px solid #1a5a9e' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-2 px-4 py-3 border-b border-[#1e3048]">
               <Search className="w-4 h-4 text-rmpg-500 flex-shrink-0" />
               <input

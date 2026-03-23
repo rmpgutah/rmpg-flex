@@ -100,7 +100,7 @@ export default function AdminAuditTab({
           <Search className="w-3 h-3 text-rmpg-500" />
           <input
             type="text"
-            placeholder="Search logs..." aria-label="Search logs..."
+            placeholder="Search logs..." aria-label="Search audit logs"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             className="bg-transparent border-none outline-none text-xs text-white placeholder-rmpg-500 w-[120px]"
@@ -111,7 +111,7 @@ export default function AdminAuditTab({
         <select
           value={filterAction}
           onChange={e => setFilterAction(e.target.value)}
-          className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-2 py-1 outline-none"
+          className="select-dark text-[10px]"
         >
           <option value="">All Actions</option>
           {uniqueActions.map(a => <option key={a} value={a}>{a}</option>)}
@@ -120,14 +120,14 @@ export default function AdminAuditTab({
           type="date"
           value={exportDateFrom}
           onChange={e => setExportDateFrom(e.target.value)}
-          className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-2 py-1 outline-none"
+          className="input-dark text-[10px]"
           placeholder="From"
         />
         <input
           type="date"
           value={exportDateTo}
           onChange={e => setExportDateTo(e.target.value)}
-          className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-2 py-1 outline-none"
+          className="input-dark text-[10px]"
           placeholder="To"
         />
         <button type="button"

@@ -356,7 +356,7 @@ export default function EvidencePropertyPage() {
         )}
 
         {/* Filters */}
-        <div className="flex flex-col gap-1.5 p-2 border-b border-rmpg-700 bg-surface-base">
+        <div className="flex flex-col gap-1.5 px-3 py-2 border-b border-rmpg-700 bg-surface-base">
           <div className="flex gap-1.5">
             <div className="flex-1 relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" style={{ width: 12, height: 12 }} />
@@ -411,7 +411,7 @@ export default function EvidencePropertyPage() {
               <button type="button"
                 key={item.id}
                 onClick={() => { setSelected(item); setDetailTab('info'); }}
-                className={`w-full text-left px-3 py-2.5 border-b border-rmpg-800/60 transition-colors ${
+                className={`w-full text-left px-3 py-2.5 border-b border-rmpg-700/60 transition-colors ${
                   selected?.id === item.id
                     ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
                     : 'hover:bg-rmpg-800/30 border-l-2 border-l-transparent'
@@ -513,11 +513,11 @@ export default function EvidencePropertyPage() {
                     <span className={`text-[10px] px-2 py-1 border font-bold ${STATUS_COLORS[selected.status] || ''}`}>
                       {(selected.status || '').replace(/_/g, ' ').toUpperCase()}
                     </span>
-                    <span className="text-[10px] px-2 py-1 border bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50 font-semibold">
+                    <span className="text-[10px] px-2 py-1 border bg-rmpg-700/50 text-rmpg-300 border-rmpg-700/50 font-semibold">
                       {TYPE_LABELS[selected.type] || TYPE_LABELS[selected.evidence_type] || selected.type || selected.evidence_type}
                     </span>
                     {selected.category && (
-                      <span className="text-[10px] px-2 py-1 border bg-rmpg-700/30 text-rmpg-400 border-rmpg-600/30">
+                      <span className="text-[10px] px-2 py-1 border bg-rmpg-700/30 text-rmpg-400 border-rmpg-700/30">
                         {selected.category}
                       </span>
                     )}
@@ -608,9 +608,9 @@ export default function EvidencePropertyPage() {
                         ) : (
                           <div className="space-y-2">
                             <input value={releaseTo} onChange={e => setReleaseTo(e.target.value)} placeholder="Release to (name/entity)..."
-                              className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                              className="input-dark w-full min-h-[36px]" />
                             <textarea value={releaseReason} onChange={e => setReleaseReason(e.target.value)} placeholder="Reason for release..."
-                              rows={2} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
+                              rows={2} className="textarea-dark w-full" />
                             <div className="flex gap-1">
                               <button type="button" onClick={handleRequestRelease} disabled={releaseSubmitting || !releaseReason.trim()} className="toolbar-btn toolbar-btn-primary print:hidden">
                                 {releaseSubmitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <CheckCircle style={{ width: 11, height: 11 }} />}

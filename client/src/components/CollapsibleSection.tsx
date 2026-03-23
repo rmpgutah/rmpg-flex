@@ -37,7 +37,7 @@ export default function CollapsibleSection({
       >
         <div className="flex items-center gap-1.5">
           <ChevronRight
-            className={`w-3 h-3 text-rmpg-400 transition-transform duration-150 ${isOpen ? 'rotate-90' : ''}`}
+            className={`w-3 h-3 transition-transform duration-200 ${isOpen ? 'rotate-90 text-brand-400' : 'text-rmpg-400'}`}
           />
           {Icon && <Icon className="w-3 h-3 title-icon" />}
           <span>{title}</span>

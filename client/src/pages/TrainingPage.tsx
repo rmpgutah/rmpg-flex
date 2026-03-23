@@ -462,7 +462,7 @@ function DashboardTab({ records, requirements, officers }: {
           </div>
           <div className="space-y-1 max-h-[300px] overflow-y-auto">
             {stats.officerCompliance.map(o => (
-              <div key={o.id} className="flex items-center gap-2 py-1 border-b border-rmpg-800/30">
+              <div key={o.id} className="flex items-center gap-2 py-1 border-b border-rmpg-700/30">
                 <span className="text-[11px] text-rmpg-100 flex-1 truncate">{o.full_name}</span>
                 {o.badge_number && (
                   <span className="text-[9px] font-mono text-rmpg-500">{o.badge_number}</span>
@@ -527,7 +527,7 @@ function DashboardTab({ records, requirements, officers }: {
           </div>
           <div className="space-y-1.5 max-h-[250px] overflow-y-auto">
             {stats.overduePersonnel.map(o => (
-              <div key={o.id} className="flex items-center gap-2 py-1 px-2 border border-rmpg-800/50 bg-red-900/5">
+              <div key={o.id} className="flex items-center gap-2 py-1 px-2 border border-rmpg-700/50 bg-red-900/5">
                 <span className="text-[11px] text-rmpg-100 font-medium w-32 truncate">{o.full_name}</span>
                 {o.badge_number && <span className="text-[9px] font-mono text-rmpg-500">{o.badge_number}</span>}
                 <span className="text-[9px] text-red-400 font-bold">{o.overdue} missing</span>
@@ -584,7 +584,7 @@ function TrainingMaterialsPanel() {
           ) : (
             <div className="space-y-1 max-h-[200px] overflow-y-auto">
               {materials.map((m: any) => (
-                <div key={m.id} className="flex items-center gap-2 py-1 px-2 border border-rmpg-800/30 bg-surface-sunken">
+                <div key={m.id} className="flex items-center gap-2 py-1 px-2 border border-rmpg-700/30 bg-surface-sunken">
                   <FileText className="w-3 h-3 text-brand-400 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <div className="text-[11px] text-rmpg-100 truncate">{m.title}</div>
@@ -744,8 +744,13 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
             placeholder="Search..." aria-label="Search..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="input-dark text-[11px] pl-6 pr-2 py-1 w-40 min-h-[36px]"
+            className={`input-dark text-[11px] pl-6 ${search ? 'pr-7' : 'pr-2'} py-1 w-40 min-h-[36px]`}
           />
+          {search && (
+            <button type="button" onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300" aria-label="Clear search">
+              <X className="w-3 h-3" />
+            </button>
+          )}
         </div>
         <select
           value={statusFilter}
@@ -805,7 +810,7 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
             </thead>
             <tbody>
               {filtered.map(record => (
-                <tr key={record.id} className="border-t border-rmpg-800 hover:bg-rmpg-800/30 transition-colors">
+                <tr key={record.id} className="border-t border-rmpg-700/50 hover:bg-surface-raised/50 transition-colors">
                   <td className="py-1.5 px-2 text-rmpg-100">{record.officer_name}</td>
                   <td className="py-1.5 px-2 text-rmpg-100 font-medium">{record.course_name}</td>
                   <td className="py-1.5 px-2">
@@ -1048,7 +1053,7 @@ function CalendarTab({ records, requirements }: {
             return (
               <div
                 key={i}
-                className={`min-h-[80px] border-b border-r border-rmpg-800/30 p-1 ${
+                className={`min-h-[80px] border-b border-r border-rmpg-700/30 p-1 ${
                   day && isToday(day) ? 'bg-brand-900/20' : day ? 'bg-surface-base' : 'bg-surface-sunken'
                 }`}
               >
@@ -1123,11 +1128,11 @@ function StatusBadge({ status }: { status: string }) {
 
 function EmptyState({ icon: Icon, message }: { icon: React.ElementType; message: string }) {
   return (
-    <div className="text-center py-16">
-      <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-base">
-        <Icon className="w-7 h-7 text-rmpg-600" />
+    <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+      <div className="w-14 h-14 bg-rmpg-700/20 border border-rmpg-700/30 flex items-center justify-center mb-4 panel-inset">
+        <Icon className="w-7 h-7 text-rmpg-500" style={{ opacity: 0.7 }} />
       </div>
-      <p className="text-xs text-rmpg-500">{message}</p>
+      <p className="text-sm text-rmpg-300">{message}</p>
     </div>
   );
 }

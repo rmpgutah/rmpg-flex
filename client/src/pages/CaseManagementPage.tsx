@@ -486,15 +486,16 @@ export default function CaseManagementPage() {
             <input
               value={searchQuery}
               onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
-              placeholder="Search cases..." aria-label="Search cases..."
-              className="w-full pl-7 pr-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 outline-none"
+              placeholder="Search cases..." aria-label="Search cases"
+              autoComplete="off"
+              className="input-dark text-xs w-full pl-7 pr-2 py-1"
             />
           </div>
-          <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 py-1 outline-none">
+          <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }} className="select-dark text-[10px]">
             <option value="">All Status</option>
             {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
-          <select value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 py-1 outline-none">
+          <select value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }} className="select-dark text-[10px]">
             <option value="">All Types</option>
             {TYPE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
@@ -503,7 +504,7 @@ export default function CaseManagementPage() {
         {/* Case List */}
         <div className="flex-1 overflow-y-auto">
           {loading ? (
-            <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div>
+            <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading cases...</span></div>
           ) : cases.length === 0 ? (
             <EmptyState
               icon={FolderOpen}
@@ -708,7 +709,7 @@ export default function CaseManagementPage() {
                       onChange={e => setNewNote(e.target.value)}
                       placeholder="Add a case note..."
                       rows={3}
-                      className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 outline-none resize-none"
+                      className="w-full input-dark text-xs resize-none"
                     />
                     <div className="flex justify-end mt-2">
                       <button type="button" onClick={handleAddNote} disabled={noteSubmitting || !newNote.trim()} className="toolbar-btn toolbar-btn-primary print:hidden">
@@ -795,7 +796,7 @@ export default function CaseManagementPage() {
                 <label className="field-label">Return Reason *</label>
                 <textarea value={returnReason} onChange={e => setReturnReason(e.target.value)} rows={3}
                   placeholder="Explain why this case needs additional work..."
-                  className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
+                  className="w-full mt-1 input-dark text-xs resize-none" />
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setShowReturnModal(false)} className="toolbar-btn">Cancel</button>
@@ -857,24 +858,24 @@ export default function CaseManagementPage() {
             <div className="p-4 space-y-3">
               <div>
                 <label className="field-label">Title *</label>
-                <input value={formData.title} onChange={e => setFormData(p => ({ ...p, title: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                <input value={formData.title} onChange={e => setFormData(p => ({ ...p, title: e.target.value }))} className="w-full mt-1 input-dark text-xs" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="field-label">Type</label>
-                  <select value={formData.case_type} onChange={e => setFormData(p => ({ ...p, case_type: e.target.value as CaseType }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
+                  <select value={formData.case_type} onChange={e => setFormData(p => ({ ...p, case_type: e.target.value as CaseType }))} className="w-full mt-1 input-dark text-xs">
                     {TYPE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="field-label">Priority</label>
-                  <select value={formData.priority} onChange={e => setFormData(p => ({ ...p, priority: e.target.value as CasePriority }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
+                  <select value={formData.priority} onChange={e => setFormData(p => ({ ...p, priority: e.target.value as CasePriority }))} className="w-full mt-1 input-dark text-xs">
                     {PRIORITY_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="field-label">Lead Investigator</label>
-                  <select value={formData.lead_investigator_id} onChange={e => setFormData(p => ({ ...p, lead_investigator_id: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
+                  <select value={formData.lead_investigator_id} onChange={e => setFormData(p => ({ ...p, lead_investigator_id: e.target.value }))} className="w-full mt-1 input-dark text-xs">
                     <option value="">Unassigned</option>
                     {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
                   </select>
@@ -882,7 +883,7 @@ export default function CaseManagementPage() {
               </div>
               <div>
                 <label className="field-label">Summary</label>
-                <textarea value={formData.summary} onChange={e => setFormData(p => ({ ...p, summary: e.target.value }))} rows={3} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
+                <textarea value={formData.summary} onChange={e => setFormData(p => ({ ...p, summary: e.target.value }))} rows={3} className="w-full mt-1 input-dark text-xs resize-none" />
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn">Cancel</button>

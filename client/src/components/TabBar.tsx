@@ -56,10 +56,10 @@ export default function TabBar({
             }}
             className={`tab-bar-item ${activeTab === tab.id ? 'active' : ''}`}
           >
-            {Icon && <Icon style={{ width: 12, height: 12, marginRight: 4, display: 'inline' }} />}
+            {Icon && <Icon style={{ width: 12, height: 12, marginRight: 4, display: 'inline', color: activeTab === tab.id ? '#3b8ad4' : 'inherit' }} />}
             {tab.label}
             {tab.count !== undefined && (
-              <span style={{ marginLeft: 4, opacity: 0.7 }}>({tab.count})</span>
+              <span className="font-mono tabular-nums" style={{ marginLeft: 4, opacity: 0.6, fontSize: '0.9em' }}>({tab.count})</span>
             )}
           </button>
         );

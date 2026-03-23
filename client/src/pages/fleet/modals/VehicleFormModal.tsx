@@ -62,7 +62,7 @@ export default function VehicleFormModal({ isOpen, mode, form, onChange, onSave,
 
   return (
     <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ background: 'rgba(0,0,0,0.6)' }} onClick={saving ? undefined : onClose}>
-      <div className="panel-beveled w-[560px] max-h-[80vh] flex flex-col" style={{ background: '#1a2636' }} onClick={(e) => e.stopPropagation()}>
+      <div className="panel-beveled w-[560px] max-w-full mx-4 max-h-[80vh] flex flex-col bg-surface-raised" onClick={(e) => e.stopPropagation()}>
         <PanelTitleBar title={mode === 'new_vehicle' ? 'NEW VEHICLE' : 'EDIT VEHICLE'} icon={Car} id={titleId}>
           <button type="button" className="toolbar-btn text-[9px]" onClick={onClose}>X</button>
         </PanelTitleBar>

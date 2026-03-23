@@ -354,7 +354,7 @@ function CoverageSourceCard({ source }: { source: ScraperSource }) {
   return (
     <div className={`p-2 rounded-sm border ${
       !source.enabled
-        ? 'border-rmpg-700/50 bg-rmpg-800/30'
+        ? 'border-rmpg-700/50 bg-rmpg-700/30'
         : source.consecutive_failures > 0
           ? 'border-amber-700/50 bg-amber-900/10'
           : isRecent
@@ -1156,7 +1156,7 @@ export default function WarrantsPage() {
                         className={`px-1.5 py-0.5 text-[9px] font-bold rounded-sm border transition-colors ${
                           feedRange === r
                             ? 'bg-brand-900/40 text-brand-300 border-brand-600/50'
-                            : 'bg-rmpg-800/50 text-rmpg-400 border-rmpg-700/50 hover:text-rmpg-200'
+                            : 'bg-rmpg-700/40 text-rmpg-400 border-rmpg-700/50 hover:text-rmpg-200'
                         }`}
                       >
                         {r}
@@ -1184,7 +1184,7 @@ export default function WarrantsPage() {
                       No events in this time range
                     </div>
                   ) : (
-                    <div className="divide-y divide-rmpg-800/50">
+                    <div className="divide-y divide-rmpg-700/50">
                       {filteredFeed.map(entry => (
                         <div key={entry.id} className="flex items-center gap-2 px-3 py-2 hover:bg-surface-raised/50 transition-colors">
                           <span className="text-[9px] text-rmpg-500 font-mono shrink-0 w-14">{relativeTime(entry.created_at)}</span>
@@ -1238,7 +1238,7 @@ export default function WarrantsPage() {
                           {pw.subject_photo_url ? (
                             <img src={pw.subject_photo_url} alt="" className="w-9 h-9 rounded-sm object-cover border border-rmpg-600 shrink-0" />
                           ) : (
-                            <div className="w-9 h-9 rounded-sm bg-rmpg-800 border border-rmpg-600 flex items-center justify-center shrink-0">
+                            <div className="w-9 h-9 rounded-sm bg-surface-raised border border-rmpg-600 flex items-center justify-center shrink-0">
                               <User className="w-4 h-4 text-rmpg-500" />
                             </div>
                           )}
@@ -1291,12 +1291,17 @@ export default function WarrantsPage() {
                 <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
                 <input
                   type="text"
-                  className={`input-dark w-full pl-7 ${isMobile ? 'text-sm py-2.5' : 'text-xs'}`}
+                  className={`input-dark w-full pl-7 ${searchQuery ? 'pr-7' : 'pr-2'} ${isMobile ? 'text-sm py-2.5' : 'text-xs'}`}
                   placeholder="Search by name, warrant #, or charge..." aria-label="Search by name, warrant #, or charge..."
                   value={searchQuery}
                   onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
                   style={isMobile ? { minHeight: 44 } : undefined}
                 />
+                {searchQuery && (
+                  <button type="button" onClick={() => { setSearchQuery(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300" aria-label="Clear search">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
               <div className={`flex ${isMobile ? 'gap-1.5 flex-wrap' : 'gap-2'}`}>
                 <select
@@ -1354,7 +1359,7 @@ export default function WarrantsPage() {
                   <option value="quashed">Quashed</option>
                   <option value="expired">Expired</option>
                 </select>
-                <button type="button" onClick={handleBatchUpdate} disabled={!batchStatus || batchSubmitting} className="toolbar-btn-primary text-[10px] px-2 py-0.5 disabled:opacity-50">
+                <button type="button" onClick={handleBatchUpdate} disabled={!batchStatus || batchSubmitting} className="toolbar-btn-primary text-[10px] px-2 py-0.5 disabled:opacity-40">
                   {batchSubmitting ? 'Updating...' : 'Apply'}
                 </button>
                 <button type="button" onClick={() => setBatchSelected(new Set())} className="toolbar-btn text-[10px] px-2 py-0.5">Clear</button>
@@ -1380,7 +1385,7 @@ export default function WarrantsPage() {
                     <button type="button"
                       key={w.id}
                       onClick={() => fetchWarrantDetail(w.id)}
-                      className={`w-full text-left px-3 py-3 border-b border-rmpg-800 transition-colors hover:bg-surface-raised ${selectedWarrant?.id === w.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'border-l-2 border-l-transparent'}`}
+                      className={`w-full text-left px-3 py-3 border-b border-rmpg-700/50 transition-colors hover:bg-surface-raised ${selectedWarrant?.id === w.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'border-l-2 border-l-transparent'}`}
                       style={{ minHeight: 56 }}
                     >
                       <div className="flex items-center justify-between mb-1">
@@ -1487,8 +1492,8 @@ export default function WarrantsPage() {
                   Page {page} of {totalPages} ({totalCount} results)
                 </span>
                 <div className="flex gap-1">
-                  <button type="button" onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1} className="toolbar-btn text-[9px]">Prev</button>
-                  <button type="button" onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page >= totalPages} className="toolbar-btn text-[9px]">Next</button>
+                  <button type="button" onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1} className="toolbar-btn text-[9px] disabled:opacity-40">Prev</button>
+                  <button type="button" onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page >= totalPages} className="toolbar-btn text-[9px] disabled:opacity-40">Next</button>
                 </div>
               </div>
             )}
@@ -2243,7 +2248,7 @@ export default function WarrantsPage() {
                             key={state}
                             className={`p-2 rounded-sm border text-center ${
                               enabled === 0
-                                ? 'border-rmpg-700/50 bg-rmpg-800/30'
+                                ? 'border-rmpg-700/50 bg-rmpg-700/30'
                                 : hasErrors
                                   ? 'border-amber-700/50 bg-amber-900/10'
                                   : isRecent
@@ -2296,7 +2301,7 @@ export default function WarrantsPage() {
                         </thead>
                         <tbody>
                           {coverageSources.map(src => (
-                            <tr key={src.source_key} className="border-t border-rmpg-800/50">
+                            <tr key={src.source_key} className="border-t border-rmpg-700/50">
                               <td className="px-2 py-1 font-mono text-rmpg-300">{src.source_key}</td>
                               <td className="px-2 py-1">{src.state}</td>
                               <td className="px-2 py-1 text-rmpg-400">{src.county || '-'}</td>
@@ -2438,7 +2443,7 @@ export default function WarrantsPage() {
                   {personProfile.person.photo_url ? (
                     <img src={personProfile.person.photo_url} alt="" className="w-16 h-16 rounded-sm object-cover border border-rmpg-600" />
                   ) : (
-                    <div className="w-16 h-16 rounded-sm bg-rmpg-800 border border-rmpg-600 flex items-center justify-center">
+                    <div className="w-16 h-16 rounded-sm bg-surface-raised border border-rmpg-600 flex items-center justify-center">
                       <User className="w-8 h-8 text-rmpg-500" />
                     </div>
                   )}
@@ -2597,7 +2602,7 @@ export default function WarrantsPage() {
               <div className="relative">
                 <label className="field-label">Subject Person</label>
                 {selectedPersonName && formData.subject_person_id ? (
-                  <div className="flex items-center gap-2 p-2 bg-rmpg-800 border border-rmpg-600 rounded-sm text-xs">
+                  <div className="flex items-center gap-2 p-2 bg-surface-raised border border-rmpg-600 rounded-sm text-xs">
                     <User className="w-3 h-3 text-brand-400" />
                     <span className="text-white font-bold">{selectedPersonName}</span>
                     <button
@@ -2622,7 +2627,7 @@ export default function WarrantsPage() {
                       onFocus={() => setShowPersonDropdown(true)}
                     />
                     {showPersonDropdown && personResults.length > 0 && (
-                      <div className="absolute z-10 w-full mt-1 max-h-40 overflow-auto bg-rmpg-800 border border-rmpg-600 rounded-sm shadow-lg">
+                      <div className="absolute z-10 w-full mt-1 max-h-40 overflow-auto bg-surface-raised border border-rmpg-600 rounded-sm shadow-lg">
                         {personResults.map((p) => (
                           <button
                             key={p.id}

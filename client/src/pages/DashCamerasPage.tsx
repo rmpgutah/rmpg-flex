@@ -397,10 +397,10 @@ export default function DashCamerasPage() {
                     {v.unit_call_sign || '-'}
                   </span>
                 </td>
-                <td>
+                <td className="whitespace-nowrap">
                   <span className="text-[9px] font-mono text-rmpg-300">{formatDate(v.recorded_at)}</span>
                 </td>
-                <td>
+                <td className="whitespace-nowrap">
                   <span className="text-[9px] font-mono text-rmpg-400">{formatDuration(v.duration_seconds)}</span>
                 </td>
                 <td>
@@ -738,7 +738,8 @@ export default function DashCamerasPage() {
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
           <input type="text" value={search}
             onChange={e => { setSearch(e.target.value); setPage(0); }}
-            placeholder="Search title, case #, unit..." aria-label="Search title, case #, unit..."
+            placeholder="Search title, case #, unit..." aria-label="Search dash camera videos"
+            autoComplete="off"
             className="input-dark text-[10px] pl-7 pr-2 py-1 w-full min-h-[36px]" />
         </div>
 

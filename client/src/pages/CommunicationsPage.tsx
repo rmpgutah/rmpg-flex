@@ -641,9 +641,9 @@ export default function CommunicationsPage() {
   // ============================================================
 
   const Spinner = ({ label }: { label?: string }) => (
-    <div className="flex-1 flex flex-col items-center justify-center text-rmpg-400 py-20">
-      <Loader2 className="w-6 h-6 animate-spin mb-2" role="status" aria-label="Loading" />
-      {label && <p className="text-xs">{label}</p>}
+    <div className="flex-1 flex flex-col items-center justify-center py-20 gap-2">
+      <Loader2 className="w-6 h-6 animate-spin text-brand-400" role="status" aria-label="Loading" />
+      {label && <p className="text-[10px] text-rmpg-500">{label}</p>}
     </div>
   );
 
@@ -688,7 +688,8 @@ export default function CommunicationsPage() {
               <Search className="w-3 h-3 text-rmpg-500" />
               <input
                 type="text"
-                placeholder="Search conversations..." aria-label="Search conversations..."
+                placeholder="Search conversations..." aria-label="Search conversations"
+                autoComplete="off"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="bg-transparent border-none outline-none text-xs text-white placeholder-rmpg-500"

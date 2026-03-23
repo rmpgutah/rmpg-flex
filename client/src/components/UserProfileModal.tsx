@@ -1327,7 +1327,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                         <div className="text-[9px]" style={{ color: '#5a6e80' }}>
                           {session.user_agent?.substring(0, 60)}...
                         </div>
-                        <div className="text-[9px]" style={{ color: '#505050' }}>
+                        <div className="text-[9px]" style={{ color: '#5a6e80' }}>
                           Last used: {(session.last_used_at || session.created_at) ? new Date(session.last_used_at || session.created_at).toLocaleString() : 'N/A'}
                         </div>
                       </div>

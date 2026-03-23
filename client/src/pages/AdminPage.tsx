@@ -69,9 +69,9 @@ import AdminIntegrationsTab from './admin/AdminIntegrationsTab';
 // ============================================================
 
 const LoadingSpinner: React.FC = () => (
-  <div className="flex items-center justify-center py-20">
+  <div className="flex flex-col items-center justify-center py-20 gap-2">
     <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading" />
-    <span className="ml-2 text-sm text-rmpg-300">Loading...</span>
+    <span className="text-[10px] text-rmpg-500">Loading tab data...</span>
   </div>
 );
 

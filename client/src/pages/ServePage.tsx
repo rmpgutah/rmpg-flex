@@ -581,10 +581,10 @@ export default function ServePage() {
         </div>
       )}
       {/* ─── Header Bar ────────────────────────────────────────────── */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1e3048] bg-[#0d1520] flex-wrap">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1e3048] bg-surface-sunken flex-wrap">
         <div className="flex items-center gap-1.5">
           <Briefcase size={16} className="text-brand-400" />
-          {!isMobile && <span className="text-sm font-semibold text-white">Process Server</span>}
+          {!isMobile && <span className="text-sm font-semibold text-rmpg-100 uppercase tracking-wider">Process Server</span>}
         </div>
 
         {/* Date picker */}
@@ -594,7 +594,7 @@ export default function ServePage() {
             type="date"
             value={selectedDate}
             onChange={e => setSelectedDate(e.target.value)}
-            className="px-2 py-1 text-xs bg-[#141e2b] border border-[#1e3048] rounded-sm text-white focus:border-brand-500 focus:outline-none"
+            className="input-dark px-2 py-1 text-xs rounded-sm"
           />
         </div>
 
@@ -630,7 +630,7 @@ export default function ServePage() {
       </div>
 
       {/* ─── Tab Bar ───────────────────────────────────────────────── */}
-      <div className="flex items-center border-b border-[#1e3048] bg-[#0d1520]">
+      <div className="flex items-center border-b border-[#1e3048] bg-surface-sunken">
         {TABS.map(tab => {
           const Icon = tab === 'Queue' ? List : tab === 'Map' ? MapIcon : BarChart3;
           return (

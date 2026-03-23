@@ -45,7 +45,7 @@ const TYPE_LABELS: Record<ReviewType, string> = {
 };
 
 const STATUS_COLORS: Record<ReviewStatus, string> = {
-  draft: 'bg-rmpg-700/50 text-rmpg-400 border-rmpg-600/30',
+  draft: 'bg-rmpg-700/50 text-rmpg-400 border-rmpg-700/30',
   submitted: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
   acknowledged: 'bg-green-500/20 text-green-400 border-green-500/30',
   completed: 'bg-green-500/20 text-green-400 border-green-500/30',
@@ -266,7 +266,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
       <div className="p-4 space-y-4">
         {/* Trend indicator */}
         {trendIndicator && (
-          <div className="flex items-center gap-2 px-3 py-2 bg-[#141e2b] border border-[#1e3048] rounded-sm">
+          <div className="flex items-center gap-2 px-3 py-2 bg-surface-base border border-rmpg-700 rounded-sm">
             <trendIndicator.icon size={16} className={trendIndicator.color} />
             <span className="text-xs text-rmpg-300">
               Performance trend: <span className={trendIndicator.color}>{trendIndicator.label}</span>
@@ -283,7 +283,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
             {reviews.map((review) => (
               <div
                 key={review.id}
-                className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-4 space-y-3"
+                className="bg-surface-base border border-rmpg-700 rounded-sm p-4 space-y-3"
               >
                 {/* Header */}
                 <div className="flex items-center justify-between flex-wrap gap-2">
@@ -342,7 +342,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
 
                 {/* Acknowledge section */}
                 {review.status === 'submitted' && (
-                  <div className="border-t border-[#1e3048] pt-3 mt-3 space-y-2">
+                  <div className="border-t border-rmpg-700 pt-3 mt-3 space-y-2">
                     <textarea
                       value={ackComment[review.id] ?? ''}
                       onChange={(e) =>
@@ -350,7 +350,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
                       }
                       rows={2}
                       placeholder="Optional comments before acknowledging..."
-                      className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm px-2.5 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none resize-y"
+                      className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none resize-y"
                     />
                     <button type="button"
                       onClick={() => handleAcknowledge(review.id)}
@@ -369,7 +369,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
 
                 {/* Officer comments (if already acknowledged) */}
                 {review.officer_comments && review.status !== 'submitted' && (
-                  <div className="border-t border-[#1e3048] pt-2 mt-2">
+                  <div className="border-t border-rmpg-700 pt-2 mt-2">
                     <span className="text-[10px] text-rmpg-500 uppercase tracking-wider flex items-center gap-1">
                       <MessageSquare size={10} /> Your Comments
                     </span>
@@ -401,21 +401,21 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
       {/* Stats bar */}
       {stats && (
         <div className="grid grid-cols-3 gap-3">
-          <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-3 flex items-center gap-3">
+          <div className="bg-surface-base border border-rmpg-700 rounded-sm p-3 flex items-center gap-3">
             <Clock size={18} className="text-blue-400 shrink-0" />
             <div>
               <div className="text-lg font-bold text-white">{stats.upcoming}</div>
               <div className="text-[10px] text-rmpg-400">Upcoming Reviews</div>
             </div>
           </div>
-          <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-3 flex items-center gap-3">
+          <div className="bg-surface-base border border-rmpg-700 rounded-sm p-3 flex items-center gap-3">
             <AlertTriangle size={18} className="text-amber-400 shrink-0" />
             <div>
               <div className="text-lg font-bold text-white">{stats.overdue}</div>
               <div className="text-[10px] text-rmpg-400">Overdue</div>
             </div>
           </div>
-          <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-3 flex items-center gap-3">
+          <div className="bg-surface-base border border-rmpg-700 rounded-sm p-3 flex items-center gap-3">
             <BarChart3 size={18} className="text-yellow-400 shrink-0" />
             <div>
               <div className="text-lg font-bold text-white">{stats.avgRating || '--'}</div>
@@ -427,8 +427,8 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
 
       {/* Certification Expiry Dashboard */}
       {isManager && expiringCerts.length > 0 && (
-        <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm overflow-hidden">
-          <div className="px-3 py-2 border-b border-[#1e3048] flex items-center gap-2 bg-[#0d1520]">
+        <div className="bg-surface-base border border-rmpg-700 rounded-sm overflow-hidden">
+          <div className="px-3 py-2 border-b border-rmpg-700 flex items-center gap-2 bg-surface-sunken">
             <AlertTriangle size={13} className="text-amber-400" />
             <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">Certification Expiry Alert</span>
             <span className="text-[9px] text-rmpg-500 ml-auto">{expiringCerts.length} expiring within 90 days</span>
@@ -441,7 +441,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
               const isExpired = daysLeft < 0;
               const urgencyColor = isExpired ? 'text-red-400 bg-red-900/30' : daysLeft <= 30 ? 'text-red-400 bg-red-900/20' : daysLeft <= 60 ? 'text-amber-400 bg-amber-900/20' : 'text-yellow-400 bg-yellow-900/20';
               return (
-                <div key={cert.id} className={`flex items-center gap-3 px-3 py-1.5 border-b border-[#1e3048]/50 ${urgencyColor}`}>
+                <div key={cert.id} className={`flex items-center gap-3 px-3 py-1.5 border-b border-rmpg-700/50 ${urgencyColor}`}>
                   <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isExpired ? 'bg-red-500' : daysLeft <= 30 ? 'bg-red-500 animate-pulse' : daysLeft <= 60 ? 'bg-amber-500' : 'bg-yellow-500'}`} />
                   <span className="text-[11px] text-white font-medium flex-shrink-0 w-36 truncate">{cert.officer_name || cert.full_name || '—'}</span>
                   <span className="text-[10px] text-rmpg-300 flex-1 truncate">{cert.type} — {cert.credential_number || ''}</span>
@@ -463,7 +463,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
         <select
           value={filterOfficer}
           onChange={(e) => setFilterOfficer(e.target.value)}
-          className="bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
+          className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Officers</option>
           {officers.map((o) => (
@@ -475,7 +475,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
         <select
           value={filterType}
           onChange={(e) => setFilterType(e.target.value)}
-          className="bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
+          className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Types</option>
           {Object.entries(TYPE_LABELS).map(([v, l]) => (
@@ -487,7 +487,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
         <select
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
-          className="bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
+          className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Statuses</option>
           {Object.entries(STATUS_LABELS).map(([v, l]) => (
@@ -522,7 +522,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
           {reviews.map((review) => (
             <div
               key={review.id}
-              className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-3 flex items-start gap-3"
+              className="bg-surface-base border border-rmpg-700 rounded-sm p-3 flex items-start gap-3"
             >
               {/* Avatar initial */}
               <div className="w-8 h-8 rounded-sm bg-brand-600/30 border border-brand-500/30 flex items-center justify-center text-xs font-bold text-brand-400 shrink-0">

@@ -41,6 +41,45 @@
   }
   body {
     background: var(--surface-base);
+    color: var(--text-primary);
+  }
+
+  /* Selection / highlight colors — themed blue */
+  ::selection {
+    background: rgba(26, 90, 158, 0.4);
+    color: #ffffff;
+  }
+  ::-moz-selection {
+    background: rgba(26, 90, 158, 0.4);
+    color: #ffffff;
+  }
+
+  /* Focus-visible ring — consistent blue theme */
+  :focus-visible {
+    outline: 2px solid rgba(59, 138, 212, 0.6);
+    outline-offset: 1px;
+  }
+
+  /* Remove focus ring for mouse clicks */
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  /* Prevent light-mode leaks: ensure all backgrounds default to dark */
+  input, select, textarea, button {
+    color: inherit;
+  }
+
+  /* Autofill dark theme override (Chrome/Safari) */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  textarea:-webkit-autofill,
+  select:-webkit-autofill {
+    -webkit-text-fill-color: #e5e7eb;
+    -webkit-box-shadow: 0 0 0 30px var(--surface-sunken) inset;
+    caret-color: #3b8ad4;
+    transition: background-color 5000s ease-in-out 0s;
   }
 }
 
@@ -73,7 +112,11 @@
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #484848;
+  background: #3a5070;
+}
+
+::-webkit-scrollbar-corner {
+  background: var(--surface-base);
 }
 
 /* Firefox scrollbar */
@@ -223,6 +266,14 @@
   .animate-slide-in {
     animation: slideIn 0.3s ease-out;
   }
+
+  .animate-dropdown-appear {
+    animation: dropdown-appear 0.12s ease-out;
+  }
+
+  .animate-scale-in {
+    animation: scale-in 0.15s ease-out;
+  }
 }
 
 @keyframes slideIn {
@@ -233,6 +284,11 @@
 @keyframes dropdown-appear {
   from { opacity: 0; transform: translateY(-3px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 /* --- Nav dropdown animation --- */
@@ -474,7 +530,7 @@
 
   /* --- Input Styles (Blocky) --- Motorola Blue focus accent */
   .input-dark {
-    @apply w-full px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none;
+    @apply w-full px-3 py-1.5 text-sm text-white placeholder-rmpg-500 focus:outline-none;
     background: var(--surface-sunken);
     border: 1px solid var(--border-strong);
     border-top-color: #0d1520;
@@ -487,6 +543,10 @@
   .input-dark:focus {
     border-color: var(--brand-blue);
     box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.35);
+    outline: none;
+  }
+  .input-dark:focus-visible {
+    outline: none;
   }
 
   .select-dark {
@@ -515,7 +575,7 @@
   }
 
   .textarea-dark {
-    @apply w-full px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none resize-none;
+    @apply w-full px-3 py-1.5 text-sm text-white placeholder-rmpg-500 focus:outline-none resize-none;
     background: var(--surface-sunken);
     border: 1px solid var(--border-strong);
     border-top-color: #0d1520;
@@ -538,6 +598,10 @@
   }
   .btn-primary:hover:not(:disabled) {
     background: #1a5a9e;
+  }
+  .btn-primary:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(59, 138, 212, 0.5);
   }
 
   .btn-secondary {
@@ -703,6 +767,12 @@
     border-bottom: 2px solid var(--surface-raised);
   }
 
+  .tab-bar-item:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 1px rgba(59, 138, 212, 0.6);
+    color: #d0d8e0;
+  }
+
   /* --- Toolbar Buttons (Spillman Flex) --- */
   .toolbar-btn {
     display: inline-flex;
@@ -735,6 +805,11 @@
     border-left-color: #0d1520;
     border-bottom-color: #2a3e58;
     border-right-color: #2a3e58;
+  }
+
+  .toolbar-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 1px rgba(59, 138, 212, 0.6);
   }
 
   .toolbar-btn:disabled {
@@ -819,6 +894,10 @@
     background: rgba(26, 90, 158, 0.15);
     color: #d0d8e0;
   }
+  .menu-bar-btn:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 1px rgba(59, 138, 212, 0.5);
+  }
   .menu-bar-btn-active {
     background: var(--surface-base);
     color: #ffffff;
@@ -886,6 +965,11 @@
   .menu-item-disabled:hover {
     background: transparent !important;
   }
+  .menu-item:focus-visible {
+    outline: none;
+    background: linear-gradient(180deg, #1a5a9e 0%, #124070 100%);
+    color: #ffffff;
+  }
   .menu-item-icon {
     width: 14px;
     display: flex;
@@ -923,8 +1007,8 @@
   /* --- Menu Separator --- */
   .menu-separator {
     height: 1px;
-    margin: 3px 6px;
-    background: linear-gradient(90deg, transparent, #1e3048 20%, #1e3048 80%, transparent);
+    margin: 4px 8px;
+    background: linear-gradient(90deg, transparent, #2a3e58 20%, #2a3e58 80%, transparent);
   }
 
   /* --- PANIC Button Styles --- */

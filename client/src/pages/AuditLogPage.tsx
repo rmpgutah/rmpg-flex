@@ -394,7 +394,7 @@ const AuditLogPage: React.FC = () => {
           {hasActiveFilters && (
             <button type="button"
               onClick={clearFilters}
-              className="ml-auto px-3 py-1 bg-rmpg-700 hover:bg-rmpg-600 text-xs flex items-center gap-1 border border-rmpg-600">
+              className="ml-auto px-3 py-1 bg-rmpg-700 hover:bg-rmpg-600 text-xs flex items-center gap-1 border border-rmpg-600 transition-colors">
               <X className="w-3 h-3" />
               Clear All
             </button>
@@ -485,7 +485,8 @@ const AuditLogPage: React.FC = () => {
                 type="text"
                 value={filters.search}
                 onChange={(e) => handleFilterChange('search', e.target.value)}
-                placeholder="Search..." aria-label="Search..."
+                placeholder="Search details..." aria-label="Search audit log details"
+                autoComplete="off"
                 className="input-dark text-xs pl-8 min-h-[36px]"
               />
               <Search className="absolute left-2 top-2.5 w-4 h-4 text-rmpg-400 pointer-events-none" />
@@ -512,13 +513,15 @@ const AuditLogPage: React.FC = () => {
       {/* Table */}
       <div className="panel-beveled overflow-hidden bg-surface-base">
         {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-8 h-8 animate-spin text-brand-400" role="status" aria-label="Loading" />
+          <div className="flex flex-col items-center justify-center py-20 gap-2">
+            <Loader2 className="w-6 h-6 animate-spin text-brand-400" role="status" aria-label="Loading" />
+            <span className="text-[10px] text-rmpg-500">Loading audit entries...</span>
           </div>
         ) : logs.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-rmpg-400">
-            <ScrollText className="w-12 h-12 mb-3 opacity-50" />
-            <p>No audit logs found</p>
+          <div className="flex flex-col items-center justify-center py-20 text-rmpg-400 gap-1">
+            <ScrollText className="w-10 h-10 mb-2 text-rmpg-600" />
+            <p className="text-xs font-semibold">No audit logs found</p>
+            <p className="text-[10px] text-rmpg-500">Try adjusting your filters or date range</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -584,7 +587,7 @@ const AuditLogPage: React.FC = () => {
             <button type="button"
               onClick={() => setPage(p => Math.max(1, p - 1))}
               disabled={page === 1}
-              className="px-3 py-2 bg-rmpg-700 hover:bg-rmpg-600 text-xs flex items-center gap-1 border border-rmpg-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-2 bg-rmpg-700 hover:bg-rmpg-600 text-xs flex items-center gap-1 border border-rmpg-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronLeft className="w-4 h-4" />
               Previous
@@ -620,7 +623,7 @@ const AuditLogPage: React.FC = () => {
             <button type="button"
               onClick={() => setPage(p => Math.min(totalPages, p + 1))}
               disabled={page === totalPages}
-              className="px-3 py-2 bg-rmpg-700 hover:bg-rmpg-600 text-xs flex items-center gap-1 border border-rmpg-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-2 bg-rmpg-700 hover:bg-rmpg-600 text-xs flex items-center gap-1 border border-rmpg-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Next
               <ChevronRight className="w-4 h-4" />

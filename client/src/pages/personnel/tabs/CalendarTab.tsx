@@ -89,7 +89,7 @@ export default function CalendarTab() {
           </div>
           {/* Calendar weeks */}
           {weeks.map((week, wi) => (
-            <div key={wi} className="grid grid-cols-7 border-b border-rmpg-800 last:border-b-0">
+            <div key={wi} className="grid grid-cols-7 border-b border-rmpg-700/50 last:border-b-0">
               {week.map((day, di) => {
                 const dayShifts = day ? shiftsByDate[String(day)] || [] : [];
                 return (

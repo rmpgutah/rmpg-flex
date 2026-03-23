@@ -57,16 +57,16 @@ function SkeletonRows({ columns, count = 6 }: { columns: Column<any>[]; count?: 
 function SortIndicator({ active, dir }: { active: boolean; dir?: 'asc' | 'desc' }) {
   if (!active) {
     return (
-      <span className="inline-flex flex-col ml-1 opacity-30">
+      <span className="inline-flex flex-col ml-1 opacity-25 transition-opacity group-hover:opacity-50">
         <ChevronUp size={10} />
         <ChevronDown size={10} className="-mt-1" />
       </span>
     );
   }
   return dir === 'asc' ? (
-    <ChevronUp size={12} className="ml-1 text-brand-400" />
+    <ChevronUp size={12} className="ml-1 text-brand-400 drop-shadow-[0_0_3px_rgba(59,138,212,0.4)]" />
   ) : (
-    <ChevronDown size={12} className="ml-1 text-brand-400" />
+    <ChevronDown size={12} className="ml-1 text-brand-400 drop-shadow-[0_0_3px_rgba(59,138,212,0.4)]" />
   );
 }
 
@@ -98,7 +98,7 @@ export default function DataTable<T>({
     align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : 'text-left';
 
   return (
-    <div className={`overflow-auto border border-rmpg-700/50 bg-surface-base ${className}`}>
+    <div className={`overflow-auto border border-rmpg-700/50 bg-surface-base panel-beveled ${className}`}>
       <table className="w-full text-xs" aria-label={ariaLabel}>
         <thead>
           <tr
@@ -114,9 +114,9 @@ export default function DataTable<T>({
               return (
                 <th
                   key={col.key}
-                  className={`px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-rmpg-400 whitespace-nowrap ${alignClass(col.align)} ${
-                    isSortable ? 'cursor-pointer select-none hover:text-rmpg-200 transition-colors' : ''
-                  }`}
+                  className={`px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-rmpg-400 whitespace-nowrap group ${alignClass(col.align)} ${
+                    isSortable ? 'cursor-pointer select-none hover:text-rmpg-200 hover:bg-white/[0.03] transition-colors' : ''
+                  } ${isActive ? 'text-rmpg-200' : ''}`}
                   style={col.width ? { width: col.width } : undefined}
                   onClick={isSortable ? () => onSort!(col.key) : undefined}
                   aria-sort={isActive ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
@@ -154,16 +154,16 @@ export default function DataTable<T>({
                 <tr
                   key={key}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
-                  className={`border-b border-rmpg-700/30 transition-colors ${
+                  className={`border-b border-rmpg-700/30 transition-colors duration-100 ${
                     isSelected
-                      ? 'bg-brand-900/30'
+                      ? 'bg-brand-900/30 border-l-2 border-l-brand-500'
                       : idx % 2 === 0
                         ? 'bg-transparent'
                         : 'bg-rmpg-800/20'
                   } ${
                     onRowClick
-                      ? 'cursor-pointer hover:bg-brand-900/20'
-                      : ''
+                      ? 'cursor-pointer hover:bg-brand-900/15'
+                      : 'hover:bg-white/[0.02]'
                   }`}
                   aria-selected={isSelected || undefined}
                 >

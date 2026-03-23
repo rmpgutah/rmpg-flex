@@ -345,7 +345,8 @@ export const GlobalSearch: React.FC = () => {
       aria-label="Global search"
     >
       <div
-        className="bg-surface-base border border-rmpg-600 shadow-2xl w-full max-w-2xl max-h-[60vh] flex flex-col"
+        className="bg-surface-base border border-rmpg-600 shadow-2xl w-full max-w-2xl max-h-[60vh] flex flex-col animate-scale-in"
+        style={{ borderTop: '2px solid #1a5a9e' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Search Input */}
@@ -449,7 +450,7 @@ const ResultItem: React.FC<ResultItemProps> = ({ result, isSelected, onClick }) 
     <button type="button"
       className={`
         w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors
-        ${isSelected ? 'bg-rmpg-700' : 'hover:bg-rmpg-800'}
+        ${isSelected ? 'bg-brand-900/25 border-l-2 border-l-brand-500' : 'hover:bg-rmpg-800 border-l-2 border-l-transparent'}
       `}
       onClick={onClick}
     >

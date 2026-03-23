@@ -259,7 +259,7 @@ export default function StatuteAnalyticsPage() {
                 {filteredStatutes.map((s, i) => (
                   <div key={i} className="flex items-center gap-2">
                     <span className="text-[9px] font-mono text-rmpg-400 w-24 shrink-0 truncate">{s.statute_number}</span>
-                    <div className="flex-1 relative h-5 bg-rmpg-800/50">
+                    <div className="flex-1 relative h-5 bg-rmpg-700/40">
                       <div
                         className="absolute inset-y-0 left-0 bg-brand-600/60 transition-all"
                         style={{ width: `${(s.count / maxCount) * 100}%` }}
@@ -303,7 +303,7 @@ export default function StatuteAnalyticsPage() {
                         <span className="text-[9px] text-rmpg-300 uppercase font-bold">{l.offense_level?.replace(/_/g, ' ') || 'Unknown'}</span>
                         <span className="text-[9px] font-mono font-bold" style={{ color }}>{l.count} ({pct}%)</span>
                       </div>
-                      <div className="h-2 bg-rmpg-800/50 overflow-hidden">
+                      <div className="h-2 bg-rmpg-700/40 overflow-hidden">
                         <div className="h-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
                       </div>
                     </div>

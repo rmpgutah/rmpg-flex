@@ -161,7 +161,8 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search..." aria-label="Search..."
+              placeholder="Search departments..." aria-label="Search departments"
+              autoComplete="off"
               className="input-dark text-[10px] pl-6 pr-2 py-1 w-40 min-h-[36px]"
             />
           </div>

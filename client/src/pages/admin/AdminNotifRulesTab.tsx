@@ -200,7 +200,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
-            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search..." aria-label="Search notification rules" className="input-dark text-[10px] pl-6 pr-2 py-1 w-40 min-h-[36px]" />
+            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search rules..." aria-label="Search notification rules" autoComplete="off" className="input-dark text-[10px] pl-6 pr-2 py-1 w-40 min-h-[36px]" />
           </div>
           <button type="button" onClick={openNew} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
             <Plus className="w-3 h-3" />

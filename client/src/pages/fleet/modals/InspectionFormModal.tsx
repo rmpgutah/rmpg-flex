@@ -124,7 +124,7 @@ export default function InspectionFormModal({ isOpen, mode = 'create', form, onC
 
   return (
     <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ background: 'rgba(0,0,0,0.6)' }} onClick={saving ? undefined : onClose}>
-      <div className="panel-beveled w-[680px] max-h-[85vh] flex flex-col" style={{ background: '#1a2636' }} onClick={(e) => e.stopPropagation()}>
+      <div className="panel-beveled w-[680px] max-w-full mx-4 max-h-[85vh] flex flex-col bg-surface-raised" onClick={(e) => e.stopPropagation()}>
         <PanelTitleBar title={mode === 'edit' ? 'EDIT INSPECTION' : 'VEHICLE INSPECTION'} icon={ClipboardCheck} id={titleId}>
           <span className={`px-2 py-0.5 text-[9px] font-bold uppercase border ${resultColor[form.overall_result]}`}>
             {resultLabel[form.overall_result]}

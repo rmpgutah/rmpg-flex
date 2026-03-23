@@ -74,31 +74,31 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
       {/* Vehicle Stats Row */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-        <div className="panel-beveled p-2.5 text-center" style={{ background: '#0d1520' }}>
+        <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
           <Gauge className="w-3.5 h-3.5 mx-auto text-brand-400 mb-1" />
           <div className="text-sm font-bold font-mono text-brand-400">{detail.current_mileage?.toLocaleString() || '-'}</div>
           <div className="text-[7px] text-rmpg-500 uppercase">Mileage</div>
         </div>
-        <div className="panel-beveled p-2.5 text-center" style={{ background: '#0d1520' }}>
+        <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
           <Wrench className="w-3.5 h-3.5 mx-auto text-amber-400 mb-1" />
           <div className="text-sm font-bold font-mono text-amber-400">{maintenance.length}</div>
           <div className="text-[7px] text-rmpg-500 uppercase">Services</div>
         </div>
-        <div className="panel-beveled p-2.5 text-center" style={{ background: '#0d1520' }}>
+        <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
           <DollarSign className="w-3.5 h-3.5 mx-auto text-green-400 mb-1" />
           <div className="text-sm font-bold font-mono text-green-400">
             ${maintenance.reduce((sum, m) => sum + (m.cost || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
           </div>
           <div className="text-[7px] text-rmpg-500 uppercase">Total Cost</div>
         </div>
-        <div className="panel-beveled p-2.5 text-center" style={{ background: '#0d1520' }}>
+        <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
           <Calendar className="w-3.5 h-3.5 mx-auto text-blue-400 mb-1" />
           <div className="text-[10px] font-bold font-mono text-blue-400">{formatMilitary(detail.last_service_date)}</div>
           <div className="text-[7px] text-rmpg-500 uppercase">Last Service</div>
         </div>
         <div className={`panel-beveled p-2.5 text-center ${
           getExpiryStatus(detail.next_service_due) === 'expired' ? 'border-amber-700/50' : ''
-        }`} style={{ background: getExpiryStatus(detail.next_service_due) === 'expired' ? '#1a1400' : '#0d1520' }}>
+        }`} style={{ background: getExpiryStatus(detail.next_service_due) === 'expired' ? '#1a1400' : 'var(--surface-sunken)' }}>
           <Clock className="w-3.5 h-3.5 mx-auto mb-1" style={{ color: getExpiryStatus(detail.next_service_due) === 'expired' ? '#f59e0b' : '#22c55e' }} />
           <div className="text-[10px] font-bold font-mono" style={{ color: getExpiryStatus(detail.next_service_due) === 'expired' ? '#f59e0b' : '#22c55e' }}>
             {formatMilitary(detail.next_service_due)}
@@ -253,7 +253,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
       {detail.notes && (
         <div className="panel-beveled p-3 bg-surface-base">
           <h3 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2">Notes</h3>
-          <div className="p-2 text-[11px] text-rmpg-300 whitespace-pre-wrap leading-relaxed" style={{ background: '#0d1520', border: '1px solid #162236' }}>
+          <div className="p-2 text-[11px] text-rmpg-300 whitespace-pre-wrap leading-relaxed bg-surface-sunken border border-rmpg-700">
             {detail.notes}
           </div>
         </div>
@@ -273,7 +273,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
         </div>
         {maintenance.length === 0 ? (
           <div className="text-center py-6">
-            <div className="w-12 h-12 mx-auto mb-2 rounded-full border border-rmpg-700 flex items-center justify-center" style={{ background: '#0d1520' }}>
+            <div className="w-12 h-12 mx-auto mb-2 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
               <Wrench className="w-6 h-6 text-rmpg-600" />
             </div>
             <p className="text-[10px] text-rmpg-500">No maintenance records</p>

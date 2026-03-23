@@ -734,9 +734,9 @@ export default function DashboardPage() {
                 </div>
               );
             })() : (
-              <div className="flex items-center justify-center h-[100px]">
-                <Loader2 className="w-5 h-5 text-rmpg-500 animate-spin" role="status" aria-label="Loading" />
-                <span className="text-[10px] text-rmpg-500 ml-2">Loading weather...</span>
+              <div className="flex flex-col items-center justify-center h-[100px] gap-2">
+                <Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" />
+                <span className="text-[10px] text-rmpg-500">Loading weather data...</span>
               </div>
             )}
           </div>

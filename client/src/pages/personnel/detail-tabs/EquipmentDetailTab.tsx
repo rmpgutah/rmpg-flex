@@ -231,7 +231,7 @@ export default function EquipmentDetailTab({
               )}
 
               {/* Checkout/Checkin Controls */}
-              <div className="flex items-center gap-2 mt-2 pt-2 border-t border-rmpg-800/50">
+              <div className="flex items-center gap-2 mt-2 pt-2 border-t border-rmpg-700/50">
                 {eq.status === 'issued' ? (
                   <button type="button" onClick={() => handleCheckin(eq.id)} disabled={checkingOut === eq.id}
                     className="flex items-center gap-1 px-2 py-1 text-[10px] bg-blue-900/30 text-blue-300 border border-blue-700/40 hover:bg-blue-900/50">
@@ -261,7 +261,7 @@ export default function EquipmentDetailTab({
                     <div className="text-[10px] text-rmpg-500 text-center py-2">No checkout history</div>
                   ) : (
                     (checkoutLogs[eq.id] || []).map((log: any) => (
-                      <div key={log.id} className="flex items-center gap-2 text-[10px] px-2 py-1 bg-surface-sunken border border-rmpg-800/30">
+                      <div key={log.id} className="flex items-center gap-2 text-[10px] px-2 py-1 bg-surface-sunken border border-rmpg-700/30">
                         <span className={log.action === 'checkout' ? 'text-green-400' : 'text-blue-400'}>
                           {log.action === 'checkout' ? 'OUT' : 'IN'}
                         </span>

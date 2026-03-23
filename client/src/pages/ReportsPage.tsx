@@ -554,13 +554,13 @@ function CrimeTrendCard() {
           <div className="overflow-x-auto">
             <table className="w-full text-[10px]">
               <thead>
-                <tr className="border-b border-rmpg-600">
-                  <th className="px-2 py-1.5 text-left text-rmpg-400 font-bold uppercase">Type</th>
-                  <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Current</th>
-                  <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Prev Month</th>
-                  <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">MoM %</th>
-                  <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Last Year</th>
-                  <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">YoY %</th>
+                <tr className="border-b border-[#1e3048]">
+                  <th className="px-2 py-1.5 text-left text-rmpg-400 text-xs font-bold uppercase tracking-wider">Type</th>
+                  <th className="px-2 py-1.5 text-right text-rmpg-400 text-xs font-bold uppercase tracking-wider">Current</th>
+                  <th className="px-2 py-1.5 text-right text-rmpg-400 text-xs font-bold uppercase tracking-wider">Prev Month</th>
+                  <th className="px-2 py-1.5 text-right text-rmpg-400 text-xs font-bold uppercase tracking-wider">MoM %</th>
+                  <th className="px-2 py-1.5 text-right text-rmpg-400 text-xs font-bold uppercase tracking-wider">Last Year</th>
+                  <th className="px-2 py-1.5 text-right text-rmpg-400 text-xs font-bold uppercase tracking-wider">YoY %</th>
                 </tr>
               </thead>
               <tbody>
@@ -891,8 +891,8 @@ export default function ReportsPage() {
             <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e 30%, #1a5a9e 70%, #0e3359)' }} />
             <RmpgLogo height={64} />
             <div className="flex-1">
-              <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: '#d0d0d0' }}>Reports & Analytics</h1>
-              <p className="text-[9px] tracking-wide" style={{ color: '#3a5070' }}>Rocky Mountain Protective Group, LLC</p>
+              <h1 className="text-sm font-bold tracking-wider uppercase text-rmpg-100">Reports & Analytics</h1>
+              <p className="text-[9px] tracking-wide text-rmpg-500">Rocky Mountain Protective Group, LLC</p>
             </div>
           </div>
         </div>
@@ -948,6 +948,7 @@ export default function ReportsPage() {
           className="toolbar-btn"
           onClick={handleExport}
           disabled={loading || !incidentsData}
+          style={{ opacity: (loading || !incidentsData) ? 0.4 : 1 }}
         >
           <Download className="w-3.5 h-3.5" /> Export
         </button>
@@ -1364,7 +1365,7 @@ function PatrolTrackingCard() {
 
       {/* Preview stats */}
       {preview && (
-        <div className="mt-2 flex items-center gap-4 text-[9px] text-rmpg-400 font-mono border-t border-rmpg-800 pt-2">
+        <div className="mt-2 flex items-center gap-4 text-[9px] text-rmpg-400 font-mono border-t border-rmpg-700/50 pt-2">
           <span>Units: <strong className="text-white">{preview.totalUnits}</strong></span>
           <span>Points: <strong className="text-white">{preview.totalPoints}</strong></span>
           <span>Miles: <strong className="text-brand-400">{preview.totalMiles}</strong></span>

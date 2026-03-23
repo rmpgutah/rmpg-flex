@@ -82,7 +82,7 @@ export default function ConfirmDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" role="alertdialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descId} ref={dialogRef}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md mx-4 bg-surface-base border border-rmpg-600 shadow-2xl animate-fade-in">
+      <div className="relative w-full max-w-md mx-4 bg-surface-base border border-rmpg-600 shadow-2xl animate-scale-in">
         <div
           className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600"
           style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)' }}
@@ -91,7 +91,7 @@ export default function ConfirmDialog({
             <HeaderIcon className={`w-4 h-4 ${iconColor}`} />
             <h2 id={titleId} className="text-xs font-bold text-white uppercase tracking-wider">{title}</h2>
           </div>
-          <button type="button" onClick={onClose} className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-white transition-colors" aria-label="Close dialog">
+          <button type="button" onClick={onClose} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors" aria-label="Close dialog">
             <X className="w-4 h-4" />
           </button>
         </div>

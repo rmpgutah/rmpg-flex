@@ -313,7 +313,7 @@ export default function FieldInterviewsPage() {
       </PanelTitleBar>
 
       {/* Toolbar */}
-      <div className={`flex ${isMobile ? 'flex-col gap-1.5' : 'items-center gap-2'} px-3 py-1.5 border-b border-rmpg-700`} style={{ background: '#141e2b' }}>
+      <div className={`flex ${isMobile ? 'flex-col gap-1.5' : 'items-center gap-2'} px-3 py-1.5 border-b border-rmpg-700 bg-surface-base`}>
         <div className={`relative ${isMobile ? 'w-full' : 'flex-1 max-w-xs'}`}>
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
           <input
@@ -362,7 +362,7 @@ export default function FieldInterviewsPage() {
               <div
                 key={fi.id}
                 onClick={() => setSelectedFi(fi)}
-                className={`px-3 ${isMobile ? 'py-3' : 'py-2'} cursor-pointer border-b border-rmpg-800 transition-colors hover:bg-surface-raised ${selectedFi?.id === fi.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'border-l-2 border-l-transparent'}`}
+                className={`px-3 ${isMobile ? 'py-3' : 'py-2'} cursor-pointer border-b border-rmpg-700/60 transition-colors hover:bg-white/5 ${selectedFi?.id === fi.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'border-l-2 border-l-transparent'}`}
                 style={isMobile ? { minHeight: 56 } : undefined}
               >
                 <div className="flex items-center justify-between mb-0.5">
@@ -476,8 +476,8 @@ export default function FieldInterviewsPage() {
       {/* Form Modal */}
       {formOpen && (
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setFormOpen(false)}>
-          <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#141e2b' }}>
+          <div className="bg-surface-raised border border-rmpg-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700 bg-surface-base">
               <span className="text-xs font-bold text-white uppercase">{editingFi ? 'Edit' : 'New'} Field Interview</span>
               <button type="button" onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white"><X style={{ width: 14, height: 14 }} /></button>
             </div>
@@ -494,7 +494,7 @@ export default function FieldInterviewsPage() {
                   <input type="text" className="input-dark text-xs w-full min-h-[36px]" placeholder="Search person records..." aria-label="Search person records..."
                     value={personSearch} onChange={e => setPersonSearch(e.target.value)} />
                   {personResults.length > 0 && (
-                    <div className="absolute z-10 w-full mt-1 bg-surface-raised border border-rmpg-600 max-h-40 overflow-y-auto">
+                    <div className="absolute z-10 w-full mt-1 bg-surface-raised border border-rmpg-700 max-h-40 overflow-y-auto">
                       {personResults.map((p: any) => (
                         <button key={p.id} type="button" onClick={() => selectPerson(p)}
                           className="w-full text-left px-3 py-1.5 text-xs text-white hover:bg-rmpg-700 flex items-center gap-2">
@@ -561,24 +561,24 @@ export default function FieldInterviewsPage() {
               {/* Section / Zone / Beat — cascading: zone scoped to section, beat scoped to zone */}
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="block text-xs text-rmpg-400 mb-1">Section</label>
-                  <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-sm text-white"
+                  <label className="field-label">Section</label>
+                  <select className="select-dark text-xs w-full"
                     value={formData.section_id || ''} onChange={e => { update('section_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
                     <option value="">—</option>
                     {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-rmpg-400 mb-1">Zone</label>
-                  <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-sm text-white"
+                  <label className="field-label">Zone</label>
+                  <select className="select-dark text-xs w-full"
                     value={formData.zone_id || ''} onChange={e => { update('zone_id', e.target.value); update('beat_id', ''); }}>
                     <option value="">—</option>
                     {zonesForSection(formData.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-rmpg-400 mb-1">Beat</label>
-                  <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded-sm px-2 py-1.5 text-sm text-white"
+                  <label className="field-label">Beat</label>
+                  <select className="select-dark text-xs w-full"
                     value={formData.beat_id || ''} onChange={e => update('beat_id', e.target.value)}>
                     <option value="">—</option>
                     {beatsForZone(formData.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(formData.zone_id, b)}</option>)}

@@ -532,8 +532,9 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                   type="text"
                   value={jobSearch}
                   onChange={(e) => { setJobSearch(e.target.value); setJobPage(1); }}
-                  placeholder="Search jobs..." aria-label="Search jobs..."
-                  className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] pl-7 pr-2 py-1 rounded-sm w-48 focus:border-brand-500 focus:outline-none"
+                  placeholder="Search jobs..." aria-label="Search jobs"
+                  autoComplete="off"
+                  className="input-dark text-[10px] pl-7 pr-2 py-1 w-48"
                 />
               </div>
               <button type="button" onClick={fetchJobs} className="toolbar-btn text-[10px] flex items-center gap-1">

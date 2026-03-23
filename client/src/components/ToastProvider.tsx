@@ -28,27 +28,31 @@ export const useToast = () => {
 
 const TOAST_CONFIG = {
   success: {
-    bgClass: 'bg-green-900/80',
+    bgClass: 'bg-green-900/85',
     borderClass: 'border-green-600',
     textClass: 'text-green-300',
+    progressClass: 'bg-green-500',
     icon: CheckCircle,
   },
   error: {
-    bgClass: 'bg-red-900/80',
+    bgClass: 'bg-red-900/85',
     borderClass: 'border-red-600',
     textClass: 'text-red-300',
+    progressClass: 'bg-red-500',
     icon: XCircle,
   },
   warning: {
-    bgClass: 'bg-amber-900/80',
+    bgClass: 'bg-amber-900/85',
     borderClass: 'border-amber-600',
     textClass: 'text-amber-300',
+    progressClass: 'bg-amber-500',
     icon: AlertTriangle,
   },
   info: {
-    bgClass: 'bg-brand-900/80',
+    bgClass: 'bg-brand-900/85',
     borderClass: 'border-brand-600',
     textClass: 'text-brand-300',
+    progressClass: 'bg-brand-500',
     icon: Info,
   },
 };
@@ -114,9 +118,9 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
         animation: isExiting ? 'none' : 'slideIn 0.3s ease-out',
       }}
     >
-      <div className="flex items-start gap-3 p-4">
-        <Icon className="w-5 h-5 flex-shrink-0 mt-0.5" />
-        <p className="flex-1 text-sm leading-relaxed">{toast.message}</p>
+      <div className="flex items-start gap-3 p-3">
+        <Icon className="w-4 h-4 flex-shrink-0 mt-0.5" />
+        <p className="flex-1 text-xs leading-relaxed font-medium">{toast.message}</p>
         <button type="button"
           onClick={handleDismiss}
           className="flex-shrink-0 hover:opacity-70 transition-opacity"
@@ -124,9 +128,9 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
           <X className="w-4 h-4" />
         </button>
       </div>
-      <div className="h-1 bg-black/30">
+      <div className="h-0.5 bg-black/30">
         <div
-          className={`h-full ${config.bgClass} transition-all duration-100 ease-linear`}
+          className={`h-full ${config.progressClass} transition-all duration-100 ease-linear opacity-80`}
           style={{ width: `${progress}%` }}
         />
       </div>

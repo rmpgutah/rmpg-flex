@@ -643,7 +643,8 @@ export default function CitationsPage() {
               type="text"
               value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
-              placeholder="Search citations..." aria-label="Search citations..."
+              placeholder="Search citations..." aria-label="Search citations"
+              autoComplete="off"
               className={`input-dark w-full pl-8 pr-3 ${isMobile ? 'py-2.5 text-sm' : 'py-1.5 text-xs'}`}
               style={isMobile ? { minHeight: 44 } : undefined}
             />
@@ -675,9 +676,9 @@ export default function CitationsPage() {
       {/* List body */}
       <div className="flex-1 overflow-y-auto">
         {loading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 size={16} className="animate-spin text-brand-400 mr-2" />
-            <span className="text-xs text-rmpg-400">Loading...</span>
+          <div className="flex flex-col items-center justify-center py-12 gap-2">
+            <Loader2 size={20} className="animate-spin text-brand-400" role="status" aria-label="Loading" />
+            <span className="text-[10px] text-rmpg-500">Loading citations...</span>
           </div>
         ) : error ? (
           <div className="p-4 text-xs text-red-400 flex items-center gap-2">
@@ -1101,7 +1102,8 @@ export default function CitationsPage() {
                   value={personSearch}
                   onChange={e => handlePersonSearchChange(e.target.value)}
                   onFocus={() => { if (personResults.length > 0) setShowPersonDropdown(true); }}
-                  placeholder="Search by name or DL..." aria-label="Search by name or DL..."
+                  placeholder="Search by name or DL..." aria-label="Search by name or driver's license"
+                  autoComplete="off"
                   className="input-dark w-full py-2 pl-8 pr-8 text-xs min-h-[36px]"
                 />
                 {personSearching && <Loader2 size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-rmpg-400 animate-spin" />}
@@ -1142,6 +1144,7 @@ export default function CitationsPage() {
                 value={form.person_name}
                 onChange={e => updateField('person_name', e.target.value)}
                 placeholder="Last, First Middle"
+                autoComplete="off"
                 className={`input-dark w-full py-2 text-xs ${formErrors.person_name ? 'border-red-500' : ''}`}
               />
               {formErrors.person_name && <p className="text-red-400 text-[10px] mt-1">{formErrors.person_name}</p>}

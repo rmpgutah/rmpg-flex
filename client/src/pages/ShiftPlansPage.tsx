@@ -286,7 +286,7 @@ export default function ShiftPlansPage() {
                   <div
                     key={plan.id}
                     onClick={() => sp.setActivePlanId(plan.id)}
-                    className="px-3 py-2.5 cursor-pointer transition-colors border-b border-rmpg-800/50"
+                    className="px-3 py-2.5 cursor-pointer transition-colors border-b border-rmpg-700/50"
                     style={{
                       background: isSelected ? 'rgba(59,130,246,0.08)' : 'transparent',
                       borderLeft: `3px solid ${shiftConfig?.color || '#5a6e80'}`,
@@ -433,7 +433,7 @@ export default function ShiftPlansPage() {
                       {sp.activePlan.assignments.map((a) => (
                         <tr
                           key={a.id}
-                          className="border-b border-rmpg-800/30 hover:bg-surface-raised/30 transition-colors"
+                          className="border-b border-rmpg-700/30 hover:bg-surface-raised/30 transition-colors"
                         >
                           <td className="px-4 py-2">
                             <div className="flex items-center gap-1.5">

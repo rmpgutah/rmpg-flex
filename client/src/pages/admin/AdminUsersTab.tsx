@@ -230,7 +230,8 @@ export default function AdminUsersTab({
             <input
               type="text"
               className="input-dark pl-9 text-xs min-h-[36px]"
-              placeholder="Search users..." aria-label="Search users..."
+              placeholder="Search users..." aria-label="Search users"
+              autoComplete="off"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />

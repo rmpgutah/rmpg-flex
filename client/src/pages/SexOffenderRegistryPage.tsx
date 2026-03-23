@@ -335,13 +335,18 @@ export default function SexOffenderRegistryPage() {
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
             placeholder="Search name or registry ID..." aria-label="Search name or registry ID..."
-            className="w-full pl-7 pr-2 py-1 text-xs bg-[#0d1520] border border-rmpg-700 rounded-sm text-white placeholder-rmpg-600 focus:border-brand-500 focus:outline-none"
+            className={`w-full pl-7 ${searchInput ? 'pr-7' : 'pr-2'} py-1 text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-white placeholder-rmpg-500 focus:border-brand-500 focus:outline-none`}
           />
+          {searchInput && (
+            <button type="button" onClick={() => { setSearchInput(''); setSearch(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300" aria-label="Clear search">
+              <X size={12} />
+            </button>
+          )}
         </div>
         <select
           value={tierFilter}
           onChange={e => { setTierFilter(e.target.value); setPage(1); }}
-          className="text-[11px] bg-[#0d1520] border border-rmpg-700 rounded-sm text-rmpg-300 px-1.5 py-1 focus:border-brand-500 focus:outline-none"
+          className="text-[11px] bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-300 px-1.5 py-1 focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Tiers</option>
           <option value="1">Tier 1</option>
@@ -351,7 +356,7 @@ export default function SexOffenderRegistryPage() {
         <select
           value={statusFilter}
           onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
-          className="text-[11px] bg-[#0d1520] border border-rmpg-700 rounded-sm text-rmpg-300 px-1.5 py-1 focus:border-brand-500 focus:outline-none"
+          className="text-[11px] bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-300 px-1.5 py-1 focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Status</option>
           <option value="compliant">Compliant</option>
@@ -373,7 +378,7 @@ export default function SexOffenderRegistryPage() {
             No records found
           </div>
         ) : (
-          <div className="divide-y divide-rmpg-800/50">
+          <div className="divide-y divide-rmpg-700/50">
             {records.map(r => {
               const tier = TIER_CONFIG[r.tier] || TIER_CONFIG[1];
               const status = STATUS_CONFIG[r.registration_status] || STATUS_CONFIG.compliant;
@@ -382,7 +387,7 @@ export default function SexOffenderRegistryPage() {
                 <button type="button"
                   key={r.id}
                   onClick={() => setSelected(r)}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-rmpg-800/30"
+                  className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface-raised/50"
                   style={{
                     background: isSelected ? 'rgba(26,90,158,0.15)' : undefined,
                     borderLeft: isSelected ? '3px solid #1a5a9e' : '3px solid transparent',
@@ -451,18 +456,18 @@ export default function SexOffenderRegistryPage() {
           <span>{(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalRecords)} of {totalRecords}</span>
           <div className="flex items-center gap-1">
             <button type="button" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-              className="toolbar-btn p-0.5 disabled:opacity-30"><ChevronLeft size={12} /></button>
+              className="toolbar-btn p-0.5 disabled:opacity-40"><ChevronLeft size={12} /></button>
             {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
               const p = page <= 3 ? i + 1 : page + i - 2;
               if (p < 1 || p > totalPages) return null;
               return (
                 <button type="button" key={p} onClick={() => setPage(p)}
-                  className={`px-1.5 py-0.5 rounded-sm text-[10px] ${p === page ? 'bg-brand-500/30 text-brand-300 font-bold' : 'hover:bg-rmpg-800 text-rmpg-400'}`}
+                  className={`px-1.5 py-0.5 rounded-sm text-[10px] ${p === page ? 'bg-brand-500/30 text-brand-300 font-bold' : 'hover:bg-rmpg-700 text-rmpg-400'}`}
                 >{p}</button>
               );
             })}
             <button type="button" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-              className="toolbar-btn p-0.5 disabled:opacity-30"><ChevronRight size={12} /></button>
+              className="toolbar-btn p-0.5 disabled:opacity-40"><ChevronRight size={12} /></button>
           </div>
         </div>
       )}
@@ -1015,7 +1020,7 @@ function RecordFormModal({
             <div>
               <label className="block text-[10px] text-rmpg-500 mb-0.5 uppercase">Tier</label>
               <select value={form.tier} onChange={e => set('tier', parseInt(e.target.value, 10))}
-                className="w-full text-xs bg-[#0d1520] border border-rmpg-700 rounded-sm text-white px-2 py-1.5 focus:border-brand-500 focus:outline-none">
+                className="w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-white px-2 py-1.5 focus:border-brand-500 focus:outline-none">
                 <option value={1}>Tier 1 — Low</option>
                 <option value={2}>Tier 2 — Moderate</option>
                 <option value={3}>Tier 3 — High</option>
@@ -1024,7 +1029,7 @@ function RecordFormModal({
             <div>
               <label className="block text-[10px] text-rmpg-500 mb-0.5 uppercase">Risk Level</label>
               <select value={form.risk_level} onChange={e => set('risk_level', e.target.value)}
-                className="w-full text-xs bg-[#0d1520] border border-rmpg-700 rounded-sm text-white px-2 py-1.5 focus:border-brand-500 focus:outline-none">
+                className="w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-white px-2 py-1.5 focus:border-brand-500 focus:outline-none">
                 <option value="">— None —</option>
                 <option value="low">Low</option>
                 <option value="moderate">Moderate</option>
@@ -1054,7 +1059,7 @@ function RecordFormModal({
             <div>
               <label className="block text-[10px] text-rmpg-500 mb-0.5 uppercase">Status</label>
               <select value={form.registration_status} onChange={e => set('registration_status', e.target.value)}
-                className="w-full text-xs bg-[#0d1520] border border-rmpg-700 rounded-sm text-white px-2 py-1.5 focus:border-brand-500 focus:outline-none">
+                className="w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-white px-2 py-1.5 focus:border-brand-500 focus:outline-none">
                 <option value="compliant">Compliant</option>
                 <option value="non_compliant">Non-Compliant</option>
                 <option value="absconded">Absconded</option>
@@ -1106,7 +1111,7 @@ function FormField({
   label: string; value: string; onChange: (v: string) => void;
   type?: string; placeholder?: string; multiline?: boolean;
 }) {
-  const cls = "w-full text-xs bg-[#0d1520] border border-rmpg-700 rounded-sm text-white px-2 py-1.5 focus:border-brand-500 focus:outline-none placeholder-rmpg-600";
+  const cls = "w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-white px-2 py-1.5 focus:border-brand-500 focus:outline-none placeholder-rmpg-500";
   return (
     <div>
       <label className="block text-[10px] text-rmpg-500 mb-0.5 uppercase">{label}</label>
@@ -1172,7 +1177,7 @@ function ImportModal({
             value={jsonText}
             onChange={e => { setJsonText(e.target.value); setParsed(null); }}
             rows={8}
-            className="w-full text-xs bg-[#0d1520] border border-rmpg-700 rounded-sm text-white px-3 py-2 font-mono focus:border-brand-500 focus:outline-none placeholder-rmpg-600"
+            className="w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-white px-3 py-2 font-mono focus:border-brand-500 focus:outline-none placeholder-rmpg-500"
             placeholder='[{"first_name": "John", "last_name": "Doe", "tier": 2, ...}]'
           />
           {error && <div className="text-red-400 text-[11px]">{error}</div>}

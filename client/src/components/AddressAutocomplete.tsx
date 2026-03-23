@@ -262,7 +262,7 @@ export default function AddressAutocomplete({
       {placesLoaded && (
         <MapPin
           className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"
-          style={{ width: 12, height: 12, color: '#505050' }}
+          style={{ width: 12, height: 12, color: '#5a6e80' }}
         />
       )}
     </div>

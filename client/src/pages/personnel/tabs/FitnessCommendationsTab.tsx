@@ -99,7 +99,7 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
               <input value={fitnessForm.notes} onChange={e => setFitnessForm(f => ({ ...f, notes: e.target.value }))} className="input-field text-xs" placeholder="Notes" />
             </div>
             <div className="flex gap-2">
-              <button type="button" onClick={submitFitness} disabled={submittingFitness} className="toolbar-btn toolbar-btn-success text-[9px] disabled:opacity-50">{submittingFitness ? <><Loader2 className="w-3 h-3 animate-spin" /> Saving...</> : 'Save'}</button>
+              <button type="button" onClick={submitFitness} disabled={submittingFitness} className="toolbar-btn toolbar-btn-success text-[9px] disabled:opacity-40">{submittingFitness ? <><Loader2 className="w-3 h-3 animate-spin" /> Saving...</> : 'Save'}</button>
               <button type="button" onClick={() => setShowFitnessForm(false)} disabled={submittingFitness} className="toolbar-btn text-[9px]">Cancel</button>
             </div>
           </div>
@@ -156,7 +156,7 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
             </div>
             <textarea value={commForm.description} onChange={e => setCommForm(f => ({ ...f, description: e.target.value }))} className="input-field w-full text-xs" rows={2} placeholder="Description..." />
             <div className="flex gap-2">
-              <button type="button" onClick={submitComm} disabled={submittingComm || !commForm.description.trim()} className="toolbar-btn toolbar-btn-success text-[9px] disabled:opacity-50">{submittingComm ? <><Loader2 className="w-3 h-3 animate-spin" /> Saving...</> : 'Save'}</button>
+              <button type="button" onClick={submitComm} disabled={submittingComm || !commForm.description.trim()} className="toolbar-btn toolbar-btn-success text-[9px] disabled:opacity-40">{submittingComm ? <><Loader2 className="w-3 h-3 animate-spin" /> Saving...</> : 'Save'}</button>
               <button type="button" onClick={() => setShowCommForm(false)} disabled={submittingComm} className="toolbar-btn text-[9px]">Cancel</button>
             </div>
           </div>

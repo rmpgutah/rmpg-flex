@@ -123,9 +123,9 @@ export default function ExportButton({
             right: 0,
             minWidth: '160px',
             background: '#1a2636',
-            border: '1px solid #3a5070',
-            borderRadius: 0,
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
+            border: '1px solid #2a3e58',
+            borderTop: '2px solid #1a5a9e',
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.5)',
           }}
         >
           {/* Export CSV */}
@@ -156,7 +156,7 @@ export default function ExportButton({
           </button>
 
           {/* Divider */}
-          <div style={{ height: '1px', background: '#3a5070', margin: '0 8px' }} />
+          <div className="menu-separator" />
 
           {/* Print View */}
           <button

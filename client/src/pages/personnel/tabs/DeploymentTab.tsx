@@ -165,7 +165,7 @@ export default function DeploymentTab({ deployments, coverageGaps, officers, loa
             </thead>
             <tbody>
               {filtered.map((dep) => (
-                <tr key={dep.id} className="border-t border-rmpg-800 hover:bg-rmpg-800/30 transition-colors">
+                <tr key={dep.id} className="border-t border-rmpg-700/50 hover:bg-surface-raised/50 transition-colors">
                   <td className="py-1.5 px-2 text-rmpg-100">{dep.officer_name}</td>
                   <td className="py-1.5 px-2 text-rmpg-100 font-medium">{dep.property_name}</td>
                   <td className="py-1.5 px-2 text-rmpg-400">{dep.client_name || '-'}</td>

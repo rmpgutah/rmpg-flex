@@ -567,9 +567,9 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
         </div>
 
         {recordsLoading ? (
-          <div className="flex items-center gap-2 text-[10px] text-rmpg-500 py-4 justify-center">
-            <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />
-            Loading...
+          <div className="flex flex-col items-center justify-center py-6 gap-2">
+            <Loader2 className="w-4 h-4 animate-spin text-brand-400" role="status" aria-label="Loading" />
+            <span className="text-[10px] text-rmpg-500">Loading booking records...</span>
           </div>
         ) : records.length === 0 ? (
           <div className="text-center text-[10px] text-rmpg-500 py-6">
@@ -725,8 +725,9 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
         {showScraper && (
           <div className="px-3 pb-3 space-y-3 border-t border-rmpg-700/50">
             {scraperLoading ? (
-              <div className="flex items-center gap-2 text-[10px] text-rmpg-500 py-4 justify-center">
-                <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Loading scraper status...
+              <div className="flex flex-col items-center justify-center py-6 gap-2">
+                <Loader2 className="w-4 h-4 animate-spin text-brand-400" role="status" aria-label="Loading" />
+                <span className="text-[10px] text-rmpg-500">Loading scraper status...</span>
               </div>
             ) : scraperStatus ? (
               <>

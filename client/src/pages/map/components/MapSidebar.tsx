@@ -116,7 +116,7 @@ export default function MapSidebar({
             </button>
           </div>
 
-          <div className="px-2 py-1.5" style={{ borderBottom: '1px solid #303030' }}>
+          <div className="px-2 py-1.5" style={{ borderBottom: '1px solid #1e3048' }}>
             <div className="relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
               <input

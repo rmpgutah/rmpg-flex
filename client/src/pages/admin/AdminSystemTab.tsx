@@ -1665,8 +1665,9 @@ export default function AdminSystemTab({
               </h3>
             </div>
                 {loadingAdminUnits ? (
-                  <div className="flex items-center justify-center py-6 text-rmpg-400">
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" role="status" aria-label="Loading" /> Loading units...
+                  <div className="flex flex-col items-center justify-center py-8 gap-2">
+                    <Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" />
+                    <span className="text-[10px] text-rmpg-500">Loading dispatch units...</span>
                   </div>
                 ) : (
                   <>

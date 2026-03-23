@@ -189,9 +189,13 @@ export default function CriminalHistoryPage() {
   return (
     <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
       {fetchError && (
-        <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
-          <span>⚠ {fetchError}</span>
-          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+        <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 text-red-400 text-xs flex items-center gap-2">
+          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+          <span>{fetchError}</span>
+          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300 transition-colors">
+            <span className="sr-only">Dismiss</span>
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
         </div>
       )}
       {!isMobile && <PanelTitleBar title="Criminal History" icon={Shield}>
@@ -211,6 +215,8 @@ export default function CriminalHistoryPage() {
               type="text"
               className="input-dark pl-7 text-[11px] w-64 min-h-[36px]"
               placeholder={searchType === 'name' ? 'Last, First...' : searchType === 'dob' ? 'YYYY-MM-DD...' : 'DL Number...'}
+              aria-label="Search persons"
+              autoComplete="off"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
@@ -239,6 +245,8 @@ export default function CriminalHistoryPage() {
               type="text"
               className="input-dark pl-6 text-[10px] w-full min-h-[36px]"
               placeholder={searchType === 'name' ? 'Last, First...' : searchType === 'dob' ? 'YYYY-MM-DD...' : 'DL Number...'}
+              aria-label="Search persons"
+              autoComplete="off"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
@@ -255,9 +263,10 @@ export default function CriminalHistoryPage() {
         <div className={`${isMobile ? (selectedPerson ? 'hidden' : 'w-full') : 'w-1/3'} border-r border-rmpg-700/50 overflow-auto`}>
           {persons.length === 0 && !loading && (
             <div className="flex items-center justify-center h-full text-rmpg-500 text-[10px]">
-              <div className="text-center">
+              <div className="text-center space-y-1">
                 <Search className="w-8 h-8 mx-auto mb-2 text-rmpg-600" />
-                <p>Search for a person to view criminal history</p>
+                <p className="font-semibold text-rmpg-400">No persons found</p>
+                <p>Search by name, DOB, or driver's license number</p>
               </div>
             </div>
           )}

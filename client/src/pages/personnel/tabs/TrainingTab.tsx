@@ -172,7 +172,7 @@ export default function TrainingTab({ training, requirements, officers, loading,
             </thead>
             <tbody>
               {filtered.map((record) => (
-                <tr key={record.id} className="border-t border-rmpg-800 hover:bg-rmpg-800/30 transition-colors">
+                <tr key={record.id} className="border-t border-rmpg-700/50 hover:bg-surface-raised/50 transition-colors">
                   <td className="py-1.5 px-2 text-rmpg-100">{record.officer_name}</td>
                   <td className="py-1.5 px-2 text-rmpg-100 font-medium">{record.course_name}</td>
                   <td className="py-1.5 px-2">
