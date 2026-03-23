@@ -119,6 +119,10 @@ import TacticalToolsPanel from './components/TacticalToolsPanel';
 import PerimeterToolsPanel from './components/PerimeterToolsPanel';
 import CorridorAnalysisPanel from './components/CorridorAnalysisPanel';
 import AlertSystemPanel from './components/AlertSystemPanel';
+import CallHistoryPanel from './components/CallHistoryPanel';
+import IncidentReportsPanel from './components/IncidentReportsPanel';
+import SafetyZonesPanel from './components/SafetyZonesPanel';
+import TacticalSummaryPanel from './components/TacticalSummaryPanel';
 
 // ============================================================
 // Constants
@@ -4448,6 +4452,76 @@ export default function MapPage() {
               onClear={(id) => alerts.clearAlert(id)}
               onClearAll={() => alerts.clearAllAlerts()}
               onClose={() => setShowAlertSystem(false)}
+            />
+          </div>
+        )}
+
+        {/* ── Call History Panel ── */}
+        {!isMobile && showCallHistory && callHistory.calls.length > 0 && (
+          <div className="absolute top-2 z-30" style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52, top: showPredictions ? 340 : 8 }}>
+            <CallHistoryPanel
+              calls={callHistory.calls}
+              loading={callHistory.loading}
+              days={callHistoryDays}
+              onClose={() => setShowCallHistory(false)}
+            />
+          </div>
+        )}
+
+        {/* ── Incident Reports Panel ── */}
+        {!isMobile && showIncidentReports && (
+          <div className="absolute top-2 z-30" style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52, top: showCallHistory ? 200 : showPredictions ? 340 : 8 }}>
+            <IncidentReportsPanel
+              count={incidentReports.count}
+              loading={incidentReports.loading}
+              days={incidentDays}
+              onClose={() => setShowIncidentReports(false)}
+            />
+          </div>
+        )}
+
+        {/* ── Safety Zones Panel ── */}
+        {!isMobile && showSafetyZones && safetyZones.zones.length > 0 && (
+          <div className="absolute bottom-12 left-2 z-30" style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52 }}>
+            <SafetyZonesPanel
+              zones={safetyZones.zones}
+              loading={safetyZones.loading}
+              onClose={() => setShowSafetyZones(false)}
+            />
+          </div>
+        )}
+
+        {/* ── Tactical Summary Panel ── */}
+        {!isMobile && (showPatrolCheckpoints || showFieldInterviews || showDwellTime || showResponseRadius || showEnforcementClusters || showCoverage || showFleetVehicles || showRepeatAddresses || showDaylight) && (
+          <div className="absolute bottom-12 right-2 z-30" style={{ maxWidth: 260, bottom: showPerimeterTools || showCorridorAnalysis ? 280 : 48 }}>
+            <TacticalSummaryPanel
+              showCheckpoints={showPatrolCheckpoints}
+              checkpointCount={patrolCheckpoints.checkpoints.length}
+              overdueCount={patrolCheckpoints.overdueCount}
+              completionPct={patrolCheckpoints.completionPct}
+              showFieldInterviews={showFieldInterviews}
+              fiCount={fieldInterviews.count}
+              fiDays={fiDays}
+              showDwellTime={showDwellTime}
+              dwellAlertCount={dwellTime.dwellAlertCount}
+              showResponseRadius={showResponseRadius}
+              responseActive={!!responseRadius.activePoint}
+              showEnforcement={showEnforcementClusters}
+              enforcementTotal={enforcementClusters.totalRecords}
+              enforcementType={enforcementType}
+              enforcementDays={enforcementDays}
+              showCoverage={showCoverage}
+              coverageCount={coverageGaps.coverageCount}
+              showFleet={showFleetVehicles}
+              fleetCount={fleetVehicles.count}
+              showRepeat={showRepeatAddresses}
+              repeatCount={repeatAddresses.count}
+              repeatDays={repeatDays}
+              showDaylight={showDaylight}
+              daylightPhase={daylight.phase}
+              onClose={() => {
+                // Close the summary panel — doesn't disable layers
+              }}
             />
           </div>
         )}
