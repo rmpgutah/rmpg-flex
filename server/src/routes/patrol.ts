@@ -2,8 +2,10 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { auditLog } from '../utils/auditLogger';
+import { broadcastPatrolUpdate } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
-import { localNow } from '../utils/timeUtils';
+import { localNow, localToday } from '../utils/timeUtils';
 
 const router = Router();
 
@@ -26,7 +28,7 @@ router.get('/checkpoints', (req: Request, res: Response) => {
     res.json(checkpoints);
   } catch (error) {
     console.error('Error fetching checkpoints:', error);
-    res.status(500).json({ error: 'Failed to fetch checkpoints' });
+    res.status(500).json({ error: 'Failed to fetch checkpoints', code: 'FAILED_TO_FETCH_CHECKPOINTS' });
   }
 });
 
@@ -36,7 +38,7 @@ router.get('/checkpoints/property/:propertyId', (req: Request, res: Response) =>
     const db = getDb();
     const propertyId = parseInt(req.params.propertyId, 10);
     if (isNaN(propertyId)) {
-      res.status(400).json({ error: 'Invalid property ID' });
+      res.status(400).json({ error: 'Invalid property ID', code: 'INVALID_PROPERTY_ID' });
       return;
     }
     const checkpoints = db.prepare(`
@@ -53,7 +55,7 @@ router.get('/checkpoints/property/:propertyId', (req: Request, res: Response) =>
     res.json(checkpoints);
   } catch (error) {
     console.error('Error fetching property checkpoints:', error);
-    res.status(500).json({ error: 'Failed to fetch property checkpoints' });
+    res.status(500).json({ error: 'Failed to fetch property checkpoints', code: 'FAILED_TO_FETCH_PROPERTY' });
   }
 });
 
@@ -63,7 +65,7 @@ router.post('/checkpoints', requireRole('admin', 'manager', 'supervisor'), (req:
     const { property_id, name, description, latitude, longitude, scan_required_interval_minutes, is_active } = req.body;
 
     if (!property_id || !name || !scan_required_interval_minutes) {
-      res.status(400).json({ error: 'Missing required fields: property_id, name, scan_required_interval_minutes' });
+      res.status(400).json({ error: 'Missing required fields: property_id, name, scan_required_interval_minutes', code: 'MISSING_REQUIRED_FIELDS_PROPERTYID' });
       return;
     }
 
@@ -108,7 +110,7 @@ router.post('/checkpoints', requireRole('admin', 'manager', 'supervisor'), (req:
     res.status(201).json(checkpoint);
   } catch (error) {
     console.error('Error creating checkpoint:', error);
-    res.status(500).json({ error: 'Failed to create checkpoint' });
+    res.status(500).json({ error: 'Failed to create checkpoint', code: 'FAILED_TO_CREATE_CHECKPOINT' });
   }
 });
 
@@ -122,7 +124,7 @@ router.put('/checkpoints/:id', requireRole('admin', 'manager', 'supervisor'), (r
 
     const existing = db.prepare('SELECT * FROM patrol_checkpoints WHERE id = ?').get(id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Checkpoint not found' });
+      res.status(404).json({ error: 'Checkpoint not found', code: 'CHECKPOINT_NOT_FOUND' });
       return;
     }
 
@@ -163,10 +165,11 @@ router.put('/checkpoints/:id', requireRole('admin', 'manager', 'supervisor'), (r
       WHERE pc.id = ?
     `).get(id);
 
-    res.json(updated);
+    broadcastPatrolUpdate({ type: 'checkpoint_updated', id: parseInt(id) });
+    res.json({ data: updated });
   } catch (error) {
     console.error('Error updating checkpoint:', error);
-    res.status(500).json({ error: 'Failed to update checkpoint' });
+    res.status(500).json({ error: 'Failed to update checkpoint', code: 'UPDATE_CHECKPOINT_ERROR' });
   }
 });
 
@@ -178,7 +181,7 @@ router.delete('/checkpoints/:id', requireRole('admin', 'manager', 'supervisor'),
 
     const existing = db.prepare('SELECT * FROM patrol_checkpoints WHERE id = ?').get(id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Checkpoint not found' });
+      res.status(404).json({ error: 'Checkpoint not found', code: 'CHECKPOINT_NOT_FOUND' });
       return;
     }
 
@@ -198,7 +201,7 @@ router.delete('/checkpoints/:id', requireRole('admin', 'manager', 'supervisor'),
     res.json({ message: 'Checkpoint deleted successfully' });
   } catch (error) {
     console.error('Error deleting checkpoint:', error);
-    res.status(500).json({ error: 'Failed to delete checkpoint' });
+    res.status(500).json({ error: 'Failed to delete checkpoint', code: 'FAILED_TO_DELETE_CHECKPOINT' });
   }
 });
 
@@ -207,8 +210,8 @@ router.post('/checkpoints/:id/archive', requireRole('admin', 'manager', 'supervi
   try {
     const db = getDb();
     const checkpoint = db.prepare('SELECT * FROM patrol_checkpoints WHERE id = ?').get(req.params.id) as any;
-    if (!checkpoint) { res.status(404).json({ error: 'Checkpoint not found' }); return; }
-    if (checkpoint.archived_at) { res.status(400).json({ error: 'Checkpoint is already archived' }); return; }
+    if (!checkpoint) { res.status(404).json({ error: 'Checkpoint not found', code: 'CHECKPOINT_NOT_FOUND' }); return; }
+    if (checkpoint.archived_at) { res.status(400).json({ error: 'Checkpoint is already archived', code: 'CHECKPOINT_IS_ALREADY_ARCHIVED' }); return; }
 
     const now = localNow();
     db.prepare('UPDATE patrol_checkpoints SET archived_at = ? WHERE id = ?').run(now, checkpoint.id);
@@ -218,10 +221,11 @@ router.post('/checkpoints/:id/archive', requireRole('admin', 'manager', 'supervi
       req.user!.userId, checkpoint.id, `Archived checkpoint: ${checkpoint.name}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT pc.*, p.name as property_name FROM patrol_checkpoints pc LEFT JOIN properties p ON pc.property_id = p.id WHERE pc.id = ?').get(checkpoint.id);
-    res.json(updated);
+    broadcastPatrolUpdate({ type: 'checkpoint_archived', id: checkpoint.id });
+    res.json({ data: updated });
   } catch (error: any) {
     console.error('Archive checkpoint error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'ARCHIVE_CHECKPOINT_ERROR' });
   }
 });
 
@@ -230,8 +234,8 @@ router.post('/checkpoints/:id/unarchive', requireRole('admin', 'manager', 'super
   try {
     const db = getDb();
     const checkpoint = db.prepare('SELECT * FROM patrol_checkpoints WHERE id = ?').get(req.params.id) as any;
-    if (!checkpoint) { res.status(404).json({ error: 'Checkpoint not found' }); return; }
-    if (!checkpoint.archived_at) { res.status(400).json({ error: 'Checkpoint is not archived' }); return; }
+    if (!checkpoint) { res.status(404).json({ error: 'Checkpoint not found', code: 'CHECKPOINT_NOT_FOUND' }); return; }
+    if (!checkpoint.archived_at) { res.status(400).json({ error: 'Checkpoint is not archived', code: 'CHECKPOINT_IS_NOT_ARCHIVED' }); return; }
 
     db.prepare('UPDATE patrol_checkpoints SET archived_at = NULL WHERE id = ?').run(checkpoint.id);
 
@@ -243,7 +247,7 @@ router.post('/checkpoints/:id/unarchive', requireRole('admin', 'manager', 'super
     res.json(updated);
   } catch (error: any) {
     console.error('Unarchive checkpoint error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unarchive checkpoint', code: 'UNARCHIVE_CHECKPOINT_ERROR' });
   }
 });
 
@@ -253,7 +257,7 @@ router.post('/scan', (req: Request, res: Response) => {
     const { qr_code, latitude, longitude, notes } = req.body;
 
     if (!qr_code) {
-      res.status(400).json({ error: 'Missing required field: qr_code' });
+      res.status(400).json({ error: 'Missing required field: qr_code', code: 'MISSING_REQUIRED_FIELD_QRCODE' });
       return;
     }
 
@@ -262,7 +266,7 @@ router.post('/scan', (req: Request, res: Response) => {
     const checkpoint = db.prepare('SELECT * FROM patrol_checkpoints WHERE qr_code = ? AND is_active = 1').get(qr_code) as any;
 
     if (!checkpoint) {
-      res.status(404).json({ error: 'Invalid or inactive checkpoint' });
+      res.status(404).json({ error: 'Invalid or inactive checkpoint', code: 'INVALID_OR_INACTIVE_CHECKPOINT' });
       return;
     }
 
@@ -314,10 +318,11 @@ router.post('/scan', (req: Request, res: Response) => {
       localNow()
     );
 
-    res.status(201).json({ ...(scan as any), checkpoint_name: checkpoint.name, status });
+    broadcastPatrolUpdate({ type: 'patrol_scan', checkpoint_id: checkpoint.id, checkpoint_name: checkpoint.name, status });
+    res.status(201).json({ data: { ...(scan as any), checkpoint_name: checkpoint.name, status } });
   } catch (error) {
     console.error('Error recording scan:', error);
-    res.status(500).json({ error: 'Failed to record scan' });
+    res.status(500).json({ error: 'Failed to record scan', code: 'SCAN_ERROR' });
   }
 });
 
@@ -357,6 +362,7 @@ router.get('/scans/export', (req: Request, res: Response) => {
       LEFT JOIN users u ON ps.officer_id = u.id
       ${whereClause}
       ORDER BY ps.scanned_at DESC
+      LIMIT 5000
     `).all(...params);
 
     sendCsv(res, 'patrol_scans_export.csv', [
@@ -368,7 +374,7 @@ router.get('/scans/export', (req: Request, res: Response) => {
     ], rows);
   } catch (error: any) {
     console.error('Export patrol scans error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to export patrol scans', code: 'EXPORT_PATROL_SCANS_ERROR' });
   }
 });
 
@@ -421,7 +427,7 @@ router.get('/scans', (req: Request, res: Response) => {
     res.json(scans);
   } catch (error) {
     console.error('Error fetching scans:', error);
-    res.status(500).json({ error: 'Failed to fetch scans' });
+    res.status(500).json({ error: 'Failed to fetch scans', code: 'FAILED_TO_FETCH_SCANS' });
   }
 });
 
@@ -438,6 +444,8 @@ router.get('/compliance', (req: Request, res: Response) => {
       LEFT JOIN properties p ON pc.property_id = p.id
       WHERE pc.is_active = 1
       ORDER BY p.name, pc.name
+    
+      LIMIT 1000
     `).all() as any[];
 
     const compliance = checkpoints.map((checkpoint) => {
@@ -491,7 +499,7 @@ router.get('/compliance', (req: Request, res: Response) => {
     res.json(compliance);
   } catch (error) {
     console.error('Error fetching compliance stats:', error);
-    res.status(500).json({ error: 'Failed to fetch compliance stats' });
+    res.status(500).json({ error: 'Failed to fetch compliance stats', code: 'FAILED_TO_FETCH_COMPLIANCE' });
   }
 });
 
@@ -517,7 +525,7 @@ router.get('/checkpoints/map', (req: Request, res: Response) => {
     res.json(rows);
   } catch (error) {
     console.error('Error fetching checkpoint map data:', error);
-    res.status(500).json({ error: 'Failed to fetch checkpoint map data' });
+    res.status(500).json({ error: 'Failed to fetch checkpoint map data', code: 'FAILED_TO_FETCH_CHECKPOINT' });
   }
 });
 
@@ -539,6 +547,8 @@ router.get('/optimize-route', (req: Request, res: Response) => {
       FROM patrol_checkpoints pc
       LEFT JOIN properties p ON pc.property_id = p.id
       ${where}
+    
+      LIMIT 1000
     `).all(...params) as any[];
 
     if (checkpoints.length === 0) {
@@ -586,7 +596,7 @@ router.get('/optimize-route', (req: Request, res: Response) => {
     res.json({ optimized_order: order, total_distance_km: Math.round(totalDist * 100) / 100 });
   } catch (error) {
     console.error('Error optimizing route:', error);
-    res.status(500).json({ error: 'Failed to optimize route' });
+    res.status(500).json({ error: 'Failed to optimize route', code: 'FAILED_TO_OPTIMIZE_ROUTE' });
   }
 });
 
@@ -598,7 +608,7 @@ router.get('/log/generate', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { officer_id, date } = req.query;
-    const targetDate = date as string || new Date().toISOString().split('T')[0];
+    const targetDate = date as string || localToday();
     const officerId = officer_id ? parseInt(officer_id as string, 10) : req.user!.userId;
 
     const officer = db.prepare('SELECT full_name, badge_number FROM users WHERE id = ?').get(officerId) as any;
@@ -611,6 +621,8 @@ router.get('/log/generate', (req: Request, res: Response) => {
       LEFT JOIN properties p ON pc.property_id = p.id
       WHERE ps.officer_id = ? AND DATE(ps.scanned_at) = ?
       ORDER BY ps.scanned_at ASC
+    
+      LIMIT 1000
     `).all(officerId, targetDate) as any[];
 
     // Calculate patrol stats
@@ -655,7 +667,7 @@ router.get('/log/generate', (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error generating patrol log:', error);
-    res.status(500).json({ error: 'Failed to generate patrol log' });
+    res.status(500).json({ error: 'Failed to generate patrol log', code: 'FAILED_TO_GENERATE_PATROL' });
   }
 });
 
@@ -676,7 +688,7 @@ router.post('/scan/:scanId/create-incident', (req: Request, res: Response) => {
     `).get(req.params.scanId) as any;
 
     if (!scan) {
-      res.status(404).json({ error: 'Scan not found' });
+      res.status(404).json({ error: 'Scan not found', code: 'SCAN_NOT_FOUND' });
       return;
     }
 
@@ -719,7 +731,7 @@ router.post('/scan/:scanId/create-incident', (req: Request, res: Response) => {
     res.status(201).json(incident);
   } catch (error) {
     console.error('Error creating incident from scan:', error);
-    res.status(500).json({ error: 'Failed to create incident' });
+    res.status(500).json({ error: 'Failed to create incident', code: 'FAILED_TO_CREATE_INCIDENT' });
   }
 });
 
@@ -756,12 +768,14 @@ router.get('/coverage-heatmap', (req: Request, res: Response) => {
         AND pc.id NOT IN (
           SELECT DISTINCT checkpoint_id FROM patrol_scans WHERE scanned_at >= ?
         )
+    
+      LIMIT 1000
     `).all(cutoff);
 
     res.json({ heatmap_points: points, unpatrolled_checkpoints: unpatrolled, days: daysNum });
   } catch (error) {
     console.error('Error fetching coverage heatmap:', error);
-    res.status(500).json({ error: 'Failed to fetch coverage data' });
+    res.status(500).json({ error: 'Failed to fetch coverage data', code: 'FAILED_TO_FETCH_COVERAGE' });
   }
 });
 
@@ -775,7 +789,7 @@ router.post('/verify-tour', requireRole('admin', 'manager', 'supervisor'), (req:
     const { officer_id, date, notes, status } = req.body;
 
     if (!officer_id || !date) {
-      res.status(400).json({ error: 'officer_id and date are required' });
+      res.status(400).json({ error: 'officer_id and date are required', code: 'OFFICERID_AND_DATE_ARE' });
       return;
     }
 
@@ -821,7 +835,7 @@ router.post('/verify-tour', requireRole('admin', 'manager', 'supervisor'), (req:
     res.status(200);
   } catch (error) {
     console.error('Error verifying tour:', error);
-    res.status(500).json({ error: 'Failed to verify tour' });
+    res.status(500).json({ error: 'Failed to verify tour', code: 'FAILED_TO_VERIFY_TOUR' });
   }
 });
 
@@ -847,7 +861,7 @@ router.get('/verifications', requireRole('admin', 'manager', 'supervisor'), (req
     res.json(rows);
   } catch (error) {
     console.error('Error fetching verifications:', error);
-    res.status(500).json({ error: 'Failed to fetch verifications' });
+    res.status(500).json({ error: 'Failed to fetch verifications', code: 'FAILED_TO_FETCH_VERIFICATIONS' });
   }
 });
 
@@ -872,6 +886,8 @@ router.get('/exceptions', (req: Request, res: Response) => {
       LEFT JOIN users u ON ps.officer_id = u.id
       WHERE ps.status = 'late' AND ps.scanned_at >= ?
       ORDER BY ps.scanned_at DESC
+    
+      LIMIT 1000
     `).all(cutoff) as any[];
 
     // Missed checkpoints (active checkpoints with no scans in last interval)
@@ -902,7 +918,7 @@ router.get('/exceptions', (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error fetching exceptions:', error);
-    res.status(500).json({ error: 'Failed to fetch exception report' });
+    res.status(500).json({ error: 'Failed to fetch exception report', code: 'FAILED_TO_FETCH_EXCEPTION' });
   }
 });
 
@@ -914,7 +930,7 @@ router.get('/time-tracking', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { officer_id, date } = req.query;
-    const targetDate = date as string || new Date().toISOString().split('T')[0];
+    const targetDate = date as string || localToday();
     const officerId = officer_id ? parseInt(officer_id as string, 10) : req.user!.userId;
 
     const dayScans = db.prepare(`
@@ -924,6 +940,8 @@ router.get('/time-tracking', (req: Request, res: Response) => {
       LEFT JOIN properties p ON pc.property_id = p.id
       WHERE ps.officer_id = ? AND DATE(ps.scanned_at) = ?
       ORDER BY ps.scanned_at ASC
+    
+      LIMIT 1000
     `).all(officerId, targetDate) as any[];
 
     const segments: { from: string; to: string; from_time: string; to_time: string; duration_minutes: number }[] = [];
@@ -962,7 +980,7 @@ router.get('/time-tracking', (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error fetching time tracking:', error);
-    res.status(500).json({ error: 'Failed to fetch time tracking' });
+    res.status(500).json({ error: 'Failed to fetch time tracking', code: 'FAILED_TO_FETCH_TIME' });
   }
 });
 
@@ -975,7 +993,7 @@ router.post('/scan/:scanId/weather', (req: Request, res: Response) => {
     const db = getDb();
     const scan = db.prepare('SELECT * FROM patrol_scans WHERE id = ?').get(req.params.scanId) as any;
     if (!scan) {
-      res.status(404).json({ error: 'Scan not found' });
+      res.status(404).json({ error: 'Scan not found', code: 'SCAN_NOT_FOUND' });
       return;
     }
 
@@ -1009,7 +1027,7 @@ router.post('/scan/:scanId/weather', (req: Request, res: Response) => {
     res.json({ success: true, weather: weatherData });
   } catch (error) {
     console.error('Error logging weather:', error);
-    res.status(500).json({ error: 'Failed to log weather conditions' });
+    res.status(500).json({ error: 'Failed to log weather conditions', code: 'FAILED_TO_LOG_WEATHER' });
   }
 });
 
@@ -1030,6 +1048,8 @@ router.get('/shift-summary', (req: Request, res: Response) => {
       LEFT JOIN properties p ON pc.property_id = p.id
       WHERE ps.officer_id = ? AND DATE(ps.scanned_at) = ?
       ORDER BY ps.scanned_at ASC
+    
+      LIMIT 1000
     `).all(officerId, targetDate) as any[];
 
     const onTime = scans.filter((s: any) => s.status === 'on_time').length;
@@ -1039,6 +1059,8 @@ router.get('/shift-summary', (req: Request, res: Response) => {
     const incidents = db.prepare(`
       SELECT id, incident_number, incident_type, status
       FROM incidents WHERE officer_id = ? AND DATE(created_at) = ?
+    
+      LIMIT 1000
     `).all(officerId, targetDate) as any[];
 
     // Mileage from GPS breadcrumbs (rough calculation from distance between consecutive points)
@@ -1048,6 +1070,8 @@ router.get('/shift-summary', (req: Request, res: Response) => {
         SELECT latitude, longitude FROM gps_breadcrumbs
         WHERE officer_id = ? AND DATE(recorded_at) = ?
         ORDER BY recorded_at ASC
+      
+        LIMIT 1000
       `).all(officerId, targetDate) as any[];
 
       for (let i = 1; i < breadcrumbs.length; i++) {
@@ -1066,6 +1090,8 @@ router.get('/shift-summary', (req: Request, res: Response) => {
     try {
       breaks = db.prepare(`
         SELECT * FROM patrol_breaks WHERE officer_id = ? AND shift_date = ?
+      
+        LIMIT 1000
       `).all(officerId, targetDate) as any[];
     } catch { /* table may not exist */ }
 
@@ -1084,7 +1110,7 @@ router.get('/shift-summary', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Shift summary error:', error);
-    res.status(500).json({ error: 'Failed to generate shift summary' });
+    res.status(500).json({ error: 'Failed to generate shift summary', code: 'FAILED_TO_GENERATE_SHIFT' });
   }
 });
 
@@ -1101,7 +1127,7 @@ router.get('/checkpoints/:id/instructions', (req: Request, res: Response) => {
       WHERE pc.id = ?
     `).get(req.params.id) as any;
 
-    if (!checkpoint) { res.status(404).json({ error: 'Checkpoint not found' }); return; }
+    if (!checkpoint) { res.status(404).json({ error: 'Checkpoint not found', code: 'CHECKPOINT_NOT_FOUND' }); return; }
 
     res.json({
       checkpoint_name: checkpoint.name,
@@ -1116,7 +1142,7 @@ router.get('/checkpoints/:id/instructions', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get instructions error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get instructions', code: 'GET_INSTRUCTIONS_ERROR' });
   }
 });
 
@@ -1131,7 +1157,7 @@ router.post('/breaks/start', (req: Request, res: Response) => {
 
     // Check for active break
     const active = db.prepare('SELECT * FROM patrol_breaks WHERE officer_id = ? AND shift_date = ? AND break_end IS NULL').get(req.user!.userId, today) as any;
-    if (active) { res.status(400).json({ error: 'Already on a break. End current break first.' }); return; }
+    if (active) { res.status(400).json({ error: 'Already on a break. End current break first.', code: 'ALREADY_ON_A_BREAK' }); return; }
 
     const result = db.prepare(`
       INSERT INTO patrol_breaks (officer_id, shift_date, break_start, break_type)
@@ -1141,7 +1167,7 @@ router.post('/breaks/start', (req: Request, res: Response) => {
     res.status(201).json({ id: result.lastInsertRowid, break_start: now });
   } catch (error: any) {
     console.error('Start break error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to start break', code: 'START_BREAK_ERROR' });
   }
 });
 
@@ -1153,7 +1179,7 @@ router.post('/breaks/end', (req: Request, res: Response) => {
     const today = now.split('T')[0];
 
     const active = db.prepare('SELECT * FROM patrol_breaks WHERE officer_id = ? AND shift_date = ? AND break_end IS NULL').get(req.user!.userId, today) as any;
-    if (!active) { res.status(400).json({ error: 'No active break to end' }); return; }
+    if (!active) { res.status(400).json({ error: 'No active break to end', code: 'NO_ACTIVE_BREAK_TO' }); return; }
 
     const startTime = new Date(active.break_start).getTime();
     const endTime = new Date(now).getTime();
@@ -1164,7 +1190,7 @@ router.post('/breaks/end', (req: Request, res: Response) => {
     res.json({ success: true, duration_minutes: durationMinutes });
   } catch (error: any) {
     console.error('End break error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to end break', code: 'END_BREAK_ERROR' });
   }
 });
 
@@ -1182,12 +1208,14 @@ router.get('/breaks', (req: Request, res: Response) => {
       LEFT JOIN users u ON pb.officer_id = u.id
       WHERE pb.officer_id = ? AND pb.shift_date = ?
       ORDER BY pb.break_start ASC
+    
+      LIMIT 1000
     `).all(officerId, targetDate);
 
     res.json(breaks);
   } catch (error: any) {
     console.error('Get breaks error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get breaks', code: 'GET_BREAKS_ERROR' });
   }
 });
 
@@ -1197,7 +1225,7 @@ router.post('/proximity-check', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { latitude, longitude, radius_miles } = req.body;
-    if (!latitude || !longitude) { res.status(400).json({ error: 'latitude and longitude required' }); return; }
+    if (!latitude || !longitude) { res.status(400).json({ error: 'latitude and longitude required', code: 'LATITUDE_AND_LONGITUDE_REQUIRED' }); return; }
 
     const radiusMi = radius_miles || 0.5; // default 0.5 miles
     // Approximate: 1 degree lat ~= 69 miles
@@ -1211,6 +1239,8 @@ router.post('/proximity-check', (req: Request, res: Response) => {
         AND latitude IS NOT NULL AND longitude IS NOT NULL
         AND latitude BETWEEN ? AND ?
         AND longitude BETWEEN ? AND ?
+    
+      LIMIT 1000
     `).all(
       latitude - latDelta, latitude + latDelta,
       longitude - lngDelta, longitude + lngDelta
@@ -1219,7 +1249,7 @@ router.post('/proximity-check', (req: Request, res: Response) => {
     res.json({ nearby_calls: activeCalls, count: activeCalls.length });
   } catch (error: any) {
     console.error('Proximity check error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to proximity check', code: 'PROXIMITY_CHECK_ERROR' });
   }
 });
 
@@ -1265,7 +1295,7 @@ router.get('/efficiency', (req: Request, res: Response) => {
     res.json(efficiency);
   } catch (error: any) {
     console.error('Efficiency score error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to efficiency score', code: 'EFFICIENCY_SCORE_ERROR' });
   }
 });
 

@@ -94,7 +94,7 @@ router.get('/calls', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get calls error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get calls', code: 'GET_CALLS_ERROR' });
   }
 });
 
@@ -135,7 +135,7 @@ router.post('/calls', (req: Request, res: Response) => {
     } = req.body;
 
     if (!incident_type || !priority || !location_address) {
-      res.status(400).json({ error: 'incident_type, priority, and location_address are required' });
+      res.status(400).json({ error: 'incident_type, priority, and location_address are required', code: 'INCIDENTTYPE_PRIORITY_AND_LOCATIONADDRESS' });
       return;
     }
 
@@ -271,7 +271,7 @@ router.post('/calls', (req: Request, res: Response) => {
     res.status(201).json(call);
   } catch (error: any) {
     console.error('Create call error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create call', code: 'CREATE_CALL_ERROR' });
   }
 });
 
@@ -307,6 +307,8 @@ router.get('/calls/export', (req: Request, res: Response) => {
       FROM calls_for_service c
       ${whereClause}
       ORDER BY c.created_at DESC
+    
+      LIMIT 1000
     `).all(...params);
 
     sendCsv(res, 'calls_export.csv', [
@@ -324,7 +326,7 @@ router.get('/calls/export', (req: Request, res: Response) => {
     ], rows);
   } catch (error: any) {
     console.error('Export calls error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to export calls', code: 'EXPORT_CALLS_ERROR' });
   }
 });
 
@@ -354,7 +356,7 @@ router.get('/calls/check-duplicate', (req: Request, res: Response) => {
     res.json({ duplicates, count: duplicates.length });
   } catch (error: any) {
     console.error('Duplicate check error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to duplicate check', code: 'DUPLICATE_CHECK_ERROR' });
   }
 });
 
@@ -375,7 +377,7 @@ router.get('/calls/:id', (req: Request, res: Response) => {
     `).get(req.params.id) as any;
 
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
@@ -390,6 +392,8 @@ router.get('/calls/:id', (req: Request, res: Response) => {
           FROM units u
           LEFT JOIN users usr ON u.officer_id = usr.id
           WHERE u.id IN (${placeholders})
+        
+          LIMIT 1000
         `).all(...unitIds);
       }
     } catch { /* ignore parse errors */ }
@@ -398,6 +402,8 @@ router.get('/calls/:id', (req: Request, res: Response) => {
     const incidents = db.prepare(`
       SELECT id, incident_number, incident_type, status, created_at
       FROM incidents WHERE call_id = ?
+    
+      LIMIT 1000
     `).all(call.id);
 
     // Get activity log for this call
@@ -407,6 +413,8 @@ router.get('/calls/:id', (req: Request, res: Response) => {
       LEFT JOIN users u ON al.user_id = u.id
       WHERE al.entity_type = 'call' AND al.entity_id = ?
       ORDER BY al.created_at DESC
+    
+      LIMIT 1000
     `).all(call.id);
 
     res.json({
@@ -417,7 +425,7 @@ router.get('/calls/:id', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get call error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get call', code: 'GET_CALL_ERROR' });
   }
 });
 
@@ -427,7 +435,7 @@ router.put('/calls/:id', (req: Request, res: Response) => {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
@@ -598,7 +606,7 @@ router.put('/calls/:id', (req: Request, res: Response) => {
     addField('client_id', resolvedUpdateClientId);
 
     if (updates.length === 0) {
-      res.status(400).json({ error: 'No fields to update' });
+      res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
       return;
     }
 
@@ -625,7 +633,7 @@ router.put('/calls/:id', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update call error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update call', code: 'UPDATE_CALL_ERROR' });
   }
 });
 
@@ -635,13 +643,13 @@ router.post('/calls/:id/dispatch', (req: Request, res: Response) => {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
     const { unit_ids } = req.body;
     if (!unit_ids || !Array.isArray(unit_ids) || unit_ids.length === 0) {
-      res.status(400).json({ error: 'unit_ids array is required' });
+      res.status(400).json({ error: 'unit_ids array is required', code: 'UNITIDS_ARRAY_IS_REQUIRED' });
       return;
     }
 
@@ -685,7 +693,7 @@ router.post('/calls/:id/dispatch', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Dispatch error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to dispatch', code: 'DISPATCH_ERROR' });
   }
 });
 
@@ -695,19 +703,19 @@ router.post('/calls/:id/assign-unit', (req: Request, res: Response) => {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
     const { unit_id } = req.body;
     if (!unit_id) {
-      res.status(400).json({ error: 'unit_id is required' });
+      res.status(400).json({ error: 'unit_id is required', code: 'UNITID_IS_REQUIRED' });
       return;
     }
 
     const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(unit_id) as any;
     if (!unit) {
-      res.status(404).json({ error: 'Unit not found' });
+      res.status(404).json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' });
       return;
     }
 
@@ -750,7 +758,7 @@ router.post('/calls/:id/assign-unit', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Assign unit error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to assign unit', code: 'ASSIGN_UNIT_ERROR' });
   }
 });
 
@@ -760,19 +768,19 @@ router.post('/calls/:id/unassign-unit', (req: Request, res: Response) => {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
     const { unit_id } = req.body;
     if (!unit_id) {
-      res.status(400).json({ error: 'unit_id is required' });
+      res.status(400).json({ error: 'unit_id is required', code: 'UNITID_IS_REQUIRED' });
       return;
     }
 
     const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(unit_id) as any;
     if (!unit) {
-      res.status(404).json({ error: 'Unit not found' });
+      res.status(404).json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' });
       return;
     }
 
@@ -809,7 +817,7 @@ router.post('/calls/:id/unassign-unit', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Unassign unit error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unassign unit', code: 'UNASSIGN_UNIT_ERROR' });
   }
 });
 
@@ -819,13 +827,13 @@ router.post('/calls/:id/status', (req: Request, res: Response) => {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
     const { status, notes, disposition } = req.body;
     if (!status) {
-      res.status(400).json({ error: 'status is required' });
+      res.status(400).json({ error: 'status is required', code: 'STATUS_IS_REQUIRED' });
       return;
     }
 
@@ -894,7 +902,7 @@ router.post('/calls/:id/status', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Status update error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to status update', code: 'STATUS_UPDATE_ERROR' });
   }
 });
 
@@ -904,7 +912,7 @@ router.post('/calls/:id/revert-status', (req: Request, res: Response) => {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
@@ -974,7 +982,7 @@ router.post('/calls/:id/revert-status', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Revert status error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to revert status', code: 'REVERT_STATUS_ERROR' });
   }
 });
 
@@ -984,12 +992,12 @@ router.post('/calls/:id/hold', (req: Request, res: Response) => {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
     if (call.status === 'on_hold') {
-      res.status(400).json({ error: 'Call is already on hold' });
+      res.status(400).json({ error: 'Call is already on hold', code: 'CALL_IS_ALREADY_ON' });
       return;
     }
 
@@ -1016,7 +1024,7 @@ router.post('/calls/:id/hold', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Hold call error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to hold call', code: 'HOLD_CALL_ERROR' });
   }
 });
 
@@ -1026,12 +1034,12 @@ router.post('/calls/:id/resume', (req: Request, res: Response) => {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
     if (call.status !== 'on_hold') {
-      res.status(400).json({ error: 'Call is not on hold' });
+      res.status(400).json({ error: 'Call is not on hold', code: 'CALL_IS_NOT_ON' });
       return;
     }
 
@@ -1053,7 +1061,7 @@ router.post('/calls/:id/resume', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Resume call error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to resume call', code: 'RESUME_CALL_ERROR' });
   }
 });
 
@@ -1062,7 +1070,7 @@ router.post('/calls/:id/promote-to-incident', requireRole('admin', 'manager', 's
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
-    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+    if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
 
     // Generate incident number
     const { generateIncidentNumber } = require('../utils/caseNumbers');
@@ -1099,7 +1107,7 @@ router.post('/calls/:id/promote-to-incident', requireRole('admin', 'manager', 's
     res.status(201).json(incident);
   } catch (error: any) {
     console.error('Promote to incident error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to promote to incident', code: 'PROMOTE_TO_INCIDENT_ERROR' });
   }
 });
 
@@ -1108,7 +1116,7 @@ router.post('/calls/:id/le-notification', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
-    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+    if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
 
     const { agency, case_number, notes } = req.body;
     const now = localNow();
@@ -1132,7 +1140,7 @@ router.post('/calls/:id/le-notification', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('LE notification error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to le notification', code: 'LE_NOTIFICATION_ERROR' });
   }
 });
 
@@ -1147,12 +1155,14 @@ router.get('/units', (req: Request, res: Response) => {
       LEFT JOIN users usr ON u.officer_id = usr.id
       LEFT JOIN calls_for_service c ON u.current_call_id = c.id
       ORDER BY u.call_sign
+    
+      LIMIT 1000
     `).all();
 
     res.json(units);
   } catch (error: any) {
     console.error('Get units error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get units', code: 'GET_UNITS_ERROR' });
   }
 });
 
@@ -1162,14 +1172,14 @@ router.post('/units', requireRole('admin', 'manager', 'dispatcher'), (req: Reque
     const db = getDb();
     const { call_sign, officer_id, status } = req.body;
     if (!call_sign) {
-      res.status(400).json({ error: 'call_sign is required' });
+      res.status(400).json({ error: 'call_sign is required', code: 'CALLSIGN_IS_REQUIRED' });
       return;
     }
 
     // Check for duplicate call_sign
     const existing = db.prepare('SELECT id FROM units WHERE call_sign = ?').get(call_sign);
     if (existing) {
-      res.status(409).json({ error: 'A unit with this call sign already exists' });
+      res.status(409).json({ error: 'A unit with this call sign already exists', code: 'A_UNIT_WITH_THIS' });
       return;
     }
 
@@ -1188,7 +1198,7 @@ router.post('/units', requireRole('admin', 'manager', 'dispatcher'), (req: Reque
     res.status(201).json(unit);
   } catch (error: any) {
     console.error('Create unit error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create unit', code: 'CREATE_UNIT_ERROR' });
   }
 });
 
@@ -1198,7 +1208,7 @@ router.put('/units/:id', requireRole('admin', 'manager', 'dispatcher'), (req: Re
     const db = getDb();
     const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(req.params.id) as any;
     if (!unit) {
-      res.status(404).json({ error: 'Unit not found' });
+      res.status(404).json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' });
       return;
     }
 
@@ -1210,13 +1220,13 @@ router.put('/units/:id', requireRole('admin', 'manager', 'dispatcher'), (req: Re
     if (call_sign !== undefined) {
       const trimmed = call_sign.trim();
       if (!trimmed) {
-        res.status(400).json({ error: 'call_sign cannot be empty' });
+        res.status(400).json({ error: 'call_sign cannot be empty', code: 'CALLSIGN_CANNOT_BE_EMPTY' });
         return;
       }
       // Check uniqueness (exclude self)
       const dup = db.prepare('SELECT id FROM units WHERE call_sign = ? AND id != ?').get(trimmed, req.params.id);
       if (dup) {
-        res.status(409).json({ error: 'A unit with this call sign already exists' });
+        res.status(409).json({ error: 'A unit with this call sign already exists', code: 'A_UNIT_WITH_THIS' });
         return;
       }
       updates.push('call_sign = ?');
@@ -1242,7 +1252,7 @@ router.put('/units/:id', requireRole('admin', 'manager', 'dispatcher'), (req: Re
     }
 
     if (updates.length === 0) {
-      res.status(400).json({ error: 'No fields to update' });
+      res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
       return;
     }
 
@@ -1261,7 +1271,7 @@ router.put('/units/:id', requireRole('admin', 'manager', 'dispatcher'), (req: Re
     res.json(updated);
   } catch (error: any) {
     console.error('Update unit error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update unit', code: 'UPDATE_UNIT_ERROR' });
   }
 });
 
@@ -1271,13 +1281,13 @@ router.delete('/units/:id', requireRole('admin', 'manager'), (req: Request, res:
     const db = getDb();
     const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(req.params.id) as any;
     if (!unit) {
-      res.status(404).json({ error: 'Unit not found' });
+      res.status(404).json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' });
       return;
     }
 
     // Block deletion if unit is assigned to an active call
     if (unit.current_call_id) {
-      res.status(400).json({ error: 'Cannot delete a unit that is assigned to an active call. Unassign the unit first.' });
+      res.status(400).json({ error: 'Cannot delete a unit that is assigned to an active call. Unassign the unit first.', code: 'CANNOT_DELETE_A_UNIT' });
       return;
     }
 
@@ -1291,7 +1301,7 @@ router.delete('/units/:id', requireRole('admin', 'manager'), (req: Request, res:
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete unit error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete unit', code: 'DELETE_UNIT_ERROR' });
   }
 });
 
@@ -1301,7 +1311,7 @@ router.put('/units/:id/status', (req: Request, res: Response) => {
     const db = getDb();
     const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(req.params.id) as any;
     if (!unit) {
-      res.status(404).json({ error: 'Unit not found' });
+      res.status(404).json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' });
       return;
     }
 
@@ -1327,7 +1337,7 @@ router.put('/units/:id/status', (req: Request, res: Response) => {
     }
 
     if (updates.length === 0) {
-      res.status(400).json({ error: 'No fields to update' });
+      res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
       return;
     }
 
@@ -1356,7 +1366,7 @@ router.put('/units/:id/status', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Unit status update error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unit status update', code: 'UNIT_STATUS_UPDATE_ERROR' });
   }
 });
 
@@ -1403,7 +1413,7 @@ router.post('/gps', (req: Request, res: Response) => {
         source: req.body.source || 'unknown',
       }];
     } else {
-      res.status(400).json({ error: 'latitude/longitude or points[] required' });
+      res.status(400).json({ error: 'latitude/longitude or points[] required', code: 'LATITUDELONGITUDE_OR_POINTS_REQUIRED' });
       return;
     }
 
@@ -1415,14 +1425,14 @@ router.post('/gps', (req: Request, res: Response) => {
     );
 
     if (validPoints.length === 0) {
-      res.status(400).json({ error: 'No valid GPS points provided' });
+      res.status(400).json({ error: 'No valid GPS points provided', code: 'NO_VALID_GPS_POINTS' });
       return;
     }
 
     // Find unit assigned to current user
     const unit = db.prepare('SELECT id, call_sign, status FROM units WHERE officer_id = ?').get(req.user!.userId) as any;
     if (!unit) {
-      res.status(404).json({ error: 'No unit assigned to current user' });
+      res.status(404).json({ error: 'No unit assigned to current user', code: 'NO_UNIT_ASSIGNED_TO' });
       return;
     }
 
@@ -1498,7 +1508,7 @@ router.post('/gps', (req: Request, res: Response) => {
     })();
   } catch (error: any) {
     console.error('GPS update error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to gps update', code: 'GPS_UPDATE_ERROR' });
   }
 });
 
@@ -1514,7 +1524,7 @@ router.get('/gps/my-unit', (req: Request, res: Response) => {
     res.json(unit || null);
   } catch (error: any) {
     console.error('Get my unit error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get my unit', code: 'GET_MY_UNIT_ERROR' });
   }
 });
 
@@ -1534,6 +1544,8 @@ router.get('/gps/trail/:unitId', (req: Request, res: Response) => {
       FROM gps_breadcrumbs
       WHERE unit_id = ? AND recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')
       ORDER BY recorded_at ASC
+    
+      LIMIT 1000
     `).all(unitId, hours) as any[];
 
     // ── Filter: accuracy gate + jump detection + stationary collapse ──
@@ -1581,7 +1593,7 @@ router.get('/gps/trail/:unitId', (req: Request, res: Response) => {
     res.json(filtered);
   } catch (error: any) {
     console.error('GPS trail error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to gps trail', code: 'GPS_TRAIL_ERROR' });
   }
 });
 
@@ -1616,6 +1628,8 @@ router.get('/gps/trails', (req: Request, res: Response) => {
       JOIN units u ON b.unit_id = u.id
       WHERE b.recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')
       ORDER BY b.unit_id, b.recorded_at ASC
+    
+      LIMIT 1000
     `).all(hours) as any[];
 
     // ── Group by unit, then filter each trail to remove starburst artifacts ──
@@ -1684,7 +1698,7 @@ router.get('/gps/trails', (req: Request, res: Response) => {
     res.json(Object.values(trails));
   } catch (error: any) {
     console.error('GPS trails error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to gps trails', code: 'GPS_TRAILS_ERROR' });
   }
 });
 
@@ -1695,7 +1709,7 @@ router.get('/gps/call-trail/:callId', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const callId = parseInt(req.params.callId as string);
-    if (isNaN(callId)) { res.status(400).json({ error: 'Invalid call ID' }); return; }
+    if (isNaN(callId)) { res.status(400).json({ error: 'Invalid call ID', code: 'INVALID_CALL_ID' }); return; }
 
     // Fetch call metadata for time window + assigned units
     const call = db.prepare(`
@@ -1703,7 +1717,7 @@ router.get('/gps/call-trail/:callId', (req: Request, res: Response) => {
              created_at, assigned_unit_ids
       FROM calls_for_service WHERE id = ?
     `).get(callId) as any;
-    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+    if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
 
     // Build time window: from dispatched (or created) to cleared (or now)
     const startTime = call.dispatched_at || call.created_at;
@@ -1729,6 +1743,8 @@ router.get('/gps/call-trail/:callId', (req: Request, res: Response) => {
         WHERE (current_call_id = ?)
            OR (unit_id IN (${placeholders}) AND recorded_at >= ? AND recorded_at <= ?)
         ORDER BY recorded_at ASC
+      
+        LIMIT 1000
       `).all(callId, ...unitIds, startTime, endTime) as any[];
     } else if (unitIds.length > 0) {
       // Active call — no end time, use current time
@@ -1739,6 +1755,8 @@ router.get('/gps/call-trail/:callId', (req: Request, res: Response) => {
         WHERE (current_call_id = ?)
            OR (unit_id IN (${placeholders}) AND recorded_at >= ?)
         ORDER BY recorded_at ASC
+      
+        LIMIT 1000
       `).all(callId, ...unitIds, startTime) as any[];
     } else {
       // No assigned units — only match by current_call_id
@@ -1747,6 +1765,8 @@ router.get('/gps/call-trail/:callId', (req: Request, res: Response) => {
         FROM gps_breadcrumbs
         WHERE current_call_id = ?
         ORDER BY recorded_at ASC
+      
+        LIMIT 1000
       `).all(callId) as any[];
     }
 
@@ -1840,7 +1860,7 @@ router.get('/gps/call-trail/:callId', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Call trail error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to call trail', code: 'CALL_TRAIL_ERROR' });
   }
 });
 
@@ -1857,7 +1877,7 @@ router.delete('/gps/breadcrumbs/cleanup', (req: Request, res: Response) => {
     res.json({ deleted: result.changes });
   } catch (error: any) {
     console.error('Breadcrumb cleanup error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to breadcrumb cleanup', code: 'BREADCRUMB_CLEANUP_ERROR' });
   }
 });
 
@@ -1885,7 +1905,7 @@ router.get('/heatmap', (req: Request, res: Response) => {
     res.json(points);
   } catch (error: any) {
     console.error('Heatmap error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to heatmap', code: 'HEATMAP_ERROR' });
   }
 });
 
@@ -1902,12 +1922,14 @@ router.get('/queue', (req: Request, res: Response) => {
       ORDER BY
         CASE c.priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 END,
         c.created_at ASC
+    
+      LIMIT 1000
     `).all();
 
     res.json(calls);
   } catch (error: any) {
     console.error('Get queue error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get queue', code: 'GET_QUEUE_ERROR' });
   }
 });
 
@@ -1950,6 +1972,7 @@ router.get('/stats', (req: Request, res: Response) => {
       WHERE onscene_at IS NOT NULL AND DATE(created_at) = DATE('now')
     `).get() as any;
 
+    res.set('Cache-Control', 'private, max-age=60');
     res.json({
       activeCalls: activeCalls.count,
       todayTotal: todayTotal.count,
@@ -1960,7 +1983,7 @@ router.get('/stats', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get stats error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get stats', code: 'GET_STATS_ERROR' });
   }
 });
 
@@ -1976,12 +1999,12 @@ router.post('/calls/:id/generate-incident', (req: Request, res: Response) => {
     `).get(req.params.id) as any;
 
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
     if (!['cleared', 'closed'].includes(call.status)) {
-      res.status(400).json({ error: 'Can only generate incident reports from cleared or closed calls' });
+      res.status(400).json({ error: 'Can only generate incident reports from cleared or closed calls', code: 'CAN_ONLY_GENERATE_INCIDENT' });
       return;
     }
 
@@ -2050,7 +2073,7 @@ router.post('/calls/:id/generate-incident', (req: Request, res: Response) => {
     res.status(201).json(incident);
   } catch (error: any) {
     console.error('Generate incident error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to generate incident', code: 'GENERATE_INCIDENT_ERROR' });
   }
 });
 
@@ -2116,7 +2139,7 @@ router.post('/calls/archive-bulk', (req: Request, res: Response) => {
     res.json({ archived_count: callsToArchive.length, message: `${callsToArchive.length} call(s) archived` });
   } catch (error: any) {
     console.error('Bulk archive error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to bulk archive', code: 'BULK_ARCHIVE_ERROR' });
   }
 });
 
@@ -2126,12 +2149,12 @@ router.post('/calls/:id/archive', (req: Request, res: Response) => {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
     if (call.status === 'archived') {
-      res.status(400).json({ error: 'Call is already archived' });
+      res.status(400).json({ error: 'Call is already archived', code: 'CALL_IS_ALREADY_ARCHIVED' });
       return;
     }
 
@@ -2159,7 +2182,7 @@ router.post('/calls/:id/archive', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Archive call error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to archive call', code: 'ARCHIVE_CALL_ERROR' });
   }
 });
 
@@ -2169,12 +2192,12 @@ router.post('/calls/:id/unarchive', (req: Request, res: Response) => {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
     if (call.status !== 'archived') {
-      res.status(400).json({ error: 'Call is not archived' });
+      res.status(400).json({ error: 'Call is not archived', code: 'CALL_IS_NOT_ARCHIVED' });
       return;
     }
 
@@ -2190,7 +2213,7 @@ router.post('/calls/:id/unarchive', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Unarchive call error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unarchive call', code: 'UNARCHIVE_CALL_ERROR' });
   }
 });
 
@@ -2199,7 +2222,7 @@ router.delete('/calls/:id', requireRole('admin', 'manager'), (req: Request, res:
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
-    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+    if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
 
     // If call has active units assigned, free them first
     let unitIds: number[] = [];
@@ -2244,7 +2267,7 @@ router.put('/calls/:id/timeline/:entryId', (req: Request, res: Response) => {
     const entry = db.prepare('SELECT * FROM activity_log WHERE id = ? AND entity_type = ? AND entity_id = ?')
       .get(req.params.entryId, 'call', req.params.id) as any;
     if (!entry) {
-      res.status(404).json({ error: 'Timeline entry not found' });
+      res.status(404).json({ error: 'Timeline entry not found', code: 'TIMELINE_ENTRY_NOT_FOUND' });
       return;
     }
 
@@ -2255,7 +2278,7 @@ router.put('/calls/:id/timeline/:entryId', (req: Request, res: Response) => {
     if (created_at !== undefined) { updates.push('created_at = ?'); params.push(created_at); }
 
     if (updates.length === 0) {
-      res.status(400).json({ error: 'No fields to update' });
+      res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
       return;
     }
 
@@ -2266,7 +2289,7 @@ router.put('/calls/:id/timeline/:entryId', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update timeline entry error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update timeline entry', code: 'UPDATE_TIMELINE_ENTRY_ERROR' });
   }
 });
 
@@ -2277,7 +2300,7 @@ router.delete('/calls/:id/timeline/:entryId', (req: Request, res: Response) => {
     const entry = db.prepare('SELECT * FROM activity_log WHERE id = ? AND entity_type = ? AND entity_id = ?')
       .get(req.params.entryId, 'call', req.params.id) as any;
     if (!entry) {
-      res.status(404).json({ error: 'Timeline entry not found' });
+      res.status(404).json({ error: 'Timeline entry not found', code: 'TIMELINE_ENTRY_NOT_FOUND' });
       return;
     }
 
@@ -2285,7 +2308,7 @@ router.delete('/calls/:id/timeline/:entryId', (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete timeline entry error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete timeline entry', code: 'DELETE_TIMELINE_ENTRY_ERROR' });
   }
 });
 
@@ -2295,13 +2318,13 @@ router.post('/calls/:id/timeline', (req: Request, res: Response) => {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
     const { action, details, created_at } = req.body;
     if (!details) {
-      res.status(400).json({ error: 'details is required' });
+      res.status(400).json({ error: 'details is required', code: 'DETAILS_IS_REQUIRED' });
       return;
     }
 
@@ -2315,7 +2338,7 @@ router.post('/calls/:id/timeline', (req: Request, res: Response) => {
     res.status(201).json(entry);
   } catch (error: any) {
     console.error('Add timeline entry error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to add timeline entry', code: 'ADD_TIMELINE_ENTRY_ERROR' });
   }
 });
 
@@ -2325,7 +2348,7 @@ router.get('/calls/:id/warnings', (req: Request, res: Response) => {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
@@ -2357,6 +2380,8 @@ router.get('/calls/:id/warnings', (req: Request, res: Response) => {
         JOIN persons p ON ip.person_id = p.id
         JOIN incidents i ON ip.incident_id = i.id
         WHERE i.call_id = ?
+      
+        LIMIT 1000
       `).all(call.id) as any[];
 
       for (const person of linkedPersons) {
@@ -2400,6 +2425,8 @@ router.get('/calls/:id/warnings', (req: Request, res: Response) => {
           JOIN incidents i ON ip.incident_id = i.id
           WHERE i.call_id = ?
         ))
+      
+        LIMIT 1000
       `).all(call.id) as any[];
 
       for (const warrant of activeWarrants) {
@@ -2439,7 +2466,7 @@ router.get('/calls/:id/warnings', (req: Request, res: Response) => {
     res.json(warnings);
   } catch (error: any) {
     console.error('Get warnings error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get warnings', code: 'GET_WARNINGS_ERROR' });
   }
 });
 
@@ -2454,7 +2481,7 @@ router.post('/panic', authenticateToken, async (req: Request, res: Response) => 
       .get(req.user!.userId) as any;
 
     if (!user) {
-      res.status(404).json({ error: 'User not found' });
+      res.status(404).json({ error: 'User not found', code: 'USER_NOT_FOUND' });
       return;
     }
 
@@ -2568,7 +2595,7 @@ router.post('/panic', authenticateToken, async (req: Request, res: Response) => 
     });
   } catch (error: any) {
     console.error('Panic alert error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to panic alert', code: 'PANIC_ALERT_ERROR' });
   }
 });
 
@@ -2581,7 +2608,7 @@ router.get('/premise-history', (req: Request, res: Response) => {
     const { address } = req.query;
 
     if (!address || (address as string).length < 3) {
-      res.status(400).json({ error: 'Address must be at least 3 characters' });
+      res.status(400).json({ error: 'Address must be at least 3 characters', code: 'ADDRESS_MUST_BE_AT' });
       return;
     }
 
@@ -2643,7 +2670,7 @@ router.get('/premise-history', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Premise history error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to premise history', code: 'PREMISE_HISTORY_ERROR' });
   }
 });
 
@@ -2694,6 +2721,8 @@ router.get('/safety-screen', (req: Request, res: Response) => {
         SELECT * FROM warrants
         WHERE status = 'active'
           AND subject_first_name LIKE ? AND subject_last_name LIKE ?
+      
+        LIMIT 1000
       `).all(`%${person.first_name}%`, `%${person.last_name}%`);
 
       const criminalHistory = db.prepare(`
@@ -2792,7 +2821,7 @@ router.get('/safety-screen', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Safety screen error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to safety screen', code: 'SAFETY_SCREEN_ERROR' });
   }
 });
 
@@ -2804,7 +2833,7 @@ router.get('/districts', (req: Request, res: Response) => {
     res.json(districts);
   } catch (error: any) {
     console.error('Districts list error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to districts list', code: 'DISTRICTS_LIST_ERROR' });
   }
 });
 
@@ -2815,7 +2844,7 @@ router.get('/districts/lookup', (req: Request, res: Response) => {
     const { zone_id, beat_id } = req.query;
 
     if (!zone_id) {
-      res.status(400).json({ error: 'zone_id is required' });
+      res.status(400).json({ error: 'zone_id is required', code: 'ZONEID_IS_REQUIRED' });
       return;
     }
 
@@ -2839,7 +2868,7 @@ router.get('/districts/lookup', (req: Request, res: Response) => {
     res.json({ found: true, district });
   } catch (error: any) {
     console.error('District lookup error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to district lookup', code: 'DISTRICT_LOOKUP_ERROR' });
   }
 });
 
@@ -2849,7 +2878,7 @@ router.get('/districts/identify', (req: Request, res: Response) => {
     const db = getDb();
     const { lat, lng } = req.query;
     if (!lat || !lng) {
-      res.status(400).json({ error: 'lat and lng are required' });
+      res.status(400).json({ error: 'lat and lng are required', code: 'LAT_AND_LNG_ARE' });
       return;
     }
 
@@ -2887,7 +2916,7 @@ router.get('/districts/identify', (req: Request, res: Response) => {
     }
   } catch (error: any) {
     console.error('District identify error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to district identify', code: 'DISTRICT_IDENTIFY_ERROR' });
   }
 });
 
@@ -2897,7 +2926,7 @@ router.put('/calls/:id/mileage', (req: Request, res: Response) => {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
@@ -2916,7 +2945,7 @@ router.put('/calls/:id/mileage', (req: Request, res: Response) => {
     }
 
     if (updates.length === 0) {
-      res.status(400).json({ error: 'No mileage fields provided' });
+      res.status(400).json({ error: 'No mileage fields provided', code: 'NO_MILEAGE_FIELDS_PROVIDED' });
       return;
     }
 
@@ -2941,7 +2970,7 @@ router.put('/calls/:id/mileage', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Mileage update error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to mileage update', code: 'MILEAGE_UPDATE_ERROR' });
   }
 });
 

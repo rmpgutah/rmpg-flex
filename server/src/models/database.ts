@@ -3655,7 +3655,8 @@ async function backfillBreadcrumbRoads(): Promise<void> {
 }
 
 function createIndexes(): void {
-  db.exec(`
+  // Execute each index individually to avoid crashing if a table doesn't exist
+  const indexes = `
     CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
     CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
     CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
@@ -3893,7 +3894,15 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_iped_imports_case ON iped_imports(forensic_case_id);
     CREATE INDEX IF NOT EXISTS idx_iped_imports_iped ON iped_imports(iped_case_id);
     CREATE INDEX IF NOT EXISTS idx_iped_imports_type ON iped_imports(import_type);
-  `);
+  `;
+
+  // Run each CREATE INDEX individually so a missing table doesn't block the rest
+  for (const line of indexes.split('\n')) {
+    const sql = line.trim();
+    if (sql.startsWith('CREATE INDEX')) {
+      try { db.prepare(sql).run(); } catch { /* table may not exist yet — skip */ }
+    }
+  }
 
   // ── Forensic Hash Sets ───────────────────────────────
   db.exec(`
@@ -3949,6 +3958,222 @@ function createIndexes(): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_time_entry_edits_entry ON time_entry_edits(time_entry_id);
+
+    -- Citations indexes (missing foreign key and date indexes)
+    CREATE INDEX IF NOT EXISTS idx_citations_number ON citations(citation_number);
+    CREATE INDEX IF NOT EXISTS idx_citations_status ON citations(status);
+    CREATE INDEX IF NOT EXISTS idx_citations_type ON citations(type);
+    CREATE INDEX IF NOT EXISTS idx_citations_person ON citations(person_id);
+    CREATE INDEX IF NOT EXISTS idx_citations_officer ON citations(issuing_officer_id);
+    CREATE INDEX IF NOT EXISTS idx_citations_date ON citations(violation_date);
+    CREATE INDEX IF NOT EXISTS idx_citations_incident ON citations(incident_id);
+    CREATE INDEX IF NOT EXISTS idx_citations_call ON citations(call_id);
+    CREATE INDEX IF NOT EXISTS idx_citations_created ON citations(created_at);
+
+    -- Citation payments indexes
+    CREATE INDEX IF NOT EXISTS idx_citation_payments_citation ON citation_payments(citation_id);
+    CREATE INDEX IF NOT EXISTS idx_citation_payments_date ON citation_payments(payment_date);
+
+    -- Field interviews indexes
+    CREATE INDEX IF NOT EXISTS idx_field_interviews_number ON field_interviews(fi_number);
+    CREATE INDEX IF NOT EXISTS idx_field_interviews_officer ON field_interviews(officer_id);
+    CREATE INDEX IF NOT EXISTS idx_field_interviews_person ON field_interviews(person_id);
+    CREATE INDEX IF NOT EXISTS idx_field_interviews_status ON field_interviews(status);
+    CREATE INDEX IF NOT EXISTS idx_field_interviews_created ON field_interviews(created_at);
+    CREATE INDEX IF NOT EXISTS idx_field_interviews_archived ON field_interviews(archived_at);
+    CREATE INDEX IF NOT EXISTS idx_field_interviews_location ON field_interviews(latitude, longitude);
+
+    -- Trespass orders indexes
+    CREATE INDEX IF NOT EXISTS idx_trespass_orders_number ON trespass_orders(order_number);
+    CREATE INDEX IF NOT EXISTS idx_trespass_orders_status ON trespass_orders(status);
+    CREATE INDEX IF NOT EXISTS idx_trespass_orders_person ON trespass_orders(person_id);
+    CREATE INDEX IF NOT EXISTS idx_trespass_orders_property ON trespass_orders(property_id);
+    CREATE INDEX IF NOT EXISTS idx_trespass_orders_expiration ON trespass_orders(expiration_date);
+    CREATE INDEX IF NOT EXISTS idx_trespass_orders_created ON trespass_orders(created_at);
+    CREATE INDEX IF NOT EXISTS idx_trespass_orders_archived ON trespass_orders(archived_at);
+
+    -- Forensic cases indexes
+    CREATE INDEX IF NOT EXISTS idx_forensic_cases_number ON forensic_cases(lab_number);
+    CREATE INDEX IF NOT EXISTS idx_forensic_cases_status ON forensic_cases(status);
+    CREATE INDEX IF NOT EXISTS idx_forensic_cases_type ON forensic_cases(case_type);
+    CREATE INDEX IF NOT EXISTS idx_forensic_cases_priority ON forensic_cases(priority);
+    CREATE INDEX IF NOT EXISTS idx_forensic_cases_examiner ON forensic_cases(lead_examiner_id);
+    CREATE INDEX IF NOT EXISTS idx_forensic_cases_incident ON forensic_cases(linked_incident_id);
+    CREATE INDEX IF NOT EXISTS idx_forensic_cases_case ON forensic_cases(linked_case_id);
+
+    -- Forensic exhibits and analyses indexes
+    CREATE INDEX IF NOT EXISTS idx_forensic_exhibits_case ON forensic_exhibits(forensic_case_id);
+    CREATE INDEX IF NOT EXISTS idx_forensic_analyses_case ON forensic_analyses(forensic_case_id);
+    CREATE INDEX IF NOT EXISTS idx_forensic_analyses_status ON forensic_analyses(status);
+    CREATE INDEX IF NOT EXISTS idx_forensic_activity_case ON forensic_activity_log(forensic_case_id);
+
+    -- Geofences indexes
+    CREATE INDEX IF NOT EXISTS idx_geofences_active ON geofences(is_active);
+    CREATE INDEX IF NOT EXISTS idx_geofences_zone_type ON geofences(zone_type);
+
+    -- Shift plans indexes
+    CREATE INDEX IF NOT EXISTS idx_shift_plans_date ON shift_plans(date);
+    CREATE INDEX IF NOT EXISTS idx_shift_plans_status ON shift_plans(status);
+
+    -- Dashcam videos indexes
+    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_unit ON dashcam_videos(unit_id);
+    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_officer ON dashcam_videos(officer_id);
+    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_date ON dashcam_videos(recorded_at);
+    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_incident ON dashcam_videos(incident_id);
+
+    -- Activity log action index for filtering
+    CREATE INDEX IF NOT EXISTS idx_activity_log_action ON activity_log(action);
+
+    -- Patrol scans date index
+    CREATE INDEX IF NOT EXISTS idx_patrol_scans_date ON patrol_scans(scanned_at);
+
+    -- Properties location index
+    CREATE INDEX IF NOT EXISTS idx_properties_location ON properties(latitude, longitude);
+
+    -- Cases priority and archived indexes
+    CREATE INDEX IF NOT EXISTS idx_cases_priority ON cases(priority);
+    CREATE INDEX IF NOT EXISTS idx_cases_archived ON cases(archived_at);
+
+    -- Training records indexes
+    CREATE INDEX IF NOT EXISTS idx_training_records_officer ON training_records(officer_id);
+    CREATE INDEX IF NOT EXISTS idx_training_records_type ON training_records(training_type);
+    CREATE INDEX IF NOT EXISTS idx_training_records_status ON training_records(status);
+    CREATE INDEX IF NOT EXISTS idx_training_records_date ON training_records(completed_date);
+    CREATE INDEX IF NOT EXISTS idx_training_records_expiry ON training_records(expiration_date);
+
+    -- Training requirements indexes
+    CREATE INDEX IF NOT EXISTS idx_training_requirements_role ON training_requirements(required_for_role);
+    CREATE INDEX IF NOT EXISTS idx_training_requirements_active ON training_requirements(is_active);
+
+    -- Deployments indexes
+    CREATE INDEX IF NOT EXISTS idx_deployments_officer ON deployments(officer_id);
+    CREATE INDEX IF NOT EXISTS idx_deployments_property ON deployments(property_id);
+    CREATE INDEX IF NOT EXISTS idx_deployments_status ON deployments(status);
+    CREATE INDEX IF NOT EXISTS idx_deployments_date ON deployments(start_date);
+
+    -- HR documents indexes
+    CREATE INDEX IF NOT EXISTS idx_hr_documents_officer ON hr_documents(officer_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_documents_type ON hr_documents(document_type);
+    CREATE INDEX IF NOT EXISTS idx_hr_documents_created ON hr_documents(created_at);
+
+    -- HR grievances indexes
+    CREATE INDEX IF NOT EXISTS idx_hr_grievances_officer ON hr_grievances(officer_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_grievances_status ON hr_grievances(status);
+    CREATE INDEX IF NOT EXISTS idx_hr_grievances_created ON hr_grievances(created_at);
+
+    -- HR workers comp indexes
+    CREATE INDEX IF NOT EXISTS idx_hr_workers_comp_officer ON hr_workers_comp(officer_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_workers_comp_status ON hr_workers_comp(status);
+    CREATE INDEX IF NOT EXISTS idx_hr_workers_comp_date ON hr_workers_comp(injury_date);
+
+    -- HR salary history indexes
+    CREATE INDEX IF NOT EXISTS idx_hr_salary_officer ON hr_salary_history(officer_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_salary_effective ON hr_salary_history(effective_date);
+
+    -- HR attendance indexes
+    CREATE INDEX IF NOT EXISTS idx_hr_attendance_officer ON hr_attendance(officer_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_attendance_date ON hr_attendance(attendance_date);
+    CREATE INDEX IF NOT EXISTS idx_hr_attendance_type ON hr_attendance(type);
+
+    -- HR PIPs indexes
+    CREATE INDEX IF NOT EXISTS idx_hr_pips_officer ON hr_pips(officer_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_pips_status ON hr_pips(status);
+
+    -- HR benefits indexes
+    CREATE INDEX IF NOT EXISTS idx_hr_benefits_officer ON hr_benefits(officer_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_benefits_type ON hr_benefits(benefit_type);
+
+    -- Fleet tires indexes
+    CREATE INDEX IF NOT EXISTS idx_fleet_tires_vehicle ON fleet_tires(vehicle_id);
+    CREATE INDEX IF NOT EXISTS idx_fleet_tires_status ON fleet_tires(status);
+
+    -- Fleet damage reports indexes
+    CREATE INDEX IF NOT EXISTS idx_fleet_damage_vehicle ON fleet_damage_reports(vehicle_id);
+    CREATE INDEX IF NOT EXISTS idx_fleet_damage_status ON fleet_damage_reports(status);
+    CREATE INDEX IF NOT EXISTS idx_fleet_damage_date ON fleet_damage_reports(reported_at);
+
+    -- Fleet recalls indexes
+    CREATE INDEX IF NOT EXISTS idx_fleet_recalls_vehicle ON fleet_recalls(vehicle_id);
+    CREATE INDEX IF NOT EXISTS idx_fleet_recalls_status ON fleet_recalls(status);
+
+    -- Fleet fuel cards indexes
+    CREATE INDEX IF NOT EXISTS idx_fleet_fuel_cards_vehicle ON fleet_fuel_cards(vehicle_id);
+    CREATE INDEX IF NOT EXISTS idx_fleet_fuel_cards_status ON fleet_fuel_cards(status);
+
+    -- Company documents indexes
+    CREATE INDEX IF NOT EXISTS idx_company_docs_category ON company_documents(category);
+    CREATE INDEX IF NOT EXISTS idx_company_docs_created ON company_documents(created_at);
+
+    -- Email logs indexes
+    CREATE INDEX IF NOT EXISTS idx_email_logs_created ON email_logs(created_at);
+    CREATE INDEX IF NOT EXISTS idx_email_logs_status ON email_logs(status);
+    CREATE INDEX IF NOT EXISTS idx_email_logs_to ON email_logs(to_email);
+
+    -- Patrol breaks indexes
+    CREATE INDEX IF NOT EXISTS idx_patrol_breaks_officer ON patrol_breaks(officer_id);
+    CREATE INDEX IF NOT EXISTS idx_patrol_breaks_date ON patrol_breaks(start_time);
+
+    -- Fleet pretrip checklists indexes
+    CREATE INDEX IF NOT EXISTS idx_pretrip_vehicle ON fleet_pretrip_checklists(vehicle_id);
+    CREATE INDEX IF NOT EXISTS idx_pretrip_officer ON fleet_pretrip_checklists(officer_id);
+    CREATE INDEX IF NOT EXISTS idx_pretrip_date ON fleet_pretrip_checklists(created_at);
+
+    -- Evidence temperature logs indexes
+    CREATE INDEX IF NOT EXISTS idx_evidence_temp_evidence ON evidence_temperature_logs(evidence_id);
+    CREATE INDEX IF NOT EXISTS idx_evidence_temp_recorded ON evidence_temperature_logs(recorded_at);
+
+    -- Person associates indexes
+    CREATE INDEX IF NOT EXISTS idx_person_assoc_person ON person_associates(person_id);
+    CREATE INDEX IF NOT EXISTS idx_person_assoc_associated ON person_associates(associated_person_id);
+
+    -- ClearPath GPS indexes
+    CREATE INDEX IF NOT EXISTS idx_cpgps_vehicles_unit ON cpgps_vehicles(unit_number);
+    CREATE INDEX IF NOT EXISTS idx_cpgps_trips_vehicle ON cpgps_trips(vehicle_id);
+    CREATE INDEX IF NOT EXISTS idx_cpgps_trips_date ON cpgps_trips(start_time);
+    CREATE INDEX IF NOT EXISTS idx_cpgps_locations_vehicle ON cpgps_locations(vehicle_id);
+    CREATE INDEX IF NOT EXISTS idx_cpgps_locations_time ON cpgps_locations(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_cpgps_alerts_vehicle ON cpgps_alerts(vehicle_id);
+    CREATE INDEX IF NOT EXISTS idx_cpgps_alerts_type ON cpgps_alerts(alert_type);
+
+    -- Warrant watch indexes
+    CREATE INDEX IF NOT EXISTS idx_warrant_watch_runs_created ON warrant_watch_runs(created_at);
+    CREATE INDEX IF NOT EXISTS idx_warrant_watch_log_run ON warrant_watch_log(run_id);
+    CREATE INDEX IF NOT EXISTS idx_scraped_warrants_name ON scraped_warrants(last_name, first_name);
+    CREATE INDEX IF NOT EXISTS idx_scraped_warrants_status ON scraped_warrants(status);
+
+    -- Skiptracer dossiers indexes
+    CREATE INDEX IF NOT EXISTS idx_skiptracer_created ON skiptracer_dossiers(created_at);
+    CREATE INDEX IF NOT EXISTS idx_skiptracer_status ON skiptracer_dossiers(status);
+
+    -- Call persons indexes
+    CREATE INDEX IF NOT EXISTS idx_call_persons_call ON call_persons(call_id);
+    CREATE INDEX IF NOT EXISTS idx_call_persons_person ON call_persons(person_id);
+
+    -- Breadcrumbs call_sign index for real-time GPS lookups
+    CREATE INDEX IF NOT EXISTS idx_breadcrumbs_callsign ON gps_breadcrumbs(call_sign);
+
+    -- System announcements indexes
+    CREATE INDEX IF NOT EXISTS idx_announcements_active ON system_announcements(is_active);
+    CREATE INDEX IF NOT EXISTS idx_announcements_expires ON system_announcements(expires_at);
+
+    -- Record locks indexes
+    CREATE INDEX IF NOT EXISTS idx_record_locks_entity ON record_locks(entity_type, entity_id);
+    CREATE INDEX IF NOT EXISTS idx_record_locks_user ON record_locks(user_id);
+
+    -- Time entries date range index for shift queries
+    CREATE INDEX IF NOT EXISTS idx_time_entries_clockin ON time_entries(clock_in);
+    CREATE INDEX IF NOT EXISTS idx_time_entries_date ON time_entries(DATE(clock_in));
+
+    -- Schedules composite index for shift lookups
+    CREATE INDEX IF NOT EXISTS idx_schedules_officer_date ON schedules(officer_id, shift_date);
+
+    -- Utah statutes lookup indexes
+    CREATE INDEX IF NOT EXISTS idx_utah_statutes_code ON utah_statutes(statute_code);
+    CREATE INDEX IF NOT EXISTS idx_utah_statutes_category ON utah_statutes(category);
+
+    -- Entity statutes indexes
+    CREATE INDEX IF NOT EXISTS idx_entity_statutes_entity ON entity_statutes(entity_type, entity_id);
+    CREATE INDEX IF NOT EXISTS idx_entity_statutes_statute ON entity_statutes(statute_id);
   `);
 }
 

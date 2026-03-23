@@ -223,6 +223,9 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
 const PatrolPage: React.FC = () => {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+
+  // Set document title
+  useEffect(() => { document.title = 'Patrol Tracking \u2014 RMPG Flex'; }, []);
   const checkpointModalTitleId = useId();
   const qrModalTitleId = useId();
   const [activeTab, setActiveTab] = usePersistedTab('rmpg_patrol_tab', 'checkpoints', ['checkpoints', 'scans', 'compliance', 'map', 'summary'] as const);
@@ -629,7 +632,7 @@ const PatrolPage: React.FC = () => {
           <ExportButton exportUrl="/patrol/scans/export?format=csv" exportFilename="patrol_scans_export.csv" />
         )}
         {activeTab === 'checkpoints' && (
-          <button type="button" onClick={handleCreateCheckpoint} className="toolbar-btn toolbar-btn-primary">
+          <button type="button" onClick={handleCreateCheckpoint} className="toolbar-btn toolbar-btn-primary print:hidden">
             <Plus className="w-3.5 h-3.5" /> Add Checkpoint
           </button>
         )}
@@ -688,7 +691,7 @@ const PatrolPage: React.FC = () => {
           </div>
           {/* Feature 1: Route Optimization */}
           <button type="button" onClick={() => handleOptimizeRoute()} disabled={optimizing} className="toolbar-btn ml-auto" title="Optimize patrol route">
-            {optimizing ? <Loader2 className="w-3 h-3 animate-spin" /> : <MapIcon className="w-3 h-3" />}
+            {optimizing ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <MapIcon className="w-3 h-3" />}
             <span className="text-[9px]">Optimize Route</span>
           </button>
           {/* Feature 2: Generate Patrol Log */}
@@ -732,7 +735,7 @@ const PatrolPage: React.FC = () => {
             <span className="font-bold">Patrol Log — {patrolLog.officer_name} ({patrolLog.date})</span>
             <button type="button" onClick={() => setPatrolLog(null)} className="text-green-500 hover:text-green-300"><X className="w-3 h-3" /></button>
           </div>
-          <div className="grid grid-cols-4 gap-2 text-[10px] mb-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] mb-2">
             <div><span className="text-rmpg-400">Checkpoints:</span> <span className="text-white">{patrolLog.total_checkpoints_scanned}</span></div>
             <div><span className="text-rmpg-400">Total Time:</span> <span className="text-white">{patrolLog.total_time_minutes} min</span></div>
             <div><span className="text-rmpg-400">On Time:</span> <span className="text-green-400">{patrolLog.on_time}</span></div>
@@ -790,7 +793,7 @@ const PatrolPage: React.FC = () => {
             <span className="font-bold">Time Tracking — {timeTracking.date}</span>
             <button type="button" onClick={() => setTimeTracking(null)} className="text-purple-500 hover:text-purple-300"><X className="w-3 h-3" /></button>
           </div>
-          <div className="grid grid-cols-4 gap-2 text-[10px] mb-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] mb-2">
             <div><span className="text-rmpg-400">Total Patrol:</span> <span className="text-white">{timeTracking.total_patrol_minutes} min</span></div>
             <div><span className="text-rmpg-400">Checkpoints:</span> <span className="text-white">{timeTracking.total_checkpoints}</span></div>
             <div><span className="text-rmpg-400">Avg Between:</span> <span className="text-white">{timeTracking.average_between_minutes} min</span></div>
@@ -811,7 +814,7 @@ const PatrolPage: React.FC = () => {
 
       {loading ? (
         <div className="flex justify-center items-center h-64 panel-inset">
-          <Loader2 className="w-8 h-8 animate-spin text-brand-400" />
+          <Loader2 className="w-8 h-8 animate-spin text-brand-400" role="status" aria-label="Loading" />
         </div>
       ) : (
         <>
@@ -952,7 +955,7 @@ const PatrolPage: React.FC = () => {
                       onChange={(e) =>
                         setScanFilters(prev => ({ ...prev, startDate: e.target.value }))
                       }
-                      className="input-dark"
+                      className="input-dark min-h-[36px]"
                     />
                   </div>
                   <div>
@@ -965,7 +968,7 @@ const PatrolPage: React.FC = () => {
                       onChange={(e) =>
                         setScanFilters(prev => ({ ...prev, endDate: e.target.value }))
                       }
-                      className="input-dark"
+                      className="input-dark min-h-[36px]"
                     />
                   </div>
                   <div className="flex items-end">
@@ -1039,7 +1042,7 @@ const PatrolPage: React.FC = () => {
           {activeTab === 'summary' && (
             <div className="space-y-4">
               <div className="flex items-center gap-3 mb-4">
-                <button type="button" onClick={loadShiftSummary} className="toolbar-btn toolbar-btn-primary">
+                <button type="button" onClick={loadShiftSummary} className="toolbar-btn toolbar-btn-primary print:hidden">
                   <RefreshCw className="w-3 h-3" /> Load Summary
                 </button>
                 <button type="button" onClick={loadEfficiency} className="toolbar-btn">
@@ -1242,7 +1245,7 @@ const PatrolPage: React.FC = () => {
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                  className="input-dark"
+                  className="input-dark min-h-[36px]"
                   placeholder="e.g., Main Entrance"
                   required
                 />
@@ -1274,7 +1277,7 @@ const PatrolPage: React.FC = () => {
                       scan_required_interval_minutes: e.target.value
                     }))
                   }
-                  className="input-dark"
+                  className="input-dark min-h-[36px]"
                   placeholder="e.g., 60"
                   required
                 />
@@ -1290,7 +1293,7 @@ const PatrolPage: React.FC = () => {
                     step="any"
                     value={formData.latitude}
                     onChange={(e) => setFormData(prev => ({ ...prev, latitude: e.target.value }))}
-                    className="input-dark"
+                    className="input-dark min-h-[36px]"
                     placeholder="Optional"
                   />
                 </div>
@@ -1303,7 +1306,7 @@ const PatrolPage: React.FC = () => {
                     step="any"
                     value={formData.longitude}
                     onChange={(e) => setFormData(prev => ({ ...prev, longitude: e.target.value }))}
-                    className="input-dark"
+                    className="input-dark min-h-[36px]"
                     placeholder="Optional"
                   />
                 </div>

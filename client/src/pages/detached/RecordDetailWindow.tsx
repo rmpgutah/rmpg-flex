@@ -39,7 +39,7 @@ export default function RecordDetailWindow() {
     return (
       <DetachedLayout title="Loading...">
         <div className="flex items-center justify-center h-64">
-          <Loader2 className="w-8 h-8 text-brand-400 animate-spin" />
+          <Loader2 className="w-8 h-8 text-brand-400 animate-spin" role="status" aria-label="Loading" />
         </div>
       </DetachedLayout>
     );

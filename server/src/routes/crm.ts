@@ -68,7 +68,7 @@ router.get('/dashboard', requireRole('admin', 'manager', 'contract_manager'), (_
     });
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 
@@ -90,7 +90,7 @@ router.get('/recent-activity', requireRole('admin', 'manager', 'contract_manager
     res.json(rows);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 
@@ -128,7 +128,7 @@ router.get('/tasks', requireRole('admin', 'manager', 'contract_manager'), (req: 
     res.json(db.prepare(sql).all(...params));
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 
@@ -142,7 +142,7 @@ router.post('/tasks', requireRole('admin', 'manager', 'contract_manager'), (req:
     const PRIORITIES = ['low', 'normal', 'high', 'urgent'] as const;
 
     const validTitle = validateStr(title, 'title', 200);
-    if (!validTitle) { res.status(400).json({ error: 'Title is required' }); return; }
+    if (!validTitle) { res.status(400).json({ error: 'Title is required', code: 'TITLE_IS_REQUIRED' }); return; }
     const validTaskType = validateEnum(task_type, TASK_TYPES, 'task_type') || 'follow_up';
     const validPriority = validateEnum(priority, PRIORITIES, 'priority') || 'normal';
     if (client_id) requireInt(client_id, 'client_id');
@@ -170,7 +170,7 @@ router.post('/tasks', requireRole('admin', 'manager', 'contract_manager'), (req:
     res.json(task);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 
@@ -179,7 +179,7 @@ router.put('/tasks/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     const db = getDb();
     const { id } = req.params;
     const existing = db.prepare('SELECT * FROM crm_tasks WHERE id = ?').get(id) as any;
-    if (!existing) { res.status(404).json({ error: 'Task not found' }); return; }
+    if (!existing) { res.status(404).json({ error: 'Task not found', code: 'TASK_NOT_FOUND' }); return; }
 
     const { title, description, task_type, priority, status, due_date, assigned_to, notes } = req.body;
 
@@ -226,7 +226,7 @@ router.put('/tasks/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     res.json(task);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 
@@ -235,7 +235,7 @@ router.delete('/tasks/:id', validateParamIdMiddleware, requireRole('admin', 'man
     const db = getDb();
     const { id } = req.params;
     const existing = db.prepare('SELECT * FROM crm_tasks WHERE id = ?').get(id) as any;
-    if (!existing) { res.status(404).json({ error: 'Task not found' }); return; }
+    if (!existing) { res.status(404).json({ error: 'Task not found', code: 'TASK_NOT_FOUND' }); return; }
 
     db.prepare('DELETE FROM crm_tasks WHERE id = ?').run(id);
     auditLog(req, 'crm_task_deleted', 'crm_task', String(id), `Deleted task: ${existing.title}`);
@@ -243,7 +243,7 @@ router.delete('/tasks/:id', validateParamIdMiddleware, requireRole('admin', 'man
     res.json({ success: true });
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 
@@ -266,7 +266,7 @@ router.get('/activity/:clientId', requireRole('admin', 'manager', 'contract_mana
     res.json(rows);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 
@@ -276,10 +276,10 @@ router.post('/activity', requireRole('admin', 'manager', 'contract_manager'), (r
     const { client_id, activity_type, subject, details } = req.body;
     // ── Validate activity inputs ──
     const validClientId = requireInt(client_id, 'client_id');
-    if (!validClientId) { res.status(400).json({ error: 'client_id is required' }); return; }
+    if (!validClientId) { res.status(400).json({ error: 'client_id is required', code: 'CLIENTID_IS_REQUIRED' }); return; }
     const ACTIVITY_TYPES = ['call', 'email', 'meeting', 'note', 'follow_up', 'task', 'proposal', 'contract', 'billing', 'other'] as const;
     const validActType = validateEnum(activity_type, ACTIVITY_TYPES, 'activity_type');
-    if (!validActType) { res.status(400).json({ error: 'activity_type is required' }); return; }
+    if (!validActType) { res.status(400).json({ error: 'activity_type is required', code: 'ACTIVITYTYPE_IS_REQUIRED' }); return; }
     validateStr(subject, 'subject', 500);
     validateStr(details, 'details', 5000);
 
@@ -302,7 +302,7 @@ router.post('/activity', requireRole('admin', 'manager', 'contract_manager'), (r
     res.json(activity);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 
@@ -334,7 +334,7 @@ router.get('/contacts', requireRole('admin', 'manager', 'contract_manager'), (re
     res.json(db.prepare(sql).all(...params));
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 
@@ -357,12 +357,14 @@ router.get('/expiring-contracts', requireRole('admin', 'manager', 'contract_mana
         AND contract_end <= ?
         AND contract_end >= date('now')
       ORDER BY contract_end ASC
+    
+      LIMIT 1000
     `).all(future);
 
     res.json(rows);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 
@@ -387,7 +389,7 @@ router.get('/reports/revenue', requireRole('admin', 'manager', 'contract_manager
     res.json(rows);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 
@@ -417,7 +419,7 @@ router.get('/reports/pipeline', requireRole('admin', 'manager', 'contract_manage
     });
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 
@@ -440,7 +442,7 @@ router.get('/reports/retention', requireRole('admin', 'manager', 'contract_manag
     res.json(rows);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 
@@ -467,7 +469,7 @@ router.get('/reports/lead-source-roi', requireRole('admin', 'manager', 'contract
     res.json(result);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 
@@ -513,7 +515,7 @@ router.get('/reports/metrics', requireRole('admin', 'manager', 'contract_manager
     });
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 
@@ -551,7 +553,7 @@ router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: R
       { key: 'created_at', header: 'Created At' },
     ], rows);
   } catch (error: any) {
-    res.status(500).json({ error: 'Export failed' });
+    res.status(500).json({ error: 'Export failed', code: 'EXPORT_FAILED' });
   }
 });
 

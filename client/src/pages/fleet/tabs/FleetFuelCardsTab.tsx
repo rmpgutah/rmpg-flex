@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CreditCard, Plus, Pencil } from 'lucide-react';
+import { CreditCard, Plus, Pencil, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 
@@ -31,6 +31,7 @@ export default function FleetFuelCardsTab() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ card_number: '', vehicle_id: '', provider: '', monthly_limit: '', pin_last4: '', expiry_date: '', notes: '' });
+  const [submitting, setSubmitting] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -46,12 +47,21 @@ export default function FleetFuelCardsTab() {
 
   useEffect(() => { load(); }, []);
 
+  // Escape to close form
+  useEffect(() => {
+    if (!showForm) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowForm(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showForm]);
+
   const handleSubmit = async () => {
-    if (!form.card_number) { addToast('Card number required', 'error'); return; }
+    if (!form.card_number.trim()) { addToast('Card number is required', 'error'); return; }
+    setSubmitting(true);
     try { await apiFetch('/fleet/fuel-cards', {
       method: 'POST',
       body: JSON.stringify({ ...form, vehicle_id: form.vehicle_id ? Number(form.vehicle_id) : null, monthly_limit: form.monthly_limit ? Number(form.monthly_limit) : null }),
-    }); addToast('Fuel card added', 'success'); setShowForm(false); setForm({ card_number: '', vehicle_id: '', provider: '', monthly_limit: '', pin_last4: '', expiry_date: '', notes: '' }); load(); } catch { addToast('Failed to add card', 'error'); }
+    }); addToast('Fuel card added', 'success'); setShowForm(false); setForm({ card_number: '', vehicle_id: '', provider: '', monthly_limit: '', pin_last4: '', expiry_date: '', notes: '' }); load(); } catch { addToast('Failed to add card', 'error'); } finally { setSubmitting(false); }
   };
 
   const updateCard = async (id: number, data: any) => {
@@ -83,41 +93,41 @@ export default function FleetFuelCardsTab() {
             </select>
           </div>
           <div className="grid grid-cols-3 gap-2">
-            <input type="number" value={form.monthly_limit} onChange={e => setForm(f => ({ ...f, monthly_limit: e.target.value }))} className="input-field text-xs" placeholder="Monthly Limit $" />
-            <input value={form.pin_last4} onChange={e => setForm(f => ({ ...f, pin_last4: e.target.value }))} maxLength={4} className="input-field text-xs" placeholder="PIN (last 4)" />
+            <input type="number" min="0" value={form.monthly_limit} onChange={e => setForm(f => ({ ...f, monthly_limit: e.target.value }))} className="input-field text-xs tabular-nums" placeholder="Monthly Limit $" />
+            <input value={form.pin_last4} onChange={e => setForm(f => ({ ...f, pin_last4: e.target.value }))} maxLength={4} className="input-field text-xs font-mono" placeholder="PIN (last 4)" spellCheck={false} autoComplete="off" />
             <input type="date" value={form.expiry_date} onChange={e => setForm(f => ({ ...f, expiry_date: e.target.value }))} className="input-field text-xs" />
           </div>
           <div className="flex gap-2">
-            <button type="button" onClick={handleSubmit} className="toolbar-btn toolbar-btn-success text-[9px]">Save</button>
-            <button type="button" onClick={() => setShowForm(false)} className="toolbar-btn text-[9px]">Cancel</button>
+            <button type="button" onClick={handleSubmit} disabled={submitting || !form.card_number.trim()} className="toolbar-btn toolbar-btn-success text-[9px] disabled:opacity-50">{submitting ? 'Saving...' : 'Save'}</button>
+            <button type="button" onClick={() => setShowForm(false)} disabled={submitting} className="toolbar-btn text-[9px]">Cancel</button>
           </div>
         </div>
       )}
 
       {loading ? (
-        <div className="text-center text-rmpg-400 py-4 text-xs">Loading...</div>
+        <div className="flex items-center justify-center gap-2 text-rmpg-400 py-4 text-xs"><Loader2 className="w-4 h-4 animate-spin" role="status" aria-label="Loading" /> Loading fuel cards...</div>
       ) : (
         <table className="w-full text-[10px]">
           <thead>
             <tr className="text-rmpg-400 border-b border-rmpg-700">
-              <th className="text-left py-1">Card #</th>
-              <th className="text-left">Provider</th>
-              <th className="text-left">Vehicle</th>
-              <th className="text-right">Limit</th>
-              <th className="text-center">Status</th>
-              <th className="text-right">Expiry</th>
-              <th className="text-right">Actions</th>
+              <th className="text-left py-1 whitespace-nowrap">Card #</th>
+              <th className="text-left whitespace-nowrap">Provider</th>
+              <th className="text-left whitespace-nowrap">Vehicle</th>
+              <th className="text-right whitespace-nowrap">Limit</th>
+              <th className="text-center whitespace-nowrap">Status</th>
+              <th className="text-right whitespace-nowrap">Expiry</th>
+              <th className="text-right whitespace-nowrap">Actions</th>
             </tr>
           </thead>
           <tbody>
             {cards.map(c => (
-              <tr key={c.id} className="border-b border-rmpg-800">
+              <tr key={c.id} className="border-b border-rmpg-800 hover:bg-surface-raised/30 transition-colors">
                 <td className="py-1 text-white font-mono">{c.card_number}</td>
                 <td className="text-rmpg-300">{c.provider || '-'}</td>
                 <td className="text-rmpg-200">{c.vehicle_number || <span className="text-rmpg-500 italic">Unassigned</span>}</td>
                 <td className="text-right text-rmpg-300 font-mono">{c.monthly_limit ? `$${c.monthly_limit}` : '-'}</td>
                 <td className="text-center"><span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold uppercase ${STATUS_COLORS[c.status] || ''}`}>{c.status}</span></td>
-                <td className="text-right text-rmpg-400">{c.expiry_date || '-'}</td>
+                <td className="text-right text-rmpg-400">{c.expiry_date ? new Date(c.expiry_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}</td>
                 <td className="text-right">
                   {c.status === 'active' && (
                     <button type="button" onClick={() => updateCard(c.id, { status: 'suspended' })} className="toolbar-btn text-[9px]">Suspend</button>

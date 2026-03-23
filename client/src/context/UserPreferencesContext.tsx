@@ -28,12 +28,18 @@ const DEFAULTS: UserPreferences = {
   dispatch_show_cleared: 0,
 };
 
-const UserPreferencesContext = createContext<{
+interface UserPreferencesContextValue {
   prefs: UserPreferences;
   reload: () => void;
-}>({
+  isLoading: boolean;
+  error: string | null;
+}
+
+const UserPreferencesContext = createContext<UserPreferencesContextValue>({
   prefs: DEFAULTS,
   reload: () => {},
+  isLoading: false,
+  error: null,
 });
 
 export function useUserPreferences() {
@@ -43,14 +49,23 @@ export function useUserPreferences() {
 export function UserPreferencesProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [prefs, setPrefs] = useState<UserPreferences>(DEFAULTS);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchPrefs = useCallback(async () => {
     if (!user) return;
+    setIsLoading(true);
+    setError(null);
     try {
       const data = await apiFetch<UserPreferences>('/user/preferences');
       if (data) setPrefs(data);
     } catch (err) {
-      console.warn('[UserPreferences] Failed to fetch preferences:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to fetch preferences';
+      console.warn('[UserPreferences] Failed to fetch preferences:', msg);
+      setError(msg);
+      // Keep using defaults on error — don't break the UI
+    } finally {
+      setIsLoading(false);
     }
   }, [user]);
 
@@ -75,7 +90,7 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
   }, [prefs.compact_mode]);
 
   return (
-    <UserPreferencesContext.Provider value={{ prefs, reload: fetchPrefs }}>
+    <UserPreferencesContext.Provider value={{ prefs, reload: fetchPrefs, isLoading, error }}>
       {children}
     </UserPreferencesContext.Provider>
   );

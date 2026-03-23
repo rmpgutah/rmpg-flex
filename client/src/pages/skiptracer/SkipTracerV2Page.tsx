@@ -1243,7 +1243,7 @@ export default function SkipTracerV2Page() {
           </div>
 
           {/* Summary bar */}
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {[
               { label: 'Addresses', count: selected.addresses?.length || 0, icon: MapPin, color: '#f59e0b' },
               { label: 'Phones', count: selected.phones?.length || 0, icon: Phone, color: '#3b82f6' },
@@ -1299,7 +1299,7 @@ export default function SkipTracerV2Page() {
                   const fullAddr = [addr, a.city, a.state, a.zip].filter(Boolean).join(', ');
                   const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(fullAddr)}`;
                   return (
-                    <tr key={`addr-${addr}-${i}`} className="hover:bg-white/5">
+                    <tr key={`addr-${addr}-${i}`} className="hover:bg-surface-raised/50">
                       <td className="px-2 py-1.5 text-white">{addr}</td>
                       <td className="px-2 py-1.5 text-[#c0ccdd]">{a.city || '—'}</td>
                       <td className="px-2 py-1.5 text-[#c0ccdd]">{a.state || '—'}</td>
@@ -1330,7 +1330,7 @@ export default function SkipTracerV2Page() {
             <DossierSection title="Phone Numbers" icon={Phone} count={selected.phones!.length}>
               <DataTable headers={['Number', 'Type', 'Carrier', 'Status', 'Source', '']}>
                 {selected.phones!.map((p, i) => (
-                  <tr key={`phone-${p.number}-${i}`} className="hover:bg-white/5">
+                  <tr key={`phone-${p.number}-${i}`} className="hover:bg-surface-raised/50">
                     <td className="px-2 py-1.5 text-white font-mono">{p.number}</td>
                     <td className="px-2 py-1.5 text-[#c0ccdd] text-[9px] uppercase">{p.type || '—'}</td>
                     <td className="px-2 py-1.5 text-[#8899aa]">{p.carrier || '—'}</td>
@@ -1403,7 +1403,7 @@ export default function SkipTracerV2Page() {
             <DossierSection title="Associates & Relatives" icon={Users} count={selected.associates!.length}>
               <DataTable headers={['Name', 'Relationship', 'Phone', 'Source', '']}>
                 {selected.associates!.map((a, i) => (
-                  <tr key={`assoc-${a.name}-${i}`} className="hover:bg-white/5">
+                  <tr key={`assoc-${a.name}-${i}`} className="hover:bg-surface-raised/50">
                     <td className="px-2 py-1.5">
                       <button type="button" onClick={() => searchAssociate(a.name)} className="text-[#60a5fa] hover:underline font-mono flex items-center gap-1">
                         {a.name} <Search size={9} className="text-[#445566]" />
@@ -1426,7 +1426,7 @@ export default function SkipTracerV2Page() {
             <DossierSection title="Court & Criminal" icon={Scale} count={selected.courtRecords!.length}>
               <DataTable headers={['Case #', 'Court', 'Type', 'Charge', 'Date', 'Status', 'Source', '']}>
                 {selected.courtRecords!.map((c, i) => (
-                  <tr key={`court-${c.caseNumber}-${i}`} className="hover:bg-white/5">
+                  <tr key={`court-${c.caseNumber}-${i}`} className="hover:bg-surface-raised/50">
                     <td className="px-2 py-1.5 text-white font-mono">{c.caseNumber || '—'}</td>
                     <td className="px-2 py-1.5 text-[#c0ccdd] max-w-[120px] truncate" title={c.court}>{c.court || '—'}</td>
                     <td className="px-2 py-1.5 text-[#c0ccdd]">{c.caseType || c.type || '—'}</td>
@@ -1482,7 +1482,7 @@ export default function SkipTracerV2Page() {
             <DossierSection title="Property Records" icon={Home} count={selected.propertyRecords!.length}>
               <DataTable headers={['Address', 'Type', 'Value', 'Owner', 'Source']}>
                 {selected.propertyRecords!.map((p, i) => (
-                  <tr key={`prop-${p.address}-${i}`} className="hover:bg-white/5">
+                  <tr key={`prop-${p.address}-${i}`} className="hover:bg-surface-raised/50">
                     <td className="px-2 py-1.5 text-white">{[p.address, p.city, p.state, p.zip].filter(Boolean).join(', ')}</td>
                     <td className="px-2 py-1.5 text-[#c0ccdd]">{p.propertyType || '—'}</td>
                     <td className="px-2 py-1.5 text-green-400 font-mono">{p.marketValue ? `$${p.marketValue.toLocaleString()}` : '—'}</td>
@@ -1499,7 +1499,7 @@ export default function SkipTracerV2Page() {
             <DossierSection title="Business & Employment" icon={Building2} count={selected.businesses!.length}>
               <DataTable headers={['Business', 'Role', 'Status', 'Reg #', 'Jurisdiction', 'Source']}>
                 {selected.businesses!.map((b, i) => (
-                  <tr key={`biz-${b.name}-${i}`} className="hover:bg-white/5">
+                  <tr key={`biz-${b.name}-${i}`} className="hover:bg-surface-raised/50">
                     <td className="px-2 py-1.5 text-white">{b.name}</td>
                     <td className="px-2 py-1.5 text-[#c0ccdd]">{b.role || '—'}</td>
                     <td className="px-2 py-1.5">
@@ -1521,7 +1521,7 @@ export default function SkipTracerV2Page() {
             <DossierSection title="Licenses" icon={Award} count={selected.licenses!.length}>
               <DataTable headers={['Type', 'Number', 'State', 'Status', 'Expires', 'Source']}>
                 {selected.licenses!.map((l, i) => (
-                  <tr key={`${l.type}-${l.number}-${l.state}`} className="hover:bg-white/5">
+                  <tr key={`${l.type}-${l.number}-${l.state}`} className="hover:bg-surface-raised/50">
                     <td className="px-2 py-1.5 text-white">{l.type || '—'}</td>
                     <td className="px-2 py-1.5 text-[#c0ccdd] font-mono">{l.number || '—'}</td>
                     <td className="px-2 py-1.5 text-[#c0ccdd]">{l.state || '—'}</td>
@@ -1543,7 +1543,7 @@ export default function SkipTracerV2Page() {
             <DossierSection title="Vehicles" icon={Car} count={selected.vehicles!.length}>
               <DataTable headers={['Vehicle', 'Plate', 'VIN', 'Source']}>
                 {selected.vehicles!.map((v, i) => (
-                  <tr key={`${v.vin || ''}-${v.plate || ''}-${i}`} className="hover:bg-white/5">
+                  <tr key={`${v.vin || ''}-${v.plate || ''}-${i}`} className="hover:bg-surface-raised/50">
                     <td className="px-2 py-1.5 text-white">{[v.year, v.make, v.model, v.color].filter(Boolean).join(' ') || '—'}</td>
                     <td className="px-2 py-1.5 text-[#c0ccdd] font-mono">{v.plate ? `${v.plate}${v.plateState ? ` (${v.plateState})` : ''}` : '—'}</td>
                     <td className="px-2 py-1.5 text-[#8899aa] font-mono">{v.vin || '—'}</td>
@@ -1670,7 +1670,7 @@ export default function SkipTracerV2Page() {
           value={dossierSearch}
           onChange={e => setDossierSearch(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && loadDossiers()}
-          placeholder="Search saved dossiers..."
+          placeholder="Search saved dossiers..." aria-label="Search saved dossiers..."
           className="w-full pl-8 pr-3 py-1.5 bg-[#0d1520] border border-[#1e2d40] rounded-sm text-[12px] text-white placeholder-[#445566] focus:outline-none focus:border-[#1a5a9e] font-mono"
         />
       </div>
@@ -1691,10 +1691,10 @@ export default function SkipTracerV2Page() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button type="button" onClick={() => openDossier(d)} className="p-1.5 text-[#556677] hover:text-white hover:bg-white/5 rounded-sm" title="View">
+                  <button type="button" onClick={() => openDossier(d)} className="p-1.5 text-[#556677] hover:text-white hover:bg-surface-raised/50 rounded-sm" title="View">
                     <Eye size={13} />
                   </button>
-                  <button type="button" onClick={() => handleExportPdf(d.id)} className="p-1.5 text-[#556677] hover:text-white hover:bg-white/5 rounded-sm" title="Export PDF">
+                  <button type="button" onClick={() => handleExportPdf(d.id)} className="p-1.5 text-[#556677] hover:text-white hover:bg-surface-raised/50 rounded-sm" title="Export PDF">
                     <Download size={13} />
                   </button>
                 </div>
@@ -1753,7 +1753,7 @@ export default function SkipTracerV2Page() {
                       {h.searcher_name && <span>&middot; {h.searcher_name}</span>}
                     </div>
                   </div>
-                  <button type="button" onClick={() => rerunSearch(h)} className="p-1.5 text-[#556677] hover:text-[#60a5fa] hover:bg-white/5 rounded-sm" title="Re-run">
+                  <button type="button" onClick={() => rerunSearch(h)} className="p-1.5 text-[#556677] hover:text-[#60a5fa] hover:bg-surface-raised/50 rounded-sm" title="Re-run">
                     <RefreshCw size={13} />
                   </button>
                 </div>
@@ -1890,6 +1890,9 @@ export default function SkipTracerV2Page() {
   );
 
   // ─── Main Layout ──────────────────────────────────────────
+
+  // Set document title
+  useEffect(() => { document.title = 'Skip Tracer V2 \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-[#0d1520]">

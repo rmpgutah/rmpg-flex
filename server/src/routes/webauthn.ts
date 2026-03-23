@@ -103,7 +103,7 @@ router.get('/status', authenticateToken, (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('WebAuthn status error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to webauthn status', code: 'WEBAUTHN_STATUS_ERROR' });
   }
 });
 
@@ -123,7 +123,7 @@ router.get('/credentials', authenticateToken, (req: Request, res: Response) => {
     })));
   } catch (error: any) {
     console.error('WebAuthn list credentials error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to webauthn list credentials', code: 'WEBAUTHN_LIST_CREDENTIALS_ERROR' });
   }
 });
 
@@ -138,7 +138,7 @@ router.post('/register-options', authenticateToken, mfaRateLimit, async (req: Re
       .get(userId) as { id: number; username: string; full_name: string } | undefined;
 
     if (!user) {
-      res.status(404).json({ error: 'User not found' });
+      res.status(404).json({ error: 'User not found', code: 'USER_NOT_FOUND' });
       return;
     }
 
@@ -174,7 +174,7 @@ router.post('/register-options', authenticateToken, mfaRateLimit, async (req: Re
     res.json({ options, challengeId });
   } catch (error: any) {
     console.error('WebAuthn register-options error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to webauthn register-options', code: 'WEBAUTHN_REGISTEROPTIONS_ERROR' });
   }
 });
 
@@ -190,31 +190,31 @@ router.post('/register-verify', authenticateToken, mfaRateLimit, async (req: Req
     };
 
     if (!challengeId || !regResponse) {
-      res.status(400).json({ error: 'Missing challengeId or response' });
+      res.status(400).json({ error: 'Missing challengeId or response', code: 'MISSING_CHALLENGEID_OR_RESPONSE' });
       return;
     }
 
     // Validate challengeId format (hex string from randomBytes(16))
     if (typeof challengeId !== 'string' || challengeId.length > 64 || !/^[a-f0-9]+$/.test(challengeId)) {
-      res.status(400).json({ error: 'Invalid challengeId format' });
+      res.status(400).json({ error: 'Invalid challengeId format', code: 'INVALID_CHALLENGEID_FORMAT' });
       return;
     }
 
     // Validate name length
     if (name !== undefined && name !== null && (typeof name !== 'string' || name.length > 100)) {
-      res.status(400).json({ error: 'Security key name must be 100 characters or less' });
+      res.status(400).json({ error: 'Security key name must be 100 characters or less', code: 'SECURITY_KEY_NAME_MUST' });
       return;
     }
 
     const stored = challengeStore.get(challengeId);
     if (!stored || stored.expiresAt < Date.now()) {
       challengeStore.delete(challengeId);
-      res.status(400).json({ error: 'Challenge expired. Please try again.' });
+      res.status(400).json({ error: 'Challenge expired. Please try again.', code: 'CHALLENGE_EXPIRED_PLEASE_TRY' });
       return;
     }
 
     if (stored.userId !== req.user!.userId) {
-      res.status(403).json({ error: 'Challenge mismatch' });
+      res.status(403).json({ error: 'Challenge mismatch', code: 'CHALLENGE_MISMATCH' });
       return;
     }
 
@@ -229,7 +229,7 @@ router.post('/register-verify', authenticateToken, mfaRateLimit, async (req: Req
     challengeStore.delete(challengeId);
 
     if (!verification.verified || !verification.registrationInfo) {
-      res.status(400).json({ error: 'Verification failed. Please try again.' });
+      res.status(400).json({ error: 'Verification failed. Please try again.', code: 'VERIFICATION_FAILED_PLEASE_TRY' });
       return;
     }
 
@@ -284,7 +284,7 @@ router.post('/register-verify', authenticateToken, mfaRateLimit, async (req: Req
     });
   } catch (error: any) {
     console.error('WebAuthn register-verify error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to webauthn register-verify', code: 'WEBAUTHN_REGISTERVERIFY_ERROR' });
   }
 });
 
@@ -295,13 +295,13 @@ router.delete('/credentials/:id', validateParamIdMiddleware, authenticateToken, 
   try {
     const db = getDb();
     const credId = parseInt(req.params.id as string, 10);
-    if (isNaN(credId)) { res.status(400).json({ error: 'Invalid credential ID' }); return; }
+    if (isNaN(credId)) { res.status(400).json({ error: 'Invalid credential ID', code: 'INVALID_CREDENTIAL_ID' }); return; }
     const cred = db.prepare(
       'SELECT id, name FROM webauthn_credentials WHERE id = ? AND user_id = ?'
     ).get(credId, req.user!.userId) as { id: number; name: string } | undefined;
 
     if (!cred) {
-      res.status(404).json({ error: 'Credential not found' });
+      res.status(404).json({ error: 'Credential not found', code: 'CREDENTIAL_NOT_FOUND' });
       return;
     }
 
@@ -340,7 +340,7 @@ router.delete('/credentials/:id', validateParamIdMiddleware, authenticateToken, 
     res.json({ message: 'Security key removed' });
   } catch (error: any) {
     console.error('WebAuthn delete credential error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to webauthn delete credential', code: 'WEBAUTHN_DELETE_CREDENTIAL_ERROR' });
   }
 });
 
@@ -360,18 +360,18 @@ router.post('/authenticate-options', mfaRateLimit, async (req: Request, res: Res
       try {
         decoded = jwt.verify(tempToken, config.jwt.secret) as JwtPayload;
       } catch {
-        res.status(401).json({ error: 'Session expired. Please log in again.' });
+        res.status(401).json({ error: 'Session expired. Please log in again.', code: 'SESSION_EXPIRED_PLEASE_LOG' });
         return;
       }
       if (decoded.type !== '2fa_pending') {
-        res.status(403).json({ error: 'Invalid token type' });
+        res.status(403).json({ error: 'Invalid token type', code: 'INVALID_TOKEN_TYPE' });
         return;
       }
       userId = decoded.userId;
     } else if (req.user?.userId) {
       userId = req.user.userId;
     } else {
-      res.status(401).json({ error: 'Authentication required' });
+      res.status(401).json({ error: 'Authentication required', code: 'AUTHENTICATION_REQUIRED' });
       return;
     }
 
@@ -403,7 +403,7 @@ router.post('/authenticate-options', mfaRateLimit, async (req: Request, res: Res
     res.json({ options, challengeId, hasSecurityKeys: true });
   } catch (error: any) {
     console.error('WebAuthn authenticate-options error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to webauthn authenticate-options', code: 'WEBAUTHN_AUTHENTICATEOPTIONS_ERROR' });
   }
 });
 
@@ -421,22 +421,22 @@ router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Resp
     };
 
     if (!challengeId || !tempToken || !authResponse) {
-      res.status(400).json({ error: 'Missing required fields' });
+      res.status(400).json({ error: 'Missing required fields', code: 'MISSING_REQUIRED_FIELDS' });
       return;
     }
 
     // Validate field types and lengths
     if (typeof challengeId !== 'string' || challengeId.length > 64 || !/^[a-f0-9]+$/.test(challengeId)) {
-      res.status(400).json({ error: 'Invalid challengeId format' });
+      res.status(400).json({ error: 'Invalid challengeId format', code: 'INVALID_CHALLENGEID_FORMAT' });
       return;
     }
     if (typeof tempToken !== 'string' || tempToken.length > 2048) {
-      res.status(400).json({ error: 'Invalid tempToken' });
+      res.status(400).json({ error: 'Invalid tempToken', code: 'INVALID_TEMPTOKEN' });
       return;
     }
     if (deviceFingerprint !== undefined && deviceFingerprint !== null &&
         (typeof deviceFingerprint !== 'string' || deviceFingerprint.length > 500)) {
-      res.status(400).json({ error: 'Invalid deviceFingerprint' });
+      res.status(400).json({ error: 'Invalid deviceFingerprint', code: 'INVALID_DEVICEFINGERPRINT' });
       return;
     }
 
@@ -445,12 +445,12 @@ router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Resp
     try {
       decoded = jwt.verify(tempToken, config.jwt.secret) as JwtPayload;
     } catch {
-      res.status(401).json({ error: 'Session expired. Please log in again.' });
+      res.status(401).json({ error: 'Session expired. Please log in again.', code: 'SESSION_EXPIRED_PLEASE_LOG' });
       return;
     }
 
     if (decoded.type !== '2fa_pending') {
-      res.status(403).json({ error: 'Invalid token type' });
+      res.status(403).json({ error: 'Invalid token type', code: 'INVALID_TOKEN_TYPE' });
       return;
     }
 
@@ -458,12 +458,12 @@ router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Resp
     const stored = challengeStore.get(challengeId);
     if (!stored || stored.expiresAt < Date.now()) {
       challengeStore.delete(challengeId);
-      res.status(400).json({ error: 'Challenge expired. Please try again.' });
+      res.status(400).json({ error: 'Challenge expired. Please try again.', code: 'CHALLENGE_EXPIRED_PLEASE_TRY' });
       return;
     }
 
     if (stored.userId !== decoded.userId) {
-      res.status(403).json({ error: 'Challenge mismatch' });
+      res.status(403).json({ error: 'Challenge mismatch', code: 'CHALLENGE_MISMATCH' });
       return;
     }
 
@@ -481,7 +481,7 @@ router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Resp
     } | undefined;
 
     if (!cred) {
-      res.status(400).json({ error: 'Security key not recognized' });
+      res.status(400).json({ error: 'Security key not recognized', code: 'SECURITY_KEY_NOT_RECOGNIZED' });
       return;
     }
 
@@ -502,7 +502,7 @@ router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Resp
     challengeStore.delete(challengeId);
 
     if (!verification.verified) {
-      res.status(401).json({ error: 'Security key verification failed' });
+      res.status(401).json({ error: 'Security key verification failed', code: 'SECURITY_KEY_VERIFICATION_FAILED' });
       return;
     }
 
@@ -516,12 +516,12 @@ router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Resp
     ).get(decoded.userId) as any;
 
     if (!user) {
-      res.status(401).json({ error: 'User not found' });
+      res.status(401).json({ error: 'User not found', code: 'USER_NOT_FOUND' });
       return;
     }
 
     if (user.status !== 'active') {
-      res.status(403).json({ error: 'Account is disabled or suspended' });
+      res.status(403).json({ error: 'Account is disabled or suspended', code: 'ACCOUNT_IS_DISABLED_OR' });
       return;
     }
 
@@ -607,7 +607,7 @@ router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Resp
     });
   } catch (error: any) {
     console.error('WebAuthn authenticate-verify error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to webauthn authenticate-verify', code: 'WEBAUTHN_AUTHENTICATEVERIFY_ERROR' });
   }
 });
 

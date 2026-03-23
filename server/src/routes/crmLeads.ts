@@ -93,7 +93,7 @@ router.get('/leads', requireRole('admin', 'manager', 'contract_manager'), (req: 
     res.json(rows);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -111,7 +111,7 @@ router.get('/leads/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     `).get(id) as any;
 
     if (!lead) {
-      res.status(404).json({ error: 'Lead not found' });
+      res.status(404).json({ error: 'Lead not found', code: 'LEAD_NOT_FOUND' });
       return;
     }
 
@@ -122,12 +122,14 @@ router.get('/leads/:id', validateParamIdMiddleware, requireRole('admin', 'manage
       LEFT JOIN users u ON u.id = a.created_by
       WHERE a.lead_id = ?
       ORDER BY a.created_at DESC
+    
+      LIMIT 1000
     `).all(id);
 
     res.json({ ...lead, activity });
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -147,7 +149,7 @@ router.post('/leads', requireRole('admin', 'manager', 'contract_manager'), (req:
     const PIPELINE_STAGES = ['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost', 'dismissed'] as const;
     const validBizName = validateStr(business_name, 'business_name', 300);
     if (!validBizName) {
-      res.status(400).json({ error: 'business_name is required' });
+      res.status(400).json({ error: 'business_name is required', code: 'BUSINESSNAME_IS_REQUIRED' });
       return;
     }
     validateStr(contact_name, 'contact_name', 200);
@@ -208,7 +210,7 @@ router.post('/leads', requireRole('admin', 'manager', 'contract_manager'), (req:
     `).run(leadId, req.user?.userId || null, now);
 
     const lead = db.prepare('SELECT * FROM crm_leads WHERE id = ?').get(leadId);
-    if (!lead) return res.status(404).json({ error: 'Lead not found after creation' });
+    if (!lead) return res.status(404).json({ error: 'Lead not found after creation', code: 'LEAD_NOT_FOUND_AFTER' });
     broadcast('admin', 'lead:created', lead);
     res.json(lead);
   } catch (err: any) {
@@ -216,7 +218,7 @@ router.post('/leads', requireRole('admin', 'manager', 'contract_manager'), (req:
       res.status(400).json({ error: err.message }); return;
     }
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -227,7 +229,7 @@ router.put('/leads/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     const { id } = req.params;
     const existing = db.prepare('SELECT * FROM crm_leads WHERE id = ?').get(id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Lead not found' });
+      res.status(404).json({ error: 'Lead not found', code: 'LEAD_NOT_FOUND' });
       return;
     }
 
@@ -251,7 +253,7 @@ router.put('/leads/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     }
 
     if (updates.length === 0) {
-      res.status(400).json({ error: 'No fields to update' });
+      res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
       return;
     }
 
@@ -281,7 +283,7 @@ router.put('/leads/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     res.json(lead);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -292,7 +294,7 @@ router.delete('/leads/:id', validateParamIdMiddleware, requireRole('admin', 'man
     const { id } = req.params;
     const existing = db.prepare('SELECT * FROM crm_leads WHERE id = ?').get(id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Lead not found' });
+      res.status(404).json({ error: 'Lead not found', code: 'LEAD_NOT_FOUND' });
       return;
     }
 
@@ -304,7 +306,7 @@ router.delete('/leads/:id', validateParamIdMiddleware, requireRole('admin', 'man
     res.json({ success: true });
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -317,7 +319,7 @@ router.put('/leads/:id/stage', validateParamIdMiddleware, requireRole('admin', '
 
     const existing = db.prepare('SELECT * FROM crm_leads WHERE id = ?').get(id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Lead not found' });
+      res.status(404).json({ error: 'Lead not found', code: 'LEAD_NOT_FOUND' });
       return;
     }
 
@@ -357,7 +359,7 @@ router.put('/leads/:id/stage', validateParamIdMiddleware, requireRole('admin', '
     res.json(lead);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -370,7 +372,7 @@ router.put('/leads/:id/assign', validateParamIdMiddleware, requireRole('admin', 
 
     const existing = db.prepare('SELECT * FROM crm_leads WHERE id = ?').get(id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Lead not found' });
+      res.status(404).json({ error: 'Lead not found', code: 'LEAD_NOT_FOUND' });
       return;
     }
 
@@ -401,7 +403,7 @@ router.put('/leads/:id/assign', validateParamIdMiddleware, requireRole('admin', 
     res.json(lead);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -413,12 +415,12 @@ router.post('/leads/:id/convert', validateParamIdMiddleware, requireRole('admin'
 
     const lead = db.prepare('SELECT * FROM crm_leads WHERE id = ?').get(id) as any;
     if (!lead) {
-      res.status(404).json({ error: 'Lead not found' });
+      res.status(404).json({ error: 'Lead not found', code: 'LEAD_NOT_FOUND' });
       return;
     }
 
     if (lead.pipeline_stage !== 'won') {
-      res.status(400).json({ error: 'Lead must be in "won" stage to convert' });
+      res.status(400).json({ error: 'Lead must be in "won" stage to convert', code: 'LEAD_MUST_BE_IN' });
       return;
     }
 
@@ -471,7 +473,7 @@ router.post('/leads/:id/convert', validateParamIdMiddleware, requireRole('admin'
     res.json({ success: true, client: client || null, lead_id: Number(id), client_id: clientId });
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -482,13 +484,13 @@ router.post('/leads/bulk-action', requireRole('admin', 'manager', 'contract_mana
     const { action, lead_ids, assigned_to } = req.body;
 
     if (!action || !Array.isArray(lead_ids) || lead_ids.length === 0) {
-      res.status(400).json({ error: 'action and lead_ids[] are required' });
+      res.status(400).json({ error: 'action and lead_ids[] are required', code: 'ACTION_AND_LEADIDS_ARE' });
       return;
     }
-    if (lead_ids.length > 200) { res.status(400).json({ error: 'Maximum 200 IDs per bulk action' }); return; }
+    if (lead_ids.length > 200) { res.status(400).json({ error: 'Maximum 200 IDs per bulk action', code: 'MAXIMUM_200_IDS_PER' }); return; }
     const BULK_ACTIONS = ['mark_contacted', 'assign', 'dismiss'] as const;
     try { validateEnum(action, BULK_ACTIONS, 'action'); } catch (e: any) { res.status(400).json({ error: e.message }); return; }
-    for (const lid of lead_ids) { if (isNaN(parseInt(String(lid), 10)) || parseInt(String(lid), 10) < 1) { res.status(400).json({ error: 'All lead_ids must be positive integers' }); return; } }
+    for (const lid of lead_ids) { if (isNaN(parseInt(String(lid), 10)) || parseInt(String(lid), 10) < 1) { res.status(400).json({ error: 'All lead_ids must be positive integers', code: 'ALL_LEADIDS_MUST_BE' }); return; } }
 
     const now = localNow();
     const placeholders = lead_ids.map(() => '?').join(',');
@@ -503,7 +505,7 @@ router.post('/leads/bulk-action', requireRole('admin', 'manager', 'contract_mana
 
       case 'assign':
         if (!assigned_to) {
-          res.status(400).json({ error: 'assigned_to is required for assign action' });
+          res.status(400).json({ error: 'assigned_to is required for assign action', code: 'ASSIGNEDTO_IS_REQUIRED_FOR' });
           return;
         }
         updated = db.prepare(
@@ -518,7 +520,7 @@ router.post('/leads/bulk-action', requireRole('admin', 'manager', 'contract_mana
         break;
 
       default:
-        res.status(400).json({ error: 'Unknown action. Must be one of: mark_contacted, assign, dismiss' });
+        res.status(400).json({ error: 'Unknown action. Must be one of: mark_contacted, assign, dismiss', code: 'UNKNOWN_ACTION_MUST_BE' });
         return;
     }
 
@@ -527,7 +529,7 @@ router.post('/leads/bulk-action', requireRole('admin', 'manager', 'contract_mana
     res.json({ success: true, updated });
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -546,7 +548,7 @@ router.get('/leads/pipeline-summary', requireRole('admin', 'manager', 'contract_
     res.json(rows);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -569,7 +571,7 @@ router.get('/lead-activity/:leadId', requireRole('admin', 'manager', 'contract_m
     res.json(rows);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -579,14 +581,14 @@ router.post('/lead-activity', requireRole('admin', 'manager', 'contract_manager'
     const db = getDb();
     const { lead_id, activity_type, subject, details, old_value, new_value } = req.body;
     if (!lead_id || !activity_type) {
-      res.status(400).json({ error: 'lead_id and activity_type are required' });
+      res.status(400).json({ error: 'lead_id and activity_type are required', code: 'LEADID_AND_ACTIVITYTYPE_ARE' });
       return;
     }
 
     // Verify lead exists
     const lead = db.prepare('SELECT id FROM crm_leads WHERE id = ?').get(lead_id);
     if (!lead) {
-      res.status(404).json({ error: 'Lead not found' });
+      res.status(404).json({ error: 'Lead not found', code: 'LEAD_NOT_FOUND' });
       return;
     }
 
@@ -604,11 +606,11 @@ router.post('/lead-activity', requireRole('admin', 'manager', 'contract_manager'
       WHERE a.id = ?
     `).get(activityId);
 
-    if (!activity) return res.status(404).json({ error: 'Activity not found' });
+    if (!activity) return res.status(404).json({ error: 'Activity not found', code: 'ACTIVITY_NOT_FOUND' });
     res.json(activity);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -620,7 +622,7 @@ router.get('/scrape-sources', requireRole('admin', 'manager', 'contract_manager'
     res.json(rows);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -632,7 +634,7 @@ router.put('/scrape-sources/:key', requireRole('admin', 'manager'), (req: Reques
 
     const existing = db.prepare('SELECT * FROM lead_scrape_sources WHERE source_key = ?').get(key) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Source not found' });
+      res.status(404).json({ error: 'Source not found', code: 'SOURCE_NOT_FOUND' });
       return;
     }
 
@@ -655,7 +657,7 @@ router.put('/scrape-sources/:key', requireRole('admin', 'manager'), (req: Reques
     res.json(source);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -667,7 +669,7 @@ router.post('/scrape-sources/:key/poll-now', requireRole('admin', 'manager'), as
     const sourceKey = String(key);
     const scraper = getRegisteredScraper(sourceKey);
     if (!scraper) {
-      res.status(404).json({ error: 'No scraper registered for the specified source' });
+      res.status(404).json({ error: 'No scraper registered for the specified source', code: 'NO_SCRAPER_REGISTERED_FOR' });
       return;
     }
 
@@ -678,7 +680,7 @@ router.post('/scrape-sources/:key/poll-now', requireRole('admin', 'manager'), as
     res.json(result);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -704,7 +706,7 @@ router.get('/scrape-log', requireRole('admin', 'manager', 'contract_manager'), (
     res.json(rows);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -746,7 +748,7 @@ router.get('/leads/export/csv', requireRole('admin', 'manager', 'supervisor'), (
       { key: 'updated_at', header: 'Updated At' },
     ], rows);
   } catch (error: any) {
-    res.status(500).json({ error: 'Export failed' });
+    res.status(500).json({ error: 'Export failed', code: 'EXPORT_FAILED' });
   }
 });
 
@@ -759,7 +761,7 @@ router.get('/leads/:id/score-breakdown', validateParamIdMiddleware, requireRole(
   try {
     const db = getDb();
     const lead = db.prepare('SELECT * FROM crm_leads WHERE id = ?').get(req.params.id) as any;
-    if (!lead) { res.status(404).json({ error: 'Lead not found' }); return; }
+    if (!lead) { res.status(404).json({ error: 'Lead not found', code: 'LEAD_NOT_FOUND' }); return; }
 
     const activity = db.prepare(
       'SELECT * FROM crm_lead_activity WHERE lead_id = ? ORDER BY created_at DESC'
@@ -815,7 +817,7 @@ router.get('/leads/:id/score-breakdown', validateParamIdMiddleware, requireRole(
     });
   } catch (err: any) {
     console.error('Lead score breakdown error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to lead score breakdown', code: 'LEAD_SCORE_BREAKDOWN_ERROR' });
   }
 });
 
@@ -868,7 +870,7 @@ router.get('/pipeline-summary', requireRole('admin', 'manager', 'contract_manage
     res.json({ stages, conversions });
   } catch (err: any) {
     console.error('Pipeline summary error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to pipeline summary', code: 'PIPELINE_SUMMARY_ERROR' });
   }
 });
 
@@ -890,6 +892,8 @@ router.get('/leads/follow-ups', requireRole('admin', 'manager', 'contract_manage
         AND l.next_follow_up < ?
         AND l.pipeline_stage NOT IN ('won', 'lost', 'dismissed')
       ORDER BY l.next_follow_up ASC
+    
+      LIMIT 1000
     `).all(today);
 
     const todayFollowUps = db.prepare(`
@@ -899,6 +903,8 @@ router.get('/leads/follow-ups', requireRole('admin', 'manager', 'contract_manage
       WHERE l.next_follow_up = ?
         AND l.pipeline_stage NOT IN ('won', 'lost', 'dismissed')
       ORDER BY l.lead_score DESC
+    
+      LIMIT 1000
     `).all(today);
 
     const upcoming = db.prepare(`
@@ -909,12 +915,14 @@ router.get('/leads/follow-ups', requireRole('admin', 'manager', 'contract_manage
         AND l.next_follow_up <= date(?, '+7 days')
         AND l.pipeline_stage NOT IN ('won', 'lost', 'dismissed')
       ORDER BY l.next_follow_up ASC
+    
+      LIMIT 1000
     `).all(today, today);
 
     res.json({ overdue, today: todayFollowUps, upcoming });
   } catch (err: any) {
     console.error('Follow-ups error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to follow-ups', code: 'FOLLOWUPS_ERROR' });
   }
 });
 
@@ -925,7 +933,7 @@ router.put('/leads/:id/follow-up', validateParamIdMiddleware, requireRole('admin
     const now = localNow();
 
     const existing = db.prepare('SELECT * FROM crm_leads WHERE id = ?').get(req.params.id) as any;
-    if (!existing) { res.status(404).json({ error: 'Lead not found' }); return; }
+    if (!existing) { res.status(404).json({ error: 'Lead not found', code: 'LEAD_NOT_FOUND' }); return; }
 
     db.prepare('UPDATE crm_leads SET next_follow_up = ?, updated_at = ? WHERE id = ?')
       .run(next_follow_up || null, now, req.params.id);
@@ -945,7 +953,7 @@ router.put('/leads/:id/follow-up', validateParamIdMiddleware, requireRole('admin
     res.json({ success: true });
   } catch (err: any) {
     console.error('Set follow-up error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to set follow-up', code: 'SET_FOLLOWUP_ERROR' });
   }
 });
 
@@ -985,7 +993,7 @@ router.get('/leads/source-analytics', requireRole('admin', 'manager', 'contract_
     res.json({ data: enriched, period_days: parseInt(days as string, 10) });
   } catch (err: any) {
     console.error('Source analytics error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to source analytics', code: 'SOURCE_ANALYTICS_ERROR' });
   }
 });
 
@@ -1016,6 +1024,8 @@ router.get('/revenue-forecast', requireRole('admin', 'manager', 'contract_manage
       WHERE pipeline_stage NOT IN ('won', 'lost', 'dismissed')
         AND estimated_value IS NOT NULL AND estimated_value > 0
       ORDER BY estimated_value DESC
+    
+      LIMIT 1000
     `).all() as any[];
 
     let totalExpected = 0;
@@ -1065,7 +1075,7 @@ router.get('/revenue-forecast', requireRole('admin', 'manager', 'contract_manage
     });
   } catch (err: any) {
     console.error('Revenue forecast error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to revenue forecast', code: 'REVENUE_FORECAST_ERROR' });
   }
 });
 

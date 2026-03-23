@@ -80,7 +80,7 @@ export default function MaintenanceMonitor({ onSelectVehicle }: Props) {
       <div className="p-3">
         <div className="panel-beveled p-4 bg-surface-base border-t-2 border-t-brand-500">
           <div className="flex items-center gap-2">
-            <Loader2 className="w-4 h-4 text-brand-400 animate-spin" />
+            <Loader2 className="w-4 h-4 text-brand-400 animate-spin" role="status" aria-label="Loading" />
             <span className="text-xs text-rmpg-300">Loading maintenance data…</span>
           </div>
         </div>

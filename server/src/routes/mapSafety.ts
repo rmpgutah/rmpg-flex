@@ -225,6 +225,8 @@ router.get(
           AND latitude BETWEEN ? AND ?
           AND longitude BETWEEN ? AND ?
           AND created_at >= datetime('now','localtime','-180 days')
+      
+        LIMIT 1000
       `).all(bb.minLat, bb.maxLat, bb.minLng, bb.maxLng) as any[];
 
       // Filter to actual 500m radius and separate 90-day window
@@ -281,6 +283,8 @@ router.get(
           AND latitude IS NOT NULL AND longitude IS NOT NULL
           AND latitude BETWEEN ? AND ?
           AND longitude BETWEEN ? AND ?
+      
+        LIMIT 1000
       `).all(bb.minLat, bb.maxLat, bb.minLng, bb.maxLng) as any[];
 
       let activeWarrantsNearby = 0;
@@ -408,6 +412,8 @@ router.get(
           AND latitude IS NOT NULL AND longitude IS NOT NULL
           AND latitude BETWEEN ? AND ?
           AND longitude BETWEEN ? AND ?
+      
+        LIMIT 1000
       `).all(bbWide.minLat, bbWide.maxLat, bbWide.minLng, bbWide.maxLng) as any[];
 
       // Compute threat centroid
@@ -514,6 +520,8 @@ router.get(
           AND latitude BETWEEN ? AND ?
           AND longitude BETWEEN ? AND ?
           AND created_at >= ?
+      
+        LIMIT 1000
       `).all(bbCorr.minLat, bbCorr.maxLat, bbCorr.minLng, bbCorr.maxLng, cutoff90) as any[];
 
       // Break corridor into ~10 segments
@@ -616,6 +624,8 @@ router.get(
         SELECT latitude, longitude, speed, recorded_at FROM gps_breadcrumbs
         WHERE unit_id = ? AND recorded_at >= datetime('now','localtime','start of day')
         ORDER BY recorded_at ASC
+      
+        LIMIT 1000
       `).all(unitRow.id) as any[];
 
       if (breadcrumbs.length === 0) {
@@ -733,6 +743,8 @@ router.get(
           AND latitude IS NOT NULL AND longitude IS NOT NULL
           AND latitude BETWEEN ? AND ?
           AND longitude BETWEEN ? AND ?
+      
+        LIMIT 1000
       `).all(bb.minLat, bb.maxLat, bb.minLng, bb.maxLng) as any[];
 
       const quadrants: Record<string, { units: number; nearest_distance_m: number; unit_names: string[] }> = {
@@ -839,12 +851,16 @@ router.get(
         WHERE weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0' AND weapons_involved != 'None'
           AND latitude IS NOT NULL AND longitude IS NOT NULL
           AND created_at >= datetime('now','localtime','-90 days')
+      
+        LIMIT 1000
       `).all() as any[];
 
       const activeUnits = db.prepare(`
         SELECT call_sign, latitude, longitude FROM units
         WHERE status NOT IN ('off_duty', 'out_of_service')
           AND latitude IS NOT NULL AND longitude IS NOT NULL
+      
+        LIMIT 1000
       `).all() as any[];
 
       let officers_in_risk_zones = 0;
@@ -916,14 +932,14 @@ router.post(
         return;
       }
       if (lat == null || lng == null) {
-        res.status(400).json({ error: 'lat and lng are required' });
+        res.status(400).json({ error: 'lat and lng are required', code: 'LAT_AND_LNG_ARE' });
         return;
       }
       const latNum = Number(lat);
       const lngNum = Number(lng);
       if (!Number.isFinite(latNum) || !Number.isFinite(lngNum) ||
           latNum < -90 || latNum > 90 || lngNum < -180 || lngNum > 180) {
-        res.status(400).json({ error: 'lat must be between -90 and 90, lng between -180 and 180' });
+        res.status(400).json({ error: 'lat must be between -90 and 90, lng between -180 and 180', code: 'LAT_MUST_BE_BETWEEN' });
         return;
       }
 
@@ -1142,6 +1158,8 @@ router.get(
         SELECT call_sign, latitude, longitude FROM units
         WHERE status NOT IN ('off_duty', 'out_of_service')
           AND latitude IS NOT NULL AND longitude IS NOT NULL
+      
+        LIMIT 1000
       `).all() as any[];
 
       const gaps: any[] = [];

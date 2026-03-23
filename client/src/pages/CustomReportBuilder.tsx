@@ -4,7 +4,7 @@
 // select columns, set filters, preview results, and export CSV.
 // ============================================================
 
-import React, { useState, useCallback } from 'react';
+import React, {useState, useCallback, useEffect} from 'react';
 import { Database, Columns, Filter, Play, Download, ArrowUpDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -156,6 +156,9 @@ export default function CustomReportBuilder() {
     { id: 'preview', label: 'Results', icon: <Play className="w-3.5 h-3.5" /> },
   ];
 
+  // Set document title
+  useEffect(() => { document.title = 'Custom Report Builder \u2014 RMPG Flex'; }, []);
+
   return (
     <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
       {!isMobile && <PanelTitleBar title="Custom Report Builder" icon={Database}>
@@ -164,7 +167,7 @@ export default function CustomReportBuilder() {
             <span className="text-[9px] text-brand-400 font-bold uppercase">{SOURCES[source]?.label}</span>
           )}
           {results.length > 0 && (
-            <button type="button" onClick={exportCsv} className="toolbar-btn toolbar-btn-primary">
+            <button type="button" onClick={exportCsv} className="toolbar-btn toolbar-btn-primary print:hidden">
               <Download className="w-3 h-3" /> Export CSV
             </button>
           )}
@@ -235,7 +238,7 @@ export default function CustomReportBuilder() {
               ))}
             </div>
             <div className="flex justify-end mt-4">
-              <button type="button" onClick={() => setStep('filters')} disabled={selectedCols.length === 0} className="toolbar-btn toolbar-btn-primary">
+              <button type="button" onClick={() => setStep('filters')} disabled={selectedCols.length === 0} className="toolbar-btn toolbar-btn-primary print:hidden">
                 Next: Filters <ChevronRight className="w-3 h-3" />
               </button>
             </div>
@@ -266,7 +269,7 @@ export default function CustomReportBuilder() {
                 </div>
                 <input
                   type="text"
-                  className="input-dark text-[10px] flex-1"
+                  className="input-dark text-[10px] flex-1 min-h-[36px]"
                   placeholder="Value..."
                   value={f.value}
                   onChange={e => updateFilter(i, 'value', e.target.value)}
@@ -282,21 +285,21 @@ export default function CustomReportBuilder() {
                   <option value="">— None —</option>
                   {selectedCols.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
-                <select className="select-dark text-[10px] w-20" value={sortDir} onChange={e => setSortDir(e.target.value as any)}>
+                <select className="select-dark text-[10px] w-20 min-h-[36px]" value={sortDir} onChange={e => setSortDir(e.target.value as any)}>
                   <option value="asc">ASC</option>
                   <option value="desc">DESC</option>
                 </select>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-[9px] text-rmpg-400 uppercase font-bold">Limit:</span>
-                <select className="select-dark text-[10px] w-20" value={limit} onChange={e => setLimit(Number(e.target.value))}>
+                <select className="select-dark text-[10px] w-20 min-h-[36px]" value={limit} onChange={e => setLimit(Number(e.target.value))}>
                   {[50, 100, 200, 500, 1000].map(n => <option key={n} value={n}>{n}</option>)}
                 </select>
               </div>
             </div>
 
             <div className="flex justify-end mt-4">
-              <button type="button" onClick={runQuery} disabled={loading} className="toolbar-btn toolbar-btn-primary">
+              <button type="button" onClick={runQuery} disabled={loading} className="toolbar-btn toolbar-btn-primary print:hidden">
                 {loading ? 'Running...' : 'Run Query'} <Play className="w-3 h-3" />
               </button>
             </div>
@@ -316,7 +319,7 @@ export default function CustomReportBuilder() {
                 <button type="button" onClick={runQuery} disabled={loading} className="toolbar-btn">
                   <RefreshCw className="w-3 h-3" /> Re-run
                 </button>
-                <button type="button" onClick={exportCsv} className="toolbar-btn toolbar-btn-primary">
+                <button type="button" onClick={exportCsv} className="toolbar-btn toolbar-btn-primary print:hidden">
                   <Download className="w-3 h-3" /> CSV
                 </button>
               </div>

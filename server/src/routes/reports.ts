@@ -4,6 +4,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { reverseGeocodeDetailed } from '../utils/geocode';
 import { identifyBeat } from '../utils/geofence';
 import { listDailyReports, getReportPath, generateAndSaveDailyReport } from '../utils/dailyReportGenerator';
+import { localNow, localToday } from '../utils/timeUtils';
 
 const router = Router();
 
@@ -88,6 +89,8 @@ router.get('/dashboard', (req: Request, res: Response) => {
       FROM units un
       JOIN users u ON un.officer_id = u.id
       WHERE un.status != 'off_duty'
+    
+      LIMIT 1000
     `).all();
 
     // Call volume by hour (today)
@@ -115,7 +118,7 @@ router.get('/dashboard', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get dashboard error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get dashboard', code: 'GET_DASHBOARD_ERROR' });
   }
 });
 
@@ -177,7 +180,7 @@ router.get('/incidents-summary', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get incidents summary error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get incidents summary', code: 'GET_INCIDENTS_SUMMARY_ERROR' });
   }
 });
 
@@ -284,7 +287,7 @@ router.get('/response-times', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get response times error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get response times', code: 'GET_RESPONSE_TIMES_ERROR' });
   }
 });
 
@@ -311,6 +314,8 @@ router.get('/officer-activity', (req: Request, res: Response) => {
       SELECT id, full_name, badge_number, role FROM users
       WHERE role IN ('officer', 'supervisor') AND status = 'active'
       ORDER BY full_name
+    
+      LIMIT 1000
     `).all() as any[];
 
     const metrics = officers.map((officer) => {
@@ -359,7 +364,7 @@ router.get('/officer-activity', (req: Request, res: Response) => {
     res.json(metrics);
   } catch (error: any) {
     console.error('Get officer activity error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get officer activity', code: 'GET_OFFICER_ACTIVITY_ERROR' });
   }
 });
 
@@ -371,7 +376,7 @@ router.get('/client/:clientId', (req: Request, res: Response) => {
 
     const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(req.params.clientId) as any;
     if (!client) {
-      res.status(404).json({ error: 'Client not found' });
+      res.status(404).json({ error: 'Client not found', code: 'CLIENT_NOT_FOUND' });
       return;
     }
 
@@ -478,7 +483,7 @@ router.get('/client/:clientId', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get client report error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get client report', code: 'GET_CLIENT_REPORT_ERROR' });
   }
 });
 
@@ -487,11 +492,11 @@ router.get('/shift-activity/:officerId', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { officerId } = req.params;
-    const date = (req.query.date as string) || new Date().toISOString().slice(0, 10);
+    const date = (req.query.date as string) || localToday();
 
     // Officer info
     const officer = db.prepare('SELECT id, full_name, badge_number, email, role FROM users WHERE id = ?').get(officerId) as any;
-    if (!officer) return res.status(404).json({ error: 'Officer not found' });
+    if (!officer) return res.status(404).json({ error: 'Officer not found', code: 'OFFICER_NOT_FOUND' });
 
     // Calls handled today — find calls where this officer's unit was assigned
     // assigned_unit_ids is a JSON array stored as TEXT, and units.officer_id links to users
@@ -504,6 +509,8 @@ router.get('/shift-activity/:officerId', (req: Request, res: Response) => {
         c.dispatcher_id = ? OR c.assigned_unit_ids LIKE ?
       )
       ORDER BY c.created_at ASC
+    
+      LIMIT 1000
     `).all(date, officerId, `%${unitId}%`) as any[];
 
     // Incidents authored today
@@ -512,6 +519,8 @@ router.get('/shift-activity/:officerId', (req: Request, res: Response) => {
       FROM incidents
       WHERE DATE(created_at) = ? AND officer_id = ?
       ORDER BY created_at ASC
+    
+      LIMIT 1000
     `).all(date, officerId) as any[];
 
     // Patrol scans today
@@ -521,6 +530,8 @@ router.get('/shift-activity/:officerId', (req: Request, res: Response) => {
       LEFT JOIN patrol_checkpoints pc ON pc.id = ps.checkpoint_id
       WHERE DATE(ps.scanned_at) = ? AND ps.officer_id = ?
       ORDER BY ps.scanned_at ASC
+    
+      LIMIT 1000
     `).all(date, officerId) as any[];
 
     // Citations issued today
@@ -529,6 +540,8 @@ router.get('/shift-activity/:officerId', (req: Request, res: Response) => {
       FROM citations
       WHERE DATE(created_at) = ? AND officer_id = ?
       ORDER BY created_at ASC
+    
+      LIMIT 1000
     `).all(date, officerId) as any[];
 
     // Field interviews today
@@ -537,6 +550,8 @@ router.get('/shift-activity/:officerId', (req: Request, res: Response) => {
       FROM field_interviews
       WHERE DATE(created_at) = ? AND officer_id = ?
       ORDER BY created_at ASC
+    
+      LIMIT 1000
     `).all(date, officerId) as any[];
 
     res.json({
@@ -557,7 +572,7 @@ router.get('/shift-activity/:officerId', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get shift activity error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get shift activity', code: 'GET_SHIFT_ACTIVITY_ERROR' });
   }
 });
 
@@ -571,7 +586,7 @@ router.get('/training-compliance', requireRole('admin', 'manager'), (req: Reques
     res.json({ users, requirements, records });
   } catch (error: any) {
     console.error('Training compliance error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to training compliance', code: 'TRAINING_COMPLIANCE_ERROR' });
   }
 });
 
@@ -599,7 +614,7 @@ router.get('/call-density', (req: Request, res: Response) => {
     res.json({ points, count: points.length });
   } catch (error: any) {
     console.error('Call density error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to call density', code: 'CALL_DENSITY_ERROR' });
   }
 });
 
@@ -654,7 +669,7 @@ router.get('/statute-analytics', (req: Request, res: Response) => {
     res.json({ topStatutes, byLevel, trend, incidentStatutes });
   } catch (error: any) {
     console.error('Statute analytics error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to statute analytics', code: 'STATUTE_ANALYTICS_ERROR' });
   }
 });
 
@@ -715,7 +730,7 @@ router.get('/patrol-compliance', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Patrol compliance error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to patrol compliance', code: 'PATROL_COMPLIANCE_ERROR' });
   }
 });
 
@@ -740,12 +755,12 @@ router.post('/custom', requireRole('admin', 'manager'), (req: Request, res: Resp
     };
 
     if (!source || !ALLOWED_SOURCES[source]) {
-      return res.status(400).json({ error: 'Invalid data source' });
+      return res.status(400).json({ error: 'Invalid data source', code: 'INVALID_DATA_SOURCE' });
     }
 
     const allowedCols = ALLOWED_SOURCES[source];
     const selectedCols = (columns || allowedCols).filter((c: string) => allowedCols.includes(c));
-    if (selectedCols.length === 0) return res.status(400).json({ error: 'No valid columns selected' });
+    if (selectedCols.length === 0) return res.status(400).json({ error: 'No valid columns selected', code: 'NO_VALID_COLUMNS_SELECTED' });
 
     let sql = `SELECT ${selectedCols.join(', ')} FROM ${source}`;
     const params: any[] = [];
@@ -770,7 +785,7 @@ router.post('/custom', requireRole('admin', 'manager'), (req: Request, res: Resp
     res.json({ data: rows, columns: selectedCols, count: rows.length, sql: sql.replace(/\?/g, '…') });
   } catch (error: any) {
     console.error('Custom report error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to custom report', code: 'CUSTOM_REPORT_ERROR' });
   }
 });
 
@@ -874,7 +889,7 @@ router.get('/crime-analysis', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Crime analysis error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crime analysis', code: 'CRIME_ANALYSIS_ERROR' });
   }
 });
 
@@ -921,11 +936,13 @@ router.get('/crime-analysis/export', (req: Request, res: Response) => {
     }
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Disposition', `attachment; filename="crime-analysis_${new Date().toISOString().slice(0, 10)}.csv"`);
     res.send(csvRows.join('\r\n'));
   } catch (error: any) {
     console.error('Crime analysis export error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crime analysis export', code: 'CRIME_ANALYSIS_EXPORT_ERROR' });
   }
 });
 
@@ -997,6 +1014,8 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
       FROM gps_breadcrumbs b
       WHERE ${dateClause} ${whereExtra}
       ORDER BY b.unit_id, b.recorded_at ASC
+    
+      LIMIT 1000
     `).all(...params) as any[];
 
     // ── Constants for filtering ─────────────────────────
@@ -1328,7 +1347,7 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
     });
   } catch (error: any) {
     console.error('Patrol tracking report error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to patrol tracking report', code: 'PATROL_TRACKING_REPORT_ERROR' });
   }
 });
 
@@ -1341,7 +1360,7 @@ router.get('/daily-reports', requireRole('admin', 'manager', 'supervisor'), (req
     res.json({ reports });
   } catch (error: any) {
     console.error('List daily reports error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to list daily reports', code: 'LIST_DAILY_REPORTS_ERROR' });
   }
 });
 
@@ -1353,7 +1372,7 @@ router.get('/daily-reports/:filename', requireRole('admin', 'manager', 'supervis
     const filename = req.params.filename as string;
     const filepath = getReportPath(filename);
     if (!filepath) {
-      res.status(404).json({ error: 'Report not found' });
+      res.status(404).json({ error: 'Report not found', code: 'REPORT_NOT_FOUND' });
       return;
     }
     res.setHeader('Content-Type', 'application/pdf');
@@ -1361,7 +1380,7 @@ router.get('/daily-reports/:filename', requireRole('admin', 'manager', 'supervis
     res.sendFile(filepath);
   } catch (error: any) {
     console.error('Download daily report error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to download daily report', code: 'DOWNLOAD_DAILY_REPORT_ERROR' });
   }
 });
 
@@ -1379,7 +1398,7 @@ router.post('/daily-reports/generate', requireRole('admin'), async (req: Request
     res.json({ ok: true, filename });
   } catch (error: any) {
     console.error('Generate daily report error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to generate daily report', code: 'GENERATE_DAILY_REPORT_ERROR' });
   }
 });
 
@@ -1458,7 +1477,7 @@ router.get('/monthly-incident-report', requireRole('admin', 'manager', 'supervis
     });
   } catch (error: any) {
     console.error('Monthly incident report error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to monthly incident report', code: 'MONTHLY_INCIDENT_REPORT_ERROR' });
   }
 });
 
@@ -1473,7 +1492,7 @@ router.get('/officer-scorecard/:officerId', requireRole('admin', 'manager', 'sup
     const offset = `-${days} days`;
 
     const officer = db.prepare('SELECT id, full_name, badge_number, role, rank FROM users WHERE id = ?').get(officerId) as any;
-    if (!officer) return res.status(404).json({ error: 'Officer not found' });
+    if (!officer) return res.status(404).json({ error: 'Officer not found', code: 'OFFICER_NOT_FOUND' });
 
     const unit = db.prepare('SELECT id FROM units WHERE officer_id = ?').get(officerId) as any;
     const unitId = unit ? String(unit.id) : '-1';
@@ -1535,7 +1554,7 @@ router.get('/officer-scorecard/:officerId', requireRole('admin', 'manager', 'sup
     });
   } catch (error: any) {
     console.error('Officer scorecard error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to officer scorecard', code: 'OFFICER_SCORECARD_ERROR' });
   }
 });
 
@@ -1583,7 +1602,7 @@ router.get('/crime-trends', (req: Request, res: Response) => {
     res.json({ currentMonth, prevMonth, lastYearMonth, trends, monthlyTrend });
   } catch (error: any) {
     console.error('Crime trends error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crime trends', code: 'CRIME_TRENDS_ERROR' });
   }
 });
 
@@ -1644,7 +1663,7 @@ router.get('/beat-activity', (req: Request, res: Response) => {
     res.json({ period_days: days, beats: Object.values(beatMap).sort((a: any, b: any) => b.calls - a.calls) });
   } catch (error: any) {
     console.error('Beat activity error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to beat activity', code: 'BEAT_ACTIVITY_ERROR' });
   }
 });
 
@@ -1675,6 +1694,8 @@ router.get('/use-of-force', requireRole('admin', 'manager', 'supervisor'), (req:
       LEFT JOIN users u ON uof.officer_id = u.id
       WHERE uof.created_at >= DATE('now', ?)
       ORDER BY uof.created_at DESC
+    
+      LIMIT 1000
     `).all(offset);
 
     const byType = db.prepare(`
@@ -1697,7 +1718,7 @@ router.get('/use-of-force', requireRole('admin', 'manager', 'supervisor'), (req:
     res.json({ period_days: days, total: total.count, incidents, byType, byLevel, byReviewStatus });
   } catch (error: any) {
     console.error('Use of force error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to use of force', code: 'USE_OF_FORCE_ERROR' });
   }
 });
 
@@ -1720,7 +1741,7 @@ router.post('/use-of-force', requireRole('admin', 'manager', 'supervisor', 'offi
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (error: any) {
     console.error('Create use of force error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create use of force', code: 'CREATE_USE_OF_FORCE' });
   }
 });
 
@@ -1755,6 +1776,8 @@ router.get('/vehicle-pursuits', requireRole('admin', 'manager', 'supervisor'), (
       LEFT JOIN users u ON vp.officer_id = u.id
       WHERE vp.created_at >= DATE('now', ?)
       ORDER BY vp.created_at DESC
+    
+      LIMIT 1000
     `).all(offset);
 
     const byOutcome = db.prepare(`
@@ -1767,7 +1790,7 @@ router.get('/vehicle-pursuits', requireRole('admin', 'manager', 'supervisor'), (
     res.json({ period_days: days, total: total.count, pursuits, byOutcome });
   } catch (error: any) {
     console.error('Vehicle pursuits error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to vehicle pursuits', code: 'VEHICLE_PURSUITS_ERROR' });
   }
 });
 
@@ -1791,7 +1814,7 @@ router.post('/vehicle-pursuits', requireRole('admin', 'manager', 'supervisor', '
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (error: any) {
     console.error('Create vehicle pursuit error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create vehicle pursuit', code: 'CREATE_VEHICLE_PURSUIT_ERROR' });
   }
 });
 
@@ -1824,7 +1847,7 @@ router.get('/property-crime-trends', (req: Request, res: Response) => {
     res.json({ months, monthlyTrend, totals });
   } catch (error: any) {
     console.error('Property crime trends error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to property crime trends', code: 'PROPERTY_CRIME_TRENDS_ERROR' });
   }
 });
 
@@ -1867,7 +1890,7 @@ router.get('/arrest-demographics', requireRole('admin', 'manager', 'supervisor')
     res.json({ period_days: days, total: total.count, byCharge, byTimeOfDay, byDayOfWeek, byLocation, monthlyTrend });
   } catch (error: any) {
     console.error('Arrest demographics error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to arrest demographics', code: 'ARREST_DEMOGRAPHICS_ERROR' });
   }
 });
 
@@ -1909,7 +1932,7 @@ router.get('/citation-revenue', requireRole('admin', 'manager'), (req: Request, 
     res.json({ months, summary, monthlyRevenue, byType });
   } catch (error: any) {
     console.error('Citation revenue error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to citation revenue', code: 'CITATION_REVENUE_ERROR' });
   }
 });
 
@@ -1937,6 +1960,8 @@ router.get('/response-time-analysis', (req: Request, res: Response) => {
       FROM calls_for_service
       WHERE onscene_at IS NOT NULL AND created_at >= DATE('now', ?)
       ORDER BY response_min
+    
+      LIMIT 1000
     `).all(offset) as any[];
     const p50Idx = Math.floor(allTimes.length * 0.5);
     const p95Idx = Math.floor(allTimes.length * 0.95);
@@ -1977,7 +2002,7 @@ router.get('/response-time-analysis', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Response time analysis error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to response time analysis', code: 'RESPONSE_TIME_ANALYSIS_ERROR' });
   }
 });
 
@@ -1987,7 +2012,7 @@ router.get('/response-time-analysis', (req: Request, res: Response) => {
 router.get('/daily-briefing', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const date = (req.query.date as string) || new Date().toISOString().slice(0, 10);
+    const date = (req.query.date as string) || localToday();
 
     const activeBolos = db.prepare(`
       SELECT id, bolo_number, type, title, description, priority, subject_description, vehicle_description
@@ -2022,12 +2047,14 @@ router.get('/daily-briefing', (req: Request, res: Response) => {
       SELECT u.full_name, u.badge_number, un.call_sign, un.status
       FROM units un JOIN users u ON un.officer_id = u.id
       WHERE un.status != 'off_duty'
+    
+      LIMIT 1000
     `).all();
 
     res.json({ date, activeBolos, activeWarrants, recentIncidents, prevDayStats, trendingIncidents, personnelOnDuty });
   } catch (error: any) {
     console.error('Daily briefing error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to daily briefing', code: 'DAILY_BRIEFING_ERROR' });
   }
 });
 
@@ -2073,7 +2100,7 @@ router.get('/weekly-digest', requireRole('admin', 'manager', 'supervisor'), (req
     });
   } catch (error: any) {
     console.error('Weekly digest error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to weekly digest', code: 'WEEKLY_DIGEST_ERROR' });
   }
 });
 
@@ -2092,11 +2119,13 @@ router.get('/schedules', requireRole('admin', 'manager'), (req: Request, res: Re
     const schedules = db.prepare(`
       SELECT rs.*, u.full_name as created_by_name FROM report_schedules rs
       LEFT JOIN users u ON rs.created_by = u.id ORDER BY rs.created_at DESC
+    
+      LIMIT 1000
     `).all();
     res.json(schedules);
   } catch (error: any) {
     console.error('Report schedules error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to report schedules', code: 'REPORT_SCHEDULES_ERROR' });
   }
 });
 
@@ -2117,7 +2146,7 @@ router.post('/schedules', requireRole('admin', 'manager'), (req: Request, res: R
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (error: any) {
     console.error('Create schedule error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create schedule', code: 'CREATE_SCHEDULE_ERROR' });
   }
 });
 
@@ -2128,7 +2157,7 @@ router.delete('/schedules/:id', requireRole('admin', 'manager'), (req: Request, 
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete schedule error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete schedule', code: 'DELETE_SCHEDULE_ERROR' });
   }
 });
 
@@ -2147,11 +2176,13 @@ router.get('/templates', requireRole('admin', 'manager'), (req: Request, res: Re
     const templates = db.prepare(`
       SELECT rt.*, u.full_name as created_by_name FROM report_templates rt
       LEFT JOIN users u ON rt.created_by = u.id ORDER BY rt.is_default DESC, rt.name
+    
+      LIMIT 1000
     `).all();
     res.json(templates);
   } catch (error: any) {
     console.error('Report templates error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to report templates', code: 'REPORT_TEMPLATES_ERROR' });
   }
 });
 
@@ -2172,7 +2203,7 @@ router.post('/templates', requireRole('admin', 'manager'), (req: Request, res: R
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (error: any) {
     console.error('Create template error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create template', code: 'CREATE_TEMPLATE_ERROR' });
   }
 });
 
@@ -2183,7 +2214,7 @@ router.delete('/templates/:id', requireRole('admin', 'manager'), (req: Request, 
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete template error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete template', code: 'DELETE_TEMPLATE_ERROR' });
   }
 });
 
@@ -2227,7 +2258,7 @@ router.get('/shift-comparison', (req: Request, res: Response) => {
     res.json({ period_days: days, shifts: results });
   } catch (error: any) {
     console.error('Shift comparison error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to shift comparison', code: 'SHIFT_COMPARISON_ERROR' });
   }
 });
 
@@ -2249,7 +2280,7 @@ router.get('/clearance-rate', (req: Request, res: Response) => {
     res.json({ total: result.total, cleared: result.cleared, active: result.active, pending: result.pending, rate: result.total > 0 ? Math.round((result.cleared / result.total) * 100) : 0 });
   } catch (error: any) {
     console.error('Clearance rate error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to clearance rate', code: 'CLEARANCE_RATE_ERROR' });
   }
 });
 
@@ -2268,12 +2299,14 @@ router.get('/patrol-coverage', (req: Request, res: Response) => {
       SELECT u.call_sign, u.status, u.latitude, u.longitude, us.full_name as officer_name, us.badge_number
       FROM units u LEFT JOIN users us ON u.officer_id = us.id
       WHERE u.status NOT IN ('off_duty', 'out_of_service')
+    
+      LIMIT 1000
     `).all();
 
     res.json({ totalBeats: totalBeats.count || 0, coveredBeats: coveredBeats.count || 0, coverage: totalBeats.count > 0 ? Math.round((coveredBeats.count / totalBeats.count) * 100) : 0, activeUnits });
   } catch (error: any) {
     console.error('Patrol coverage error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to patrol coverage', code: 'PATROL_COVERAGE_ERROR' });
   }
 });
 
@@ -2286,7 +2319,7 @@ router.get('/evidence-pending', (req: Request, res: Response) => {
     res.json({ pending: pending.count, byStatus });
   } catch (error: any) {
     console.error('Evidence pending error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to evidence pending', code: 'EVIDENCE_PENDING_ERROR' });
   }
 });
 
@@ -2298,11 +2331,13 @@ router.get('/upcoming-court', (req: Request, res: Response) => {
       SELECT ce.*, u.full_name as officer_name FROM court_events ce
       LEFT JOIN users u ON ce.created_by = u.id
       WHERE ce.event_date >= DATE('now') AND ce.event_date <= DATE('now', '+7 days') ORDER BY ce.event_date ASC
+    
+      LIMIT 1000
     `).all();
     res.json({ count: upcoming.length, upcoming });
   } catch (error: any) {
     console.error('Upcoming court error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to upcoming court', code: 'UPCOMING_COURT_ERROR' });
   }
 });
 
@@ -2319,7 +2354,7 @@ router.get('/overdue-reports', (req: Request, res: Response) => {
     res.json({ count: overdue.count, overdueList });
   } catch (error: any) {
     console.error('Overdue reports error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to overdue reports', code: 'OVERDUE_REPORTS_ERROR' });
   }
 });
 

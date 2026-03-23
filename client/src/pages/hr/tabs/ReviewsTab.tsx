@@ -383,6 +383,18 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
   // ════════════════════════════════════════════════════════
   // MANAGER / ADMIN VIEW
   // ════════════════════════════════════════════════════════
+  // Set document title
+  useEffect(() => { document.title = 'HR - Reviews \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setModalOpen(false); setEditReview(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="p-4 space-y-4">
       {/* Stats bar */}

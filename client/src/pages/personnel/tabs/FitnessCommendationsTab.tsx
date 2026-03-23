@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Activity, Award, Plus, TrendingUp, Star } from 'lucide-react';
+import { Activity, Award, Plus, TrendingUp, Star, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
+
+function fmtDate(d: string | null | undefined): string {
+  if (!d) return '';
+  try { return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d; }
+}
 
 interface FitnessScore {
   date: string;
@@ -29,6 +34,8 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
   const [showCommForm, setShowCommForm] = useState(false);
   const [fitnessForm, setFitnessForm] = useState({ date: new Date().toISOString().slice(0, 10), score: '', run_time: '', pushups: '', situps: '', notes: '' });
   const [commForm, setCommForm] = useState({ date: new Date().toISOString().slice(0, 10), type: 'commendation', description: '' });
+  const [submittingFitness, setSubmittingFitness] = useState(false);
+  const [submittingComm, setSubmittingComm] = useState(false);
 
   const loadFitness = async () => {
     try { const data = await apiFetch<any[]>(`/personnel/fitness/${officerId}`); setFitness(data); } catch { /* handled */ }
@@ -40,7 +47,17 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
 
   useEffect(() => { loadFitness(); loadCommendations(); }, [officerId]);
 
+  // Escape to close forms
+  useEffect(() => {
+    if (!showFitnessForm && !showCommForm) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setShowFitnessForm(false); setShowCommForm(false); } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showFitnessForm, showCommForm]);
+
   const submitFitness = async () => {
+    if (!fitnessForm.date) { addToast('Date is required', 'error'); return; }
+    setSubmittingFitness(true);
     try { await apiFetch<any[]>(`/personnel/fitness/${officerId}`, {
       method: 'POST', body: JSON.stringify({
         ...fitnessForm,
@@ -48,13 +65,17 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
         pushups: fitnessForm.pushups ? Number(fitnessForm.pushups) : null,
         situps: fitnessForm.situps ? Number(fitnessForm.situps) : null,
       }),
-    }); addToast('Fitness score recorded', 'success'); setShowFitnessForm(false); loadFitness(); } catch { /* handled */ }
+    }); addToast('Fitness score recorded', 'success'); setShowFitnessForm(false); loadFitness(); } catch { addToast('Failed to record fitness score', 'error'); } finally { setSubmittingFitness(false); }
   };
 
   const submitComm = async () => {
-    if (!commForm.description) { addToast('Description required', 'error'); return; }
-    try { await apiFetch<any[]>(`/personnel/commendations/${officerId}`, { method: 'POST', body: JSON.stringify(commForm) }); addToast('Commendation added', 'success'); setShowCommForm(false); setCommForm({ date: new Date().toISOString().slice(0, 10), type: 'commendation', description: '' }); loadCommendations(); } catch { /* handled */ }
+    if (!commForm.description.trim()) { addToast('Description is required', 'error'); return; }
+    setSubmittingComm(true);
+    try { await apiFetch<any[]>(`/personnel/commendations/${officerId}`, { method: 'POST', body: JSON.stringify(commForm) }); addToast('Commendation added', 'success'); setShowCommForm(false); setCommForm({ date: new Date().toISOString().slice(0, 10), type: 'commendation', description: '' }); loadCommendations(); } catch { addToast('Failed to add commendation', 'error'); } finally { setSubmittingComm(false); }
   };
+
+  // Set document title
+  useEffect(() => { document.title = 'Personnel - Fitness \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="space-y-4">
@@ -78,8 +99,8 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
               <input value={fitnessForm.notes} onChange={e => setFitnessForm(f => ({ ...f, notes: e.target.value }))} className="input-field text-xs" placeholder="Notes" />
             </div>
             <div className="flex gap-2">
-              <button type="button" onClick={submitFitness} className="toolbar-btn toolbar-btn-success text-[9px]">Save</button>
-              <button type="button" onClick={() => setShowFitnessForm(false)} className="toolbar-btn text-[9px]">Cancel</button>
+              <button type="button" onClick={submitFitness} disabled={submittingFitness} className="toolbar-btn toolbar-btn-success text-[9px] disabled:opacity-50">{submittingFitness ? <><Loader2 className="w-3 h-3 animate-spin" /> Saving...</> : 'Save'}</button>
+              <button type="button" onClick={() => setShowFitnessForm(false)} disabled={submittingFitness} className="toolbar-btn text-[9px]">Cancel</button>
             </div>
           </div>
         )}
@@ -89,7 +110,7 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
             {fitness.slice(0, 10).map((f, i) => (
               <div key={i} className="panel-inset p-2 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <span className="text-[10px] text-rmpg-400">{f.date}</span>
+                  <span className="text-[10px] text-rmpg-400">{fmtDate(f.date)}</span>
                   {f.score && <span className="text-xs font-bold text-white">Score: {f.score}</span>}
                   {f.run_time && <span className="text-[10px] text-rmpg-300">Run: {f.run_time}</span>}
                   {f.pushups && <span className="text-[10px] text-rmpg-300">PU: {f.pushups}</span>}
@@ -135,8 +156,8 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
             </div>
             <textarea value={commForm.description} onChange={e => setCommForm(f => ({ ...f, description: e.target.value }))} className="input-field w-full text-xs" rows={2} placeholder="Description..." />
             <div className="flex gap-2">
-              <button type="button" onClick={submitComm} className="toolbar-btn toolbar-btn-success text-[9px]">Save</button>
-              <button type="button" onClick={() => setShowCommForm(false)} className="toolbar-btn text-[9px]">Cancel</button>
+              <button type="button" onClick={submitComm} disabled={submittingComm || !commForm.description.trim()} className="toolbar-btn toolbar-btn-success text-[9px] disabled:opacity-50">{submittingComm ? <><Loader2 className="w-3 h-3 animate-spin" /> Saving...</> : 'Save'}</button>
+              <button type="button" onClick={() => setShowCommForm(false)} disabled={submittingComm} className="toolbar-btn text-[9px]">Cancel</button>
             </div>
           </div>
         )}
@@ -149,7 +170,7 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] text-amber-400 font-bold uppercase">{c.type?.replace(/_/g, ' ')}</span>
-                    <span className="text-[10px] text-rmpg-400">{c.date}</span>
+                    <span className="text-[10px] text-rmpg-400">{fmtDate(c.date)}</span>
                   </div>
                   <p className="text-[10px] text-rmpg-200">{c.description}</p>
                 </div>

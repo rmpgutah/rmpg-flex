@@ -85,6 +85,17 @@ interface Props {
   setError: (e: string | null) => void;
 }
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function AdminHealthTab({ LoadingSpinner }: Props) {
   const [health, setHealth] = useState<HealthData | null>(null);
   const [changelog, setChangelog] = useState<ChangelogData | null>(null);
@@ -165,6 +176,9 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
     if (type === 'minor') return 'bg-blue-900/30 text-blue-400 border-blue-800/40';
     return 'bg-green-900/30 text-green-400 border-green-800/40';
   };
+
+  // Set document title
+  useEffect(() => { document.title = 'Admin - Health \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="p-4 space-y-4">

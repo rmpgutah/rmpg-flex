@@ -4,7 +4,7 @@
 // from ClearPathGPS. Sub-tabs: Devices | Events.
 // ============================================================
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Car, Search, Cpu, Zap, AlertTriangle, MapPin, Gauge,
   Video, Radio, Clock, RefreshCw, ExternalLink, Loader2,
@@ -40,6 +40,17 @@ interface Props {
 }
 
 // ── Component ────────────────────────────────────────────────
+
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
 
 export default function DashCameraTab({
   dashcamEvents, deviceMappings, loading = false,
@@ -141,6 +152,9 @@ export default function DashCameraTab({
 
   // ── Render ───────────────────────────────────────────────
 
+  // Set document title
+  useEffect(() => { document.title = 'Personnel - Dash Cameras \u2014 RMPG Flex'; }, []);
+
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
       {/* ── Header ── */}
@@ -158,7 +172,7 @@ export default function DashCameraTab({
           <ExportButton exportUrl="/clearpathgps/dashcam-events/export?format=csv" exportFilename="dashcam-events.csv" />
           {onRefresh && (
             <button type="button" onClick={onRefresh} disabled={loading} className="toolbar-btn text-[10px] px-3 py-1.5 flex items-center gap-1.5">
-              {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+              {loading ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <RefreshCw className="w-3 h-3" />}
               Refresh
             </button>
           )}
@@ -228,7 +242,7 @@ export default function DashCameraTab({
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder={subTab === 'devices' ? 'Search devices, units...' : 'Search events, call signs...'}
-            className="input-dark text-[10px] pl-7 pr-2 py-1 w-full"
+            className="input-dark text-[10px] pl-7 pr-2 py-1 w-full min-h-[36px]"
           />
         </div>
         {subTab === 'events' && (
@@ -252,7 +266,7 @@ export default function DashCameraTab({
       {/* ── Loading overlay ── */}
       {loading && (
         <div className="flex items-center justify-center py-8 gap-2">
-          <Loader2 className="w-4 h-4 animate-spin text-brand-400" />
+          <Loader2 className="w-4 h-4 animate-spin text-brand-400" role="status" aria-label="Loading" />
           <span className="text-[10px] text-rmpg-400">Loading ClearPathGPS data...</span>
         </div>
       )}

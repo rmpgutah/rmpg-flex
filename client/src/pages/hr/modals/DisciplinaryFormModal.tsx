@@ -113,7 +113,7 @@ export default function DisciplinaryFormModal({
   const HeaderIcon = isCommendation ? Star : Shield;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center p-4">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/60" onClick={submitting ? undefined : onClose} />
 
@@ -246,9 +246,11 @@ export default function DisciplinaryFormModal({
               onChange={handleChange}
               required
               rows={3}
+              maxLength={5000}
               className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1.5 text-sm text-white placeholder-rmpg-500 resize-none"
               placeholder="Describe the incident or commendation..."
             />
+            <div className="text-[9px] text-rmpg-500 text-right">{form.description.length}/5000</div>
           </div>
 
           {/* Action taken */}
@@ -259,9 +261,11 @@ export default function DisciplinaryFormModal({
               value={form.action_taken}
               onChange={handleChange}
               rows={2}
+              maxLength={3000}
               className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1.5 text-sm text-white placeholder-rmpg-500 resize-none"
               placeholder="Corrective action or follow-up steps..."
             />
+            <div className="text-[9px] text-rmpg-500 text-right">{form.action_taken.length}/3000</div>
           </div>
 
           {/* Actions */}

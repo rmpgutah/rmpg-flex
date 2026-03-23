@@ -17,6 +17,17 @@ interface Props {
   setError: (e: string | null) => void;
 }
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function AdminServeManagerTab({ LoadingSpinner, error, setError }: Props) {
   // ── Status ──
   const [status, setStatus] = useState<SMIntegrationStatus | null>(null);
@@ -214,6 +225,9 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
 
   if (loading) return <LoadingSpinner />;
 
+  // Set document title
+  useEffect(() => { document.title = 'Admin - Serve Manager \u2014 RMPG Flex'; }, []);
+
   return (
     <div className="p-4 space-y-4">
       {/* Header */}
@@ -262,7 +276,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
             disabled={savingKey || !apiKey.trim()}
             className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
           >
-            {savingKey ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+            {savingKey ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <CheckCircle2 className="w-3 h-3" />}
             Save
           </button>
           {status?.configured && (
@@ -272,7 +286,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                 disabled={testing}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5"
               >
-                {testing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                {testing ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Zap className="w-3 h-3" />}
                 Test
               </button>
               <button type="button"
@@ -316,7 +330,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                 disabled={syncing}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5"
               >
-                {syncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                {syncing ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <RefreshCw className="w-3 h-3" />}
                 Incremental Sync
               </button>
               <button type="button"
@@ -324,7 +338,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                 disabled={syncing}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5"
               >
-                {syncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                {syncing ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <RefreshCw className="w-3 h-3" />}
                 Full Sync
               </button>
             </div>
@@ -395,7 +409,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                 disabled={pollerPolling}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
               >
-                {pollerPolling ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                {pollerPolling ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Zap className="w-3 h-3" />}
                 Poll Now
               </button>
               <button type="button"
@@ -403,7 +417,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                 disabled={pollerSaving || !pollerDirty}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 disabled:opacity-50"
               >
-                {pollerSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                {pollerSaving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save className="w-3 h-3" />}
                 Save
               </button>
             </div>
@@ -517,7 +531,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                   type="text"
                   value={jobSearch}
                   onChange={(e) => { setJobSearch(e.target.value); setJobPage(1); }}
-                  placeholder="Search jobs..."
+                  placeholder="Search jobs..." aria-label="Search jobs..."
                   className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] pl-7 pr-2 py-1 rounded-sm w-48 focus:border-brand-500 focus:outline-none"
                 />
               </div>
@@ -576,7 +590,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
           {/* Jobs table */}
           {loadingJobs ? (
             <div className="flex justify-center py-4">
-              <Loader2 className="w-5 h-5 text-brand-400 animate-spin" />
+              <Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" />
             </div>
           ) : (
             <div className="overflow-x-auto">

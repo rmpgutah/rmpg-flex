@@ -55,14 +55,14 @@ function validateBearerToken(req: Request, res: Response): ApiKeyRow | null {
   const authHeader = req.headers['authorization'] as string | undefined;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    res.status(401).json({ error: 'Authorization required. Provide Bearer token.' });
+    res.status(401).json({ error: 'Authorization required. Provide Bearer token.', code: 'AUTHORIZATION_REQUIRED_PROVIDE_BEARER' });
     return null;
   }
 
   const apiKey = authHeader.slice(7); // Strip "Bearer "
 
   if (!apiKey || apiKey.length < 10) {
-    res.status(401).json({ error: 'Invalid authorization token.' });
+    res.status(401).json({ error: 'Invalid authorization token.', code: 'INVALID_AUTHORIZATION_TOKEN' });
     return null;
   }
 
@@ -74,12 +74,12 @@ function validateBearerToken(req: Request, res: Response): ApiKeyRow | null {
   ).get(keyHash) as ApiKeyRow | undefined;
 
   if (!row) {
-    res.status(401).json({ error: 'Invalid API key.' });
+    res.status(401).json({ error: 'Invalid API key.', code: 'INVALID_API_KEY' });
     return null;
   }
 
   if (!row.is_active) {
-    res.status(403).json({ error: 'API key has been revoked.' });
+    res.status(403).json({ error: 'API key has been revoked.', code: 'API_KEY_HAS_BEEN' });
     return null;
   }
 
@@ -92,7 +92,7 @@ function validateBearerToken(req: Request, res: Response): ApiKeyRow | null {
   }
 
   if (!scopes.includes('service_request')) {
-    res.status(403).json({ error: 'API key does not have the required scope: service_request' });
+    res.status(403).json({ error: 'API key does not have the required scope: service_request', code: 'API_KEY_DOES_NOT' });
     return null;
   }
 
@@ -123,7 +123,7 @@ router.post('/', (req: Request, res: Response) => {
     // Rate limit check
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
     if (!checkRateLimit(ip)) {
-      return res.status(429).json({ error: 'Rate limit exceeded. Max 30 requests per minute.' });
+      return res.status(429).json({ error: 'Rate limit exceeded. Max 30 requests per minute.', code: 'RATE_LIMIT_EXCEEDED_MAX' });
     }
 
     // Authenticate via Bearer token
@@ -134,11 +134,11 @@ router.post('/', (req: Request, res: Response) => {
 
     // Basic validation
     if (!body || typeof body !== 'object') {
-      return res.status(400).json({ error: 'Request body is required.' });
+      return res.status(400).json({ error: 'Request body is required.', code: 'REQUEST_BODY_IS_REQUIRED' });
     }
 
     if (!body.source_id) {
-      return res.status(400).json({ error: 'source_id is required.' });
+      return res.status(400).json({ error: 'source_id is required.', code: 'SOURCEID_IS_REQUIRED' });
     }
 
     const db = getDb();
@@ -274,7 +274,7 @@ router.post('/', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('[Intake] Error processing request:', error);
-    res.status(500).json({ error: 'Internal server error processing intake request.' });
+    res.status(500).json({ error: 'Internal server error processing intake request.', code: 'INTERNAL_SERVER_ERROR_PROCESSING' });
   }
 });
 

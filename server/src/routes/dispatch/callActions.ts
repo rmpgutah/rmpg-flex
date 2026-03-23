@@ -72,24 +72,24 @@ router.post('/calls/:id/dispatch', validateParamIdMiddleware, requireRole('admin
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
     const { unit_ids } = req.body;
     if (!unit_ids || !Array.isArray(unit_ids) || unit_ids.length === 0) {
-      res.status(400).json({ error: 'unit_ids array is required' });
+      res.status(400).json({ error: 'unit_ids array is required', code: 'UNITIDS_ARRAY_IS_REQUIRED' });
       return;
     }
     // Validate all unit_ids are positive integers and limit count
     if (unit_ids.length > 50) {
-      res.status(400).json({ error: 'Cannot dispatch more than 50 units at once' });
+      res.status(400).json({ error: 'Cannot dispatch more than 50 units at once', code: 'CANNOT_DISPATCH_MORE_THAN' });
       return;
     }
     for (const uid of unit_ids) {
       const n = parseInt(String(uid), 10);
       if (isNaN(n) || n < 1) {
-        res.status(400).json({ error: 'All unit_ids must be positive integers' });
+        res.status(400).json({ error: 'All unit_ids must be positive integers', code: 'ALL_UNITIDS_MUST_BE' });
         return;
       }
     }
@@ -171,7 +171,7 @@ router.post('/calls/:id/dispatch', validateParamIdMiddleware, requireRole('admin
     res.json(updated);
   } catch (error: any) {
     console.error('Dispatch error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to dispatch', code: 'DISPATCH_ERROR' });
   }
 });
 
@@ -181,19 +181,19 @@ router.post('/calls/:id/assign-unit', validateParamIdMiddleware, requireRole('ad
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
     const { unit_id } = req.body;
     if (!unit_id) {
-      res.status(400).json({ error: 'unit_id is required' });
+      res.status(400).json({ error: 'unit_id is required', code: 'UNITID_IS_REQUIRED' });
       return;
     }
 
     const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(unit_id) as any;
     if (!unit) {
-      res.status(404).json({ error: 'Unit not found' });
+      res.status(404).json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' });
       return;
     }
 
@@ -221,7 +221,7 @@ router.post('/calls/:id/assign-unit', validateParamIdMiddleware, requireRole('ad
 
     const unitIdNum = Number(unit_id);
     if (isNaN(unitIdNum)) {
-      res.status(400).json({ error: 'Invalid unit_id' });
+      res.status(400).json({ error: 'Invalid unit_id', code: 'INVALID_UNITID' });
       return;
     }
     if (!currentUnits.includes(unitIdNum)) {
@@ -269,7 +269,7 @@ router.post('/calls/:id/assign-unit', validateParamIdMiddleware, requireRole('ad
     res.json(updated);
   } catch (error: any) {
     console.error('Assign unit error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to assign unit', code: 'ASSIGN_UNIT_ERROR' });
   }
 });
 
@@ -279,19 +279,19 @@ router.post('/calls/:id/unassign-unit', validateParamIdMiddleware, requireRole('
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
     const { unit_id } = req.body;
     if (!unit_id) {
-      res.status(400).json({ error: 'unit_id is required' });
+      res.status(400).json({ error: 'unit_id is required', code: 'UNITID_IS_REQUIRED' });
       return;
     }
 
     const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(unit_id) as any;
     if (!unit) {
-      res.status(404).json({ error: 'Unit not found' });
+      res.status(404).json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' });
       return;
     }
 
@@ -343,7 +343,7 @@ router.post('/calls/:id/unassign-unit', validateParamIdMiddleware, requireRole('
     res.json(updated);
   } catch (error: any) {
     console.error('Unassign unit error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unassign unit', code: 'UNASSIGN_UNIT_ERROR' });
   }
 });
 
@@ -353,13 +353,13 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
     const { status, notes, disposition, starting_mileage, ending_mileage, responding_vehicle_id } = req.body;
     if (!status) {
-      res.status(400).json({ error: 'status is required' });
+      res.status(400).json({ error: 'status is required', code: 'STATUS_IS_REQUIRED' });
       return;
     }
 
@@ -530,7 +530,7 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
     if (!updated) {
-      res.status(404).json({ error: 'Call not found after update' });
+      res.status(404).json({ error: 'Call not found after update', code: 'CALL_NOT_FOUND_AFTER' });
       return;
     }
     broadcastDispatchUpdate({ action: 'call_status_changed', call: updated, status });
@@ -574,7 +574,7 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
     res.json(updated);
   } catch (error: any) {
     console.error('Status update error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to status update', code: 'STATUS_UPDATE_ERROR' });
   }
 });
 
@@ -584,7 +584,7 @@ router.post('/calls/:id/revert-status', validateParamIdMiddleware, requireRole('
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
@@ -670,7 +670,7 @@ router.post('/calls/:id/revert-status', validateParamIdMiddleware, requireRole('
     res.json(updated);
   } catch (error: any) {
     console.error('Revert status error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to revert status', code: 'REVERT_STATUS_ERROR' });
   }
 });
 
@@ -680,12 +680,12 @@ router.post('/calls/:id/hold', validateParamIdMiddleware, requireRole('admin', '
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
     if (call.status === 'on_hold') {
-      res.status(400).json({ error: 'Call is already on hold' });
+      res.status(400).json({ error: 'Call is already on hold', code: 'CALL_IS_ALREADY_ON' });
       return;
     }
 
@@ -712,7 +712,7 @@ router.post('/calls/:id/hold', validateParamIdMiddleware, requireRole('admin', '
     res.json(updated);
   } catch (error: any) {
     console.error('Hold call error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to hold call', code: 'HOLD_CALL_ERROR' });
   }
 });
 
@@ -722,12 +722,12 @@ router.post('/calls/:id/resume', validateParamIdMiddleware, requireRole('admin',
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
     if (call.status !== 'on_hold') {
-      res.status(400).json({ error: 'Call is not on hold' });
+      res.status(400).json({ error: 'Call is not on hold', code: 'CALL_IS_NOT_ON' });
       return;
     }
 
@@ -752,7 +752,7 @@ router.post('/calls/:id/resume', validateParamIdMiddleware, requireRole('admin',
     res.json(updated);
   } catch (error: any) {
     console.error('Resume call error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to resume call', code: 'RESUME_CALL_ERROR' });
   }
 });
 
@@ -761,7 +761,7 @@ router.post('/calls/:id/promote-to-incident', validateParamIdMiddleware, require
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
-    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+    if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
 
     // Generate incident number
     const incidentNumber = generateIncidentNumber(db, call.incident_type || 'general');
@@ -793,7 +793,7 @@ router.post('/calls/:id/promote-to-incident', validateParamIdMiddleware, require
     );
 
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(Number(result.lastInsertRowid));
-    if (!incident) { res.status(500).json({ error: 'Failed to retrieve created incident' }); return; }
+    if (!incident) { res.status(500).json({ error: 'Failed to retrieve created incident', code: 'FAILED_TO_RETRIEVE_CREATED' }); return; }
 
     // Audit log the incident creation
     db.prepare(`
@@ -804,7 +804,7 @@ router.post('/calls/:id/promote-to-incident', validateParamIdMiddleware, require
     res.status(201).json(incident);
   } catch (error: any) {
     console.error('Promote to incident error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to promote to incident', code: 'PROMOTE_TO_INCIDENT_ERROR' });
   }
 });
 
@@ -813,7 +813,7 @@ router.post('/calls/:id/le-notification', validateParamIdMiddleware, requireRole
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
-    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+    if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
 
     const { agency, case_number, notes } = req.body;
     const now = localNow();
@@ -849,7 +849,7 @@ router.post('/calls/:id/le-notification', validateParamIdMiddleware, requireRole
     res.json(updated);
   } catch (error: any) {
     console.error('LE notification error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to le notification', code: 'LE_NOTIFICATION_ERROR' });
   }
 });
 
@@ -871,11 +871,13 @@ router.get('/calls/:id/persons', validateParamIdMiddleware, requireRole('admin',
       LEFT JOIN users u ON cp.added_by = u.id
       WHERE cp.call_id = ?
       ORDER BY cp.created_at ASC
+    
+      LIMIT 1000
     `).all(req.params.id);
     res.json(rows);
   } catch (error: any) {
     console.error('Get call persons error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get call persons', code: 'GET_CALL_PERSONS_ERROR' });
   }
 });
 
@@ -884,16 +886,16 @@ router.post('/calls/:id/persons', validateParamIdMiddleware, requireRole('admin'
   try {
     const db = getDb();
     const call = db.prepare('SELECT id, call_number FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
-    if (!call) return res.status(404).json({ error: 'Call not found' });
+    if (!call) return res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
 
     const { person_id, role, notes } = req.body;
-    if (!person_id || !role) return res.status(400).json({ error: 'person_id and role are required' });
+    if (!person_id || !role) return res.status(400).json({ error: 'person_id and role are required', code: 'PERSONID_AND_ROLE_ARE' });
 
     const person = db.prepare('SELECT id, first_name, last_name FROM persons WHERE id = ?').get(person_id) as any;
-    if (!person) return res.status(404).json({ error: 'Person not found' });
+    if (!person) return res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' });
 
     const existing = db.prepare('SELECT id FROM call_persons WHERE call_id = ? AND person_id = ?').get(call.id, person_id) as any;
-    if (existing) return res.status(409).json({ error: 'Person already linked to this call' });
+    if (existing) return res.status(409).json({ error: 'Person already linked to this call', code: 'PERSON_ALREADY_LINKED_TO' });
 
     const result = db.prepare(`
       INSERT INTO call_persons (call_id, person_id, role, notes, added_by) VALUES (?, ?, ?, ?, ?)
@@ -944,7 +946,7 @@ router.post('/calls/:id/persons', validateParamIdMiddleware, requireRole('admin'
     res.status(201).json(linked);
   } catch (error: any) {
     console.error('Link call person error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to link call person', code: 'LINK_CALL_PERSON_ERROR' });
   }
 });
 
@@ -953,7 +955,7 @@ router.put('/calls/:id/persons/:linkId', validateParamIdMiddleware, requireRole(
   try {
     const db = getDb();
     const link = db.prepare('SELECT * FROM call_persons WHERE id = ? AND call_id = ?').get(req.params.linkId, req.params.id) as any;
-    if (!link) return res.status(404).json({ error: 'Person link not found' });
+    if (!link) return res.status(404).json({ error: 'Person link not found', code: 'PERSON_LINK_NOT_FOUND' });
 
     const setClauses: string[] = [];
     const setValues: any[] = [];
@@ -981,7 +983,7 @@ router.put('/calls/:id/persons/:linkId', validateParamIdMiddleware, requireRole(
     res.json(updated);
   } catch (error: any) {
     console.error('Update call person error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update call person', code: 'UPDATE_CALL_PERSON_ERROR' });
   }
 });
 
@@ -991,7 +993,7 @@ router.delete('/calls/:id/persons/:linkId', validateParamIdMiddleware, requireRo
     const db = getDb();
     const link = db.prepare('SELECT cp.*, p.first_name, p.last_name FROM call_persons cp LEFT JOIN persons p ON cp.person_id = p.id WHERE cp.id = ? AND cp.call_id = ?')
       .get(req.params.linkId, req.params.id) as any;
-    if (!link) return res.status(404).json({ error: 'Person link not found' });
+    if (!link) return res.status(404).json({ error: 'Person link not found', code: 'PERSON_LINK_NOT_FOUND' });
 
     const call = db.prepare('SELECT call_number FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
 
@@ -1008,7 +1010,7 @@ router.delete('/calls/:id/persons/:linkId', validateParamIdMiddleware, requireRo
     res.json({ success: true });
   } catch (error: any) {
     console.error('Unlink call person error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unlink call person', code: 'UNLINK_CALL_PERSON_ERROR' });
   }
 });
 
@@ -1032,11 +1034,13 @@ router.get('/calls/:id/vehicles', validateParamIdMiddleware, requireRole('admin'
       LEFT JOIN users u ON cv.added_by = u.id
       WHERE cv.call_id = ?
       ORDER BY cv.created_at ASC
+    
+      LIMIT 1000
     `).all(req.params.id);
     res.json(rows);
   } catch (error: any) {
     console.error('Get call vehicles error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get call vehicles', code: 'GET_CALL_VEHICLES_ERROR' });
   }
 });
 
@@ -1045,16 +1049,16 @@ router.post('/calls/:id/vehicles', validateParamIdMiddleware, requireRole('admin
   try {
     const db = getDb();
     const call = db.prepare('SELECT id, call_number FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
-    if (!call) return res.status(404).json({ error: 'Call not found' });
+    if (!call) return res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
 
     const { vehicle_id, role, notes } = req.body;
-    if (!vehicle_id || !role) return res.status(400).json({ error: 'vehicle_id and role are required' });
+    if (!vehicle_id || !role) return res.status(400).json({ error: 'vehicle_id and role are required', code: 'VEHICLEID_AND_ROLE_ARE' });
 
     const vehicle = db.prepare('SELECT id, make, model, year, plate_number FROM vehicles_records WHERE id = ?').get(vehicle_id) as any;
-    if (!vehicle) return res.status(404).json({ error: 'Vehicle not found' });
+    if (!vehicle) return res.status(404).json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' });
 
     const existing = db.prepare('SELECT id FROM call_vehicles WHERE call_id = ? AND vehicle_id = ?').get(call.id, vehicle_id) as any;
-    if (existing) return res.status(409).json({ error: 'Vehicle already linked to this call' });
+    if (existing) return res.status(409).json({ error: 'Vehicle already linked to this call', code: 'VEHICLE_ALREADY_LINKED_TO' });
 
     const result = db.prepare(`
       INSERT INTO call_vehicles (call_id, vehicle_id, role, notes, added_by) VALUES (?, ?, ?, ?, ?)
@@ -1084,7 +1088,7 @@ router.post('/calls/:id/vehicles', validateParamIdMiddleware, requireRole('admin
     res.status(201).json(linked);
   } catch (error: any) {
     console.error('Link call vehicle error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to link call vehicle', code: 'LINK_CALL_VEHICLE_ERROR' });
   }
 });
 
@@ -1093,7 +1097,7 @@ router.put('/calls/:id/vehicles/:linkId', validateParamIdMiddleware, requireRole
   try {
     const db = getDb();
     const link = db.prepare('SELECT * FROM call_vehicles WHERE id = ? AND call_id = ?').get(req.params.linkId, req.params.id) as any;
-    if (!link) return res.status(404).json({ error: 'Vehicle link not found' });
+    if (!link) return res.status(404).json({ error: 'Vehicle link not found', code: 'VEHICLE_LINK_NOT_FOUND' });
 
     const setClauses: string[] = [];
     const setValues: any[] = [];
@@ -1123,7 +1127,7 @@ router.put('/calls/:id/vehicles/:linkId', validateParamIdMiddleware, requireRole
     res.json(updated);
   } catch (error: any) {
     console.error('Update call vehicle error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update call vehicle', code: 'UPDATE_CALL_VEHICLE_ERROR' });
   }
 });
 
@@ -1134,7 +1138,7 @@ router.delete('/calls/:id/vehicles/:linkId', validateParamIdMiddleware, requireR
     const link = db.prepare(`SELECT cv.*, v.make, v.model, v.year, v.plate_number
       FROM call_vehicles cv LEFT JOIN vehicles_records v ON cv.vehicle_id = v.id
       WHERE cv.id = ? AND cv.call_id = ?`).get(req.params.linkId, req.params.id) as any;
-    if (!link) return res.status(404).json({ error: 'Vehicle link not found' });
+    if (!link) return res.status(404).json({ error: 'Vehicle link not found', code: 'VEHICLE_LINK_NOT_FOUND' });
 
     const call = db.prepare('SELECT call_number FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
 
@@ -1151,7 +1155,7 @@ router.delete('/calls/:id/vehicles/:linkId', validateParamIdMiddleware, requireR
     res.json({ success: true });
   } catch (error: any) {
     console.error('Unlink call vehicle error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unlink call vehicle', code: 'UNLINK_CALL_VEHICLE_ERROR' });
   }
 });
 
@@ -1161,12 +1165,12 @@ router.post('/calls/:id/send-to-serve', validateParamIdMiddleware, requireRole('
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
     if (call.incident_type !== 'pso_client_request') {
-      res.status(400).json({ error: 'Only PSO client request calls can be sent to the serve queue' });
+      res.status(400).json({ error: 'Only PSO client request calls can be sent to the serve queue', code: 'ONLY_PSO_CLIENT_REQUEST' });
       return;
     }
 
@@ -1254,7 +1258,7 @@ router.post('/calls/:id/send-to-serve', validateParamIdMiddleware, requireRole('
     res.status(201).json(job);
   } catch (err: any) {
     console.error('[DISPATCH] Send to serve error:', err);
-    res.status(500).json({ error: 'Failed to send to serve queue' });
+    res.status(500).json({ error: 'Failed to send to serve queue', code: 'FAILED_TO_SEND_TO' });
   }
 });
 
@@ -1275,7 +1279,7 @@ router.get('/calls/:id/serve-link', validateParamIdMiddleware, requireRole('admi
     res.json({ ...job, attempts });
   } catch (err: any) {
     console.error('[DISPATCH] Serve link error:', err);
-    res.status(500).json({ error: 'Failed to fetch serve link' });
+    res.status(500).json({ error: 'Failed to fetch serve link', code: 'FAILED_TO_FETCH_SERVE' });
   }
 });
 
@@ -1320,7 +1324,7 @@ router.get('/calls/actions/export/csv', requireRole('admin', 'manager', 'supervi
     ], rows);
   } catch (error: any) {
     console.error('Export call actions error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to export call actions', code: 'EXPORT_CALL_ACTIONS_ERROR' });
   }
 });
 
@@ -1330,11 +1334,11 @@ router.post('/calls/:id/escalate', validateParamIdMiddleware, requireRole('admin
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
-    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+    if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
 
     const escalationMap: Record<string, string> = { P4: 'P3', P3: 'P2', P2: 'P1' };
     const newPriority = escalationMap[call.priority];
-    if (!newPriority) { res.status(400).json({ error: 'Call is already P1 or cannot be escalated' }); return; }
+    if (!newPriority) { res.status(400).json({ error: 'Call is already P1 or cannot be escalated', code: 'CALL_IS_ALREADY_P1' }); return; }
 
     const now = localNow();
     db.prepare('UPDATE calls_for_service SET priority = ?, updated_at = ? WHERE id = ?').run(newPriority, now, call.id);
@@ -1347,7 +1351,7 @@ router.post('/calls/:id/escalate', validateParamIdMiddleware, requireRole('admin
     res.json(updated);
   } catch (error: any) {
     console.error('Escalate priority error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to escalate priority', code: 'ESCALATE_PRIORITY_ERROR' });
   }
 });
 
@@ -1371,7 +1375,7 @@ router.get('/calls/check-duplicate', requireRole('admin', 'manager', 'supervisor
     res.json({ duplicates });
   } catch (error: any) {
     console.error('Check duplicate error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to check duplicate', code: 'CHECK_DUPLICATE_ERROR' });
   }
 });
 
@@ -1381,9 +1385,9 @@ router.post('/calls/:id/auto-assign', validateParamIdMiddleware, requireRole('ad
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
-    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+    if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
     if (!call.latitude || !call.longitude) {
-      res.status(400).json({ error: 'Call has no GPS coordinates — cannot auto-assign' });
+      res.status(400).json({ error: 'Call has no GPS coordinates — cannot auto-assign', code: 'CALL_HAS_NO_GPS' });
       return;
     }
 
@@ -1392,10 +1396,12 @@ router.post('/calls/:id/auto-assign', validateParamIdMiddleware, requireRole('ad
       SELECT u.id, u.call_sign, u.latitude, u.longitude
       FROM units u
       WHERE u.status = 'available' AND u.latitude IS NOT NULL AND u.longitude IS NOT NULL
+    
+      LIMIT 1000
     `).all() as any[];
 
     if (availableUnits.length === 0) {
-      res.status(404).json({ error: 'No available units with GPS positions' });
+      res.status(404).json({ error: 'No available units with GPS positions', code: 'NO_AVAILABLE_UNITS_WITH' });
       return;
     }
 
@@ -1437,7 +1443,7 @@ router.post('/calls/:id/auto-assign', validateParamIdMiddleware, requireRole('ad
     res.json({ ...(updated || {}), auto_assigned_unit: nearest.call_sign, distance_miles: Math.round(minDist * 100) / 100 });
   } catch (error: any) {
     console.error('Auto-assign error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to auto-assign', code: 'AUTOASSIGN_ERROR' });
   }
 });
 
@@ -1457,7 +1463,7 @@ router.get('/disposition-stats', requireRole('admin', 'manager', 'supervisor', '
     res.json(stats);
   } catch (error: any) {
     console.error('Disposition stats error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to disposition stats', code: 'DISPOSITION_STATS_ERROR' });
   }
 });
 
@@ -1467,17 +1473,17 @@ router.post('/calls/:id/transfer', validateParamIdMiddleware, requireRole('admin
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
-    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+    if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
 
     const { from_unit_id, to_unit_id } = req.body;
     if (!from_unit_id || !to_unit_id) {
-      res.status(400).json({ error: 'from_unit_id and to_unit_id are required' });
+      res.status(400).json({ error: 'from_unit_id and to_unit_id are required', code: 'FROMUNITID_AND_TOUNITID_ARE' });
       return;
     }
 
     const fromUnit = db.prepare('SELECT * FROM units WHERE id = ?').get(from_unit_id) as any;
     const toUnit = db.prepare('SELECT * FROM units WHERE id = ?').get(to_unit_id) as any;
-    if (!fromUnit || !toUnit) { res.status(404).json({ error: 'Unit not found' }); return; }
+    if (!fromUnit || !toUnit) { res.status(404).json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }); return; }
 
     const now = localNow();
     let currentUnits: number[] = [];
@@ -1505,7 +1511,7 @@ router.post('/calls/:id/transfer', validateParamIdMiddleware, requireRole('admin
     res.json(updated);
   } catch (error: any) {
     console.error('Transfer call error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to transfer call', code: 'TRANSFER_CALL_ERROR' });
   }
 });
 
@@ -1515,11 +1521,11 @@ router.post('/calls/:id/broadcast-note', validateParamIdMiddleware, requireRole(
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
-    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+    if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
 
     const { message } = req.body;
     if (!message || typeof message !== 'string' || message.trim().length < 2) {
-      res.status(400).json({ error: 'message is required (min 2 chars)' });
+      res.status(400).json({ error: 'message is required (min 2 chars)', code: 'MESSAGE_IS_REQUIRED_MIN' });
       return;
     }
 
@@ -1554,7 +1560,7 @@ router.post('/calls/:id/broadcast-note', validateParamIdMiddleware, requireRole(
     res.json(updated);
   } catch (error: any) {
     console.error('Broadcast note error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to broadcast note', code: 'BROADCAST_NOTE_ERROR' });
   }
 });
 

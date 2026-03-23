@@ -54,7 +54,7 @@ router.get('/status', authenticateToken, (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Security status error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to security status', code: 'SECURITY_STATUS_ERROR' });
   }
 });
 
@@ -71,7 +71,7 @@ router.get('/login-history', authenticateToken, (req: Request, res: Response) =>
       .get(userId) as { username: string } | undefined;
 
     if (!userRow) {
-      res.status(404).json({ error: 'User not found' });
+      res.status(404).json({ error: 'User not found', code: 'USER_NOT_FOUND' });
       return;
     }
 
@@ -95,7 +95,7 @@ router.get('/login-history', authenticateToken, (req: Request, res: Response) =>
     });
   } catch (error: any) {
     console.error('Login history error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to login history', code: 'LOGIN_HISTORY_ERROR' });
   }
 });
 
@@ -109,12 +109,14 @@ router.get('/trusted-devices', authenticateToken, (req: Request, res: Response) 
       FROM trusted_devices
       WHERE user_id = ? AND trusted_until > ?
       ORDER BY last_used_at DESC
+    
+      LIMIT 1000
     `).all(req.user!.userId, localNow());
 
     res.json(devices);
   } catch (error: any) {
     console.error('Trusted devices error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to trusted devices', code: 'TRUSTED_DEVICES_ERROR' });
   }
 });
 
@@ -124,13 +126,13 @@ router.delete('/trusted-devices/:id', validateParamIdMiddleware, authenticateTok
   try {
     const db = getDb();
     const deviceId = parseInt(req.params.id as string, 10);
-    if (isNaN(deviceId)) { res.status(400).json({ error: 'Invalid device ID' }); return; }
+    if (isNaN(deviceId)) { res.status(400).json({ error: 'Invalid device ID', code: 'INVALID_DEVICE_ID' }); return; }
     const result = db.prepare(
       'DELETE FROM trusted_devices WHERE id = ? AND user_id = ?'
     ).run(deviceId, req.user!.userId);
 
     if (result.changes === 0) {
-      res.status(404).json({ error: 'Device not found' });
+      res.status(404).json({ error: 'Device not found', code: 'DEVICE_NOT_FOUND' });
       return;
     }
 
@@ -147,7 +149,7 @@ router.delete('/trusted-devices/:id', validateParamIdMiddleware, authenticateTok
     res.json({ message: 'Trusted device removed' });
   } catch (error: any) {
     console.error('Remove device error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to remove device', code: 'REMOVE_DEVICE_ERROR' });
   }
 });
 
@@ -174,7 +176,7 @@ router.get('/notifications', authenticateToken, (req: Request, res: Response) =>
     res.json({ notifications: rows, total: total.count, limit, offset });
   } catch (error: any) {
     console.error('Security notifications error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to security notifications', code: 'SECURITY_NOTIFICATIONS_ERROR' });
   }
 });
 
@@ -184,19 +186,19 @@ router.put('/notifications/:id/read', validateParamIdMiddleware, authenticateTok
   try {
     const db = getDb();
     const notifId = parseInt(req.params.id as string, 10);
-    if (isNaN(notifId)) { res.status(400).json({ error: 'Invalid notification ID' }); return; }
+    if (isNaN(notifId)) { res.status(400).json({ error: 'Invalid notification ID', code: 'INVALID_NOTIFICATION_ID' }); return; }
     const result = db.prepare(
       'UPDATE security_notifications SET is_read = 1 WHERE id = ? AND user_id = ?'
     ).run(notifId, req.user!.userId);
 
-    if (result.changes === 0) { res.status(404).json({ error: 'Notification not found' }); return; }
+    if (result.changes === 0) { res.status(404).json({ error: 'Notification not found', code: 'NOTIFICATION_NOT_FOUND' }); return; }
 
     auditLog(req, 'UPDATE', 'user', notifId, `Marked security notification #${notifId} as read`);
 
     res.json({ message: 'Marked as read' });
   } catch (error: any) {
     console.error('Mark notification read error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to mark notification read', code: 'MARK_NOTIFICATION_READ_ERROR' });
   }
 });
 
@@ -214,7 +216,7 @@ router.put('/notifications/read-all', authenticateToken, (req: Request, res: Res
     res.json({ message: 'All marked as read' });
   } catch (error: any) {
     console.error('Mark all read error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to mark all read', code: 'MARK_ALL_READ_ERROR' });
   }
 });
 
@@ -226,7 +228,7 @@ router.get('/blocked-ips', authenticateToken, requireRole('admin'), (_req: Reque
     res.json({ blocked, count: blocked.length });
   } catch (error: any) {
     console.error('Get blocked IPs error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get blocked ips', code: 'GET_BLOCKED_IPS_ERROR' });
   }
 });
 
@@ -239,12 +241,12 @@ router.post('/unblock-ip', authenticateToken, requireRole('admin'), (req: Reques
     // Validate IP format if provided
     if (ip !== undefined && ip !== null) {
       if (typeof ip !== 'string' || ip.length > 45) {
-        res.status(400).json({ error: 'Invalid IP address format' });
+        res.status(400).json({ error: 'Invalid IP address format', code: 'INVALID_IP_ADDRESS_FORMAT' });
         return;
       }
       // Basic IP format check (IPv4 or IPv6)
       if (!/^[\d.:a-fA-F]+$/.test(ip)) {
-        res.status(400).json({ error: 'IP address contains invalid characters' });
+        res.status(400).json({ error: 'IP address contains invalid characters', code: 'IP_ADDRESS_CONTAINS_INVALID' });
         return;
       }
     }
@@ -258,7 +260,7 @@ router.post('/unblock-ip', authenticateToken, requireRole('admin'), (req: Reques
     res.json({ success: true, message: msg, unblocked: count });
   } catch (error: any) {
     console.error('Unblock IP error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unblock ip', code: 'UNBLOCK_IP_ERROR' });
   }
 });
 
@@ -281,7 +283,7 @@ router.get('/recent-threats', authenticateToken, requireRole('admin'), (_req: Re
     res.json(threats);
   } catch (error: any) {
     console.error('Recent threats error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to recent threats', code: 'RECENT_THREATS_ERROR' });
   }
 });
 
@@ -308,7 +310,7 @@ router.get('/export/csv', authenticateToken, requireRole('admin', 'manager', 'su
       { key: 'created_at', header: 'Created At' },
     ], rows);
   } catch (error: any) {
-    res.status(500).json({ error: 'Export failed' });
+    res.status(500).json({ error: 'Export failed', code: 'EXPORT_FAILED' });
   }
 });
 

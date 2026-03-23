@@ -1,4 +1,4 @@
-import React, { useId } from 'react';
+import React, { useId, useEffect } from 'react';
 import { Car } from 'lucide-react';
 import PanelTitleBar from '../../../components/PanelTitleBar';
 import type { FleetVehicleStatus } from '../../../types';
@@ -46,13 +46,22 @@ interface Props {
 
 export default function VehicleFormModal({ isOpen, mode, form, onChange, onSave, onClose, saving }: Props) {
   const titleId = useId();
+
+  // Escape to close
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !saving) onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, saving, onClose]);
+
   if (!isOpen) return null;
 
   const setField = (field: keyof VehicleFormState, value: string) =>
     onChange({ ...form, [field]: value });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ background: 'rgba(0,0,0,0.6)' }}>
+    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ background: 'rgba(0,0,0,0.6)' }}>
       <div className="panel-beveled w-[560px] max-h-[80vh] flex flex-col" style={{ background: '#1a2636' }}>
         <PanelTitleBar title={mode === 'new_vehicle' ? 'NEW VEHICLE' : 'EDIT VEHICLE'} icon={Car} id={titleId}>
           <button type="button" className="toolbar-btn text-[9px]" onClick={onClose}>X</button>
@@ -61,59 +70,59 @@ export default function VehicleFormModal({ isOpen, mode, form, onChange, onSave,
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Vehicle Number *</label>
-              <input className="input-dark w-full text-[11px] font-mono" value={form.vehicle_number}
+              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" value={form.vehicle_number}
                 onChange={(e) => setField('vehicle_number', e.target.value)} />
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Status</label>
-              <select className="select-dark w-full text-[11px]" value={form.status}
+              <select className="select-dark w-full text-[11px] min-h-[36px]" value={form.status}
                 onChange={(e) => setField('status', e.target.value)}>
                 {VEHICLE_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
               </select>
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Make</label>
-              <input className="input-dark w-full text-[11px]" value={form.make}
+              <input className="input-dark w-full text-[11px] min-h-[36px]" value={form.make}
                 onChange={(e) => setField('make', e.target.value)} />
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Model</label>
-              <input className="input-dark w-full text-[11px]" value={form.model}
+              <input className="input-dark w-full text-[11px] min-h-[36px]" value={form.model}
                 onChange={(e) => setField('model', e.target.value)} />
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Year</label>
-              <input className="input-dark w-full text-[11px] font-mono" type="number" value={form.year}
+              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" value={form.year}
                 onChange={(e) => setField('year', e.target.value)} />
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Color</label>
-              <input className="input-dark w-full text-[11px]" value={form.color}
+              <input className="input-dark w-full text-[11px] min-h-[36px]" value={form.color}
                 onChange={(e) => setField('color', e.target.value)} />
             </div>
             <div className="col-span-2">
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">VIN</label>
-              <input className="input-dark w-full text-[11px] font-mono" value={form.vin}
+              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" value={form.vin}
                 onChange={(e) => setField('vin', e.target.value)} />
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Plate Number</label>
-              <input className="input-dark w-full text-[11px] font-mono" value={form.plate_number}
+              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" value={form.plate_number}
                 onChange={(e) => setField('plate_number', e.target.value)} />
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Plate State</label>
-              <input className="input-dark w-full text-[11px]" maxLength={2} value={form.plate_state}
+              <input className="input-dark w-full text-[11px] min-h-[36px]" maxLength={2} value={form.plate_state}
                 onChange={(e) => setField('plate_state', e.target.value.toUpperCase())} />
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Current Mileage</label>
-              <input className="input-dark w-full text-[11px] font-mono" type="number" value={form.current_mileage}
+              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" value={form.current_mileage}
                 onChange={(e) => setField('current_mileage', e.target.value)} />
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Next Service Mileage</label>
-              <input className="input-dark w-full text-[11px] font-mono" type="number" value={form.next_service_mileage}
+              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" value={form.next_service_mileage}
                 onChange={(e) => setField('next_service_mileage', e.target.value)}
                 placeholder="e.g. 50000" />
               {form.current_mileage && form.next_service_mileage && (
@@ -127,31 +136,31 @@ export default function VehicleFormModal({ isOpen, mode, form, onChange, onSave,
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Registration Expiry (Date/Time)</label>
-              <input className="input-dark w-full text-[11px] font-mono" type="datetime-local" step="1" value={form.registration_expiry}
+              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="datetime-local" step="1" value={form.registration_expiry}
                 onChange={(e) => setField('registration_expiry', e.target.value)} />
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Insurance Expiry (Date/Time)</label>
-              <input className="input-dark w-full text-[11px] font-mono" type="datetime-local" step="1" value={form.insurance_expiry}
+              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="datetime-local" step="1" value={form.insurance_expiry}
                 onChange={(e) => setField('insurance_expiry', e.target.value)} />
             </div>
             <div />
             <div className="col-span-2">
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Equipment (comma-separated)</label>
-              <input className="input-dark w-full text-[10px]" value={form.equipment_str}
+              <input className="input-dark w-full text-[10px] min-h-[36px]" value={form.equipment_str}
                 onChange={(e) => setField('equipment_str', e.target.value)}
                 placeholder="e.g. Lightbar, MDT, Radar, Body Camera, Shotgun Rack" />
             </div>
             <div className="col-span-2">
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Notes</label>
-              <textarea className="input-dark w-full text-[10px] h-16 resize-none" value={form.notes}
+              <textarea className="input-dark w-full text-[10px] h-16 resize-none min-h-[36px]" value={form.notes}
                 onChange={(e) => setField('notes', e.target.value)} />
             </div>
           </div>
         </div>
         <div className="flex items-center justify-end gap-2 px-4 py-2 border-t border-rmpg-700">
           <button type="button" className="toolbar-btn" onClick={onClose}>Cancel</button>
-          <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={onSave} disabled={saving}>
+          <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={onSave} disabled={saving}>
             {saving ? 'Saving...' : mode === 'new_vehicle' ? 'Create Vehicle' : 'Save Changes'}
           </button>
         </div>

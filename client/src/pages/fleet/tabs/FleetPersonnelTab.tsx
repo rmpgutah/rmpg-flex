@@ -110,6 +110,9 @@ export default function FleetPersonnelTab({
   const dlDays = officer?.dl_expiry ? daysUntilExpiry(officer.dl_expiry) : null;
   const dlProgress = officer?.dl_expiry ? expiryProgress(officer.dl_expiry) : 0;
 
+  // Set document title
+  useEffect(() => { document.title = 'Fleet - Personnel \u2014 RMPG Flex'; }, []);
+
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
 
@@ -215,7 +218,7 @@ export default function FleetPersonnelTab({
           </h4>
           <div className="flex items-center gap-2">
             <select
-              className="select-dark flex-1 text-[11px]"
+              className="select-dark flex-1 text-[11px] min-h-[36px]"
               value={selectedUnitId}
               onChange={(e) => setSelectedUnitId(e.target.value)}
             >
@@ -425,7 +428,7 @@ export default function FleetPersonnelTab({
         <div className="px-3 py-2 border-b border-rmpg-700">
           <div className="flex gap-2">
             <textarea
-              className="input-dark flex-1 text-[10px] h-14 resize-none"
+              className="input-dark flex-1 text-[10px] h-14 resize-none min-h-[36px]"
               placeholder="Add a note about this vehicle's personnel..."
               value={noteText}
               onChange={(e) => setNoteText(e.target.value)}

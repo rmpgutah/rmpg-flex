@@ -38,7 +38,7 @@ export default function OfficerAvatar({ officer, size = 'md', showStatusDot = tr
       )}
       {showStatusDot && (
         <span className={`absolute -bottom-0.5 -right-0.5 ${size === 'lg' ? 'w-3.5 h-3.5' : 'w-2.5 h-2.5'} rounded-full border-2 border-surface-base ${
-          officer.status === 'on_duty' ? 'bg-green-400 shadow-[0_0_4px_rgba(34,197,94,0.6)]' : 'bg-gray-500'
+          officer.status === 'on_duty' ? 'bg-green-400 shadow-[0_0_4px_rgba(34,197,94,0.6)]' : 'bg-rmpg-500'
         }`} />
       )}
     </div>

@@ -65,6 +65,17 @@ const UTAH_COUNTIES = [
   'Rich', 'San Juan', 'Wasatch', 'Wayne', 'Garfield', 'Kane', 'Piute', 'Daggett',
 ];
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Props) {
   const [status, setStatus] = useState<ArrestStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -300,6 +311,18 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
 
   const totalPages = Math.ceil(recordsTotal / 25);
 
+  // Set document title
+  useEffect(() => { document.title = 'Admin - Arrests \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setEditingId(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="p-4 space-y-4">
       {/* ═══ Header ═══ */}
@@ -365,7 +388,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
             type="text"
             value={searchTerm}
             onChange={e => { setSearchTerm(e.target.value); setRecordsPage(1); }}
-            placeholder="Search by name..."
+            placeholder="Search by name..." aria-label="Search by name..."
             className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] pl-7 pr-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
           />
           {searchTerm && (
@@ -451,7 +474,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
               disabled={formSaving || !form.full_name.trim()}
               className="toolbar-btn text-[10px] flex items-center gap-1 px-4 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
             >
-              {formSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+              {formSaving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <CheckCircle2 className="w-3 h-3" />}
               {editingId ? 'Update Record' : 'Save Booking'}
             </button>
             <button type="button" onClick={() => { setShowForm(false); setEditingId(null); }} className="toolbar-btn text-[10px] px-3 py-1.5 text-rmpg-400">
@@ -518,7 +541,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
               disabled={csvImporting || !csvData.trim()}
               className="toolbar-btn text-[10px] flex items-center gap-1 px-4 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
             >
-              {csvImporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+              {csvImporting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Upload className="w-3 h-3" />}
               {csvImporting ? 'Importing...' : 'Import Records'}
             </button>
             <button type="button" onClick={() => setShowCsvImport(false)} className="toolbar-btn text-[10px] px-3 py-1.5 text-rmpg-400">
@@ -545,7 +568,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
 
         {recordsLoading ? (
           <div className="flex items-center gap-2 text-[10px] text-rmpg-500 py-4 justify-center">
-            <Loader2 className="w-3 h-3 animate-spin" />
+            <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />
             Loading...
           </div>
         ) : records.length === 0 ? (
@@ -653,14 +676,14 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
             <div className="flex items-center gap-2">
               <button type="button" onClick={handleSaveKey} disabled={saving || !apiKey.trim() || apiKey.trim().length < 10}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50">
-                {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Key className="w-3 h-3" />}
+                {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Key className="w-3 h-3" />}
                 Save Key
               </button>
               {status?.configured && (
                 <>
                   <button type="button" onClick={handleSync} disabled={syncing}
                     className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-rmpg-700 hover:bg-rmpg-600 text-rmpg-200 disabled:opacity-50">
-                    {syncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                    {syncing ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Zap className="w-3 h-3" />}
                     {syncing ? 'Syncing...' : 'Sync Now'}
                   </button>
                   <button type="button" onClick={async () => {
@@ -703,7 +726,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
           <div className="px-3 pb-3 space-y-3 border-t border-rmpg-700/50">
             {scraperLoading ? (
               <div className="flex items-center gap-2 text-[10px] text-rmpg-500 py-4 justify-center">
-                <Loader2 className="w-3 h-3 animate-spin" /> Loading scraper status...
+                <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Loading scraper status...
               </div>
             ) : scraperStatus ? (
               <>
@@ -792,7 +815,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                             className="flex items-center gap-1 text-[9px] text-brand-400 hover:text-brand-300 disabled:opacity-50"
                           >
                             {syncingCounty === county.county ? (
-                              <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                              <Loader2 className="w-2.5 h-2.5 animate-spin" role="status" aria-label="Loading" />
                             ) : (
                               <Zap className="w-2.5 h-2.5" />
                             )}

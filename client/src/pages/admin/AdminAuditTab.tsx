@@ -28,6 +28,17 @@ interface AdminAuditTabProps {
 // Component
 // ============================================================
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function AdminAuditTab({
   auditLog,
   loadingAudit,
@@ -89,10 +100,12 @@ export default function AdminAuditTab({
           <Search className="w-3 h-3 text-rmpg-500" />
           <input
             type="text"
-            placeholder="Search logs..."
+            placeholder="Search logs..." aria-label="Search logs..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             className="bg-transparent border-none outline-none text-xs text-white placeholder-rmpg-500 w-[120px]"
+            autoComplete="off"
+            spellCheck={false}
           />
         </div>
         <select
@@ -133,10 +146,10 @@ export default function AdminAuditTab({
         <table className="table-dark">
           <thead className="sticky top-0 z-10">
             <tr>
-              <th>Timestamp</th>
-              <th>User</th>
-              <th>Action</th>
-              <th>Details</th>
+              <th className="whitespace-nowrap">Timestamp</th>
+              <th className="whitespace-nowrap">User</th>
+              <th className="whitespace-nowrap">Action</th>
+              <th className="whitespace-nowrap">Details</th>
             </tr>
           </thead>
           <tbody>

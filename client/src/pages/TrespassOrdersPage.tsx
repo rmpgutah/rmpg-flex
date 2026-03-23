@@ -45,6 +45,17 @@ const EMPTY_FORM = {
   section_id: '', zone_id: '', beat_id: '',
 };
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function TrespassOrdersPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
@@ -302,6 +313,18 @@ export default function TrespassOrdersPage() {
     }));
   };
 
+  // Set document title
+  useEffect(() => { document.title = 'Trespass Orders \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setFormOpen(false); setEditingOrder(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -357,9 +380,9 @@ export default function TrespassOrdersPage() {
           <div className="space-y-1 mb-2">
             {bulkPersons.map((p, i) => (
               <div key={i} className="flex gap-1">
-                <input className="input-dark flex-1 text-xs" placeholder="First name" value={p.first_name}
+                <input className="input-dark flex-1 text-xs min-h-[36px]" placeholder="First name" value={p.first_name}
                   onChange={e => { const arr = [...bulkPersons]; arr[i] = { ...arr[i], first_name: e.target.value }; setBulkPersons(arr); }} />
-                <input className="input-dark flex-1 text-xs" placeholder="Last name" value={p.last_name}
+                <input className="input-dark flex-1 text-xs min-h-[36px]" placeholder="Last name" value={p.last_name}
                   onChange={e => { const arr = [...bulkPersons]; arr[i] = { ...arr[i], last_name: e.target.value }; setBulkPersons(arr); }} />
                 <button type="button" onClick={() => setBulkPersons(prev => prev.filter((_, j) => j !== i))} className="text-red-500 hover:text-red-300 px-1"><X style={{ width: 10, height: 10 }} /></button>
               </div>
@@ -400,7 +423,7 @@ export default function TrespassOrdersPage() {
         {/* List */}
         <div className={`${selectedOrder && !isMobile ? 'w-[40%]' : 'w-full'} overflow-y-auto border-r border-rmpg-700`}>
           {loading && orders.length === 0 ? (
-            <div className="flex items-center justify-center h-32 text-rmpg-400"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading...</div>
+            <div className="flex items-center justify-center h-32 text-rmpg-400"><Loader2 className="w-5 h-5 animate-spin mr-2" role="status" aria-label="Loading" /> Loading...</div>
           ) : orders.length === 0 ? (
             <EmptyState
               icon={Ban}
@@ -548,7 +571,7 @@ export default function TrespassOrdersPage() {
 
       {/* Form Modal */}
       {formOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setFormOpen(false)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setFormOpen(false)}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#141e2b' }}>
               <span className="text-xs font-bold text-white uppercase">{editingOrder ? 'Edit' : 'New'} Trespass Order</span>
@@ -559,7 +582,7 @@ export default function TrespassOrdersPage() {
               <div>
                 <label className="field-label">Link to Person Record (Optional)</label>
                 <div className="relative">
-                  <input type="text" className="input-dark text-xs w-full" placeholder="Search person records..." aria-label="Search person records..."
+                  <input type="text" className="input-dark text-xs w-full min-h-[36px]" placeholder="Search person records..." aria-label="Search person records..."
                     value={personSearch} onChange={e => setPersonSearch(e.target.value)} />
                   {personResults.length > 0 && (
                     <div className="absolute z-10 w-full mt-1 bg-surface-raised border border-rmpg-600 max-h-40 overflow-y-auto">
@@ -579,13 +602,13 @@ export default function TrespassOrdersPage() {
               {/* Subject */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div><label className="field-label">First Name *</label>
-                  <input className="input-dark text-xs w-full" value={formData.subject_first_name} onChange={e => update('subject_first_name', e.target.value)} />
+                  <input className="input-dark text-xs w-full min-h-[36px]" value={formData.subject_first_name} onChange={e => update('subject_first_name', e.target.value)} />
                   {formErrors.subject_first_name && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.subject_first_name}</p>}</div>
                 <div><label className="field-label">Last Name *</label>
-                  <input className="input-dark text-xs w-full" value={formData.subject_last_name} onChange={e => update('subject_last_name', e.target.value)} />
+                  <input className="input-dark text-xs w-full min-h-[36px]" value={formData.subject_last_name} onChange={e => update('subject_last_name', e.target.value)} />
                   {formErrors.subject_last_name && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.subject_last_name}</p>}</div>
                 <div><label className="field-label">DOB</label>
-                  <input type="date" className="input-dark text-xs w-full" value={formData.subject_dob} onChange={e => update('subject_dob', e.target.value)} /></div>
+                  <input type="date" className="input-dark text-xs w-full min-h-[36px]" value={formData.subject_dob} onChange={e => update('subject_dob', e.target.value)} /></div>
               </div>
 
               {/* Property + Location */}
@@ -596,7 +619,7 @@ export default function TrespassOrdersPage() {
                     {properties.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select></div>
                 <div><label className="field-label">Location *</label>
-                  <input className="input-dark text-xs w-full" value={formData.location} onChange={e => update('location', e.target.value)} />
+                  <input className="input-dark text-xs w-full min-h-[36px]" value={formData.location} onChange={e => update('location', e.target.value)} />
                   {formErrors.location && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.location}</p>}</div>
               </div>
 
@@ -635,23 +658,23 @@ export default function TrespassOrdersPage() {
                     {ORDER_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select></div>
                 <div><label className="field-label">Duration (days)</label>
-                  <input type="number" className="input-dark text-xs w-full" placeholder="Empty = permanent" value={formData.duration_days} onChange={e => update('duration_days', e.target.value)} /></div>
+                  <input type="number" className="input-dark text-xs w-full min-h-[36px]" placeholder="Empty = permanent" value={formData.duration_days} onChange={e => update('duration_days', e.target.value)} /></div>
                 <div><label className="field-label">Authorized By</label>
-                  <input className="input-dark text-xs w-full" placeholder="Supervisor name" value={formData.authorized_by} onChange={e => update('authorized_by', e.target.value)} /></div>
+                  <input className="input-dark text-xs w-full min-h-[36px]" placeholder="Supervisor name" value={formData.authorized_by} onChange={e => update('authorized_by', e.target.value)} /></div>
               </div>
 
               <div><label className="field-label">Reason</label>
-                <textarea className="input-dark text-xs w-full" rows={2} value={formData.reason} onChange={e => update('reason', e.target.value)} /></div>
+                <textarea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.reason} onChange={e => update('reason', e.target.value)} /></div>
 
               <div><label className="field-label">Conditions / Exceptions</label>
-                <textarea className="input-dark text-xs w-full" rows={2} value={formData.conditions} onChange={e => update('conditions', e.target.value)} /></div>
+                <textarea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.conditions} onChange={e => update('conditions', e.target.value)} /></div>
 
               <div><label className="field-label">Notes</label>
-                <textarea className="input-dark text-xs w-full" rows={2} value={formData.notes} onChange={e => update('notes', e.target.value)} /></div>
+                <textarea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.notes} onChange={e => update('notes', e.target.value)} /></div>
 
               <div className={`flex ${isMobile ? 'flex-col gap-2' : 'justify-end gap-2'} pt-2 border-t border-rmpg-700`}>
                 <button type="submit" disabled={submitting} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={{ background: 'rgba(26,90,158,0.3)', borderColor: 'rgba(26,90,158,0.5)', minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : undefined }}>
-                  {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} />}
+                  {submitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} />}
                   {editingOrder ? 'Update' : 'Create'} Order
                 </button>
                 <button type="button" onClick={() => setFormOpen(false)} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>Cancel</button>

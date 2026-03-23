@@ -46,7 +46,7 @@ router.post(
     const { query, limit } = req.body as { query?: string; limit?: number };
 
     if (!query || typeof query !== 'string' || query.trim().length < 2) {
-      res.status(400).json({ error: 'query must be at least 2 characters' });
+      res.status(400).json({ error: 'query must be at least 2 characters', code: 'QUERY_MUST_BE_AT' });
       return;
     }
 
@@ -111,7 +111,7 @@ router.post(
     };
 
     if (!url || typeof url !== 'string' || !url.trim()) {
-      res.status(400).json({ error: 'url is required' });
+      res.status(400).json({ error: 'url is required', code: 'URL_IS_REQUIRED' });
       return;
     }
 
@@ -214,7 +214,7 @@ router.put(
   (req: Request, res: Response) => {
     const id = Number(req.params.id);
     if (!id || isNaN(id)) {
-      res.status(400).json({ error: 'Invalid id' });
+      res.status(400).json({ error: 'Invalid id', code: 'INVALID_ID' });
       return;
     }
 
@@ -226,11 +226,11 @@ router.put(
       // Verify ownership or admin
       const existing = db.prepare('SELECT * FROM web_research_results WHERE id = ?').get(id) as any;
       if (!existing) {
-        res.status(404).json({ error: 'Result not found' });
+        res.status(404).json({ error: 'Result not found', code: 'RESULT_NOT_FOUND' });
         return;
       }
       if (existing.user_id !== userId && userRole !== 'admin') {
-        res.status(403).json({ error: 'Not authorized to update this result' });
+        res.status(403).json({ error: 'Not authorized to update this result', code: 'NOT_AUTHORIZED_TO_UPDATE' });
         return;
       }
 
@@ -276,7 +276,7 @@ router.delete(
   (req: Request, res: Response) => {
     const id = Number(req.params.id);
     if (!id || isNaN(id)) {
-      res.status(400).json({ error: 'Invalid id' });
+      res.status(400).json({ error: 'Invalid id', code: 'INVALID_ID' });
       return;
     }
 
@@ -288,11 +288,11 @@ router.delete(
       // Verify ownership or admin
       const existing = db.prepare('SELECT * FROM web_research_results WHERE id = ?').get(id) as any;
       if (!existing) {
-        res.status(404).json({ error: 'Result not found' });
+        res.status(404).json({ error: 'Result not found', code: 'RESULT_NOT_FOUND' });
         return;
       }
       if (existing.user_id !== userId && userRole !== 'admin') {
-        res.status(403).json({ error: 'Not authorized to delete this result' });
+        res.status(403).json({ error: 'Not authorized to delete this result', code: 'NOT_AUTHORIZED_TO_DELETE' });
         return;
       }
 

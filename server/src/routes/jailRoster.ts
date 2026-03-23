@@ -36,7 +36,7 @@ router.get('/status', (_req: Request, res: Response) => {
     res.json(status);
   } catch (err) {
     console.error('[Jail Roster API] Error getting status:', (err as Error).message);
-    res.status(500).json({ error: 'Failed to get scraper status' });
+    res.status(500).json({ error: 'Failed to get scraper status', code: 'FAILED_TO_GET_SCRAPER' });
   }
 });
 
@@ -66,7 +66,7 @@ router.get('/counties', (_req: Request, res: Response) => {
     res.json({ counties, available_parsers: parsers });
   } catch (err) {
     console.error('[Jail Roster API] Error listing counties:', (err as Error).message);
-    res.status(500).json({ error: 'Failed to list counties' });
+    res.status(500).json({ error: 'Failed to list counties', code: 'FAILED_TO_LIST_COUNTIES' });
   }
 });
 
@@ -79,7 +79,7 @@ router.get('/config', requireRole('admin'), (_req: Request, res: Response) => {
     res.json({ configs: status.counties });
   } catch (err) {
     console.error('[Jail Roster API] Error getting config:', (err as Error).message);
-    res.status(500).json({ error: 'Failed to get scraper config' });
+    res.status(500).json({ error: 'Failed to get scraper config', code: 'FAILED_TO_GET_SCRAPER' });
   }
 });
 
@@ -90,7 +90,7 @@ router.put('/config/:county', requireRole('admin'), (req: Request, res: Response
   try {
     const county = req.params.county as string;
     if (!county || county.trim().length < 2 || !/^[a-zA-Z_-]+$/.test(county) || county.length > 50) {
-      res.status(400).json({ error: 'Invalid county identifier (letters, hyphens, underscores only, 2-50 chars)' });
+      res.status(400).json({ error: 'Invalid county identifier (letters, hyphens, underscores only, 2-50 chars)', code: 'INVALID_COUNTY_IDENTIFIER_LETTERS' });
       return;
     }
     const { enabled, scrape_interval_minutes } = req.body;
@@ -100,14 +100,14 @@ router.put('/config/:county', requireRole('admin'), (req: Request, res: Response
     if (scrape_interval_minutes !== undefined) {
       const interval = parseInt(scrape_interval_minutes, 10);
       if (isNaN(interval) || interval < 15 || interval > 120) {
-        return res.status(400).json({ error: 'Interval must be between 15 and 120 minutes' });
+        return res.status(400).json({ error: 'Interval must be between 15 and 120 minutes', code: 'INTERVAL_MUST_BE_BETWEEN' });
       }
       updates.scrape_interval_minutes = interval;
     }
 
     const success = updateCountyConfig(county, updates);
     if (!success) {
-      return res.status(404).json({ error: 'County not found' });
+      return res.status(404).json({ error: 'County not found', code: 'COUNTY_NOT_FOUND' });
     }
 
     auditLog(req, 'jail_roster_config_updated', 'jail_roster', 0,
@@ -117,7 +117,7 @@ router.put('/config/:county', requireRole('admin'), (req: Request, res: Response
     res.json({ success: true, message: 'Config updated' });
   } catch (err) {
     console.error('[Jail Roster API] Error updating config:', (err as Error).message);
-    res.status(500).json({ error: 'Failed to update config' });
+    res.status(500).json({ error: 'Failed to update config', code: 'FAILED_TO_UPDATE_CONFIG' });
   }
 });
 
@@ -128,7 +128,7 @@ router.post('/sync/:county', requireRole('admin', 'manager'), async (req: Reques
   try {
     const county = req.params.county as string;
     if (!county || !/^[a-zA-Z_-]+$/.test(county) || county.length < 2 || county.length > 50) {
-      res.status(400).json({ error: 'Invalid county identifier' });
+      res.status(400).json({ error: 'Invalid county identifier', code: 'INVALID_COUNTY_IDENTIFIER' });
       return;
     }
     const result = await scrapeCountyManual(county);
@@ -140,7 +140,7 @@ router.post('/sync/:county', requireRole('admin', 'manager'), async (req: Reques
     res.json(result);
   } catch (err) {
     console.error('[Jail Roster API] Error triggering sync:', (err as Error).message);
-    res.status(500).json({ error: 'Failed to trigger sync' });
+    res.status(500).json({ error: 'Failed to trigger sync', code: 'FAILED_TO_TRIGGER_SYNC' });
   }
 });
 
@@ -151,12 +151,12 @@ router.post('/reset-errors/:county', requireRole('admin'), (req: Request, res: R
   try {
     const county = req.params.county as string;
     if (!county || !/^[a-zA-Z_-]+$/.test(county) || county.length < 2 || county.length > 50) {
-      res.status(400).json({ error: 'Invalid county identifier' });
+      res.status(400).json({ error: 'Invalid county identifier', code: 'INVALID_COUNTY_IDENTIFIER' });
       return;
     }
     const success = resetCountyErrors(county);
     if (!success) {
-      return res.status(404).json({ error: 'County not found' });
+      return res.status(404).json({ error: 'County not found', code: 'COUNTY_NOT_FOUND' });
     }
 
     auditLog(req, 'jail_roster_errors_reset', 'jail_roster', 0,
@@ -165,7 +165,7 @@ router.post('/reset-errors/:county', requireRole('admin'), (req: Request, res: R
     res.json({ success: true, message: 'Error counter reset' });
   } catch (err) {
     console.error('[Jail Roster API] Error resetting errors:', (err as Error).message);
-    res.status(500).json({ error: 'Failed to reset errors' });
+    res.status(500).json({ error: 'Failed to reset errors', code: 'FAILED_TO_RESET_ERRORS' });
   }
 });
 
@@ -178,7 +178,7 @@ router.get('/statistics', (_req: Request, res: Response) => {
     res.json(stats);
   } catch (err) {
     console.error('[Jail Roster API] Error getting statistics:', (err as Error).message);
-    res.status(500).json({ error: 'Failed to get statistics' });
+    res.status(500).json({ error: 'Failed to get statistics', code: 'FAILED_TO_GET_STATISTICS' });
   }
 });
 
@@ -191,7 +191,7 @@ router.get('/sync-log', requireRole('admin'), (req: Request, res: Response) => {
     res.json({ sync_log: status.recent_syncs });
   } catch (err) {
     console.error('[Jail Roster API] Error getting sync log:', (err as Error).message);
-    res.status(500).json({ error: 'Failed to get sync log' });
+    res.status(500).json({ error: 'Failed to get sync log', code: 'FAILED_TO_GET_SYNC' });
   }
 });
 

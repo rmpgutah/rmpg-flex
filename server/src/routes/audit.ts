@@ -106,7 +106,7 @@ router.get('/logs', (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error fetching audit logs:', error);
-    res.status(500).json({ error: 'Failed to fetch audit logs' });
+    res.status(500).json({ error: 'Failed to fetch audit logs', code: 'FAILED_TO_FETCH_AUDIT' });
   }
 });
 
@@ -152,6 +152,7 @@ router.get('/stats', (req: Request, res: Response) => {
       LIMIT 10
     `).all(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
 
+    res.set('Cache-Control', 'private, max-age=60');
     res.json({
       totalEntries,
       entriesToday,
@@ -160,7 +161,7 @@ router.get('/stats', (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error fetching audit stats:', error);
-    res.status(500).json({ error: 'Failed to fetch audit statistics' });
+    res.status(500).json({ error: 'Failed to fetch audit statistics', code: 'FAILED_TO_FETCH_AUDIT' });
   }
 });
 
@@ -215,6 +216,8 @@ router.get('/export', (req: Request, res: Response) => {
       LEFT JOIN users u ON al.user_id = u.id
       ${whereClause}
       ORDER BY al.created_at DESC
+    
+      LIMIT 1000
     `).all(...params);
 
     sendCsv(res, 'audit_log_export.csv', [
@@ -228,7 +231,7 @@ router.get('/export', (req: Request, res: Response) => {
     ], rows);
   } catch (error: any) {
     console.error('Export audit log error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to export audit log', code: 'EXPORT_AUDIT_LOG_ERROR' });
   }
 });
 

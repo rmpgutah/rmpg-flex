@@ -5,7 +5,7 @@
 // print/export, and complete CRUD for cameras & videos.
 // ============================================================
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Video, Plus, Edit3, Trash2, AlertTriangle, Camera, Search,
   Play, HardDrive, Film, Shield, Clock, Eye, CheckSquare, Square,
@@ -212,6 +212,9 @@ export default function BodyCameraTab({
 
   // ── Render ───────────────────────────────────────────────
 
+  // Set document title
+  useEffect(() => { document.title = 'Personnel - Body Cameras \u2014 RMPG Flex'; }, []);
+
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
       {/* ── Header ── */}
@@ -302,7 +305,7 @@ export default function BodyCameraTab({
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder={subTab === 'cameras' ? 'Search cameras, officers...' : 'Search videos, cases...'}
-            className="input-dark text-[10px] pl-7 pr-2 py-1 w-full"
+            className="input-dark text-[10px] pl-7 pr-2 py-1 w-full min-h-[36px]"
           />
         </div>
         <div className="h-4 w-px bg-rmpg-700" />
@@ -350,7 +353,7 @@ export default function BodyCameraTab({
               disabled={bulkLoading}
               className="toolbar-btn toolbar-btn-danger text-[10px] px-2.5 py-1 flex items-center gap-1"
             >
-              {bulkLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+              {bulkLoading ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Trash2 className="w-3 h-3" />}
               Delete Selected
             </button>
           )}
@@ -379,7 +382,7 @@ export default function BodyCameraTab({
               disabled={bulkLoading}
               className="toolbar-btn toolbar-btn-danger text-[10px] px-2.5 py-1 flex items-center gap-1"
             >
-              {bulkLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+              {bulkLoading ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Trash2 className="w-3 h-3" />}
               Delete Selected
             </button>
           )}
@@ -402,7 +405,7 @@ export default function BodyCameraTab({
                 disabled={bulkLoading}
                 className="toolbar-btn-primary text-[10px] px-2.5 py-1 flex items-center gap-1"
               >
-                {bulkLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Shield className="w-3 h-3" />}
+                {bulkLoading ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Shield className="w-3 h-3" />}
                 Classify
               </button>
             </div>

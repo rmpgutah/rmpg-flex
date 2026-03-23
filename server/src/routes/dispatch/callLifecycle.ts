@@ -21,14 +21,14 @@ router.post('/calls/archive-bulk', requireRole('admin', 'manager', 'dispatcher')
 
     if (call_ids && Array.isArray(call_ids) && call_ids.length > 0) {
       if (call_ids.length > 500) {
-        res.status(400).json({ error: 'Cannot archive more than 500 calls at once' });
+        res.status(400).json({ error: 'Cannot archive more than 500 calls at once', code: 'CANNOT_ARCHIVE_MORE_THAN' });
         return;
       }
       // Validate all IDs are positive integers
       for (const id of call_ids) {
         const n = parseInt(String(id), 10);
         if (isNaN(n) || n < 1) {
-          res.status(400).json({ error: 'All call_ids must be positive integers' });
+          res.status(400).json({ error: 'All call_ids must be positive integers', code: 'ALL_CALLIDS_MUST_BE' });
           return;
         }
       }
@@ -84,7 +84,7 @@ router.post('/calls/archive-bulk', requireRole('admin', 'manager', 'dispatcher')
     res.json({ archived_count: callsToArchive.length, message: `${callsToArchive.length} call(s) archived` });
   } catch (error: any) {
     console.error('[CallLifecycle] bulk archive error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to bulk archive', code: 'CALLLIFECYCLE_BULK_ARCHIVE_ERROR' });
   }
 });
 
@@ -94,12 +94,12 @@ router.post('/calls/:id/archive', validateParamIdMiddleware, requireRole('admin'
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
     if (call.status === 'archived') {
-      res.status(400).json({ error: 'Call is already archived' });
+      res.status(400).json({ error: 'Call is already archived', code: 'CALL_IS_ALREADY_ARCHIVED' });
       return;
     }
 
@@ -133,7 +133,7 @@ router.post('/calls/:id/archive', validateParamIdMiddleware, requireRole('admin'
     res.json(updated);
   } catch (error: any) {
     console.error('[CallLifecycle] archive call error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to archive call', code: 'CALLLIFECYCLE_ARCHIVE_CALL_ERROR' });
   }
 });
 
@@ -143,12 +143,12 @@ router.post('/calls/:id/unarchive', validateParamIdMiddleware, requireRole('admi
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
     if (call.status !== 'archived') {
-      res.status(400).json({ error: 'Call is not archived' });
+      res.status(400).json({ error: 'Call is not archived', code: 'CALL_IS_NOT_ARCHIVED' });
       return;
     }
 
@@ -166,7 +166,7 @@ router.post('/calls/:id/unarchive', validateParamIdMiddleware, requireRole('admi
     res.json(updated);
   } catch (error: any) {
     console.error('[CallLifecycle] unarchive call error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unarchive call', code: 'CALLLIFECYCLE_UNARCHIVE_CALL_ERROR' });
   }
 });
 
@@ -175,7 +175,7 @@ router.delete('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'man
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
-    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+    if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
 
     const now = localNow();
 
@@ -229,12 +229,12 @@ router.post('/calls/:id/generate-incident', validateParamIdMiddleware, requireRo
     `).get(req.params.id) as any;
 
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
     if (!['cleared', 'closed'].includes(call.status)) {
-      res.status(400).json({ error: 'Can only generate incident reports from cleared or closed calls' });
+      res.status(400).json({ error: 'Can only generate incident reports from cleared or closed calls', code: 'CAN_ONLY_GENERATE_INCIDENT' });
       return;
     }
 
@@ -360,7 +360,7 @@ router.post('/calls/:id/generate-incident', validateParamIdMiddleware, requireRo
       LEFT JOIN calls_for_service c ON i.call_id = c.id
       WHERE i.id = ?
     `).get(Number(result.lastInsertRowid));
-    if (!incident) { res.status(500).json({ error: 'Failed to retrieve created incident' }); return; }
+    if (!incident) { res.status(500).json({ error: 'Failed to retrieve created incident', code: 'FAILED_TO_RETRIEVE_CREATED' }); return; }
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -374,7 +374,7 @@ router.post('/calls/:id/generate-incident', validateParamIdMiddleware, requireRo
     res.status(201).json(incident);
   } catch (error: any) {
     console.error('[CallLifecycle] generate incident error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to generate incident', code: 'CALLLIFECYCLE_GENERATE_INCIDENT_ERROR' });
   }
 });
 
@@ -384,14 +384,14 @@ router.put('/calls/:id/timeline/:entryId', validateParamIdMiddleware, requireRol
     const db = getDb();
     const entryId = parseInt(req.params.entryId, 10);
     if (isNaN(entryId) || entryId < 1) {
-      res.status(400).json({ error: 'Invalid timeline entry ID' });
+      res.status(400).json({ error: 'Invalid timeline entry ID', code: 'INVALID_TIMELINE_ENTRY_ID' });
       return;
     }
 
     const entry = db.prepare('SELECT * FROM activity_log WHERE id = ? AND entity_type = ? AND entity_id = ?')
       .get(entryId, 'call', req.params.id) as any;
     if (!entry) {
-      res.status(404).json({ error: 'Timeline entry not found' });
+      res.status(404).json({ error: 'Timeline entry not found', code: 'TIMELINE_ENTRY_NOT_FOUND' });
       return;
     }
 
@@ -401,14 +401,14 @@ router.put('/calls/:id/timeline/:entryId', validateParamIdMiddleware, requireRol
     const params: any[] = [];
     if (details !== undefined) {
       if (typeof details !== 'string' || details.length > 5000) {
-        res.status(400).json({ error: 'details must be a string of 5000 characters or less' });
+        res.status(400).json({ error: 'details must be a string of 5000 characters or less', code: 'DETAILS_MUST_BE_A' });
         return;
       }
       updates.push('details = ?'); params.push(details);
     }
 
     if (updates.length === 0) {
-      res.status(400).json({ error: 'No fields to update' });
+      res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
       return;
     }
 
@@ -421,7 +421,7 @@ router.put('/calls/:id/timeline/:entryId', validateParamIdMiddleware, requireRol
     res.json(updated);
   } catch (error: any) {
     console.error('[CallLifecycle] update timeline entry error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update timeline entry', code: 'CALLLIFECYCLE_UPDATE_TIMELINE_ENTRY' });
   }
 });
 
@@ -431,14 +431,14 @@ router.delete('/calls/:id/timeline/:entryId', validateParamIdMiddleware, require
     const db = getDb();
     const delEntryId = parseInt(req.params.entryId, 10);
     if (isNaN(delEntryId) || delEntryId < 1) {
-      res.status(400).json({ error: 'Invalid timeline entry ID' });
+      res.status(400).json({ error: 'Invalid timeline entry ID', code: 'INVALID_TIMELINE_ENTRY_ID' });
       return;
     }
 
     const entry = db.prepare('SELECT * FROM activity_log WHERE id = ? AND entity_type = ? AND entity_id = ?')
       .get(delEntryId, 'call', req.params.id) as any;
     if (!entry) {
-      res.status(404).json({ error: 'Timeline entry not found' });
+      res.status(404).json({ error: 'Timeline entry not found', code: 'TIMELINE_ENTRY_NOT_FOUND' });
       return;
     }
 
@@ -447,7 +447,7 @@ router.delete('/calls/:id/timeline/:entryId', validateParamIdMiddleware, require
     res.json({ success: true });
   } catch (error: any) {
     console.error('[CallLifecycle] delete timeline entry error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete timeline entry', code: 'CALLLIFECYCLE_DELETE_TIMELINE_ENTRY' });
   }
 });
 
@@ -457,17 +457,17 @@ router.post('/calls/:id/timeline', validateParamIdMiddleware, requireRole('admin
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
     const { action, details, created_at } = req.body;
     if (!details) {
-      res.status(400).json({ error: 'details is required' });
+      res.status(400).json({ error: 'details is required', code: 'DETAILS_IS_REQUIRED' });
       return;
     }
     if (typeof details !== 'string' || details.length > 5000) {
-      res.status(400).json({ error: 'details must be a string of 5000 characters or less' });
+      res.status(400).json({ error: 'details must be a string of 5000 characters or less', code: 'DETAILS_MUST_BE_A' });
       return;
     }
 
@@ -475,16 +475,16 @@ router.post('/calls/:id/timeline', validateParamIdMiddleware, requireRole('admin
     let timestamp = localNow();
     if (created_at) {
       if (typeof created_at !== 'string' || created_at.length > 50) {
-        res.status(400).json({ error: 'created_at must be a valid date string' });
+        res.status(400).json({ error: 'created_at must be a valid date string', code: 'CREATEDAT_MUST_BE_A' });
         return;
       }
       const parsed = new Date(created_at);
       if (isNaN(parsed.getTime())) {
-        res.status(400).json({ error: 'created_at is not a valid date' });
+        res.status(400).json({ error: 'created_at is not a valid date', code: 'CREATEDAT_IS_NOT_A' });
         return;
       }
       if (parsed.getTime() > Date.now() + 60_000) { // Allow 1 min clock skew
-        res.status(400).json({ error: 'created_at cannot be in the future' });
+        res.status(400).json({ error: 'created_at cannot be in the future', code: 'CREATEDAT_CANNOT_BE_IN' });
         return;
       }
       timestamp = created_at;
@@ -495,11 +495,11 @@ router.post('/calls/:id/timeline', validateParamIdMiddleware, requireRole('admin
     `).run(req.user!.userId, action || 'note_added', call.id, details, req.ip || 'unknown', timestamp);
 
     const entry = db.prepare('SELECT al.*, u.full_name as user_name FROM activity_log al LEFT JOIN users u ON al.user_id = u.id WHERE al.id = ?').get(Number(result.lastInsertRowid));
-    if (!entry) { res.status(500).json({ error: 'Failed to retrieve created entry' }); return; }
+    if (!entry) { res.status(500).json({ error: 'Failed to retrieve created entry', code: 'FAILED_TO_RETRIEVE_CREATED' }); return; }
     res.status(201).json(entry);
   } catch (error: any) {
     console.error('[CallLifecycle] add timeline entry error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to add timeline entry', code: 'CALLLIFECYCLE_ADD_TIMELINE_ENTRY' });
   }
 });
 
@@ -509,7 +509,7 @@ router.get('/calls/:id/warnings', validateParamIdMiddleware, requireRole('admin'
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
@@ -541,6 +541,8 @@ router.get('/calls/:id/warnings', validateParamIdMiddleware, requireRole('admin'
         JOIN persons p ON ip.person_id = p.id
         JOIN incidents i ON ip.incident_id = i.id
         WHERE i.call_id = ?
+      
+        LIMIT 1000
       `).all(call.id) as any[];
 
       for (const person of linkedPersons) {
@@ -584,6 +586,8 @@ router.get('/calls/:id/warnings', validateParamIdMiddleware, requireRole('admin'
           JOIN incidents i ON ip.incident_id = i.id
           WHERE i.call_id = ?
         ))
+      
+        LIMIT 1000
       `).all(call.id) as any[];
 
       for (const warrant of activeWarrants) {
@@ -623,7 +627,7 @@ router.get('/calls/:id/warnings', validateParamIdMiddleware, requireRole('admin'
     res.json(warnings);
   } catch (error: any) {
     console.error('[CallLifecycle] get warnings error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get warnings', code: 'CALLLIFECYCLE_GET_WARNINGS_ERROR' });
   }
 });
 
@@ -633,7 +637,7 @@ router.put('/calls/:id/mileage', validateParamIdMiddleware, requireRole('admin',
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
@@ -652,7 +656,7 @@ router.put('/calls/:id/mileage', validateParamIdMiddleware, requireRole('admin',
     }
 
     if (updates.length === 0) {
-      res.status(400).json({ error: 'No mileage fields provided' });
+      res.status(400).json({ error: 'No mileage fields provided', code: 'NO_MILEAGE_FIELDS_PROVIDED' });
       return;
     }
 
@@ -677,7 +681,7 @@ router.put('/calls/:id/mileage', validateParamIdMiddleware, requireRole('admin',
     res.json(updated);
   } catch (error: any) {
     console.error('[CallLifecycle] mileage update error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to mileage update', code: 'CALLLIFECYCLE_MILEAGE_UPDATE_ERROR' });
   }
 });
 

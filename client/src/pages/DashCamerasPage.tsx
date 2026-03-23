@@ -232,7 +232,7 @@ export default function DashCamerasPage() {
     <div className="h-full overflow-y-auto p-2">
       {loading ? (
         <div className="flex items-center justify-center py-16 gap-2">
-          <Loader2 className="w-4 h-4 animate-spin text-brand-400" />
+          <Loader2 className="w-4 h-4 animate-spin text-brand-400" role="status" aria-label="Loading" />
           <span className="text-[10px] text-rmpg-400">Loading videos...</span>
         </div>
       ) : filtered.length === 0 ? (
@@ -333,7 +333,7 @@ export default function DashCamerasPage() {
     <div className="h-full overflow-y-auto">
       {loading ? (
         <div className="flex items-center justify-center py-16 gap-2">
-          <Loader2 className="w-4 h-4 animate-spin text-brand-400" />
+          <Loader2 className="w-4 h-4 animate-spin text-brand-400" role="status" aria-label="Loading" />
           <span className="text-[10px] text-rmpg-400">Loading videos...</span>
         </div>
       ) : (
@@ -618,6 +618,18 @@ export default function DashCamerasPage() {
   ) : null;
 
   // ── Render ───────────────────────────────
+  // Set document title
+  useEffect(() => { document.title = 'Dash Cameras \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setEditingVideo(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="flex flex-col h-full">
       {/* ── Title Bar ────────────────────── */}
@@ -715,8 +727,8 @@ export default function DashCamerasPage() {
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
           <input type="text" value={search}
             onChange={e => { setSearch(e.target.value); setPage(0); }}
-            placeholder="Search title, case #, unit..."
-            className="input-dark text-[10px] pl-7 pr-2 py-1 w-full" />
+            placeholder="Search title, case #, unit..." aria-label="Search title, case #, unit..."
+            className="input-dark text-[10px] pl-7 pr-2 py-1 w-full min-h-[36px]" />
         </div>
 
         <div className="h-4 w-px bg-rmpg-700" />

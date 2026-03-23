@@ -87,7 +87,7 @@ router.get('/proposals', requireRole('admin', 'manager', 'contract_manager'), (r
     res.json(rows);
   } catch (err: any) {
     console.error('CRM proposals error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm proposals', code: 'CRM_PROPOSALS_ERROR' });
   }
 });
 
@@ -112,14 +112,14 @@ router.get('/proposals/:id', validateParamIdMiddleware, requireRole('admin', 'ma
     `).get(id);
 
     if (!proposal) {
-      res.status(404).json({ error: 'Proposal not found' });
+      res.status(404).json({ error: 'Proposal not found', code: 'PROPOSAL_NOT_FOUND' });
       return;
     }
 
     res.json(proposal);
   } catch (err: any) {
     console.error('CRM proposals error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm proposals', code: 'CRM_PROPOSALS_ERROR' });
   }
 });
 
@@ -137,7 +137,7 @@ router.post('/proposals', requireRole('admin', 'manager', 'contract_manager'), (
     // ── Validate proposal inputs ──
     const validTitle = validateStr(title, 'title', 300);
     if (!validTitle) {
-      res.status(400).json({ error: 'title is required' });
+      res.status(400).json({ error: 'title is required', code: 'TITLE_IS_REQUIRED' });
       return;
     }
     const BILLING_FREQUENCIES = ['monthly', 'quarterly', 'semi_annual', 'annual', 'one_time'] as const;
@@ -248,7 +248,7 @@ router.post('/proposals', requireRole('admin', 'manager', 'contract_manager'), (
       res.status(400).json({ error: err.message }); return;
     }
     console.error('CRM proposals error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm proposals', code: 'CRM_PROPOSALS_ERROR' });
   }
 });
 
@@ -260,7 +260,7 @@ router.put('/proposals/:id', validateParamIdMiddleware, requireRole('admin', 'ma
 
     const existing = db.prepare('SELECT * FROM crm_proposals WHERE id = ?').get(id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Proposal not found' });
+      res.status(404).json({ error: 'Proposal not found', code: 'PROPOSAL_NOT_FOUND' });
       return;
     }
 
@@ -284,7 +284,7 @@ router.put('/proposals/:id', validateParamIdMiddleware, requireRole('admin', 'ma
     }
 
     if (updates.length === 0) {
-      res.status(400).json({ error: 'No fields to update' });
+      res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
       return;
     }
 
@@ -307,7 +307,7 @@ router.put('/proposals/:id', validateParamIdMiddleware, requireRole('admin', 'ma
     res.json(proposal);
   } catch (err: any) {
     console.error('CRM proposals error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm proposals', code: 'CRM_PROPOSALS_ERROR' });
   }
 });
 
@@ -319,7 +319,7 @@ router.delete('/proposals/:id', validateParamIdMiddleware, requireRole('admin', 
 
     const existing = db.prepare('SELECT * FROM crm_proposals WHERE id = ?').get(id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Proposal not found' });
+      res.status(404).json({ error: 'Proposal not found', code: 'PROPOSAL_NOT_FOUND' });
       return;
     }
 
@@ -332,7 +332,7 @@ router.delete('/proposals/:id', validateParamIdMiddleware, requireRole('admin', 
     res.json({ success: true });
   } catch (err: any) {
     console.error('CRM proposals error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm proposals', code: 'CRM_PROPOSALS_ERROR' });
   }
 });
 
@@ -345,7 +345,7 @@ router.put('/proposals/:id/stage', validateParamIdMiddleware, requireRole('admin
 
     const existing = db.prepare('SELECT * FROM crm_proposals WHERE id = ?').get(id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Proposal not found' });
+      res.status(404).json({ error: 'Proposal not found', code: 'PROPOSAL_NOT_FOUND' });
       return;
     }
 
@@ -410,7 +410,7 @@ router.put('/proposals/:id/stage', validateParamIdMiddleware, requireRole('admin
     res.json(proposal);
   } catch (err: any) {
     console.error('CRM proposals error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm proposals', code: 'CRM_PROPOSALS_ERROR' });
   }
 });
 
@@ -422,7 +422,7 @@ router.get('/proposal-templates', requireRole('admin', 'manager', 'contract_mana
     res.json(rows);
   } catch (err: any) {
     console.error('CRM proposals error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm proposals', code: 'CRM_PROPOSALS_ERROR' });
   }
 });
 
@@ -438,7 +438,7 @@ router.post('/proposal-templates', requireRole('admin'), (req: Request, res: Res
     const validName = validateStr(name, 'name', 200);
     const validTplType = validateStr(template_type, 'template_type', 100);
     if (!validName || !validTplType) {
-      res.status(400).json({ error: 'name and template_type are required' });
+      res.status(400).json({ error: 'name and template_type are required', code: 'NAME_AND_TEMPLATETYPE_ARE' });
       return;
     }
     if (default_monthly_value != null) requireFloat(default_monthly_value, 'default_monthly_value', 0, 100_000_000);
@@ -468,7 +468,7 @@ router.post('/proposal-templates', requireRole('admin'), (req: Request, res: Res
     res.json(template);
   } catch (err: any) {
     console.error('CRM proposals error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm proposals', code: 'CRM_PROPOSALS_ERROR' });
   }
 });
 
@@ -479,7 +479,7 @@ router.put('/proposal-templates/:id', validateParamIdMiddleware, requireRole('ad
 
     const existing = db.prepare('SELECT * FROM crm_proposal_templates WHERE id = ?').get(id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Template not found' });
+      res.status(404).json({ error: 'Template not found', code: 'TEMPLATE_NOT_FOUND' });
       return;
     }
 
@@ -500,7 +500,7 @@ router.put('/proposal-templates/:id', validateParamIdMiddleware, requireRole('ad
     }
 
     if (updates.length === 0) {
-      res.status(400).json({ error: 'No fields to update' });
+      res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
       return;
     }
 
@@ -515,7 +515,7 @@ router.put('/proposal-templates/:id', validateParamIdMiddleware, requireRole('ad
     res.json(template);
   } catch (err: any) {
     console.error('CRM proposals error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm proposals', code: 'CRM_PROPOSALS_ERROR' });
   }
 });
 
@@ -526,7 +526,7 @@ router.delete('/proposal-templates/:id', validateParamIdMiddleware, requireRole(
 
     const existing = db.prepare('SELECT * FROM crm_proposal_templates WHERE id = ?').get(id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Template not found' });
+      res.status(404).json({ error: 'Template not found', code: 'TEMPLATE_NOT_FOUND' });
       return;
     }
 
@@ -537,7 +537,7 @@ router.delete('/proposal-templates/:id', validateParamIdMiddleware, requireRole(
     res.json({ success: true });
   } catch (err: any) {
     console.error('CRM proposals error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm proposals', code: 'CRM_PROPOSALS_ERROR' });
   }
 });
 
@@ -588,7 +588,7 @@ router.get('/proposals/export/csv', requireRole('admin', 'manager', 'supervisor'
       { key: 'created_at', header: 'Created At' },
     ], rows);
   } catch (error: any) {
-    res.status(500).json({ error: 'Export failed' });
+    res.status(500).json({ error: 'Export failed', code: 'EXPORT_FAILED' });
   }
 });
 

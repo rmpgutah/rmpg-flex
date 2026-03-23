@@ -147,7 +147,7 @@ router.get('/', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get notifications error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get notifications', code: 'GET_NOTIFICATIONS_ERROR' });
   }
 });
 
@@ -165,7 +165,7 @@ router.get('/unread-count', (req: Request, res: Response) => {
     res.json({ count: row?.count || 0 });
   } catch (error: any) {
     console.error('Get unread count error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get unread count', code: 'GET_UNREAD_COUNT_ERROR' });
   }
 });
 
@@ -174,7 +174,7 @@ router.put('/:id/read', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) { res.status(400).json({ error: 'Invalid notification ID' }); return; }
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid notification ID', code: 'INVALID_NOTIFICATION_ID' }); return; }
 
     // Verify the notification belongs to the current user
     const notification = db.prepare(
@@ -182,7 +182,7 @@ router.put('/:id/read', (req: Request, res: Response) => {
     ).get(id, req.user!.userId) as any;
 
     if (!notification) {
-      res.status(404).json({ error: 'Notification not found' });
+      res.status(404).json({ error: 'Notification not found', code: 'NOTIFICATION_NOT_FOUND' });
       return;
     }
 
@@ -198,7 +198,7 @@ router.put('/:id/read', (req: Request, res: Response) => {
     res.json({ message: 'Marked as read' });
   } catch (error: any) {
     console.error('Mark notification read error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to mark notification read', code: 'MARK_NOTIFICATION_READ_ERROR' });
   }
 });
 
@@ -215,7 +215,7 @@ router.post('/mark-all-read', (req: Request, res: Response) => {
     res.json({ message: 'All notifications marked as read', count: result.changes });
   } catch (error: any) {
     console.error('Mark all read error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to mark all read', code: 'MARK_ALL_READ_ERROR' });
   }
 });
 
@@ -224,7 +224,7 @@ router.delete('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) { res.status(400).json({ error: 'Invalid notification ID' }); return; }
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid notification ID', code: 'INVALID_NOTIFICATION_ID' }); return; }
 
     // Verify the notification belongs to the current user
     const notification = db.prepare(
@@ -232,7 +232,7 @@ router.delete('/:id', (req: Request, res: Response) => {
     ).get(id, req.user!.userId) as any;
 
     if (!notification) {
-      res.status(404).json({ error: 'Notification not found' });
+      res.status(404).json({ error: 'Notification not found', code: 'NOTIFICATION_NOT_FOUND' });
       return;
     }
 
@@ -241,7 +241,7 @@ router.delete('/:id', (req: Request, res: Response) => {
     res.json({ message: 'Notification deleted' });
   } catch (error: any) {
     console.error('Delete notification error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete notification', code: 'DELETE_NOTIFICATION_ERROR' });
   }
 });
 

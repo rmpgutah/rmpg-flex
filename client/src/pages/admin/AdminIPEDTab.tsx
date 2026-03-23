@@ -283,6 +283,9 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
 
   if (loading) return <LoadingSpinner />;
 
+  // Set document title
+  useEffect(() => { document.title = 'Admin - IPED \u2014 RMPG Flex'; }, []);
+
   return (
     <div className="p-4 space-y-4">
       {/* Header */}
@@ -365,7 +368,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
             disabled={saving}
             className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
           >
-            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+            {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <CheckCircle2 className="w-3 h-3" />}
             Save Config
           </button>
           {status?.configured && (
@@ -375,7 +378,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
                 disabled={validating}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5"
               >
-                {validating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Shield className="w-3 h-3" />}
+                {validating ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Shield className="w-3 h-3" />}
                 Validate Installation
               </button>
               <button type="button"
@@ -559,7 +562,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
                 disabled={testingApi}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-2.5 py-1"
               >
-                {testingApi ? <Loader2 className="w-3 h-3 animate-spin" /> : <Server className="w-3 h-3" />}
+                {testingApi ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Server className="w-3 h-3" />}
                 Test API
               </button>
               {apiTestResult && (
@@ -635,7 +638,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
             </button>
           </div>
 
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {[
               { label: 'Total Jobs', value: status.totalJobs, icon: Database },
               { label: 'Completed', value: status.completedJobs, icon: CheckCircle2 },
@@ -652,7 +655,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
 
           {status.runningJobs > 0 && (
             <div className="flex items-center gap-2 text-[10px] px-2 py-1.5 rounded-sm bg-blue-950/30 border border-blue-800/40 text-blue-400">
-              <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+              <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" role="status" aria-label="Loading" />
               {status.runningJobs} job(s) currently running
             </div>
           )}

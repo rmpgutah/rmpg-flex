@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { auditLog } from '../utils/auditLogger';
 import { broadcast } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
 import { universalWarrantCheck, runUniversalWarrantScan } from '../utils/universalWarrantScanner';
@@ -83,7 +84,7 @@ router.get('/', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get warrants error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get warrants', code: 'GET_WARRANTS_ERROR' });
   }
 });
 
@@ -99,6 +100,8 @@ router.get('/export', requireRole('dispatcher', 'supervisor', 'admin', 'manager'
       LEFT JOIN users u ON w.entered_by = u.id
       WHERE w.archived_at IS NULL
       ORDER BY w.created_at DESC
+    
+      LIMIT 1000
     `).all() as any[];
 
     const headers = ['Warrant Number', 'Type', 'Status', 'Charge', 'Subject Name', 'Offense Level', 'Bail Amount', 'Issuing Court', 'Issuing Judge', 'Entered By', 'Created', 'Expires'];
@@ -119,11 +122,13 @@ router.get('/export', requireRole('dispatcher', 'supervisor', 'admin', 'manager'
 
     const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${v}"`).join(','))].join('\n');
     res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Disposition', `attachment; filename="warrants_export_${new Date().toISOString().slice(0,10)}.csv"`);
     res.send(csv);
   } catch (error: any) {
     console.error('Export warrants error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to export warrants', code: 'EXPORT_WARRANTS_ERROR' });
   }
 });
 
@@ -133,13 +138,13 @@ router.get('/check/:personId', (req: Request, res: Response) => {
     const db = getDb();
     const personId = parseInt(req.params.personId, 10);
     if (isNaN(personId)) {
-      res.status(400).json({ error: 'Invalid person ID' });
+      res.status(400).json({ error: 'Invalid person ID', code: 'INVALID_PERSON_ID' });
       return;
     }
 
     const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(personId) as any;
     if (!person) {
-      res.status(404).json({ error: 'Person not found' });
+      res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' });
       return;
     }
 
@@ -150,6 +155,8 @@ router.get('/check/:personId', (req: Request, res: Response) => {
       LEFT JOIN users u ON w.entered_by = u.id
       WHERE w.subject_person_id = ? AND w.status = 'active'
       ORDER BY w.created_at DESC
+    
+      LIMIT 1000
     `).all(personId);
 
     res.json({
@@ -159,7 +166,7 @@ router.get('/check/:personId', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Check warrants error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to check warrants', code: 'CHECK_WARRANTS_ERROR' });
   }
 });
 
@@ -170,16 +177,16 @@ router.put('/batch-update', requireRole('admin', 'manager', 'supervisor'), (req:
     const { ids, status } = req.body;
     const validStatuses = ['active', 'served', 'recalled', 'expired', 'quashed'];
     if (!Array.isArray(ids) || ids.length === 0) {
-      res.status(400).json({ error: 'ids array is required' });
+      res.status(400).json({ error: 'ids array is required', code: 'IDS_ARRAY_IS_REQUIRED' });
       return;
     }
     if (ids.length > 100) {
-      res.status(400).json({ error: 'Maximum 100 warrants per batch operation' });
+      res.status(400).json({ error: 'Maximum 100 warrants per batch operation', code: 'MAXIMUM_100_WARRANTS_PER' });
       return;
     }
     // Validate all IDs are numbers
     if (!ids.every((id: any) => typeof id === 'number' && Number.isFinite(id))) {
-      res.status(400).json({ error: 'All IDs must be valid numbers' });
+      res.status(400).json({ error: 'All IDs must be valid numbers', code: 'ALL_IDS_MUST_BE' });
       return;
     }
     if (!status || !validStatuses.includes(status)) {
@@ -211,7 +218,7 @@ router.put('/batch-update', requireRole('admin', 'manager', 'supervisor'), (req:
     res.json({ success: true, updated: ids.length });
   } catch (error: any) {
     console.error('Batch update warrants error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to batch update warrants', code: 'BATCH_UPDATE_WARRANTS_ERROR' });
   }
 });
 
@@ -315,7 +322,7 @@ router.get('/dashboard/stats', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Dashboard stats error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to dashboard stats', code: 'DASHBOARD_STATS_ERROR' });
   }
 });
 
@@ -365,7 +372,7 @@ router.get('/dashboard/feed', (req: Request, res: Response) => {
     res.json({ data: feed });
   } catch (error: any) {
     console.error('Dashboard feed error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to dashboard feed', code: 'DASHBOARD_FEED_ERROR' });
   }
 });
 
@@ -398,7 +405,7 @@ router.get('/dashboard/priority', (req: Request, res: Response) => {
     res.json({ data: warrants });
   } catch (error: any) {
     console.error('Priority warrants error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to priority warrants', code: 'PRIORITY_WARRANTS_ERROR' });
   }
 });
 
@@ -420,6 +427,8 @@ router.get('/unified', (req: Request, res: Response) => {
       LEFT JOIN users u ON w.entered_by = u.id
       WHERE w.status = 'active' AND w.archived_at IS NULL
       ORDER BY w.created_at DESC
+    
+      LIMIT 1000
     `).all() as any[];
 
     // Scraped warrants not already linked to a local record
@@ -445,6 +454,8 @@ router.get('/unified', (req: Request, res: Response) => {
           SELECT 1 FROM warrants w
           WHERE w.external_warrant_id = ('scraper:' || sw.source_key || ':' || sw.warrant_id)
         )
+    
+      LIMIT 1000
     `).all() as any[];
 
     // Utah cached warrants not already linked
@@ -469,6 +480,8 @@ router.get('/unified', (req: Request, res: Response) => {
         SELECT 1 FROM warrants w
         WHERE w.external_warrant_id = ('utah_api:' || uw.utah_warrant_id)
       )
+    
+      LIMIT 1000
     `).all() as any[];
 
     // Deduplicate by external_warrant_id
@@ -515,7 +528,7 @@ router.get('/unified', (req: Request, res: Response) => {
     res.json({ warrants: paged, total });
   } catch (error: any) {
     console.error('Unified warrants error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unified warrants', code: 'UNIFIED_WARRANTS_ERROR' });
   }
 });
 
@@ -533,7 +546,7 @@ router.get('/person/:personId/profile', (req: Request, res: Response) => {
     `).get(personId) as any;
 
     if (!person) {
-      res.status(404).json({ error: 'Person not found' });
+      res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' });
       return;
     }
 
@@ -543,6 +556,8 @@ router.get('/person/:personId/profile', (req: Request, res: Response) => {
       LEFT JOIN users u ON w.entered_by = u.id
       WHERE w.subject_person_id = ?
       ORDER BY w.status = 'active' DESC, w.created_at DESC
+    
+      LIMIT 1000
     `).all(personId);
 
     // Scan history from warrant_watch_log
@@ -569,7 +584,7 @@ router.get('/person/:personId/profile', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Person warrant profile error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to person warrant profile', code: 'PERSON_WARRANT_PROFILE_ERROR' });
   }
 });
 
@@ -617,7 +632,7 @@ router.get('/scraped/status', (req: Request, res: Response) => {
     res.json({ data: allSources });
   } catch (error: any) {
     console.error('Scraped status error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to scraped status', code: 'SCRAPED_STATUS_ERROR' });
   }
 });
 
@@ -636,7 +651,7 @@ router.get('/watch/runs', (req: Request, res: Response) => {
     res.json({ data: runs });
   } catch (error: any) {
     console.error('Watch runs error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to watch runs', code: 'WATCH_RUNS_ERROR' });
   }
 });
 
@@ -658,7 +673,7 @@ router.post('/watch/scan', requireRole('admin', 'manager', 'supervisor'), (req: 
     res.json({ message: 'Warrant watch scan started', started_at: localNow() });
   } catch (error: any) {
     console.error('Trigger watch scan error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to trigger watch scan', code: 'TRIGGER_WATCH_SCAN_ERROR' });
   }
 });
 
@@ -668,7 +683,7 @@ router.post('/check/:personId', (req: Request, res: Response) => {
     try {
       const personId = parseInt(req.params.personId, 10);
       if (isNaN(personId)) {
-        res.status(400).json({ error: 'Invalid person ID' });
+        res.status(400).json({ error: 'Invalid person ID', code: 'INVALID_PERSON_ID' });
         return;
       }
 
@@ -682,7 +697,7 @@ router.post('/check/:personId', (req: Request, res: Response) => {
       });
     } catch (error: any) {
       console.error('Manual warrant check error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to manual warrant check', code: 'MANUAL_WARRANT_CHECK_ERROR' });
     }
   })();
 });
@@ -717,7 +732,7 @@ router.get('/scan/status', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Scan status error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to scan status', code: 'SCAN_STATUS_ERROR' });
   }
 });
 
@@ -739,7 +754,7 @@ router.post('/scan/trigger', requireRole('admin'), (req: Request, res: Response)
     res.json({ message: 'Scan started', started_at: localNow() });
   } catch (error: any) {
     console.error('Trigger scan error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to trigger scan', code: 'TRIGGER_SCAN_ERROR' });
   }
 });
 
@@ -772,7 +787,7 @@ router.get('/:id', (req: Request, res: Response) => {
     `).get(req.params.id) as any;
 
     if (!warrant) {
-      res.status(404).json({ error: 'Warrant not found' });
+      res.status(404).json({ error: 'Warrant not found', code: 'WARRANT_NOT_FOUND' });
       return;
     }
 
@@ -783,6 +798,8 @@ router.get('/:id', (req: Request, res: Response) => {
       LEFT JOIN users u ON al.user_id = u.id
       WHERE al.entity_type = 'warrant' AND al.entity_id = ?
       ORDER BY al.created_at DESC
+    
+      LIMIT 1000
     `).all(warrant.id);
 
     res.json({
@@ -791,7 +808,7 @@ router.get('/:id', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get warrant error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get warrant', code: 'GET_WARRANT_ERROR' });
   }
 });
 
@@ -814,11 +831,11 @@ router.post('/', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (r
     } = req.body;
 
     if (!type) {
-      res.status(400).json({ error: 'type is required' });
+      res.status(400).json({ error: 'type is required', code: 'TYPE_IS_REQUIRED' });
       return;
     }
     if (!charge_description) {
-      res.status(400).json({ error: 'charge_description is required' });
+      res.status(400).json({ error: 'charge_description is required', code: 'CHARGEDESCRIPTION_IS_REQUIRED' });
       return;
     }
 
@@ -829,7 +846,7 @@ router.post('/', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (r
     if (subject_person_id) {
       const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(subject_person_id) as any;
       if (!person) {
-        res.status(404).json({ error: 'Subject person not found' });
+        res.status(404).json({ error: 'Subject person not found', code: 'SUBJECT_PERSON_NOT_FOUND' });
         return;
       }
     }
@@ -896,7 +913,7 @@ router.post('/', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (r
     res.status(201).json(warrant);
   } catch (error: any) {
     console.error('Create warrant error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create warrant', code: 'CREATE_WARRANT_ERROR' });
   }
 });
 
@@ -907,13 +924,13 @@ router.put('/:id', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), 
 
     const warrant = db.prepare('SELECT * FROM warrants WHERE id = ?').get(req.params.id) as any;
     if (!warrant) {
-      res.status(404).json({ error: 'Warrant not found' });
+      res.status(404).json({ error: 'Warrant not found', code: 'WARRANT_NOT_FOUND' });
       return;
     }
 
     // Only allow updating non-served warrants
     if (warrant.status === 'served') {
-      res.status(403).json({ error: 'Cannot update a served warrant' });
+      res.status(403).json({ error: 'Cannot update a served warrant', code: 'CANNOT_UPDATE_A_SERVED' });
       return;
     }
 
@@ -921,7 +938,7 @@ router.put('/:id', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), 
     if (req.body.subject_person_id) {
       const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.body.subject_person_id) as any;
       if (!person) {
-        res.status(404).json({ error: 'Subject person not found' });
+        res.status(404).json({ error: 'Subject person not found', code: 'SUBJECT_PERSON_NOT_FOUND' });
         return;
       }
     }
@@ -985,7 +1002,7 @@ router.put('/:id', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), 
     res.json(updated);
   } catch (error: any) {
     console.error('Update warrant error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update warrant', code: 'UPDATE_WARRANT_ERROR' });
   }
 });
 
@@ -996,12 +1013,12 @@ router.put('/:id/serve', (req: Request, res: Response) => {
 
     const warrant = db.prepare('SELECT * FROM warrants WHERE id = ?').get(req.params.id) as any;
     if (!warrant) {
-      res.status(404).json({ error: 'Warrant not found' });
+      res.status(404).json({ error: 'Warrant not found', code: 'WARRANT_NOT_FOUND' });
       return;
     }
 
     if (warrant.status !== 'active') {
-      res.status(400).json({ error: 'Only active warrants can be served' });
+      res.status(400).json({ error: 'Only active warrants can be served', code: 'ONLY_ACTIVE_WARRANTS_CAN' });
       return;
     }
 
@@ -1059,7 +1076,7 @@ router.put('/:id/serve', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Serve warrant error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to serve warrant', code: 'SERVE_WARRANT_ERROR' });
   }
 });
 
@@ -1068,9 +1085,9 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
   try {
     const db = getDb();
     const warrant = db.prepare('SELECT * FROM warrants WHERE id = ?').get(req.params.id) as any;
-    if (!warrant) { res.status(404).json({ error: 'Warrant not found' }); return; }
+    if (!warrant) { res.status(404).json({ error: 'Warrant not found', code: 'WARRANT_NOT_FOUND' }); return; }
     if (warrant.status === 'active') {
-      res.status(400).json({ error: 'Cannot delete an active warrant. Change status first.' });
+      res.status(400).json({ error: 'Cannot delete an active warrant. Change status first.', code: 'CANNOT_DELETE_AN_ACTIVE' });
       return;
     }
 
@@ -1084,7 +1101,7 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete warrant error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete warrant', code: 'DELETE_WARRANT_ERROR' });
   }
 });
 
@@ -1093,8 +1110,8 @@ router.post('/:id/archive', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const warrant = db.prepare('SELECT * FROM warrants WHERE id = ?').get(req.params.id) as any;
-    if (!warrant) { res.status(404).json({ error: 'Warrant not found' }); return; }
-    if (warrant.archived_at) { res.status(400).json({ error: 'Warrant is already archived' }); return; }
+    if (!warrant) { res.status(404).json({ error: 'Warrant not found', code: 'WARRANT_NOT_FOUND' }); return; }
+    if (warrant.archived_at) { res.status(400).json({ error: 'Warrant is already archived', code: 'WARRANT_IS_ALREADY_ARCHIVED' }); return; }
 
     const now = localNow();
     db.prepare('UPDATE warrants SET archived_at = ? WHERE id = ?').run(now, warrant.id);
@@ -1112,7 +1129,7 @@ router.post('/:id/archive', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Archive warrant error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to archive warrant', code: 'ARCHIVE_WARRANT_ERROR' });
   }
 });
 
@@ -1121,8 +1138,8 @@ router.post('/:id/unarchive', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const warrant = db.prepare('SELECT * FROM warrants WHERE id = ?').get(req.params.id) as any;
-    if (!warrant) { res.status(404).json({ error: 'Warrant not found' }); return; }
-    if (!warrant.archived_at) { res.status(400).json({ error: 'Warrant is not archived' }); return; }
+    if (!warrant) { res.status(404).json({ error: 'Warrant not found', code: 'WARRANT_NOT_FOUND' }); return; }
+    if (!warrant.archived_at) { res.status(400).json({ error: 'Warrant is not archived', code: 'WARRANT_IS_NOT_ARCHIVED' }); return; }
 
     db.prepare('UPDATE warrants SET archived_at = NULL WHERE id = ?').run(warrant.id);
 
@@ -1139,7 +1156,7 @@ router.post('/:id/unarchive', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Unarchive warrant error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unarchive warrant', code: 'UNARCHIVE_WARRANT_ERROR' });
   }
 });
 
@@ -1149,7 +1166,7 @@ router.post('/ingest-utah', requireRole('admin', 'manager', 'supervisor', 'dispa
     const db = getDb();
     const { warrants: incomingWarrants } = req.body;
     if (!Array.isArray(incomingWarrants) || incomingWarrants.length === 0) {
-      res.status(400).json({ error: 'warrants array required' });
+      res.status(400).json({ error: 'warrants array required', code: 'WARRANTS_ARRAY_REQUIRED' });
       return;
     }
 
@@ -1184,7 +1201,7 @@ router.post('/ingest-utah', requireRole('admin', 'manager', 'supervisor', 'dispa
     res.json({ imported, skipped, total: incomingWarrants.length });
   } catch (error: any) {
     console.error('Ingest Utah warrants error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to ingest utah warrants', code: 'INGEST_UTAH_WARRANTS_ERROR' });
   }
 });
 
@@ -1196,14 +1213,18 @@ router.get('/person-intel', (req: Request, res: Response) => {
 
     if (person_id) {
       const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(person_id) as any;
-      if (!person) { res.status(404).json({ error: 'Person not found' }); return; }
+      if (!person) { res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }); return; }
 
       const warrants = db.prepare(`
         SELECT * FROM warrants WHERE subject_person_id = ? AND status = 'active'
+      
+        LIMIT 1000
       `).all(person_id);
 
       const utahHits = db.prepare(`
         SELECT * FROM utah_warrants WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?)
+      
+        LIMIT 1000
       `).all(person.first_name || '', person.last_name || '');
 
       res.json({ person, warrants, utahHits, hasActiveWarrants: warrants.length > 0 });
@@ -1221,11 +1242,11 @@ router.get('/person-intel', (req: Request, res: Response) => {
 
       res.json({ results });
     } else {
-      res.status(400).json({ error: 'person_id or name query required' });
+      res.status(400).json({ error: 'person_id or name query required', code: 'PERSONID_OR_NAME_QUERY' });
     }
   } catch (error: any) {
     console.error('Person intel error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to person intel', code: 'PERSON_INTEL_ERROR' });
   }
 });
 

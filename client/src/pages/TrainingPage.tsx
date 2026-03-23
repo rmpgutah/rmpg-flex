@@ -57,6 +57,17 @@ interface Officer {
 }
 
 // ── Main Component ─────────────────────────────────────────
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function TrainingPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
@@ -159,6 +170,18 @@ export default function TrainingPage() {
     { key: 'calendar', label: 'Calendar', icon: Calendar },
   ];
 
+  // Set document title
+  useEffect(() => { document.title = 'Training Management \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setShowRecordModal(false); setEditRecord(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="flex flex-col h-full bg-surface-sunken">
       {fetchError && (
@@ -214,7 +237,7 @@ export default function TrainingPage() {
       <div className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-5 h-5 text-brand-400 animate-spin" />
+            <Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" />
             <span className="ml-2 text-xs text-rmpg-400">Loading training data...</span>
           </div>
         ) : (
@@ -545,7 +568,7 @@ function TrainingMaterialsPanel() {
 
   return (
     <div className="panel-beveled p-3">
-      <div className="flex items-center justify-between cursor-pointer" onClick={() => setExpanded(!expanded)}>
+      <div role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setExpanded(!expanded); }} className="flex items-center justify-between cursor-pointer" onClick={() => setExpanded(!expanded)}>
         <div className="flex items-center gap-2">
           <BookOpen className="w-3.5 h-3.5 text-brand-400" />
           <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Training Materials Library</span>
@@ -555,7 +578,7 @@ function TrainingMaterialsPanel() {
       {expanded && (
         <div className="mt-2">
           {loading ? (
-            <div className="text-center py-4"><Loader2 className="w-4 h-4 animate-spin text-brand-400 mx-auto" /></div>
+            <div className="text-center py-4"><Loader2 className="w-4 h-4 animate-spin text-brand-400 mx-auto" role="status" aria-label="Loading" /></div>
           ) : materials.length === 0 ? (
             <p className="text-[11px] text-rmpg-500 text-center py-4">No training materials uploaded yet.</p>
           ) : (
@@ -604,7 +627,7 @@ function MandatoryTrainingAlerts() {
 
   return (
     <div className="panel-beveled p-3 border-l-2 border-l-amber-500">
-      <div className="flex items-center justify-between cursor-pointer" onClick={() => setExpanded(!expanded)}>
+      <div role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setExpanded(!expanded); }} className="flex items-center justify-between cursor-pointer" onClick={() => setExpanded(!expanded)}>
         <div className="flex items-center gap-2">
           <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
           <span className="text-[9px] text-amber-400 uppercase font-bold tracking-wider">
@@ -616,7 +639,7 @@ function MandatoryTrainingAlerts() {
       {expanded && (
         <div className="mt-2">
           {loading ? (
-            <div className="text-center py-4"><Loader2 className="w-4 h-4 animate-spin text-brand-400 mx-auto" /></div>
+            <div className="text-center py-4"><Loader2 className="w-4 h-4 animate-spin text-brand-400 mx-auto" role="status" aria-label="Loading" /></div>
           ) : !alerts || alerts.total_alerts === 0 ? (
             <p className="text-[11px] text-green-400 text-center py-4">All officers are current on mandatory training!</p>
           ) : (
@@ -718,16 +741,16 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
           <input
             type="text"
-            placeholder="Search..."
+            placeholder="Search..." aria-label="Search..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="input-dark text-[11px] pl-6 pr-2 py-1 w-40"
+            className="input-dark text-[11px] pl-6 pr-2 py-1 w-40 min-h-[36px]"
           />
         </div>
         <select
           value={statusFilter}
           onChange={e => setStatusFilter(e.target.value as any)}
-          className="input-dark text-[10px] px-2 py-1"
+          className="input-dark text-[10px] px-2 py-1 min-h-[36px]"
         >
           <option value="all">All Statuses</option>
           <option value="completed">Completed</option>
@@ -740,7 +763,7 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
         <select
           value={categoryFilter}
           onChange={e => setCategoryFilter(e.target.value as any)}
-          className="input-dark text-[10px] px-2 py-1"
+          className="input-dark text-[10px] px-2 py-1 min-h-[36px]"
         >
           <option value="all">All Categories</option>
           {CATEGORIES.map(c => (
@@ -750,7 +773,7 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
         <select
           value={officerFilter}
           onChange={e => setOfficerFilter(e.target.value)}
-          className="input-dark text-[10px] px-2 py-1"
+          className="input-dark text-[10px] px-2 py-1 min-h-[36px]"
         >
           <option value="all">All Officers</option>
           {officers.map(o => (
@@ -1154,7 +1177,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
       <div className="panel-beveled bg-surface-base w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-3 border-b border-rmpg-700">
           <h2 className="text-sm font-bold text-rmpg-100">
@@ -1170,7 +1193,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
             <select
               value={form.officer_id}
               onChange={e => update('officer_id', e.target.value)}
-              className="input-dark w-full text-[11px] px-2 py-1.5"
+              className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
             >
               <option value="">Select officer...</option>
               {officers.map(o => (
@@ -1187,7 +1210,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
               type="text"
               value={form.course_name}
               onChange={e => handleCourseSelect(e.target.value)}
-              className="input-dark w-full text-[11px] px-2 py-1.5"
+              className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
               placeholder="e.g. Firearms Qualification"
             />
             <datalist id="course-suggestions">
@@ -1204,7 +1227,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
               <select
                 value={form.category}
                 onChange={e => update('category', e.target.value)}
-                className="input-dark w-full text-[11px] px-2 py-1.5"
+                className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
               >
                 {CATEGORIES.map(c => (
                   <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>
@@ -1218,7 +1241,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
               <select
                 value={form.status}
                 onChange={e => update('status', e.target.value)}
-                className="input-dark w-full text-[11px] px-2 py-1.5"
+                className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
               >
                 <option value="scheduled">Scheduled</option>
                 <option value="in_progress">In Progress</option>
@@ -1236,7 +1259,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
               type="text"
               value={form.provider}
               onChange={e => update('provider', e.target.value)}
-              className="input-dark w-full text-[11px] px-2 py-1.5"
+              className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
               placeholder="e.g. Utah POST, RMPG Internal"
             />
           </div>
@@ -1249,7 +1272,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
                 type="date"
                 value={form.completed_date}
                 onChange={e => update('completed_date', e.target.value)}
-                className="input-dark w-full text-[11px] px-2 py-1.5"
+                className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
               />
             </div>
             {/* Expiry Date */}
@@ -1259,7 +1282,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
                 type="date"
                 value={form.expiry_date}
                 onChange={e => update('expiry_date', e.target.value)}
-                className="input-dark w-full text-[11px] px-2 py-1.5"
+                className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
               />
             </div>
           </div>
@@ -1272,7 +1295,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
                 type="number"
                 value={form.hours}
                 onChange={e => update('hours', e.target.value)}
-                className="input-dark w-full text-[11px] px-2 py-1.5"
+                className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
                 min="0"
                 step="0.5"
               />
@@ -1284,7 +1307,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
                 type="number"
                 value={form.score}
                 onChange={e => update('score', e.target.value)}
-                className="input-dark w-full text-[11px] px-2 py-1.5"
+                className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
                 min="0"
                 max="100"
               />
@@ -1296,7 +1319,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
                 type="text"
                 value={form.certificate_number}
                 onChange={e => update('certificate_number', e.target.value)}
-                className="input-dark w-full text-[11px] px-2 py-1.5"
+                className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
               />
             </div>
           </div>
@@ -1307,7 +1330,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
             <textarea
               value={form.notes}
               onChange={e => update('notes', e.target.value)}
-              className="input-dark w-full text-[11px] px-2 py-1.5 h-16 resize-none"
+              className="input-dark w-full text-[11px] px-2 py-1.5 h-16 resize-none min-h-[36px]"
             />
           </div>
         </div>
@@ -1365,7 +1388,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
       <div className="panel-beveled bg-surface-base w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-3 border-b border-rmpg-700">
           <h2 className="text-sm font-bold text-rmpg-100">
@@ -1382,7 +1405,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
               type="text"
               value={form.course_name}
               onChange={e => update('course_name', e.target.value)}
-              className="input-dark w-full text-[11px] px-2 py-1.5"
+              className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
               placeholder="e.g. Annual Firearms Qualification"
             />
           </div>
@@ -1394,7 +1417,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
               <select
                 value={form.category}
                 onChange={e => update('category', e.target.value)}
-                className="input-dark w-full text-[11px] px-2 py-1.5"
+                className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
               >
                 {CATEGORIES.map(c => (
                   <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>
@@ -1442,7 +1465,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
                 type="number"
                 value={form.renewal_period_months}
                 onChange={e => update('renewal_period_months', e.target.value)}
-                className="input-dark w-full text-[11px] px-2 py-1.5"
+                className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
                 min="0"
                 placeholder="0 = no renewal"
               />
@@ -1455,7 +1478,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
                 type="number"
                 value={form.minimum_hours}
                 onChange={e => update('minimum_hours', e.target.value)}
-                className="input-dark w-full text-[11px] px-2 py-1.5"
+                className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
                 min="0"
                 step="0.5"
               />
@@ -1468,7 +1491,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
             <textarea
               value={form.description}
               onChange={e => update('description', e.target.value)}
-              className="input-dark w-full text-[11px] px-2 py-1.5 h-16 resize-none"
+              className="input-dark w-full text-[11px] px-2 py-1.5 h-16 resize-none min-h-[36px]"
               placeholder="Brief description of this requirement..."
             />
           </div>

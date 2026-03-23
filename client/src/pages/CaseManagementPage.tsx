@@ -81,7 +81,7 @@ function SolvabilityScoreCard({ caseId }: { caseId: string | number }) {
       .finally(() => setLoading(false));
   }, [caseId]);
 
-  if (loading) return <div className="flex items-center gap-2 text-[10px] text-rmpg-500 p-3"><Loader2 className="w-3 h-3 animate-spin" /> Analyzing solvability...</div>;
+  if (loading) return <div className="flex items-center gap-2 text-[10px] text-rmpg-500 p-3"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Analyzing solvability...</div>;
   if (!data) return null;
 
   const ratingColor = data.rating === 'high' ? '#22c55e' : data.rating === 'medium' ? '#f59e0b' : '#ef4444';
@@ -135,7 +135,7 @@ function LinkedIncidentsGraph({ caseId }: { caseId: string | number }) {
       .finally(() => setLoading(false));
   }, [caseId]);
 
-  if (loading) return <div className="flex items-center gap-2 text-[10px] text-rmpg-500 p-3"><Loader2 className="w-3 h-3 animate-spin" /> Loading relationships...</div>;
+  if (loading) return <div className="flex items-center gap-2 text-[10px] text-rmpg-500 p-3"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Loading relationships...</div>;
   if (links.length === 0) return null;
 
   const typeColors: Record<string, string> = {
@@ -193,6 +193,17 @@ function LinkedIncidentsGraph({ caseId }: { caseId: string | number }) {
     </div>
   );
 }
+
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
 
 export default function CaseManagementPage() {
   const isMobile = useIsMobile();
@@ -420,12 +431,24 @@ export default function CaseManagementPage() {
   const getStatusColor = (status: string) => STATUS_OPTIONS.find(s => s.value === status)?.color || '';
   const getPriorityColor = (priority: string) => PRIORITY_OPTIONS.find(p => p.value === priority)?.color || '';
 
+  // Set document title
+  useEffect(() => { document.title = 'Case Management \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setShowReturnModal(false); setFormOpen(false); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className={`h-full flex ${isMobile ? 'flex-col' : ''}`}>
       {/* ── Left: Case List ── */}
       <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Case Management" icon={Briefcase}>
-          <button type="button" onClick={() => { setFormOpen(true); setFormData({ ...EMPTY_FORM }); }} className="toolbar-btn toolbar-btn-primary">
+          <button type="button" onClick={() => { setFormOpen(true); setFormData({ ...EMPTY_FORM }); }} className="toolbar-btn toolbar-btn-primary print:hidden">
             <Plus style={{ width: 11, height: 11 }} /> New
           </button>
           <span className="text-[9px] font-mono text-rmpg-500">{totalCount}</span>
@@ -463,7 +486,7 @@ export default function CaseManagementPage() {
             <input
               value={searchQuery}
               onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
-              placeholder="Search cases..."
+              placeholder="Search cases..." aria-label="Search cases..."
               className="w-full pl-7 pr-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 outline-none"
             />
           </div>
@@ -480,7 +503,7 @@ export default function CaseManagementPage() {
         {/* Case List */}
         <div className="flex-1 overflow-y-auto">
           {loading ? (
-            <div className="flex items-center justify-center h-32"><Loader2 className="w-5 h-5 animate-spin text-rmpg-500" /></div>
+            <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div>
           ) : cases.length === 0 ? (
             <EmptyState
               icon={FolderOpen}
@@ -601,15 +624,15 @@ export default function CaseManagementPage() {
                       )}
                       <div className="flex flex-wrap gap-1">
                         {selected.status === 'under_review' && !(selected as any).approval_status && (
-                          <button type="button" onClick={handleSubmitForReview} disabled={reviewSubmitting} className="toolbar-btn toolbar-btn-primary">
-                            {reviewSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send style={{ width: 11, height: 11 }} />}
+                          <button type="button" onClick={handleSubmitForReview} disabled={reviewSubmitting} className="toolbar-btn toolbar-btn-primary print:hidden">
+                            {reviewSubmitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Send style={{ width: 11, height: 11 }} />}
                             Submit for Review
                           </button>
                         )}
                         {(selected as any).approval_status === 'pending_review' && (
                           <>
                             <button type="button" onClick={() => handleApproveCase('approve')} disabled={reviewSubmitting} className="toolbar-btn text-green-400 border-green-700/50 hover:bg-green-900/30">
-                              {reviewSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck style={{ width: 11, height: 11 }} />}
+                              {reviewSubmitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <ShieldCheck style={{ width: 11, height: 11 }} />}
                               Approve
                             </button>
                             <button type="button" onClick={() => setShowReturnModal(true)} disabled={reviewSubmitting} className="toolbar-btn text-red-400 border-red-700/50 hover:bg-red-900/30">
@@ -688,8 +711,8 @@ export default function CaseManagementPage() {
                       className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 outline-none resize-none"
                     />
                     <div className="flex justify-end mt-2">
-                      <button type="button" onClick={handleAddNote} disabled={noteSubmitting || !newNote.trim()} className="toolbar-btn toolbar-btn-primary">
-                        {noteSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <MessageSquare style={{ width: 11, height: 11 }} />}
+                      <button type="button" onClick={handleAddNote} disabled={noteSubmitting || !newNote.trim()} className="toolbar-btn toolbar-btn-primary print:hidden">
+                        {noteSubmitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <MessageSquare style={{ width: 11, height: 11 }} />}
                         Add Note
                       </button>
                     </div>
@@ -740,8 +763,8 @@ export default function CaseManagementPage() {
                           {SOLVABILITY_FACTORS.reduce((sum, f) => sum + (solvFactors[f.key] ? f.weight : 0), 0)}/100
                         </span>
                       </span>
-                      <button type="button" onClick={handleCalculateSolvability} disabled={solvSubmitting} className="toolbar-btn toolbar-btn-primary">
-                        {solvSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Target style={{ width: 11, height: 11 }} />}
+                      <button type="button" onClick={handleCalculateSolvability} disabled={solvSubmitting} className="toolbar-btn toolbar-btn-primary print:hidden">
+                        {solvSubmitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Target style={{ width: 11, height: 11 }} />}
                         Calculate & Save
                       </button>
                     </div>
@@ -762,7 +785,7 @@ export default function CaseManagementPage() {
 
       {/* ── Return Case Modal ── */}
       {showReturnModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Return Case" icon={RotateCcw}>
               <button type="button" onClick={() => setShowReturnModal(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
@@ -777,7 +800,7 @@ export default function CaseManagementPage() {
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setShowReturnModal(false)} className="toolbar-btn">Cancel</button>
                 <button type="button" onClick={() => handleApproveCase('return')} disabled={reviewSubmitting || !returnReason.trim()} className="toolbar-btn text-red-400 border-red-700/50 hover:bg-red-900/30">
-                  {reviewSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw style={{ width: 11, height: 11 }} />}
+                  {reviewSubmitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <RotateCcw style={{ width: 11, height: 11 }} />}
                   Return Case
                 </button>
               </div>
@@ -788,7 +811,7 @@ export default function CaseManagementPage() {
 
       {/* ── Link Person Modal ── */}
       {linkPersonOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Link Person to Case" icon={Link}>
               <button type="button" onClick={() => { setLinkPersonOpen(false); setPersonResults([]); setPersonSearchQuery(''); }} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
@@ -797,10 +820,10 @@ export default function CaseManagementPage() {
               <div className="flex gap-2">
                 <input value={personSearchQuery} onChange={e => setPersonSearchQuery(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handlePersonSearch()}
-                  placeholder="Search by name, phone, email..."
-                  className="flex-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
-                <button type="button" onClick={handlePersonSearch} disabled={personSearching} className="toolbar-btn toolbar-btn-primary">
-                  {personSearching ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search style={{ width: 11, height: 11 }} />}
+                  placeholder="Search by name, phone, email..." aria-label="Search by name, phone, email..."
+                  className="flex-1 px-2 py-1.5 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                <button type="button" onClick={handlePersonSearch} disabled={personSearching} className="toolbar-btn toolbar-btn-primary print:hidden">
+                  {personSearching ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Search style={{ width: 11, height: 11 }} />}
                   Search
                 </button>
               </div>
@@ -826,7 +849,7 @@ export default function CaseManagementPage() {
 
       {/* ── New Case Modal ── */}
       {formOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="New Case" icon={Plus}>
               <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
@@ -863,8 +886,8 @@ export default function CaseManagementPage() {
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn">Cancel</button>
-                <button type="button" onClick={handleCreate} disabled={submitting} className="toolbar-btn toolbar-btn-primary">
-                  {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />}
+                <button type="button" onClick={handleCreate} disabled={submitting} className="toolbar-btn toolbar-btn-primary print:hidden">
+                  {submitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: 11, height: 11 }} />}
                   Create Case
                 </button>
               </div>

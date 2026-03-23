@@ -44,6 +44,17 @@ function useCopyToClipboard() {
   return { copied, copy };
 }
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function SkipTracerPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
@@ -202,6 +213,9 @@ export default function SkipTracerPage() {
     );
   };
 
+  // Set document title
+  useEffect(() => { document.title = 'Skip Tracer \u2014 RMPG Flex'; }, []);
+
   return (
     <div className="flex flex-col h-full animate-fade-in">
       <PanelTitleBar title="SKIP TRACER" icon={Search}>
@@ -309,7 +323,7 @@ export default function SkipTracerPage() {
                 disabled={loading}
                 className="w-full flex items-center justify-center gap-2 py-2 text-[10px] font-bold uppercase tracking-wider bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 border border-blue-700"
               >
-                {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
+                {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Search className="w-3.5 h-3.5" />}
                 Search
               </button>
             </div>
@@ -460,7 +474,7 @@ export default function SkipTracerPage() {
                       disabled={loadingDetail}
                       className="flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-blue-700/20 text-blue-400 border border-blue-700/50 hover:bg-blue-700/40 disabled:opacity-50"
                     >
-                      {loadingDetail ? <Loader2 className="w-3 h-3 animate-spin" /> : <ExternalLink className="w-3 h-3" />}
+                      {loadingDetail ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <ExternalLink className="w-3 h-3" />}
                       Full Details
                     </button>
                   )}

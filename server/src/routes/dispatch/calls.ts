@@ -75,7 +75,7 @@ router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
     }
     if (propertyId) {
       const pid = parseInt(String(propertyId), 10);
-      if (isNaN(pid) || pid < 1) { res.status(400).json({ error: 'Invalid propertyId' }); return; }
+      if (isNaN(pid) || pid < 1) { res.status(400).json({ error: 'Invalid propertyId', code: 'INVALID_PROPERTYID' }); return; }
     }
 
     let whereClause = 'WHERE 1=1';
@@ -161,7 +161,7 @@ router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
     });
   } catch (error: any) {
     console.error('Get calls error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get calls', code: 'GET_CALLS_ERROR' });
   }
 });
 
@@ -217,11 +217,11 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       return;
     }
     if (req.body.num_subjects != null && (isNaN(Number(req.body.num_subjects)) || Number(req.body.num_subjects) < 0)) {
-      res.status(400).json({ error: 'Invalid num_subjects value' });
+      res.status(400).json({ error: 'Invalid num_subjects value', code: 'INVALID_NUMSUBJECTS_VALUE' });
       return;
     }
     if (req.body.num_victims != null && (isNaN(Number(req.body.num_victims)) || Number(req.body.num_victims) < 0)) {
-      res.status(400).json({ error: 'Invalid num_victims value' });
+      res.status(400).json({ error: 'Invalid num_victims value', code: 'INVALID_NUMVICTIMS_VALUE' });
       return;
     }
 
@@ -443,7 +443,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     res.status(201).json(call);
   } catch (error: any) {
     console.error('Create call error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create call', code: 'CREATE_CALL_ERROR' });
   }
 });
 
@@ -497,7 +497,7 @@ router.get('/calls/export', requireRole('admin', 'manager', 'supervisor'), (req:
     ], rows);
   } catch (error: any) {
     console.error('Export calls error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to export calls', code: 'EXPORT_CALLS_ERROR' });
   }
 });
 
@@ -527,7 +527,7 @@ router.get('/calls/check-duplicate', requireRole('admin', 'manager', 'supervisor
     res.json({ duplicates, count: duplicates.length });
   } catch (error: any) {
     console.error('Duplicate check error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to duplicate check', code: 'DUPLICATE_CHECK_ERROR' });
   }
 });
 
@@ -548,7 +548,7 @@ router.get('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     `).get(req.params.id) as any;
 
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
@@ -564,6 +564,8 @@ router.get('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
           FROM units u
           LEFT JOIN users usr ON u.officer_id = usr.id
           WHERE u.id IN (${placeholders})
+        
+          LIMIT 1000
         `).all(...unitIds);
       }
     } catch { /* ignore parse errors */ }
@@ -572,6 +574,8 @@ router.get('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     const incidents = db.prepare(`
       SELECT id, incident_number, incident_type, status, created_at
       FROM incidents WHERE call_id = ?
+    
+      LIMIT 1000
     `).all(call.id);
 
     // Get activity log for this call
@@ -581,6 +585,8 @@ router.get('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
       LEFT JOIN users u ON al.user_id = u.id
       WHERE al.entity_type = 'call' AND al.entity_id = ?
       ORDER BY al.created_at DESC
+    
+      LIMIT 1000
     `).all(call.id);
 
     // Attach visit history for PSO calls
@@ -602,7 +608,7 @@ router.get('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     });
   } catch (error: any) {
     console.error('Get call error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get call', code: 'GET_CALL_ERROR' });
   }
 });
 
@@ -612,7 +618,7 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
@@ -819,7 +825,7 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     addField('client_id', resolvedUpdateClientId);
 
     if (updates.length === 0) {
-      res.status(400).json({ error: 'No fields to update' });
+      res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
       return;
     }
 
@@ -846,7 +852,7 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     res.json(updated);
   } catch (error: any) {
     console.error('Update call error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update call', code: 'UPDATE_CALL_ERROR' });
   }
 });
 
@@ -857,19 +863,19 @@ router.post('/calls/:id/redispatch', validateParamIdMiddleware, requireRole('adm
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
 
     // Only allow re-dispatch on PSO Client Request incidents
     if (call.incident_type !== 'pso_client_request') {
-      res.status(400).json({ error: 'Re-dispatch is only available for PSO Client Request calls' });
+      res.status(400).json({ error: 'Re-dispatch is only available for PSO Client Request calls', code: 'REDISPATCH_IS_ONLY_AVAILABLE' });
       return;
     }
 
     // Only allow re-dispatch on completed/inactive calls
     if (!['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(call.status)) {
-      res.status(400).json({ error: 'Call must be cleared, closed, cancelled, on hold, or archived to re-dispatch' });
+      res.status(400).json({ error: 'Call must be cleared, closed, cancelled, on hold, or archived to re-dispatch', code: 'CALL_MUST_BE_CLEARED' });
       return;
     }
 
@@ -892,7 +898,9 @@ router.post('/calls/:id/redispatch', validateParamIdMiddleware, requireRole('adm
       const parsedIds = JSON.parse(call.assigned_unit_ids || '[]');
       const unitIds = (Array.isArray(parsedIds) ? parsedIds : []).filter((id: any) => typeof id === 'number' && !isNaN(id));
       if (unitIds.length) {
-        const units = db.prepare(`SELECT call_sign FROM units WHERE id IN (${unitIds.map(() => '?').join(',')})`).all(...unitIds) as any[];
+        const units = db.prepare(`SELECT call_sign FROM units WHERE id IN (${unitIds.map(() => '?').join(',')})
+          LIMIT 1000
+        `).all(...unitIds) as any[];
         assignedCallSigns = units.map((u: any) => u.call_sign).filter(Boolean);
       }
     } catch { /* ignore parse errors */ }
@@ -966,7 +974,7 @@ router.post('/calls/:id/redispatch', validateParamIdMiddleware, requireRole('adm
     res.json({ ...updated, visit_history: visitHistory });
   } catch (error: any) {
     console.error('Re-dispatch call error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to re-dispatch call', code: 'REDISPATCH_CALL_ERROR' });
   }
 });
 
@@ -976,14 +984,14 @@ router.get('/calls/:id/visit-history', validateParamIdMiddleware, requireRole('a
     const db = getDb();
     const call = db.prepare('SELECT id, incident_type FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
     const history = db.prepare('SELECT * FROM call_visit_history WHERE call_id = ? ORDER BY visit_number ASC').all(req.params.id);
     res.json(history);
   } catch (error: any) {
     console.error('Visit history error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to visit history', code: 'VISIT_HISTORY_ERROR' });
   }
 });
 
@@ -993,11 +1001,11 @@ router.get('/calls/:id/pso-compliance', validateParamIdMiddleware, requireRole('
     const db = getDb();
     const call = db.prepare('SELECT id, incident_type, pso_service_windows, pso_attempt_number, pso_72hr_deadline, created_at FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) {
-      res.status(404).json({ error: 'Call not found' });
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
       return;
     }
     if (call.incident_type !== 'pso_client_request') {
-      res.status(400).json({ error: 'Not a PSO call' });
+      res.status(400).json({ error: 'Not a PSO call', code: 'NOT_A_PSO_CALL' });
       return;
     }
 
@@ -1033,7 +1041,7 @@ router.get('/calls/:id/pso-compliance', validateParamIdMiddleware, requireRole('
     });
   } catch (error: any) {
     console.error('PSO compliance check error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to pso compliance check', code: 'PSO_COMPLIANCE_CHECK_ERROR' });
   }
 });
 
@@ -1045,10 +1053,10 @@ router.put('/calls/:id/tags', validateParamIdMiddleware, requireRole('admin', 'm
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
-    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+    if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
 
     const { tags } = req.body;
-    if (!Array.isArray(tags)) { res.status(400).json({ error: 'tags must be an array' }); return; }
+    if (!Array.isArray(tags)) { res.status(400).json({ error: 'tags must be an array', code: 'TAGS_MUST_BE_AN' }); return; }
 
     // Validate each tag
     const validTags = tags.filter((t: string) => VALID_CALL_TAGS.includes(t));
@@ -1059,7 +1067,7 @@ router.put('/calls/:id/tags', validateParamIdMiddleware, requireRole('admin', 'm
     res.json({ success: true, tags: validTags });
   } catch (error: any) {
     console.error('Update call tags error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update call tags', code: 'UPDATE_CALL_TAGS_ERROR' });
   }
 });
 
@@ -1073,7 +1081,7 @@ router.get('/shift-handoff', requireRole('admin', 'manager', 'supervisor', 'disp
     res.json(notes);
   } catch (error: any) {
     console.error('Get shift handoff error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get shift handoff', code: 'GET_SHIFT_HANDOFF_ERROR' });
   }
 });
 
@@ -1102,7 +1110,7 @@ router.put('/shift-handoff', requireRole('admin', 'manager', 'supervisor', 'disp
     res.json({ success: true });
   } catch (error: any) {
     console.error('Save shift handoff error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to save shift handoff', code: 'SAVE_SHIFT_HANDOFF_ERROR' });
   }
 });
 

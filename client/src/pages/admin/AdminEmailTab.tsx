@@ -196,6 +196,9 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
 
   if (loading) return <div className="p-8 text-center"><LoadingSpinner /></div>;
 
+  // Set document title
+  useEffect(() => { document.title = 'Admin - Email \u2014 RMPG Flex'; }, []);
+
   return (
     <div className="space-y-4">
       {error && (
@@ -277,7 +280,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
               value={clientId}
               onChange={e => setClientId(e.target.value)}
               placeholder={status?.configured ? '••••••••••••••••' : 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'}
-              className="input-dark w-full text-xs font-mono"
+              className="input-dark w-full text-xs font-mono min-h-[36px]"
             />
           </div>
           <div>
@@ -288,7 +291,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
                 value={clientSecret}
                 onChange={e => setClientSecret(e.target.value)}
                 placeholder={status?.configured ? '••••••••••••••••' : 'Enter client secret'}
-                className="input-dark w-full text-xs font-mono pr-8"
+                className="input-dark w-full text-xs font-mono pr-8 min-h-[36px]"
               />
               <button type="button" onClick={() => setShowSecret(!showSecret)}
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white">
@@ -303,7 +306,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
               value={tenantId}
               onChange={e => setTenantId(e.target.value)}
               placeholder={status?.configured ? '••••••••••••••••' : 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'}
-              className="input-dark w-full text-xs font-mono"
+              className="input-dark w-full text-xs font-mono min-h-[36px]"
             />
           </div>
         </div>
@@ -311,7 +314,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
         <div className="flex items-center gap-2">
           <button type="button" onClick={handleSaveCredentials} disabled={saving}
             className="btn-primary text-[10px] px-3 py-1 flex items-center gap-1">
-            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+            {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <CheckCircle2 className="w-3 h-3" />}
             Save Credentials
           </button>
           {status?.configured && (
@@ -322,7 +325,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
               </button>
               <button type="button" onClick={handleTestConnection} disabled={testing}
                 className="btn-secondary text-[10px] px-3 py-1 flex items-center gap-1">
-                {testing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wifi className="w-3 h-3" />}
+                {testing ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Wifi className="w-3 h-3" />}
                 Test Connection
               </button>
             </>
@@ -395,7 +398,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
             </select>
             <button type="button" onClick={handleSyncNow} disabled={syncing}
               className="btn-secondary text-[10px] px-2 py-0.5 flex items-center gap-1">
-              {syncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+              {syncing ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <RefreshCw className="w-3 h-3" />}
               Sync Now
             </button>
           </div>
@@ -429,7 +432,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
               value={smtpPassword}
               onChange={e => setSmtpPassword(e.target.value)}
               placeholder={status?.smtpFallback ? '••••••••••••' : 'Enter app password'}
-              className="input-dark w-full text-xs font-mono pr-8"
+              className="input-dark w-full text-xs font-mono pr-8 min-h-[36px]"
             />
             <button type="button" onClick={() => setShowSmtpPassword(!showSmtpPassword)}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white">

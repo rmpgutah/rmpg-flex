@@ -248,14 +248,14 @@ export default function AdvancedHeatmapPanel({
         <div className="flex items-center gap-1.5">
           <button type="button"
             onClick={onRefresh}
-            className="toolbar-btn p-1 rounded-sm hover:bg-white/5"
+            className="toolbar-btn p-1 rounded-sm hover:bg-surface-raised/50"
             title="Refresh data"
           >
             <RotateCw size={12} className="text-rmpg-500 hover:text-rmpg-300" />
           </button>
           <button type="button"
             onClick={onClose}
-            className="toolbar-btn p-1 rounded-sm hover:bg-white/5"
+            className="toolbar-btn p-1 rounded-sm hover:bg-surface-raised/50"
             aria-label="Close advanced heatmap panel"
             title="Close"
           >

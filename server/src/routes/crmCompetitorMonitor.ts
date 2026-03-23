@@ -66,7 +66,7 @@ router.post(
     };
 
     if (!url || typeof url !== 'string' || !url.trim()) {
-      res.status(400).json({ error: 'url is required' });
+      res.status(400).json({ error: 'url is required', code: 'URL_IS_REQUIRED' });
       return;
     }
 
@@ -74,7 +74,7 @@ router.post(
     try {
       new URL(url.trim());
     } catch {
-      res.status(400).json({ error: 'Invalid URL format' });
+      res.status(400).json({ error: 'Invalid URL format', code: 'INVALID_URL_FORMAT' });
       return;
     }
 
@@ -111,7 +111,7 @@ router.put(
   (req: Request, res: Response) => {
     const id = Number(req.params.id);
     if (!id || isNaN(id)) {
-      res.status(400).json({ error: 'Invalid id' });
+      res.status(400).json({ error: 'Invalid id', code: 'INVALID_ID' });
       return;
     }
 
@@ -125,7 +125,7 @@ router.put(
       const db = getDb();
       const existing = db.prepare('SELECT id FROM firecrawl_monitored_urls WHERE id = ?').get(id);
       if (!existing) {
-        res.status(404).json({ error: 'Monitored URL not found' });
+        res.status(404).json({ error: 'Monitored URL not found', code: 'MONITORED_URL_NOT_FOUND' });
         return;
       }
 
@@ -147,7 +147,7 @@ router.put(
       }
 
       if (updates.length === 0) {
-        res.status(400).json({ error: 'No fields to update' });
+        res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
         return;
       }
 
@@ -177,7 +177,7 @@ router.delete(
   (req: Request, res: Response) => {
     const id = Number(req.params.id);
     if (!id || isNaN(id)) {
-      res.status(400).json({ error: 'Invalid id' });
+      res.status(400).json({ error: 'Invalid id', code: 'INVALID_ID' });
       return;
     }
 
@@ -185,7 +185,7 @@ router.delete(
       const db = getDb();
       const existing = db.prepare('SELECT url FROM firecrawl_monitored_urls WHERE id = ?').get(id) as { url: string } | undefined;
       if (!existing) {
-        res.status(404).json({ error: 'Monitored URL not found' });
+        res.status(404).json({ error: 'Monitored URL not found', code: 'MONITORED_URL_NOT_FOUND' });
         return;
       }
 
@@ -213,7 +213,7 @@ router.get(
   (req: Request, res: Response) => {
     const id = Number(req.params.id);
     if (!id || isNaN(id)) {
-      res.status(400).json({ error: 'Invalid id' });
+      res.status(400).json({ error: 'Invalid id', code: 'INVALID_ID' });
       return;
     }
 
@@ -246,7 +246,7 @@ router.post(
   async (req: Request, res: Response) => {
     const id = Number(req.params.id);
     if (!id || isNaN(id)) {
-      res.status(400).json({ error: 'Invalid id' });
+      res.status(400).json({ error: 'Invalid id', code: 'INVALID_ID' });
       return;
     }
 
@@ -254,7 +254,7 @@ router.post(
       const db = getDb();
       const monitored = db.prepare('SELECT * FROM firecrawl_monitored_urls WHERE id = ?').get(id) as any;
       if (!monitored) {
-        res.status(404).json({ error: 'Monitored URL not found' });
+        res.status(404).json({ error: 'Monitored URL not found', code: 'MONITORED_URL_NOT_FOUND' });
         return;
       }
 
@@ -335,7 +335,7 @@ router.post(
   (req: Request, res: Response) => {
     const changeId = Number(req.params.changeId);
     if (!changeId || isNaN(changeId)) {
-      res.status(400).json({ error: 'Invalid changeId' });
+      res.status(400).json({ error: 'Invalid changeId', code: 'INVALID_CHANGEID' });
       return;
     }
 
@@ -346,7 +346,7 @@ router.post(
       ).run(changeId);
 
       if (result.changes === 0) {
-        res.status(404).json({ error: 'Change not found' });
+        res.status(404).json({ error: 'Change not found', code: 'CHANGE_NOT_FOUND' });
         return;
       }
 

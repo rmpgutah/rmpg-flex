@@ -88,7 +88,7 @@ router.post('/', requireRole('admin', 'supervisor'), (req: Request, res: Respons
     }
 
     if (!polygon_coords) {
-      res.status(400).json({ error: 'polygon_coords is required' });
+      res.status(400).json({ error: 'polygon_coords is required', code: 'POLYGONCOORDS_IS_REQUIRED' });
       return;
     }
 
@@ -100,7 +100,7 @@ router.post('/', requireRole('admin', 'supervisor'), (req: Request, res: Respons
         parsedCoords = JSON.parse(polygon_coords);
         coordsStr = polygon_coords;
       } catch {
-        res.status(400).json({ error: 'polygon_coords must be valid JSON' });
+        res.status(400).json({ error: 'polygon_coords must be valid JSON', code: 'POLYGONCOORDS_MUST_BE_VALID' });
         return;
       }
     } else {
@@ -109,14 +109,14 @@ router.post('/', requireRole('admin', 'supervisor'), (req: Request, res: Respons
     }
 
     if (!Array.isArray(parsedCoords) || parsedCoords.length < 3) {
-      res.status(400).json({ error: 'polygon_coords must be an array with at least 3 points' });
+      res.status(400).json({ error: 'polygon_coords must be an array with at least 3 points', code: 'POLYGONCOORDS_MUST_BE_AN' });
       return;
     }
     for (const pt of parsedCoords) {
       if (typeof pt !== 'object' || pt === null ||
           typeof pt.lat !== 'number' || typeof pt.lng !== 'number' ||
           !Number.isFinite(pt.lat) || !Number.isFinite(pt.lng)) {
-        res.status(400).json({ error: 'Each point in polygon_coords must have numeric lat and lng' });
+        res.status(400).json({ error: 'Each point in polygon_coords must have numeric lat and lng', code: 'EACH_POINT_IN_POLYGONCOORDS' });
         return;
       }
     }
@@ -163,13 +163,13 @@ router.put('/:id', requireRole('admin', 'supervisor'), (req: Request, res: Respo
     const db = getDb();
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
-      res.status(400).json({ error: 'Invalid geofence ID' });
+      res.status(400).json({ error: 'Invalid geofence ID', code: 'INVALID_GEOFENCE_ID' });
       return;
     }
 
     const existing = db.prepare('SELECT * FROM geofences WHERE id = ?').get(id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Geofence not found' });
+      res.status(404).json({ error: 'Geofence not found', code: 'GEOFENCE_NOT_FOUND' });
       return;
     }
 
@@ -183,7 +183,7 @@ router.put('/:id', requireRole('admin', 'supervisor'), (req: Request, res: Respo
           JSON.parse(polygon_coords);
           coordsStr = polygon_coords;
         } catch {
-          res.status(400).json({ error: 'polygon_coords must be valid JSON' });
+          res.status(400).json({ error: 'polygon_coords must be valid JSON', code: 'POLYGONCOORDS_MUST_BE_VALID' });
           return;
         }
       } else {
@@ -260,13 +260,13 @@ router.delete('/:id', requireRole('admin', 'supervisor'), (req: Request, res: Re
     const db = getDb();
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
-      res.status(400).json({ error: 'Invalid geofence ID' });
+      res.status(400).json({ error: 'Invalid geofence ID', code: 'INVALID_GEOFENCE_ID' });
       return;
     }
 
     const existing = db.prepare('SELECT * FROM geofences WHERE id = ?').get(id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Geofence not found' });
+      res.status(404).json({ error: 'Geofence not found', code: 'GEOFENCE_NOT_FOUND' });
       return;
     }
 

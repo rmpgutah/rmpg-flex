@@ -178,3 +178,76 @@ export function validateField(
 
   return { valid: true };
 }
+
+// ============================================================
+// Input format patterns (for HTML pattern attribute)
+// ============================================================
+
+/** Regex pattern strings for use with HTML input `pattern` attribute */
+export const INPUT_PATTERNS = {
+  /** US phone: (801) 555-1234 or 8015551234 or 801-555-1234 */
+  phone: '[0-9()\\-\\s+]{7,20}',
+  /** Email: simple pattern for HTML validation */
+  email: '[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}',
+  /** Badge number: 1-10 alphanumeric */
+  badge: '[A-Za-z0-9]{1,10}',
+  /** ZIP code: 5 digits or ZIP+4 */
+  zip: '\\d{5}(-\\d{4})?',
+  /** VIN: 17 alphanumeric (no I, O, Q) */
+  vin: '[A-HJ-NPR-Za-hj-npr-z0-9]{17}',
+  /** License plate: 2-8 alphanumeric */
+  plate: '[A-Za-z0-9\\s-]{2,8}',
+  /** Date: YYYY-MM-DD */
+  date: '\\d{4}-\\d{2}-\\d{2}',
+  /** Currency amount: optional decimals */
+  currency: '\\d+(\\.\\d{1,2})?',
+  /** Percentage: 0-100 with optional decimal */
+  percentage: '(100(\\.0{1,2})?|\\d{1,2}(\\.\\d{1,2})?)',
+} as const;
+
+/** Placeholder hints for common field types */
+export const INPUT_PLACEHOLDERS = {
+  phone: '(801) 555-1234',
+  email: 'user@example.com',
+  badge: 'e.g. B1234',
+  zip: 'e.g. 84101',
+  vin: '17-character VIN',
+  plate: 'e.g. ABC 1234',
+  date: 'YYYY-MM-DD',
+  currency: 'e.g. 1500.00',
+  ssn: 'XXX-XX-XXXX',
+} as const;
+
+// ============================================================
+// Compound validators
+// ============================================================
+
+/** Validate that a string is a valid non-negative number */
+export function isValidPositiveNumber(value: string): boolean {
+  const n = parseFloat(value);
+  return !isNaN(n) && n >= 0;
+}
+
+/** Validate that a string is a valid integer within range */
+export function isValidIntegerInRange(value: string, min: number, max: number): boolean {
+  const n = parseInt(value, 10);
+  return !isNaN(n) && Number.isInteger(n) && n >= min && n <= max;
+}
+
+/** Validate a Tax ID / EIN format (XX-XXXXXXX) */
+export function isValidTaxId(taxId: string): boolean {
+  return /^\d{2}-\d{7}$/.test(taxId.trim());
+}
+
+/** Validate required fields in a form object. Returns array of missing field names. */
+export function getMissingRequiredFields(
+  data: Record<string, any>,
+  requiredFields: string[],
+): string[] {
+  return requiredFields.filter((field) => {
+    const val = data[field];
+    if (val == null) return true;
+    if (typeof val === 'string' && val.trim() === '') return true;
+    return false;
+  });
+}

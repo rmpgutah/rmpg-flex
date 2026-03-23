@@ -72,6 +72,17 @@ function followUpStatus(date: string | null): 'none' | 'upcoming' | 'overdue' | 
 }
 
 // ─── Main component ─────────────────────────────────────────
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabProps) {
   const toast = useToast();
   const manager = isManagerPlus(userRole);
@@ -260,6 +271,18 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
   }
 
   // ─── Manager / Admin view ────────────────────────────────
+  // Set document title
+  useEffect(() => { document.title = 'HR - Disciplinary \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setModalOpen(false); setEditRecord(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="p-4 space-y-4">
       {/* Header + actions */}

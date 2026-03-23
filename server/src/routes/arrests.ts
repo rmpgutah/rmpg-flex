@@ -142,7 +142,7 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
 
     const fullName = validateStr(b.full_name, 'full_name', 200);
     if (!fullName || fullName.length < 2) {
-      return res.status(400).json({ error: 'Full name is required (min 2 characters)' });
+      return res.status(400).json({ error: 'Full name is required (min 2 characters)', code: 'FULL_NAME_IS_REQUIRED' });
     }
 
     const validDob = validateDateStr(b.date_of_birth, 'date_of_birth');
@@ -210,7 +210,7 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
     if (err.message?.startsWith('Invalid ') || err.message?.includes('must be')) {
       res.status(400).json({ error: err.message }); return;
     }
-    console.error(err); res.status(500).json({ error: 'Internal server error' });
+    console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -220,10 +220,10 @@ router.put('/manual/:id', validateParamIdMiddleware, requireRole('admin', 'manag
     const db = getDb();
     const now = localNow();
     const id = parseInt(req.params.id as string, 10);
-    if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' });
 
     const existing = db.prepare('SELECT id FROM arrest_records WHERE id = ?').get(id);
-    if (!existing) return res.status(404).json({ error: 'Record not found' });
+    if (!existing) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
 
     const b = req.body;
     const updates: string[] = [];
@@ -263,7 +263,7 @@ router.put('/manual/:id', validateParamIdMiddleware, requireRole('admin', 'manag
     }
 
     if (updates.length === 0) {
-      return res.status(400).json({ error: 'No fields to update' });
+      return res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
     }
 
     updates.push('updated_at = ?');
@@ -277,7 +277,7 @@ router.put('/manual/:id', validateParamIdMiddleware, requireRole('admin', 'manag
 
     res.json({ success: true, message: 'Record updated' });
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error' });
+    console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -286,10 +286,10 @@ router.delete('/manual/:id', validateParamIdMiddleware, requireRole('admin', 'ma
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
-    if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' });
 
     const existing = db.prepare('SELECT id FROM arrest_records WHERE id = ?').get(id);
-    if (!existing) return res.status(404).json({ error: 'Record not found' });
+    if (!existing) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
 
     // Delete cross-links first (FK cascade should handle, but be explicit)
     db.prepare('DELETE FROM arrest_cross_links WHERE arrest_record_id = ?').run(id);
@@ -300,7 +300,7 @@ router.delete('/manual/:id', validateParamIdMiddleware, requireRole('admin', 'ma
 
     res.json({ success: true, message: 'Record deleted' });
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error' });
+    console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -309,10 +309,10 @@ router.get('/manual/:id', validateParamIdMiddleware, (req: Request, res: Respons
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
-    if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' });
 
     const record = db.prepare('SELECT * FROM arrest_records WHERE id = ?').get(id) as any;
-    if (!record) return res.status(404).json({ error: 'Record not found' });
+    if (!record) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
 
     // Parse charges
     try { record.charges = JSON.parse(record.charges || '[]'); } catch { record.charges = []; }
@@ -321,11 +321,13 @@ router.get('/manual/:id', validateParamIdMiddleware, (req: Request, res: Respons
     const links = db.prepare(`
       SELECT linked_type, linked_id, match_type, match_confidence, created_at
       FROM arrest_cross_links WHERE arrest_record_id = ?
+    
+      LIMIT 1000
     `).all(id);
 
     res.json({ ...record, cross_links: links });
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error' });
+    console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -338,11 +340,11 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
     const { records, county, agency } = req.body;
 
     if (!Array.isArray(records) || records.length === 0) {
-      return res.status(400).json({ error: 'records array is required and must not be empty' });
+      return res.status(400).json({ error: 'records array is required and must not be empty', code: 'RECORDS_ARRAY_IS_REQUIRED' });
     }
 
     if (records.length > 500) {
-      return res.status(400).json({ error: 'Maximum 500 records per import' });
+      return res.status(400).json({ error: 'Maximum 500 records per import', code: 'MAXIMUM_500_RECORDS_PER' });
     }
 
     const insert = db.prepare(`
@@ -450,7 +452,7 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
       res.json({ success: true, imported, skipped, total: records.length, errors: errors.length > 0 ? errors : undefined });
     }
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error' });
+    console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -492,7 +494,7 @@ router.get('/status', (_req: Request, res: Response) => {
       apiOffline,
     });
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error' });
+    console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -501,7 +503,7 @@ router.put('/credentials', requireRole('admin', 'manager'), (req: Request, res: 
   try {
     const { apiKey } = req.body;
     if (!apiKey || typeof apiKey !== 'string' || apiKey.length < 10) {
-      return res.status(400).json({ error: 'Invalid API key' });
+      return res.status(400).json({ error: 'Invalid API key', code: 'INVALID_API_KEY' });
     }
     setConfigValue(CONFIG_KEYS.apiKey, apiKey.trim(), true);
     if (getConfigValue(CONFIG_KEYS.enabled) !== 'true') {
@@ -509,7 +511,7 @@ router.put('/credentials', requireRole('admin', 'manager'), (req: Request, res: 
     }
     res.json({ success: true, message: 'API key saved and encrypted' });
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error' });
+    console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -520,7 +522,7 @@ router.delete('/credentials', requireRole('admin', 'manager'), (_req: Request, r
     setConfigValue(CONFIG_KEYS.enabled, 'false');
     res.json({ success: true, message: 'API key removed' });
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error' });
+    console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -531,7 +533,7 @@ router.put('/toggle', requireRole('admin', 'manager'), (req: Request, res: Respo
     setConfigValue(CONFIG_KEYS.enabled, enabled ? 'true' : 'false');
     res.json({ success: true, enabled: !!enabled });
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error' });
+    console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -568,7 +570,7 @@ router.post('/test', requireRole('admin', 'manager'), async (_req: Request, res:
 router.get('/search', async (req: Request, res: Response) => {
   try {
     const name = (req.query.name as string || '').trim();
-    if (!name || name.length < 2) return res.status(400).json({ error: 'Name required (min 2 characters)' });
+    if (!name || name.length < 2) return res.status(400).json({ error: 'Name required (min 2 characters)', code: 'NAME_REQUIRED_MIN_2' });
     const result = await searchArrests(name);
 
     // Apply optional client-side filters (source, source_id/county) that searchArrests doesn't handle
@@ -585,7 +587,7 @@ router.get('/search', async (req: Request, res: Response) => {
 
     res.json(result);
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error' });
+    console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -640,20 +642,20 @@ router.get('/recent', (req: Request, res: Response) => {
 
     res.json({ records: parsed, total, page, limit, totalPages: Math.ceil(total / limit) });
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error' });
+    console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
 // ── GET /sync-status ────────────────────────────────────────
 router.get('/sync-status', (_req: Request, res: Response) => {
   try { res.json(getArrestSyncStatus()); }
-  catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
+  catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' }); }
 });
 
 // ── GET /usage ──────────────────────────────────────────────
 router.get('/usage', (_req: Request, res: Response) => {
   try { res.json(getArrestUsageStats()); }
-  catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
+  catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' }); }
 });
 
 // ── POST /sync — Manual API sync ────────────────────────────
@@ -661,7 +663,7 @@ router.post('/sync', requireRole('admin', 'manager'), async (_req: Request, res:
   try {
     const result = await syncArrestData();
     res.json({ success: true, ...result });
-  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' }); }
 });
 
 // ── GET /states — Record counts by state ────────────────────
@@ -675,7 +677,7 @@ router.get('/states', (_req: Request, res: Response) => {
       ORDER BY count DESC
     `).all() as { state: string; count: number }[];
     res.json({ states });
-  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' }); }
 });
 
 // ── GET /counties ───────────────────────────────────────────
@@ -696,17 +698,17 @@ router.get('/counties', async (req: Request, res: Response) => {
       enabled: enabled.length === 0 || enabled.includes(c.sourceId),
     }));
     res.json({ sources, discovered: false });
-  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' }); }
 });
 
 // ── PUT /counties ───────────────────────────────────────────
 router.put('/counties', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const { counties } = req.body;
-    if (!Array.isArray(counties)) return res.status(400).json({ error: 'counties must be an array' });
+    if (!Array.isArray(counties)) return res.status(400).json({ error: 'counties must be an array', code: 'COUNTIES_MUST_BE_AN' });
     setConfigValue(CONFIG_KEYS.enabledCounties, JSON.stringify(counties));
     res.json({ success: true, enabledCounties: counties });
-  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' }); }
 });
 
 // ── GET /:id/cross-links ────────────────────────────────────
@@ -714,12 +716,12 @@ router.get('/:id/cross-links', validateParamIdMiddleware, (req: Request, res: Re
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
-    if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' });
     const links = db.prepare(
       'SELECT linked_type, linked_id, match_type, match_confidence, created_at FROM arrest_cross_links WHERE arrest_record_id = ?'
     ).all(id) as any[];
     res.json({ arrestRecordId: id, links });
-  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' }); }
 });
 
 // ── PUT /:id/link-person ────────────────────────────────────
@@ -729,12 +731,12 @@ router.put('/:id/link-person', validateParamIdMiddleware, requireRole('admin', '
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
     const { person_id } = req.body;
-    if (isNaN(id)) return res.status(400).json({ error: 'Invalid arrest record ID' });
-    if (!person_id) return res.status(400).json({ error: 'person_id is required' });
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid arrest record ID', code: 'INVALID_ARREST_RECORD_ID' });
+    if (!person_id) return res.status(400).json({ error: 'person_id is required', code: 'PERSONID_IS_REQUIRED' });
 
     // Verify person exists
     const person = db.prepare('SELECT id, first_name, last_name FROM persons WHERE id = ?').get(person_id) as any;
-    if (!person) return res.status(404).json({ error: 'Person not found' });
+    if (!person) return res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' });
 
     // Update arrest record with person_id
     db.prepare('UPDATE arrest_records SET person_id = ?, updated_at = ? WHERE id = ?')
@@ -755,7 +757,7 @@ router.put('/:id/link-person', validateParamIdMiddleware, requireRole('admin', '
     broadcastRecordUpdate({ type: 'arrest_linked', arrestId: id, personId: person_id });
 
     res.json({ success: true, person: { id: person.id, name: `${person.last_name}, ${person.first_name}` } });
-  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' }); }
 });
 
 // ── DELETE /:id/link-person ─────────────────────────────────
@@ -764,10 +766,10 @@ router.delete('/:id/link-person', validateParamIdMiddleware, requireRole('admin'
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
-    if (isNaN(id)) return res.status(400).json({ error: 'Invalid arrest record ID' });
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid arrest record ID', code: 'INVALID_ARREST_RECORD_ID' });
 
     const record = db.prepare('SELECT person_id FROM arrest_records WHERE id = ?').get(id) as any;
-    if (!record) return res.status(404).json({ error: 'Arrest record not found' });
+    if (!record) return res.status(404).json({ error: 'Arrest record not found', code: 'ARREST_RECORD_NOT_FOUND' });
 
     db.prepare('UPDATE arrest_records SET person_id = NULL, updated_at = ? WHERE id = ?')
       .run(localNow(), id);
@@ -784,7 +786,7 @@ router.delete('/:id/link-person', validateParamIdMiddleware, requireRole('admin'
     broadcastRecordUpdate({ type: 'arrest_unlinked', arrestId: id });
 
     res.json({ success: true });
-  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' }); }
 });
 
 // ─── GET /export/csv ────────────────────────────────────
@@ -797,6 +799,8 @@ router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: R
              agency as arresting_officer, status
       FROM arrest_records
       ORDER BY booking_date DESC
+    
+      LIMIT 1000
     `).all() as any[];
 
     // Parse charges JSON to a readable string
@@ -822,7 +826,7 @@ router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: R
     ], rows);
   } catch (error: any) {
     console.error('Arrests CSV export error:', error?.message);
-    res.status(500).json({ error: 'Export failed' });
+    res.status(500).json({ error: 'Export failed', code: 'EXPORT_FAILED' });
   }
 });
 
