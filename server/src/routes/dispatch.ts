@@ -8,6 +8,7 @@ import { localNow } from '../utils/timeUtils';
 import { geocodeCallIfNeeded, reverseGeocodeAddress, reverseGeocodeDetailed } from '../utils/geocode';
 import { searchOfacLocal } from '../utils/ofacScraper';
 import { identifyBeat } from '../utils/geofence';
+import aggregatesRouter from './dispatch/aggregates';
 
 const router = Router();
 
@@ -2943,5 +2944,8 @@ router.put('/calls/:id/mileage', (req: Request, res: Response) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// Mount aggregates sub-router (advanced heatmap, predictions, safety zones, etc.)
+router.use('/', aggregatesRouter);
 
 export default router;
