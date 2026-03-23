@@ -2125,7 +2125,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       ).all() as any[];
 
       const officers = db.prepare(
-        "SELECT id, full_name, badge_number, role FROM users WHERE active = 1 AND role IN ('admin','manager','supervisor','officer','dispatcher')"
+        "SELECT id, full_name, badge_number, role FROM users WHERE status = 'active' AND role IN ('admin','manager','supervisor','officer','dispatcher')"
       ).all() as any[];
 
       const alerts: any[] = [];

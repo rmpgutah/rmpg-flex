@@ -1037,7 +1037,7 @@ router.get('/capacity/planning', (_req: Request, res: Response) => {
         COUNT(CASE WHEN fc.priority = 'urgent' AND fc.status NOT IN ('closed', 'cancelled', 'released') THEN 1 END) as urgent_cases
       FROM users u
       LEFT JOIN forensic_cases fc ON fc.lead_examiner_id = u.id
-      WHERE u.is_active = 1 AND (u.role IN ('admin', 'officer') OR fc.lead_examiner_id IS NOT NULL)
+      WHERE u.status = 'active' AND (u.role IN ('admin', 'officer') OR fc.lead_examiner_id IS NOT NULL)
       GROUP BY u.id
       HAVING active_cases > 0
       ORDER BY active_cases DESC

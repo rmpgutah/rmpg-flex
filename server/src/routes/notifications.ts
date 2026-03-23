@@ -57,7 +57,7 @@ export function createNotificationForRoles(
   try {
     const db = getDb();
     const placeholders = roles.map(() => '?').join(',');
-    let query = `SELECT id FROM users WHERE role IN (${placeholders}) AND active = 1`;
+    let query = `SELECT id FROM users WHERE role IN (${placeholders}) AND status = 'active'`;
     const params: any[] = [...roles];
     if (excludeUserId) {
       query += ' AND id != ?';
