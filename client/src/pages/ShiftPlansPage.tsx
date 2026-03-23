@@ -5,7 +5,7 @@
 // Uses the useShiftPlanning() hook for all state/CRUD.
 // ============================================================
 
-import React, { useState, useMemo } from 'react';
+import React, {useState, useMemo, useEffect} from 'react';
 import {
   Calendar,
   Plus,
@@ -65,6 +65,17 @@ function PlanStatusBadge({ status }: { status: string }) {
 
 // ── Main Component ─────────────────────────────────────────
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function ShiftPlansPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
@@ -121,6 +132,18 @@ export default function ShiftPlansPage() {
       addToast('Failed to save shift plan', 'error');
     }
   };
+
+  // Set document title
+  useEffect(() => { document.title = 'Shift Plans \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setShowCreateForm(false); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   return (
     <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
@@ -397,20 +420,20 @@ export default function ShiftPlansPage() {
                   <table className="w-full text-[10px]">
                     <thead>
                       <tr style={{ background: '#0f1a28' }} className="text-rmpg-500 text-[9px] uppercase tracking-wider">
-                        <th className="text-left px-4 py-1.5 font-bold">Area</th>
-                        <th className="text-left px-4 py-1.5 font-bold">Layer</th>
-                        <th className="text-left px-4 py-1.5 font-bold">Officers</th>
-                        <th className="text-left px-4 py-1.5 font-bold">Units</th>
-                        <th className="text-left px-4 py-1.5 font-bold">Hours</th>
-                        <th className="text-left px-4 py-1.5 font-bold">Notes</th>
-                        <th className="text-right px-4 py-1.5 font-bold">Actions</th>
+                        <th className="text-left px-4 py-1.5 font-bold whitespace-nowrap">Area</th>
+                        <th className="text-left px-4 py-1.5 font-bold whitespace-nowrap">Layer</th>
+                        <th className="text-left px-4 py-1.5 font-bold whitespace-nowrap">Officers</th>
+                        <th className="text-left px-4 py-1.5 font-bold whitespace-nowrap">Units</th>
+                        <th className="text-left px-4 py-1.5 font-bold whitespace-nowrap">Hours</th>
+                        <th className="text-left px-4 py-1.5 font-bold whitespace-nowrap">Notes</th>
+                        <th className="text-right px-4 py-1.5 font-bold whitespace-nowrap">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {sp.activePlan.assignments.map((a) => (
                         <tr
                           key={a.id}
-                          className="border-b border-rmpg-800/30 hover:bg-white/[0.02] transition-colors"
+                          className="border-b border-rmpg-800/30 hover:bg-surface-raised/30 transition-colors"
                         >
                           <td className="px-4 py-2">
                             <div className="flex items-center gap-1.5">

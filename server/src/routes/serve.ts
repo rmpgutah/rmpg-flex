@@ -22,7 +22,7 @@ router.param('id', (req: Request, res: Response, next) => {
   const raw = String(req.params.id);
   const n = parseInt(raw, 10);
   if (isNaN(n) || n < 1 || String(n) !== raw) {
-    res.status(400).json({ error: 'Invalid ID parameter' });
+    res.status(400).json({ error: 'Invalid ID parameter', code: 'INVALID_ID_PARAMETER' });
     return;
   }
   next();
@@ -62,7 +62,7 @@ router.get('/stats/summary', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Re
     });
   } catch (err: any) {
     console.error('[SERVE] Stats error:', err);
-    res.status(500).json({ error: 'Failed to fetch stats' });
+    res.status(500).json({ error: 'Failed to fetch stats', code: 'FAILED_TO_FETCH_STATS' });
   }
 });
 
@@ -73,7 +73,7 @@ router.get('/routes/:date', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Req
     const date = String(req.params.date);
     // Validate date format to prevent injection via route param
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD.' });
+      res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD.', code: 'INVALID_DATE_FORMAT_USE' });
       return;
     }
     const parsedOfficerId = req.query.officer_id ? Number(req.query.officer_id) : null;
@@ -81,7 +81,7 @@ router.get('/routes/:date', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Req
 
     // IDOR protection: only supervisors+ can view other officers' routes
     if (officerId !== req.user!.userId && !['admin', 'manager', 'supervisor', 'dispatcher'].includes(req.user!.role)) {
-      res.status(403).json({ error: 'You can only view your own routes' });
+      res.status(403).json({ error: 'You can only view your own routes', code: 'YOU_CAN_ONLY_VIEW' });
       return;
     }
 
@@ -98,7 +98,7 @@ router.get('/routes/:date', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Req
     res.json(route);
   } catch (err: any) {
     console.error('[SERVE] Route fetch error:', err);
-    res.status(500).json({ error: 'Failed to fetch route' });
+    res.status(500).json({ error: 'Failed to fetch route', code: 'FAILED_TO_FETCH_ROUTE' });
   }
 });
 
@@ -109,13 +109,13 @@ router.post('/routes', requireRole(...WRITE_ROLES), (req: Request, res: Response
     const { officer_id, route_date, optimized_order_json, waypoints_json, total_distance_miles, total_time_minutes, start_lat, start_lng, end_lat, end_lng, notes } = req.body;
 
     if (!officer_id || !route_date) {
-      res.status(400).json({ error: 'officer_id and route_date are required' });
+      res.status(400).json({ error: 'officer_id and route_date are required', code: 'OFFICERID_AND_ROUTEDATE_ARE' });
       return;
     }
 
     // IDOR protection: only supervisors+ can create/modify routes for other officers
     if (Number(officer_id) !== req.user!.userId && !['admin', 'manager', 'supervisor', 'dispatcher'].includes(req.user!.role)) {
-      res.status(403).json({ error: 'You can only modify your own routes' });
+      res.status(403).json({ error: 'You can only modify your own routes', code: 'YOU_CAN_ONLY_MODIFY' });
       return;
     }
 
@@ -160,7 +160,7 @@ router.post('/routes', requireRole(...WRITE_ROLES), (req: Request, res: Response
     }
   } catch (err: any) {
     console.error('[SERVE] Route upsert error:', err);
-    res.status(500).json({ error: 'Failed to save route' });
+    res.status(500).json({ error: 'Failed to save route', code: 'FAILED_TO_SAVE_ROUTE' });
   }
 });
 
@@ -177,6 +177,8 @@ router.post('/sync-from-sm', requireRole('admin', 'manager', 'supervisor'), (req
       LEFT JOIN serve_queue sq ON sq.sm_job_id = sm.id
       WHERE sq.id IS NULL
         AND COALESCE(sm.service_status, '') NOT IN ('Served', 'Canceled', 'On Hold')
+    
+      LIMIT 1000
     `).all() as any[];
 
     if (!unimported.length) {
@@ -235,7 +237,7 @@ router.post('/sync-from-sm', requireRole('admin', 'manager', 'supervisor'), (req
     res.json({ imported: imported.length, jobs: imported });
   } catch (err: any) {
     console.error('[SERVE] SM sync error:', err);
-    res.status(500).json({ error: 'Failed to sync from ServeManager' });
+    res.status(500).json({ error: 'Failed to sync from ServeManager', code: 'FAILED_TO_SYNC_FROM' });
   }
 });
 
@@ -246,23 +248,23 @@ router.put('/reorder', requireRole(...WRITE_ROLES), (req: Request, res: Response
     const { order } = req.body;
 
     if (!Array.isArray(order)) {
-      res.status(400).json({ error: 'order must be an array of { id, sort_order }' });
+      res.status(400).json({ error: 'order must be an array of { id, sort_order }', code: 'ORDER_MUST_BE_AN' });
       return;
     }
 
     if (order.length > 500) {
-      res.status(400).json({ error: 'Cannot reorder more than 500 items at once' });
+      res.status(400).json({ error: 'Cannot reorder more than 500 items at once', code: 'CANNOT_REORDER_MORE_THAN' });
       return;
     }
 
     // Validate each reorder item has integer id and sort_order
     for (const item of order) {
       if (!item || typeof item.id !== 'number' || !Number.isInteger(item.id) || item.id < 1) {
-        res.status(400).json({ error: 'Each order item must have a positive integer id' });
+        res.status(400).json({ error: 'Each order item must have a positive integer id', code: 'EACH_ORDER_ITEM_MUST' });
         return;
       }
       if (typeof item.sort_order !== 'number' || !Number.isInteger(item.sort_order) || item.sort_order < 0) {
-        res.status(400).json({ error: 'Each order item must have a non-negative integer sort_order' });
+        res.status(400).json({ error: 'Each order item must have a non-negative integer sort_order', code: 'EACH_ORDER_ITEM_MUST' });
         return;
       }
     }
@@ -281,7 +283,7 @@ router.put('/reorder', requireRole(...WRITE_ROLES), (req: Request, res: Response
     res.json({ success: true, updated: order.length });
   } catch (err: any) {
     console.error('[SERVE] Reorder error:', err);
-    res.status(500).json({ error: 'Failed to reorder' });
+    res.status(500).json({ error: 'Failed to reorder', code: 'FAILED_TO_REORDER' });
   }
 });
 
@@ -323,7 +325,7 @@ router.get('/', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: R
     res.json(rows);
   } catch (err: any) {
     console.error('[SERVE] List error:', err);
-    res.status(500).json({ error: 'Failed to list serve queue' });
+    res.status(500).json({ error: 'Failed to list serve queue', code: 'FAILED_TO_LIST_SERVE' });
   }
 });
 
@@ -342,10 +344,10 @@ router.post('/', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
     } = req.body;
 
     if (!recipient_name || !recipient_name.trim()) {
-      return res.status(400).json({ error: 'recipient_name is required' });
+      return res.status(400).json({ error: 'recipient_name is required', code: 'RECIPIENTNAME_IS_REQUIRED' });
     }
     if (recipient_name.length > 500) {
-      return res.status(400).json({ error: 'recipient_name must be 500 characters or less' });
+      return res.status(400).json({ error: 'recipient_name must be 500 characters or less', code: 'RECIPIENTNAME_MUST_BE_500' });
     }
 
     // Validate priority if provided
@@ -356,14 +358,14 @@ router.post('/', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
 
     // Validate serve_date format if provided
     if (serve_date && !/^\d{4}-\d{2}-\d{2}$/.test(serve_date)) {
-      return res.status(400).json({ error: 'serve_date must be in YYYY-MM-DD format' });
+      return res.status(400).json({ error: 'serve_date must be in YYYY-MM-DD format', code: 'SERVEDATE_MUST_BE_IN' });
     }
 
     // Validate max_attempts is a reasonable positive integer
     if (max_attempts !== undefined) {
       const ma = parseInt(max_attempts, 10);
       if (isNaN(ma) || ma < 1 || ma > 99) {
-        return res.status(400).json({ error: 'max_attempts must be between 1 and 99' });
+        return res.status(400).json({ error: 'max_attempts must be between 1 and 99', code: 'MAXATTEMPTS_MUST_BE_BETWEEN' });
       }
     }
 
@@ -371,13 +373,13 @@ router.post('/', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
     if (recipient_lat !== undefined && recipient_lat !== null) {
       const lat = parseFloat(recipient_lat);
       if (isNaN(lat) || lat < -90 || lat > 90) {
-        return res.status(400).json({ error: 'recipient_lat must be between -90 and 90' });
+        return res.status(400).json({ error: 'recipient_lat must be between -90 and 90', code: 'RECIPIENTLAT_MUST_BE_BETWEEN' });
       }
     }
     if (recipient_lng !== undefined && recipient_lng !== null) {
       const lng = parseFloat(recipient_lng);
       if (isNaN(lng) || lng < -180 || lng > 180) {
-        return res.status(400).json({ error: 'recipient_lng must be between -180 and 180' });
+        return res.status(400).json({ error: 'recipient_lng must be between -180 and 180', code: 'RECIPIENTLNG_MUST_BE_BETWEEN' });
       }
     }
 
@@ -410,7 +412,7 @@ router.post('/', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
     res.status(201).json(job);
   } catch (err: any) {
     console.error('[SERVE] Create error:', err);
-    res.status(500).json({ error: 'Failed to create serve job' });
+    res.status(500).json({ error: 'Failed to create serve job', code: 'FAILED_TO_CREATE_SERVE' });
   }
 });
 
@@ -421,13 +423,13 @@ router.get('/:id', validateParamIdMiddleware, requireRole(...WRITE_ROLES, 'dispa
     const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
 
     if (!job) {
-      res.status(404).json({ error: 'Serve job not found' });
+      res.status(404).json({ error: 'Serve job not found', code: 'SERVE_JOB_NOT_FOUND' });
       return;
     }
 
     // IDOR protection: officers can only view their own assigned jobs
     if (req.user!.role === 'officer' && job.officer_id && job.officer_id !== req.user!.userId) {
-      res.status(403).json({ error: 'You can only view jobs assigned to you' });
+      res.status(403).json({ error: 'You can only view jobs assigned to you', code: 'YOU_CAN_ONLY_VIEW' });
       return;
     }
 
@@ -452,7 +454,7 @@ router.get('/:id', validateParamIdMiddleware, requireRole(...WRITE_ROLES, 'dispa
     res.json({ ...job, attempts, skipTraces, linkedCall });
   } catch (err: any) {
     console.error('[SERVE] Get error:', err);
-    res.status(500).json({ error: 'Failed to fetch serve job' });
+    res.status(500).json({ error: 'Failed to fetch serve job', code: 'FAILED_TO_FETCH_SERVE' });
   }
 });
 
@@ -462,13 +464,13 @@ router.put('/:id', validateParamIdMiddleware, requireRole(...WRITE_ROLES), (req:
     const db = getDb();
     const existing = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Serve job not found' });
+      res.status(404).json({ error: 'Serve job not found', code: 'SERVE_JOB_NOT_FOUND' });
       return;
     }
 
     // IDOR protection: officers can only modify their own assigned jobs
     if (req.user!.role === 'officer' && existing.officer_id && existing.officer_id !== req.user!.userId) {
-      res.status(403).json({ error: 'You can only modify jobs assigned to you' });
+      res.status(403).json({ error: 'You can only modify jobs assigned to you', code: 'YOU_CAN_ONLY_MODIFY' });
       return;
     }
 
@@ -483,14 +485,14 @@ router.put('/:id', validateParamIdMiddleware, requireRole(...WRITE_ROLES), (req:
     if (req.body.recipient_lat !== undefined && req.body.recipient_lat !== null) {
       const lat = parseFloat(req.body.recipient_lat);
       if (isNaN(lat) || lat < -90 || lat > 90) {
-        res.status(400).json({ error: 'recipient_lat must be between -90 and 90' });
+        res.status(400).json({ error: 'recipient_lat must be between -90 and 90', code: 'RECIPIENTLAT_MUST_BE_BETWEEN' });
         return;
       }
     }
     if (req.body.recipient_lng !== undefined && req.body.recipient_lng !== null) {
       const lng = parseFloat(req.body.recipient_lng);
       if (isNaN(lng) || lng < -180 || lng > 180) {
-        res.status(400).json({ error: 'recipient_lng must be between -180 and 180' });
+        res.status(400).json({ error: 'recipient_lng must be between -180 and 180', code: 'RECIPIENTLNG_MUST_BE_BETWEEN' });
         return;
       }
     }
@@ -514,7 +516,7 @@ router.put('/:id', validateParamIdMiddleware, requireRole(...WRITE_ROLES), (req:
     }
 
     if (setClauses.length === 0) {
-      res.status(400).json({ error: 'No updatable fields provided' });
+      res.status(400).json({ error: 'No updatable fields provided', code: 'NO_UPDATABLE_FIELDS_PROVIDED' });
       return;
     }
 
@@ -531,7 +533,7 @@ router.put('/:id', validateParamIdMiddleware, requireRole(...WRITE_ROLES), (req:
     res.json(updated);
   } catch (err: any) {
     console.error('[SERVE] Update error:', err);
-    res.status(500).json({ error: 'Failed to update serve job' });
+    res.status(500).json({ error: 'Failed to update serve job', code: 'FAILED_TO_UPDATE_SERVE' });
   }
 });
 
@@ -541,13 +543,13 @@ router.post('/:id/attempt', validateParamIdMiddleware, requireRole(...WRITE_ROLE
     const db = getDb();
     const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
     if (!job) {
-      res.status(404).json({ error: 'Serve job not found' });
+      res.status(404).json({ error: 'Serve job not found', code: 'SERVE_JOB_NOT_FOUND' });
       return;
     }
 
     // IDOR protection: officers can only record attempts on their own assigned jobs
     if (req.user!.role === 'officer' && job.officer_id && job.officer_id !== req.user!.userId) {
-      res.status(403).json({ error: 'You can only record attempts on jobs assigned to you' });
+      res.status(403).json({ error: 'You can only record attempts on jobs assigned to you', code: 'YOU_CAN_ONLY_RECORD' });
       return;
     }
 
@@ -572,13 +574,13 @@ router.post('/:id/attempt', validateParamIdMiddleware, requireRole(...WRITE_ROLE
     if (gps_lat !== undefined && gps_lat !== null) {
       const lat = parseFloat(gps_lat);
       if (isNaN(lat) || lat < -90 || lat > 90) {
-        return res.status(400).json({ error: 'gps_lat must be between -90 and 90' });
+        return res.status(400).json({ error: 'gps_lat must be between -90 and 90', code: 'GPSLAT_MUST_BE_BETWEEN' });
       }
     }
     if (gps_lng !== undefined && gps_lng !== null) {
       const lng = parseFloat(gps_lng);
       if (isNaN(lng) || lng < -180 || lng > 180) {
-        return res.status(400).json({ error: 'gps_lng must be between -180 and 180' });
+        return res.status(400).json({ error: 'gps_lng must be between -180 and 180', code: 'GPSLNG_MUST_BE_BETWEEN' });
       }
     }
 
@@ -701,7 +703,7 @@ router.post('/:id/attempt', validateParamIdMiddleware, requireRole(...WRITE_ROLE
     res.status(201).json({ attempt, job: updatedJob, dueDiligenceComplete });
   } catch (err: any) {
     console.error('[SERVE] Attempt error:', err);
-    res.status(500).json({ error: 'Failed to record attempt' });
+    res.status(500).json({ error: 'Failed to record attempt', code: 'FAILED_TO_RECORD_ATTEMPT' });
   }
 });
 
@@ -711,7 +713,7 @@ router.post('/:id/skip-trace', validateParamIdMiddleware, requireRole(...WRITE_R
     const db = getDb();
     const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
     if (!job) {
-      res.status(404).json({ error: 'Serve job not found' });
+      res.status(404).json({ error: 'Serve job not found', code: 'SERVE_JOB_NOT_FOUND' });
       return;
     }
 
@@ -719,7 +721,7 @@ router.post('/:id/skip-trace', validateParamIdMiddleware, requireRole(...WRITE_R
     const address = job.recipient_address;
 
     if (!name) {
-      res.status(400).json({ error: 'Job has no recipient name for skip trace' });
+      res.status(400).json({ error: 'Job has no recipient name for skip trace', code: 'JOB_HAS_NO_RECIPIENT' });
       return;
     }
 
@@ -785,7 +787,7 @@ router.post('/:id/skip-trace', validateParamIdMiddleware, requireRole(...WRITE_R
     res.json({ trace, addresses });
   } catch (err: any) {
     console.error('[SERVE] Skip trace error:', err);
-    res.status(500).json({ error: 'Failed to run skip trace' });
+    res.status(500).json({ error: 'Failed to run skip trace', code: 'FAILED_TO_RUN_SKIP' });
   }
 });
 
@@ -833,7 +835,7 @@ router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: R
       { key: 'created_at', header: 'Created At' },
     ], rows);
   } catch (error: any) {
-    res.status(500).json({ error: 'Export failed' });
+    res.status(500).json({ error: 'Export failed', code: 'EXPORT_FAILED' });
   }
 });
 
@@ -853,11 +855,13 @@ router.get('/:id/gps-trail', validateParamIdMiddleware, requireRole(...WRITE_ROL
       LEFT JOIN users u ON sa.officer_id = u.id
       WHERE sa.serve_queue_id = ? AND sa.latitude IS NOT NULL AND sa.longitude IS NOT NULL
       ORDER BY sa.attempt_at ASC
+    
+      LIMIT 1000
     `).all(req.params.id);
     res.json(trail);
   } catch (err: any) {
     console.error('[SERVE] GPS trail error:', err);
-    res.status(500).json({ error: 'Failed to fetch GPS trail' });
+    res.status(500).json({ error: 'Failed to fetch GPS trail', code: 'FAILED_TO_FETCH_GPS' });
   }
 });
 
@@ -869,7 +873,7 @@ router.get('/:id/affidavit', validateParamIdMiddleware, requireRole(...WRITE_ROL
   try {
     const db = getDb();
     const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
-    if (!job) { res.status(404).json({ error: 'Serve job not found' }); return; }
+    if (!job) { res.status(404).json({ error: 'Serve job not found', code: 'SERVE_JOB_NOT_FOUND' }); return; }
 
     const attempts = db.prepare(`
       SELECT sa.*, u.full_name as officer_name, u.badge_number
@@ -877,6 +881,8 @@ router.get('/:id/affidavit', validateParamIdMiddleware, requireRole(...WRITE_ROL
       LEFT JOIN users u ON sa.officer_id = u.id
       WHERE sa.serve_queue_id = ?
       ORDER BY sa.attempt_number ASC
+    
+      LIMIT 1000
     `).all(req.params.id) as any[];
 
     const server = db.prepare('SELECT full_name, badge_number FROM users WHERE id = ?').get(job.officer_id) as any;
@@ -914,7 +920,7 @@ router.get('/:id/affidavit', validateParamIdMiddleware, requireRole(...WRITE_ROL
     res.json(affidavit);
   } catch (err: any) {
     console.error('[SERVE] Affidavit error:', err);
-    res.status(500).json({ error: 'Failed to generate affidavit data' });
+    res.status(500).json({ error: 'Failed to generate affidavit data', code: 'FAILED_TO_GENERATE_AFFIDAVIT' });
   }
 });
 
@@ -934,6 +940,8 @@ router.post('/auto-skip-trace', requireRole(...WRITE_ROLES), async (req: Request
       WHERE sq.status IN ('in_progress', 'failed')
         AND sq.attempt_count >= 3
         AND sq.id NOT IN (SELECT DISTINCT serve_queue_id FROM serve_skip_traces)
+    
+      LIMIT 1000
     `).all() as any[];
 
     const triggered: any[] = [];
@@ -978,7 +986,7 @@ router.post('/auto-skip-trace', requireRole(...WRITE_ROLES), async (req: Request
     res.json({ triggered: triggered.length, jobs: triggered });
   } catch (err: any) {
     console.error('[SERVE] Auto skip trace error:', err);
-    res.status(500).json({ error: 'Failed to run auto skip traces' });
+    res.status(500).json({ error: 'Failed to run auto skip traces', code: 'FAILED_TO_RUN_AUTO' });
   }
 });
 
@@ -998,6 +1006,8 @@ router.get('/deadlines', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Reques
       LEFT JOIN users u ON sq.officer_id = u.id
       WHERE sq.deadline IS NOT NULL AND sq.status NOT IN ('served', 'cancelled')
       ORDER BY sq.deadline ASC
+    
+      LIMIT 1000
     `).all() as any[];
 
     const overdue = rows.filter((r: any) => r.days_remaining < 0);
@@ -1008,7 +1018,7 @@ router.get('/deadlines', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Reques
     res.json({ all: rows, overdue, urgent, upcoming, safe, total: rows.length });
   } catch (err: any) {
     console.error('[SERVE] Deadlines error:', err);
-    res.status(500).json({ error: 'Failed to fetch deadlines' });
+    res.status(500).json({ error: 'Failed to fetch deadlines', code: 'FAILED_TO_FETCH_DEADLINES' });
   }
 });
 
@@ -1020,7 +1030,7 @@ router.post('/:id/create-invoice-item', validateParamIdMiddleware, requireRole('
   try {
     const db = getDb();
     const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
-    if (!job) { res.status(404).json({ error: 'Serve job not found' }); return; }
+    if (!job) { res.status(404).json({ error: 'Serve job not found', code: 'SERVE_JOB_NOT_FOUND' }); return; }
 
     const attempts = db.prepare('SELECT COUNT(*) as cnt FROM serve_attempts WHERE serve_queue_id = ?').get(req.params.id) as any;
 
@@ -1070,7 +1080,7 @@ router.post('/:id/create-invoice-item', validateParamIdMiddleware, requireRole('
     res.json(lineItem);
   } catch (err: any) {
     console.error('[SERVE] Billing error:', err);
-    res.status(500).json({ error: 'Failed to create invoice item' });
+    res.status(500).json({ error: 'Failed to create invoice item', code: 'FAILED_TO_CREATE_INVOICE' });
   }
 });
 
@@ -1143,7 +1153,7 @@ router.get('/success-rates', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Re
     });
   } catch (err: any) {
     console.error('[SERVE] Success rates error:', err);
-    res.status(500).json({ error: 'Failed to fetch success rates' });
+    res.status(500).json({ error: 'Failed to fetch success rates', code: 'FAILED_TO_FETCH_SUCCESS' });
   }
 });
 
@@ -1155,7 +1165,7 @@ router.post('/:id/substitute-service', validateParamIdMiddleware, requireRole(..
   try {
     const db = getDb();
     const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
-    if (!job) { res.status(404).json({ error: 'Serve job not found' }); return; }
+    if (!job) { res.status(404).json({ error: 'Serve job not found', code: 'SERVE_JOB_NOT_FOUND' }); return; }
 
     const {
       substitute_name, substitute_relationship, substitute_description,
@@ -1163,18 +1173,18 @@ router.post('/:id/substitute-service', validateParamIdMiddleware, requireRole(..
     } = req.body;
 
     if (!substitute_name) {
-      res.status(400).json({ error: 'substitute_name is required for substitute service' });
+      res.status(400).json({ error: 'substitute_name is required for substitute service', code: 'SUBSTITUTENAME_IS_REQUIRED_FOR' });
       return;
     }
 
     // Validate GPS coords
     if (gps_lat != null) {
       const lat = parseFloat(gps_lat);
-      if (isNaN(lat) || lat < -90 || lat > 90) { return res.status(400).json({ error: 'Invalid gps_lat' }); }
+      if (isNaN(lat) || lat < -90 || lat > 90) { return res.status(400).json({ error: 'Invalid gps_lat', code: 'INVALID_GPSLAT' }); }
     }
     if (gps_lng != null) {
       const lng = parseFloat(gps_lng);
-      if (isNaN(lng) || lng < -180 || lng > 180) { return res.status(400).json({ error: 'Invalid gps_lng' }); }
+      if (isNaN(lng) || lng < -180 || lng > 180) { return res.status(400).json({ error: 'Invalid gps_lng', code: 'INVALID_GPSLNG' }); }
     }
 
     const now = localNow();
@@ -1217,7 +1227,7 @@ router.post('/:id/substitute-service', validateParamIdMiddleware, requireRole(..
     res.status(201).json({ attempt, job: updatedJob });
   } catch (err: any) {
     console.error('[SERVE] Substitute service error:', err);
-    res.status(500).json({ error: 'Failed to record substitute service' });
+    res.status(500).json({ error: 'Failed to record substitute service', code: 'FAILED_TO_RECORD_SUBSTITUTE' });
   }
 });
 
@@ -1253,11 +1263,13 @@ router.get('/priority-queue', requireRole(...WRITE_ROLES, 'dispatcher'), (req: R
         END ASC,
         CASE sq.priority WHEN 'rush' THEN 0 WHEN 'urgent' THEN 1 WHEN 'normal' THEN 2 WHEN 'low' THEN 3 ELSE 4 END ASC,
         sq.deadline ASC NULLS LAST
+    
+      LIMIT 1000
     `).all();
     res.json(rows);
   } catch (err: any) {
     console.error('[SERVE] Priority queue error:', err);
-    res.status(500).json({ error: 'Failed to fetch priority queue' });
+    res.status(500).json({ error: 'Failed to fetch priority queue', code: 'FAILED_TO_FETCH_PRIORITY' });
   }
 });
 
@@ -1270,7 +1282,7 @@ router.get('/route-map/:date', requireRole(...WRITE_ROLES, 'dispatcher'), (req: 
     const db = getDb();
     const date = String(req.params.date);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD.' });
+      res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD.', code: 'INVALID_DATE_FORMAT_USE' });
       return;
     }
     const parsedOfficerId = req.query.officer_id ? Number(req.query.officer_id) : null;
@@ -1286,6 +1298,8 @@ router.get('/route-map/:date', requireRole(...WRITE_ROLES, 'dispatcher'), (req: 
         AND (sq.serve_date = ? OR sq.status IN ('pending', 'in_progress'))
         AND sq.recipient_lat IS NOT NULL AND sq.recipient_lng IS NOT NULL
       ORDER BY sq.sort_order ASC, sq.priority DESC
+    
+      LIMIT 1000
     `).all(officerId, date);
 
     const route = db.prepare(`
@@ -1296,7 +1310,7 @@ router.get('/route-map/:date', requireRole(...WRITE_ROLES, 'dispatcher'), (req: 
     res.json({ jobs, route: route || null });
   } catch (err: any) {
     console.error('[SERVE] Route map error:', err);
-    res.status(500).json({ error: 'Failed to fetch route map data' });
+    res.status(500).json({ error: 'Failed to fetch route map data', code: 'FAILED_TO_FETCH_ROUTE' });
   }
 });
 
@@ -1308,7 +1322,7 @@ router.post('/:id/notify-completion', validateParamIdMiddleware, requireRole(...
   try {
     const db = getDb();
     const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
-    if (!job) { res.status(404).json({ error: 'Serve job not found' }); return; }
+    if (!job) { res.status(404).json({ error: 'Serve job not found', code: 'SERVE_JOB_NOT_FOUND' }); return; }
 
     // Import createNotificationForRoles
     const { createNotificationForRoles } = require('./notifications');
@@ -1327,7 +1341,7 @@ router.post('/:id/notify-completion', validateParamIdMiddleware, requireRole(...
     res.json({ success: true, message: 'Completion notification sent to admins' });
   } catch (err: any) {
     console.error('[SERVE] Notify completion error:', err);
-    res.status(500).json({ error: 'Failed to send notification' });
+    res.status(500).json({ error: 'Failed to send notification', code: 'FAILED_TO_SEND_NOTIFICATION' });
   }
 });
 
@@ -1340,7 +1354,7 @@ router.post('/:id/push-status', validateParamIdMiddleware, requireRole('admin', 
   try {
     const db = getDb();
     const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
-    if (!job) { res.status(404).json({ error: 'Serve job not found' }); return; }
+    if (!job) { res.status(404).json({ error: 'Serve job not found', code: 'SERVE_JOB_NOT_FOUND' }); return; }
 
     const attempts = db.prepare(
       'SELECT * FROM serve_attempts WHERE serve_queue_id = ? ORDER BY attempt_number ASC'
@@ -1390,7 +1404,7 @@ router.post('/:id/push-status', validateParamIdMiddleware, requireRole('admin', 
     }
   } catch (err: any) {
     console.error('[SERVE] Push status error:', err);
-    res.status(500).json({ error: 'Failed to push status' });
+    res.status(500).json({ error: 'Failed to push status', code: 'FAILED_TO_PUSH_STATUS' });
   }
 });
 
@@ -1402,7 +1416,7 @@ router.get('/:id/cost-estimate', validateParamIdMiddleware, requireRole(...WRITE
   try {
     const db = getDb();
     const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
-    if (!job) { res.status(404).json({ error: 'Serve job not found' }); return; }
+    if (!job) { res.status(404).json({ error: 'Serve job not found', code: 'SERVE_JOB_NOT_FOUND' }); return; }
 
     const attempts = db.prepare(
       'SELECT * FROM serve_attempts WHERE serve_queue_id = ?'
@@ -1457,7 +1471,7 @@ router.get('/:id/cost-estimate', validateParamIdMiddleware, requireRole(...WRITE
     });
   } catch (err: any) {
     console.error('[SERVE] Cost estimate error:', err);
-    res.status(500).json({ error: 'Failed to calculate cost' });
+    res.status(500).json({ error: 'Failed to calculate cost', code: 'FAILED_TO_CALCULATE_COST' });
   }
 });
 

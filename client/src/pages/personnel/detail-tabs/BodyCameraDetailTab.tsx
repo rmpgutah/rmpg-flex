@@ -35,7 +35,7 @@ export default function BodyCameraDetailTab({
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-4 h-4 text-brand-400 animate-spin" />
+        <Loader2 className="w-4 h-4 text-brand-400 animate-spin" role="status" aria-label="Loading" />
         <span className="ml-2 text-xs text-rmpg-400">Loading body cameras...</span>
       </div>
     );

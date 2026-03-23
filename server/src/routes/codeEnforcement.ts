@@ -9,6 +9,8 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken } from '../middleware/auth';
+import { auditLog } from '../utils/auditLogger';
+import { broadcastRecordUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
 
 const router = Router();
@@ -34,6 +36,8 @@ router.get('/stats', (req: Request, res: Response) => {
     const today = localToday();
     const parkingToday = db.prepare(`SELECT COUNT(*) as count FROM citations WHERE type = 'parking' AND violation_date = ?`).get(today) as any;
 
+    res.set('Cache-Control', 'private, max-age=60');
+    res.set('Cache-Control', 'private, max-age=60');
     res.json({
       data: {
         violations: Object.fromEntries(violationCounts.map(r => [r.status, r.count])),
@@ -45,7 +49,7 @@ router.get('/stats', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get code enforcement stats error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to retrieve enforcement statistics', code: 'STATS_ERROR' });
   }
 });
 
@@ -76,7 +80,7 @@ router.get('/violations', (req: Request, res: Response) => {
     res.json({ data: rows, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
   } catch (error: any) {
     console.error('Get code violations error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to retrieve code violations', code: 'LIST_VIOLATIONS_ERROR' });
   }
 });
 
@@ -84,11 +88,11 @@ router.get('/violations/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) { res.status(400).json({ error: 'Invalid violation ID' }); return; }
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid violation ID', code: 'INVALID_VIOLATION_ID' }); return; }
     const row = db.prepare('SELECT * FROM code_violations WHERE id = ?').get(id);
-    if (!row) return res.status(404).json({ error: 'Violation not found' });
+    if (!row) return res.status(404).json({ error: 'Violation not found', code: 'VIOLATION_NOT_FOUND' });
     res.json({ data: row });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Failed to retrieve violation', code: 'GET_VIOLATION_ERROR' }); }
 });
 
 router.post('/violations', (req: Request, res: Response) => {
@@ -97,7 +101,17 @@ router.post('/violations', (req: Request, res: Response) => {
     const now = localNow();
     const { violation_type, location, description, code_section, severity, property_id,
       person_id, violator_name, violator_contact, compliance_deadline, fine_amount } = req.body;
-    if (!location || !description || !violation_type) return res.status(400).json({ error: 'Location, description, and type required' });
+    if (!location || !description || !violation_type) return res.status(400).json({ error: 'Location, description, and type required', code: 'MISSING_FIELDS' });
+
+    // Input sanitization
+    const cleanLocation = typeof location === 'string' ? location.trim() : location;
+    const cleanDescription = typeof description === 'string' ? description.trim() : description;
+
+    // Validate fine_amount if provided
+    if (fine_amount !== undefined && fine_amount !== null) {
+      const fineNum = parseFloat(fine_amount);
+      if (isNaN(fineNum) || fineNum < 0) return res.status(400).json({ error: 'fine_amount must be a non-negative number', code: 'INVALID_FINE' });
+    }
 
     const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
     const violation_number = nextNumber('code_violations', 'CV', 'violation_number');
@@ -115,10 +129,11 @@ router.post('/violations', (req: Request, res: Response) => {
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
       VALUES (?, 'create', 'code_violation', ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ violation_number }), now);
 
+    broadcastRecordUpdate({ type: 'violation_created', id: result.lastInsertRowid, violation_number });
     res.status(201).json({ data: { id: result.lastInsertRowid, violation_number } });
   } catch (error: any) {
     console.error('Create violation error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'CREATE_VIOLATION_ERROR' });
   }
 });
 
@@ -136,8 +151,10 @@ router.put('/violations/:id', (req: Request, res: Response) => {
     }
     params.push(req.params.id);
     db.prepare(`UPDATE code_violations SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+    auditLog(req, 'UPDATE', 'code_violation', req.params.id, `Updated code violation #${req.params.id}`);
+    broadcastRecordUpdate({ type: 'violation_updated', id: parseInt(req.params.id) });
     res.json({ data: { id: parseInt(req.params.id) } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error', code: 'UPDATE_VIOLATION_ERROR' }); }
 });
 
 router.put('/violations/:id/status', (req: Request, res: Response) => {
@@ -146,20 +163,24 @@ router.put('/violations/:id/status', (req: Request, res: Response) => {
     const now = localNow();
     const { status, resolution_notes } = req.body;
     const valid = ['open', 'notice_sent', 'reinspection', 'resolved', 'referred', 'voided'];
-    if (!valid.includes(status)) return res.status(400).json({ error: 'Invalid status' });
+    if (!valid.includes(status)) return res.status(400).json({ error: 'Invalid status', code: 'INVALID_STATUS' });
+
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid violation ID', code: 'INVALID_ID' });
 
     const updates: any = { status, updated_at: now };
     if (status === 'resolved') updates.resolved_date = localToday();
-    if (resolution_notes) updates.resolution_notes = resolution_notes;
+    if (resolution_notes) updates.resolution_notes = typeof resolution_notes === 'string' ? resolution_notes.trim() : resolution_notes;
 
     const setClauses = Object.keys(updates).map(k => `${k} = ?`).join(', ');
-    db.prepare(`UPDATE code_violations SET ${setClauses} WHERE id = ?`).run(...Object.values(updates), req.params.id);
+    db.prepare(`UPDATE code_violations SET ${setClauses} WHERE id = ?`).run(...Object.values(updates), id);
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
-      VALUES (?, 'status_change', 'code_violation', ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ status }), now);
+      VALUES (?, 'status_change', 'code_violation', ?, ?, ?)`).run(req.user!.userId, id, JSON.stringify({ status }), now);
 
-    res.json({ data: { id: parseInt(req.params.id), status } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+    broadcastRecordUpdate({ type: 'violation_status_changed', id, status });
+    res.json({ data: { id, status } });
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error', code: 'VIOLATION_STATUS_ERROR' }); }
 });
 
 // ════════════════════════════════════════════════════════
@@ -185,18 +206,18 @@ router.get('/tows', (req: Request, res: Response) => {
     const total = (db.prepare(`SELECT COUNT(*) as count FROM vehicle_tows ${where}`).get(...params) as any).count;
     const rows = db.prepare(`SELECT * FROM vehicle_tows ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...params, limitNum, offset);
     res.json({ data: rows, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Failed to retrieve tows', code: 'LIST_TOWS_ERROR' }); }
 });
 
 router.get('/tows/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) { res.status(400).json({ error: 'Invalid tow ID' }); return; }
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid tow ID', code: 'INVALID_TOW_ID' }); return; }
     const row = db.prepare('SELECT * FROM vehicle_tows WHERE id = ?').get(id);
-    if (!row) return res.status(404).json({ error: 'Tow not found' });
+    if (!row) return res.status(404).json({ error: 'Tow not found', code: 'TOW_NOT_FOUND' });
     res.json({ data: row });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Failed to retrieve tow record', code: 'GET_TOW_ERROR' }); }
 });
 
 router.post('/tows', (req: Request, res: Response) => {
@@ -207,7 +228,17 @@ router.post('/tows', (req: Request, res: Response) => {
       vehicle_year, vehicle_make, vehicle_model, vehicle_color, vehicle_id,
       tow_company, tow_driver, tow_company_phone, authorization,
       call_id, citation_id, incident_id, tow_fee, storage_fee_daily, notes } = req.body;
-    if (!tow_from || !tow_reason) return res.status(400).json({ error: 'Location and reason required' });
+    if (!tow_from || !tow_reason) return res.status(400).json({ error: 'Location and reason required', code: 'MISSING_FIELDS' });
+
+    // Input sanitization
+    const cleanTowFrom = typeof tow_from === 'string' ? tow_from.trim() : tow_from;
+    const cleanReason = typeof tow_reason === 'string' ? tow_reason.trim() : tow_reason;
+
+    // Validate fees if provided
+    if (tow_fee !== undefined && tow_fee !== null) {
+      const feeNum = parseFloat(tow_fee);
+      if (isNaN(feeNum) || feeNum < 0) return res.status(400).json({ error: 'tow_fee must be a non-negative number', code: 'INVALID_FEE' });
+    }
 
     const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
     const tow_number = nextNumber('vehicle_tows', 'TOW', 'tow_number');
@@ -230,10 +261,11 @@ router.post('/tows', (req: Request, res: Response) => {
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
       VALUES (?, 'create', 'vehicle_tow', ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ tow_number }), now);
 
+    broadcastRecordUpdate({ type: 'tow_created', id: result.lastInsertRowid, tow_number });
     res.status(201).json({ data: { id: result.lastInsertRowid, tow_number } });
   } catch (error: any) {
     console.error('Create tow error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'CREATE_TOW_ERROR' });
   }
 });
 
@@ -252,8 +284,10 @@ router.put('/tows/:id', (req: Request, res: Response) => {
     }
     params.push(req.params.id);
     db.prepare(`UPDATE vehicle_tows SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+    auditLog(req, 'UPDATE', 'vehicle_tow', req.params.id, `Updated tow #${req.params.id}`);
+    broadcastRecordUpdate({ type: 'tow_updated', id: parseInt(req.params.id) });
     res.json({ data: { id: parseInt(req.params.id) } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error', code: 'UPDATE_TOW_ERROR' }); }
 });
 
 router.put('/tows/:id/status', (req: Request, res: Response) => {
@@ -262,7 +296,7 @@ router.put('/tows/:id/status', (req: Request, res: Response) => {
     const now = localNow();
     const { status } = req.body;
     const valid = ['ordered', 'dispatched', 'in_progress', 'completed', 'released', 'cancelled'];
-    if (!valid.includes(status)) return res.status(400).json({ error: 'Invalid status' });
+    if (!valid.includes(status)) return res.status(400).json({ error: 'Invalid status', code: 'INVALID_STATUS' });
 
     const updates: any = { status, updated_at: now };
     if (status === 'dispatched') updates.dispatched_at = now;
@@ -276,7 +310,7 @@ router.put('/tows/:id/status', (req: Request, res: Response) => {
       VALUES (?, 'status_change', 'vehicle_tow', ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ status }), now);
 
     res.json({ data: { id: parseInt(req.params.id), status } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Failed to update tow status', code: 'TOW_STATUS_ERROR' }); }
 });
 
 // GET /property-history — Violation count for a property in last 12 months
@@ -284,7 +318,7 @@ router.get('/property-history', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { property_id, location } = req.query;
-    if (!property_id && !location) return res.status(400).json({ error: 'property_id or location required' });
+    if (!property_id && !location) return res.status(400).json({ error: 'property_id or location required', code: 'PROPERTYID_OR_LOCATION_REQUIRED' });
 
     let where = `WHERE created_at >= datetime('now', '-12 months')`;
     const params: any[] = [];
@@ -303,7 +337,7 @@ router.get('/property-history', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get property history error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to retrieve property history', code: 'PROPERTY_HISTORY_ERROR' });
   }
 });
 
@@ -315,7 +349,7 @@ router.get('/violations/:id/severity-score', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const violation = db.prepare('SELECT * FROM code_violations WHERE id = ?').get(req.params.id) as any;
-    if (!violation) return res.status(404).json({ error: 'Violation not found' });
+    if (!violation) return res.status(404).json({ error: 'Violation not found', code: 'VIOLATION_NOT_FOUND' });
 
     let score = 0;
     const factors: { factor: string; points: number }[] = [];
@@ -359,7 +393,7 @@ router.get('/violations/:id/severity-score', (req: Request, res: Response) => {
 
     res.json({ data: { violation_id: violation.id, score, priority, factors } });
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to calculate severity score', code: 'SEVERITY_SCORE_ERROR' });
   }
 });
 
@@ -371,12 +405,14 @@ router.get('/violations/:id/timeline', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const violation = db.prepare('SELECT * FROM code_violations WHERE id = ?').get(req.params.id) as any;
-    if (!violation) return res.status(404).json({ error: 'Violation not found' });
+    if (!violation) return res.status(404).json({ error: 'Violation not found', code: 'VIOLATION_NOT_FOUND' });
 
     // Get activity log entries for this violation
     const activities = db.prepare(`
       SELECT * FROM activity_log WHERE entity_type = 'code_violation' AND entity_id = ?
       ORDER BY created_at ASC
+    
+      LIMIT 1000
     `).all(req.params.id) as any[];
 
     const timeline = [
@@ -416,7 +452,7 @@ router.get('/violations/:id/timeline', (req: Request, res: Response) => {
 
     res.json({ data: { violation_id: violation.id, status: violation.status, timeline } });
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to retrieve compliance timeline', code: 'TIMELINE_ERROR' });
   }
 });
 
@@ -454,7 +490,7 @@ router.get('/violations/geo/clusters', (req: Request, res: Response) => {
 
     res.json({ data: { clusters, by_type: byType, period_days: parseInt(days as string, 10) } });
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to retrieve violation clusters', code: 'GEO_CLUSTER_ERROR' });
   }
 });
 
@@ -466,7 +502,7 @@ router.get('/violations/:id/calculate-fine', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const violation = db.prepare('SELECT * FROM code_violations WHERE id = ?').get(req.params.id) as any;
-    if (!violation) return res.status(404).json({ error: 'Violation not found' });
+    if (!violation) return res.status(404).json({ error: 'Violation not found', code: 'VIOLATION_NOT_FOUND' });
 
     // Base fine by type
     const baseFines: Record<string, number> = {
@@ -512,7 +548,7 @@ router.get('/violations/:id/calculate-fine', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to calculate fine', code: 'FINE_CALC_ERROR' });
   }
 });
 
@@ -563,6 +599,7 @@ router.get('/compliance-dashboard', (req: Request, res: Response) => {
 
     const resolutionRate = overall.total > 0 ? Math.round((overall.resolved / overall.total) * 100) : 0;
 
+    res.set('Cache-Control', 'private, max-age=120');
     res.json({
       data: {
         overall: { ...overall, resolution_rate: resolutionRate },
@@ -576,7 +613,7 @@ router.get('/compliance-dashboard', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to retrieve compliance dashboard', code: 'COMPLIANCE_DASHBOARD_ERROR' });
   }
 });
 

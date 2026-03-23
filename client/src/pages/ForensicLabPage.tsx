@@ -249,6 +249,17 @@ const EMPTY_WIZARD: WizardData = {
 
 // ─── Component ───────────────────────────────────────────
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function ForensicLabPage() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
@@ -589,6 +600,7 @@ export default function ForensicLabPage() {
 
   const handleUnlinkEntity = async (linkId: number) => {
     if (!selectedCase) return;
+    if (!window.confirm('Remove this linked entity?')) return;
     try {
       await apiFetch(`/forensic-lab/${selectedCase.id}/links/${linkId}`, { method: 'DELETE' });
       fetchCaseLinks(selectedCase.id);
@@ -796,7 +808,7 @@ export default function ForensicLabPage() {
                 <button type="button" onClick={openEditModal} className="toolbar-btn text-[10px]">
                   <Edit3 size={10} /> Edit Details
                 </button>
-                <button onClick={() => navigate(`/forensics?type=case&id=${selectedCase.id}`)} className="toolbar-btn text-[10px]">
+                <button type="button" onClick={() => navigate(`/forensics?type=case&id=${selectedCase.id}`)} className="toolbar-btn text-[10px]">
                   <Network size={10} /> View Connections
                 </button>
               </div>
@@ -1362,7 +1374,7 @@ export default function ForensicLabPage() {
                     onChange={e => setLinkSearchTerm(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleLinkSearch()}
                     className="flex-1 px-3 py-1.5 text-xs bg-[#0d1520] border border-[#1e3048] rounded-sm text-white focus:border-brand-500 focus:outline-none"
-                    placeholder="Search by name, case number, evidence ID..."
+                    placeholder="Search by name, case number, evidence ID..." aria-label="Search by name, case number, evidence ID..."
                   />
                   <button type="button" onClick={handleLinkSearch} disabled={linkSearching || !linkSearchTerm.trim()} className="toolbar-btn toolbar-btn-primary text-[10px] px-3 disabled:opacity-40">
                     {linkSearching ? <Loader2 size={10} className="animate-spin" /> : <Search size={10} />} Search
@@ -1656,6 +1668,18 @@ export default function ForensicLabPage() {
   // Main View (List + Wizard)
   // ══════════════════════════════════════════════════════════
 
+  // Set document title
+  useEffect(() => { document.title = 'Forensic Lab \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setShowAnalysisModal(false); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="flex flex-col h-full bg-surface-base">
       {/* Header */}
@@ -1772,7 +1796,7 @@ export default function ForensicLabPage() {
                   type="text"
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
-                  placeholder="Search cases by number, title, officer..."
+                  placeholder="Search cases by number, title, officer..." aria-label="Search cases by number, title, officer..."
                   className="w-full pl-8 pr-3 py-1.5 text-xs bg-[#0d1520] border border-[#1e3048] rounded-sm text-white focus:border-brand-500 focus:outline-none"
                 />
               </div>

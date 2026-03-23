@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken } from '../middleware/auth';
+import { auditLog } from '../utils/auditLogger';
+import { broadcastRecordUpdate } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
 import { localNow, localToday } from '../utils/timeUtils';
 import { searchOfacLocal } from '../utils/ofacScraper';
@@ -97,7 +99,7 @@ router.get('/persons', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get persons error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get persons', code: 'GET_PERSONS_ERROR' });
   }
 });
 
@@ -108,7 +110,7 @@ router.get('/persons/search', (req: Request, res: Response) => {
     const { q } = req.query;
 
     if (!q || (q as string).length < 2) {
-      res.status(400).json({ error: 'Search query must be at least 2 characters' });
+      res.status(400).json({ error: 'Search query must be at least 2 characters', code: 'SEARCH_QUERY_MUST_BE' });
       return;
     }
 
@@ -125,7 +127,7 @@ router.get('/persons/search', (req: Request, res: Response) => {
     res.json(persons);
   } catch (error: any) {
     console.error('Search persons error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to search persons', code: 'SEARCH_PERSONS_ERROR' });
   }
 });
 
@@ -148,6 +150,8 @@ router.get('/persons/export', (req: Request, res: Response) => {
       FROM persons
       ${whereClause}
       ORDER BY last_name, first_name
+    
+      LIMIT 1000
     `).all(...params);
 
     sendCsv(res, 'persons_export.csv', [
@@ -163,7 +167,7 @@ router.get('/persons/export', (req: Request, res: Response) => {
     ], rows);
   } catch (error: any) {
     console.error('Export persons error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to export persons', code: 'EXPORT_PERSONS_ERROR' });
   }
 });
 
@@ -174,7 +178,7 @@ router.get('/persons/:id', (req: Request, res: Response) => {
     let person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
 
     if (!person) {
-      res.status(404).json({ error: 'Person not found' });
+      res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' });
       return;
     }
 
@@ -197,13 +201,15 @@ router.get('/persons/:id', (req: Request, res: Response) => {
         JOIN clients c ON cp.client_id = c.id
         WHERE cp.person_id = ?
         ORDER BY cp.is_primary DESC, c.name
+      
+        LIMIT 1000
       `).all(person.id);
     } catch { /* table might not exist yet */ }
 
     res.json({ ...person, vehicles, linked_clients });
   } catch (error: any) {
     console.error('Get person error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get person', code: 'GET_PERSON_ERROR' });
   }
 });
 
@@ -213,7 +219,7 @@ router.get('/persons/:id/history', (req: Request, res: Response) => {
     const db = getDb();
     const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
     if (!person) {
-      res.status(404).json({ error: 'Person not found' });
+      res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' });
       return;
     }
 
@@ -233,6 +239,8 @@ router.get('/persons/:id/history', (req: Request, res: Response) => {
       SELECT * FROM bolos
       WHERE subject_description LIKE ? OR description LIKE ?
       ORDER BY created_at DESC
+    
+      LIMIT 1000
     `).all(`%${person.last_name}%`, `%${person.last_name}%`);
 
     res.json({
@@ -242,7 +250,7 @@ router.get('/persons/:id/history', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get person history error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get person history', code: 'GET_PERSON_HISTORY_ERROR' });
   }
 });
 
@@ -252,7 +260,7 @@ router.get('/persons/:id/system-history', (req: Request, res: Response) => {
     const db = getDb();
     const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
     if (!person) {
-      res.status(404).json({ error: 'Person not found' });
+      res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' });
       return;
     }
 
@@ -267,6 +275,8 @@ router.get('/persons/:id/system-history', (req: Request, res: Response) => {
         ORDER BY
           CASE WHEN status = 'active' THEN 0 ELSE 1 END,
           created_at DESC
+      
+        LIMIT 1000
       `).all(person.id);
     } catch (e) {
       // warrants table might not exist
@@ -283,6 +293,8 @@ router.get('/persons/:id/system-history', (req: Request, res: Response) => {
         JOIN incidents i ON ip.incident_id = i.id
         WHERE ip.person_id = ?
         ORDER BY i.created_at DESC
+      
+        LIMIT 1000
       `).all(person.id);
     } catch (e) {
       console.warn('system-history: incidents query failed', (e as Error).message);
@@ -300,6 +312,8 @@ router.get('/persons/:id/system-history', (req: Request, res: Response) => {
         JOIN calls_for_service c ON i.call_id = c.id
         WHERE ip.person_id = ? AND i.call_id IS NOT NULL
         ORDER BY c.created_at DESC
+      
+        LIMIT 1000
       `).all(person.id);
       calls = callRows;
     } catch (e) {
@@ -319,6 +333,8 @@ router.get('/persons/:id/system-history', (req: Request, res: Response) => {
         ORDER BY
           CASE WHEN status = 'issued' THEN 0 WHEN status = 'contested' THEN 1 ELSE 2 END,
           violation_date DESC
+      
+        LIMIT 1000
       `).all(person.id);
     } catch (e) {
       console.warn('system-history: citations query failed', (e as Error).message);
@@ -356,7 +372,7 @@ router.get('/persons/:id/system-history', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get person system-history error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get person system-history', code: 'GET_PERSON_SYSTEMHISTORY_ERROR' });
   }
 });
 
@@ -381,7 +397,7 @@ router.post('/persons', (req: Request, res: Response) => {
     } = req.body;
 
     if (!first_name || !last_name) {
-      res.status(400).json({ error: 'first_name and last_name are required' });
+      res.status(400).json({ error: 'first_name and last_name are required', code: 'FIRSTNAME_AND_LASTNAME_ARE' });
       return;
     }
 
@@ -433,7 +449,7 @@ router.post('/persons', (req: Request, res: Response) => {
     res.status(201).json(person);
   } catch (error: any) {
     console.error('Create person error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create person', code: 'CREATE_PERSON_ERROR' });
   }
 });
 
@@ -443,7 +459,7 @@ router.put('/persons/:id', (req: Request, res: Response) => {
     const db = getDb();
     const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
     if (!person) {
-      res.status(404).json({ error: 'Person not found' });
+      res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' });
       return;
     }
 
@@ -537,7 +553,7 @@ router.put('/persons/:id', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update person error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update person', code: 'UPDATE_PERSON_ERROR' });
   }
 });
 
@@ -547,7 +563,7 @@ router.delete('/persons/:id', (req: Request, res: Response) => {
     const db = getDb();
     const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
     if (!person) {
-      res.status(404).json({ error: 'Person not found' });
+      res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' });
       return;
     }
 
@@ -565,7 +581,7 @@ router.delete('/persons/:id', (req: Request, res: Response) => {
     res.json({ message: 'Person deleted' });
   } catch (error: any) {
     console.error('Delete person error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete person', code: 'DELETE_PERSON_ERROR' });
   }
 });
 
@@ -590,7 +606,7 @@ router.post('/persons/screen-all-ofac', (req: Request, res: Response) => {
     res.json({ screened, matches, message: `Screened ${screened} person(s), found ${matches} OFAC match(es)` });
   } catch (error: any) {
     console.error('Bulk OFAC screening error:', error);
-    res.status(500).json({ error: 'Bulk OFAC screening failed' });
+    res.status(500).json({ error: 'Bulk OFAC screening failed', code: 'BULK_OFAC_SCREENING_FAILED' });
   }
 });
 
@@ -599,7 +615,7 @@ router.post('/persons/:id/screen-ofac', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
-    if (!person) { res.status(404).json({ error: 'Person not found' }); return; }
+    if (!person) { res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }); return; }
 
     // Force re-screen regardless of previous check
     screenPersonOfac(person.id, person.first_name, person.last_name);
@@ -608,7 +624,7 @@ router.post('/persons/:id/screen-ofac', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('OFAC re-screen error:', error);
-    res.status(500).json({ error: 'OFAC re-screen failed' });
+    res.status(500).json({ error: 'OFAC re-screen failed', code: 'OFAC_RESCREEN_FAILED' });
   }
 });
 
@@ -617,14 +633,14 @@ router.post('/persons/:id/archive', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
-    if (!person) { res.status(404).json({ error: 'Person not found' }); return; }
-    if (person.archived_at) { res.status(400).json({ error: 'Person is already archived' }); return; }
+    if (!person) { res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }); return; }
+    if (person.archived_at) { res.status(400).json({ error: 'Person is already archived', code: 'PERSON_IS_ALREADY_ARCHIVED' }); return; }
     const now = localNow();
     db.prepare('UPDATE persons SET archived_at = ? WHERE id = ?').run(now, person.id);
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'person_archived', 'person', ?, ?, ?)`).run(req.user!.userId, person.id, `Archived person: ${person.first_name} ${person.last_name}`, req.ip || 'unknown');
     res.json(db.prepare('SELECT * FROM persons WHERE id = ?').get(person.id));
-  } catch (error: any) { console.error('Archive person error:', error); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { console.error('Archive person error:', error); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' }); }
 });
 
 // POST /api/records/persons/:id/unarchive
@@ -632,13 +648,13 @@ router.post('/persons/:id/unarchive', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
-    if (!person) { res.status(404).json({ error: 'Person not found' }); return; }
-    if (!person.archived_at) { res.status(400).json({ error: 'Person is not archived' }); return; }
+    if (!person) { res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }); return; }
+    if (!person.archived_at) { res.status(400).json({ error: 'Person is not archived', code: 'PERSON_IS_NOT_ARCHIVED' }); return; }
     db.prepare('UPDATE persons SET archived_at = NULL WHERE id = ?').run(person.id);
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'person_unarchived', 'person', ?, ?, ?)`).run(req.user!.userId, person.id, `Restored person: ${person.first_name} ${person.last_name}`, req.ip || 'unknown');
     res.json(db.prepare('SELECT * FROM persons WHERE id = ?').get(person.id));
-  } catch (error: any) { console.error('Unarchive person error:', error); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { console.error('Unarchive person error:', error); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' }); }
 });
 
 // ─── VEHICLES ─────────────────────────────────────────
@@ -681,7 +697,7 @@ router.get('/vehicles', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get vehicles error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get vehicles', code: 'GET_VEHICLES_ERROR' });
   }
 });
 
@@ -692,7 +708,7 @@ router.get('/vehicles/search', (req: Request, res: Response) => {
     const { q } = req.query;
 
     if (!q || (q as string).length < 2) {
-      res.status(400).json({ error: 'Search query must be at least 2 characters' });
+      res.status(400).json({ error: 'Search query must be at least 2 characters', code: 'SEARCH_QUERY_MUST_BE' });
       return;
     }
 
@@ -711,7 +727,7 @@ router.get('/vehicles/search', (req: Request, res: Response) => {
     res.json(vehicles);
   } catch (error: any) {
     console.error('Search vehicles error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to search vehicles', code: 'SEARCH_VEHICLES_ERROR' });
   }
 });
 
@@ -726,6 +742,8 @@ router.get('/vehicles/export', (req: Request, res: Response) => {
       FROM vehicles_records v
       LEFT JOIN persons p ON v.owner_person_id = p.id
       ORDER BY v.created_at DESC
+    
+      LIMIT 1000
     `).all();
 
     sendCsv(res, 'vehicles_export.csv', [
@@ -741,7 +759,7 @@ router.get('/vehicles/export', (req: Request, res: Response) => {
     ], rows);
   } catch (error: any) {
     console.error('Export vehicles error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to export vehicles', code: 'EXPORT_VEHICLES_ERROR' });
   }
 });
 
@@ -757,14 +775,14 @@ router.get('/vehicles/:id', (req: Request, res: Response) => {
     `).get(req.params.id) as any;
 
     if (!vehicle) {
-      res.status(404).json({ error: 'Vehicle not found' });
+      res.status(404).json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' });
       return;
     }
 
     res.json(vehicle);
   } catch (error: any) {
     console.error('Get vehicle error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get vehicle', code: 'GET_VEHICLE_ERROR' });
   }
 });
 
@@ -821,7 +839,7 @@ router.post('/vehicles', (req: Request, res: Response) => {
     res.status(201).json(vehicle);
   } catch (error: any) {
     console.error('Create vehicle error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create vehicle', code: 'CREATE_VEHICLE_ERROR' });
   }
 });
 
@@ -831,7 +849,7 @@ router.put('/vehicles/:id', (req: Request, res: Response) => {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
     if (!vehicle) {
-      res.status(404).json({ error: 'Vehicle not found' });
+      res.status(404).json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' });
       return;
     }
 
@@ -900,7 +918,7 @@ router.put('/vehicles/:id', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update vehicle error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update vehicle', code: 'UPDATE_VEHICLE_ERROR' });
   }
 });
 
@@ -910,7 +928,7 @@ router.delete('/vehicles/:id', (req: Request, res: Response) => {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
     if (!vehicle) {
-      res.status(404).json({ error: 'Vehicle not found' });
+      res.status(404).json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' });
       return;
     }
 
@@ -926,7 +944,7 @@ router.delete('/vehicles/:id', (req: Request, res: Response) => {
     res.json({ message: 'Vehicle deleted' });
   } catch (error: any) {
     console.error('Delete vehicle error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete vehicle', code: 'DELETE_VEHICLE_ERROR' });
   }
 });
 
@@ -935,14 +953,14 @@ router.post('/vehicles/:id/archive', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const v = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
-    if (!v) { res.status(404).json({ error: 'Vehicle not found' }); return; }
-    if (v.archived_at) { res.status(400).json({ error: 'Vehicle is already archived' }); return; }
+    if (!v) { res.status(404).json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }); return; }
+    if (v.archived_at) { res.status(400).json({ error: 'Vehicle is already archived', code: 'VEHICLE_IS_ALREADY_ARCHIVED' }); return; }
     const now = localNow();
     db.prepare('UPDATE vehicles_records SET archived_at = ? WHERE id = ?').run(now, v.id);
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'vehicle_archived', 'vehicle', ?, ?, ?)`).run(req.user!.userId, v.id, `Archived vehicle: ${v.plate_number || v.vin || v.id}`, req.ip || 'unknown');
     res.json(db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(v.id));
-  } catch (error: any) { console.error('Archive vehicle error:', error); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { console.error('Archive vehicle error:', error); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' }); }
 });
 
 // POST /api/records/vehicles/:id/unarchive
@@ -950,13 +968,13 @@ router.post('/vehicles/:id/unarchive', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const v = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
-    if (!v) { res.status(404).json({ error: 'Vehicle not found' }); return; }
-    if (!v.archived_at) { res.status(400).json({ error: 'Vehicle is not archived' }); return; }
+    if (!v) { res.status(404).json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }); return; }
+    if (!v.archived_at) { res.status(400).json({ error: 'Vehicle is not archived', code: 'VEHICLE_IS_NOT_ARCHIVED' }); return; }
     db.prepare('UPDATE vehicles_records SET archived_at = NULL WHERE id = ?').run(v.id);
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'vehicle_unarchived', 'vehicle', ?, ?, ?)`).run(req.user!.userId, v.id, `Restored vehicle: ${v.plate_number || v.vin || v.id}`, req.ip || 'unknown');
     res.json(db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(v.id));
-  } catch (error: any) { console.error('Unarchive vehicle error:', error); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { console.error('Unarchive vehicle error:', error); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' }); }
 });
 
 // ─── PROPERTIES ───────────────────────────────────────
@@ -990,12 +1008,14 @@ router.get('/properties', (req: Request, res: Response) => {
       LEFT JOIN clients c ON p.client_id = c.id
       ${whereClause}
       ORDER BY c.name, p.name
+    
+      LIMIT 1000
     `).all(...params);
 
     res.json(properties);
   } catch (error: any) {
     console.error('Get properties error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get properties', code: 'GET_PROPERTIES_ERROR' });
   }
 });
 
@@ -1012,7 +1032,7 @@ router.get('/properties/:id', (req: Request, res: Response) => {
     `).get(req.params.id) as any;
 
     if (!property) {
-      res.status(404).json({ error: 'Property not found' });
+      res.status(404).json({ error: 'Property not found', code: 'PROPERTY_NOT_FOUND' });
       return;
     }
 
@@ -1026,6 +1046,8 @@ router.get('/properties/:id', (req: Request, res: Response) => {
     const checkpoints = db.prepare(`
       SELECT * FROM patrol_checkpoints WHERE property_id = ?
       ORDER BY sequence_order
+    
+      LIMIT 1000
     `).all(property.id);
 
     // Get today's schedule
@@ -1035,6 +1057,8 @@ router.get('/properties/:id', (req: Request, res: Response) => {
       FROM schedules s
       LEFT JOIN users u ON s.officer_id = u.id
       WHERE s.property_id = ? AND s.shift_date = ?
+    
+      LIMIT 1000
     `).all(property.id, today);
 
     res.json({
@@ -1045,7 +1069,7 @@ router.get('/properties/:id', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get property error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get property', code: 'GET_PROPERTY_ERROR' });
   }
 });
 
@@ -1060,11 +1084,11 @@ router.post('/properties', (req: Request, res: Response) => {
     } = req.body;
 
     if (!client_id) {
-      res.status(400).json({ error: 'client_id is required' });
+      res.status(400).json({ error: 'client_id is required', code: 'CLIENTID_IS_REQUIRED' });
       return;
     }
     if (!name || !address) {
-      res.status(400).json({ error: 'name and address are required' });
+      res.status(400).json({ error: 'name and address are required', code: 'NAME_AND_ADDRESS_ARE' });
       return;
     }
 
@@ -1095,7 +1119,7 @@ router.post('/properties', (req: Request, res: Response) => {
     res.status(201).json(property);
   } catch (error: any) {
     console.error('Create property error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create property', code: 'CREATE_PROPERTY_ERROR' });
   }
 });
 
@@ -1107,7 +1131,7 @@ router.get('/persons/:id/incidents', (req: Request, res: Response) => {
     const db = getDb();
     const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
     if (!person) {
-      res.status(404).json({ error: 'Person not found' });
+      res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' });
       return;
     }
 
@@ -1120,12 +1144,14 @@ router.get('/persons/:id/incidents', (req: Request, res: Response) => {
       LEFT JOIN users o ON i.officer_id = o.id
       WHERE ip.person_id = ?
       ORDER BY i.created_at DESC
+    
+      LIMIT 1000
     `).all(person.id);
 
     res.json(incidents);
   } catch (error: any) {
     console.error('Get person incidents error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get person incidents', code: 'GET_PERSON_INCIDENTS_ERROR' });
   }
 });
 
@@ -1135,7 +1161,7 @@ router.get('/vehicles/:id/incidents', (req: Request, res: Response) => {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
     if (!vehicle) {
-      res.status(404).json({ error: 'Vehicle not found' });
+      res.status(404).json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' });
       return;
     }
 
@@ -1148,12 +1174,14 @@ router.get('/vehicles/:id/incidents', (req: Request, res: Response) => {
       LEFT JOIN users o ON i.officer_id = o.id
       WHERE iv.vehicle_id = ?
       ORDER BY i.created_at DESC
+    
+      LIMIT 1000
     `).all(vehicle.id);
 
     res.json(incidents);
   } catch (error: any) {
     console.error('Get vehicle incidents error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get vehicle incidents', code: 'GET_VEHICLE_INCIDENTS_ERROR' });
   }
 });
 
@@ -1197,7 +1225,7 @@ router.get('/evidence', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get evidence error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get evidence', code: 'GET_EVIDENCE_ERROR' });
   }
 });
 
@@ -1207,7 +1235,7 @@ router.put('/evidence/:id', (req: Request, res: Response) => {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
     if (!evidence) {
-      res.status(404).json({ error: 'Evidence not found' });
+      res.status(404).json({ error: 'Evidence not found', code: 'EVIDENCE_NOT_FOUND' });
       return;
     }
 
@@ -1258,7 +1286,7 @@ router.put('/evidence/:id', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update evidence error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update evidence', code: 'UPDATE_EVIDENCE_ERROR' });
   }
 });
 
@@ -1268,7 +1296,7 @@ router.delete('/evidence/:id', (req: Request, res: Response) => {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
     if (!evidence) {
-      res.status(404).json({ error: 'Evidence not found' });
+      res.status(404).json({ error: 'Evidence not found', code: 'EVIDENCE_NOT_FOUND' });
       return;
     }
 
@@ -1283,7 +1311,7 @@ router.delete('/evidence/:id', (req: Request, res: Response) => {
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete evidence error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete evidence', code: 'DELETE_EVIDENCE_ERROR' });
   }
 });
 
@@ -1292,8 +1320,8 @@ router.post('/evidence/:id/archive', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
-    if (!evidence) { res.status(404).json({ error: 'Evidence not found' }); return; }
-    if (evidence.archived_at) { res.status(400).json({ error: 'Evidence is already archived' }); return; }
+    if (!evidence) { res.status(404).json({ error: 'Evidence not found', code: 'EVIDENCE_NOT_FOUND' }); return; }
+    if (evidence.archived_at) { res.status(400).json({ error: 'Evidence is already archived', code: 'EVIDENCE_IS_ALREADY_ARCHIVED' }); return; }
 
     const now = localNow();
     db.prepare('UPDATE evidence SET archived_at = ? WHERE id = ?').run(now, evidence.id);
@@ -1306,7 +1334,7 @@ router.post('/evidence/:id/archive', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Archive evidence error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to archive evidence', code: 'ARCHIVE_EVIDENCE_ERROR' });
   }
 });
 
@@ -1315,8 +1343,8 @@ router.post('/evidence/:id/unarchive', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
-    if (!evidence) { res.status(404).json({ error: 'Evidence not found' }); return; }
-    if (!evidence.archived_at) { res.status(400).json({ error: 'Evidence is not archived' }); return; }
+    if (!evidence) { res.status(404).json({ error: 'Evidence not found', code: 'EVIDENCE_NOT_FOUND' }); return; }
+    if (!evidence.archived_at) { res.status(400).json({ error: 'Evidence is not archived', code: 'EVIDENCE_IS_NOT_ARCHIVED' }); return; }
 
     db.prepare('UPDATE evidence SET archived_at = NULL WHERE id = ?').run(evidence.id);
 
@@ -1328,7 +1356,7 @@ router.post('/evidence/:id/unarchive', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Unarchive evidence error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unarchive evidence', code: 'UNARCHIVE_EVIDENCE_ERROR' });
   }
 });
 
@@ -1338,13 +1366,13 @@ router.post('/evidence/:id/custody', (req: Request, res: Response) => {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
     if (!evidence) {
-      res.status(404).json({ error: 'Evidence not found' });
+      res.status(404).json({ error: 'Evidence not found', code: 'EVIDENCE_NOT_FOUND' });
       return;
     }
 
     const { action, to_person, from_person, reason } = req.body;
     if (!action || !to_person) {
-      res.status(400).json({ error: 'action and to_person are required' });
+      res.status(400).json({ error: 'action and to_person are required', code: 'ACTION_AND_TOPERSON_ARE' });
       return;
     }
 
@@ -1380,7 +1408,7 @@ router.post('/evidence/:id/custody', (req: Request, res: Response) => {
     res.status(201).json(updated);
   } catch (error: any) {
     console.error('Add custody entry error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to add custody entry', code: 'ADD_CUSTODY_ENTRY_ERROR' });
   }
 });
 
@@ -1414,7 +1442,7 @@ router.get('/evidence/stats', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Evidence stats error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to evidence stats', code: 'EVIDENCE_STATS_ERROR' });
   }
 });
 
@@ -1426,10 +1454,12 @@ router.get('/evidence/locations', (req: Request, res: Response) => {
       SELECT config_key as name, config_value as details
       FROM system_config WHERE category = 'evidence_location' AND is_active = 1
       ORDER BY sort_order
+    
+      LIMIT 1000
     `).all();
     res.json({ data: locations });
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -1438,11 +1468,11 @@ router.post('/evidence/:id/chain-action', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
-    if (!evidence) return res.status(404).json({ error: 'Evidence not found' });
+    if (!evidence) return res.status(404).json({ error: 'Evidence not found', code: 'EVIDENCE_NOT_FOUND' });
 
     const { action, from_location, to_location, notes } = req.body;
     const validActions = ['check_in', 'check_out', 'transfer', 'lab_submit', 'release', 'dispose'];
-    if (!action || !validActions.includes(action)) return res.status(400).json({ error: 'Valid action required' });
+    if (!action || !validActions.includes(action)) return res.status(400).json({ error: 'Valid action required', code: 'VALID_ACTION_REQUIRED' });
 
     const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
     let chain: any[] = [];
@@ -1476,7 +1506,7 @@ router.post('/evidence/:id/chain-action', (req: Request, res: Response) => {
     res.json({ data: { id: evidence.id, status: newStatus, chain_of_custody: chain } });
   } catch (error: any) {
     console.error('Evidence chain-action error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to evidence chain-action', code: 'EVIDENCE_CHAINACTION_ERROR' });
   }
 });
 
@@ -1485,7 +1515,7 @@ router.post('/evidence/:id/request-release', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
-    if (!evidence) return res.status(404).json({ error: 'Evidence not found' });
+    if (!evidence) return res.status(404).json({ error: 'Evidence not found', code: 'EVIDENCE_NOT_FOUND' });
 
     const { release_to, reason } = req.body;
     const now = localNow();
@@ -1514,7 +1544,7 @@ router.post('/evidence/:id/request-release', (req: Request, res: Response) => {
     res.json({ data: { id: evidence.id, release_status: 'release_requested' } });
   } catch (error: any) {
     console.error('Evidence release request error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to evidence release request', code: 'EVIDENCE_RELEASE_REQUEST_ERROR' });
   }
 });
 
@@ -1523,11 +1553,11 @@ router.put('/evidence/:id/approve-release', (req: Request, res: Response) => {
   try {
     const db = getDb();
     if (!['admin', 'manager', 'supervisor'].includes(req.user!.role)) {
-      return res.status(403).json({ error: 'Only supervisors can approve evidence release' });
+      return res.status(403).json({ error: 'Only supervisors can approve evidence release', code: 'ONLY_SUPERVISORS_CAN_APPROVE' });
     }
 
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
-    if (!evidence) return res.status(404).json({ error: 'Evidence not found' });
+    if (!evidence) return res.status(404).json({ error: 'Evidence not found', code: 'EVIDENCE_NOT_FOUND' });
 
     const { action } = req.body; // 'approve' or 'deny'
     const now = localNow();
@@ -1561,7 +1591,7 @@ router.put('/evidence/:id/approve-release', (req: Request, res: Response) => {
     res.json({ data: { id: evidence.id, release_status: action === 'approve' ? 'released' : null } });
   } catch (error: any) {
     console.error('Approve evidence release error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to approve evidence release', code: 'APPROVE_EVIDENCE_RELEASE_ERROR' });
   }
 });
 
@@ -1571,7 +1601,7 @@ router.put('/properties/:id', (req: Request, res: Response) => {
     const db = getDb();
     const property = db.prepare('SELECT * FROM properties WHERE id = ?').get(req.params.id) as any;
     if (!property) {
-      res.status(404).json({ error: 'Property not found' });
+      res.status(404).json({ error: 'Property not found', code: 'PROPERTY_NOT_FOUND' });
       return;
     }
 
@@ -1621,7 +1651,7 @@ router.put('/properties/:id', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update property error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update property', code: 'UPDATE_PROPERTY_ERROR' });
   }
 });
 
@@ -1631,7 +1661,7 @@ router.delete('/properties/:id', (req: Request, res: Response) => {
     const db = getDb();
     const property = db.prepare('SELECT * FROM properties WHERE id = ?').get(req.params.id) as any;
     if (!property) {
-      res.status(404).json({ error: 'Property not found' });
+      res.status(404).json({ error: 'Property not found', code: 'PROPERTY_NOT_FOUND' });
       return;
     }
 
@@ -1655,7 +1685,7 @@ router.delete('/properties/:id', (req: Request, res: Response) => {
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete property error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete property', code: 'DELETE_PROPERTY_ERROR' });
   }
 });
 
@@ -1664,14 +1694,14 @@ router.post('/properties/:id/archive', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const prop = db.prepare('SELECT * FROM properties WHERE id = ?').get(req.params.id) as any;
-    if (!prop) { res.status(404).json({ error: 'Property not found' }); return; }
-    if (prop.archived_at) { res.status(400).json({ error: 'Property is already archived' }); return; }
+    if (!prop) { res.status(404).json({ error: 'Property not found', code: 'PROPERTY_NOT_FOUND' }); return; }
+    if (prop.archived_at) { res.status(400).json({ error: 'Property is already archived', code: 'PROPERTY_IS_ALREADY_ARCHIVED' }); return; }
     const now = localNow();
     db.prepare('UPDATE properties SET archived_at = ? WHERE id = ?').run(now, prop.id);
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'property_archived', 'property', ?, ?, ?)`).run(req.user!.userId, prop.id, `Archived property: ${prop.name}`, req.ip || 'unknown');
     res.json(db.prepare('SELECT * FROM properties WHERE id = ?').get(prop.id));
-  } catch (error: any) { console.error('Archive property error:', error); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { console.error('Archive property error:', error); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' }); }
 });
 
 // POST /api/records/properties/:id/unarchive
@@ -1679,13 +1709,13 @@ router.post('/properties/:id/unarchive', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const prop = db.prepare('SELECT * FROM properties WHERE id = ?').get(req.params.id) as any;
-    if (!prop) { res.status(404).json({ error: 'Property not found' }); return; }
-    if (!prop.archived_at) { res.status(400).json({ error: 'Property is not archived' }); return; }
+    if (!prop) { res.status(404).json({ error: 'Property not found', code: 'PROPERTY_NOT_FOUND' }); return; }
+    if (!prop.archived_at) { res.status(400).json({ error: 'Property is not archived', code: 'PROPERTY_IS_NOT_ARCHIVED' }); return; }
     db.prepare('UPDATE properties SET archived_at = NULL WHERE id = ?').run(prop.id);
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'property_unarchived', 'property', ?, ?, ?)`).run(req.user!.userId, prop.id, `Restored property: ${prop.name}`, req.ip || 'unknown');
     res.json(db.prepare('SELECT * FROM properties WHERE id = ?').get(prop.id));
-  } catch (error: any) { console.error('Unarchive property error:', error); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { console.error('Unarchive property error:', error); res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' }); }
 });
 
 // ─── STANDALONE EVIDENCE CREATION ────────────────────
@@ -1703,7 +1733,7 @@ router.post('/evidence', (req: Request, res: Response) => {
     } = req.body;
 
     if (!description || !evidence_type) {
-      res.status(400).json({ error: 'description and evidence_type are required' });
+      res.status(400).json({ error: 'description and evidence_type are required', code: 'DESCRIPTION_AND_EVIDENCETYPE_ARE' });
       return;
     }
 
@@ -1755,7 +1785,7 @@ router.post('/evidence', (req: Request, res: Response) => {
     res.status(201).json(created);
   } catch (error: any) {
     console.error('Create evidence error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create evidence', code: 'CREATE_EVIDENCE_ERROR' });
   }
 });
 
@@ -1796,7 +1826,7 @@ router.get('/links', (req: Request, res: Response) => {
     const { type, id } = req.query;
 
     if (!type || !id) {
-      res.status(400).json({ error: 'type and id query parameters are required' });
+      res.status(400).json({ error: 'type and id query parameters are required', code: 'TYPE_AND_ID_QUERY' });
       return;
     }
 
@@ -1807,6 +1837,8 @@ router.get('/links', (req: Request, res: Response) => {
       WHERE (rl.source_type = ? AND rl.source_id = ?)
          OR (rl.target_type = ? AND rl.target_id = ?)
       ORDER BY rl.created_at DESC
+    
+      LIMIT 1000
     `).all(type, id, type, id) as any[];
 
     // Resolve display labels and normalize direction
@@ -1825,7 +1857,7 @@ router.get('/links', (req: Request, res: Response) => {
     res.json(enriched);
   } catch (error: any) {
     console.error('Get record links error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get record links', code: 'GET_RECORD_LINKS_ERROR' });
   }
 });
 
@@ -1836,13 +1868,13 @@ router.post('/links', (req: Request, res: Response) => {
     const { source_type, source_id, target_type, target_id, relationship, notes } = req.body;
 
     if (!source_type || !source_id || !target_type || !target_id) {
-      res.status(400).json({ error: 'source_type, source_id, target_type, and target_id are required' });
+      res.status(400).json({ error: 'source_type, source_id, target_type, and target_id are required', code: 'SOURCETYPE_SOURCEID_TARGETTYPE_AND' });
       return;
     }
 
     // Prevent self-linking
     if (source_type === target_type && String(source_id) === String(target_id)) {
-      res.status(400).json({ error: 'Cannot link a record to itself' });
+      res.status(400).json({ error: 'Cannot link a record to itself', code: 'CANNOT_LINK_A_RECORD' });
       return;
     }
 
@@ -1868,11 +1900,11 @@ router.post('/links', (req: Request, res: Response) => {
     res.status(201).json(created);
   } catch (error: any) {
     if (error.message?.includes('UNIQUE constraint failed')) {
-      res.status(409).json({ error: 'This link already exists' });
+      res.status(409).json({ error: 'This link already exists', code: 'THIS_LINK_ALREADY_EXISTS' });
       return;
     }
     console.error('Create record link error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create record link', code: 'CREATE_RECORD_LINK_ERROR' });
   }
 });
 
@@ -1882,7 +1914,7 @@ router.delete('/links/:id', (req: Request, res: Response) => {
     const db = getDb();
     const link = db.prepare('SELECT * FROM record_links WHERE id = ?').get(req.params.id) as any;
     if (!link) {
-      res.status(404).json({ error: 'Link not found' });
+      res.status(404).json({ error: 'Link not found', code: 'LINK_NOT_FOUND' });
       return;
     }
 
@@ -1896,7 +1928,7 @@ router.delete('/links/:id', (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete record link error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete record link', code: 'DELETE_RECORD_LINK_ERROR' });
   }
 });
 
@@ -1908,11 +1940,13 @@ router.get('/clients', (req: Request, res: Response) => {
     const db = getDb();
     const clients = db.prepare(`
       SELECT id, name, status FROM clients ORDER BY name
+    
+      LIMIT 1000
     `).all();
     res.json(clients);
   } catch (error: any) {
     console.error('Get clients list error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get clients list', code: 'GET_CLIENTS_LIST_ERROR' });
   }
 });
 
@@ -1987,7 +2021,7 @@ router.get('/search', (req: Request, res: Response) => {
     res.json(results);
   } catch (error: any) {
     console.error('Record search error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to record search', code: 'RECORD_SEARCH_ERROR' });
   }
 });
 
@@ -2005,11 +2039,13 @@ router.get('/persons/:id/criminal-history', (req: Request, res: Response) => {
       LEFT JOIN users u ON ch.created_by = u.id
       WHERE ch.person_id = ?
       ORDER BY ch.offense_date DESC, ch.created_at DESC
+    
+      LIMIT 1000
     `).all(req.params.id);
     res.json(rows);
   } catch (error: any) {
     console.error('Get criminal history error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get criminal history', code: 'GET_CRIMINAL_HISTORY_ERROR' });
   }
 });
 
@@ -2026,7 +2062,7 @@ router.post('/persons/:id/criminal-history', (req: Request, res: Response) => {
     } = req.body;
 
     if (!offense) {
-      res.status(400).json({ error: 'Offense is required' });
+      res.status(400).json({ error: 'Offense is required', code: 'OFFENSE_IS_REQUIRED' });
       return;
     }
 
@@ -2048,7 +2084,7 @@ router.post('/persons/:id/criminal-history', (req: Request, res: Response) => {
     res.status(201).json(newRecord);
   } catch (error: any) {
     console.error('Create criminal history error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create criminal history', code: 'CREATE_CRIMINAL_HISTORY_ERROR' });
   }
 });
 
@@ -2090,7 +2126,7 @@ router.put('/criminal-history/:id', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update criminal history error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update criminal history', code: 'UPDATE_CRIMINAL_HISTORY_ERROR' });
   }
 });
 
@@ -2102,7 +2138,7 @@ router.delete('/criminal-history/:id', (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete criminal history error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete criminal history', code: 'DELETE_CRIMINAL_HISTORY_ERROR' });
   }
 });
 
@@ -2123,11 +2159,13 @@ router.get('/persons/:id/clients', (req: Request, res: Response) => {
       LEFT JOIN users u ON cp.created_by = u.id
       WHERE cp.person_id = ?
       ORDER BY cp.is_primary DESC, c.name
+    
+      LIMIT 1000
     `).all(req.params.id);
     res.json(rows);
   } catch (error: any) {
     console.error('Get person clients error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get person clients', code: 'GET_PERSON_CLIENTS_ERROR' });
   }
 });
 
@@ -2144,11 +2182,13 @@ router.get('/clients/:id/persons', (req: Request, res: Response) => {
       LEFT JOIN users u ON cp.created_by = u.id
       WHERE cp.client_id = ?
       ORDER BY cp.is_primary DESC, p.last_name, p.first_name
+    
+      LIMIT 1000
     `).all(req.params.id);
     res.json(rows);
   } catch (error: any) {
     console.error('Get client persons error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get client persons', code: 'GET_CLIENT_PERSONS_ERROR' });
   }
 });
 
@@ -2160,14 +2200,14 @@ router.post('/client-persons', (req: Request, res: Response) => {
     const { client_id, person_id, relationship, title, notes, is_primary } = req.body;
 
     if (!client_id || !person_id) {
-      return res.status(400).json({ error: 'client_id and person_id are required' });
+      return res.status(400).json({ error: 'client_id and person_id are required', code: 'CLIENTID_AND_PERSONID_ARE' });
     }
 
     // Verify both exist
     const client = db.prepare('SELECT id, name FROM clients WHERE id = ?').get(client_id) as any;
     const person = db.prepare('SELECT id, first_name, last_name FROM persons WHERE id = ?').get(person_id) as any;
-    if (!client) return res.status(404).json({ error: 'Client not found' });
-    if (!person) return res.status(404).json({ error: 'Person not found' });
+    if (!client) return res.status(404).json({ error: 'Client not found', code: 'CLIENT_NOT_FOUND' });
+    if (!person) return res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' });
 
     // If setting as primary, unset any existing primary for this client+relationship
     if (is_primary) {
@@ -2201,10 +2241,10 @@ router.post('/client-persons', (req: Request, res: Response) => {
     res.status(201).json(link);
   } catch (error: any) {
     if (error.code === 'SQLITE_CONSTRAINT_UNIQUE' || (error.message && error.message.includes('UNIQUE'))) {
-      return res.status(409).json({ error: 'This person is already linked to this client' });
+      return res.status(409).json({ error: 'This person is already linked to this client', code: 'THIS_PERSON_IS_ALREADY' });
     }
     console.error('Link client-person error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to link client-person', code: 'LINK_CLIENTPERSON_ERROR' });
   }
 });
 
@@ -2213,7 +2253,7 @@ router.put('/client-persons/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const link = db.prepare('SELECT * FROM client_persons WHERE id = ?').get(req.params.id) as any;
-    if (!link) return res.status(404).json({ error: 'Link not found' });
+    if (!link) return res.status(404).json({ error: 'Link not found', code: 'LINK_NOT_FOUND' });
 
     const { relationship, title, notes, is_primary } = req.body;
 
@@ -2243,7 +2283,7 @@ router.put('/client-persons/:id', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update client-person link error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update client-person link', code: 'UPDATE_CLIENTPERSON_LINK_ERROR' });
   }
 });
 
@@ -2258,7 +2298,7 @@ router.delete('/client-persons/:id', (req: Request, res: Response) => {
       JOIN clients c ON cp.client_id = c.id
       WHERE cp.id = ?
     `).get(req.params.id) as any;
-    if (!link) return res.status(404).json({ error: 'Link not found' });
+    if (!link) return res.status(404).json({ error: 'Link not found', code: 'LINK_NOT_FOUND' });
 
     db.prepare('DELETE FROM client_persons WHERE id = ?').run(req.params.id);
 
@@ -2275,7 +2315,7 @@ router.delete('/client-persons/:id', (req: Request, res: Response) => {
     res.json({ message: 'Link removed' });
   } catch (error: any) {
     console.error('Delete client-person link error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete client-person link', code: 'DELETE_CLIENTPERSON_LINK_ERROR' });
   }
 });
 
@@ -2285,7 +2325,7 @@ router.get('/persons/:id/invoice-summary', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare('SELECT id, first_name, last_name FROM persons WHERE id = ?').get(req.params.id) as any;
-    if (!person) return res.status(404).json({ error: 'Person not found' });
+    if (!person) return res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' });
 
     // Get linked clients
     const linkedClients = db.prepare(`
@@ -2293,6 +2333,8 @@ router.get('/persons/:id/invoice-summary', (req: Request, res: Response) => {
       FROM client_persons cp
       JOIN clients c ON cp.client_id = c.id
       WHERE cp.person_id = ?
+    
+      LIMIT 1000
     `).all(person.id) as any[];
 
     // Get incidents this person is involved in
@@ -2305,6 +2347,8 @@ router.get('/persons/:id/invoice-summary', (req: Request, res: Response) => {
       LEFT JOIN clients c ON i.client_id = c.id
       WHERE ip.person_id = ?
       ORDER BY i.created_at DESC
+    
+      LIMIT 1000
     `).all(person.id) as any[];
 
     // Get invoices that reference incidents this person was involved in
@@ -2319,6 +2363,8 @@ router.get('/persons/:id/invoice-summary', (req: Request, res: Response) => {
       LEFT JOIN clients c ON inv.client_id = c.id
       WHERE ip.person_id = ?
       ORDER BY inv.created_at DESC
+    
+      LIMIT 1000
     `).all(person.id) as any[];
 
     res.json({
@@ -2334,7 +2380,7 @@ router.get('/persons/:id/invoice-summary', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Person invoice summary error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to person invoice summary', code: 'PERSON_INVOICE_SUMMARY_ERROR' });
   }
 });
 
@@ -2347,7 +2393,7 @@ router.get('/ncic-query', (req: Request, res: Response) => {
     const { type, query: q } = req.query;
 
     if (!type || !q || (q as string).length < 2) {
-      res.status(400).json({ error: 'type and query (min 2 chars) are required' });
+      res.status(400).json({ error: 'type and query (min 2 chars) are required', code: 'TYPE_AND_QUERY_MIN' });
       return;
     }
 
@@ -2375,6 +2421,8 @@ router.get('/ncic-query', (req: Request, res: Response) => {
           const criminalHistory = db.prepare(`
             SELECT * FROM criminal_history WHERE person_id = ?
             ORDER BY offense_date DESC
+          
+            LIMIT 1000
           `).all(p.id);
 
           let warrants: any[] = [];
@@ -2382,6 +2430,8 @@ router.get('/ncic-query', (req: Request, res: Response) => {
             warrants = db.prepare(`
               SELECT * FROM warrants WHERE subject_person_id = ? AND status = 'active'
               ORDER BY issue_date DESC
+            
+              LIMIT 1000
             `).all(p.id);
           } catch { /* warrants table may not exist */ }
 
@@ -2429,6 +2479,8 @@ router.get('/ncic-query', (req: Request, res: Response) => {
           const criminalHistory = db.prepare(`
             SELECT * FROM criminal_history WHERE person_id = ?
             ORDER BY offense_date DESC
+          
+            LIMIT 1000
           `).all(p.id);
 
           let warrants: any[] = [];
@@ -2436,6 +2488,8 @@ router.get('/ncic-query', (req: Request, res: Response) => {
             warrants = db.prepare(`
               SELECT * FROM warrants WHERE subject_person_id = ? AND status = 'active'
               ORDER BY issue_date DESC
+            
+              LIMIT 1000
             `).all(p.id);
           } catch { /* warrants table may not exist */ }
 
@@ -2532,11 +2586,11 @@ router.get('/ncic-query', (req: Request, res: Response) => {
       }
 
       default:
-        res.status(400).json({ error: 'Invalid type. Use: person, vehicle, warrant, phone, address' });
+        res.status(400).json({ error: 'Invalid type. Use: person, vehicle, warrant, phone, address', code: 'INVALID_TYPE_USE_PERSON' });
     }
   } catch (error: any) {
     console.error('NCIC query error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to ncic query', code: 'NCIC_QUERY_ERROR' });
   }
 });
 
@@ -2563,7 +2617,7 @@ router.get('/persons/duplicates', (req: Request, res: Response) => {
     res.json(duplicates);
   } catch (error: any) {
     console.error('Get duplicates error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get duplicates', code: 'GET_DUPLICATES_ERROR' });
   }
 });
 
@@ -2573,12 +2627,12 @@ router.post('/persons/merge', (req: Request, res: Response) => {
     const db = getDb();
     const { keep_id, merge_id } = req.body;
     if (!keep_id || !merge_id || keep_id === merge_id) {
-      res.status(400).json({ error: 'keep_id and merge_id are required and must be different' });
+      res.status(400).json({ error: 'keep_id and merge_id are required and must be different', code: 'KEEPID_AND_MERGEID_ARE' });
       return;
     }
     const keepPerson = db.prepare('SELECT * FROM persons WHERE id = ?').get(keep_id) as any;
     const mergePerson = db.prepare('SELECT * FROM persons WHERE id = ?').get(merge_id) as any;
-    if (!keepPerson || !mergePerson) { res.status(404).json({ error: 'Person not found' }); return; }
+    if (!keepPerson || !mergePerson) { res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }); return; }
 
     const now = localNow();
     const mergeTx = db.transaction(() => {
@@ -2610,7 +2664,7 @@ router.post('/persons/merge', (req: Request, res: Response) => {
     res.json(result);
   } catch (error: any) {
     console.error('Merge persons error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to merge persons', code: 'MERGE_PERSONS_ERROR' });
   }
 });
 
@@ -2622,7 +2676,7 @@ router.get('/vehicles/plate-lookup', (req: Request, res: Response) => {
     const db = getDb();
     const { plate, state } = req.query;
     if (!plate || typeof plate !== 'string' || plate.trim().length < 2) {
-      res.status(400).json({ error: 'plate parameter required (min 2 chars)' });
+      res.status(400).json({ error: 'plate parameter required (min 2 chars)', code: 'PLATE_PARAMETER_REQUIRED_MIN' });
       return;
     }
     let query = `SELECT * FROM vehicles WHERE LOWER(plate_number) LIKE LOWER(?)`;
@@ -2636,7 +2690,7 @@ router.get('/vehicles/plate-lookup', (req: Request, res: Response) => {
     res.json(vehicles);
   } catch (error: any) {
     console.error('Plate lookup error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to plate lookup', code: 'PLATE_LOOKUP_ERROR' });
   }
 });
 
@@ -2654,11 +2708,13 @@ router.get('/reports/approval-queue', (req: Request, res: Response) => {
       LEFT JOIN users u ON i.officer_id = u.id
       WHERE i.status = 'pending_review' AND i.archived_at IS NULL
       ORDER BY i.created_at ASC
+    
+      LIMIT 1000
     `).all();
     res.json(reports);
   } catch (error: any) {
     console.error('Approval queue error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to approval queue', code: 'APPROVAL_QUEUE_ERROR' });
   }
 });
 
@@ -2667,7 +2723,7 @@ router.post('/reports/:id/approve', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id, 10);
-    if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID' }); return; }
+    if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
 
     const now = localNow();
     db.prepare(`UPDATE incidents SET status = 'approved', supervisor_id = ?, approved_at = ?, updated_at = ? WHERE id = ?`).run(
@@ -2690,7 +2746,7 @@ router.post('/reports/:id/approve', (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (error: any) {
     console.error('Approve report error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to approve report', code: 'APPROVE_REPORT_ERROR' });
   }
 });
 
@@ -2699,7 +2755,7 @@ router.post('/reports/:id/return', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id, 10);
-    if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID' }); return; }
+    if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
 
     const { reason } = req.body;
     const now = localNow();
@@ -2722,7 +2778,7 @@ router.post('/reports/:id/return', (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (error: any) {
     console.error('Return report error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to return report', code: 'RETURN_REPORT_ERROR' });
   }
 });
 
@@ -2733,10 +2789,10 @@ router.get('/cases/:id/solvability', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id, 10);
-    if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID' }); return; }
+    if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
 
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(id) as any;
-    if (!incident) { res.status(404).json({ error: 'Case not found' }); return; }
+    if (!incident) { res.status(404).json({ error: 'Case not found', code: 'CASE_NOT_FOUND' }); return; }
 
     let score = 0;
     const factors: string[] = [];
@@ -2784,7 +2840,7 @@ router.get('/cases/:id/solvability', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Solvability score error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to solvability score', code: 'SOLVABILITY_SCORE_ERROR' });
   }
 });
 
@@ -2809,7 +2865,7 @@ router.get('/persons/alias-search', (req: Request, res: Response) => {
     res.json(results);
   } catch (error: any) {
     console.error('Alias search error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to alias search', code: 'ALIAS_SEARCH_ERROR' });
   }
 });
 
@@ -2851,7 +2907,7 @@ router.get('/vehicles/bolo-check', (req: Request, res: Response) => {
     res.json({ matches });
   } catch (error: any) {
     console.error('BOLO check error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to bolo check', code: 'BOLO_CHECK_ERROR' });
   }
 });
 
@@ -2862,11 +2918,11 @@ router.post('/persons/:id/photo', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id, 10);
-    if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID' }); return; }
+    if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
 
     const { photo } = req.body; // Base64 data URL
     if (!photo || typeof photo !== 'string') {
-      res.status(400).json({ error: 'photo (base64 data URL) is required' });
+      res.status(400).json({ error: 'photo (base64 data URL) is required', code: 'PHOTO_BASE64_DATA_URL' });
       return;
     }
 
@@ -2879,7 +2935,7 @@ router.post('/persons/:id/photo', (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (error: any) {
     console.error('Photo upload error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to photo upload', code: 'PHOTO_UPLOAD_ERROR' });
   }
 });
 
@@ -2906,7 +2962,7 @@ router.get('/location-suggest', (req: Request, res: Response) => {
     res.json(locations);
   } catch (error: any) {
     console.error('Location suggest error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to location suggest', code: 'LOCATION_SUGGEST_ERROR' });
   }
 });
 
@@ -2917,10 +2973,10 @@ router.post('/cases/:id/assign', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id, 10);
-    if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID' }); return; }
+    if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
 
     const { detective_id } = req.body;
-    if (!detective_id) { res.status(400).json({ error: 'detective_id is required' }); return; }
+    if (!detective_id) { res.status(400).json({ error: 'detective_id is required', code: 'DETECTIVEID_IS_REQUIRED' }); return; }
 
     const now = localNow();
     db.prepare('UPDATE incidents SET assigned_detective_id = ?, updated_at = ? WHERE id = ?').run(detective_id, now, id);
@@ -2940,7 +2996,7 @@ router.post('/cases/:id/assign', (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (error: any) {
     console.error('Assign case error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to assign case', code: 'ASSIGN_CASE_ERROR' });
   }
 });
 
@@ -2965,7 +3021,7 @@ router.get('/evidence/overdue', (req: Request, res: Response) => {
     res.json(overdue);
   } catch (error: any) {
     console.error('Evidence overdue error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to evidence overdue', code: 'EVIDENCE_OVERDUE_ERROR' });
   }
 });
 
@@ -2977,7 +3033,7 @@ router.get('/vehicles/:id/history', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
-    if (!vehicle) return res.status(404).json({ error: 'Vehicle not found' });
+    if (!vehicle) return res.status(404).json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' });
 
     // Incidents mentioning this vehicle
     let incidents: any[] = [];
@@ -3035,7 +3091,7 @@ router.get('/vehicles/:id/history', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Vehicle history error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to vehicle history', code: 'VEHICLE_HISTORY_ERROR' });
   }
 });
 
@@ -3085,7 +3141,7 @@ router.get('/vehicles/alerts/expired-registration', (_req: Request, _res: Respon
     _res.json({ data: { expired, expiring_soon: expiringSoon, total_expired: expired.length, total_expiring: expiringSoon.length } });
   } catch (error: any) {
     console.error('Registration alerts error:', error);
-    _res.status(500).json({ error: 'Internal server error' });
+    _res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -3097,7 +3153,7 @@ router.post('/vehicles/:id/insurance', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
-    if (!vehicle) return res.status(404).json({ error: 'Vehicle not found' });
+    if (!vehicle) return res.status(404).json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' });
 
     const { insurance_company, policy_number, insurance_status, expiration_date, verified_by_document, notes } = req.body;
 
@@ -3138,7 +3194,7 @@ router.post('/vehicles/:id/insurance', (req: Request, res: Response) => {
     res.json({ success: true, message: 'Insurance information updated' });
   } catch (error: any) {
     console.error('Insurance verification error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to insurance verification', code: 'INSURANCE_VERIFICATION_ERROR' });
   }
 });
 
@@ -3151,7 +3207,7 @@ router.post('/vehicles/stolen-check', (req: Request, res: Response) => {
     const db = getDb();
     const { plate_number, vin, state } = req.body;
 
-    if (!plate_number && !vin) return res.status(400).json({ error: 'plate_number or vin required' });
+    if (!plate_number && !vin) return res.status(400).json({ error: 'plate_number or vin required', code: 'PLATENUMBER_OR_VIN_REQUIRED' });
 
     // Check local stolen vehicle database
     let stolenMatch: any = null;
@@ -3163,12 +3219,16 @@ router.post('/vehicles/stolen-check', (req: Request, res: Response) => {
         localMatches = db.prepare(`
           SELECT * FROM vehicles_records
           WHERE plate_number = ? AND (flags LIKE '%stolen%' OR flags LIKE '%BOLO%' OR is_stolen = 1)
+        
+          LIMIT 1000
         `).all(plate_number) as any[];
       }
       if (vin && localMatches.length === 0) {
         localMatches = db.prepare(`
           SELECT * FROM vehicles_records
           WHERE vin = ? AND (flags LIKE '%stolen%' OR flags LIKE '%BOLO%' OR is_stolen = 1)
+        
+          LIMIT 1000
         `).all(vin) as any[];
       }
     } catch {
@@ -3177,6 +3237,8 @@ router.post('/vehicles/stolen-check', (req: Request, res: Response) => {
         localMatches = db.prepare(`
           SELECT * FROM vehicles_records
           WHERE plate_number = ? AND notes LIKE '%stolen%'
+        
+          LIMIT 1000
         `).all(plate_number) as any[];
       }
     }
@@ -3216,7 +3278,7 @@ router.post('/vehicles/stolen-check', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Stolen vehicle check error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to stolen vehicle check', code: 'STOLEN_VEHICLE_CHECK_ERROR' });
   }
 });
 
@@ -3228,13 +3290,13 @@ router.post('/vehicles/:id/link-person', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
-    if (!vehicle) return res.status(404).json({ error: 'Vehicle not found' });
+    if (!vehicle) return res.status(404).json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' });
 
     const { person_id, relationship } = req.body;
-    if (!person_id) return res.status(400).json({ error: 'person_id required' });
+    if (!person_id) return res.status(400).json({ error: 'person_id required', code: 'PERSONID_REQUIRED' });
 
     const person = db.prepare('SELECT id, first_name, last_name FROM persons WHERE id = ?').get(person_id) as any;
-    if (!person) return res.status(404).json({ error: 'Person not found' });
+    if (!person) return res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' });
 
     const now = localNow();
 
@@ -3255,7 +3317,7 @@ router.post('/vehicles/:id/link-person', (req: Request, res: Response) => {
     res.json({ success: true, vehicle_id: vehicle.id, person_id, person_name: `${person.first_name} ${person.last_name}` });
   } catch (error: any) {
     console.error('Vehicle-person link error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to vehicle-person link', code: 'VEHICLEPERSON_LINK_ERROR' });
   }
 });
 
@@ -3303,7 +3365,7 @@ router.get('/vehicles/auto-link-suggestions', (_req: Request, res: Response) => 
     res.json({ data: suggestions, total: suggestions.length });
   } catch (error: any) {
     console.error('Auto-link suggestions error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to auto-link suggestions', code: 'AUTOLINK_SUGGESTIONS_ERROR' });
   }
 });
 
@@ -3329,11 +3391,13 @@ router.get('/persons/:id/associates', (req: Request, res: Response) => {
       LEFT JOIN users u ON pa.created_by = u.id
       WHERE pa.associate_id = ?
       ORDER BY created_at DESC
+    
+      LIMIT 1000
     `).all(req.params.id, req.params.id);
     res.json(associates);
   } catch (error: any) {
     console.error('Get associates error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get associates', code: 'GET_ASSOCIATES_ERROR' });
   }
 });
 
@@ -3342,8 +3406,8 @@ router.post('/persons/:id/associates', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { associate_id, relationship_type, notes } = req.body;
-    if (!associate_id) { res.status(400).json({ error: 'associate_id is required' }); return; }
-    if (String(associate_id) === String(req.params.id)) { res.status(400).json({ error: 'Cannot associate a person with themselves' }); return; }
+    if (!associate_id) { res.status(400).json({ error: 'associate_id is required', code: 'ASSOCIATEID_IS_REQUIRED' }); return; }
+    if (String(associate_id) === String(req.params.id)) { res.status(400).json({ error: 'Cannot associate a person with themselves', code: 'CANNOT_ASSOCIATE_A_PERSON' }); return; }
 
     const validTypes = ['family', 'friend', 'gang', 'associate', 'coworker', 'neighbor', 'romantic', 'other'];
     const relType = validTypes.includes(relationship_type) ? relationship_type : 'associate';
@@ -3356,7 +3420,7 @@ router.post('/persons/:id/associates', (req: Request, res: Response) => {
     res.status(201).json({ success: true, id: result.lastInsertRowid });
   } catch (error: any) {
     console.error('Link associate error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to link associate', code: 'LINK_ASSOCIATE_ERROR' });
   }
 });
 
@@ -3368,7 +3432,7 @@ router.delete('/persons/:id/associates/:linkId', (req: Request, res: Response) =
     res.json({ success: true });
   } catch (error: any) {
     console.error('Remove associate error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to remove associate', code: 'REMOVE_ASSOCIATE_ERROR' });
   }
 });
 
@@ -3378,7 +3442,7 @@ router.put('/vehicles/:id/tow', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
-    if (!vehicle) { res.status(404).json({ error: 'Vehicle not found' }); return; }
+    if (!vehicle) { res.status(404).json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }); return; }
 
     const { tow_status, tow_company, tow_lot_location, tow_date, tow_release_date, tow_release_to, tow_reason } = req.body;
     const now = localNow();
@@ -3399,7 +3463,7 @@ router.put('/vehicles/:id/tow', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update tow info error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update tow info', code: 'UPDATE_TOW_INFO_ERROR' });
   }
 });
 
@@ -3409,10 +3473,10 @@ router.post('/evidence/:id/temperature', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
-    if (!evidence) { res.status(404).json({ error: 'Evidence not found' }); return; }
+    if (!evidence) { res.status(404).json({ error: 'Evidence not found', code: 'EVIDENCE_NOT_FOUND' }); return; }
 
     const { temperature } = req.body;
-    if (temperature == null || isNaN(Number(temperature))) { res.status(400).json({ error: 'temperature is required (numeric)' }); return; }
+    if (temperature == null || isNaN(Number(temperature))) { res.status(400).json({ error: 'temperature is required (numeric)', code: 'TEMPERATURE_IS_REQUIRED_NUMERIC' }); return; }
 
     const result = db.prepare(`
       INSERT INTO evidence_temperature_logs (evidence_id, temperature, recorded_by)
@@ -3425,7 +3489,7 @@ router.post('/evidence/:id/temperature', (req: Request, res: Response) => {
     res.status(201).json({ success: true, id: result.lastInsertRowid });
   } catch (error: any) {
     console.error('Log temperature error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to log temperature', code: 'LOG_TEMPERATURE_ERROR' });
   }
 });
 
@@ -3444,7 +3508,7 @@ router.get('/evidence/:id/temperature', (req: Request, res: Response) => {
     res.json(logs);
   } catch (error: any) {
     console.error('Get temperature logs error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get temperature logs', code: 'GET_TEMPERATURE_LOGS_ERROR' });
   }
 });
 

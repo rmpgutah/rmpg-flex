@@ -82,7 +82,7 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
       const rawPoints = req.body.points.slice(0, 60); // Cap at 60 points per request
       for (const pt of rawPoints) {
         if (pt === null || typeof pt !== 'object' || Array.isArray(pt)) {
-          res.status(400).json({ error: 'Each point must be an object with lat/lng' });
+          res.status(400).json({ error: 'Each point must be an object with lat/lng', code: 'EACH_POINT_MUST_BE' });
           return;
         }
       }
@@ -99,7 +99,7 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
       const lat = Number(req.body.latitude);
       const lng = Number(req.body.longitude);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-        res.status(400).json({ error: 'latitude and longitude must be valid numbers' });
+        res.status(400).json({ error: 'latitude and longitude must be valid numbers', code: 'LATITUDE_AND_LONGITUDE_MUST' });
         return;
       }
       points = [{
@@ -111,7 +111,7 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
         timestamp: null,
       }];
     } else {
-      res.status(400).json({ error: 'latitude/longitude or points[] required' });
+      res.status(400).json({ error: 'latitude/longitude or points[] required', code: 'LATITUDELONGITUDE_OR_POINTS_REQUIRED' });
       return;
     }
 
@@ -123,7 +123,7 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
     );
 
     if (validPoints.length === 0) {
-      res.status(400).json({ error: 'No valid GPS points provided' });
+      res.status(400).json({ error: 'No valid GPS points provided', code: 'NO_VALID_GPS_POINTS' });
       return;
     }
 
@@ -154,7 +154,7 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
 
       unit = ensureUnit(req.user!.userId);
       if (!unit) {
-        res.status(500).json({ error: 'Failed to create or find unit' });
+        res.status(500).json({ error: 'Failed to create or find unit', code: 'FAILED_TO_CREATE_OR' });
         return;
       }
       console.log(`[GPS] Auto-created unit "${unit.call_sign}" for user ${req.user!.userId}`);
@@ -311,7 +311,7 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
     })();
   } catch (error: any) {
     console.error('[GPS] update error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update', code: 'GPS_UPDATE_ERROR' });
   }
 });
 
@@ -327,7 +327,7 @@ router.get('/gps/my-unit', requireRole('admin', 'manager', 'supervisor', 'office
     res.json(unit || null);
   } catch (error: any) {
     console.error('[GPS] get my unit error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get my unit', code: 'GPS_GET_MY_UNIT' });
   }
 });
 
@@ -337,7 +337,7 @@ router.get('/gps/trail/:unitId', requireRole('admin', 'manager', 'supervisor', '
   try {
     const db = getDb();
     const unitId = parseInt(req.params.unitId as string, 10);
-    if (isNaN(unitId)) { res.status(400).json({ error: 'Invalid unit ID' }); return; }
+    if (isNaN(unitId)) { res.status(400).json({ error: 'Invalid unit ID', code: 'INVALID_UNIT_ID' }); return; }
     const hours = Math.min(Math.max(parseInt(req.query.hours as string, 10) || 8, 1), 72);
 
     // Fix 15: LIMIT on trail queries to prevent huge responses
@@ -530,6 +530,8 @@ router.get('/gps/dwell-times', requireRole('admin', 'manager', 'supervisor', 'of
       FROM units
       WHERE latitude IS NOT NULL AND longitude IS NOT NULL
         AND status != 'off_duty'
+    
+      LIMIT 1000
     `).all() as Array<{ id: number; call_sign: string; latitude: number; longitude: number; status: string }>;
 
     if (units.length === 0) {
@@ -564,6 +566,8 @@ router.get('/gps/dwell-times', requireRole('admin', 'manager', 'supervisor', 'of
       )
       WHERE rn <= 100
       ORDER BY unit_id, rn ASC
+    
+      LIMIT 1000
     `).all(...unitIds) as Array<{ unit_id: number; latitude: number; longitude: number; recorded_at: string }>;
 
     // Group breadcrumbs by unit_id
@@ -648,7 +652,7 @@ router.delete('/gps/breadcrumbs/cleanup', requireRole('admin'), (req: Request, r
     res.json({ deleted: result.changes });
   } catch (error: any) {
     console.error('[GPS] breadcrumb cleanup error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to breadcrumb cleanup', code: 'GPS_BREADCRUMB_CLEANUP_ERROR' });
   }
 });
 
@@ -674,7 +678,7 @@ router.get('/gps/units-with-trails', requireRole('admin', 'manager', 'supervisor
     res.json(units);
   } catch (error: any) {
     console.error('[GPS] units-with-trails error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to units-with-trails', code: 'GPS_UNITSWITHTRAILS_ERROR' });
   }
 });
 

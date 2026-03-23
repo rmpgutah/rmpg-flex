@@ -102,7 +102,7 @@ function ensureTables(): void {
 
 function requireApiKey(_req: Request, res: Response): boolean {
   if (!getApiKey()) {
-    res.status(400).json({ error: 'ServeManager API key not configured. Set it in Admin > ServeManager.' });
+    res.status(400).json({ error: 'ServeManager API key not configured. Set it in Admin > ServeManager.', code: 'SERVEMANAGER_API_KEY_NOT' });
     return false;
   }
   return true;
@@ -231,7 +231,7 @@ router.get('/status', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('SM status error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to sm status', code: 'SM_STATUS_ERROR' });
   }
 });
 
@@ -253,7 +253,7 @@ router.put('/api-key', requireRole('admin'), (req: Request, res: Response) => {
     const now = localNow();
 
     if (!api_key || typeof api_key !== 'string' || api_key.trim().length === 0) {
-      res.status(400).json({ error: 'api_key is required' });
+      res.status(400).json({ error: 'api_key is required', code: 'APIKEY_IS_REQUIRED' });
       return;
     }
 
@@ -275,7 +275,7 @@ router.put('/api-key', requireRole('admin'), (req: Request, res: Response) => {
     res.json({ success: true, message: 'API key saved' });
   } catch (error: any) {
     console.error('SM set API key error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to sm set api key', code: 'SM_SET_API_KEY' });
   }
 });
 
@@ -296,7 +296,7 @@ router.delete('/api-key', requireRole('admin'), (req: Request, res: Response) =>
     res.json({ success: true });
   } catch (error: any) {
     console.error('SM clear API key error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to sm clear api key', code: 'SM_CLEAR_API_KEY' });
   }
 });
 
@@ -362,7 +362,7 @@ router.get('/jobs', async (req: Request, res: Response) => {
       return;
     }
     console.error('SM jobs list error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to sm jobs list', code: 'SM_JOBS_LIST_ERROR' });
   }
 });
 
@@ -386,14 +386,14 @@ router.get('/jobs/:id', async (req: Request, res: Response) => {
 
     const db = getDb();
     const job = db.prepare('SELECT * FROM sm_jobs WHERE id = ?').get(req.params.id);
-    if (!job) { res.status(404).json({ error: 'Job not found in cache. Try ?live=true' }); return; }
+    if (!job) { res.status(404).json({ error: 'Job not found in cache. Try ?live=true', code: 'JOB_NOT_FOUND_IN' }); return; }
     const attempts = db.prepare('SELECT * FROM sm_attempts WHERE job_id = ? ORDER BY sm_created_at DESC').all(req.params.id);
 
     res.json({ data: { ...(job as any), attempts } });
   } catch (error: any) {
     if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message }); return; }
     console.error('SM job detail error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to sm job detail', code: 'SM_JOB_DETAIL_ERROR' });
   }
 });
 
@@ -415,7 +415,7 @@ router.post('/jobs', requireRole('admin', 'manager'), async (req: Request, res: 
   } catch (error: any) {
     if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message, details: error.responseBody }); return; }
     console.error('SM create job error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to sm create job', code: 'SM_CREATE_JOB_ERROR' });
   }
 });
 
@@ -437,7 +437,7 @@ router.put('/jobs/:id', requireRole('admin', 'manager'), async (req: Request, re
   } catch (error: any) {
     if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message, details: error.responseBody }); return; }
     console.error('SM update job error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to sm update job', code: 'SM_UPDATE_JOB_ERROR' });
   }
 });
 
@@ -468,7 +468,7 @@ router.post('/jobs/:id/cancel', requireRole('admin', 'manager'), async (req: Req
   } catch (error: any) {
     if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message, details: error.responseBody }); return; }
     console.error('SM cancel job error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to sm cancel job', code: 'SM_CANCEL_JOB_ERROR' });
   }
 });
 
@@ -500,7 +500,7 @@ router.get('/jobs/:jobId/attempts', async (req: Request, res: Response) => {
   } catch (error: any) {
     if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message }); return; }
     console.error('SM attempts error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to sm attempts', code: 'SM_ATTEMPTS_ERROR' });
   }
 });
 
@@ -522,7 +522,7 @@ router.post('/attempts', requireRole('admin', 'manager'), async (req: Request, r
   } catch (error: any) {
     if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message, details: error.responseBody }); return; }
     console.error('SM create attempt error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to sm create attempt', code: 'SM_CREATE_ATTEMPT_ERROR' });
   }
 });
 
@@ -539,7 +539,7 @@ router.post('/jobs/:jobId/notes', requireRole('admin', 'manager'), async (req: R
   } catch (error: any) {
     if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message }); return; }
     console.error('SM create note error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to sm create note', code: 'SM_CREATE_NOTE_ERROR' });
   }
 });
 
@@ -558,7 +558,7 @@ router.get('/companies', async (req: Request, res: Response) => {
     res.json(result);
   } catch (error: any) {
     if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message }); return; }
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -570,7 +570,7 @@ router.get('/courts', async (req: Request, res: Response) => {
     res.json(result);
   } catch (error: any) {
     if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message }); return; }
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -582,7 +582,7 @@ router.get('/employees', async (req: Request, res: Response) => {
     res.json(result);
   } catch (error: any) {
     if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message }); return; }
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -597,7 +597,7 @@ router.get('/court-cases', async (req: Request, res: Response) => {
     res.json(result);
   } catch (error: any) {
     if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message }); return; }
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -680,7 +680,7 @@ router.post('/sync', requireRole('admin', 'manager'), async (req: Request, res: 
   } catch (error: any) {
     if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message }); return; }
     console.error('SM sync error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to sm sync', code: 'SM_SYNC_ERROR' });
   }
 });
 
@@ -693,7 +693,7 @@ router.get('/sync/log', requireRole('admin', 'manager'), (req: Request, res: Res
     res.json({ data: rows });
   } catch (error: any) {
     console.error('SM sync log error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to sm sync log', code: 'SM_SYNC_LOG_ERROR' });
   }
 });
 
@@ -710,7 +710,7 @@ router.put('/jobs/:id/link', requireRole('admin', 'manager'), (req: Request, res
     const { linked_warrant_id, linked_call_id, notes_local } = req.body;
 
     const job = db.prepare('SELECT id FROM sm_jobs WHERE id = ?').get(req.params.id);
-    if (!job) { res.status(404).json({ error: 'Job not found in cache' }); return; }
+    if (!job) { res.status(404).json({ error: 'Job not found in cache', code: 'JOB_NOT_FOUND_IN' }); return; }
 
     const updates: string[] = [];
     const values: any[] = [];
@@ -732,7 +732,7 @@ router.put('/jobs/:id/link', requireRole('admin', 'manager'), (req: Request, res
     res.json({ data: updated });
   } catch (error: any) {
     console.error('SM link job error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to sm link job', code: 'SM_LINK_JOB_ERROR' });
   }
 });
 

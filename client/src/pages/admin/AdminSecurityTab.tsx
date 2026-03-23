@@ -170,6 +170,9 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
     </button>
   );
 
+  // Set document title
+  useEffect(() => { document.title = 'Admin - Security \u2014 RMPG Flex'; }, []);
+
   return (
     <div className="p-4 space-y-6 max-w-4xl">
       {/* Header */}
@@ -188,7 +191,7 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
           disabled={!dirty || saving}
           className={`toolbar-btn ${dirty ? 'toolbar-btn-primary' : 'toolbar-btn'} flex items-center gap-1.5`}
         >
-          {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : saved ? <CheckCircle className="w-3 h-3 text-green-400" /> : <Save className="w-3 h-3" />}
+          {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : saved ? <CheckCircle className="w-3 h-3 text-green-400" /> : <Save className="w-3 h-3" />}
           {saving ? 'Saving...' : saved ? 'Saved' : 'Save Changes'}
         </button>
       </div>
@@ -203,17 +206,17 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Minimum Password Length</label>
-            <input type="number" className="input-dark text-xs w-full" value={config.min_password_length} onChange={(e) => update('min_password_length', e.target.value)} min="6" max="32" />
+            <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={config.min_password_length} onChange={(e) => update('min_password_length', e.target.value)} min="6" max="32" />
             <p className="text-[9px] text-rmpg-500 mt-0.5">Minimum characters required (6-32)</p>
           </div>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Password Expiry (days)</label>
-            <input type="number" className="input-dark text-xs w-full" value={config.password_expiry_days} onChange={(e) => update('password_expiry_days', e.target.value)} min="0" max="365" />
+            <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={config.password_expiry_days} onChange={(e) => update('password_expiry_days', e.target.value)} min="0" max="365" />
             <p className="text-[9px] text-rmpg-500 mt-0.5">0 = passwords never expire</p>
           </div>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Password History</label>
-            <input type="number" className="input-dark text-xs w-full" value={config.password_history_count} onChange={(e) => update('password_history_count', e.target.value)} min="0" max="24" />
+            <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={config.password_history_count} onChange={(e) => update('password_history_count', e.target.value)} min="0" max="24" />
             <p className="text-[9px] text-rmpg-500 mt-0.5">Prevent reuse of last N passwords</p>
           </div>
         </div>
@@ -244,7 +247,7 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
           <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Require 2FA for Roles</label>
           <input
             type="text"
-            className="input-dark text-xs w-full font-mono"
+            className="input-dark text-xs w-full font-mono min-h-[36px]"
             value={config.totp_required_roles}
             onChange={(e) => update('totp_required_roles', e.target.value)}
             placeholder="admin,dispatcher,supervisor (comma-separated, leave empty for optional)"
@@ -276,7 +279,7 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
         <div>
           <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Action on IP Change</label>
           <select
-            className="input-dark text-xs w-full"
+            className="input-dark text-xs w-full min-h-[36px]"
             value={config.ip_change_action}
             onChange={(e) => update('ip_change_action', e.target.value)}
           >
@@ -298,12 +301,12 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Max Failed Login Attempts</label>
-            <input type="number" className="input-dark text-xs w-full" value={config.max_login_attempts} onChange={(e) => update('max_login_attempts', e.target.value)} min="1" max="20" />
+            <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={config.max_login_attempts} onChange={(e) => update('max_login_attempts', e.target.value)} min="1" max="20" />
             <p className="text-[9px] text-rmpg-500 mt-0.5">Account locks after this many failed attempts</p>
           </div>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Lockout Duration (minutes)</label>
-            <input type="number" className="input-dark text-xs w-full" value={config.lockout_duration_minutes} onChange={(e) => update('lockout_duration_minutes', e.target.value)} min="1" max="1440" />
+            <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={config.lockout_duration_minutes} onChange={(e) => update('lockout_duration_minutes', e.target.value)} min="1" max="1440" />
             <p className="text-[9px] text-rmpg-500 mt-0.5">How long the account stays locked</p>
           </div>
         </div>
@@ -326,12 +329,12 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Session Timeout (minutes)</label>
-            <input type="number" className="input-dark text-xs w-full" value={config.session_timeout_minutes} onChange={(e) => update('session_timeout_minutes', e.target.value)} min="5" max="1440" />
+            <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={config.session_timeout_minutes} onChange={(e) => update('session_timeout_minutes', e.target.value)} min="5" max="1440" />
             <p className="text-[9px] text-rmpg-500 mt-0.5">Auto-logout after inactivity. Current: {Math.round(Number(config.session_timeout_minutes) / 60)}h {Number(config.session_timeout_minutes) % 60}m</p>
           </div>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Max Concurrent Sessions</label>
-            <input type="number" className="input-dark text-xs w-full" value={config.max_active_sessions} onChange={(e) => update('max_active_sessions', e.target.value)} min="1" max="10" />
+            <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={config.max_active_sessions} onChange={(e) => update('max_active_sessions', e.target.value)} min="1" max="10" />
             <p className="text-[9px] text-rmpg-500 mt-0.5">Maximum simultaneous logins per user</p>
           </div>
         </div>
@@ -368,7 +371,7 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">IP Allowlist</label>
             <textarea
-              className="input-dark text-xs w-full h-20 font-mono"
+              className="input-dark text-xs w-full h-20 font-mono min-h-[36px]"
               value={config.ip_allowlist}
               onChange={(e) => update('ip_allowlist', e.target.value)}
               placeholder="One IP per line (leave empty to allow all)&#10;192.168.1.0/24&#10;10.0.0.1"
@@ -378,7 +381,7 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">IP Blocklist</label>
             <textarea
-              className="input-dark text-xs w-full h-20 font-mono"
+              className="input-dark text-xs w-full h-20 font-mono min-h-[36px]"
               value={config.ip_blocklist}
               onChange={(e) => update('ip_blocklist', e.target.value)}
               placeholder="One IP per line&#10;203.0.113.50"
@@ -400,7 +403,7 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
         <div className="sticky bottom-0 bg-rmpg-950/90 backdrop-blur-sm border-t border-rmpg-700 p-3 flex items-center justify-between -mx-4 px-4">
           <span className="text-[10px] text-amber-400">You have unsaved changes</span>
           <button type="button" onClick={saveConfig} disabled={saving} className="toolbar-btn toolbar-btn-primary flex items-center gap-1.5">
-            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+            {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save className="w-3 h-3" />}
             {saving ? 'Saving...' : 'Save All Changes'}
           </button>
         </div>

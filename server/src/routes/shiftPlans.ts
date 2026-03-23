@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { auditLog } from '../utils/auditLogger';
+import { broadcastAdminUpdate } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
 
 const router = Router();
@@ -96,7 +98,7 @@ router.get('/shift-plans', requireRole('admin', 'manager', 'supervisor', 'dispat
     res.json(plans);
   } catch (error: any) {
     console.error('Get shift plans error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get shift plans', code: 'GET_SHIFT_PLANS_ERROR' });
   }
 });
 
@@ -113,6 +115,8 @@ router.get('/shift-plans/coverage/:date', requireRole('admin', 'manager', 'super
       FROM shift_plans sp
       WHERE sp.date = ? AND sp.status = 'active'
       ORDER BY sp.shift_type
+    
+      LIMIT 1000
     `).all(date) as any[];
 
     const allAssignments: any[] = [];
@@ -136,7 +140,7 @@ router.get('/shift-plans/coverage/:date', requireRole('admin', 'manager', 'super
     res.json(allAssignments);
   } catch (error: any) {
     console.error('Get shift coverage error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get shift coverage', code: 'GET_SHIFT_COVERAGE_ERROR' });
   }
 });
 
@@ -155,14 +159,14 @@ router.get('/shift-plans/:id', requireRole('admin', 'manager', 'supervisor', 'di
     `).get(req.params.id) as any;
 
     if (!row) {
-      res.status(404).json({ error: 'Shift plan not found' });
+      res.status(404).json({ error: 'Shift plan not found', code: 'SHIFT_PLAN_NOT_FOUND' });
       return;
     }
 
     res.json(parseAssignments(row));
   } catch (error: any) {
     console.error('Get shift plan error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get shift plan', code: 'GET_SHIFT_PLAN_ERROR' });
   }
 });
 
@@ -175,9 +179,18 @@ router.post('/shift-plans', requireRole('admin', 'manager', 'supervisor'), (req:
     const { id, name, date, shiftType, assignments, status, createdAt, updatedAt } = req.body;
 
     if (!id || !name || !date) {
-      res.status(400).json({ error: 'id, name, and date are required' });
+      res.status(400).json({ error: 'id, name, and date are required', code: 'MISSING_FIELDS' });
       return;
     }
+
+    // Validate date format
+    if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(date)) {
+      res.status(400).json({ error: 'date must be in YYYY-MM-DD format', code: 'INVALID_DATE_FORMAT' });
+      return;
+    }
+
+    // Input sanitization
+    const cleanName = typeof name === 'string' ? name.trim() : name;
 
     const now = localNow();
     const assignmentsJson = assignments ? JSON.stringify(assignments) : '[]';
@@ -238,7 +251,7 @@ router.post('/shift-plans', requireRole('admin', 'manager', 'supervisor'), (req:
     res.status(existing ? 200 : 201).json(parseAssignments(plan));
   } catch (error: any) {
     console.error('Create/upsert shift plan error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create/upsert shift plan', code: 'CREATEUPSERT_SHIFT_PLAN_ERROR' });
   }
 });
 
@@ -250,7 +263,7 @@ router.put('/shift-plans/:id', requireRole('admin', 'manager', 'supervisor'), (r
     const db = getDb();
     const existing = db.prepare('SELECT * FROM shift_plans WHERE id = ?').get(req.params.id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Shift plan not found' });
+      res.status(404).json({ error: 'Shift plan not found', code: 'SHIFT_PLAN_NOT_FOUND' });
       return;
     }
 
@@ -271,7 +284,7 @@ router.put('/shift-plans/:id', requireRole('admin', 'manager', 'supervisor'), (r
     }
 
     if (setClauses.length === 0) {
-      res.status(400).json({ error: 'No fields to update' });
+      res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
       return;
     }
 
@@ -296,7 +309,7 @@ router.put('/shift-plans/:id', requireRole('admin', 'manager', 'supervisor'), (r
     res.json(parseAssignments(updated));
   } catch (error: any) {
     console.error('Update shift plan error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update shift plan', code: 'UPDATE_SHIFT_PLAN_ERROR' });
   }
 });
 
@@ -308,7 +321,7 @@ router.delete('/shift-plans/:id', requireRole('admin', 'manager'), (req: Request
     const db = getDb();
     const existing = db.prepare('SELECT * FROM shift_plans WHERE id = ?').get(req.params.id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Shift plan not found' });
+      res.status(404).json({ error: 'Shift plan not found', code: 'SHIFT_PLAN_NOT_FOUND' });
       return;
     }
 
@@ -322,7 +335,7 @@ router.delete('/shift-plans/:id', requireRole('admin', 'manager'), (req: Request
     res.json({ message: 'Shift plan deleted' });
   } catch (error: any) {
     console.error('Delete shift plan error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete shift plan', code: 'DELETE_SHIFT_PLAN_ERROR' });
   }
 });
 
@@ -334,7 +347,7 @@ router.post('/shift-plans/:id/activate', requireRole('admin', 'manager', 'superv
     const db = getDb();
     const existing = db.prepare('SELECT * FROM shift_plans WHERE id = ?').get(req.params.id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Shift plan not found' });
+      res.status(404).json({ error: 'Shift plan not found', code: 'SHIFT_PLAN_NOT_FOUND' });
       return;
     }
 
@@ -367,7 +380,7 @@ router.post('/shift-plans/:id/activate', requireRole('admin', 'manager', 'superv
     res.json(parseAssignments(updated));
   } catch (error: any) {
     console.error('Activate shift plan error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to activate shift plan', code: 'ACTIVATE_SHIFT_PLAN_ERROR' });
   }
 });
 

@@ -65,6 +65,8 @@ router.get('/', (req: Request, res: Response) => {
     // Get distinct subcategories for filtering
     const subcategories = db.prepare(`
       SELECT DISTINCT subcategory FROM utah_statutes WHERE is_active = 1 ORDER BY subcategory
+    
+      LIMIT 1000
     `).all() as { subcategory: string }[];
 
     res.json({
@@ -74,7 +76,7 @@ router.get('/', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('List statutes error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to list statutes', code: 'LIST_STATUTES_ERROR' });
   }
 });
 
@@ -109,10 +111,11 @@ router.get('/search', (req: Request, res: Response) => {
       LIMIT ?
     `).all(...params, `${q}%`, limitNum);
 
+    res.set('Cache-Control', 'private, max-age=300');
     res.json({ data: statutes });
   } catch (error: any) {
     console.error('Search statutes error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to search statutes', code: 'SEARCH_STATUTES_ERROR' });
   }
 });
 
@@ -122,13 +125,13 @@ router.get('/:id', (req: Request, res: Response) => {
     const db = getDb();
     const statute = db.prepare('SELECT * FROM utah_statutes WHERE id = ?').get(req.params.id);
     if (!statute) {
-      res.status(404).json({ error: 'Statute not found' });
+      res.status(404).json({ error: 'Statute not found', code: 'STATUTE_NOT_FOUND' });
       return;
     }
     res.json(statute);
   } catch (error: any) {
     console.error('Get statute error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get statute', code: 'GET_STATUTE_ERROR' });
   }
 });
 
@@ -139,7 +142,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
     const { title, chapter, section, subsection, citation, short_title, description, offense_level, category, subcategory } = req.body;
 
     if (!citation || !short_title || !category) {
-      res.status(400).json({ error: 'citation, short_title, and category are required' });
+      res.status(400).json({ error: 'citation, short_title, and category are required', code: 'CITATION_SHORTTITLE_AND_CATEGORY' });
       return;
     }
 
@@ -152,7 +155,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
     res.status(201).json(statute);
   } catch (error: any) {
     console.error('Create statute error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create statute', code: 'CREATE_STATUTE_ERROR' });
   }
 });
 
@@ -174,7 +177,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
     if (is_active !== undefined) { fields.push('is_active = ?'); params.push(is_active); }
 
     if (fields.length === 0) {
-      res.status(400).json({ error: 'No fields to update' });
+      res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
       return;
     }
 
@@ -185,7 +188,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
     res.json(statute);
   } catch (error: any) {
     console.error('Update statute error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update statute', code: 'UPDATE_STATUTE_ERROR' });
   }
 });
 
@@ -197,7 +200,7 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete statute error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete statute', code: 'DELETE_STATUTE_ERROR' });
   }
 });
 
@@ -215,12 +218,14 @@ router.get('/entity/:type/:id', (req: Request, res: Response) => {
       JOIN utah_statutes s ON es.statute_id = s.id
       WHERE es.entity_type = ? AND es.entity_id = ?
       ORDER BY s.citation
+    
+      LIMIT 1000
     `).all(type, id);
 
     res.json({ data: links });
   } catch (error: any) {
     console.error('Get entity statutes error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get entity statutes', code: 'GET_ENTITY_STATUTES_ERROR' });
   }
 });
 
@@ -231,7 +236,7 @@ router.post('/entity', (req: Request, res: Response) => {
     const { entity_type, entity_id, statute_id, notes } = req.body;
 
     if (!entity_type || !entity_id || !statute_id) {
-      res.status(400).json({ error: 'entity_type, entity_id, and statute_id are required' });
+      res.status(400).json({ error: 'entity_type, entity_id, and statute_id are required', code: 'ENTITYTYPE_ENTITYID_AND_STATUTEID' });
       return;
     }
 
@@ -241,7 +246,7 @@ router.post('/entity', (req: Request, res: Response) => {
     `).run(entity_type, entity_id, statute_id, notes || null);
 
     if (result.changes === 0) {
-      res.status(409).json({ error: 'Statute already linked to this entity' });
+      res.status(409).json({ error: 'Statute already linked to this entity', code: 'STATUTE_ALREADY_LINKED_TO' });
       return;
     }
 
@@ -255,7 +260,7 @@ router.post('/entity', (req: Request, res: Response) => {
     res.status(201).json(link);
   } catch (error: any) {
     console.error('Link statute error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to link statute', code: 'LINK_STATUTE_ERROR' });
   }
 });
 
@@ -267,7 +272,7 @@ router.delete('/entity/:id', (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (error: any) {
     console.error('Unlink statute error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unlink statute', code: 'UNLINK_STATUTE_ERROR' });
   }
 });
 
@@ -287,7 +292,7 @@ router.get('/penalty/:citation', (req: Request, res: Response) => {
       WHERE citation = ? AND is_active = 1
     `).get(citation) as any;
 
-    if (!statute) return res.status(404).json({ error: 'Statute not found' });
+    if (!statute) return res.status(404).json({ error: 'Statute not found', code: 'STATUTE_NOT_FOUND' });
 
     // Penalty info based on offense level
     const penaltyRanges: Record<string, { jail_max: string; fine_max: string }> = {
@@ -316,7 +321,7 @@ router.get('/penalty/:citation', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -374,7 +379,7 @@ router.get('/analytics/top-charged', (req: Request, res: Response) => {
 
     res.json({ data: sorted, period_days: parseInt(days as string, 10) });
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -386,10 +391,10 @@ router.post('/:id/amendment', requireRole('admin', 'manager'), (req: Request, re
   try {
     const db = getDb();
     const statute = db.prepare('SELECT * FROM utah_statutes WHERE id = ?').get(req.params.id) as any;
-    if (!statute) return res.status(404).json({ error: 'Statute not found' });
+    if (!statute) return res.status(404).json({ error: 'Statute not found', code: 'STATUTE_NOT_FOUND' });
 
     const { amendment_date, amendment_type, description, effective_date, previous_text, new_text } = req.body;
-    if (!amendment_type || !description) return res.status(400).json({ error: 'amendment_type and description required' });
+    if (!amendment_type || !description) return res.status(400).json({ error: 'amendment_type and description required', code: 'AMENDMENTTYPE_AND_DESCRIPTION_REQUIRED' });
 
     const now = localNow();
 
@@ -418,7 +423,7 @@ router.post('/:id/amendment', requireRole('admin', 'manager'), (req: Request, re
 
     res.status(201).json({ data: amendmentData });
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -431,6 +436,8 @@ router.get('/:id/amendments', (req: Request, res: Response) => {
       LEFT JOIN users u ON al.user_id = u.id
       WHERE al.entity_type = 'utah_statute' AND al.entity_id = ? AND al.action = 'statute_amendment'
       ORDER BY al.created_at DESC
+    
+      LIMIT 1000
     `).all(req.params.id) as any[];
 
     const parsed = amendments.map((a: any) => {
@@ -439,7 +446,7 @@ router.get('/:id/amendments', (req: Request, res: Response) => {
     });
 
     res.json({ data: parsed });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in statutes', code: 'STATUTES_ERROR' }); }
 });
 
 // ════════════════════════════════════════════════════════════
@@ -457,7 +464,7 @@ router.post('/calculate-enhancement', (req: Request, res: Response) => {
     } else if (citation) {
       statute = db.prepare('SELECT * FROM utah_statutes WHERE citation = ? AND is_active = 1').get(citation);
     }
-    if (!statute) return res.status(404).json({ error: 'Statute not found' });
+    if (!statute) return res.status(404).json({ error: 'Statute not found', code: 'STATUTE_NOT_FOUND' });
 
     const enhancementFactors = factors || {};
     let baseLevel = statute.offense_level || 'class_b_misdemeanor';
@@ -513,7 +520,7 @@ router.post('/calculate-enhancement', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -526,18 +533,20 @@ router.post('/compare', (req: Request, res: Response) => {
     const db = getDb();
     const { statute_ids } = req.body;
     if (!Array.isArray(statute_ids) || statute_ids.length < 2) {
-      return res.status(400).json({ error: 'Provide at least 2 statute_ids to compare' });
+      return res.status(400).json({ error: 'Provide at least 2 statute_ids to compare', code: 'PROVIDE_AT_LEAST_2' });
     }
     if (statute_ids.length > 5) {
-      return res.status(400).json({ error: 'Maximum 5 statutes for comparison' });
+      return res.status(400).json({ error: 'Maximum 5 statutes for comparison', code: 'MAXIMUM_5_STATUTES_FOR' });
     }
 
     const placeholders = statute_ids.map(() => '?').join(',');
     const statutes = db.prepare(`
       SELECT * FROM utah_statutes WHERE id IN (${placeholders})
+    
+      LIMIT 1000
     `).all(...statute_ids) as any[];
 
-    if (statutes.length < 2) return res.status(404).json({ error: 'One or more statutes not found' });
+    if (statutes.length < 2) return res.status(404).json({ error: 'One or more statutes not found', code: 'ONE_OR_MORE_STATUTES' });
 
     // Build comparison
     const comparison = {
@@ -561,7 +570,7 @@ router.post('/compare', (req: Request, res: Response) => {
 
     res.json({ data: comparison });
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 

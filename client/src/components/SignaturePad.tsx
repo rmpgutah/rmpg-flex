@@ -352,7 +352,7 @@ export default function SignaturePad({
               onChange={(e) => setTypedName(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && typedName.trim()) handleSave(); }}
               placeholder="Type your full name"
-              className="w-[90%] mb-2 px-2 py-1 text-sm border border-gray-300 rounded-sm text-gray-800 focus:outline-none focus:border-blue-500"
+              className="w-[90%] mb-2 px-2 py-1 text-sm border border-rmpg-600 rounded-sm text-rmpg-800 bg-white focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500"
               autoFocus
             />
             {/* Font selector */}
@@ -365,7 +365,7 @@ export default function SignaturePad({
                   className={`px-1.5 py-0.5 text-[9px] rounded-sm transition-colors ${
                     selectedFont === i
                       ? 'bg-blue-100 border border-blue-400 text-blue-700'
-                      : 'bg-gray-100 border border-gray-300 text-gray-600 hover:bg-gray-200'
+                      : 'bg-rmpg-800 border border-rmpg-600 text-rmpg-300 hover:bg-rmpg-700'
                   }`}
                 >
                   {f.name}

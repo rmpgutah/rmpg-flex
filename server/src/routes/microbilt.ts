@@ -185,7 +185,7 @@ router.get('/status', requireRole('admin', 'manager'), (_req: Request, res: Resp
     });
   } catch (error: any) {
     console.error('Microbilt status error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to microbilt status', code: 'MICROBILT_STATUS_ERROR' });
   }
 });
 
@@ -218,7 +218,7 @@ router.put('/credentials', requireRole('admin'), (req: Request, res: Response) =
     res.json({ message: 'Credentials saved' });
   } catch (error: any) {
     console.error('Microbilt save credentials error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to microbilt save credentials', code: 'MICROBILT_SAVE_CREDENTIALS_ERROR' });
   }
 });
 
@@ -236,7 +236,7 @@ router.delete('/credentials', requireRole('admin'), (req: Request, res: Response
     res.json({ message: 'Credentials cleared' });
   } catch (error: any) {
     console.error('Microbilt clear credentials error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to microbilt clear credentials', code: 'MICROBILT_CLEAR_CREDENTIALS_ERROR' });
   }
 });
 
@@ -267,7 +267,7 @@ router.put('/products', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const { products } = req.body;
     if (!Array.isArray(products)) {
-      res.status(400).json({ error: 'products must be an array of product IDs' });
+      res.status(400).json({ error: 'products must be an array of product IDs', code: 'PRODUCTS_MUST_BE_AN' });
       return;
     }
 
@@ -281,7 +281,7 @@ router.put('/products', requireRole('admin'), (req: Request, res: Response) => {
     res.json({ message: 'Products updated', products });
   } catch (error: any) {
     console.error('Microbilt update products error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to microbilt update products', code: 'MICROBILT_UPDATE_PRODUCTS_ERROR' });
   }
 });
 

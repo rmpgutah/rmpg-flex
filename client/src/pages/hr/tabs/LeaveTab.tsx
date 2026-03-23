@@ -363,6 +363,18 @@ export default function LeaveTab() {
 
   // ─── Manager View ──────────────────────────────────────
 
+  // Set document title
+  useEffect(() => { document.title = 'HR - Leave \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setModalOpen(false); setEditRequest(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="p-4 space-y-4">
       {/* ── Pending Approvals ─────────────────────────────── */}

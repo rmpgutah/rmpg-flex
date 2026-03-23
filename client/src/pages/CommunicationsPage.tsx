@@ -492,6 +492,7 @@ export default function CommunicationsPage() {
 
   // --- Delete Message ---
   const handleDeleteMessage = async (msgId: string) => {
+    if (!window.confirm('Delete this message? This cannot be undone.')) return;
     try {
       await apiFetch(`/comms/messages/${msgId}`, { method: 'DELETE' });
       setMessages((prev) => prev.filter((m) => m.id !== msgId));
@@ -630,7 +631,7 @@ export default function CommunicationsPage() {
 
   const Spinner = ({ label }: { label?: string }) => (
     <div className="flex-1 flex flex-col items-center justify-center text-rmpg-400 py-20">
-      <Loader2 className="w-6 h-6 animate-spin mb-2" />
+      <Loader2 className="w-6 h-6 animate-spin mb-2" role="status" aria-label="Loading" />
       {label && <p className="text-xs">{label}</p>}
     </div>
   );
@@ -650,6 +651,9 @@ export default function CommunicationsPage() {
   // ============================================================
   // Render
   // ============================================================
+
+  // Set document title
+  useEffect(() => { document.title = 'Communications \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="flex flex-col h-full animate-fade-in">
@@ -673,7 +677,7 @@ export default function CommunicationsPage() {
               <Search className="w-3 h-3 text-rmpg-500" />
               <input
                 type="text"
-                placeholder="Search conversations..."
+                placeholder="Search conversations..." aria-label="Search conversations..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="bg-transparent border-none outline-none text-xs text-white placeholder-rmpg-500"
@@ -685,7 +689,7 @@ export default function CommunicationsPage() {
                 </button>
               )}
             </div>
-            <button type="button" onClick={() => setShowCompose(true)} className="toolbar-btn toolbar-btn-primary">
+            <button type="button" onClick={() => setShowCompose(true)} className="toolbar-btn toolbar-btn-primary print:hidden">
               <Plus className="w-3.5 h-3.5" /> Compose
             </button>
             {/* Feature 30: Emergency broadcast button */}
@@ -1010,7 +1014,7 @@ export default function CommunicationsPage() {
                             disabled={replySending || !replyText.trim()}
                             title="Send reply (Ctrl+Enter)"
                           >
-                            {replySending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                            {replySending ? <Loader2 className="w-4 h-4 animate-spin" role="status" aria-label="Loading" /> : <Send className="w-4 h-4" />}
                           </button>
                         </div>
                       </div>
@@ -1045,7 +1049,7 @@ export default function CommunicationsPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Title:</label>
-                    <input type="text" className="input-dark" placeholder="BOLO title" value={boloTitle} onChange={(e) => setBoloTitle(e.target.value)} required />
+                    <input type="text" className="input-dark min-h-[36px]" placeholder="BOLO title" value={boloTitle} onChange={(e) => setBoloTitle(e.target.value)} required />
                   </div>
                   <div>
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Type:</label>
@@ -1065,11 +1069,11 @@ export default function CommunicationsPage() {
                   </div>
                   <div>
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Subject Description:</label>
-                    <input type="text" className="input-dark" placeholder="Subject description" value={boloSubjectDescription} onChange={(e) => setBoloSubjectDescription(e.target.value)} />
+                    <input type="text" className="input-dark min-h-[36px]" placeholder="Subject description" value={boloSubjectDescription} onChange={(e) => setBoloSubjectDescription(e.target.value)} />
                   </div>
                   <div>
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Vehicle Description:</label>
-                    <input type="text" className="input-dark" placeholder="Vehicle description" value={boloVehicleDescription} onChange={(e) => setBoloVehicleDescription(e.target.value)} />
+                    <input type="text" className="input-dark min-h-[36px]" placeholder="Vehicle description" value={boloVehicleDescription} onChange={(e) => setBoloVehicleDescription(e.target.value)} />
                   </div>
                   <div className="col-span-2">
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Description:</label>
@@ -1093,7 +1097,7 @@ export default function CommunicationsPage() {
                 <div className="flex justify-end gap-2 mt-4">
                   <button type="button" onClick={() => setShowNewBOLO(false)} className="toolbar-btn">Cancel</button>
                   <button type="submit" className="toolbar-btn toolbar-btn-danger" disabled={boloSubmitting}>
-                    {boloSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <AlertTriangle className="w-3.5 h-3.5" />} Issue BOLO
+                    {boloSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <AlertTriangle className="w-3.5 h-3.5" />} Issue BOLO
                   </button>
                 </div>
               </form>
@@ -1159,7 +1163,7 @@ export default function CommunicationsPage() {
                   {bolo.status === 'active' && (
                     <div className="flex items-center gap-2 mt-3 pt-3 border-t border-rmpg-600">
                       <button type="button" className="toolbar-btn" onClick={() => handleResolveBOLO(bolo.id)} disabled={resolvingId === bolo.id}>
-                        {resolvingId === bolo.id && <Loader2 className="w-3 h-3 animate-spin" />} Mark Resolved
+                        {resolvingId === bolo.id && <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />} Mark Resolved
                       </button>
                       <button type="button" className="toolbar-btn text-amber-400" onClick={() => handleArchiveBOLO(bolo.id)}>
                         <Archive className="w-3 h-3" /> Archive
@@ -1201,7 +1205,7 @@ export default function CommunicationsPage() {
                       <div className="flex justify-center py-3 border-t border-rmpg-700/50">
                         <button type="button" onClick={loadMoreActivity} disabled={activitiesLoadingMore} className="toolbar-btn">
                           {activitiesLoadingMore ? (
-                            <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading...</>
+                            <><Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> Loading...</>
                           ) : (
                             <>Load More ({activitiesTotal - activities.length} remaining)</>
                           )}
@@ -1254,7 +1258,7 @@ export default function CommunicationsPage() {
         </div>
         <div>
           <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Subject:</label>
-          <input type="text" className="input-dark" placeholder="Message subject..." value={composeSubject} onChange={(e) => setComposeSubject(e.target.value)} required />
+          <input type="text" className="input-dark min-h-[36px]" placeholder="Message subject..." value={composeSubject} onChange={(e) => setComposeSubject(e.target.value)} required />
         </div>
         <div>
           <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Message:</label>

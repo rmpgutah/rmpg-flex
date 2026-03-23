@@ -17,6 +17,8 @@ export default function ErrorRetry({
   return (
     <div
       className={`flex flex-col items-center justify-center py-10 px-4 text-center ${className}`}
+      role="alert"
+      aria-live="assertive"
     >
       <div className="w-full max-w-sm rounded-sm border border-red-700/40 bg-red-900/20 p-6">
         <div className="flex items-center justify-center mb-3">

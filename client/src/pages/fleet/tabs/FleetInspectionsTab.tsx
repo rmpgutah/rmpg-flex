@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ClipboardCheck, Plus, Calendar, CheckCircle, XCircle, AlertTriangle, ChevronDown, ChevronRight, Gauge, Pencil, Trash2,
 } from 'lucide-react';
@@ -50,6 +50,9 @@ export default function FleetInspectionsTab({ inspections, onNewInspection, onEd
   const passRate = inspections.length > 0 ? Math.round((passCount / inspections.length) * 100) : 0;
   const lastInspection = inspections.length > 0 ? inspections[0] : null;
 
+  // Set document title
+  useEffect(() => { document.title = 'Fleet - Inspections \u2014 RMPG Flex'; }, []);
+
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
       {/* Quick Stats */}
@@ -92,7 +95,7 @@ export default function FleetInspectionsTab({ inspections, onNewInspection, onEd
             </span>
           )}
         </h3>
-        <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={onNewInspection}>
+        <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={onNewInspection}>
           <Plus className="w-3 h-3" /> New Inspection
         </button>
       </div>

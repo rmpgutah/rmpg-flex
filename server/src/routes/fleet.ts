@@ -8,6 +8,8 @@ import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { auditLog } from '../utils/auditLogger';
+import { broadcastFleetUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
 
 const execAsync = promisify(exec);
@@ -138,7 +140,7 @@ router.get('/', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Error fetching fleet vehicles:', error);
-    res.status(500).json({ error: 'Failed to fetch fleet vehicles' });
+    res.status(500).json({ error: 'Failed to fetch fleet vehicles', code: 'FAILED_TO_FETCH_FLEET' });
   }
 });
 
@@ -158,6 +160,8 @@ router.get('/analytics', (req: Request, res: Response) => {
       case 'all': dateCutoff = '2000-01-01'; break;
       default: dateCutoff = new Date(now.getTime() - 90 * 86400000).toISOString();
     }
+
+    res.set('Cache-Control', 'private, max-age=120');
 
     // Maintenance cost trend (monthly)
     const maintenanceCostTrend = db.prepare(`
@@ -213,6 +217,8 @@ router.get('/analytics', (req: Request, res: Response) => {
       FROM fleet_fuel_logs
       WHERE fuel_date >= ? AND odometer_reading IS NOT NULL
       ORDER BY vehicle_id, fuel_date
+    
+      LIMIT 1000
     `).all(dateCutoff) as any[];
 
     // Group by vehicle, compute per-interval MPG
@@ -267,7 +273,7 @@ router.get('/analytics', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Error fetching fleet analytics:', error);
-    res.status(500).json({ error: 'Failed to fetch fleet analytics' });
+    res.status(500).json({ error: 'Failed to fetch fleet analytics', code: 'FAILED_TO_FETCH_FLEET' });
   }
 });
 
@@ -300,6 +306,8 @@ router.get('/map', (req: Request, res: Response) => {
         LEFT JOIN cpgps_vehicles cv ON cv.vehicle_id = fv.id
         WHERE fv.status != 'retired'
         ORDER BY fv.vehicle_number
+      
+        LIMIT 1000
       `).all();
     } else {
       rows = db.prepare(`
@@ -313,13 +321,15 @@ router.get('/map', (req: Request, res: Response) => {
         LEFT JOIN units u ON u.id = fv.assigned_unit_id
         WHERE fv.status != 'retired'
         ORDER BY fv.vehicle_number
+      
+        LIMIT 1000
       `).all();
     }
 
     res.json(rows);
   } catch (error) {
     console.error('Error fetching fleet map data:', error);
-    res.status(500).json({ error: 'Failed to fetch fleet map data' });
+    res.status(500).json({ error: 'Failed to fetch fleet map data', code: 'FAILED_TO_FETCH_FLEET' });
   }
 });
 
@@ -328,7 +338,7 @@ router.get('/:id', (req: Request, res: Response) => {
   try {
     // Avoid matching sub-routes that are handled by other route definitions
     if (['maintenance', 'analytics', 'map'].includes(req.params.id as string)) {
-      res.status(404).json({ error: 'Not found' });
+      res.status(404).json({ error: 'Not found', code: 'NOT_FOUND' });
       return;
     }
 
@@ -348,7 +358,7 @@ router.get('/:id', (req: Request, res: Response) => {
     `).get(id) as any;
 
     if (!vehicle) {
-      res.status(404).json({ error: 'Fleet vehicle not found' });
+      res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' });
       return;
     }
 
@@ -367,7 +377,7 @@ router.get('/:id', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Error fetching fleet vehicle:', error);
-    res.status(500).json({ error: 'Failed to fetch fleet vehicle' });
+    res.status(500).json({ error: 'Failed to fetch fleet vehicle', code: 'FAILED_TO_FETCH_FLEET' });
   }
 });
 
@@ -393,14 +403,14 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
     } = req.body;
 
     if (!vehicle_number) {
-      res.status(400).json({ error: 'vehicle_number is required' });
+      res.status(400).json({ error: 'vehicle_number is required', code: 'VEHICLENUMBER_IS_REQUIRED' });
       return;
     }
 
     // Check for duplicate vehicle_number
     const existing = db.prepare('SELECT id FROM fleet_vehicles WHERE vehicle_number = ?').get(vehicle_number);
     if (existing) {
-      res.status(409).json({ error: 'A vehicle with this vehicle_number already exists' });
+      res.status(409).json({ error: 'A vehicle with this vehicle_number already exists', code: 'A_VEHICLE_WITH_THIS' });
       return;
     }
 
@@ -456,7 +466,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
     });
   } catch (error: any) {
     console.error('Error creating fleet vehicle:', error);
-    res.status(500).json({ error: 'Failed to create fleet vehicle' });
+    res.status(500).json({ error: 'Failed to create fleet vehicle', code: 'FAILED_TO_CREATE_FLEET' });
   }
 });
 
@@ -468,7 +478,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
 
     const existing = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Fleet vehicle not found' });
+      res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' });
       return;
     }
 
@@ -493,7 +503,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
     if (vehicle_number && vehicle_number !== existing.vehicle_number) {
       const duplicate = db.prepare('SELECT id FROM fleet_vehicles WHERE vehicle_number = ? AND id != ?').get(vehicle_number, id);
       if (duplicate) {
-        res.status(409).json({ error: 'A vehicle with this vehicle_number already exists' });
+        res.status(409).json({ error: 'A vehicle with this vehicle_number already exists', code: 'A_VEHICLE_WITH_THIS' });
         return;
       }
     }
@@ -556,7 +566,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
     });
   } catch (error: any) {
     console.error('Error updating fleet vehicle:', error);
-    res.status(500).json({ error: 'Failed to update fleet vehicle' });
+    res.status(500).json({ error: 'Failed to update fleet vehicle', code: 'FAILED_TO_UPDATE_FLEET' });
   }
 });
 
@@ -569,7 +579,7 @@ router.put('/:id/assign', requireRole('admin', 'manager', 'supervisor'), (req: R
 
     const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(id) as any;
     if (!vehicle) {
-      res.status(404).json({ error: 'Fleet vehicle not found' });
+      res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' });
       return;
     }
 
@@ -577,7 +587,7 @@ router.put('/:id/assign', requireRole('admin', 'manager', 'supervisor'), (req: R
     if (unit_id !== null && unit_id !== undefined) {
       const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(unit_id) as any;
       if (!unit) {
-        res.status(404).json({ error: 'Unit not found' });
+        res.status(404).json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' });
         return;
       }
 
@@ -650,7 +660,7 @@ router.put('/:id/assign', requireRole('admin', 'manager', 'supervisor'), (req: R
     });
   } catch (error: any) {
     console.error('Error assigning fleet vehicle:', error);
-    res.status(500).json({ error: 'Failed to assign fleet vehicle' });
+    res.status(500).json({ error: 'Failed to assign fleet vehicle', code: 'FAILED_TO_ASSIGN_FLEET' });
   }
 });
 
@@ -659,12 +669,12 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(req.params.id) as any;
-    if (!vehicle) { res.status(404).json({ error: 'Fleet vehicle not found' }); return; }
+    if (!vehicle) { res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' }); return; }
     if (vehicle.status !== 'retired') {
-      res.status(400).json({ error: 'Only retired vehicles can be deleted' }); return;
+      res.status(400).json({ error: 'Only retired vehicles can be deleted', code: 'ONLY_RETIRED_VEHICLES_CAN' }); return;
     }
     if (vehicle.assigned_unit_id) {
-      res.status(400).json({ error: 'Unassign vehicle from unit before deleting' }); return;
+      res.status(400).json({ error: 'Unassign vehicle from unit before deleting', code: 'UNASSIGN_VEHICLE_FROM_UNIT' }); return;
     }
 
     const delTx = db.transaction(() => {
@@ -682,7 +692,7 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete fleet vehicle error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete fleet vehicle', code: 'DELETE_FLEET_VEHICLE_ERROR' });
   }
 });
 
@@ -691,8 +701,8 @@ router.post('/:id/archive', requireRole('admin', 'manager'), (req: Request, res:
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(req.params.id) as any;
-    if (!vehicle) { res.status(404).json({ error: 'Fleet vehicle not found' }); return; }
-    if (vehicle.archived_at) { res.status(400).json({ error: 'Vehicle is already archived' }); return; }
+    if (!vehicle) { res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' }); return; }
+    if (vehicle.archived_at) { res.status(400).json({ error: 'Vehicle is already archived', code: 'VEHICLE_IS_ALREADY_ARCHIVED' }); return; }
 
     const now = localNow();
     db.prepare('UPDATE fleet_vehicles SET archived_at = ? WHERE id = ?').run(now, vehicle.id);
@@ -705,7 +715,7 @@ router.post('/:id/archive', requireRole('admin', 'manager'), (req: Request, res:
     res.json({ ...updated, equipment: safeParseJson(updated.equipment, []) });
   } catch (error: any) {
     console.error('Archive fleet vehicle error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to archive fleet vehicle', code: 'ARCHIVE_FLEET_VEHICLE_ERROR' });
   }
 });
 
@@ -714,8 +724,8 @@ router.post('/:id/unarchive', requireRole('admin', 'manager'), (req: Request, re
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(req.params.id) as any;
-    if (!vehicle) { res.status(404).json({ error: 'Fleet vehicle not found' }); return; }
-    if (!vehicle.archived_at) { res.status(400).json({ error: 'Vehicle is not archived' }); return; }
+    if (!vehicle) { res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' }); return; }
+    if (!vehicle.archived_at) { res.status(400).json({ error: 'Vehicle is not archived', code: 'VEHICLE_IS_NOT_ARCHIVED' }); return; }
 
     db.prepare('UPDATE fleet_vehicles SET archived_at = NULL WHERE id = ?').run(vehicle.id);
 
@@ -727,7 +737,7 @@ router.post('/:id/unarchive', requireRole('admin', 'manager'), (req: Request, re
     res.json({ ...updated, equipment: safeParseJson(updated.equipment, []) });
   } catch (error: any) {
     console.error('Unarchive fleet vehicle error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unarchive fleet vehicle', code: 'UNARCHIVE_FLEET_VEHICLE_ERROR' });
   }
 });
 
@@ -741,7 +751,7 @@ router.get('/:id/maintenance', (req: Request, res: Response) => {
     // Verify vehicle exists
     const vehicle = db.prepare('SELECT id FROM fleet_vehicles WHERE id = ?').get(id) as any;
     if (!vehicle) {
-      res.status(404).json({ error: 'Fleet vehicle not found' });
+      res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' });
       return;
     }
 
@@ -771,7 +781,7 @@ router.get('/:id/maintenance', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Error fetching maintenance history:', error);
-    res.status(500).json({ error: 'Failed to fetch maintenance history' });
+    res.status(500).json({ error: 'Failed to fetch maintenance history', code: 'FAILED_TO_FETCH_MAINTENANCE' });
   }
 });
 
@@ -783,7 +793,7 @@ router.post('/:id/maintenance', requireRole('admin', 'manager', 'supervisor'), (
 
     const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(id) as any;
     if (!vehicle) {
-      res.status(404).json({ error: 'Fleet vehicle not found' });
+      res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' });
       return;
     }
 
@@ -800,7 +810,7 @@ router.post('/:id/maintenance', requireRole('admin', 'manager', 'supervisor'), (
     } = req.body;
 
     if (!description) {
-      res.status(400).json({ error: 'description is required' });
+      res.status(400).json({ error: 'description is required', code: 'DESCRIPTION_IS_REQUIRED' });
       return;
     }
 
@@ -858,7 +868,7 @@ router.post('/:id/maintenance', requireRole('admin', 'manager', 'supervisor'), (
     res.status(201).json(record);
   } catch (error: any) {
     console.error('Error logging maintenance record:', error);
-    res.status(500).json({ error: 'Failed to log maintenance record' });
+    res.status(500).json({ error: 'Failed to log maintenance record', code: 'FAILED_TO_LOG_MAINTENANCE' });
   }
 });
 
@@ -867,7 +877,7 @@ router.put('/maintenance/:id', requireRole('admin', 'manager', 'supervisor'), (r
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(req.params.id) as any;
-    if (!record) { res.status(404).json({ error: 'Maintenance record not found' }); return; }
+    if (!record) { res.status(404).json({ error: 'Maintenance record not found', code: 'MAINTENANCE_RECORD_NOT_FOUND' }); return; }
 
     const mFields: string[] = [];
     const mValues: any[] = [];
@@ -889,7 +899,7 @@ router.put('/maintenance/:id', requireRole('admin', 'manager', 'supervisor'), (r
     res.json(updated);
   } catch (error: any) {
     console.error('Update maintenance error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update maintenance', code: 'UPDATE_MAINTENANCE_ERROR' });
   }
 });
 
@@ -898,7 +908,7 @@ router.delete('/maintenance/:id', requireRole('admin', 'manager'), (req: Request
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(req.params.id) as any;
-    if (!record) { res.status(404).json({ error: 'Maintenance record not found' }); return; }
+    if (!record) { res.status(404).json({ error: 'Maintenance record not found', code: 'MAINTENANCE_RECORD_NOT_FOUND' }); return; }
     db.prepare('DELETE FROM fleet_maintenance WHERE id = ?').run(req.params.id);
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'fleet_maintenance_deleted', 'fleet_vehicle', ?, ?, ?)`).run(
@@ -906,7 +916,7 @@ router.delete('/maintenance/:id', requireRole('admin', 'manager'), (req: Request
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete maintenance error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete maintenance', code: 'DELETE_MAINTENANCE_ERROR' });
   }
 });
 
@@ -915,15 +925,15 @@ router.post('/maintenance/:id/archive', requireRole('admin', 'manager'), (req: R
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(req.params.id) as any;
-    if (!record) { res.status(404).json({ error: 'Maintenance record not found' }); return; }
-    if (record.archived_at) { res.status(400).json({ error: 'Already archived' }); return; }
+    if (!record) { res.status(404).json({ error: 'Maintenance record not found', code: 'MAINTENANCE_RECORD_NOT_FOUND' }); return; }
+    if (record.archived_at) { res.status(400).json({ error: 'Already archived', code: 'ALREADY_ARCHIVED' }); return; }
     const now = localNow();
     db.prepare('UPDATE fleet_maintenance SET archived_at = ? WHERE id = ?').run(now, record.id);
     const updated = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(record.id);
     res.json(updated);
   } catch (error: any) {
     console.error('Archive maintenance error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to archive maintenance', code: 'ARCHIVE_MAINTENANCE_ERROR' });
   }
 });
 
@@ -932,14 +942,14 @@ router.post('/maintenance/:id/unarchive', requireRole('admin', 'manager'), (req:
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(req.params.id) as any;
-    if (!record) { res.status(404).json({ error: 'Maintenance record not found' }); return; }
-    if (!record.archived_at) { res.status(400).json({ error: 'Not archived' }); return; }
+    if (!record) { res.status(404).json({ error: 'Maintenance record not found', code: 'MAINTENANCE_RECORD_NOT_FOUND' }); return; }
+    if (!record.archived_at) { res.status(400).json({ error: 'Not archived', code: 'NOT_ARCHIVED' }); return; }
     db.prepare('UPDATE fleet_maintenance SET archived_at = NULL WHERE id = ?').run(record.id);
     const updated = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(record.id);
     res.json(updated);
   } catch (error: any) {
     console.error('Unarchive maintenance error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unarchive maintenance', code: 'UNARCHIVE_MAINTENANCE_ERROR' });
   }
 });
 
@@ -952,7 +962,7 @@ router.get('/:id/fuel', (req: Request, res: Response) => {
 
     const vehicle = db.prepare('SELECT id FROM fleet_vehicles WHERE id = ?').get(id) as any;
     if (!vehicle) {
-      res.status(404).json({ error: 'Fleet vehicle not found' });
+      res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' });
       return;
     }
 
@@ -984,6 +994,8 @@ router.get('/:id/fuel', (req: Request, res: Response) => {
       SELECT gallons, odometer_reading FROM fleet_fuel_logs
       WHERE vehicle_id = ? AND odometer_reading IS NOT NULL
       ORDER BY fuel_date ASC, id ASC
+    
+      LIMIT 1000
     `).all(id) as any[];
 
     let totalMiles = 0;
@@ -1014,7 +1026,7 @@ router.get('/:id/fuel', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Error fetching fuel logs:', error);
-    res.status(500).json({ error: 'Failed to fetch fuel logs' });
+    res.status(500).json({ error: 'Failed to fetch fuel logs', code: 'FAILED_TO_FETCH_FUEL' });
   }
 });
 
@@ -1026,14 +1038,14 @@ router.post('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer'
 
     const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(id) as any;
     if (!vehicle) {
-      res.status(404).json({ error: 'Fleet vehicle not found' });
+      res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' });
       return;
     }
 
     const { fuel_date, gallons, cost_per_gallon, total_cost, odometer_reading, fuel_type, station, notes } = req.body;
 
     if (!fuel_date || !gallons) {
-      res.status(400).json({ error: 'fuel_date and gallons are required' });
+      res.status(400).json({ error: 'fuel_date and gallons are required', code: 'FUELDATE_AND_GALLONS_ARE' });
       return;
     }
 
@@ -1081,7 +1093,7 @@ router.post('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer'
     res.status(201).json(record);
   } catch (error: any) {
     console.error('Error logging fuel entry:', error);
-    res.status(500).json({ error: 'Failed to log fuel entry' });
+    res.status(500).json({ error: 'Failed to log fuel entry', code: 'FAILED_TO_LOG_FUEL' });
   }
 });
 
@@ -1090,7 +1102,7 @@ router.put('/fuel/:id', requireRole('admin', 'manager', 'supervisor', 'officer')
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(req.params.id) as any;
-    if (!record) { res.status(404).json({ error: 'Fuel log not found' }); return; }
+    if (!record) { res.status(404).json({ error: 'Fuel log not found', code: 'FUEL_LOG_NOT_FOUND' }); return; }
 
     const fFields: string[] = [];
     const fValues: any[] = [];
@@ -1112,7 +1124,7 @@ router.put('/fuel/:id', requireRole('admin', 'manager', 'supervisor', 'officer')
     res.json(updated);
   } catch (error: any) {
     console.error('Update fuel log error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update fuel log', code: 'UPDATE_FUEL_LOG_ERROR' });
   }
 });
 
@@ -1121,7 +1133,7 @@ router.delete('/fuel/:id', requireRole('admin', 'manager'), (req: Request, res: 
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(req.params.id) as any;
-    if (!record) { res.status(404).json({ error: 'Fuel log not found' }); return; }
+    if (!record) { res.status(404).json({ error: 'Fuel log not found', code: 'FUEL_LOG_NOT_FOUND' }); return; }
     db.prepare('DELETE FROM fleet_fuel_logs WHERE id = ?').run(req.params.id);
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'fleet_fuel_deleted', 'fleet_vehicle', ?, ?, ?)`).run(
@@ -1129,7 +1141,7 @@ router.delete('/fuel/:id', requireRole('admin', 'manager'), (req: Request, res: 
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete fuel log error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete fuel log', code: 'DELETE_FUEL_LOG_ERROR' });
   }
 });
 
@@ -1138,15 +1150,15 @@ router.post('/fuel/:id/archive', requireRole('admin', 'manager'), (req: Request,
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(req.params.id) as any;
-    if (!record) { res.status(404).json({ error: 'Fuel log not found' }); return; }
-    if (record.archived_at) { res.status(400).json({ error: 'Already archived' }); return; }
+    if (!record) { res.status(404).json({ error: 'Fuel log not found', code: 'FUEL_LOG_NOT_FOUND' }); return; }
+    if (record.archived_at) { res.status(400).json({ error: 'Already archived', code: 'ALREADY_ARCHIVED' }); return; }
     const now = localNow();
     db.prepare('UPDATE fleet_fuel_logs SET archived_at = ? WHERE id = ?').run(now, record.id);
     const updated = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(record.id);
     res.json(updated);
   } catch (error: any) {
     console.error('Archive fuel log error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to archive fuel log', code: 'ARCHIVE_FUEL_LOG_ERROR' });
   }
 });
 
@@ -1155,14 +1167,14 @@ router.post('/fuel/:id/unarchive', requireRole('admin', 'manager'), (req: Reques
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(req.params.id) as any;
-    if (!record) { res.status(404).json({ error: 'Fuel log not found' }); return; }
-    if (!record.archived_at) { res.status(400).json({ error: 'Not archived' }); return; }
+    if (!record) { res.status(404).json({ error: 'Fuel log not found', code: 'FUEL_LOG_NOT_FOUND' }); return; }
+    if (!record.archived_at) { res.status(400).json({ error: 'Not archived', code: 'NOT_ARCHIVED' }); return; }
     db.prepare('UPDATE fleet_fuel_logs SET archived_at = NULL WHERE id = ?').run(record.id);
     const updated = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(record.id);
     res.json(updated);
   } catch (error: any) {
     console.error('Unarchive fuel log error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unarchive fuel log', code: 'UNARCHIVE_FUEL_LOG_ERROR' });
   }
 });
 
@@ -1175,7 +1187,7 @@ router.get('/:id/inspections', (req: Request, res: Response) => {
 
     const vehicle = db.prepare('SELECT id FROM fleet_vehicles WHERE id = ?').get(id) as any;
     if (!vehicle) {
-      res.status(404).json({ error: 'Fleet vehicle not found' });
+      res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' });
       return;
     }
 
@@ -1216,7 +1228,7 @@ router.get('/:id/inspections', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Error fetching inspections:', error);
-    res.status(500).json({ error: 'Failed to fetch inspections' });
+    res.status(500).json({ error: 'Failed to fetch inspections', code: 'FAILED_TO_FETCH_INSPECTIONS' });
   }
 });
 
@@ -1228,19 +1240,19 @@ router.post('/:id/inspections', requireRole('admin', 'manager', 'supervisor', 'o
 
     const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(id) as any;
     if (!vehicle) {
-      res.status(404).json({ error: 'Fleet vehicle not found' });
+      res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' });
       return;
     }
 
     const { inspection_type, inspector_name, inspection_date, overall_result, mileage, items, notes } = req.body;
 
     if (!inspection_type || !inspector_name || !inspection_date || !overall_result) {
-      res.status(400).json({ error: 'inspection_type, inspector_name, inspection_date, and overall_result are required' });
+      res.status(400).json({ error: 'inspection_type, inspector_name, inspection_date, and overall_result are required', code: 'INSPECTIONTYPE_INSPECTORNAME_INSPECTIONDATE_AND' });
       return;
     }
 
     if (!Array.isArray(items)) {
-      res.status(400).json({ error: 'items must be an array' });
+      res.status(400).json({ error: 'items must be an array', code: 'ITEMS_MUST_BE_AN' });
       return;
     }
 
@@ -1290,7 +1302,7 @@ router.post('/:id/inspections', requireRole('admin', 'manager', 'supervisor', 'o
     });
   } catch (error: any) {
     console.error('Error creating inspection:', error);
-    res.status(500).json({ error: 'Failed to create inspection' });
+    res.status(500).json({ error: 'Failed to create inspection', code: 'FAILED_TO_CREATE_INSPECTION' });
   }
 });
 
@@ -1299,7 +1311,7 @@ router.put('/inspections/:id', requireRole('admin', 'manager', 'supervisor'), (r
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(req.params.id) as any;
-    if (!record) { res.status(404).json({ error: 'Inspection not found' }); return; }
+    if (!record) { res.status(404).json({ error: 'Inspection not found', code: 'INSPECTION_NOT_FOUND' }); return; }
 
     const iFields: string[] = [];
     const iValues: any[] = [];
@@ -1324,7 +1336,7 @@ router.put('/inspections/:id', requireRole('admin', 'manager', 'supervisor'), (r
     res.json({ ...updated, items: safeParseJson(updated.items, []) });
   } catch (error: any) {
     console.error('Update inspection error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update inspection', code: 'UPDATE_INSPECTION_ERROR' });
   }
 });
 
@@ -1333,7 +1345,7 @@ router.delete('/inspections/:id', requireRole('admin', 'manager'), (req: Request
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(req.params.id) as any;
-    if (!record) { res.status(404).json({ error: 'Inspection not found' }); return; }
+    if (!record) { res.status(404).json({ error: 'Inspection not found', code: 'INSPECTION_NOT_FOUND' }); return; }
     db.prepare('DELETE FROM fleet_inspections WHERE id = ?').run(req.params.id);
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'fleet_inspection_deleted', 'fleet_vehicle', ?, ?, ?)`).run(
@@ -1341,7 +1353,7 @@ router.delete('/inspections/:id', requireRole('admin', 'manager'), (req: Request
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete inspection error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete inspection', code: 'DELETE_INSPECTION_ERROR' });
   }
 });
 
@@ -1350,15 +1362,15 @@ router.post('/inspections/:id/archive', requireRole('admin', 'manager'), (req: R
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(req.params.id) as any;
-    if (!record) { res.status(404).json({ error: 'Inspection not found' }); return; }
-    if (record.archived_at) { res.status(400).json({ error: 'Already archived' }); return; }
+    if (!record) { res.status(404).json({ error: 'Inspection not found', code: 'INSPECTION_NOT_FOUND' }); return; }
+    if (record.archived_at) { res.status(400).json({ error: 'Already archived', code: 'ALREADY_ARCHIVED' }); return; }
     const now = localNow();
     db.prepare('UPDATE fleet_inspections SET archived_at = ? WHERE id = ?').run(now, record.id);
     const updated = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(record.id) as any;
     res.json({ ...updated, items: safeParseJson(updated.items, []) });
   } catch (error: any) {
     console.error('Archive inspection error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to archive inspection', code: 'ARCHIVE_INSPECTION_ERROR' });
   }
 });
 
@@ -1367,14 +1379,14 @@ router.post('/inspections/:id/unarchive', requireRole('admin', 'manager'), (req:
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(req.params.id) as any;
-    if (!record) { res.status(404).json({ error: 'Inspection not found' }); return; }
-    if (!record.archived_at) { res.status(400).json({ error: 'Not archived' }); return; }
+    if (!record) { res.status(404).json({ error: 'Inspection not found', code: 'INSPECTION_NOT_FOUND' }); return; }
+    if (!record.archived_at) { res.status(400).json({ error: 'Not archived', code: 'NOT_ARCHIVED' }); return; }
     db.prepare('UPDATE fleet_inspections SET archived_at = NULL WHERE id = ?').run(record.id);
     const updated = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(record.id) as any;
     res.json({ ...updated, items: safeParseJson(updated.items, []) });
   } catch (error: any) {
     console.error('Unarchive inspection error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unarchive inspection', code: 'UNARCHIVE_INSPECTION_ERROR' });
   }
 });
 
@@ -1387,7 +1399,7 @@ router.get('/:id/assignments', (req: Request, res: Response) => {
 
     const vehicle = db.prepare('SELECT id FROM fleet_vehicles WHERE id = ?').get(id) as any;
     if (!vehicle) {
-      res.status(404).json({ error: 'Fleet vehicle not found' });
+      res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' });
       return;
     }
 
@@ -1415,7 +1427,7 @@ router.get('/:id/assignments', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Error fetching assignment history:', error);
-    res.status(500).json({ error: 'Failed to fetch assignment history' });
+    res.status(500).json({ error: 'Failed to fetch assignment history', code: 'FAILED_TO_FETCH_ASSIGNMENT' });
   }
 });
 
@@ -1427,7 +1439,7 @@ router.get('/:id/personnel', (req: Request, res: Response) => {
 
     const vehicle = db.prepare('SELECT id, assigned_unit_id FROM fleet_vehicles WHERE id = ?').get(id) as any;
     if (!vehicle) {
-      res.status(404).json({ error: 'Fleet vehicle not found' });
+      res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' });
       return;
     }
 
@@ -1464,6 +1476,8 @@ router.get('/:id/personnel', (req: Request, res: Response) => {
           LEFT JOIN users u ON c.officer_id = u.id
           WHERE c.officer_id = ?
           ORDER BY c.expiry_date ASC
+        
+          LIMIT 1000
         `).all(unit.officer_id);
 
         // Today's schedule
@@ -1473,6 +1487,8 @@ router.get('/:id/personnel', (req: Request, res: Response) => {
           FROM schedules s
           LEFT JOIN properties p ON s.property_id = p.id
           WHERE s.officer_id = ? AND s.shift_date = ?
+        
+          LIMIT 1000
         `).all(unit.officer_id, today);
 
         // Active time entry
@@ -1489,6 +1505,8 @@ router.get('/:id/personnel', (req: Request, res: Response) => {
       SELECT * FROM fleet_personnel_notes
       WHERE vehicle_id = ?
       ORDER BY created_at DESC
+    
+      LIMIT 1000
     `).all(id);
 
     res.json({
@@ -1501,7 +1519,7 @@ router.get('/:id/personnel', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Error fetching fleet personnel:', error);
-    res.status(500).json({ error: 'Failed to fetch fleet personnel data' });
+    res.status(500).json({ error: 'Failed to fetch fleet personnel data', code: 'FAILED_TO_FETCH_FLEET' });
   }
 });
 
@@ -1513,13 +1531,13 @@ router.post('/:id/personnel-notes', (req: Request, res: Response) => {
     const { note, officer_id, officer_name } = req.body;
 
     if (!note || !note.trim()) {
-      res.status(400).json({ error: 'Note text is required' });
+      res.status(400).json({ error: 'Note text is required', code: 'NOTE_TEXT_IS_REQUIRED' });
       return;
     }
 
     const vehicle = db.prepare('SELECT id FROM fleet_vehicles WHERE id = ?').get(id) as any;
     if (!vehicle) {
-      res.status(404).json({ error: 'Fleet vehicle not found' });
+      res.status(404).json({ error: 'Fleet vehicle not found', code: 'FLEET_VEHICLE_NOT_FOUND' });
       return;
     }
 
@@ -1536,7 +1554,7 @@ router.post('/:id/personnel-notes', (req: Request, res: Response) => {
     res.status(201).json(created);
   } catch (error: any) {
     console.error('Error creating personnel note:', error);
-    res.status(500).json({ error: 'Failed to create personnel note' });
+    res.status(500).json({ error: 'Failed to create personnel note', code: 'FAILED_TO_CREATE_PERSONNEL' });
   }
 });
 
@@ -1548,7 +1566,7 @@ router.delete('/:id/personnel-notes/:noteId', (req: Request, res: Response) => {
 
     const note = db.prepare('SELECT id FROM fleet_personnel_notes WHERE id = ? AND vehicle_id = ?').get(noteId, id) as any;
     if (!note) {
-      res.status(404).json({ error: 'Note not found' });
+      res.status(404).json({ error: 'Note not found', code: 'NOTE_NOT_FOUND' });
       return;
     }
 
@@ -1556,7 +1574,7 @@ router.delete('/:id/personnel-notes/:noteId', (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (error: any) {
     console.error('Error deleting personnel note:', error);
-    res.status(500).json({ error: 'Failed to delete personnel note' });
+    res.status(500).json({ error: 'Failed to delete personnel note', code: 'FAILED_TO_DELETE_PERSONNEL' });
   }
 });
 
@@ -1567,7 +1585,7 @@ router.post('/import/simply-fleet', requireRole('admin', 'manager'), (req: Reque
     const { fillups, services, vehicle_number } = req.body;
 
     if (!vehicle_number) {
-      res.status(400).json({ error: 'vehicle_number is required to match import data' });
+      res.status(400).json({ error: 'vehicle_number is required to match import data', code: 'VEHICLENUMBER_IS_REQUIRED_TO' });
       return;
     }
 
@@ -1700,7 +1718,7 @@ router.post('/import/simply-fleet', requireRole('admin', 'manager'), (req: Reque
     });
   } catch (error: any) {
     console.error('Simply Fleet import error:', error);
-    res.status(500).json({ error: 'Failed to import Simply Fleet data' });
+    res.status(500).json({ error: 'Failed to import Simply Fleet data', code: 'FAILED_TO_IMPORT_SIMPLY' });
   }
 });
 
@@ -1719,11 +1737,13 @@ router.get('/dash-cameras', (req: Request, res: Response) => {
       FROM dash_cameras dc
       LEFT JOIN fleet_vehicles fv ON dc.vehicle_id = fv.id
       ORDER BY dc.created_at DESC
+    
+      LIMIT 1000
     `).all();
     res.json(cameras);
   } catch (error: any) {
     console.error('List dash cameras error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to list dash cameras', code: 'LIST_DASH_CAMERAS_ERROR' });
   }
 });
 
@@ -1733,7 +1753,7 @@ router.post('/dash-cameras', requireRole('admin'), (req: Request, res: Response)
     const db = getDb();
     const { vehicle_id, camera_id, make, model, firmware_version, storage_capacity_gb, channel_count, status, condition, installed_at, removed_at, notes } = req.body;
     if (!vehicle_id || !camera_id) {
-      res.status(400).json({ error: 'vehicle_id and camera_id are required' });
+      res.status(400).json({ error: 'vehicle_id and camera_id are required', code: 'VEHICLEID_AND_CAMERAID_ARE' });
       return;
     }
     const result = db.prepare(`
@@ -1752,11 +1772,11 @@ router.post('/dash-cameras', requireRole('admin'), (req: Request, res: Response)
     res.status(201).json(cam);
   } catch (error: any) {
     if (error?.message?.includes('UNIQUE')) {
-      res.status(409).json({ error: 'Camera ID already exists' });
+      res.status(409).json({ error: 'Camera ID already exists', code: 'CAMERA_ID_ALREADY_EXISTS' });
       return;
     }
     console.error('Create dash camera error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create dash camera', code: 'CREATE_DASH_CAMERA_ERROR' });
   }
 });
 
@@ -1765,7 +1785,7 @@ router.put('/dash-cameras/:id', requireRole('admin'), (req: Request, res: Respon
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM dash_cameras WHERE id = ?').get(req.params.id) as any;
-    if (!existing) { res.status(404).json({ error: 'Dash camera not found' }); return; }
+    if (!existing) { res.status(404).json({ error: 'Dash camera not found', code: 'DASH_CAMERA_NOT_FOUND' }); return; }
     const fields = ['vehicle_id', 'camera_id', 'make', 'model', 'firmware_version', 'storage_capacity_gb', 'channel_count', 'status', 'condition', 'installed_at', 'removed_at', 'notes'];
     const setClauses: string[] = [];
     const vals: any[] = [];
@@ -1788,7 +1808,7 @@ router.put('/dash-cameras/:id', requireRole('admin'), (req: Request, res: Respon
     res.json(cam);
   } catch (error: any) {
     console.error('Update dash camera error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update dash camera', code: 'UPDATE_DASH_CAMERA_ERROR' });
   }
 });
 
@@ -1797,13 +1817,13 @@ router.delete('/dash-cameras/:id', requireRole('admin'), (req: Request, res: Res
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM dash_cameras WHERE id = ?').get(req.params.id) as any;
-    if (!existing) { res.status(404).json({ error: 'Dash camera not found' }); return; }
+    if (!existing) { res.status(404).json({ error: 'Dash camera not found', code: 'DASH_CAMERA_NOT_FOUND' }); return; }
     db.prepare('DELETE FROM dashcam_videos WHERE camera_id = ?').run(req.params.id);
     db.prepare('DELETE FROM dash_cameras WHERE id = ?').run(req.params.id);
     res.json({ message: 'Dash camera deleted' });
   } catch (error: any) {
     console.error('Delete dash camera error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete dash camera', code: 'DELETE_DASH_CAMERA_ERROR' });
   }
 });
 
@@ -1813,7 +1833,7 @@ router.delete('/dash-cameras/bulk', requireRole('admin'), (req: Request, res: Re
     const db = getDb();
     const { cameraIds } = req.body;
     if (!Array.isArray(cameraIds) || cameraIds.length === 0) {
-      res.status(400).json({ error: 'cameraIds array required' });
+      res.status(400).json({ error: 'cameraIds array required', code: 'CAMERAIDS_ARRAY_REQUIRED' });
       return;
     }
     const placeholders = cameraIds.map(() => '?').join(',');
@@ -1822,7 +1842,7 @@ router.delete('/dash-cameras/bulk', requireRole('admin'), (req: Request, res: Re
     res.json({ deleted: result.changes });
   } catch (error: any) {
     console.error('Bulk delete dash cameras error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to bulk delete dash cameras', code: 'BULK_DELETE_DASH_CAMERAS' });
   }
 });
 
@@ -1838,11 +1858,13 @@ router.get('/dashcam-videos', (req: Request, res: Response) => {
       LEFT JOIN dash_cameras dc ON v.camera_id = dc.id
       LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
       ORDER BY v.created_at DESC
+    
+      LIMIT 1000
     `).all();
     res.json(videos);
   } catch (error: any) {
     console.error('List dashcam videos error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to list dashcam videos', code: 'LIST_DASHCAM_VIDEOS_ERROR' });
   }
 });
 
@@ -1866,11 +1888,11 @@ router.post('/dashcam-videos', requireRole('admin'), (req: Request, res: Respons
       try {
         const db = getDb();
         const file = req.file;
-        if (!file) { res.status(400).json({ error: 'No video file provided' }); return; }
+        if (!file) { res.status(400).json({ error: 'No video file provided', code: 'NO_VIDEO_FILE_PROVIDED' }); return; }
         const { camera_id, vehicle_id, title, duration_seconds, recorded_at, case_number, classification, gps_lat, gps_lon, notes } = req.body;
         if (!camera_id || !vehicle_id || !title) {
           if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
-          res.status(400).json({ error: 'camera_id, vehicle_id, and title are required' });
+          res.status(400).json({ error: 'camera_id, vehicle_id, and title are required', code: 'CAMERAID_VEHICLEID_AND_TITLE' });
           return;
         }
         const diskStat = fs.statSync(file.path);
@@ -1924,10 +1946,10 @@ router.get('/dashcam-videos/:id/stream', (req: Request, res: Response, next) => 
   try {
     const db = getDb();
     const video = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
-    if (!video) { res.status(404).json({ error: 'Video not found' }); return; }
+    if (!video) { res.status(404).json({ error: 'Video not found', code: 'VIDEO_NOT_FOUND' }); return; }
     const filePath = path.resolve(DASHCAM_DIR, video.file_path);
     if (!filePath.startsWith(DASHCAM_DIR) || !fs.existsSync(filePath)) {
-      res.status(404).json({ error: 'Video file not found on disk' });
+      res.status(404).json({ error: 'Video file not found on disk', code: 'VIDEO_FILE_NOT_FOUND' });
       return;
     }
     const stat = fs.statSync(filePath);
@@ -1954,7 +1976,7 @@ router.get('/dashcam-videos/:id/stream', (req: Request, res: Response, next) => 
     }
   } catch (error: any) {
     console.error('Stream dashcam video error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to stream dashcam video', code: 'STREAM_DASHCAM_VIDEO_ERROR' });
   }
 });
 
@@ -1963,7 +1985,7 @@ router.delete('/dashcam-videos/:id', requireRole('admin'), (req: Request, res: R
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
-    if (!existing) { res.status(404).json({ error: 'Video not found' }); return; }
+    if (!existing) { res.status(404).json({ error: 'Video not found', code: 'VIDEO_NOT_FOUND' }); return; }
     const filePath = path.resolve(DASHCAM_DIR, existing.file_path);
     if (filePath.startsWith(DASHCAM_DIR) && fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
@@ -1972,7 +1994,7 @@ router.delete('/dashcam-videos/:id', requireRole('admin'), (req: Request, res: R
     res.json({ message: 'Video deleted' });
   } catch (error: any) {
     console.error('Delete dashcam video error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete dashcam video', code: 'DELETE_DASHCAM_VIDEO_ERROR' });
   }
 });
 
@@ -1982,7 +2004,7 @@ router.put('/dashcam-videos/bulk', requireRole('admin'), (req: Request, res: Res
     const db = getDb();
     const { videoIds, classification } = req.body;
     if (!Array.isArray(videoIds) || videoIds.length === 0 || !classification) {
-      res.status(400).json({ error: 'videoIds array and classification required' });
+      res.status(400).json({ error: 'videoIds array and classification required', code: 'VIDEOIDS_ARRAY_AND_CLASSIFICATION' });
       return;
     }
     const placeholders = videoIds.map(() => '?').join(',');
@@ -1991,7 +2013,7 @@ router.put('/dashcam-videos/bulk', requireRole('admin'), (req: Request, res: Res
     res.json({ updated: videoIds.length });
   } catch (error: any) {
     console.error('Bulk classify dashcam videos error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to bulk classify dashcam videos', code: 'BULK_CLASSIFY_DASHCAM_VIDEOS' });
   }
 });
 
@@ -2001,7 +2023,7 @@ router.delete('/dashcam-videos/bulk', requireRole('admin'), (req: Request, res: 
     const db = getDb();
     const { videoIds } = req.body;
     if (!Array.isArray(videoIds) || videoIds.length === 0) {
-      res.status(400).json({ error: 'videoIds array required' });
+      res.status(400).json({ error: 'videoIds array required', code: 'VIDEOIDS_ARRAY_REQUIRED' });
       return;
     }
     // Delete files from disk
@@ -2015,7 +2037,7 @@ router.delete('/dashcam-videos/bulk', requireRole('admin'), (req: Request, res: 
     res.json({ deleted: result.changes });
   } catch (error: any) {
     console.error('Bulk delete dashcam videos error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to bulk delete dashcam videos', code: 'BULK_DELETE_DASHCAM_VIDEOS' });
   }
 });
 
@@ -2046,11 +2068,13 @@ router.get('/:id/assignment-history', (req: Request, res: Response) => {
       LEFT JOIN users u ON u.id = un.officer_id
       WHERE fa.vehicle_id = ?
       ORDER BY fa.assigned_at DESC
+    
+      LIMIT 1000
     `).all(id);
     res.json(rows);
   } catch (error: any) {
     console.error('Assignment history error:', error);
-    res.status(500).json({ error: 'Failed to load assignment history' });
+    res.status(500).json({ error: 'Failed to load assignment history', code: 'FAILED_TO_LOAD_ASSIGNMENT' });
   }
 });
 
@@ -2061,13 +2085,15 @@ router.get('/:id/fuel-efficiency', (req: Request, res: Response) => {
     const { id } = req.params;
 
     const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(id) as any;
-    if (!vehicle) return res.status(404).json({ error: 'Vehicle not found' });
+    if (!vehicle) return res.status(404).json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' });
 
     const fuelLogs = db.prepare(`
       SELECT id, fuel_date, gallons, odometer_reading, total_cost
       FROM fleet_fuel_logs
       WHERE vehicle_id = ? AND odometer_reading IS NOT NULL
       ORDER BY fuel_date ASC, id ASC
+    
+      LIMIT 1000
     `).all(id) as any[];
 
     const efficiencyData: any[] = [];
@@ -2094,7 +2120,7 @@ router.get('/:id/fuel-efficiency', (req: Request, res: Response) => {
 
     res.json({ vehicle_id: Number(id), avg_mpg: avgMpg, data: efficiencyData });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to load fuel efficiency' });
+    res.status(500).json({ error: 'Failed to load fuel efficiency', code: 'FAILED_TO_LOAD_FUEL' });
   }
 });
 
@@ -2145,7 +2171,7 @@ router.get('/:id/maintenance-costs', (req: Request, res: Response) => {
     const { id } = req.params;
 
     const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(id) as any;
-    if (!vehicle) return res.status(404).json({ error: 'Vehicle not found' });
+    if (!vehicle) return res.status(404).json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' });
 
     const totalCost = db.prepare(
       `SELECT COALESCE(SUM(cost), 0) as total, COALESCE(SUM(labor_cost), 0) as labor_total,
@@ -2176,7 +2202,7 @@ router.get('/:id/maintenance-costs', (req: Request, res: Response) => {
       monthly_trend: monthly.reverse(),
     });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to load maintenance costs' });
+    res.status(500).json({ error: 'Failed to load maintenance costs', code: 'FAILED_TO_LOAD_MAINTENANCE' });
   }
 });
 
@@ -2193,9 +2219,11 @@ router.get('/status-dashboard', (req: Request, res: Response) => {
       LEFT JOIN units u ON u.id = fv.assigned_unit_id
       WHERE fv.archived_at IS NULL
       ORDER BY fv.vehicle_number
+    
+      LIMIT 1000
     `).all() as any[];
 
-    const now = new Date().toISOString().slice(0, 10);
+    const now = localToday();
     const statusSummary: Record<string, number> = {};
 
     const enriched = vehicles.map((v: any) => {
@@ -2216,7 +2244,7 @@ router.get('/status-dashboard', (req: Request, res: Response) => {
 
     res.json({ vehicles: enriched, status_summary: statusSummary, open_recalls: openRecalls });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to load status dashboard' });
+    res.status(500).json({ error: 'Failed to load status dashboard', code: 'FAILED_TO_LOAD_STATUS' });
   }
 });
 
@@ -2227,7 +2255,7 @@ router.get('/:id/tires', (req: Request, res: Response) => {
     const rows = db.prepare('SELECT * FROM fleet_tires WHERE vehicle_id = ? ORDER BY position').all(req.params.id);
     res.json(rows);
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to load tires' });
+    res.status(500).json({ error: 'Failed to load tires', code: 'FAILED_TO_LOAD_TIRES' });
   }
 });
 
@@ -2236,7 +2264,7 @@ router.post('/:id/tires', requireRole('admin', 'manager', 'supervisor'), (req: R
     const db = getDb();
     const vehicleId = req.params.id;
     const { position, brand, model, size, install_date, tread_depth, notes } = req.body;
-    if (!position) return res.status(400).json({ error: 'position is required' });
+    if (!position) return res.status(400).json({ error: 'position is required', code: 'POSITION_IS_REQUIRED' });
     const now = localNow();
     const result = db.prepare(
       `INSERT INTO fleet_tires (vehicle_id, position, brand, model, size, install_date, tread_depth, last_measured, notes, created_at, updated_at)
@@ -2245,7 +2273,7 @@ router.post('/:id/tires', requireRole('admin', 'manager', 'supervisor'), (req: R
       install_date || null, tread_depth || null, tread_depth ? now.substring(0, 10) : null, notes || null, now, now);
     res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to add tire' });
+    res.status(500).json({ error: 'Failed to add tire', code: 'FAILED_TO_ADD_TIRE' });
   }
 });
 
@@ -2264,7 +2292,7 @@ router.put('/tires/:tireId', requireRole('admin', 'manager', 'supervisor'), (req
     db.prepare(`UPDATE fleet_tires SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
     res.json({ success: true });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to update tire' });
+    res.status(500).json({ error: 'Failed to update tire', code: 'FAILED_TO_UPDATE_TIRE' });
   }
 });
 
@@ -2277,10 +2305,12 @@ router.get('/:id/damage-reports', (req: Request, res: Response) => {
       FROM fleet_damage_reports dr
       LEFT JOIN users u ON u.id = dr.reported_by
       WHERE dr.vehicle_id = ? ORDER BY dr.damage_date DESC
+    
+      LIMIT 1000
     `).all(req.params.id);
     res.json(rows);
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to load damage reports' });
+    res.status(500).json({ error: 'Failed to load damage reports', code: 'FAILED_TO_LOAD_DAMAGE' });
   }
 });
 
@@ -2291,7 +2321,7 @@ router.post('/:id/damage-reports', (req: Request, res: Response) => {
     const { damage_date, damage_type, location_on_vehicle, severity, description,
             repair_estimate, photos, insurance_claim_number } = req.body;
     if (!damage_date || !damage_type || !description) {
-      return res.status(400).json({ error: 'damage_date, damage_type, and description are required' });
+      return res.status(400).json({ error: 'damage_date, damage_type, and description are required', code: 'DAMAGEDATE_DAMAGETYPE_AND_DESCRIPTION' });
     }
     const now = localNow();
     const result = db.prepare(
@@ -2308,7 +2338,7 @@ router.post('/:id/damage-reports', (req: Request, res: Response) => {
 
     res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to create damage report' });
+    res.status(500).json({ error: 'Failed to create damage report', code: 'FAILED_TO_CREATE_DAMAGE' });
   }
 });
 
@@ -2326,7 +2356,7 @@ router.put('/damage-reports/:reportId', requireRole('admin', 'manager'), (req: R
     db.prepare(`UPDATE fleet_damage_reports SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
     res.json({ success: true });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to update damage report' });
+    res.status(500).json({ error: 'Failed to update damage report', code: 'FAILED_TO_UPDATE_DAMAGE' });
   }
 });
 
@@ -2341,6 +2371,8 @@ router.get('/utilization-report', (req: Request, res: Response) => {
       SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year, fv.status
       FROM fleet_vehicles fv WHERE fv.archived_at IS NULL
       ORDER BY fv.vehicle_number
+    
+      LIMIT 1000
     `).all() as any[];
 
     const result = vehicles.map((v: any) => {
@@ -2378,7 +2410,7 @@ router.get('/utilization-report', (req: Request, res: Response) => {
       avg_utilization_score: avgScore,
     });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to generate utilization report' });
+    res.status(500).json({ error: 'Failed to generate utilization report', code: 'FAILED_TO_GENERATE_UTILIZATION' });
   }
 });
 
@@ -2396,7 +2428,7 @@ router.get('/recalls', (req: Request, res: Response) => {
     sql += ' ORDER BY r.created_at DESC';
     res.json(db.prepare(sql).all(...params));
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to load recalls' });
+    res.status(500).json({ error: 'Failed to load recalls', code: 'FAILED_TO_LOAD_RECALLS' });
   }
 });
 
@@ -2405,7 +2437,7 @@ router.post('/recalls', requireRole('admin', 'manager'), (req: Request, res: Res
     const db = getDb();
     const { vehicle_id, recall_number, manufacturer, description, severity, remedy } = req.body;
     if (!vehicle_id || !recall_number || !description) {
-      return res.status(400).json({ error: 'vehicle_id, recall_number, and description are required' });
+      return res.status(400).json({ error: 'vehicle_id, recall_number, and description are required', code: 'VEHICLEID_RECALLNUMBER_AND_DESCRIPTION' });
     }
     const now = localNow();
     const result = db.prepare(
@@ -2419,7 +2451,7 @@ router.post('/recalls', requireRole('admin', 'manager'), (req: Request, res: Res
 
     res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to create recall' });
+    res.status(500).json({ error: 'Failed to create recall', code: 'FAILED_TO_CREATE_RECALL' });
   }
 });
 
@@ -2438,7 +2470,7 @@ router.put('/recalls/:id', requireRole('admin', 'manager'), (req: Request, res: 
     db.prepare(`UPDATE fleet_recalls SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
     res.json({ success: true });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to update recall' });
+    res.status(500).json({ error: 'Failed to update recall', code: 'FAILED_TO_UPDATE_RECALL' });
   }
 });
 
@@ -2456,7 +2488,7 @@ router.get('/fuel-cards', (req: Request, res: Response) => {
     sql += ' ORDER BY fc.card_number';
     res.json(db.prepare(sql).all(...params));
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to load fuel cards' });
+    res.status(500).json({ error: 'Failed to load fuel cards', code: 'FAILED_TO_LOAD_FUEL' });
   }
 });
 
@@ -2464,7 +2496,7 @@ router.post('/fuel-cards', requireRole('admin', 'manager'), (req: Request, res: 
   try {
     const db = getDb();
     const { card_number, vehicle_id, provider, monthly_limit, pin_last4, expiry_date, notes } = req.body;
-    if (!card_number) return res.status(400).json({ error: 'card_number is required' });
+    if (!card_number) return res.status(400).json({ error: 'card_number is required', code: 'CARDNUMBER_IS_REQUIRED' });
     const now = localNow();
     const result = db.prepare(
       `INSERT INTO fleet_fuel_cards (card_number, vehicle_id, provider, monthly_limit, pin_last4, expiry_date, notes, assigned_at, created_at, updated_at)
@@ -2473,8 +2505,8 @@ router.post('/fuel-cards', requireRole('admin', 'manager'), (req: Request, res: 
       pin_last4 || null, expiry_date || null, notes || null, vehicle_id ? now : null, now, now);
     res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
-    if (error.message?.includes('UNIQUE')) return res.status(409).json({ error: 'Card number already exists' });
-    res.status(500).json({ error: 'Failed to create fuel card' });
+    if (error.message?.includes('UNIQUE')) return res.status(409).json({ error: 'Card number already exists', code: 'CARD_NUMBER_ALREADY_EXISTS' });
+    res.status(500).json({ error: 'Failed to create fuel card', code: 'FAILED_TO_CREATE_FUEL' });
   }
 });
 
@@ -2494,7 +2526,7 @@ router.put('/fuel-cards/:id', requireRole('admin', 'manager'), (req: Request, re
     db.prepare(`UPDATE fleet_fuel_cards SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
     res.json({ success: true });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to update fuel card' });
+    res.status(500).json({ error: 'Failed to update fuel card', code: 'FAILED_TO_UPDATE_FUEL' });
   }
 });
 
@@ -2508,7 +2540,7 @@ router.post('/pretrip', (req: Request, res: Response) => {
       tires_ok, fluids_ok, exterior_ok, interior_ok, emergency_equipment_ok, notes,
     } = req.body;
 
-    if (!vehicle_id) { res.status(400).json({ error: 'vehicle_id is required' }); return; }
+    if (!vehicle_id) { res.status(400).json({ error: 'vehicle_id is required', code: 'VEHICLEID_IS_REQUIRED' }); return; }
 
     const checks = [lights_ok, brakes_ok, radio_ok, mdt_ok, camera_ok, tires_ok, fluids_ok, exterior_ok, interior_ok, emergency_equipment_ok];
     const overall_pass = checks.every(c => c) ? 1 : 0;
@@ -2527,7 +2559,7 @@ router.post('/pretrip', (req: Request, res: Response) => {
     res.status(201).json({ success: true, id: Number(result.lastInsertRowid), overall_pass: !!overall_pass });
   } catch (error: any) {
     console.error('Pre-trip checklist error:', error);
-    res.status(500).json({ error: 'Failed to save pre-trip checklist' });
+    res.status(500).json({ error: 'Failed to save pre-trip checklist', code: 'FAILED_TO_SAVE_PRETRIP' });
   }
 });
 
@@ -2546,7 +2578,7 @@ router.get('/pretrip/:vehicleId', (req: Request, res: Response) => {
     res.json(checklists);
   } catch (error: any) {
     console.error('Get pre-trip checklists error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get pre-trip checklists', code: 'GET_PRETRIP_CHECKLISTS_ERROR' });
   }
 });
 
@@ -2567,6 +2599,8 @@ router.get('/daily-mileage/:vehicleId', (req: Request, res: Response) => {
       FROM gps_breadcrumbs
       WHERE unit_id = ? AND recorded_at >= datetime('now', '-${dayCount} days', 'localtime')
       ORDER BY recorded_at ASC
+    
+      LIMIT 1000
     `).all(unit.id) as any[];
 
     // Group by day and calculate distance
@@ -2593,7 +2627,7 @@ router.get('/daily-mileage/:vehicleId', (req: Request, res: Response) => {
     res.json(dailyMileage);
   } catch (error: any) {
     console.error('Daily mileage error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to daily mileage', code: 'DAILY_MILEAGE_ERROR' });
   }
 });
 
@@ -2615,6 +2649,8 @@ router.get('/maintenance-calendar', (req: Request, res: Response) => {
       JOIN fleet_vehicles fv ON fm.vehicle_id = fv.id
       WHERE fm.scheduled_date BETWEEN ? AND ?
       ORDER BY fm.scheduled_date ASC
+    
+      LIMIT 1000
     `).all(startDate, endDate) as any[];
 
     // Vehicles with next_service_due
@@ -2623,6 +2659,8 @@ router.get('/maintenance-calendar', (req: Request, res: Response) => {
       FROM fleet_vehicles
       WHERE next_service_due IS NOT NULL AND next_service_due BETWEEN ? AND ?
       ORDER BY next_service_due ASC
+    
+      LIMIT 1000
     `).all(startDate, endDate) as any[];
 
     res.json({
@@ -2631,7 +2669,7 @@ router.get('/maintenance-calendar', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Maintenance calendar error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to maintenance calendar', code: 'MAINTENANCE_CALENDAR_ERROR' });
   }
 });
 
@@ -2641,7 +2679,7 @@ router.post('/vehicle-swap', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { from_vehicle_id, to_vehicle_id, reason } = req.body;
-    if (!to_vehicle_id) { res.status(400).json({ error: 'to_vehicle_id is required' }); return; }
+    if (!to_vehicle_id) { res.status(400).json({ error: 'to_vehicle_id is required', code: 'TOVEHICLEID_IS_REQUIRED' }); return; }
 
     const result = db.prepare(`
       INSERT INTO fleet_vehicle_swaps (officer_id, from_vehicle_id, to_vehicle_id, reason, swapped_at)
@@ -2656,7 +2694,7 @@ router.post('/vehicle-swap', (req: Request, res: Response) => {
     res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
     console.error('Vehicle swap error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to vehicle swap', code: 'VEHICLE_SWAP_ERROR' });
   }
 });
 
@@ -2689,7 +2727,7 @@ router.get('/vehicle-swaps', (req: Request, res: Response) => {
     res.json(swaps);
   } catch (error: any) {
     console.error('Get vehicle swaps error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get vehicle swaps', code: 'GET_VEHICLE_SWAPS_ERROR' });
   }
 });
 
@@ -2701,7 +2739,7 @@ router.get('/cost-per-mile/:vehicleId', (req: Request, res: Response) => {
     const vehicleId = req.params.vehicleId;
 
     const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(vehicleId) as any;
-    if (!vehicle) { res.status(404).json({ error: 'Vehicle not found' }); return; }
+    if (!vehicle) { res.status(404).json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }); return; }
 
     // Total fuel cost
     const fuelCost = db.prepare(
@@ -2729,7 +2767,7 @@ router.get('/cost-per-mile/:vehicleId', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Cost per mile error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to cost per mile', code: 'COST_PER_MILE_ERROR' });
   }
 });
 

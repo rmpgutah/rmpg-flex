@@ -387,6 +387,7 @@ export default function PersonnelPage() {
   };
 
   const handleScheduleDelete = async (scheduleId: string) => {
+    if (!window.confirm('Delete this schedule? This cannot be undone.')) return;
     try {
       await apiFetch(`/personnel/schedules/${scheduleId}`, { method: 'DELETE' });
       const raw = await apiFetch<any[]>('/personnel/schedules');
@@ -418,6 +419,7 @@ export default function PersonnelPage() {
   };
 
   const handleCredentialDelete = async (credId: string) => {
+    if (!window.confirm('Delete this credential? This cannot be undone.')) return;
     try {
       await apiFetch(`/personnel/credentials/${credId}`, { method: 'DELETE' });
       const raw = await apiFetch<any[]>('/personnel/credentials');
@@ -496,6 +498,7 @@ export default function PersonnelPage() {
   };
 
   const handleEquipmentDelete = async (equipId: string) => {
+    if (!window.confirm('Delete this equipment record? This cannot be undone.')) return;
     try {
       await apiFetch(`/personnel/equipment/${equipId}`, { method: 'DELETE' });
       const raw = await apiFetch<any[]>('/personnel/equipment');
@@ -573,6 +576,7 @@ export default function PersonnelPage() {
   };
 
   const handleBodyCameraDelete = async (camId: number) => {
+    if (!window.confirm('Delete this body camera record? This cannot be undone.')) return;
     try {
       await apiFetch(`/personnel/body-cameras/${camId}`, { method: 'DELETE' });
       await refreshBodyCameras();
@@ -601,6 +605,7 @@ export default function PersonnelPage() {
   };
 
   const handleVideoDelete = async (videoId: number) => {
+    if (!window.confirm('Delete this video? This cannot be undone.')) return;
     try {
       await apiFetch(`/personnel/bodycam-videos/${videoId}`, { method: 'DELETE' });
       await refreshBodyCameras();
@@ -837,6 +842,7 @@ export default function PersonnelPage() {
   };
 
   const handleDeleteTimeEntry = async (entryId: string) => {
+    if (!window.confirm('Delete this time entry? This cannot be undone.')) return;
     try {
       await apiFetch(`/personnel/time/${entryId}`, { method: 'DELETE' });
       const raw = await apiFetch<any[]>('/personnel/time');
@@ -888,8 +894,8 @@ export default function PersonnelPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
             <input
               type="text"
-              className="input-dark pl-9 w-full text-[11px]"
-              placeholder="Search by name, badge, rank, department..."
+              className="input-dark pl-9 w-full text-[11px] min-h-[36px]"
+              placeholder="Search by name, badge, rank, department..." aria-label="Search by name, badge, rank, department..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
             />
@@ -1038,6 +1044,15 @@ export default function PersonnelPage() {
   // Render
   // ----------------------------------------------------------
 
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setEditingVideo(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="flex flex-col h-full animate-fade-in">
       {/* Header */}
@@ -1125,7 +1140,7 @@ export default function PersonnelPage() {
         {/* Loading state */}
         {loading && (
           <div className="flex items-center justify-center flex-1">
-            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" />
+            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading" />
           </div>
         )}
 

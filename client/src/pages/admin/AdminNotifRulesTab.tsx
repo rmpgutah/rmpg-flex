@@ -179,6 +179,15 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
 
   if (loading && rules.length === 0) return <LoadingSpinner />;
 
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setEditing(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="p-4 space-y-3">
       {/* Header */}
@@ -191,7 +200,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
-            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search..." aria-label="Search notification rules" className="input-dark text-[10px] pl-6 pr-2 py-1 w-40" />
+            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search..." aria-label="Search notification rules" className="input-dark text-[10px] pl-6 pr-2 py-1 w-40 min-h-[36px]" />
           </div>
           <button type="button" onClick={openNew} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
             <Plus className="w-3 h-3" />
@@ -270,11 +279,11 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
             <div className="p-4 space-y-3">
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Rule Name *</label>
-                <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="input-dark w-full text-xs" placeholder="e.g. Alert supervisors on P1 calls" />
+                <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="input-dark w-full text-xs min-h-[36px]" placeholder="e.g. Alert supervisors on P1 calls" />
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Description</label>
-                <input type="text" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} className="input-dark w-full text-xs" placeholder="Optional description..." />
+                <input type="text" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} className="input-dark w-full text-xs min-h-[36px]" placeholder="Optional description..." />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -319,7 +328,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
             <div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-rmpg-700">
               <button type="button" onClick={() => setShowForm(false)} className="toolbar-btn text-[10px]">Cancel</button>
               <button type="button" onClick={handleSubmit} disabled={submitting} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
-                {submitting && <Loader2 className="w-3 h-3 animate-spin" />}
+                {submitting && <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />}
                 {editing ? 'Update' : 'Create'}
               </button>
             </div>

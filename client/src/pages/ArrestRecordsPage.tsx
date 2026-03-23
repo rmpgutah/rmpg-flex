@@ -201,6 +201,17 @@ function exportCsv(records: ArrestRecord[]) {
 
 // ── Component ─────────────────────────────────────────────
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function ArrestRecordsPage() {
   // ── State ───────────────────────────────────────────────
   const { subscribe } = useWebSocket();
@@ -536,7 +547,7 @@ export default function ArrestRecordsPage() {
             type="text"
             value={searchTerm}
             onChange={e => { setSearchTerm(e.target.value); setRecordsPage(1); }}
-            placeholder="Search by name..."
+            placeholder="Search by name..." aria-label="Search by name..."
             className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] pl-7 pr-8 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
           />
           {searchTerm && (
@@ -609,7 +620,7 @@ export default function ArrestRecordsPage() {
       <div className="flex-1 overflow-y-auto">
         {recordsLoading ? (
           <div className="flex items-center gap-2 text-[10px] text-rmpg-500 py-8 justify-center">
-            <Loader2 className="w-3 h-3 animate-spin" /> Loading records...
+            <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Loading records...
           </div>
         ) : sortedRecords.length === 0 ? (
           <EmptyState icon={UserX} title="No records found" description="Adjust filters or create a new booking." />
@@ -816,14 +827,14 @@ export default function ArrestRecordsPage() {
                     type="text"
                     value={personSearch}
                     onChange={e => setPersonSearch(e.target.value)}
-                    placeholder="Search persons by name..."
+                    placeholder="Search persons by name..." aria-label="Search persons by name..."
                     className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] pl-6 pr-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
                     autoFocus
                   />
                 </div>
                 {searchingPerson && (
                   <div className="flex items-center gap-1 text-[9px] text-rmpg-500">
-                    <Loader2 className="w-2.5 h-2.5 animate-spin" /> Searching...
+                    <Loader2 className="w-2.5 h-2.5 animate-spin" role="status" aria-label="Loading" /> Searching...
                   </div>
                 )}
                 {personResults.length > 0 && (
@@ -909,6 +920,18 @@ export default function ArrestRecordsPage() {
 
   // ── Main Render ─────────────────────────────────────────
 
+  // Set document title
+  useEffect(() => { document.title = 'Arrest Records \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setFormOpen(false); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="h-full flex flex-col bg-surface-base">
       <PanelTitleBar title="Arrest Records" icon={Shield}>
@@ -941,7 +964,7 @@ export default function ArrestRecordsPage() {
 
       {/* Delete Confirmation */}
       {deleteConfirm !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center">
           <div className="absolute inset-0 bg-black/60" onClick={() => setDeleteConfirm(null)} />
           <div className="relative w-full max-w-sm mx-4 bg-surface-base border border-rmpg-600 shadow-2xl animate-fade-in">
             <div

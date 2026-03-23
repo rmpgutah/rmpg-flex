@@ -130,7 +130,7 @@ function SeedSelector({ onSelect, loading }: {
     <div ref={wrapperRef} className="relative">
       <div className="flex items-center gap-1.5 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 focus-within:border-brand-500">
         {searching || loading ? (
-          <Loader2 className="w-3.5 h-3.5 text-brand-400 animate-spin shrink-0" />
+          <Loader2 className="w-3.5 h-3.5 text-brand-400 animate-spin shrink-0" role="status" aria-label="Loading" />
         ) : (
           <Search className="w-3.5 h-3.5 text-rmpg-500 shrink-0" />
         )}
@@ -139,7 +139,7 @@ function SeedSelector({ onSelect, loading }: {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => results.length > 0 && setShowDropdown(true)}
-          placeholder="Search person, vehicle, property, case..."
+          placeholder="Search person, vehicle, property, case..." aria-label="Search person, vehicle, property, case..."
           className="flex-1 bg-transparent text-rmpg-200 text-[11px] focus:outline-none placeholder:text-rmpg-600 min-w-0"
         />
         {query && (
@@ -520,7 +520,7 @@ function GraphPanel({ graph, selectedNodeId, onSelectNode, depth, onDepthChange,
           <Maximize2 className="w-3 h-3" />
         </button>
 
-        {loading && <Loader2 className="w-3.5 h-3.5 text-brand-400 animate-spin" />}
+        {loading && <Loader2 className="w-3.5 h-3.5 text-brand-400 animate-spin" role="status" aria-label="Loading" />}
       </div>
 
       {/* Graph canvas */}
@@ -849,6 +849,9 @@ export default function ForensicsPage() {
   const selectedEdges = graph?.edges.filter(
     e => e.source === selectedNodeId || e.target === selectedNodeId
   ) || [];
+
+  // Set document title
+  useEffect(() => { document.title = 'Connection Analysis \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-rmpg-950">

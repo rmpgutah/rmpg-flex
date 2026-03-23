@@ -8,7 +8,12 @@ import { apiFetch } from '../../hooks/useApi';
 import { toDisplayLabel } from '../../utils/formatters';
 import type { Invoice, InvoiceDetail, InvoiceLineItem, Payment, InvoiceStats, Client } from '../../types';
 import DocumentViewer from '../../components/DocumentViewer';
-import { localToday, dateToLocalYMD } from '../../utils/dateUtils';
+import { localToday, dateToLocalYMD, formatDate } from '../../utils/dateUtils';
+
+function fmtShortDate(d: string | null | undefined): string {
+  if (!d) return '\u2014';
+  try { return new Date(d + (d.length === 10 ? 'T00:00:00' : '')).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d.substring(0, 10); }
+}
 
 // ============================================================
 // Props
@@ -53,6 +58,17 @@ function formatCurrency(n: number | undefined | null): string {
 // ============================================================
 // Component
 // ============================================================
+
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
 
 export default function AdminInvoiceTab({ clientId, clientName, client }: AdminInvoiceTabProps) {
   const [view, setView] = useState<'list' | 'detail' | 'create'>('list');
@@ -294,7 +310,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         </div>
       </div>
 
-      {loading && <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-rmpg-400" /></div>}
+      {loading && <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-rmpg-400" role="status" aria-label="Loading" /></div>}
 
       {!loading && invoices.length === 0 && (
         <div className="flex flex-col items-center justify-center py-12 text-rmpg-500">
@@ -327,7 +343,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                 >
                   <td className="p-1.5 font-mono text-brand-400 font-bold">{inv.invoice_number}</td>
                   <td className="p-1.5 text-rmpg-300">
-                    {inv.period_start?.substring(0, 10)} – {inv.period_end?.substring(0, 10)}
+                    {fmtShortDate(inv.period_start)} – {fmtShortDate(inv.period_end)}
                   </td>
                   <td className="p-1.5">
                     <span className={`px-1.5 py-0.5 text-[9px] uppercase font-bold border rounded-sm ${STATUS_BADGE[inv.status] || STATUS_BADGE.draft}`}>
@@ -337,7 +353,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                   <td className="p-1.5 text-right font-mono text-white">{formatCurrency(inv.total)}</td>
                   <td className="p-1.5 text-right font-mono text-green-400">{formatCurrency(inv.amount_paid)}</td>
                   <td className="p-1.5 text-right font-mono text-amber-400">{formatCurrency(inv.balance_due)}</td>
-                  <td className="p-1.5 text-rmpg-400">{inv.due_date?.substring(0, 10) || '—'}</td>
+                  <td className="p-1.5 text-rmpg-400">{fmtShortDate(inv.due_date)}</td>
                 </tr>
               ))}
             </tbody>
@@ -362,7 +378,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
             <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Period Start</label>
             <input
               type="date"
-              className="input-dark w-full text-xs"
+              className="input-dark w-full text-xs min-h-[36px]"
               value={createForm.period_start}
               onChange={e => setCreateForm(f => ({ ...f, period_start: e.target.value }))}
             />
@@ -371,7 +387,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
             <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Period End</label>
             <input
               type="date"
-              className="input-dark w-full text-xs"
+              className="input-dark w-full text-xs min-h-[36px]"
               value={createForm.period_end}
               onChange={e => setCreateForm(f => ({ ...f, period_end: e.target.value }))}
             />
@@ -381,7 +397,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
           <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Issue Date</label>
           <input
             type="date"
-            className="input-dark w-full text-xs"
+            className="input-dark w-full text-xs min-h-[36px]"
             value={createForm.issue_date}
             onChange={e => setCreateForm(f => ({ ...f, issue_date: e.target.value }))}
           />
@@ -389,7 +405,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         <div>
           <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Notes</label>
           <textarea
-            className="input-dark w-full text-xs"
+            className="input-dark w-full text-xs min-h-[36px]"
             rows={2}
             value={createForm.notes}
             onChange={e => setCreateForm(f => ({ ...f, notes: e.target.value }))}
@@ -403,7 +419,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
             disabled={saving || !createForm.period_start || !createForm.period_end}
             className="toolbar-btn text-brand-400 hover:text-brand-300 disabled:opacity-50"
           >
-            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Zap className="w-3.5 h-3.5" />}
             <span className="text-[10px]">Create & Auto-Generate</span>
           </button>
         </div>
@@ -413,7 +429,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
 
   // ─── Detail View ──────────────────────────────────
   const renderDetailView = () => {
-    if (!selectedInvoice) return <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-rmpg-400" /></div>;
+    if (!selectedInvoice) return <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-rmpg-400" role="status" aria-label="Loading" /></div>;
     const inv = selectedInvoice;
 
     return (
@@ -468,7 +484,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
             </div>
             <div>
               <span className="text-rmpg-500 uppercase block">Period</span>
-              <span className="text-rmpg-300">{inv.period_start?.substring(0, 10)} – {inv.period_end?.substring(0, 10)}</span>
+              <span className="text-rmpg-300">{fmtShortDate(inv.period_start)} – {fmtShortDate(inv.period_end)}</span>
             </div>
             <div>
               <span className="text-rmpg-500 uppercase block">Payment Terms</span>
@@ -476,12 +492,12 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
             </div>
             <div>
               <span className="text-rmpg-500 uppercase block">Issue Date</span>
-              <span className="text-rmpg-300">{inv.issue_date?.substring(0, 10) || '—'}</span>
+              <span className="text-rmpg-300">{fmtShortDate(inv.issue_date)}</span>
             </div>
             <div>
               <span className="text-rmpg-500 uppercase block">Due Date</span>
               <span className={`${inv.status === 'overdue' ? 'text-red-400 font-bold' : 'text-rmpg-300'}`}>
-                {inv.due_date?.substring(0, 10) || '—'}
+                {fmtShortDate(inv.due_date)}
               </span>
             </div>
             <div>
@@ -507,7 +523,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]">
                 <div>
                   <label className="text-rmpg-500 uppercase block mb-0.5">Type</label>
-                  <select className="select-dark w-full text-[10px]" value={itemForm.line_type} onChange={e => setItemForm(f => ({ ...f, line_type: e.target.value }))}>
+                  <select className="select-dark w-full text-[10px] min-h-[36px]" value={itemForm.line_type} onChange={e => setItemForm(f => ({ ...f, line_type: e.target.value }))}>
                     <option value="custom">Custom</option>
                     <option value="contract_base">Contract Base</option>
                     <option value="service_hours">Service Hours</option>
@@ -520,19 +536,19 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                 </div>
                 <div className="col-span-3">
                   <label className="text-rmpg-500 uppercase block mb-0.5">Description</label>
-                  <input className="input-dark w-full text-[10px]" value={itemForm.description} onChange={e => setItemForm(f => ({ ...f, description: e.target.value }))} placeholder="Description..." />
+                  <input className="input-dark w-full text-[10px] min-h-[36px]" value={itemForm.description} onChange={e => setItemForm(f => ({ ...f, description: e.target.value }))} placeholder="Description..." />
                 </div>
                 <div>
                   <label className="text-rmpg-500 uppercase block mb-0.5">Qty</label>
-                  <input type="number" className="input-dark w-full text-[10px]" value={itemForm.quantity} onChange={e => setItemForm(f => ({ ...f, quantity: e.target.value }))} />
+                  <input type="number" className="input-dark w-full text-[10px] min-h-[36px]" value={itemForm.quantity} onChange={e => setItemForm(f => ({ ...f, quantity: e.target.value }))} />
                 </div>
                 <div>
                   <label className="text-rmpg-500 uppercase block mb-0.5">Unit Price</label>
-                  <input type="number" step="0.01" className="input-dark w-full text-[10px]" value={itemForm.unit_price} onChange={e => setItemForm(f => ({ ...f, unit_price: e.target.value }))} />
+                  <input type="number" step="0.01" className="input-dark w-full text-[10px] min-h-[36px]" value={itemForm.unit_price} onChange={e => setItemForm(f => ({ ...f, unit_price: e.target.value }))} />
                 </div>
                 <div className="col-span-2 flex items-end gap-1">
                   <button type="button" onClick={handleAddLineItem} disabled={saving || !itemForm.description} className="toolbar-btn text-green-400 disabled:opacity-50">
-                    {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />} Add
+                    {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <CheckCircle className="w-3 h-3" />} Add
                   </button>
                   <button type="button" onClick={() => setShowAddItem(false)} className="toolbar-btn text-rmpg-500"><XCircle className="w-3 h-3" /> Cancel</button>
                 </div>
@@ -608,15 +624,15 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[10px]">
               <div>
                 <label className="text-rmpg-500 uppercase block mb-0.5">Amount</label>
-                <input type="number" step="0.01" className="input-dark w-full text-[10px]" value={payForm.amount} onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" />
+                <input type="number" step="0.01" className="input-dark w-full text-[10px] min-h-[36px]" value={payForm.amount} onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" />
               </div>
               <div>
                 <label className="text-rmpg-500 uppercase block mb-0.5">Date</label>
-                <input type="date" className="input-dark w-full text-[10px]" value={payForm.payment_date} onChange={e => setPayForm(f => ({ ...f, payment_date: e.target.value }))} />
+                <input type="date" className="input-dark w-full text-[10px] min-h-[36px]" value={payForm.payment_date} onChange={e => setPayForm(f => ({ ...f, payment_date: e.target.value }))} />
               </div>
               <div>
                 <label className="text-rmpg-500 uppercase block mb-0.5">Method</label>
-                <select className="select-dark w-full text-[10px]" value={payForm.payment_method} onChange={e => setPayForm(f => ({ ...f, payment_method: e.target.value }))}>
+                <select className="select-dark w-full text-[10px] min-h-[36px]" value={payForm.payment_method} onChange={e => setPayForm(f => ({ ...f, payment_method: e.target.value }))}>
                   <option value="check">Check</option>
                   <option value="ach">ACH</option>
                   <option value="wire">Wire</option>
@@ -627,17 +643,17 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
               </div>
               <div>
                 <label className="text-rmpg-500 uppercase block mb-0.5">Reference #</label>
-                <input className="input-dark w-full text-[10px]" value={payForm.reference_number} onChange={e => setPayForm(f => ({ ...f, reference_number: e.target.value }))} placeholder="Check #, etc." />
+                <input className="input-dark w-full text-[10px] min-h-[36px]" value={payForm.reference_number} onChange={e => setPayForm(f => ({ ...f, reference_number: e.target.value }))} placeholder="Check #, etc." />
               </div>
               <div className="col-span-2">
                 <label className="text-rmpg-500 uppercase block mb-0.5">Notes</label>
-                <input className="input-dark w-full text-[10px]" value={payForm.notes} onChange={e => setPayForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional notes..." />
+                <input className="input-dark w-full text-[10px] min-h-[36px]" value={payForm.notes} onChange={e => setPayForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional notes..." />
               </div>
             </div>
             <div className="flex justify-end gap-1 mt-2">
               <button type="button" onClick={() => setShowPayment(false)} className="toolbar-btn text-rmpg-500"><XCircle className="w-3 h-3" /> Cancel</button>
               <button type="button" onClick={handleRecordPayment} disabled={saving || !payForm.amount} className="toolbar-btn text-green-400 disabled:opacity-50">
-                {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <DollarSign className="w-3 h-3" />} Record Payment
+                {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <DollarSign className="w-3 h-3" />} Record Payment
               </button>
             </div>
           </div>
@@ -661,7 +677,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
               <tbody>
                 {inv.payments.map(pay => (
                   <tr key={pay.id} className="border-b border-rmpg-700/30">
-                    <td className="p-1 text-rmpg-300">{pay.payment_date?.substring(0, 10)}</td>
+                    <td className="p-1 text-rmpg-300">{fmtShortDate(pay.payment_date)}</td>
                     <td className="p-1 text-right text-green-400 font-mono font-bold">{formatCurrency(pay.amount)}</td>
                     <td className="p-1 text-rmpg-400 uppercase">{pay.payment_method || '—'}</td>
                     <td className="p-1 text-rmpg-400">{pay.reference_number || '—'}</td>
@@ -680,7 +696,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         <div className="bg-surface-raised border border-rmpg-700 rounded-sm p-3 mb-3">
           <span className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2 block">Internal Notes</span>
           <textarea
-            className="input-dark w-full text-xs"
+            className="input-dark w-full text-xs min-h-[36px]"
             rows={3}
             defaultValue={inv.internal_notes || ''}
             onBlur={e => handleSaveNotes(e.target.value)}
@@ -764,6 +780,9 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
   };
 
   // ─── Main Render ──────────────────────────────────
+  // Set document title
+  useEffect(() => { document.title = 'Admin - Invoice \u2014 RMPG Flex'; }, []);
+
   return (
     <div className="flex flex-col h-full p-3 overflow-auto">
       {error && (

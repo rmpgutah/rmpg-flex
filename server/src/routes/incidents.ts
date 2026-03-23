@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { auditLog } from '../utils/auditLogger';
+import { broadcastIncidentUpdate } from '../utils/websocket';
 import { generateIncidentNumber } from '../utils/caseNumbers';
 import { sendCsv } from '../utils/csvExport';
 import { localNow } from '../utils/timeUtils';
@@ -85,7 +87,7 @@ router.get('/', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get incidents error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get incidents', code: 'GET_INCIDENTS_ERROR' });
   }
 });
 
@@ -158,7 +160,7 @@ router.get('/map', (req: Request, res: Response) => {
     res.json(rows);
   } catch (error: any) {
     console.error('Get incidents map error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get incidents map', code: 'GET_INCIDENTS_MAP_ERROR' });
   }
 });
 
@@ -190,6 +192,7 @@ router.get('/stats', (req: Request, res: Response) => {
         AND created_at < date('now', 'start of month')
     `).get() as any;
 
+    res.set('Cache-Control', 'private, max-age=60');
     res.json({
       byStatus,
       byType,
@@ -199,7 +202,7 @@ router.get('/stats', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get incident stats error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get incident stats', code: 'GET_INCIDENT_STATS_ERROR' });
   }
 });
 
@@ -261,7 +264,7 @@ router.get('/export', (req: Request, res: Response) => {
     ], rows);
   } catch (error: any) {
     console.error('Export incidents error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to export incidents', code: 'EXPORT_INCIDENTS_ERROR' });
   }
 });
 
@@ -284,13 +287,15 @@ router.get('/:id', (req: Request, res: Response) => {
     `).get(req.params.id) as any;
 
     if (!incident) {
-      res.status(404).json({ error: 'Incident not found' });
+      res.status(404).json({ error: 'Incident not found', code: 'INCIDENT_NOT_FOUND' });
       return;
     }
 
     // Get evidence
     const evidence = db.prepare(`
       SELECT * FROM evidence WHERE incident_id = ?
+    
+      LIMIT 1000
     `).all(incident.id);
 
     // Get linked persons
@@ -302,6 +307,8 @@ router.get('/:id', (req: Request, res: Response) => {
       LEFT JOIN users u ON ip.added_by = u.id
       WHERE ip.incident_id = ?
       ORDER BY ip.created_at
+    
+      LIMIT 1000
     `).all(incident.id);
 
     // Get linked vehicles
@@ -315,6 +322,8 @@ router.get('/:id', (req: Request, res: Response) => {
       LEFT JOIN users u ON iv.added_by = u.id
       WHERE iv.incident_id = ?
       ORDER BY iv.created_at
+    
+      LIMIT 1000
     `).all(incident.id);
 
     // Get activity log
@@ -324,6 +333,8 @@ router.get('/:id', (req: Request, res: Response) => {
       LEFT JOIN users u ON al.user_id = u.id
       WHERE al.entity_type = 'incident' AND al.entity_id = ?
       ORDER BY al.created_at DESC
+    
+      LIMIT 1000
     `).all(incident.id);
 
     res.json({
@@ -335,7 +346,7 @@ router.get('/:id', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get incident error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get incident', code: 'GET_INCIDENT_ERROR' });
   }
 });
 
@@ -360,7 +371,7 @@ router.post('/', (req: Request, res: Response) => {
     } = req.body;
 
     if (!incident_type) {
-      res.status(400).json({ error: 'incident_type is required' });
+      res.status(400).json({ error: 'incident_type is required', code: 'INCIDENTTYPE_IS_REQUIRED' });
       return;
     }
 
@@ -458,7 +469,7 @@ router.post('/', (req: Request, res: Response) => {
     res.status(201).json(incident);
   } catch (error: any) {
     console.error('Create incident error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create incident', code: 'CREATE_INCIDENT_ERROR' });
   }
 });
 
@@ -468,7 +479,7 @@ router.put('/:id', (req: Request, res: Response) => {
     const db = getDb();
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id) as any;
     if (!incident) {
-      res.status(404).json({ error: 'Incident not found' });
+      res.status(404).json({ error: 'Incident not found', code: 'INCIDENT_NOT_FOUND' });
       return;
     }
 
@@ -477,11 +488,11 @@ router.put('/:id', (req: Request, res: Response) => {
     // - Officers can edit their own incidents in draft, returned, submitted, or approved
     if (!['admin', 'manager', 'supervisor'].includes(req.user!.role)) {
       if (!['draft', 'returned', 'submitted', 'approved'].includes(incident.status)) {
-        res.status(403).json({ error: 'Cannot edit incidents in this status' });
+        res.status(403).json({ error: 'Cannot edit incidents in this status', code: 'CANNOT_EDIT_INCIDENTS_IN' });
         return;
       }
       if (incident.officer_id !== req.user!.userId) {
-        res.status(403).json({ error: 'Can only edit your own incidents' });
+        res.status(403).json({ error: 'Can only edit your own incidents', code: 'CAN_ONLY_EDIT_YOUR' });
         return;
       }
     }
@@ -556,7 +567,7 @@ router.put('/:id', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update incident error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update incident', code: 'UPDATE_INCIDENT_ERROR' });
   }
 });
 
@@ -566,17 +577,17 @@ router.delete('/:id', (req: Request, res: Response) => {
     const db = getDb();
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id) as any;
     if (!incident) {
-      res.status(404).json({ error: 'Incident not found' });
+      res.status(404).json({ error: 'Incident not found', code: 'INCIDENT_NOT_FOUND' });
       return;
     }
 
     if (incident.status !== 'draft') {
-      res.status(403).json({ error: 'Can only delete draft incidents' });
+      res.status(403).json({ error: 'Can only delete draft incidents', code: 'CAN_ONLY_DELETE_DRAFT' });
       return;
     }
 
     if (incident.officer_id !== req.user!.userId && !['admin', 'manager'].includes(req.user!.role)) {
-      res.status(403).json({ error: 'Insufficient permissions' });
+      res.status(403).json({ error: 'Insufficient permissions', code: 'INSUFFICIENT_PERMISSIONS' });
       return;
     }
 
@@ -596,7 +607,7 @@ router.delete('/:id', (req: Request, res: Response) => {
     res.json({ message: 'Incident deleted' });
   } catch (error: any) {
     console.error('Delete incident error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete incident', code: 'DELETE_INCIDENT_ERROR' });
   }
 });
 
@@ -605,10 +616,10 @@ router.post('/:id/archive', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id) as any;
-    if (!incident) { res.status(404).json({ error: 'Incident not found' }); return; }
-    if (incident.archived_at) { res.status(400).json({ error: 'Incident is already archived' }); return; }
+    if (!incident) { res.status(404).json({ error: 'Incident not found', code: 'INCIDENT_NOT_FOUND' }); return; }
+    if (incident.archived_at) { res.status(400).json({ error: 'Incident is already archived', code: 'INCIDENT_IS_ALREADY_ARCHIVED' }); return; }
     if (['draft', 'submitted'].includes(incident.status)) {
-      res.status(400).json({ error: 'Can only archive approved or closed incidents' }); return;
+      res.status(400).json({ error: 'Can only archive approved or closed incidents', code: 'CAN_ONLY_ARCHIVE_APPROVED' }); return;
     }
     const now = localNow();
     db.prepare('UPDATE incidents SET archived_at = ? WHERE id = ?').run(now, incident.id);
@@ -618,7 +629,7 @@ router.post('/:id/archive', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Archive incident error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to archive incident', code: 'ARCHIVE_INCIDENT_ERROR' });
   }
 });
 
@@ -627,8 +638,8 @@ router.post('/:id/unarchive', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id) as any;
-    if (!incident) { res.status(404).json({ error: 'Incident not found' }); return; }
-    if (!incident.archived_at) { res.status(400).json({ error: 'Incident is not archived' }); return; }
+    if (!incident) { res.status(404).json({ error: 'Incident not found', code: 'INCIDENT_NOT_FOUND' }); return; }
+    if (!incident.archived_at) { res.status(400).json({ error: 'Incident is not archived', code: 'INCIDENT_IS_NOT_ARCHIVED' }); return; }
     db.prepare('UPDATE incidents SET archived_at = NULL WHERE id = ?').run(incident.id);
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'incident_unarchived', 'incident', ?, ?, ?)`).run(req.user!.userId, incident.id, `Restored ${incident.incident_number} from archive`, req.ip || 'unknown');
@@ -636,7 +647,7 @@ router.post('/:id/unarchive', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Unarchive incident error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unarchive incident', code: 'UNARCHIVE_INCIDENT_ERROR' });
   }
 });
 
@@ -646,17 +657,17 @@ router.put('/:id/submit', (req: Request, res: Response) => {
     const db = getDb();
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id) as any;
     if (!incident) {
-      res.status(404).json({ error: 'Incident not found' });
+      res.status(404).json({ error: 'Incident not found', code: 'INCIDENT_NOT_FOUND' });
       return;
     }
 
     if (!['draft', 'returned'].includes(incident.status)) {
-      res.status(400).json({ error: 'Can only submit draft or returned incidents' });
+      res.status(400).json({ error: 'Can only submit draft or returned incidents', code: 'CAN_ONLY_SUBMIT_DRAFT' });
       return;
     }
 
     if (!incident.narrative || incident.narrative.trim().length === 0) {
-      res.status(400).json({ error: 'Narrative is required before submitting' });
+      res.status(400).json({ error: 'Narrative is required before submitting', code: 'NARRATIVE_IS_REQUIRED_BEFORE' });
       return;
     }
 
@@ -673,7 +684,7 @@ router.put('/:id/submit', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Submit incident error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to submit incident', code: 'SUBMIT_INCIDENT_ERROR' });
   }
 });
 
@@ -683,12 +694,12 @@ router.put('/:id/approve', requireRole('admin', 'manager', 'supervisor'), (req: 
     const db = getDb();
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id) as any;
     if (!incident) {
-      res.status(404).json({ error: 'Incident not found' });
+      res.status(404).json({ error: 'Incident not found', code: 'INCIDENT_NOT_FOUND' });
       return;
     }
 
     if (!['submitted', 'under_review'].includes(incident.status)) {
-      res.status(400).json({ error: 'Can only approve submitted or under-review incidents' });
+      res.status(400).json({ error: 'Can only approve submitted or under-review incidents', code: 'CAN_ONLY_APPROVE_SUBMITTED' });
       return;
     }
 
@@ -708,7 +719,7 @@ router.put('/:id/approve', requireRole('admin', 'manager', 'supervisor'), (req: 
     res.json(updated);
   } catch (error: any) {
     console.error('Approve incident error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to approve incident', code: 'APPROVE_INCIDENT_ERROR' });
   }
 });
 
@@ -718,12 +729,12 @@ router.put('/:id/return', requireRole('admin', 'manager', 'supervisor'), (req: R
     const db = getDb();
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id) as any;
     if (!incident) {
-      res.status(404).json({ error: 'Incident not found' });
+      res.status(404).json({ error: 'Incident not found', code: 'INCIDENT_NOT_FOUND' });
       return;
     }
 
     if (!['submitted', 'under_review'].includes(incident.status)) {
-      res.status(400).json({ error: 'Can only return submitted or under-review incidents' });
+      res.status(400).json({ error: 'Can only return submitted or under-review incidents', code: 'CAN_ONLY_RETURN_SUBMITTED' });
       return;
     }
 
@@ -743,7 +754,7 @@ router.put('/:id/return', requireRole('admin', 'manager', 'supervisor'), (req: R
     res.json(updated);
   } catch (error: any) {
     console.error('Return incident error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to return incident', code: 'RETURN_INCIDENT_ERROR' });
   }
 });
 
@@ -755,26 +766,26 @@ router.post('/:id/persons', (req: Request, res: Response) => {
     const db = getDb();
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id) as any;
     if (!incident) {
-      res.status(404).json({ error: 'Incident not found' });
+      res.status(404).json({ error: 'Incident not found', code: 'INCIDENT_NOT_FOUND' });
       return;
     }
 
     const { person_id, role, notes } = req.body;
     if (!person_id || !role) {
-      res.status(400).json({ error: 'person_id and role are required' });
+      res.status(400).json({ error: 'person_id and role are required', code: 'PERSONID_AND_ROLE_ARE' });
       return;
     }
 
     const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(person_id) as any;
     if (!person) {
-      res.status(404).json({ error: 'Person not found' });
+      res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' });
       return;
     }
 
     // Check if already linked
     const existing = db.prepare('SELECT * FROM incident_persons WHERE incident_id = ? AND person_id = ?').get(incident.id, person_id) as any;
     if (existing) {
-      res.status(409).json({ error: 'Person already linked to this incident' });
+      res.status(409).json({ error: 'Person already linked to this incident', code: 'PERSON_ALREADY_LINKED_TO' });
       return;
     }
 
@@ -804,7 +815,7 @@ router.post('/:id/persons', (req: Request, res: Response) => {
     res.status(201).json(linked);
   } catch (error: any) {
     console.error('Link person error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to link person', code: 'LINK_PERSON_ERROR' });
   }
 });
 
@@ -815,7 +826,7 @@ router.put('/:id/persons/:personId', (req: Request, res: Response) => {
     const link = db.prepare('SELECT * FROM incident_persons WHERE incident_id = ? AND person_id = ?')
       .get(req.params.id, req.params.personId) as any;
     if (!link) {
-      res.status(404).json({ error: 'Person link not found' });
+      res.status(404).json({ error: 'Person link not found', code: 'PERSON_LINK_NOT_FOUND' });
       return;
     }
 
@@ -846,7 +857,7 @@ router.put('/:id/persons/:personId', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update person link error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update person link', code: 'UPDATE_PERSON_LINK_ERROR' });
   }
 });
 
@@ -857,7 +868,7 @@ router.delete('/:id/persons/:personId', (req: Request, res: Response) => {
     const link = db.prepare('SELECT * FROM incident_persons WHERE incident_id = ? AND person_id = ?')
       .get(req.params.id, req.params.personId) as any;
     if (!link) {
-      res.status(404).json({ error: 'Person link not found' });
+      res.status(404).json({ error: 'Person link not found', code: 'PERSON_LINK_NOT_FOUND' });
       return;
     }
 
@@ -878,7 +889,7 @@ router.delete('/:id/persons/:personId', (req: Request, res: Response) => {
     res.json({ message: 'Person unlinked from incident' });
   } catch (error: any) {
     console.error('Unlink person error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unlink person', code: 'UNLINK_PERSON_ERROR' });
   }
 });
 
@@ -890,25 +901,25 @@ router.post('/:id/vehicles', (req: Request, res: Response) => {
     const db = getDb();
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id) as any;
     if (!incident) {
-      res.status(404).json({ error: 'Incident not found' });
+      res.status(404).json({ error: 'Incident not found', code: 'INCIDENT_NOT_FOUND' });
       return;
     }
 
     const { vehicle_id, role, notes } = req.body;
     if (!vehicle_id || !role) {
-      res.status(400).json({ error: 'vehicle_id and role are required' });
+      res.status(400).json({ error: 'vehicle_id and role are required', code: 'VEHICLEID_AND_ROLE_ARE' });
       return;
     }
 
     const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(vehicle_id) as any;
     if (!vehicle) {
-      res.status(404).json({ error: 'Vehicle not found' });
+      res.status(404).json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' });
       return;
     }
 
     const existing = db.prepare('SELECT * FROM incident_vehicles WHERE incident_id = ? AND vehicle_id = ?').get(incident.id, vehicle_id) as any;
     if (existing) {
-      res.status(409).json({ error: 'Vehicle already linked to this incident' });
+      res.status(409).json({ error: 'Vehicle already linked to this incident', code: 'VEHICLE_ALREADY_LINKED_TO' });
       return;
     }
 
@@ -940,7 +951,7 @@ router.post('/:id/vehicles', (req: Request, res: Response) => {
     res.status(201).json(linked);
   } catch (error: any) {
     console.error('Link vehicle error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to link vehicle', code: 'LINK_VEHICLE_ERROR' });
   }
 });
 
@@ -951,7 +962,7 @@ router.put('/:id/vehicles/:vehicleId', (req: Request, res: Response) => {
     const link = db.prepare('SELECT * FROM incident_vehicles WHERE incident_id = ? AND vehicle_id = ?')
       .get(req.params.id, req.params.vehicleId) as any;
     if (!link) {
-      res.status(404).json({ error: 'Vehicle link not found' });
+      res.status(404).json({ error: 'Vehicle link not found', code: 'VEHICLE_LINK_NOT_FOUND' });
       return;
     }
 
@@ -984,7 +995,7 @@ router.put('/:id/vehicles/:vehicleId', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update vehicle link error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update vehicle link', code: 'UPDATE_VEHICLE_LINK_ERROR' });
   }
 });
 
@@ -995,7 +1006,7 @@ router.delete('/:id/vehicles/:vehicleId', (req: Request, res: Response) => {
     const link = db.prepare('SELECT * FROM incident_vehicles WHERE incident_id = ? AND vehicle_id = ?')
       .get(req.params.id, req.params.vehicleId) as any;
     if (!link) {
-      res.status(404).json({ error: 'Vehicle link not found' });
+      res.status(404).json({ error: 'Vehicle link not found', code: 'VEHICLE_LINK_NOT_FOUND' });
       return;
     }
 
@@ -1016,7 +1027,7 @@ router.delete('/:id/vehicles/:vehicleId', (req: Request, res: Response) => {
     res.json({ message: 'Vehicle unlinked from incident' });
   } catch (error: any) {
     console.error('Unlink vehicle error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unlink vehicle', code: 'UNLINK_VEHICLE_ERROR' });
   }
 });
 
@@ -1028,7 +1039,7 @@ router.post('/:id/evidence', (req: Request, res: Response) => {
     const db = getDb();
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id) as any;
     if (!incident) {
-      res.status(404).json({ error: 'Incident not found' });
+      res.status(404).json({ error: 'Incident not found', code: 'INCIDENT_NOT_FOUND' });
       return;
     }
 
@@ -1040,7 +1051,7 @@ router.post('/:id/evidence', (req: Request, res: Response) => {
       serial_number, brand, model, estimated_value, category
     } = req.body;
     if (!description || !evidence_type) {
-      res.status(400).json({ error: 'description and evidence_type are required' });
+      res.status(400).json({ error: 'description and evidence_type are required', code: 'DESCRIPTION_AND_EVIDENCETYPE_ARE' });
       return;
     }
 
@@ -1089,7 +1100,7 @@ router.post('/:id/evidence', (req: Request, res: Response) => {
     res.status(201).json(evidence);
   } catch (error: any) {
     console.error('Create evidence error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create evidence', code: 'CREATE_EVIDENCE_ERROR' });
   }
 });
 
@@ -1101,7 +1112,7 @@ router.get('/:id/supplements', (req: Request, res: Response) => {
     const db = getDb();
     const incident = db.prepare('SELECT id FROM incidents WHERE id = ?').get(req.params.id) as any;
     if (!incident) {
-      res.status(404).json({ error: 'Incident not found' });
+      res.status(404).json({ error: 'Incident not found', code: 'INCIDENT_NOT_FOUND' });
       return;
     }
 
@@ -1115,12 +1126,14 @@ router.get('/:id/supplements', (req: Request, res: Response) => {
       LEFT JOIN users a ON sr.approved_by = a.id
       WHERE sr.incident_id = ?
       ORDER BY sr.created_at DESC
+    
+      LIMIT 1000
     `).all(req.params.id);
 
     res.json(supplements);
   } catch (error: any) {
     console.error('List supplements error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to list supplements', code: 'LIST_SUPPLEMENTS_ERROR' });
   }
 });
 
@@ -1130,13 +1143,13 @@ router.post('/:id/supplements', (req: Request, res: Response) => {
     const db = getDb();
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id) as any;
     if (!incident) {
-      res.status(404).json({ error: 'Incident not found' });
+      res.status(404).json({ error: 'Incident not found', code: 'INCIDENT_NOT_FOUND' });
       return;
     }
 
     const { report_type, subject, narrative } = req.body;
     if (!report_type || !subject || !narrative) {
-      res.status(400).json({ error: 'report_type, subject, and narrative are required' });
+      res.status(400).json({ error: 'report_type, subject, and narrative are required', code: 'REPORTTYPE_SUBJECT_AND_NARRATIVE' });
       return;
     }
 
@@ -1177,7 +1190,7 @@ router.post('/:id/supplements', (req: Request, res: Response) => {
     res.status(201).json(supplement);
   } catch (error: any) {
     console.error('Create supplement error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create supplement', code: 'CREATE_SUPPLEMENT_ERROR' });
   }
 });
 
@@ -1188,7 +1201,7 @@ router.put('/:incidentId/supplements/:supId', (req: Request, res: Response) => {
     const sup = db.prepare('SELECT * FROM supplemental_reports WHERE id = ? AND incident_id = ?')
       .get(req.params.supId, req.params.incidentId) as any;
     if (!sup) {
-      res.status(404).json({ error: 'Supplement not found' });
+      res.status(404).json({ error: 'Supplement not found', code: 'SUPPLEMENT_NOT_FOUND' });
       return;
     }
 
@@ -1205,12 +1218,12 @@ router.put('/:incidentId/supplements/:supId', (req: Request, res: Response) => {
         fields.push('approved_by = ?');
         values.push(req.user!.userId);
         fields.push('approved_at = ?');
-        values.push(new Date().toISOString());
+        values.push(localNow());
       }
     }
 
     if (fields.length === 0) {
-      res.status(400).json({ error: 'No fields to update' });
+      res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
       return;
     }
 
@@ -1231,7 +1244,7 @@ router.put('/:incidentId/supplements/:supId', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update supplement error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update supplement', code: 'UPDATE_SUPPLEMENT_ERROR' });
   }
 });
 
@@ -1242,11 +1255,11 @@ router.delete('/:incidentId/supplements/:supId', (req: Request, res: Response) =
     const sup = db.prepare('SELECT * FROM supplemental_reports WHERE id = ? AND incident_id = ?')
       .get(req.params.supId, req.params.incidentId) as any;
     if (!sup) {
-      res.status(404).json({ error: 'Supplement not found' });
+      res.status(404).json({ error: 'Supplement not found', code: 'SUPPLEMENT_NOT_FOUND' });
       return;
     }
     if (sup.status !== 'draft') {
-      res.status(400).json({ error: 'Only draft supplements can be deleted' });
+      res.status(400).json({ error: 'Only draft supplements can be deleted', code: 'ONLY_DRAFT_SUPPLEMENTS_CAN' });
       return;
     }
 
@@ -1254,7 +1267,7 @@ router.delete('/:incidentId/supplements/:supId', (req: Request, res: Response) =
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete supplement error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete supplement', code: 'DELETE_SUPPLEMENT_ERROR' });
   }
 });
 

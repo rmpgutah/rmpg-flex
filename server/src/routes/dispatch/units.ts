@@ -22,12 +22,15 @@ router.get('/units', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       LEFT JOIN users usr ON u.officer_id = usr.id
       LEFT JOIN calls_for_service c ON u.current_call_id = c.id
       ORDER BY u.call_sign
+    
+      LIMIT 1000
     `).all();
 
+    res.set('Cache-Control', 'private, max-age=5');
     res.json(units);
   } catch (error: any) {
     console.error('[Units] get units error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get units', code: 'UNITS_GET_UNITS_ERROR' });
   }
 });
 
@@ -37,14 +40,14 @@ router.post('/units', requireRole('admin', 'manager', 'dispatcher'), (req: Reque
     const db = getDb();
     const { call_sign, officer_id, status } = req.body;
     if (!call_sign || !String(call_sign).trim()) {
-      res.status(400).json({ error: 'call_sign is required' });
+      res.status(400).json({ error: 'call_sign is required', code: 'CALLSIGN_IS_REQUIRED' });
       return;
     }
 
     // Check for duplicate call_sign
     const existing = db.prepare('SELECT id FROM units WHERE call_sign = ?').get(call_sign);
     if (existing) {
-      res.status(409).json({ error: 'A unit with this call sign already exists' });
+      res.status(409).json({ error: 'A unit with this call sign already exists', code: 'A_UNIT_WITH_THIS' });
       return;
     }
 
@@ -54,7 +57,7 @@ router.post('/units', requireRole('admin', 'manager', 'dispatcher'), (req: Reque
     `).run(call_sign, officer_id || null, status || 'off_duty', localNow(), localNow());
 
     const unit = db.prepare('SELECT u.*, usr.full_name as officer_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.id = ?').get(Number(result.lastInsertRowid));
-    if (!unit) { res.status(500).json({ error: 'Failed to retrieve created unit' }); return; }
+    if (!unit) { res.status(500).json({ error: 'Failed to retrieve created unit', code: 'FAILED_TO_RETRIEVE_CREATED' }); return; }
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'unit_created', 'unit', ?, ?, ?)`).run(
@@ -64,7 +67,7 @@ router.post('/units', requireRole('admin', 'manager', 'dispatcher'), (req: Reque
     res.status(201).json(unit);
   } catch (error: any) {
     console.error('[Units] create unit error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create unit', code: 'UNITS_CREATE_UNIT_ERROR' });
   }
 });
 
@@ -74,7 +77,7 @@ router.put('/units/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     const db = getDb();
     const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(req.params.id) as any;
     if (!unit) {
-      res.status(404).json({ error: 'Unit not found' });
+      res.status(404).json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' });
       return;
     }
 
@@ -86,13 +89,13 @@ router.put('/units/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     if (call_sign !== undefined) {
       const trimmed = call_sign.trim();
       if (!trimmed) {
-        res.status(400).json({ error: 'call_sign cannot be empty' });
+        res.status(400).json({ error: 'call_sign cannot be empty', code: 'CALLSIGN_CANNOT_BE_EMPTY' });
         return;
       }
       // Check uniqueness (exclude self)
       const dup = db.prepare('SELECT id FROM units WHERE call_sign = ? AND id != ?').get(trimmed, req.params.id);
       if (dup) {
-        res.status(409).json({ error: 'A unit with this call sign already exists' });
+        res.status(409).json({ error: 'A unit with this call sign already exists', code: 'A_UNIT_WITH_THIS' });
         return;
       }
       updates.push('call_sign = ?');
@@ -123,7 +126,7 @@ router.put('/units/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     }
 
     if (updates.length === 0) {
-      res.status(400).json({ error: 'No fields to update' });
+      res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
       return;
     }
 
@@ -142,7 +145,7 @@ router.put('/units/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     res.json(updated);
   } catch (error: any) {
     console.error('[Units] update unit error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update unit', code: 'UNITS_UPDATE_UNIT_ERROR' });
   }
 });
 
@@ -152,13 +155,13 @@ router.delete('/units/:id', validateParamIdMiddleware, requireRole('admin', 'man
     const db = getDb();
     const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(req.params.id) as any;
     if (!unit) {
-      res.status(404).json({ error: 'Unit not found' });
+      res.status(404).json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' });
       return;
     }
 
     // Block deletion if unit is assigned to an active call
     if (unit.current_call_id) {
-      res.status(400).json({ error: 'Cannot delete a unit that is assigned to an active call. Unassign the unit first.' });
+      res.status(400).json({ error: 'Cannot delete a unit that is assigned to an active call. Unassign the unit first.', code: 'CANNOT_DELETE_A_UNIT' });
       return;
     }
 
@@ -172,7 +175,7 @@ router.delete('/units/:id', validateParamIdMiddleware, requireRole('admin', 'man
     res.json({ success: true });
   } catch (error: any) {
     console.error('[Units] delete unit error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete unit', code: 'UNITS_DELETE_UNIT_ERROR' });
   }
 });
 
@@ -182,7 +185,7 @@ router.put('/units/:id/status', validateParamIdMiddleware, requireRole('admin', 
     const db = getDb();
     const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(req.params.id) as any;
     if (!unit) {
-      res.status(404).json({ error: 'Unit not found' });
+      res.status(404).json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' });
       return;
     }
 
@@ -249,7 +252,7 @@ router.put('/units/:id/status', validateParamIdMiddleware, requireRole('admin', 
     }
 
     if (updates.length === 0) {
-      res.status(400).json({ error: 'No fields to update' });
+      res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
       return;
     }
 
@@ -273,7 +276,7 @@ router.put('/units/:id/status', validateParamIdMiddleware, requireRole('admin', 
     res.json(updated);
   } catch (error: any) {
     console.error('[Units] status update error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to status update', code: 'UNITS_STATUS_UPDATE_ERROR' });
   }
 });
 
@@ -282,22 +285,22 @@ router.put('/units/:id/mileage', requireRole('admin', 'manager', 'supervisor', '
   try {
     const db = getDb();
     const unitId = parseInt(req.params.id, 10);
-    if (isNaN(unitId)) { res.status(400).json({ error: 'Invalid unit ID' }); return; }
+    if (isNaN(unitId)) { res.status(400).json({ error: 'Invalid unit ID', code: 'INVALID_UNIT_ID' }); return; }
 
     const { mileage } = req.body;
     const mileageNum = Number(mileage);
     if (mileage === undefined || !Number.isFinite(mileageNum) || mileageNum < 0) {
-      res.status(400).json({ error: 'Valid mileage number required' }); return;
+      res.status(400).json({ error: 'Valid mileage number required', code: 'VALID_MILEAGE_NUMBER_REQUIRED' }); return;
     }
 
     const unit = db.prepare('SELECT id FROM units WHERE id = ?').get(unitId);
-    if (!unit) { res.status(404).json({ error: 'Unit not found' }); return; }
+    if (!unit) { res.status(404).json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }); return; }
 
     db.prepare('UPDATE units SET mileage = ?, updated_at = ? WHERE id = ?')
       .run(mileageNum, localNow(), unitId);
     res.json({ success: true });
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 

@@ -175,6 +175,18 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
 
   if (loading && announcements.length === 0) return <LoadingSpinner />;
 
+  // Set document title
+  useEffect(() => { document.title = 'Admin - Announcements \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setEditing(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="p-4 space-y-3">
       {/* Header */}
@@ -191,8 +203,8 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search..."
-              className="input-dark text-[10px] pl-6 pr-2 py-1 w-40"
+              placeholder="Search..." aria-label="Search..."
+              className="input-dark text-[10px] pl-6 pr-2 py-1 w-40 min-h-[36px]"
             />
           </div>
           <button type="button" onClick={openNew} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
@@ -274,7 +286,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
                   type="text"
                   value={form.title}
                   onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                  className="input-dark w-full text-xs"
+                  className="input-dark w-full text-xs min-h-[36px]"
                   placeholder="Announcement title..."
                 />
               </div>
@@ -322,7 +334,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
                     type="datetime-local"
                     value={form.starts_at}
                     onChange={(e) => setForm((f) => ({ ...f, starts_at: e.target.value }))}
-                    className="input-dark w-full text-xs"
+                    className="input-dark w-full text-xs min-h-[36px]"
                   />
                 </div>
                 <div>
@@ -331,7 +343,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
                     type="datetime-local"
                     value={form.expires_at}
                     onChange={(e) => setForm((f) => ({ ...f, expires_at: e.target.value }))}
-                    className="input-dark w-full text-xs"
+                    className="input-dark w-full text-xs min-h-[36px]"
                   />
                 </div>
               </div>
@@ -359,7 +371,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
             <div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-rmpg-700">
               <button type="button" onClick={() => setShowForm(false)} className="toolbar-btn text-[10px]">Cancel</button>
               <button type="button" onClick={handleSubmit} disabled={submitting} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
-                {submitting && <Loader2 className="w-3 h-3 animate-spin" />}
+                {submitting && <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />}
                 {editing ? 'Update' : 'Create'}
               </button>
             </div>

@@ -184,6 +184,15 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
 
   const activeCount = channels.filter(c => c.is_active).length;
 
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setEditingId(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
       {/* Header */}
@@ -258,7 +267,7 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
               disabled={!newId.trim() || !newLabel.trim() || saving}
               className="flex items-center gap-1 px-3 py-1.5 bg-green-700 hover:bg-green-600 disabled:opacity-50 text-white text-[10px] font-bold uppercase tracking-wider transition-colors"
             >
-              {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+              {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save className="w-3 h-3" />}
               Create
             </button>
             <button type="button"
@@ -376,7 +385,7 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
                           className="p-1 text-green-400 hover:text-green-300 transition-colors"
                           title="Save"
                         >
-                          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Save className="w-3.5 h-3.5" />}
                         </button>
                         <button type="button"
                           onClick={cancelEdit}

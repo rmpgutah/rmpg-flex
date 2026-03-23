@@ -74,7 +74,7 @@ export default function CrimeAnalysisPage() {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-rmpg-500 mx-auto mb-2" />
+          <Loader2 className="w-8 h-8 animate-spin text-rmpg-500 mx-auto mb-2" role="status" aria-label="Loading" />
           <div className="text-xs text-rmpg-500">Loading crime analysis...</div>
         </div>
       </div>
@@ -154,6 +154,9 @@ export default function CrimeAnalysisPage() {
       </linearGradient>
     </defs>
   );
+
+  // Set document title
+  useEffect(() => { document.title = 'Crime Analysis \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="h-full flex flex-col">

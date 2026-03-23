@@ -182,6 +182,9 @@ export default function ColoradoDocPage() {
     }
   };
 
+  // Set document title
+  useEffect(() => { document.title = 'Colorado DOC \u2014 RMPG Flex'; }, []);
+
   return (
     <div className="app-grid-bg h-full flex flex-col overflow-hidden">
       {/* ── Header ──────────────────────────────────────────── */}

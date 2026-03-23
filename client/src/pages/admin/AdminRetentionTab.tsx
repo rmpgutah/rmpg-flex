@@ -129,6 +129,9 @@ export default function AdminRetentionTab({ LoadingSpinner, error, setError }: P
 
   if (loading && policies.length === 0) return <LoadingSpinner />;
 
+  // Set document title
+  useEffect(() => { document.title = 'Admin - Retention \u2014 RMPG Flex'; }, []);
+
   return (
     <div className="p-4 space-y-4">
       {/* Header */}
@@ -151,7 +154,7 @@ export default function AdminRetentionTab({ LoadingSpinner, error, setError }: P
             disabled={running}
             className="toolbar-btn-primary text-[10px] flex items-center gap-1"
           >
-            {running ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+            {running ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Play className="w-3 h-3" />}
             Run Policies Now
           </button>
         </div>
@@ -208,7 +211,7 @@ export default function AdminRetentionTab({ LoadingSpinner, error, setError }: P
                       max={3650}
                       value={p.retention_days}
                       onChange={(e) => updatePolicy(p.id, { retention_days: parseInt(e.target.value, 10) || 365 })}
-                      className="input-dark text-[10px] w-16 text-center font-mono"
+                      className="input-dark text-[10px] w-16 text-center font-mono min-h-[36px]"
                     />
                   </td>
                   <td className="px-3 py-2 text-center">
@@ -258,7 +261,7 @@ export default function AdminRetentionTab({ LoadingSpinner, error, setError }: P
                     </button>
                   </td>
                   <td className="px-3 py-2 text-right">
-                    {isSaving && <Loader2 className="w-3 h-3 animate-spin text-brand-400 inline" />}
+                    {isSaving && <Loader2 className="w-3 h-3 animate-spin text-brand-400 inline" role="status" aria-label="Loading" />}
                   </td>
                 </tr>
               );

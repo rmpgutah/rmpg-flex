@@ -9,6 +9,8 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken } from '../middleware/auth';
+import { auditLog } from '../utils/auditLogger';
+import { broadcastCitationUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
 
 const router = Router();
@@ -54,6 +56,7 @@ router.get('/stats', (req: Request, res: Response) => {
       WHERE violation_date = ? AND status != 'voided'
     `).get(today) as any;
 
+    res.set('Cache-Control', 'private, max-age=60');
     res.json({
       data: {
         by_status: {
@@ -72,7 +75,7 @@ router.get('/stats', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get citation stats error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to retrieve citation statistics', code: 'STATS_ERROR' });
   }
 });
 
@@ -83,7 +86,7 @@ router.get('/search', (req: Request, res: Response) => {
     const { q } = req.query;
 
     if (!q || (q as string).length < 2) {
-      res.status(400).json({ error: 'Search query must be at least 2 characters' });
+      res.status(400).json({ error: 'Search query must be at least 2 characters', code: 'SEARCH_QUERY_MUST_BE' });
       return;
     }
 
@@ -99,7 +102,7 @@ router.get('/search', (req: Request, res: Response) => {
     res.json({ data: citations });
   } catch (error: any) {
     console.error('Search citations error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to search citations', code: 'SEARCH_ERROR' });
   }
 });
 
@@ -109,7 +112,7 @@ router.get('/person/:personId', (req: Request, res: Response) => {
     const db = getDb();
     const personId = parseInt(req.params.personId, 10);
     if (isNaN(personId)) {
-      res.status(400).json({ error: 'Invalid person ID' });
+      res.status(400).json({ error: 'Invalid person ID', code: 'INVALID_PERSON_ID' });
       return;
     }
 
@@ -123,7 +126,7 @@ router.get('/person/:personId', (req: Request, res: Response) => {
     res.json({ data: citations });
   } catch (error: any) {
     console.error('Get person citations error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to retrieve person citations', code: 'PERSON_CITATIONS_ERROR' });
   }
 });
 
@@ -204,7 +207,7 @@ router.get('/', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get citations error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to retrieve citations', code: 'LIST_CITATIONS_ERROR' });
   }
 });
 
@@ -214,21 +217,21 @@ router.get('/:id', (req: Request, res: Response) => {
     const db = getDb();
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
-      res.status(400).json({ error: 'Invalid citation ID' });
+      res.status(400).json({ error: 'Invalid citation ID', code: 'INVALID_CITATION_ID' });
       return;
     }
 
     const citation = db.prepare(`SELECT * FROM citations WHERE id = ?`).get(id) as any;
 
     if (!citation) {
-      res.status(404).json({ error: 'Citation not found' });
+      res.status(404).json({ error: 'Citation not found', code: 'CITATION_NOT_FOUND' });
       return;
     }
 
     res.json({ data: citation });
   } catch (error: any) {
     console.error('Get citation error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to retrieve citation', code: 'GET_CITATION_ERROR' });
   }
 });
 
@@ -267,14 +270,19 @@ router.post('/', (req: Request, res: Response) => {
       notes,
     } = req.body;
 
+    if (!violation_description?.trim()) {
+      res.status(400).json({ error: 'Violation description is required', code: 'MISSING_DESCRIPTION' });
+      return;
+    }
+
     if (!violation_date) {
-      res.status(400).json({ error: 'violation_date is required' });
+      res.status(400).json({ error: 'violation_date is required', code: 'MISSING_DATE' });
       return;
     }
 
     // Validate violation_date format
     if (typeof violation_date !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(violation_date)) {
-      res.status(400).json({ error: 'violation_date must be in YYYY-MM-DD format' });
+      res.status(400).json({ error: 'violation_date must be in YYYY-MM-DD format', code: 'VIOLATIONDATE_MUST_BE_IN' });
       return;
     }
 
@@ -282,7 +290,7 @@ router.post('/', (req: Request, res: Response) => {
     if (fine_amount !== undefined && fine_amount !== null) {
       const fineNum = parseFloat(fine_amount);
       if (isNaN(fineNum) || fineNum < 0) {
-        res.status(400).json({ error: 'fine_amount must be a non-negative number' });
+        res.status(400).json({ error: 'fine_amount must be a non-negative number', code: 'FINEAMOUNT_MUST_BE_A' });
         return;
       }
     }
@@ -347,10 +355,11 @@ router.post('/', (req: Request, res: Response) => {
     );
 
     const created = db.prepare('SELECT * FROM citations WHERE id = ?').get(result.lastInsertRowid);
+    broadcastCitationUpdate({ type: 'citation_created', id: result.lastInsertRowid, citation_number });
     res.status(201).json({ data: created });
   } catch (error: any) {
     console.error('Create citation error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create citation', code: 'CREATE_CITATION_ERROR' });
   }
 });
 
@@ -360,12 +369,12 @@ router.put('/:id', (req: Request, res: Response) => {
     const db = getDb();
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
-      res.status(400).json({ error: 'Invalid citation ID' });
+      res.status(400).json({ error: 'Invalid citation ID', code: 'INVALID_CITATION_ID' });
       return;
     }
     const citation = db.prepare('SELECT * FROM citations WHERE id = ?').get(id) as any;
     if (!citation) {
-      res.status(404).json({ error: 'Citation not found' });
+      res.status(404).json({ error: 'Citation not found', code: 'CITATION_NOT_FOUND' });
       return;
     }
 
@@ -429,10 +438,11 @@ router.put('/:id', (req: Request, res: Response) => {
     );
 
     const updated = db.prepare('SELECT * FROM citations WHERE id = ?').get(req.params.id);
+    broadcastCitationUpdate({ type: 'citation_updated', id: parseInt(req.params.id) });
     res.json({ data: updated });
   } catch (error: any) {
     console.error('Update citation error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update citation', code: 'UPDATE_CITATION_ERROR' });
   }
 });
 
@@ -443,12 +453,12 @@ router.delete('/:id', (req: Request, res: Response) => {
     const db = getDb();
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
-      res.status(400).json({ error: 'Invalid citation ID' });
+      res.status(400).json({ error: 'Invalid citation ID', code: 'INVALID_CITATION_ID' });
       return;
     }
     const citation = db.prepare('SELECT * FROM citations WHERE id = ?').get(id) as any;
     if (!citation) {
-      res.status(404).json({ error: 'Citation not found' });
+      res.status(404).json({ error: 'Citation not found', code: 'CITATION_NOT_FOUND' });
       return;
     }
 
@@ -466,10 +476,11 @@ router.delete('/:id', (req: Request, res: Response) => {
       req.ip || 'unknown'
     );
 
+    broadcastCitationUpdate({ type: 'citation_voided', id: citation.id });
     res.json({ message: 'Citation voided', data: { id: citation.id, status: 'voided' } });
   } catch (error: any) {
     console.error('Void citation error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to void citation', code: 'VOID_CITATION_ERROR' });
   }
 });
 
@@ -498,7 +509,7 @@ router.get('/:id/payments', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const citation = db.prepare('SELECT id, fine_amount, status FROM citations WHERE id = ?').get(req.params.id) as any;
-    if (!citation) { res.status(404).json({ error: 'Citation not found' }); return; }
+    if (!citation) { res.status(404).json({ error: 'Citation not found', code: 'CITATION_NOT_FOUND' }); return; }
 
     const payments = db.prepare(
       'SELECT * FROM citation_payments WHERE citation_id = ? ORDER BY payment_date DESC'
@@ -517,7 +528,7 @@ router.get('/:id/payments', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get citation payments error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to retrieve citation payments', code: 'GET_PAYMENTS_ERROR' });
   }
 });
 
@@ -526,17 +537,17 @@ router.post('/:id/payments', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const citation = db.prepare('SELECT id, fine_amount, status FROM citations WHERE id = ?').get(req.params.id) as any;
-    if (!citation) { res.status(404).json({ error: 'Citation not found' }); return; }
+    if (!citation) { res.status(404).json({ error: 'Citation not found', code: 'CITATION_NOT_FOUND' }); return; }
 
     const { amount, payment_date, payment_method, reference_number, notes } = req.body;
     if (!amount || !payment_date) {
-      res.status(400).json({ error: 'Amount and payment_date are required' });
+      res.status(400).json({ error: 'Amount and payment_date are required', code: 'AMOUNT_AND_PAYMENTDATE_ARE' });
       return;
     }
 
     const parsedAmount = parseFloat(amount);
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
-      res.status(400).json({ error: 'Amount must be a positive number' });
+      res.status(400).json({ error: 'Amount must be a positive number', code: 'AMOUNT_MUST_BE_A' });
       return;
     }
 
@@ -565,7 +576,7 @@ router.post('/:id/payments', (req: Request, res: Response) => {
     res.status(201).json({ data: { id: result.lastInsertRowid } });
   } catch (error: any) {
     console.error('Record citation payment error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to record payment', code: 'RECORD_PAYMENT_ERROR' });
   }
 });
 

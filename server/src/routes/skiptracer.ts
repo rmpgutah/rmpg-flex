@@ -242,7 +242,7 @@ router.put('/config', requireRole('admin'), (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (err: any) {
     console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
   }
 });
 
@@ -257,7 +257,7 @@ router.delete('/config', requireRole('admin'), (req: Request, res: Response) => 
     res.json({ success: true });
   } catch (err: any) {
     console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
   }
 });
 
@@ -304,13 +304,13 @@ router.post('/test', requireRole('admin'), async (req: Request, res: Response) =
 router.get('/search/byname', skipSearchRateLimit, async (req: Request, res: Response) => {
   try {
     const { name, page } = req.query;
-    if (!name) return res.status(400).json({ error: 'name parameter required' });
-    if (String(name).length > 200) return res.status(400).json({ error: 'name too long (max 200 chars)' });
+    if (!name) return res.status(400).json({ error: 'name parameter required', code: 'NAME_PARAMETER_REQUIRED' });
+    if (String(name).length > 200) return res.status(400).json({ error: 'name too long (max 200 chars)', code: 'NAME_TOO_LONG_MAX' });
 
     const params: Record<string, string> = { name: String(name) };
     if (page) {
       const p = parseInt(String(page), 10);
-      if (isNaN(p) || p < 1 || p > 1000) return res.status(400).json({ error: 'page must be between 1 and 1000' });
+      if (isNaN(p) || p < 1 || p > 1000) return res.status(400).json({ error: 'page must be between 1 and 1000', code: 'PAGE_MUST_BE_BETWEEN' });
       params.page = String(p);
     }
 
@@ -320,7 +320,7 @@ router.get('/search/byname', skipSearchRateLimit, async (req: Request, res: Resp
     res.json(data);
   } catch (err: any) {
     console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
   }
 });
 
@@ -328,13 +328,13 @@ router.get('/search/byname', skipSearchRateLimit, async (req: Request, res: Resp
 router.get('/search/byaddress', skipSearchRateLimit, async (req: Request, res: Response) => {
   try {
     const { address, page } = req.query;
-    if (!address) return res.status(400).json({ error: 'address parameter required' });
-    if (String(address).length > 500) return res.status(400).json({ error: 'address too long (max 500 chars)' });
+    if (!address) return res.status(400).json({ error: 'address parameter required', code: 'ADDRESS_PARAMETER_REQUIRED' });
+    if (String(address).length > 500) return res.status(400).json({ error: 'address too long (max 500 chars)', code: 'ADDRESS_TOO_LONG_MAX' });
 
     const params: Record<string, string> = { address: String(address) };
     if (page) {
       const p = parseInt(String(page), 10);
-      if (isNaN(p) || p < 1 || p > 1000) return res.status(400).json({ error: 'page must be between 1 and 1000' });
+      if (isNaN(p) || p < 1 || p > 1000) return res.status(400).json({ error: 'page must be between 1 and 1000', code: 'PAGE_MUST_BE_BETWEEN' });
       params.page = String(p);
     }
 
@@ -344,7 +344,7 @@ router.get('/search/byaddress', skipSearchRateLimit, async (req: Request, res: R
     res.json(data);
   } catch (err: any) {
     console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
   }
 });
 
@@ -352,14 +352,14 @@ router.get('/search/byaddress', skipSearchRateLimit, async (req: Request, res: R
 router.get('/search/bynameaddress', skipSearchRateLimit, async (req: Request, res: Response) => {
   try {
     const { name, address, page } = req.query;
-    if (!name || !address) return res.status(400).json({ error: 'name and address parameters required' });
-    if (String(name).length > 200) return res.status(400).json({ error: 'name too long (max 200 chars)' });
-    if (String(address).length > 500) return res.status(400).json({ error: 'address too long (max 500 chars)' });
+    if (!name || !address) return res.status(400).json({ error: 'name and address parameters required', code: 'NAME_AND_ADDRESS_PARAMETERS' });
+    if (String(name).length > 200) return res.status(400).json({ error: 'name too long (max 200 chars)', code: 'NAME_TOO_LONG_MAX' });
+    if (String(address).length > 500) return res.status(400).json({ error: 'address too long (max 500 chars)', code: 'ADDRESS_TOO_LONG_MAX' });
 
     const params: Record<string, string> = { name: String(name), address: String(address) };
     if (page) {
       const p = parseInt(String(page), 10);
-      if (isNaN(p) || p < 1 || p > 1000) return res.status(400).json({ error: 'page must be between 1 and 1000' });
+      if (isNaN(p) || p < 1 || p > 1000) return res.status(400).json({ error: 'page must be between 1 and 1000', code: 'PAGE_MUST_BE_BETWEEN' });
       params.page = String(p);
     }
 
@@ -369,7 +369,7 @@ router.get('/search/bynameaddress', skipSearchRateLimit, async (req: Request, re
     res.json(data);
   } catch (err: any) {
     console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
   }
 });
 
@@ -377,17 +377,17 @@ router.get('/search/bynameaddress', skipSearchRateLimit, async (req: Request, re
 router.get('/search/byphone', skipSearchRateLimit, async (req: Request, res: Response) => {
   try {
     const { phone, page } = req.query;
-    if (!phone) return res.status(400).json({ error: 'phone parameter required' });
+    if (!phone) return res.status(400).json({ error: 'phone parameter required', code: 'PHONE_PARAMETER_REQUIRED' });
     // Validate phone format (digits, spaces, dashes, parens, plus)
     const phoneStr = String(phone);
     if (phoneStr.length > 30 || !/^[0-9()\-+\s.]+$/.test(phoneStr)) {
-      return res.status(400).json({ error: 'Invalid phone format' });
+      return res.status(400).json({ error: 'Invalid phone format', code: 'INVALID_PHONE_FORMAT' });
     }
 
     const params: Record<string, string> = { phone: phoneStr };
     if (page) {
       const p = parseInt(String(page), 10);
-      if (isNaN(p) || p < 1 || p > 1000) return res.status(400).json({ error: 'page must be between 1 and 1000' });
+      if (isNaN(p) || p < 1 || p > 1000) return res.status(400).json({ error: 'page must be between 1 and 1000', code: 'PAGE_MUST_BE_BETWEEN' });
       params.page = String(p);
     }
 
@@ -397,7 +397,7 @@ router.get('/search/byphone', skipSearchRateLimit, async (req: Request, res: Res
     res.json(data);
   } catch (err: any) {
     console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
   }
 });
 
@@ -405,17 +405,17 @@ router.get('/search/byphone', skipSearchRateLimit, async (req: Request, res: Res
 router.get('/search/byemail', skipSearchRateLimit, async (req: Request, res: Response) => {
   try {
     const { email, page } = req.query;
-    if (!email) return res.status(400).json({ error: 'email parameter required' });
+    if (!email) return res.status(400).json({ error: 'email parameter required', code: 'EMAIL_PARAMETER_REQUIRED' });
     // Basic email format validation
     const emailStr = String(email);
     if (emailStr.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailStr)) {
-      return res.status(400).json({ error: 'Invalid email format' });
+      return res.status(400).json({ error: 'Invalid email format', code: 'INVALID_EMAIL_FORMAT' });
     }
 
     const params: Record<string, string> = { email: emailStr };
     if (page) {
       const p = parseInt(String(page), 10);
-      if (isNaN(p) || p < 1 || p > 1000) return res.status(400).json({ error: 'page must be between 1 and 1000' });
+      if (isNaN(p) || p < 1 || p > 1000) return res.status(400).json({ error: 'page must be between 1 and 1000', code: 'PAGE_MUST_BE_BETWEEN' });
       params.page = String(p);
     }
 
@@ -425,7 +425,7 @@ router.get('/search/byemail', skipSearchRateLimit, async (req: Request, res: Res
     res.json(data);
   } catch (err: any) {
     console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
   }
 });
 
@@ -433,14 +433,14 @@ router.get('/search/byemail', skipSearchRateLimit, async (req: Request, res: Res
 router.get('/person/:id', validateParamIdMiddleware, async (req: Request, res: Response) => {
   try {
     const id = req.params.id as string;
-    if (!id) return res.status(400).json({ error: 'id parameter required' });
+    if (!id) return res.status(400).json({ error: 'id parameter required', code: 'ID_PARAMETER_REQUIRED' });
 
     const data = await rapidApiFetch('/search/detailsbyID', { id });
     persistSearch('personDetailsByID', { id }, data, req.user!.userId);
     res.json(data);
   } catch (err: any) {
     console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
   }
 });
 
@@ -466,7 +466,7 @@ router.get('/history', async (req: Request, res: Response) => {
     res.json({ searches: rows, total, limit, offset });
   } catch (err: any) {
     console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
   }
 });
 
@@ -491,10 +491,11 @@ router.get('/stats', async (_req: Request, res: Response) => {
       ORDER BY count DESC
     `).all();
 
+    res.set('Cache-Control', 'private, max-age=60');
     res.json({ ...stats, byType });
   } catch (err: any) {
     console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
   }
 });
 

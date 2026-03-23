@@ -121,7 +121,7 @@ router.get('/', authenticateToken, (req: Request, res: Response) => {
     res.json({ videos, total });
   } catch (error: any) {
     console.error('[DashcamVideos] list videos error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to list videos', code: 'DASHCAMVIDEOS_LIST_VIDEOS_ERROR' });
   }
 });
 
@@ -146,13 +146,13 @@ router.get('/:id', validateParamIdMiddleware, authenticateToken, (req: Request, 
     `).get(req.params.id);
 
     if (!video) {
-      res.status(404).json({ error: 'Video not found' });
+      res.status(404).json({ error: 'Video not found', code: 'VIDEO_NOT_FOUND' });
       return;
     }
     res.json(video);
   } catch (error: any) {
     console.error('[DashcamVideos] get video error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get video', code: 'DASHCAMVIDEOS_GET_VIDEO_ERROR' });
   }
 });
 
@@ -162,7 +162,7 @@ router.get('/:id', validateParamIdMiddleware, authenticateToken, (req: Request, 
 router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer'), upload.single('video'), (req: Request, res: Response) => {
   try {
     if (!req.file) {
-      res.status(400).json({ error: 'No video file uploaded' });
+      res.status(400).json({ error: 'No video file uploaded', code: 'NO_VIDEO_FILE_UPLOADED' });
       return;
     }
 
@@ -177,14 +177,14 @@ router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor'
     if (!title) {
       // Cleanup uploaded file
       fs.unlinkSync(req.file.path);
-      res.status(400).json({ error: 'Title is required' });
+      res.status(400).json({ error: 'Title is required', code: 'TITLE_IS_REQUIRED' });
       return;
     }
 
     // Validate title length
     if (typeof title !== 'string' || title.length > 500) {
       fs.unlinkSync(req.file.path);
-      res.status(400).json({ error: 'Title must be 500 characters or less' });
+      res.status(400).json({ error: 'Title must be 500 characters or less', code: 'TITLE_MUST_BE_500' });
       return;
     }
 
@@ -201,7 +201,7 @@ router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor'
       const lat = parseFloat(String(latitude));
       if (isNaN(lat) || lat < -90 || lat > 90) {
         fs.unlinkSync(req.file.path);
-        res.status(400).json({ error: 'latitude must be between -90 and 90' });
+        res.status(400).json({ error: 'latitude must be between -90 and 90', code: 'LATITUDE_MUST_BE_BETWEEN' });
         return;
       }
     }
@@ -209,7 +209,7 @@ router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor'
       const lng = parseFloat(String(longitude));
       if (isNaN(lng) || lng < -180 || lng > 180) {
         fs.unlinkSync(req.file.path);
-        res.status(400).json({ error: 'longitude must be between -180 and 180' });
+        res.status(400).json({ error: 'longitude must be between -180 and 180', code: 'LONGITUDE_MUST_BE_BETWEEN' });
         return;
       }
     }
@@ -260,7 +260,7 @@ router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor'
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -271,10 +271,10 @@ router.put('/:id', validateParamIdMiddleware, authenticateToken, requireRole('ad
   try {
     const db = getDb();
     const id = parseInt(String(req.params.id), 10);
-    if (isNaN(id)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid video ID', code: 'INVALID_VIDEO_ID' }); return; }
     const existing = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(id) as any;
     if (!existing) {
-      res.status(404).json({ error: 'Video not found' });
+      res.status(404).json({ error: 'Video not found', code: 'VIDEO_NOT_FOUND' });
       return;
     }
 
@@ -285,7 +285,7 @@ router.put('/:id', validateParamIdMiddleware, authenticateToken, requireRole('ad
 
     // Validate fields if provided
     if (title !== undefined && (typeof title !== 'string' || title.length > 500)) {
-      res.status(400).json({ error: 'Title must be 500 characters or less' });
+      res.status(400).json({ error: 'Title must be 500 characters or less', code: 'TITLE_MUST_BE_500' });
       return;
     }
     const validClassifications = ['routine', 'evidence', 'incident', 'training', 'other'];
@@ -294,7 +294,7 @@ router.put('/:id', validateParamIdMiddleware, authenticateToken, requireRole('ad
       return;
     }
     if (notes !== undefined && notes !== null && typeof notes === 'string' && notes.length > 10000) {
-      res.status(400).json({ error: 'Notes must be 10000 characters or less' });
+      res.status(400).json({ error: 'Notes must be 10000 characters or less', code: 'NOTES_MUST_BE_10000' });
       return;
     }
 
@@ -335,7 +335,7 @@ router.put('/:id', validateParamIdMiddleware, authenticateToken, requireRole('ad
     res.json({ success: true });
   } catch (error: any) {
     console.error('[DashcamVideos] update video error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update video', code: 'DASHCAMVIDEOS_UPDATE_VIDEO_ERROR' });
   }
 });
 
@@ -346,10 +346,10 @@ router.delete('/:id', validateParamIdMiddleware, authenticateToken, requireRole(
   try {
     const db = getDb();
     const id = parseInt(String(req.params.id), 10);
-    if (isNaN(id)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid video ID', code: 'INVALID_VIDEO_ID' }); return; }
     const video = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(id) as any;
     if (!video) {
-      res.status(404).json({ error: 'Video not found' });
+      res.status(404).json({ error: 'Video not found', code: 'VIDEO_NOT_FOUND' });
       return;
     }
 
@@ -367,7 +367,7 @@ router.delete('/:id', validateParamIdMiddleware, authenticateToken, requireRole(
     res.json({ success: true });
   } catch (error: any) {
     console.error('[DashcamVideos] delete video error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete video', code: 'DASHCAMVIDEOS_DELETE_VIDEO_ERROR' });
   }
 });
 
@@ -385,14 +385,14 @@ router.get('/:id/stream', validateParamIdMiddleware, (req: Request, res: Respons
     const db = getDb();
     const video = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
     if (!video) {
-      res.status(404).json({ error: 'Video not found' });
+      res.status(404).json({ error: 'Video not found', code: 'VIDEO_NOT_FOUND' });
       return;
     }
 
     // Prevent path traversal: resolve within DASHCAM_DIR and verify containment
     const filePath = safeDashcamPath(video.file_path);
     if (!filePath || !fs.existsSync(filePath)) {
-      res.status(404).json({ error: 'Video file not found on disk' });
+      res.status(404).json({ error: 'Video file not found on disk', code: 'VIDEO_FILE_NOT_FOUND' });
       return;
     }
 
@@ -439,7 +439,7 @@ router.get('/:id/stream', validateParamIdMiddleware, (req: Request, res: Respons
     }
   } catch (error: any) {
     console.error('[DashcamVideos] stream video error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to stream video', code: 'DASHCAMVIDEOS_STREAM_VIDEO_ERROR' });
   }
 });
 
@@ -450,16 +450,18 @@ router.get('/:id/links', validateParamIdMiddleware, authenticateToken, (req: Req
   try {
     const db = getDb();
     const videoId = parseInt(String(req.params.id), 10);
-    if (isNaN(videoId)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
+    if (isNaN(videoId)) { res.status(400).json({ error: 'Invalid video ID', code: 'INVALID_VIDEO_ID' }); return; }
 
     const links = db.prepare(`
       SELECT * FROM dashcam_video_links WHERE video_id = ? ORDER BY created_at DESC
+    
+      LIMIT 1000
     `).all(videoId);
 
     res.json(links);
   } catch (error: any) {
     console.error('[DashcamVideos] list video links error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to list video links', code: 'DASHCAMVIDEOS_LIST_VIDEO_LINKS' });
   }
 });
 
@@ -470,25 +472,25 @@ router.post('/:id/links', validateParamIdMiddleware, authenticateToken, requireR
   try {
     const db = getDb();
     const videoId = parseInt(String(req.params.id), 10);
-    if (isNaN(videoId)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
+    if (isNaN(videoId)) { res.status(400).json({ error: 'Invalid video ID', code: 'INVALID_VIDEO_ID' }); return; }
     const { entity_type, entity_id, notes } = req.body;
     const user = req.user!;
 
     if (!entity_type || !entity_id) {
-      res.status(400).json({ error: 'entity_type and entity_id are required' });
+      res.status(400).json({ error: 'entity_type and entity_id are required', code: 'ENTITYTYPE_AND_ENTITYID_ARE' });
       return;
     }
 
     // Validate entity_id is a positive integer
     const parsedEntityId = parseInt(String(entity_id), 10);
     if (isNaN(parsedEntityId) || parsedEntityId <= 0) {
-      res.status(400).json({ error: 'entity_id must be a positive integer' });
+      res.status(400).json({ error: 'entity_id must be a positive integer', code: 'ENTITYID_MUST_BE_A' });
       return;
     }
 
     // Validate notes length
     if (notes !== undefined && notes !== null && (typeof notes !== 'string' || notes.length > 2000)) {
-      res.status(400).json({ error: 'notes must be 2000 characters or less' });
+      res.status(400).json({ error: 'notes must be 2000 characters or less', code: 'NOTES_MUST_BE_2000' });
       return;
     }
 
@@ -501,7 +503,7 @@ router.post('/:id/links', validateParamIdMiddleware, authenticateToken, requireR
     // Check video exists
     const video = db.prepare('SELECT id, title FROM dashcam_videos WHERE id = ?').get(videoId) as any;
     if (!video) {
-      res.status(404).json({ error: 'Video not found' });
+      res.status(404).json({ error: 'Video not found', code: 'VIDEO_NOT_FOUND' });
       return;
     }
 
@@ -510,7 +512,7 @@ router.post('/:id/links', validateParamIdMiddleware, authenticateToken, requireR
       'SELECT id FROM dashcam_video_links WHERE video_id = ? AND entity_type = ? AND entity_id = ?'
     ).get(videoId, entity_type, entity_id);
     if (existing) {
-      res.status(409).json({ error: 'This link already exists' });
+      res.status(409).json({ error: 'This link already exists', code: 'THIS_LINK_ALREADY_EXISTS' });
       return;
     }
 
@@ -526,7 +528,7 @@ router.post('/:id/links', validateParamIdMiddleware, authenticateToken, requireR
     res.json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
     console.error('[DashcamVideos] link video error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to link video', code: 'DASHCAMVIDEOS_LINK_VIDEO_ERROR' });
   }
 });
 
@@ -537,11 +539,11 @@ router.delete('/:id/links/:linkId', validateParamIdMiddleware, authenticateToken
   try {
     const db = getDb();
     const linkId = parseInt(String(req.params.linkId), 10);
-    if (isNaN(linkId)) { res.status(400).json({ error: 'Invalid link ID' }); return; }
+    if (isNaN(linkId)) { res.status(400).json({ error: 'Invalid link ID', code: 'INVALID_LINK_ID' }); return; }
 
     const link = db.prepare('SELECT * FROM dashcam_video_links WHERE id = ?').get(linkId) as any;
     if (!link) {
-      res.status(404).json({ error: 'Link not found' });
+      res.status(404).json({ error: 'Link not found', code: 'LINK_NOT_FOUND' });
       return;
     }
 
@@ -554,7 +556,7 @@ router.delete('/:id/links/:linkId', validateParamIdMiddleware, authenticateToken
     res.json({ success: true });
   } catch (error: any) {
     console.error('[DashcamVideos] unlink video error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unlink video', code: 'DASHCAMVIDEOS_UNLINK_VIDEO_ERROR' });
   }
 });
 
@@ -571,13 +573,13 @@ router.post('/webhook/clearpathgps', webhookUpload.single('video'), (req: Reques
     const webhookSecret = process.env.CLEARPATHGPS_WEBHOOK_SECRET;
     if (!webhookSecret) {
       console.error('[DASHCAM] Webhook rejected: CLEARPATHGPS_WEBHOOK_SECRET not configured');
-      res.status(503).json({ error: 'Webhook not configured' });
+      res.status(503).json({ error: 'Webhook not configured', code: 'WEBHOOK_NOT_CONFIGURED' });
       return;
     }
     const providedSecret = String(req.headers['x-webhook-secret'] || req.body?.webhook_secret || '');
     if (!providedSecret || providedSecret.length !== webhookSecret.length ||
         !crypto.timingSafeEqual(Buffer.from(providedSecret), Buffer.from(webhookSecret))) {
-      res.status(401).json({ error: 'Unauthorized' });
+      res.status(401).json({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
       return;
     }
 
@@ -603,7 +605,7 @@ router.post('/webhook/clearpathgps', webhookUpload.single('video'), (req: Reques
     if ((safeLat != null && (isNaN(safeLat) || safeLat < -90 || safeLat > 90)) ||
         (safeLon != null && (isNaN(safeLon) || safeLon < -180 || safeLon > 180)) ||
         (safeSpeed != null && (isNaN(safeSpeed) || safeSpeed < 0 || safeSpeed > 999))) {
-      res.status(400).json({ error: 'Invalid numeric values' });
+      res.status(400).json({ error: 'Invalid numeric values', code: 'INVALID_NUMERIC_VALUES' });
       return;
     }
 
@@ -680,7 +682,7 @@ router.post('/webhook/clearpathgps', webhookUpload.single('video'), (req: Reques
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -721,7 +723,7 @@ router.get('/export/csv', authenticateToken, requireRole('admin', 'manager', 'su
       { key: 'created_at', header: 'Created At' },
     ], rows);
   } catch (error: any) {
-    res.status(500).json({ error: 'Export failed' });
+    res.status(500).json({ error: 'Export failed', code: 'EXPORT_FAILED' });
   }
 });
 

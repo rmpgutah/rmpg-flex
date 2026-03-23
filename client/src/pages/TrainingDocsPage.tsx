@@ -62,6 +62,17 @@ function formatFileSize(bytes?: number) {
 }
 
 // ── Main component ──────────────────────────────────────────
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function TrainingDocsPage() {
   const { user } = useAuth();
   const { addToast } = useToast();
@@ -73,6 +84,21 @@ export default function TrainingDocsPage() {
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editDoc, setEditDoc] = useState<any | null>(null);
+
+  // Document title
+  useEffect(() => { document.title = 'Policies & Training Docs \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
+      if (e.key === 'Escape') { setShowModal(false); setEditDoc(null); }
+      if ((e.key === 'n' || e.key === 'N') && isAdmin) { setEditDoc(null); setShowModal(true); }
+      if (e.key === 'r' || e.key === 'R') { loadDocuments(); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isAdmin]);
 
   const loadDocuments = useCallback(async () => {
     try {
@@ -131,12 +157,13 @@ export default function TrainingDocsPage() {
   return (
     <div className="flex flex-col h-full bg-surface-sunken">
       {/* Header */}
-      <div className="panel-beveled border-b border-rmpg-700 p-3 flex items-center justify-between flex-shrink-0">
+      <div className="panel-beveled border-b border-rmpg-700 p-3 flex items-center justify-between flex-shrink-0 print:hidden">
         <div className="flex items-center gap-2">
           <BookOpen className="w-4 h-4 text-brand-400" />
           <h1 className="text-sm font-bold text-rmpg-100 uppercase tracking-wider">
             Company Policies & Training Documents
           </h1>
+          <span className="text-[9px] font-mono text-rmpg-500 bg-rmpg-800 px-1.5 py-0.5 rounded-sm ml-2">{filtered.length}</span>
         </div>
         <div className="flex items-center gap-2">
           {/* Search */}
@@ -144,10 +171,10 @@ export default function TrainingDocsPage() {
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
             <input
               type="text"
-              placeholder="Search documents..."
+              placeholder="Search documents..." aria-label="Search documents..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="input-dark text-[11px] pl-6 pr-2 py-1 w-48"
+              className="input-dark text-[11px] pl-6 pr-2 py-1 w-48 min-h-[36px]"
             />
             {search && (
               <button type="button" onClick={() => setSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2">
@@ -187,7 +214,7 @@ export default function TrainingDocsPage() {
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
         {loading ? (
           <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-5 h-5 text-brand-400 animate-spin" />
+            <Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" />
             <span className="ml-2 text-xs text-rmpg-400">Loading documents...</span>
           </div>
         ) : filtered.length === 0 ? (
@@ -247,7 +274,7 @@ export default function TrainingDocsPage() {
 
                   <div className="flex items-center gap-3 text-[10px] text-rmpg-500">
                     {doc.creator_name && <span>By {doc.creator_name}</span>}
-                    <span>{new Date(doc.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                    <span title={new Date(doc.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}>{timeAgo(doc.created_at)}</span>
                     {doc.file_size > 0 && <span>{formatFileSize(doc.file_size)}</span>}
                   </div>
                 </div>
@@ -369,7 +396,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
       <div className="panel-beveled bg-surface-base w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-3 border-b border-rmpg-700">
@@ -396,7 +423,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="input-dark w-full text-[11px] px-2 py-1.5"
+              className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
               placeholder="e.g. Use of Force Policy"
             />
           </div>
@@ -407,7 +434,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="input-dark w-full text-[11px] px-2 py-1.5 h-16 resize-none"
+              className="input-dark w-full text-[11px] px-2 py-1.5 h-16 resize-none min-h-[36px]"
               placeholder="Brief description of this document..."
             />
           </div>
@@ -418,7 +445,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value as CompanyDocCategory)}
-              className="input-dark w-full text-[11px] px-2 py-1.5"
+              className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
             >
               <option value="general">General</option>
               <option value="policy">Policy</option>
@@ -483,7 +510,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
                 type="url"
                 value={externalUrl}
                 onChange={(e) => setExternalUrl(e.target.value)}
-                className="input-dark w-full text-[11px] px-2 py-1.5"
+                className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
                 placeholder="https://..."
               />
             </div>
@@ -522,7 +549,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
             disabled={saving}
             className="toolbar-btn-primary text-[10px] px-4 py-1.5 flex items-center gap-1"
           >
-            {saving && <Loader2 className="w-3 h-3 animate-spin" />}
+            {saving && <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />}
             {isEdit ? 'Save Changes' : 'Add Document'}
           </button>
         </div>

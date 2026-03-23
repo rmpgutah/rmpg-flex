@@ -427,6 +427,18 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
 
   // ─── Render ───────────────────────────────────────────────
 
+  // Set document title
+  useEffect(() => { document.title = 'HR - Payroll \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setEditingEntry(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Toast */}
@@ -933,7 +945,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
           </div>
 
           {leaveLoading ? (
-            <div className="text-center py-8"><Loader2 className="w-5 h-5 animate-spin text-brand-400 mx-auto" /></div>
+            <div className="text-center py-8"><Loader2 className="w-5 h-5 animate-spin text-brand-400 mx-auto" role="status" aria-label="Loading" /></div>
           ) : leaveData.length === 0 ? (
             <div className="text-center py-8 text-rmpg-500 text-xs">
               <p>No leave data loaded. Click Refresh to calculate balances.</p>

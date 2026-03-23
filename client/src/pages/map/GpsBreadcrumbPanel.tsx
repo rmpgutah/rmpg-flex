@@ -105,6 +105,17 @@ const formatHeadingDir = (deg: number | null) => {
 // Component
 // ============================================================
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }: Props) {
   // Unit list
   const [units, setUnits] = useState<UnitOption[]>([]);
@@ -388,6 +399,9 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
   const currentPt = trail?.points[playbackIdx];
   const totalPts = trail?.points.length || 0;
 
+  // Set document title
+  useEffect(() => { document.title = 'GPS Breadcrumb \u2014 RMPG Flex'; }, []);
+
   return (
     <div
       className="absolute top-[70px] left-2 z-[500] panel-beveled bg-surface-raised w-[300px] flex flex-col"
@@ -412,7 +426,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
             value={selectedUnit ?? ''}
             onChange={(e) => setSelectedUnit(e.target.value ? Number(e.target.value) : null)}
             aria-label="Select unit for trail playback"
-            className="w-full input-dark text-[11px] font-mono px-2 py-1.5"
+            className="w-full input-dark text-[11px] font-mono px-2 py-1.5 min-h-[36px]"
             style={{ borderRadius: 2 }}
           >
             <option value="">Select unit...</option>
@@ -433,7 +447,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="w-full input-dark text-[10px] font-mono px-1.5 py-1"
+              className="w-full input-dark text-[10px] font-mono px-1.5 py-1 min-h-[36px]"
               style={{ borderRadius: 2 }}
             />
           </div>
@@ -443,7 +457,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
               type="time"
               value={timeFrom}
               onChange={(e) => setTimeFrom(e.target.value)}
-              className="w-full input-dark text-[10px] font-mono px-1.5 py-1"
+              className="w-full input-dark text-[10px] font-mono px-1.5 py-1 min-h-[36px]"
               style={{ borderRadius: 2 }}
             />
           </div>
@@ -453,7 +467,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="w-full input-dark text-[10px] font-mono px-1.5 py-1"
+              className="w-full input-dark text-[10px] font-mono px-1.5 py-1 min-h-[36px]"
               style={{ borderRadius: 2 }}
             />
           </div>
@@ -463,7 +477,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
               type="time"
               value={timeTo}
               onChange={(e) => setTimeTo(e.target.value)}
-              className="w-full input-dark text-[10px] font-mono px-1.5 py-1"
+              className="w-full input-dark text-[10px] font-mono px-1.5 py-1 min-h-[36px]"
               style={{ borderRadius: 2 }}
             />
           </div>
@@ -477,7 +491,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
           style={{ borderRadius: 2 }}
         >
           {loading ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" />
           ) : (
             <Search className="w-3.5 h-3.5" />
           )}

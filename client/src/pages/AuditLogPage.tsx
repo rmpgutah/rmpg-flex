@@ -52,6 +52,10 @@ interface Filters {
 
 const AuditLogPage: React.FC = () => {
   const { addToast } = useToast();
+
+  // Set document title
+  useEffect(() => { document.title = 'Audit Log \u2014 RMPG Flex'; }, []);
+
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [stats, setStats] = useState<AuditStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -298,7 +302,7 @@ const AuditLogPage: React.FC = () => {
           <button type="button"
             onClick={exportToCSV}
             disabled={logs.length === 0}
-            className="toolbar-btn toolbar-btn-primary"
+            className="toolbar-btn toolbar-btn-primary print:hidden"
           >
             <Download className="w-3.5 h-3.5" />
             Export CSV
@@ -442,7 +446,7 @@ const AuditLogPage: React.FC = () => {
                 type="date"
                 value={filters.startDate}
                 onChange={(e) => handleFilterChange('startDate', e.target.value)}
-                className="input-dark text-xs"
+                className="input-dark text-xs min-h-[36px]"
               />
               <Calendar className="absolute right-2 top-2.5 w-4 h-4 text-rmpg-400 pointer-events-none" />
             </div>
@@ -456,7 +460,7 @@ const AuditLogPage: React.FC = () => {
                 type="date"
                 value={filters.endDate}
                 onChange={(e) => handleFilterChange('endDate', e.target.value)}
-                className="input-dark text-xs"
+                className="input-dark text-xs min-h-[36px]"
               />
               <Calendar className="absolute right-2 top-2.5 w-4 h-4 text-rmpg-400 pointer-events-none" />
             </div>
@@ -470,8 +474,8 @@ const AuditLogPage: React.FC = () => {
                 type="text"
                 value={filters.search}
                 onChange={(e) => handleFilterChange('search', e.target.value)}
-                placeholder="Search..."
-                className="input-dark text-xs pl-8"
+                placeholder="Search..." aria-label="Search..."
+                className="input-dark text-xs pl-8 min-h-[36px]"
               />
               <Search className="absolute left-2 top-2.5 w-4 h-4 text-rmpg-400 pointer-events-none" />
             </div>
@@ -498,7 +502,7 @@ const AuditLogPage: React.FC = () => {
       <div className="panel-beveled overflow-hidden bg-surface-base">
         {loading ? (
           <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-8 h-8 animate-spin text-brand-400" />
+            <Loader2 className="w-8 h-8 animate-spin text-brand-400" role="status" aria-label="Loading" />
           </div>
         ) : logs.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-rmpg-400">

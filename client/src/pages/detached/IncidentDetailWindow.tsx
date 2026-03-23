@@ -15,6 +15,17 @@ import type { PdfReportType } from '../../utils/caseNumbers';
 import { apiFetch } from '../../hooks/useApi';
 import { fetchEntityImages } from '../../utils/pdfImageHelpers';
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function IncidentDetailWindow() {
   const { id } = useParams<{ id: string }>();
   const [incident, setIncident] = useState<any>(null);
@@ -150,7 +161,7 @@ export default function IncidentDetailWindow() {
     return (
       <DetachedLayout title="Loading...">
         <div className="flex items-center justify-center h-64">
-          <Loader2 className="w-8 h-8 text-brand-400 animate-spin" />
+          <Loader2 className="w-8 h-8 text-brand-400 animate-spin" role="status" aria-label="Loading" />
         </div>
       </DetachedLayout>
     );

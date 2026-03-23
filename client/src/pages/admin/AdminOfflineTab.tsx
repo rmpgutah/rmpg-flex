@@ -23,6 +23,17 @@ interface PinSecret {
   created_at: string | null;
 }
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function AdminOfflineTab({ LoadingSpinner, error, setError }: AdminOfflineTabProps) {
   const {
     isOfflineCapable,
@@ -118,6 +129,18 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
   const employeesWithoutSecrets = secrets.filter(s => !s.has_secret && s.username !== 'admin');
 
   if (loading) return <LoadingSpinner />;
+
+  // Set document title
+  useEffect(() => { document.title = 'Admin - Offline \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setPinModalOpen(false); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   return (
     <div className="p-4 space-y-5 animate-fade-in">
@@ -227,7 +250,7 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
                 color: generatingAll ? '#3a5070' : '#8a9aaa',
               }}
             >
-              {generatingAll ? <Loader2 className="w-3 h-3 animate-spin" /> : <Shield className="w-3 h-3" />}
+              {generatingAll ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Shield className="w-3 h-3" />}
               {generatingAll ? 'Generating...' : 'Generate All Missing Secrets'}
             </button>
             {isOfflineCapable && (
@@ -293,7 +316,7 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
                         }}
                       >
                         {generatingSingle === s.user_id ? (
-                          <Loader2 className="w-3 h-3 animate-spin inline" />
+                          <Loader2 className="w-3 h-3 animate-spin inline" role="status" aria-label="Loading" />
                         ) : (
                           'Generate'
                         )}
@@ -307,7 +330,7 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
                         title="Rotate secret (invalidates current PINs)"
                       >
                         {generatingSingle === s.user_id ? (
-                          <Loader2 className="w-3 h-3 animate-spin inline" />
+                          <Loader2 className="w-3 h-3 animate-spin inline" role="status" aria-label="Loading" />
                         ) : (
                           'Rotate'
                         )}

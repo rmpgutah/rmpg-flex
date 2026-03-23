@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ClipboardCheck, Plus, AlertTriangle } from 'lucide-react';
+import { ClipboardCheck, Plus, AlertTriangle, Loader2, Search } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { useAuth } from '../../../context/AuthContext';
@@ -42,6 +42,8 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
   const [selectedOfficer, setSelectedOfficer] = useState<number | null>(null);
   const [summary, setSummary] = useState<AttendanceSummary | null>(null);
   const [form, setForm] = useState({ officer_id: '', date: new Date().toISOString().slice(0, 10), type: 'absent', minutes_late: 0, reason: '', excused: false });
+  const [submitting, setSubmitting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const isManager = ['admin', 'manager', 'supervisor'].includes(userRole);
 
@@ -63,9 +65,20 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
   useEffect(() => { load(); loadOfficers(); }, []);
   useEffect(() => { if (selectedOfficer) loadSummary(selectedOfficer); }, [selectedOfficer]);
 
+  // Escape to close form
+  useEffect(() => {
+    if (!showForm) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowForm(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showForm]);
+
   const handleSubmit = async () => {
-    if (!form.officer_id || !form.date || !form.type) { addToast('All fields required', 'error'); return; }
-    try { await apiFetch('/hr/attendance', { method: 'POST', body: JSON.stringify({ ...form, officer_id: Number(form.officer_id), excused: form.excused ? 1 : 0 }) }); addToast('Attendance logged', 'success'); setShowForm(false); load(); } catch { addToast('Failed to log attendance', 'error'); }
+    if (!form.officer_id) { addToast('Please select an officer', 'error'); return; }
+    if (!form.date) { addToast('Date is required', 'error'); return; }
+    if (!form.type) { addToast('Type is required', 'error'); return; }
+    setSubmitting(true);
+    try { await apiFetch('/hr/attendance', { method: 'POST', body: JSON.stringify({ ...form, officer_id: Number(form.officer_id), excused: form.excused ? 1 : 0 }) }); addToast('Attendance logged', 'success'); setShowForm(false); load(); } catch { addToast('Failed to log attendance', 'error'); } finally { setSubmitting(false); }
   };
 
   return (
@@ -121,7 +134,7 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
             </div>
             <div>
               <label className="field-label">Minutes Late</label>
-              <input type="number" value={form.minutes_late} onChange={e => setForm(f => ({ ...f, minutes_late: Number(e.target.value) }))} className="input-field w-full text-xs" />
+              <input type="number" min="0" max="480" value={form.minutes_late} onChange={e => setForm(f => ({ ...f, minutes_late: Number(e.target.value) }))} className="input-field w-full text-xs tabular-nums" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -135,14 +148,18 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
             </div>
           </div>
           <div className="flex gap-2">
-            <button type="button" onClick={handleSubmit} className="toolbar-btn toolbar-btn-success text-xs">Save</button>
-            <button type="button" onClick={() => setShowForm(false)} className="toolbar-btn text-xs">Cancel</button>
+            <button type="button" onClick={handleSubmit} disabled={submitting || !form.officer_id} className="toolbar-btn toolbar-btn-success text-xs disabled:opacity-50">{submitting ? <><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Saving...</> : 'Save'}</button>
+            <button type="button" onClick={() => setShowForm(false)} disabled={submitting} className="toolbar-btn text-xs">Cancel</button>
           </div>
         </div>
       )}
 
-      {/* Officer filter */}
-      <div>
+      {/* Filters */}
+      <div className="flex items-center gap-2">
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
+          <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search records..." aria-label="Search records..." className="input-field text-xs py-1 pl-6 pr-2 w-48" />
+        </div>
         <select value={selectedOfficer ?? ''} onChange={e => setSelectedOfficer(e.target.value ? Number(e.target.value) : null)} className="input-field text-xs py-1 px-2">
           <option value="">All Officers</option>
           {officers.map(o => <option key={o.id} value={o.id}>{o.full_name}</option>)}
@@ -150,17 +167,24 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
       </div>
 
       {loading ? (
-        <div className="text-center text-rmpg-400 py-8 text-xs">Loading...</div>
+        <div className="flex items-center justify-center gap-2 text-rmpg-400 py-8 text-xs"><Loader2 className="w-4 h-4 animate-spin" role="status" aria-label="Loading" /> Loading attendance...</div>
       ) : (
         <div className="space-y-1">
-          {records.filter(r => !selectedOfficer || r.officer_id === selectedOfficer).map(r => (
-            <div key={r.id} className="panel-beveled p-2 flex items-center justify-between">
+          {records.filter(r => {
+            if (selectedOfficer && r.officer_id !== selectedOfficer) return false;
+            if (searchQuery) {
+              const q = searchQuery.toLowerCase();
+              return r.officer_name.toLowerCase().includes(q) || r.reason?.toLowerCase().includes(q) || r.type.toLowerCase().includes(q);
+            }
+            return true;
+          }).map(r => (
+            <div key={r.id} className="panel-beveled p-2 flex items-center justify-between hover:bg-surface-raised/30 transition-colors">
               <div className="flex items-center gap-3">
-                <span className={`inline-flex px-2 py-0.5 text-[10px] font-bold uppercase ${TYPE_COLORS[r.type] || TYPE_COLORS.absent}`}>{r.type.replace(/_/g, ' ')}</span>
+                <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${TYPE_COLORS[r.type] || TYPE_COLORS.absent}`}>{r.type.replace(/_/g, ' ')}</span>
                 <span className="text-xs text-white">{r.officer_name}</span>
-                <span className="text-[10px] text-rmpg-400">{r.date}</span>
+                <span className="text-[10px] text-rmpg-400">{r.date ? new Date(r.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : r.date}</span>
                 {r.minutes_late > 0 && <span className="text-[10px] text-amber-400">{r.minutes_late}m late</span>}
-                {r.reason && <span className="text-[10px] text-rmpg-400 italic">{r.reason}</span>}
+                {r.reason && <span className="text-[10px] text-rmpg-400 italic truncate max-w-[200px]">{r.reason}</span>}
               </div>
               <span className={`text-[10px] ${r.excused ? 'text-green-400' : 'text-red-400'}`}>{r.excused ? 'Excused' : 'Unexcused'}</span>
             </div>

@@ -44,7 +44,7 @@ router.post(
     const { query, limit } = req.body as { query?: string; limit?: number };
 
     if (!query || typeof query !== 'string' || query.trim().length < 2) {
-      res.status(400).json({ error: 'query must be at least 2 characters' });
+      res.status(400).json({ error: 'query must be at least 2 characters', code: 'QUERY_MUST_BE_AT' });
       return;
     }
 
@@ -94,7 +94,7 @@ router.post(
     };
 
     if (!url || typeof url !== 'string' || !url.trim()) {
-      res.status(400).json({ error: 'url is required' });
+      res.status(400).json({ error: 'url is required', code: 'URL_IS_REQUIRED' });
       return;
     }
 
@@ -193,12 +193,12 @@ router.post(
     const { results } = req.body as { results?: Array<Partial<LeadUpsertData> & { business_name?: string }> };
 
     if (!Array.isArray(results) || results.length === 0) {
-      res.status(400).json({ error: 'results must be a non-empty array' });
+      res.status(400).json({ error: 'results must be a non-empty array', code: 'RESULTS_MUST_BE_A' });
       return;
     }
 
     if (results.length > 100) {
-      res.status(400).json({ error: 'Maximum 100 leads per bulk import' });
+      res.status(400).json({ error: 'Maximum 100 leads per bulk import', code: 'MAXIMUM_100_LEADS_PER' });
       return;
     }
 
@@ -304,11 +304,11 @@ router.post(
     };
 
     if (!name || typeof name !== 'string' || !name.trim()) {
-      res.status(400).json({ error: 'name is required' });
+      res.status(400).json({ error: 'name is required', code: 'NAME_IS_REQUIRED' });
       return;
     }
     if (!query || typeof query !== 'string' || !query.trim()) {
-      res.status(400).json({ error: 'query is required' });
+      res.status(400).json({ error: 'query is required', code: 'QUERY_IS_REQUIRED' });
       return;
     }
 
@@ -370,7 +370,7 @@ router.delete(
   (req: Request, res: Response) => {
     const id = Number(req.params.id);
     if (!id || isNaN(id)) {
-      res.status(400).json({ error: 'Invalid id' });
+      res.status(400).json({ error: 'Invalid id', code: 'INVALID_ID' });
       return;
     }
 
@@ -379,7 +379,7 @@ router.delete(
       const result = db.prepare('DELETE FROM firecrawl_saved_searches WHERE id = ?').run(id);
 
       if (result.changes === 0) {
-        res.status(404).json({ error: 'Saved search not found' });
+        res.status(404).json({ error: 'Saved search not found', code: 'SAVED_SEARCH_NOT_FOUND' });
         return;
       }
 
@@ -403,7 +403,7 @@ router.get(
   (req: Request, res: Response) => {
     const leadId = Number(req.params.leadId);
     if (!leadId || isNaN(leadId)) {
-      res.status(400).json({ error: 'Invalid leadId' });
+      res.status(400).json({ error: 'Invalid leadId', code: 'INVALID_LEADID' });
       return;
     }
 
@@ -436,7 +436,7 @@ router.post(
   (req: Request, res: Response) => {
     const leadId = Number(req.params.leadId);
     if (!leadId || isNaN(leadId)) {
-      res.status(400).json({ error: 'Invalid leadId' });
+      res.status(400).json({ error: 'Invalid leadId', code: 'INVALID_LEADID' });
       return;
     }
 
@@ -447,12 +447,12 @@ router.post(
       ).get(leadId) as any;
 
       if (!existing) {
-        res.status(404).json({ error: 'No enrichment job found for this lead' });
+        res.status(404).json({ error: 'No enrichment job found for this lead', code: 'NO_ENRICHMENT_JOB_FOUND' });
         return;
       }
 
       if (existing.status === 'completed') {
-        res.status(400).json({ error: 'Enrichment already completed' });
+        res.status(400).json({ error: 'Enrichment already completed', code: 'ENRICHMENT_ALREADY_COMPLETED' });
         return;
       }
 

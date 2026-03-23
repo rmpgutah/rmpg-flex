@@ -351,7 +351,7 @@ export default function RecordsPage() {
           <>
             <ExportButton exportUrl={`/records/persons/export?format=csv&archived=${showArchived}`} exportFilename="persons_export.csv" />
             {!showArchived && (
-              <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={() => setNewPersonTrigger(t => t + 1)}>
+              <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => setNewPersonTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
                 New Person
               </button>
@@ -362,7 +362,7 @@ export default function RecordsPage() {
           <>
             <ExportButton exportUrl={`/records/vehicles/export?format=csv&archived=${showArchived}`} exportFilename="vehicles_export.csv" />
             {!showArchived && (
-              <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={() => setNewVehicleTrigger(t => t + 1)}>
+              <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => setNewVehicleTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
                 New Vehicle
               </button>
@@ -372,7 +372,7 @@ export default function RecordsPage() {
         {activeTab === 'properties' && (
           <>
             {!showArchived && (
-              <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={() => setNewPropertyTrigger(t => t + 1)}>
+              <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => setNewPropertyTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
                 New Property
               </button>
@@ -383,7 +383,7 @@ export default function RecordsPage() {
           <>
             <ExportButton exportUrl={`/records/evidence/export?format=csv&archived=${showArchived}`} exportFilename="evidence_export.csv" />
             {!showArchived && (
-              <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={() => setNewEvidenceTrigger(t => t + 1)}>
+              <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => setNewEvidenceTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
                 New Evidence
               </button>
@@ -506,7 +506,7 @@ export default function RecordsPage() {
       <div className="flex-1 overflow-hidden">
         {isLoading && (
           <div className="flex items-center justify-center py-16">
-            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" />
+            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading" />
             <span className="ml-2 text-sm text-rmpg-300">Loading records...</span>
           </div>
         )}
@@ -563,6 +563,18 @@ export default function RecordsPage() {
   // ════════════════════════════════════════════════════
   // RENDER — SplitPanel
   // ════════════════════════════════════════════════════
+
+  // Set document title
+  useEffect(() => { document.title = 'Records Management \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setLinkModalOpen(false); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   return (
     <div className="flex flex-col h-full animate-fade-in">

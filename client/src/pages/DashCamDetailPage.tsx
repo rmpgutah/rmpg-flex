@@ -239,6 +239,18 @@ export default function DashCamDetailPage() {
   const { user } = useAuth();
   const canManage = ['admin', 'manager', 'supervisor'].includes(user?.role || '');
 
+  // Set document title
+  useEffect(() => { document.title = 'Dash Cam Player \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to go back
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { navigate(-1); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [navigate]);
+
   // Refs
   const videoRef = useRef<HTMLVideoElement>(null);
   const animFrameRef = useRef<number>(0);
@@ -624,7 +636,7 @@ export default function DashCamDetailPage() {
     return (
       <div className="flex items-center justify-center" style={{ height: 'calc(100vh - 120px)' }}>
         <div className="flex items-center gap-2">
-          <Loader2 className="w-5 h-5 animate-spin text-brand-400" />
+          <Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" />
           <span className="text-[11px] text-rmpg-400">Loading video...</span>
         </div>
       </div>
@@ -647,6 +659,18 @@ export default function DashCamDetailPage() {
   }
 
   // ── Render ────────────────────────────────────
+
+  // Set document title
+  useEffect(() => { document.title = 'Dash Cam Player \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setEditingVideo(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   return (
     <div id="hud-container" className="relative flex" style={{ height: 'calc(100vh - 120px)', background: '#000' }}>
@@ -1022,7 +1046,7 @@ export default function DashCamDetailPage() {
                             className={`text-[8px] px-1 py-0.5 capitalize rounded-sm ${
                               video.classification === cls
                                 ? 'bg-brand-500/30 text-brand-300'
-                                : 'text-rmpg-500 hover:text-rmpg-300 hover:bg-white/5'
+                                : 'text-rmpg-500 hover:text-rmpg-300 hover:bg-surface-raised/50'
                             }`}>
                             {cls.slice(0, 3)}
                           </button>
@@ -1068,7 +1092,7 @@ export default function DashCamDetailPage() {
                 <div className="space-y-1">
                   {otherLinks.map((link: any) => (
                     <button type="button" key={`${link.entity_type}-${link.entity_id}`}
-                      className="flex items-center gap-2 text-[10px] w-full text-left hover:bg-white/5 px-1 py-0.5 rounded-sm"
+                      className="flex items-center gap-2 text-[10px] w-full text-left hover:bg-surface-raised/50 px-1 py-0.5 rounded-sm"
                       onClick={() => {
                         if (link.entity_type === 'warrant') navigate(`/warrants/${link.entity_id}`);
                         else if (link.entity_type === 'citation') navigate(`/citations/${link.entity_id}`);

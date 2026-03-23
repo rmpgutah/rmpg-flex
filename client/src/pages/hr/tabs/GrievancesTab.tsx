@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, AlertOctagon, Clock, CheckCircle, Search } from 'lucide-react';
+import { Plus, AlertOctagon, Clock, CheckCircle, Search, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { useAuth } from '../../../context/AuthContext';
@@ -31,13 +31,27 @@ const STATUS_COLORS: Record<string, string> = {
   appealed: 'bg-red-900/50 text-red-400 border border-red-700/50',
 };
 
+const PRIORITY_COLORS: Record<string, string> = {
+  low: 'text-rmpg-400',
+  normal: 'text-blue-400',
+  high: 'text-amber-400',
+  urgent: 'text-red-400',
+};
+
+function fmtDate(d: string | null | undefined): string {
+  if (!d) return '';
+  try { return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d.substring(0, 10); }
+}
+
 export default function GrievancesTab() {
   const { user } = useAuth();
   const { addToast } = useToast();
   const [grievances, setGrievances] = useState<Grievance[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [form, setForm] = useState({ type: 'general', subject: '', description: '', priority: 'normal' });
 
   const isManager = ['admin', 'manager', 'supervisor'].includes(user?.role || '');
@@ -53,26 +67,48 @@ export default function GrievancesTab() {
 
   useEffect(() => { load(); }, [filterStatus]);
 
+  // Escape to close form
+  useEffect(() => {
+    if (!showForm) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowForm(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showForm]);
+
   const handleSubmit = async () => {
-    if (!form.subject || !form.description) { addToast('Subject and description required', 'error'); return; }
+    if (!form.subject.trim()) { addToast('Subject is required', 'error'); return; }
+    if (!form.description.trim()) { addToast('Description is required', 'error'); return; }
+    setSubmitting(true);
     try {
       await apiFetch('/hr/grievances', { method: 'POST', body: JSON.stringify(form) });
-      addToast('Grievance filed', 'success'); setShowForm(false); setForm({ type: 'general', subject: '', description: '', priority: 'normal' }); load();
-    } catch { addToast('Failed to file grievance', 'error'); }
+      addToast('Grievance filed successfully', 'success'); setShowForm(false); setForm({ type: 'general', subject: '', description: '', priority: 'normal' }); load();
+    } catch { addToast('Failed to file grievance', 'error'); } finally { setSubmitting(false); }
   };
 
   const updateStatus = async (id: number, status: string) => {
+    if (status === 'dismissed' && !window.confirm('Dismiss this grievance? This action cannot be undone.')) return;
     try {
       await apiFetch(`/hr/grievances/${id}`, { method: 'PUT', body: JSON.stringify({ status }) });
       addToast('Status updated', 'success'); load();
-    } catch { /* handled */ }
+    } catch { addToast('Failed to update status', 'error'); }
   };
+
+  // Client-side search filter
+  const filtered = grievances.filter(g => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return g.subject.toLowerCase().includes(q) || g.officer_name.toLowerCase().includes(q) || g.description.toLowerCase().includes(q) || g.type.toLowerCase().includes(q);
+  });
 
   return (
     <div className="p-4 space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="text-sm font-bold text-white flex items-center gap-2"><AlertOctagon className="w-4 h-4" /> Grievances</h2>
         <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
+            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search grievances..." aria-label="Search grievances..." className="input-field text-xs py-1 pl-6 pr-2 w-48" />
+          </div>
           <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="input-field text-xs py-1 px-2">
             <option value="all">All Statuses</option>
             {Object.keys(STATUS_COLORS).map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
@@ -106,42 +142,42 @@ export default function GrievancesTab() {
             </div>
           </div>
           <div>
-            <label className="field-label">Subject</label>
-            <input value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} className="input-field w-full text-xs" placeholder="Brief subject line" />
+            <label className="field-label">Subject *</label>
+            <input value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} className="input-field w-full text-xs" placeholder="Brief subject line" maxLength={200} required autoComplete="off" onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }} />
           </div>
           <div>
-            <label className="field-label">Description</label>
+            <label className="field-label">Description *</label>
             <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="input-field w-full text-xs" rows={4} placeholder="Detailed description of the grievance..." />
           </div>
           <div className="flex gap-2">
-            <button type="button" onClick={handleSubmit} className="toolbar-btn toolbar-btn-success text-xs">Submit Grievance</button>
-            <button type="button" onClick={() => setShowForm(false)} className="toolbar-btn text-xs">Cancel</button>
+            <button type="button" onClick={handleSubmit} disabled={submitting || !form.subject.trim() || !form.description.trim()} className="toolbar-btn toolbar-btn-success text-xs disabled:opacity-50">{submitting ? <><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Submitting...</> : 'Submit Grievance'}</button>
+            <button type="button" onClick={() => setShowForm(false)} disabled={submitting} className="toolbar-btn text-xs">Cancel</button>
           </div>
         </div>
       )}
 
       {loading ? (
-        <div className="text-center text-rmpg-400 py-8 text-xs">Loading...</div>
-      ) : grievances.length === 0 ? (
-        <div className="text-center text-rmpg-400 py-8 text-xs">No grievances found</div>
+        <div className="flex items-center justify-center gap-2 text-rmpg-400 py-8 text-xs"><Loader2 className="w-4 h-4 animate-spin" role="status" aria-label="Loading" /> Loading grievances...</div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center text-rmpg-500 py-12 text-xs"><AlertOctagon className="w-5 h-5 mx-auto mb-2 text-rmpg-600" />{searchQuery ? 'No grievances match your search' : 'No grievances found'}</div>
       ) : (
         <div className="space-y-2">
-          {grievances.map(g => (
-            <div key={g.id} className="panel-beveled p-3">
+          {filtered.map(g => (
+            <div key={g.id} className="panel-beveled p-3 hover:bg-surface-raised/50 transition-colors">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className={`inline-flex px-2 py-0.5 text-[10px] font-bold uppercase ${STATUS_COLORS[g.status] || STATUS_COLORS.filed}`}>{g.status.replace(/_/g, ' ')}</span>
+                    <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${STATUS_COLORS[g.status] || STATUS_COLORS.filed}`}>{g.status.replace(/_/g, ' ')}</span>
                     <span className="text-[10px] text-rmpg-400 uppercase">{g.type}</span>
-                    <span className="text-[10px] text-rmpg-500">{g.priority}</span>
+                    <span className={`text-[10px] font-medium ${PRIORITY_COLORS[g.priority] || 'text-rmpg-500'}`}>{g.priority}</span>
                   </div>
-                  <h3 className="text-xs font-bold text-white">{g.subject}</h3>
+                  <h3 className="text-xs font-bold text-white truncate max-w-md">{g.subject}</h3>
                   <p className="text-[10px] text-rmpg-300 mt-1 line-clamp-2">{g.description}</p>
                   <div className="flex items-center gap-3 mt-2 text-[10px] text-rmpg-400">
                     <span>Filed by: {g.officer_name}</span>
-                    <span>Date: {g.filed_at?.substring(0, 10)}</span>
+                    <span>Date: {fmtDate(g.filed_at)}</span>
                     {g.assigned_to_name && <span>Assigned: {g.assigned_to_name}</span>}
-                    {g.resolved_at && <span>Resolved: {g.resolved_at.substring(0, 10)}</span>}
+                    {g.resolved_at && <span>Resolved: {fmtDate(g.resolved_at)}</span>}
                   </div>
                 </div>
                 {isManager && g.status !== 'resolved' && g.status !== 'dismissed' && (

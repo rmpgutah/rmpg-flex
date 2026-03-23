@@ -46,14 +46,25 @@ export default function FleetTiresTab({ vehicleId }: { vehicleId: number | strin
 
   useEffect(() => { load(); }, [vehicleId]);
 
+  // Escape to close form
+  useEffect(() => {
+    if (!showForm) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowForm(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showForm]);
+
   const handleSubmit = async () => {
-    if (!form.position) return;
-    try { await apiFetch(`/fleet/${vehicleId}/tires`, { method: 'POST', body: JSON.stringify({ ...form, tread_depth: form.tread_depth ? Number(form.tread_depth) : null }) }); addToast('Tire added', 'success'); setShowForm(false); load(); } catch { addToast('Failed', 'error'); }
+    if (!form.position) { addToast('Position is required', 'error'); return; }
+    try { await apiFetch(`/fleet/${vehicleId}/tires`, { method: 'POST', body: JSON.stringify({ ...form, tread_depth: form.tread_depth ? Number(form.tread_depth) : null }) }); addToast('Tire added', 'success'); setShowForm(false); load(); } catch { addToast('Failed to add tire', 'error'); }
   };
 
   const updateTread = async (tireId: number, depth: string) => {
     try { await apiFetch(`/fleet/tires/${tireId}`, { method: 'PUT', body: JSON.stringify({ tread_depth: Number(depth) }) }); addToast('Tread updated', 'success'); load(); } catch { /* handled */ }
   };
+
+  // Set document title
+  useEffect(() => { document.title = 'Fleet - Tires \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="space-y-3">

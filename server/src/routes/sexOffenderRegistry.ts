@@ -37,6 +37,7 @@ router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       "SELECT COUNT(*) as count FROM sex_offender_registry WHERE next_verification_due IS NOT NULL AND next_verification_due <= DATE('now', '+30 days')"
     ).get() as any)?.count || 0;
 
+    res.set('Cache-Control', 'private, max-age=60');
     res.json({
       data: {
         total,
@@ -48,7 +49,7 @@ router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
     });
   } catch (error: any) {
     console.error('SOR stats error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to sor stats', code: 'SOR_STATS_ERROR' });
   }
 });
 
@@ -95,7 +96,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     });
   } catch (error: any) {
     console.error('SOR list error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to sor list', code: 'SOR_LIST_ERROR' });
   }
 });
 
@@ -104,10 +105,10 @@ router.get('/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 's
   try {
     const db = getDb();
     const row = db.prepare('SELECT * FROM sex_offender_registry WHERE id = ?').get(req.params.id);
-    if (!row) return res.status(404).json({ error: 'Record not found' });
+    if (!row) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
     res.json({ data: row });
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -127,14 +128,14 @@ router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, r
     } = req.body;
 
     if (!first_name || !last_name) {
-      return res.status(400).json({ error: 'First and last name required' });
+      return res.status(400).json({ error: 'First and last name required', code: 'FIRST_AND_LAST_NAME' });
     }
 
     // Validate tier (1-3)
     if (tier !== undefined && tier !== null) {
       const t = Number(tier);
       if (!Number.isInteger(t) || t < 1 || t > 3) {
-        return res.status(400).json({ error: 'Tier must be 1, 2, or 3' });
+        return res.status(400).json({ error: 'Tier must be 1, 2, or 3', code: 'TIER_MUST_BE_1' });
       }
     }
 
@@ -152,7 +153,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, r
 
     // Validate string lengths
     if (first_name.length > 200 || last_name.length > 200) {
-      return res.status(400).json({ error: 'Name fields must be 200 characters or less' });
+      return res.status(400).json({ error: 'Name fields must be 200 characters or less', code: 'NAME_FIELDS_MUST_BE' });
     }
 
     const result = db.prepare(`
@@ -205,9 +206,9 @@ router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, r
   } catch (error: any) {
     console.error('SOR create error:', error?.message || 'Unknown error');
     if (error.message?.includes('UNIQUE constraint')) {
-      return res.status(409).json({ error: 'Registry ID already exists' });
+      return res.status(409).json({ error: 'Registry ID already exists', code: 'REGISTRY_ID_ALREADY_EXISTS' });
     }
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -251,7 +252,7 @@ router.put('/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 's
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) {
     console.error('SOR update error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to sor update', code: 'SOR_UPDATE_ERROR' });
   }
 });
 
@@ -273,7 +274,7 @@ router.put('/:id/verify', validateParamIdMiddleware, requireRole('admin', 'manag
 
     // Calculate next verification based on tier
     const record = db.prepare('SELECT tier FROM sex_offender_registry WHERE id = ?').get(req.params.id) as any;
-    if (!record) return res.status(404).json({ error: 'Record not found' });
+    if (!record) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
 
     // Tier 3 = every 90 days, Tier 2 = every 180 days, Tier 1 = every 365 days
     const intervalDays = record.tier === 3 ? 90 : record.tier === 2 ? 180 : 365;
@@ -305,7 +306,7 @@ router.put('/:id/verify', validateParamIdMiddleware, requireRole('admin', 'manag
     res.json({ data: { id: parseInt(req.params.id as string, 10), last_verification: now, next_verification_due: nextDueStr } });
   } catch (error: any) {
     console.error('SOR verify error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to sor verify', code: 'SOR_VERIFY_ERROR' });
   }
 });
 
@@ -317,10 +318,10 @@ router.post('/import', requireRole('admin'), (req: Request, res: Response) => {
     const now = localNow();
     const { records } = req.body;
     if (!Array.isArray(records) || records.length === 0) {
-      return res.status(400).json({ error: 'Records array required' });
+      return res.status(400).json({ error: 'Records array required', code: 'RECORDS_ARRAY_REQUIRED' });
     }
     if (records.length > 5000) {
-      return res.status(400).json({ error: 'Maximum 5000 records per import' });
+      return res.status(400).json({ error: 'Maximum 5000 records per import', code: 'MAXIMUM_5000_RECORDS_PER' });
     }
 
     const insert = db.prepare(`
@@ -374,7 +375,7 @@ router.post('/import', requireRole('admin'), (req: Request, res: Response) => {
     res.json({ data: { imported, skipped, total: records.length } });
   } catch (error: any) {
     console.error('SOR import error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to sor import', code: 'SOR_IMPORT_ERROR' });
   }
 });
 
@@ -420,7 +421,7 @@ router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: R
       { key: 'created_at', header: 'Created At' },
     ], rows);
   } catch (error: any) {
-    res.status(500).json({ error: 'Export failed' });
+    res.status(500).json({ error: 'Export failed', code: 'EXPORT_FAILED' });
   }
 });
 

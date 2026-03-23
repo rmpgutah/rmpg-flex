@@ -55,6 +55,17 @@ interface AdminClientsTabProps {
 // Component
 // ============================================================
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function AdminClientsTab({
   clients,
   setClients,
@@ -220,13 +231,16 @@ export default function AdminClientsTab({
     return () => { cancelled = true; };
   }, [selectedClient?.id]);
 
+  // Set document title
+  useEffect(() => { document.title = 'Admin - Clients \u2014 RMPG Flex'; }, []);
+
   return (
     <div className="flex h-full overflow-hidden">
       {/* Left: Client List */}
       <div className={`${selectedClient ? 'w-[35%]' : 'w-full'} border-r border-rmpg-600 flex flex-col overflow-hidden transition-all`}>
         <div className="px-4 py-3 flex items-center justify-between border-b border-rmpg-600 flex-shrink-0">
           <span className="text-xs text-rmpg-300 font-bold uppercase tracking-wider">{clients.length} Clients</span>
-          <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={openAddClient}>
+          <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={openAddClient}>
             <Plus className="w-3.5 h-3.5" /> Add Client
           </button>
         </div>
@@ -361,31 +375,31 @@ export default function AdminClientsTab({
           {/* Detail Content */}
           <div className="flex-1 overflow-auto p-4 space-y-4">
             {loadingClientDetail && (
-              <div className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin text-brand-400" /><span className="text-xs text-rmpg-400">Loading...</span></div>
+              <div className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-xs text-rmpg-400">Loading...</span></div>
             )}
 
             {/* Profile Tab -- inline editable */}
             {clientDetailTab === 'profile' && (
               <>
-                {clientSaving && <div className="text-[9px] text-brand-400 flex items-center gap-1 mb-1"><Loader2 className="w-3 h-3 animate-spin" /> Saving...</div>}
+                {clientSaving && <div className="text-[9px] text-brand-400 flex items-center gap-1 mb-1"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Saving...</div>}
                 <div className="panel-beveled p-3 bg-surface-base">
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Contact Information</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Contact Name</label>
-                      <input className="input-dark text-xs w-full" value={clientEdit.contact_name || ''} onChange={(e) => setClientField('contact_name', e.target.value)} placeholder="Contact name" />
+                      <input className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contact_name || ''} onChange={(e) => setClientField('contact_name', e.target.value)} placeholder="Contact name" />
                     </div>
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Email</label>
-                      <input className="input-dark text-xs w-full" value={clientEdit.contact_email || ''} onChange={(e) => setClientField('contact_email', e.target.value)} placeholder="Email" />
+                      <input className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contact_email || ''} onChange={(e) => setClientField('contact_email', e.target.value)} placeholder="Email" />
                     </div>
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Phone</label>
-                      <input className="input-dark text-xs w-full" value={clientEdit.contact_phone || ''} onChange={(e) => setClientField('contact_phone', e.target.value)} placeholder="Phone" />
+                      <input className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contact_phone || ''} onChange={(e) => setClientField('contact_phone', e.target.value)} placeholder="Phone" />
                     </div>
                     <div className="col-span-3">
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Address</label>
-                      <input className="input-dark text-xs w-full" value={clientEdit.address || ''} onChange={(e) => setClientField('address', e.target.value)} placeholder="Address" />
+                      <input className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.address || ''} onChange={(e) => setClientField('address', e.target.value)} placeholder="Address" />
                     </div>
                   </div>
                 </div>
@@ -407,7 +421,7 @@ export default function AdminClientsTab({
                     </div>
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Value ($)</label>
-                      <input type="number" min="0" step="0.01" className="input-dark text-xs w-full" value={clientEdit.contract_value || ''} onChange={(e) => setClientField('contract_value', e.target.value)} placeholder="0.00" />
+                      <input type="number" min="0" step="0.01" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contract_value || ''} onChange={(e) => setClientField('contract_value', e.target.value)} placeholder="0.00" />
                     </div>
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Payment Terms</label>
@@ -423,11 +437,11 @@ export default function AdminClientsTab({
                     </div>
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Start Date</label>
-                      <input type="date" className="input-dark text-xs w-full" value={clientEdit.contract_start || ''} onChange={(e) => setClientField('contract_start', e.target.value)} />
+                      <input type="date" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contract_start || ''} onChange={(e) => setClientField('contract_start', e.target.value)} />
                     </div>
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">End Date</label>
-                      <input type="date" className="input-dark text-xs w-full" value={clientEdit.contract_end || ''} onChange={(e) => setClientField('contract_end', e.target.value)} />
+                      <input type="date" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contract_end || ''} onChange={(e) => setClientField('contract_end', e.target.value)} />
                     </div>
                     <div className="flex items-end gap-3">
                       <label className="flex items-center gap-2 p-1.5 bg-rmpg-800/50 border border-rmpg-600 cursor-pointer hover:border-rmpg-400 transition-colors">
@@ -437,7 +451,7 @@ export default function AdminClientsTab({
                     </div>
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">SLA Response (min)</label>
-                      <input type="number" min="1" className="input-dark text-xs w-full" value={clientEdit.sla_response_minutes || ''} onChange={(e) => setClientField('sla_response_minutes', e.target.value)} placeholder="e.g. 15" />
+                      <input type="number" min="1" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.sla_response_minutes || ''} onChange={(e) => setClientField('sla_response_minutes', e.target.value)} placeholder="e.g. 15" />
                     </div>
                   </div>
                 </div>
@@ -471,17 +485,17 @@ export default function AdminClientsTab({
             {/* Billing Tab -- inline editable */}
             {clientDetailTab === 'billing' && (
               <>
-                {clientSaving && <div className="text-[9px] text-brand-400 flex items-center gap-1 mb-1"><Loader2 className="w-3 h-3 animate-spin" /> Saving...</div>}
+                {clientSaving && <div className="text-[9px] text-brand-400 flex items-center gap-1 mb-1"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Saving...</div>}
                 <div className="panel-beveled p-3 bg-surface-base">
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Billing Information</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Billing Email</label>
-                      <input className="input-dark text-xs w-full" value={clientEdit.billing_email || ''} onChange={(e) => setClientField('billing_email', e.target.value)} placeholder="billing@example.com" />
+                      <input className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.billing_email || ''} onChange={(e) => setClientField('billing_email', e.target.value)} placeholder="billing@example.com" />
                     </div>
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Billing Address</label>
-                      <input className="input-dark text-xs w-full" value={clientEdit.billing_address || ''} onChange={(e) => setClientField('billing_address', e.target.value)} placeholder="Billing address" />
+                      <input className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.billing_address || ''} onChange={(e) => setClientField('billing_address', e.target.value)} placeholder="Billing address" />
                     </div>
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Payment Terms</label>
@@ -509,7 +523,7 @@ export default function AdminClientsTab({
                     </div>
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Contract Value ($)</label>
-                      <input type="number" min="0" step="0.01" className="input-dark text-xs w-full" value={clientEdit.contract_value || ''} onChange={(e) => setClientField('contract_value', e.target.value)} placeholder="0.00" />
+                      <input type="number" min="0" step="0.01" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contract_value || ''} onChange={(e) => setClientField('contract_value', e.target.value)} placeholder="0.00" />
                     </div>
                   </div>
                 </div>
@@ -528,15 +542,15 @@ export default function AdminClientsTab({
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Rate per Hour ($)</label>
-                      <input type="number" min="0" step="0.01" className="input-dark text-xs w-full" value={clientEdit.rate_per_hour || ''} onChange={(e) => setClientField('rate_per_hour', e.target.value)} placeholder="0.00" />
+                      <input type="number" min="0" step="0.01" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.rate_per_hour || ''} onChange={(e) => setClientField('rate_per_hour', e.target.value)} placeholder="0.00" />
                     </div>
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Rate per Incident ($)</label>
-                      <input type="number" min="0" step="0.01" className="input-dark text-xs w-full" value={clientEdit.rate_per_incident || ''} onChange={(e) => setClientField('rate_per_incident', e.target.value)} placeholder="0.00" />
+                      <input type="number" min="0" step="0.01" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.rate_per_incident || ''} onChange={(e) => setClientField('rate_per_incident', e.target.value)} placeholder="0.00" />
                     </div>
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Rate per CFS ($)</label>
-                      <input type="number" min="0" step="0.01" className="input-dark text-xs w-full" value={clientEdit.rate_per_cfs || ''} onChange={(e) => setClientField('rate_per_cfs', e.target.value)} placeholder="0.00" />
+                      <input type="number" min="0" step="0.01" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.rate_per_cfs || ''} onChange={(e) => setClientField('rate_per_cfs', e.target.value)} placeholder="0.00" />
                     </div>
                   </div>
                   <p className="text-[9px] text-rmpg-500 mt-2">These rates are used when auto-generating invoice line items.</p>
@@ -656,10 +670,10 @@ export default function AdminClientsTab({
               <div className="panel-beveled p-3 bg-surface-base">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Notes</h3>
-                  {clientSaving && <div className="text-[9px] text-brand-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Saving...</div>}
+                  {clientSaving && <div className="text-[9px] text-brand-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Saving...</div>}
                 </div>
                 <textarea
-                  className="input-dark text-xs w-full leading-relaxed resize-y"
+                  className="input-dark text-xs w-full leading-relaxed resize-y min-h-[36px]"
                   style={{ minHeight: '180px' }}
                   value={clientEdit.notes || ''}
                   onChange={(e) => setClientField('notes', e.target.value)}

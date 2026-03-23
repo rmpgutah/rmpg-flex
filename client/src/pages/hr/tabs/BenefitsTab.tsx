@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Heart, Plus } from 'lucide-react';
+import { Heart, Plus, Loader2, Search } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 
@@ -20,12 +20,20 @@ interface Benefit {
 
 const BENEFIT_TYPES = ['health', 'dental', 'vision', 'life', '401k', 'hsa', 'fsa', 'disability', 'other'];
 
+const COVERAGE_LABELS: Record<string, string> = {
+  individual: 'Individual',
+  individual_spouse: 'Individual + Spouse',
+  family: 'Family',
+};
+
 export default function BenefitsTab({ userRole }: { userRole: string }) {
   const { addToast } = useToast();
   const [benefits, setBenefits] = useState<Benefit[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [officers, setOfficers] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [form, setForm] = useState({ officer_id: '', benefit_type: 'health', plan_name: '', provider: '', coverage_level: 'individual', employee_cost: 0, employer_cost: 0, effective_date: '' });
 
   const isManager = ['admin', 'manager'].includes(userRole);
@@ -37,15 +45,31 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
     } finally { setLoading(false); }
   };
 
-  useEffect(() => { load(); apiFetch<any[]>('/personnel').then(d => setOfficers(d.filter((o: any) => o.status === 'active'))); }, []);
+  useEffect(() => { load(); apiFetch<any[]>('/personnel').then(d => setOfficers(d.filter((o: any) => o.status === 'active'))).catch(() => {}); }, []);
+
+  // Escape to close form
+  useEffect(() => {
+    if (!showForm) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowForm(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showForm]);
 
   const handleSubmit = async () => {
-    if (!form.officer_id || !form.benefit_type) { addToast('Officer and type required', 'error'); return; }
-    try { await apiFetch('/hr/benefits', { method: 'POST', body: JSON.stringify({ ...form, officer_id: Number(form.officer_id) }) }); addToast('Benefit added', 'success'); setShowForm(false); load(); } catch { /* handled */ }
+    if (!form.officer_id) { addToast('Please select an officer', 'error'); return; }
+    if (!form.benefit_type) { addToast('Benefit type is required', 'error'); return; }
+    setSubmitting(true);
+    try { await apiFetch('/hr/benefits', { method: 'POST', body: JSON.stringify({ ...form, officer_id: Number(form.officer_id) }) }); addToast('Benefit added', 'success'); setShowForm(false); setForm({ officer_id: '', benefit_type: 'health', plan_name: '', provider: '', coverage_level: 'individual', employee_cost: 0, employer_cost: 0, effective_date: '' }); load(); } catch { addToast('Failed to add benefit', 'error'); } finally { setSubmitting(false); }
   };
 
-  // Group by officer
-  const grouped = benefits.reduce<Record<string, Benefit[]>>((acc, b) => {
+  // Filter then group by officer
+  const filteredBenefits = benefits.filter(b => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return b.officer_name?.toLowerCase().includes(q) || b.benefit_type.toLowerCase().includes(q) || b.plan_name?.toLowerCase().includes(q) || b.provider?.toLowerCase().includes(q);
+  });
+
+  const grouped = filteredBenefits.reduce<Record<string, Benefit[]>>((acc, b) => {
     const key = b.officer_name || `Officer ${b.officer_id}`;
     if (!acc[key]) acc[key] = [];
     acc[key].push(b);
@@ -54,37 +78,43 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
 
   return (
     <div className="p-4 space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="text-sm font-bold text-white flex items-center gap-2"><Heart className="w-4 h-4" /> Benefits Enrollment</h2>
-        {isManager && <button type="button" onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> Add Benefit</button>}
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
+            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search benefits..." aria-label="Search benefits..." className="input-field text-xs py-1 pl-6 pr-2 w-48" />
+          </div>
+          {isManager && <button type="button" onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> Add Benefit</button>}
+        </div>
       </div>
 
       {showForm && isManager && (
         <div className="panel-beveled p-4 space-y-3">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
-              <label className="field-label">Officer</label>
+              <label className="field-label">Officer *</label>
               <select value={form.officer_id} onChange={e => setForm(f => ({ ...f, officer_id: e.target.value }))} className="input-field w-full text-xs">
                 <option value="">Select...</option>
                 {officers.map(o => <option key={o.id} value={o.id}>{o.full_name}</option>)}
               </select>
             </div>
             <div>
-              <label className="field-label">Type</label>
+              <label className="field-label">Type *</label>
               <select value={form.benefit_type} onChange={e => setForm(f => ({ ...f, benefit_type: e.target.value }))} className="input-field w-full text-xs">
-                {BENEFIT_TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+                {BENEFIT_TYPES.map(t => <option key={t} value={t}>{t === '401k' ? '401(k)' : t === 'hsa' ? 'HSA' : t === 'fsa' ? 'FSA' : t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
               </select>
             </div>
             <div>
               <label className="field-label">Plan Name</label>
-              <input value={form.plan_name} onChange={e => setForm(f => ({ ...f, plan_name: e.target.value }))} className="input-field w-full text-xs" />
+              <input value={form.plan_name} onChange={e => setForm(f => ({ ...f, plan_name: e.target.value }))} className="input-field w-full text-xs" placeholder="e.g. Blue Cross PPO" />
             </div>
             <div>
               <label className="field-label">Provider</label>
-              <input value={form.provider} onChange={e => setForm(f => ({ ...f, provider: e.target.value }))} className="input-field w-full text-xs" />
+              <input value={form.provider} onChange={e => setForm(f => ({ ...f, provider: e.target.value }))} className="input-field w-full text-xs" placeholder="e.g. Blue Cross" />
             </div>
           </div>
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
               <label className="field-label">Coverage</label>
               <select value={form.coverage_level} onChange={e => setForm(f => ({ ...f, coverage_level: e.target.value }))} className="input-field w-full text-xs">
@@ -94,12 +124,12 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
               </select>
             </div>
             <div>
-              <label className="field-label">Employee Cost</label>
-              <input type="number" value={form.employee_cost} onChange={e => setForm(f => ({ ...f, employee_cost: Number(e.target.value) }))} className="input-field w-full text-xs" />
+              <label className="field-label">Employee Cost ($/mo)</label>
+              <input type="number" min="0" step="0.01" value={form.employee_cost} onChange={e => setForm(f => ({ ...f, employee_cost: Number(e.target.value) }))} className="input-field w-full text-xs tabular-nums" />
             </div>
             <div>
-              <label className="field-label">Employer Cost</label>
-              <input type="number" value={form.employer_cost} onChange={e => setForm(f => ({ ...f, employer_cost: Number(e.target.value) }))} className="input-field w-full text-xs" />
+              <label className="field-label">Employer Cost ($/mo)</label>
+              <input type="number" min="0" step="0.01" value={form.employer_cost} onChange={e => setForm(f => ({ ...f, employer_cost: Number(e.target.value) }))} className="input-field w-full text-xs tabular-nums" />
             </div>
             <div>
               <label className="field-label">Effective Date</label>
@@ -107,16 +137,16 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
             </div>
           </div>
           <div className="flex gap-2">
-            <button type="button" onClick={handleSubmit} className="toolbar-btn toolbar-btn-success text-xs">Save</button>
-            <button type="button" onClick={() => setShowForm(false)} className="toolbar-btn text-xs">Cancel</button>
+            <button type="button" onClick={handleSubmit} disabled={submitting || !form.officer_id} className="toolbar-btn toolbar-btn-success text-xs disabled:opacity-50">{submitting ? <><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Saving...</> : 'Save'}</button>
+            <button type="button" onClick={() => setShowForm(false)} disabled={submitting} className="toolbar-btn text-xs">Cancel</button>
           </div>
         </div>
       )}
 
       {loading ? (
-        <div className="text-center text-rmpg-400 py-8 text-xs">Loading...</div>
+        <div className="flex items-center justify-center gap-2 text-rmpg-400 py-8 text-xs"><Loader2 className="w-4 h-4 animate-spin" role="status" aria-label="Loading" /> Loading benefits...</div>
       ) : Object.keys(grouped).length === 0 ? (
-        <div className="text-center text-rmpg-400 py-8 text-xs">No benefits records found</div>
+        <div className="text-center text-rmpg-500 py-12 text-xs"><Heart className="w-5 h-5 mx-auto mb-2 text-rmpg-600" />{searchQuery ? 'No benefits match your search' : 'No benefits records found'}</div>
       ) : (
         <div className="space-y-4">
           {Object.entries(grouped).map(([name, bens]) => (
@@ -124,17 +154,17 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
               <h3 className="text-xs font-bold text-white mb-2">{name}</h3>
               <div className="space-y-1">
                 {bens.map(b => (
-                  <div key={b.id} className="flex items-center justify-between text-[10px] py-1 border-b border-rmpg-700 last:border-0">
+                  <div key={b.id} className="flex items-center justify-between text-[10px] py-1.5 border-b border-rmpg-700 last:border-0 hover:bg-surface-raised/30 transition-colors">
                     <div className="flex items-center gap-3">
-                      <span className="text-white font-bold uppercase">{b.benefit_type}</span>
+                      <span className="text-white font-bold uppercase">{b.benefit_type === '401k' ? '401(k)' : b.benefit_type === 'hsa' ? 'HSA' : b.benefit_type === 'fsa' ? 'FSA' : b.benefit_type}</span>
                       <span className="text-rmpg-300">{b.plan_name}</span>
                       <span className="text-rmpg-400">{b.provider}</span>
-                      <span className="text-rmpg-400">{b.coverage_level}</span>
+                      <span className="text-rmpg-400">{COVERAGE_LABELS[b.coverage_level] || b.coverage_level}</span>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-rmpg-300">EE: ${b.employee_cost}/mo</span>
-                      <span className="text-rmpg-300">ER: ${b.employer_cost}/mo</span>
-                      <span className={`px-1.5 py-0.5 ${b.status === 'active' ? 'bg-green-900/50 text-green-400' : 'bg-rmpg-700 text-rmpg-400'}`}>{b.status}</span>
+                      <span className="text-rmpg-300 tabular-nums">EE: ${b.employee_cost.toFixed(2)}/mo</span>
+                      <span className="text-rmpg-300 tabular-nums">ER: ${b.employer_cost.toFixed(2)}/mo</span>
+                      <span className={`px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${b.status === 'active' ? 'bg-green-900/50 text-green-400 border border-green-700/50' : 'bg-rmpg-700 text-rmpg-400 border border-rmpg-600'}`}>{b.status}</span>
                     </div>
                   </div>
                 ))}

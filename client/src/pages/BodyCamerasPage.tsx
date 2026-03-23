@@ -118,6 +118,7 @@ export default function BodyCamerasPage() {
   };
 
   const handleDelete = async (camId: number) => {
+    if (!window.confirm('Delete this body camera and all associated videos? This cannot be undone.')) return;
     try {
       await apiFetch(`/personnel/body-cameras/${camId}`, { method: 'DELETE' });
       await refreshBodyCameras();
@@ -128,6 +129,7 @@ export default function BodyCamerasPage() {
   };
 
   const handleVideoDelete = async (videoId: number) => {
+    if (!window.confirm('Delete this video? This cannot be undone.')) return;
     try {
       await apiFetch(`/personnel/bodycam-videos/${videoId}`, { method: 'DELETE' });
       await refreshBodyCameras();
@@ -209,6 +211,9 @@ export default function BodyCamerasPage() {
   // ----------------------------------------------------------
   // Render
   // ----------------------------------------------------------
+  // Set document title
+  useEffect(() => { document.title = 'Body Cameras \u2014 RMPG Flex'; }, []);
+
   return (
     <div className="flex flex-col h-full animate-fade-in">
 
@@ -231,7 +236,7 @@ export default function BodyCamerasPage() {
       <div className="flex-1 overflow-y-auto">
         {loading && (
           <div className="flex items-center justify-center flex-1 py-20">
-            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" />
+            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading" />
           </div>
         )}
 

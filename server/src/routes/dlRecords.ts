@@ -20,11 +20,11 @@ router.post('/', requireRole('admin', 'manager', 'officer'), (req: Request, res:
     const body = req.body;
 
     if (!body.dl_number || !body.dl_state) {
-      res.status(400).json({ error: 'DL number and state are required' });
+      res.status(400).json({ error: 'DL number and state are required', code: 'DL_NUMBER_AND_STATE' });
       return;
     }
     if (!body.last_name || !body.first_name) {
-      res.status(400).json({ error: 'First and last name are required' });
+      res.status(400).json({ error: 'First and last name are required', code: 'FIRST_AND_LAST_NAME' });
       return;
     }
 
@@ -81,7 +81,7 @@ router.post('/', requireRole('admin', 'manager', 'officer'), (req: Request, res:
     res.json({ success: true, recordId, message: 'DL record saved' });
   } catch (error: any) {
     console.error('[DL Records] Manual entry error:', error);
-    res.status(500).json({ error: 'Failed to save DL record' });
+    res.status(500).json({ error: 'Failed to save DL record', code: 'FAILED_TO_SAVE_DL' });
   }
 });
 

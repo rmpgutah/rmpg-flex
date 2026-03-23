@@ -9,6 +9,8 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken } from '../middleware/auth';
+import { auditLog } from '../utils/auditLogger';
+import { broadcastRecordUpdate } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
 
 const router = Router();
@@ -61,6 +63,7 @@ router.get('/stats', (_req: Request, res: Response) => {
     const totalAnalyses = (db.prepare(`SELECT COUNT(*) as cnt FROM forensic_analyses`).get() as any)?.cnt || 0;
     const pendingAnalyses = (db.prepare(`SELECT COUNT(*) as cnt FROM forensic_analyses WHERE status IN ('pending','in_progress')`).get() as any)?.cnt || 0;
 
+    res.set('Cache-Control', 'private, max-age=60');
     res.json({
       data: {
         by_status: Object.fromEntries(statusCounts.map(r => [r.status, r.count])),
@@ -74,7 +77,7 @@ router.get('/stats', (_req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Forensics stats error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to forensics stats', code: 'FORENSICS_STATS_ERROR' });
   }
 });
 
@@ -123,7 +126,7 @@ router.get('/', (req: Request, res: Response) => {
     res.json({ data: rows, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
   } catch (error: any) {
     console.error('Get forensic cases error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get forensic cases', code: 'GET_FORENSIC_CASES_ERROR' });
   }
 });
 
@@ -132,7 +135,7 @@ router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) { res.status(400).json({ error: 'Invalid forensic case ID' }); return; }
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid forensic case ID', code: 'INVALID_FORENSIC_CASE_ID' }); return; }
     const row = db.prepare(`
       SELECT fc.*,
         u.full_name as lead_examiner_name,
@@ -142,11 +145,11 @@ router.get('/:id', (req: Request, res: Response) => {
       LEFT JOIN users cb ON fc.created_by = cb.id
       WHERE fc.id = ?
     `).get(id);
-    if (!row) return res.status(404).json({ error: 'Forensic case not found' });
+    if (!row) return res.status(404).json({ error: 'Forensic case not found', code: 'FORENSIC_CASE_NOT_FOUND' });
     res.json({ data: row });
   } catch (error: any) {
     console.error('Get forensic case error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get forensic case', code: 'GET_FORENSIC_CASE_ERROR' });
   }
 });
 
@@ -162,7 +165,15 @@ router.post('/', (req: Request, res: Response) => {
       linked_case_number, due_date, notes,
     } = req.body;
 
-    if (!title?.trim()) return res.status(400).json({ error: 'Title is required' });
+    if (!title?.trim()) return res.status(400).json({ error: 'Title is required', code: 'MISSING_TITLE' });
+
+    // Validate priority
+    const validPriorities = ['normal', 'rush', 'urgent'];
+    if (!validPriorities.includes(priority)) return res.status(400).json({ error: 'Invalid priority', code: 'INVALID_PRIORITY' });
+
+    // Input sanitization
+    const cleanTitle = typeof title === 'string' ? title.trim() : title;
+    const cleanDescription = typeof description === 'string' ? description.trim() : description;
 
     const lab_number = generateLabNumber();
     const now = localNow();
@@ -185,13 +196,15 @@ router.post('/', (req: Request, res: Response) => {
     );
 
     logActivity(result.lastInsertRowid as number, 'case_created', `Lab case ${lab_number} created`, user.id, user.full_name);
+    auditLog(req, 'CREATE', 'forensic_case', result.lastInsertRowid as number, `Created forensic case ${lab_number}`);
+    broadcastRecordUpdate({ type: 'forensic_case_created', id: result.lastInsertRowid, lab_number });
 
     const newCase = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json({ data: newCase });
   } catch (error: any) {
     console.error('Create forensic case error:', error);
     console.error('[Forensics] Error:', error?.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'CREATE_FORENSIC_ERROR' });
   }
 });
 
@@ -201,7 +214,7 @@ router.put('/:id', (req: Request, res: Response) => {
     const db = getDb();
     const user = (req as any).user;
     const existing = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id) as any;
-    if (!existing) return res.status(404).json({ error: 'Forensic case not found' });
+    if (!existing) return res.status(404).json({ error: 'Forensic case not found', code: 'FORENSIC_CASE_NOT_FOUND' });
 
     const {
       case_type, priority, title, description, status,
@@ -257,7 +270,7 @@ router.put('/:id', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Update forensic case error:', error);
     console.error('[Forensics] Error:', error?.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to [forensics]', code: 'FORENSICS_ERROR' });
   }
 });
 
@@ -266,12 +279,12 @@ router.delete('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id) as any;
-    if (!existing) return res.status(404).json({ error: 'Forensic case not found' });
+    if (!existing) return res.status(404).json({ error: 'Forensic case not found', code: 'FORENSIC_CASE_NOT_FOUND' });
     db.prepare('DELETE FROM forensic_cases WHERE id = ?').run(req.params.id);
     res.json({ message: 'Forensic case deleted' });
   } catch (error: any) {
     console.error('Delete forensic case error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete forensic case', code: 'DELETE_FORENSIC_CASE_ERROR' });
   }
 });
 
@@ -285,11 +298,13 @@ router.get('/:caseId/exhibits', (req: Request, res: Response) => {
     const db = getDb();
     const rows = db.prepare(`
       SELECT * FROM forensic_exhibits WHERE forensic_case_id = ? ORDER BY exhibit_number
+    
+      LIMIT 1000
     `).all(req.params.caseId);
     res.json({ data: rows });
   } catch (error: any) {
     console.error('Get exhibits error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get exhibits', code: 'GET_EXHIBITS_ERROR' });
   }
 });
 
@@ -299,7 +314,7 @@ router.post('/:caseId/exhibits', (req: Request, res: Response) => {
     const db = getDb();
     const user = (req as any).user;
     const fc = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.caseId) as any;
-    if (!fc) return res.status(404).json({ error: 'Forensic case not found' });
+    if (!fc) return res.status(404).json({ error: 'Forensic case not found', code: 'FORENSIC_CASE_NOT_FOUND' });
 
     const {
       exhibit_type = 'other', description, quantity = 1, condition_received,
@@ -307,7 +322,7 @@ router.post('/:caseId/exhibits', (req: Request, res: Response) => {
       collection_method, hash_md5, hash_sha256, notes,
     } = req.body;
 
-    if (!description?.trim()) return res.status(400).json({ error: 'Description is required' });
+    if (!description?.trim()) return res.status(400).json({ error: 'Description is required', code: 'DESCRIPTION_IS_REQUIRED' });
 
     // Auto-generate exhibit number
     const lastExhibit = db.prepare(
@@ -350,7 +365,7 @@ router.post('/:caseId/exhibits', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Create exhibit error:', error);
     console.error('[Forensics] Error:', error?.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to [forensics]', code: 'FORENSICS_ERROR' });
   }
 });
 
@@ -360,7 +375,7 @@ router.put('/:caseId/exhibits/:exhibitId', (req: Request, res: Response) => {
     const db = getDb();
     const user = (req as any).user;
     const existing = db.prepare('SELECT * FROM forensic_exhibits WHERE id = ? AND forensic_case_id = ?').get(req.params.exhibitId, req.params.caseId) as any;
-    if (!existing) return res.status(404).json({ error: 'Exhibit not found' });
+    if (!existing) return res.status(404).json({ error: 'Exhibit not found', code: 'EXHIBIT_NOT_FOUND' });
 
     const {
       exhibit_type, description, quantity, condition_received,
@@ -397,7 +412,7 @@ router.put('/:caseId/exhibits/:exhibitId', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Update exhibit error:', error);
     console.error('[Forensics] Error:', error?.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to [forensics]', code: 'FORENSICS_ERROR' });
   }
 });
 
@@ -407,13 +422,13 @@ router.delete('/:caseId/exhibits/:exhibitId', (req: Request, res: Response) => {
     const db = getDb();
     const user = (req as any).user;
     const existing = db.prepare('SELECT * FROM forensic_exhibits WHERE id = ? AND forensic_case_id = ?').get(req.params.exhibitId, req.params.caseId) as any;
-    if (!existing) return res.status(404).json({ error: 'Exhibit not found' });
+    if (!existing) return res.status(404).json({ error: 'Exhibit not found', code: 'EXHIBIT_NOT_FOUND' });
     db.prepare('DELETE FROM forensic_exhibits WHERE id = ?').run(req.params.exhibitId);
     logActivity(parseInt(req.params.caseId as string), 'exhibit_deleted', `Exhibit ${existing.exhibit_number} deleted`, user.id, user.full_name);
     res.json({ message: 'Exhibit deleted' });
   } catch (error: any) {
     console.error('Delete exhibit error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete exhibit', code: 'DELETE_EXHIBIT_ERROR' });
   }
 });
 
@@ -423,10 +438,10 @@ router.post('/:caseId/exhibits/:exhibitId/custody', (req: Request, res: Response
     const db = getDb();
     const user = (req as any).user;
     const existing = db.prepare('SELECT * FROM forensic_exhibits WHERE id = ? AND forensic_case_id = ?').get(req.params.exhibitId, req.params.caseId) as any;
-    if (!existing) return res.status(404).json({ error: 'Exhibit not found' });
+    if (!existing) return res.status(404).json({ error: 'Exhibit not found', code: 'EXHIBIT_NOT_FOUND' });
 
     const { action, notes: custodyNotes } = req.body;
-    if (!action) return res.status(400).json({ error: 'Action is required' });
+    if (!action) return res.status(400).json({ error: 'Action is required', code: 'ACTION_IS_REQUIRED' });
 
     const chain = JSON.parse(existing.chain_of_custody || '[]');
     chain.push({ action, by: user.full_name, at: localNow(), notes: custodyNotes || '' });
@@ -440,7 +455,7 @@ router.post('/:caseId/exhibits/:exhibitId/custody', (req: Request, res: Response
     res.json({ data: updated });
   } catch (error: any) {
     console.error('Custody update error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to custody update', code: 'CUSTODY_UPDATE_ERROR' });
   }
 });
 
@@ -459,11 +474,13 @@ router.get('/:caseId/analyses', (req: Request, res: Response) => {
       LEFT JOIN forensic_exhibits e ON a.exhibit_id = e.id
       WHERE a.forensic_case_id = ?
       ORDER BY a.created_at DESC
+    
+      LIMIT 1000
     `).all(req.params.caseId);
     res.json({ data: rows });
   } catch (error: any) {
     console.error('Get analyses error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get analyses', code: 'GET_ANALYSES_ERROR' });
   }
 });
 
@@ -473,14 +490,14 @@ router.post('/:caseId/analyses', (req: Request, res: Response) => {
     const db = getDb();
     const user = (req as any).user;
     const fc = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.caseId) as any;
-    if (!fc) return res.status(404).json({ error: 'Forensic case not found' });
+    if (!fc) return res.status(404).json({ error: 'Forensic case not found', code: 'FORENSIC_CASE_NOT_FOUND' });
 
     const {
       exhibit_id, analysis_type, methodology, equipment_used,
       examiner_id, notes,
     } = req.body;
 
-    if (!analysis_type) return res.status(400).json({ error: 'Analysis type is required' });
+    if (!analysis_type) return res.status(400).json({ error: 'Analysis type is required', code: 'ANALYSIS_TYPE_IS_REQUIRED' });
 
     const now = localNow();
     const result = db.prepare(`
@@ -507,7 +524,7 @@ router.post('/:caseId/analyses', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Create analysis error:', error);
     console.error('[Forensics] Error:', error?.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to [forensics]', code: 'FORENSICS_ERROR' });
   }
 });
 
@@ -517,7 +534,7 @@ router.put('/:caseId/analyses/:analysisId', (req: Request, res: Response) => {
     const db = getDb();
     const user = (req as any).user;
     const existing = db.prepare('SELECT * FROM forensic_analyses WHERE id = ? AND forensic_case_id = ?').get(req.params.analysisId, req.params.caseId) as any;
-    if (!existing) return res.status(404).json({ error: 'Analysis not found' });
+    if (!existing) return res.status(404).json({ error: 'Analysis not found', code: 'ANALYSIS_NOT_FOUND' });
 
     const {
       analysis_type, methodology, equipment_used, examiner_id,
@@ -563,7 +580,7 @@ router.put('/:caseId/analyses/:analysisId', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Update analysis error:', error);
     console.error('[Forensics] Error:', error?.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to [forensics]', code: 'FORENSICS_ERROR' });
   }
 });
 
@@ -573,13 +590,13 @@ router.delete('/:caseId/analyses/:analysisId', (req: Request, res: Response) => 
     const db = getDb();
     const user = (req as any).user;
     const existing = db.prepare('SELECT * FROM forensic_analyses WHERE id = ? AND forensic_case_id = ?').get(req.params.analysisId, req.params.caseId) as any;
-    if (!existing) return res.status(404).json({ error: 'Analysis not found' });
+    if (!existing) return res.status(404).json({ error: 'Analysis not found', code: 'ANALYSIS_NOT_FOUND' });
     db.prepare('DELETE FROM forensic_analyses WHERE id = ?').run(req.params.analysisId);
     logActivity(parseInt(req.params.caseId as string), 'analysis_deleted', `${existing.analysis_type} analysis deleted`, user.id, user.full_name);
     res.json({ message: 'Analysis deleted' });
   } catch (error: any) {
     console.error('Delete analysis error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete analysis', code: 'DELETE_ANALYSIS_ERROR' });
   }
 });
 
@@ -592,11 +609,13 @@ router.get('/:caseId/activity', (req: Request, res: Response) => {
     const db = getDb();
     const rows = db.prepare(`
       SELECT * FROM forensic_activity_log WHERE forensic_case_id = ? ORDER BY performed_at DESC
+    
+      LIMIT 1000
     `).all(req.params.caseId);
     res.json({ data: rows });
   } catch (error: any) {
     console.error('Get activity log error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get activity log', code: 'GET_ACTIVITY_LOG_ERROR' });
   }
 });
 
@@ -610,11 +629,13 @@ router.get('/hash-sets', (_req: Request, res: Response) => {
     const db = getDb();
     const sets = db.prepare(`
       SELECT * FROM forensic_hash_sets ORDER BY created_at DESC
+    
+      LIMIT 1000
     `).all();
     res.json({ data: sets });
   } catch (error: any) {
     console.error('Get hash sets error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get hash sets', code: 'GET_HASH_SETS_ERROR' });
   }
 });
 
@@ -625,7 +646,7 @@ router.post('/hash-sets', (req: Request, res: Response) => {
     const { name, set_type, description, version, entries } = req.body;
 
     if (!name || !set_type) {
-      res.status(400).json({ error: 'Name and set_type are required' });
+      res.status(400).json({ error: 'Name and set_type are required', code: 'NAME_AND_SETTYPE_ARE' });
       return;
     }
 
@@ -671,7 +692,7 @@ router.post('/hash-sets', (req: Request, res: Response) => {
     res.status(201).json({ data: created, hash_count: hashCount });
   } catch (error: any) {
     console.error('Create hash set error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create hash set', code: 'CREATE_HASH_SET_ERROR' });
   }
 });
 
@@ -680,17 +701,17 @@ router.delete('/hash-sets/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID' }); return; }
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
 
     const existing = db.prepare('SELECT id, name FROM forensic_hash_sets WHERE id = ?').get(id) as any;
-    if (!existing) { res.status(404).json({ error: 'Hash set not found' }); return; }
+    if (!existing) { res.status(404).json({ error: 'Hash set not found', code: 'HASH_SET_NOT_FOUND' }); return; }
 
     // CASCADE will remove entries
     db.prepare('DELETE FROM forensic_hash_sets WHERE id = ?').run(id);
     res.json({ message: `Hash set "${existing.name}" deleted` });
   } catch (error: any) {
     console.error('Delete hash set error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete hash set', code: 'DELETE_HASH_SET_ERROR' });
   }
 });
 
@@ -701,7 +722,7 @@ router.post('/hash-sets/check', (req: Request, res: Response) => {
     const { hashes } = req.body; // string[] of hash values
 
     if (!Array.isArray(hashes) || hashes.length === 0) {
-      res.status(400).json({ error: 'Provide an array of hashes' });
+      res.status(400).json({ error: 'Provide an array of hashes', code: 'PROVIDE_AN_ARRAY_OF' });
       return;
     }
 
@@ -714,6 +735,8 @@ router.post('/hash-sets/check', (req: Request, res: Response) => {
       FROM forensic_hash_entries e
       JOIN forensic_hash_sets s ON s.id = e.hash_set_id
       WHERE LOWER(e.hash_value) IN (${placeholders})
+    
+      LIMIT 1000
     `).all(...lowerHashes) as any[];
 
     // Group by hash value
@@ -733,7 +756,7 @@ router.post('/hash-sets/check', (req: Request, res: Response) => {
     res.json({ data: results, total_matches: matches.length });
   } catch (error: any) {
     console.error('Hash check error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to hash check', code: 'HASH_CHECK_ERROR' });
   }
 });
 
@@ -746,7 +769,7 @@ router.post('/:caseId/evidence-intake', (req: Request, res: Response) => {
     const db = getDb();
     const user = (req as any).user;
     const fc = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.caseId) as any;
-    if (!fc) return res.status(404).json({ error: 'Forensic case not found' });
+    if (!fc) return res.status(404).json({ error: 'Forensic case not found', code: 'FORENSIC_CASE_NOT_FOUND' });
 
     const {
       item_description, item_type, item_make, item_model, item_serial,
@@ -756,7 +779,7 @@ router.post('/:caseId/evidence-intake', (req: Request, res: Response) => {
       hazardous, biohazard, notes,
     } = req.body;
 
-    if (!item_description) return res.status(400).json({ error: 'item_description is required' });
+    if (!item_description) return res.status(400).json({ error: 'item_description is required', code: 'ITEMDESCRIPTION_IS_REQUIRED' });
 
     const now = localNow();
     // Auto-generate exhibit number
@@ -792,7 +815,7 @@ router.post('/:caseId/evidence-intake', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Evidence intake error:', error);
     console.error('[Forensics] Error:', error?.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to [forensics]', code: 'FORENSICS_ERROR' });
   }
 });
 
@@ -822,7 +845,7 @@ router.get('/queue/priority', (_req: Request, res: Response) => {
     res.json({ data: queue });
   } catch (error: any) {
     console.error('Lab queue error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to lab queue', code: 'LAB_QUEUE_ERROR' });
   }
 });
 
@@ -830,10 +853,10 @@ router.put('/queue/reorder', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { case_id, new_priority } = req.body;
-    if (!case_id || !new_priority) return res.status(400).json({ error: 'case_id and new_priority required' });
+    if (!case_id || !new_priority) return res.status(400).json({ error: 'case_id and new_priority required', code: 'CASEID_AND_NEWPRIORITY_REQUIRED' });
 
     const valid = ['routine', 'expedited', 'urgent', 'rush'];
-    if (!valid.includes(new_priority)) return res.status(400).json({ error: 'Invalid priority' });
+    if (!valid.includes(new_priority)) return res.status(400).json({ error: 'Invalid priority', code: 'INVALID_PRIORITY' });
 
     db.prepare('UPDATE forensic_cases SET priority = ?, updated_at = ? WHERE id = ?')
       .run(new_priority, localNow(), case_id);
@@ -843,7 +866,7 @@ router.put('/queue/reorder', (req: Request, res: Response) => {
 
     res.json({ success: true });
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -857,10 +880,10 @@ router.post('/:caseId/exhibits/:exhibitId/custody-transfer', (req: Request, res:
     const user = (req as any).user;
     const exhibit = db.prepare('SELECT * FROM forensic_exhibits WHERE id = ? AND forensic_case_id = ?')
       .get(req.params.exhibitId, req.params.caseId) as any;
-    if (!exhibit) return res.status(404).json({ error: 'Exhibit not found' });
+    if (!exhibit) return res.status(404).json({ error: 'Exhibit not found', code: 'EXHIBIT_NOT_FOUND' });
 
     const { transferred_to_id, transferred_to_name, reason, signature_data, location } = req.body;
-    if (!transferred_to_name && !transferred_to_id) return res.status(400).json({ error: 'transferred_to is required' });
+    if (!transferred_to_name && !transferred_to_id) return res.status(400).json({ error: 'transferred_to is required', code: 'TRANSFERREDTO_IS_REQUIRED' });
 
     const now = localNow();
     const transferData = {
@@ -891,7 +914,7 @@ router.post('/:caseId/exhibits/:exhibitId/custody-transfer', (req: Request, res:
   } catch (error: any) {
     console.error('Custody transfer error:', error);
     console.error('[Forensics] Error:', error?.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to [forensics]', code: 'FORENSICS_ERROR' });
   }
 });
 
@@ -957,7 +980,7 @@ router.post('/:caseId/generate-report', (req: Request, res: Response) => {
       FROM forensic_cases fc LEFT JOIN users u ON fc.lead_examiner_id = u.id
       WHERE fc.id = ?
     `).get(req.params.caseId) as any;
-    if (!fc) return res.status(404).json({ error: 'Case not found' });
+    if (!fc) return res.status(404).json({ error: 'Case not found', code: 'CASE_NOT_FOUND' });
 
     const exhibits = db.prepare('SELECT * FROM forensic_exhibits WHERE forensic_case_id = ?').all(req.params.caseId);
     const analyses = db.prepare('SELECT * FROM forensic_analyses WHERE forensic_case_id = ?').all(req.params.caseId);
@@ -994,7 +1017,7 @@ router.post('/:caseId/generate-report', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Generate report error:', error);
     console.error('[Forensics] Error:', error?.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to [forensics]', code: 'FORENSICS_ERROR' });
   }
 });
 
@@ -1061,7 +1084,7 @@ router.get('/capacity/planning', (_req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Capacity planning error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to capacity planning', code: 'CAPACITY_PLANNING_ERROR' });
   }
 });
 
@@ -1075,11 +1098,13 @@ router.get('/:caseId/links', (req: Request, res: Response) => {
     const db = getDb();
     const links = db.prepare(`
       SELECT * FROM forensic_case_links WHERE case_id = ? ORDER BY created_at DESC
+    
+      LIMIT 1000
     `).all(req.params.caseId);
     res.json(links);
   } catch (error: any) {
     console.error('Forensic case links error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to forensic case links', code: 'FORENSIC_CASE_LINKS_ERROR' });
   }
 });
 
@@ -1089,7 +1114,7 @@ router.post('/:caseId/links', (req: Request, res: Response) => {
     const db = getDb();
     const { linked_type, linked_id, linked_label } = req.body;
     if (!linked_type || !linked_id) {
-      res.status(400).json({ error: 'linked_type and linked_id required' });
+      res.status(400).json({ error: 'linked_type and linked_id required', code: 'LINKEDTYPE_AND_LINKEDID_REQUIRED' });
       return;
     }
     const result = db.prepare(`
@@ -1099,7 +1124,7 @@ router.post('/:caseId/links', (req: Request, res: Response) => {
     res.status(201).json({ id: result.lastInsertRowid });
   } catch (error: any) {
     console.error('Forensic case add link error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to forensic case add link', code: 'FORENSIC_CASE_ADD_LINK' });
   }
 });
 
@@ -1109,6 +1134,8 @@ router.get('/:caseId/hashes', (req: Request, res: Response) => {
     const db = getDb();
     const hashes = db.prepare(`
       SELECT * FROM forensic_hash_results WHERE case_id = ? ORDER BY created_at DESC
+    
+      LIMIT 1000
     `).all(req.params.caseId);
 
     const stats = {
@@ -1120,7 +1147,7 @@ router.get('/:caseId/hashes', (req: Request, res: Response) => {
     res.json({ hashes, stats });
   } catch (error: any) {
     console.error('Forensic case hashes error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to forensic case hashes', code: 'FORENSIC_CASE_HASHES_ERROR' });
   }
 });
 

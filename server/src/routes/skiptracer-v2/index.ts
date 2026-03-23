@@ -98,7 +98,7 @@ router.get('/search', async (req: Request, res: Response) => {
     const { q, name, firstName, lastName, phone, email, address, type, categories } = req.query as Record<string, string | undefined>;
 
     if (!q && !name && !firstName && !lastName && !phone && !email && !address) {
-      res.status(400).json({ error: 'At least one search parameter is required (q, name, firstName, lastName, phone, email, or address)' });
+      res.status(400).json({ error: 'At least one search parameter is required (q, name, firstName, lastName, phone, email, or address)', code: 'AT_LEAST_ONE_SEARCH' });
       return;
     }
 
@@ -192,7 +192,7 @@ router.get('/search', async (req: Request, res: Response) => {
     res.json(result);
   } catch (err) {
     console.error('[SkipTracer-v2] Search error:', err);
-    res.status(500).json({ error: 'Search failed' });
+    res.status(500).json({ error: 'Search failed', code: 'SEARCH_FAILED' });
   }
 });
 
@@ -222,7 +222,7 @@ router.get('/sources', async (_req: Request, res: Response) => {
     res.json(sourceList);
   } catch (err) {
     console.error('[SkipTracer-v2] Sources list error:', err);
-    res.status(500).json({ error: 'Failed to list sources' });
+    res.status(500).json({ error: 'Failed to list sources', code: 'FAILED_TO_LIST_SOURCES' });
   }
 });
 
@@ -277,7 +277,7 @@ router.put('/sources/:name/config', requireRole('admin'), (req: Request, res: Re
     res.json({ success: true });
   } catch (err) {
     console.error('[SkipTracer-v2] Source config error:', err);
-    res.status(500).json({ error: 'Failed to update source configuration' });
+    res.status(500).json({ error: 'Failed to update source configuration', code: 'FAILED_TO_UPDATE_SOURCE' });
   }
 });
 
@@ -322,7 +322,7 @@ router.get('/dossiers', (req: Request, res: Response) => {
     res.json({ dossiers: rows, total, limit, offset });
   } catch (err) {
     console.error('[SkipTracer-v2] Dossiers list error:', err);
-    res.status(500).json({ error: 'Failed to list dossiers' });
+    res.status(500).json({ error: 'Failed to list dossiers', code: 'FAILED_TO_LIST_DOSSIERS' });
   }
 });
 
@@ -344,7 +344,7 @@ router.post('/dossiers', requireRole('admin', 'manager', 'supervisor', 'officer'
     } = req.body;
 
     if (!subjectName || !profileSnapshot) {
-      res.status(400).json({ error: 'subjectName and profileSnapshot are required' });
+      res.status(400).json({ error: 'subjectName and profileSnapshot are required', code: 'SUBJECTNAME_AND_PROFILESNAPSHOT_ARE' });
       return;
     }
 
@@ -379,7 +379,7 @@ router.post('/dossiers', requireRole('admin', 'manager', 'supervisor', 'officer'
     res.json(dossier || { success: true, id });
   } catch (err) {
     console.error('[SkipTracer-v2] Dossier create error:', err);
-    res.status(500).json({ error: 'Failed to create dossier' });
+    res.status(500).json({ error: 'Failed to create dossier', code: 'FAILED_TO_CREATE_DOSSIER' });
   }
 });
 
@@ -400,14 +400,14 @@ router.get('/dossiers/:id', (req: Request, res: Response) => {
     `).get(id);
 
     if (!dossier) {
-      res.status(404).json({ error: 'Dossier not found' });
+      res.status(404).json({ error: 'Dossier not found', code: 'DOSSIER_NOT_FOUND' });
       return;
     }
 
     res.json(dossier);
   } catch (err) {
     console.error('[SkipTracer-v2] Dossier get error:', err);
-    res.status(500).json({ error: 'Failed to get dossier' });
+    res.status(500).json({ error: 'Failed to get dossier', code: 'FAILED_TO_GET_DOSSIER' });
   }
 });
 
@@ -423,7 +423,7 @@ router.put('/dossiers/:id', requireRole('admin', 'manager', 'supervisor', 'offic
 
     const existing = db.prepare('SELECT id FROM dossiers WHERE id = ? AND is_archived = 0').get(id);
     if (!existing) {
-      res.status(404).json({ error: 'Dossier not found' });
+      res.status(404).json({ error: 'Dossier not found', code: 'DOSSIER_NOT_FOUND' });
       return;
     }
 
@@ -437,7 +437,7 @@ router.put('/dossiers/:id', requireRole('admin', 'manager', 'supervisor', 'offic
     if (linkedCallId !== undefined) { updates.push('linked_call_id = ?'); params.push(linkedCallId || null); }
 
     if (updates.length === 0) {
-      res.status(400).json({ error: 'No fields to update' });
+      res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
       return;
     }
 
@@ -451,7 +451,7 @@ router.put('/dossiers/:id', requireRole('admin', 'manager', 'supervisor', 'offic
     res.json(updated);
   } catch (err) {
     console.error('[SkipTracer-v2] Dossier update error:', err);
-    res.status(500).json({ error: 'Failed to update dossier' });
+    res.status(500).json({ error: 'Failed to update dossier', code: 'FAILED_TO_UPDATE_DOSSIER' });
   }
 });
 
@@ -466,7 +466,7 @@ router.delete('/dossiers/:id', requireRole('admin'), (req: Request, res: Respons
 
     const existing = db.prepare('SELECT id, subject_name FROM dossiers WHERE id = ?').get(id) as { id: number; subject_name: string } | undefined;
     if (!existing) {
-      res.status(404).json({ error: 'Dossier not found' });
+      res.status(404).json({ error: 'Dossier not found', code: 'DOSSIER_NOT_FOUND' });
       return;
     }
 
@@ -478,7 +478,7 @@ router.delete('/dossiers/:id', requireRole('admin'), (req: Request, res: Respons
     res.json({ success: true });
   } catch (err) {
     console.error('[SkipTracer-v2] Dossier delete error:', err);
-    res.status(500).json({ error: 'Failed to archive dossier' });
+    res.status(500).json({ error: 'Failed to archive dossier', code: 'FAILED_TO_ARCHIVE_DOSSIER' });
   }
 });
 
@@ -516,7 +516,7 @@ router.get('/history', requireRole('admin', 'manager', 'supervisor'), (req: Requ
     res.json({ searches: rows, total, limit, offset });
   } catch (err) {
     console.error('[SkipTracer-v2] History error:', err);
-    res.status(500).json({ error: 'Failed to get search history' });
+    res.status(500).json({ error: 'Failed to get search history', code: 'FAILED_TO_GET_SEARCH' });
   }
 });
 
@@ -597,7 +597,7 @@ router.get('/stats', (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error('[SkipTracer-v2] Stats error:', err);
-    res.status(500).json({ error: 'Failed to get statistics' });
+    res.status(500).json({ error: 'Failed to get statistics', code: 'FAILED_TO_GET_STATISTICS' });
   }
 });
 
@@ -618,7 +618,7 @@ router.get('/dossiers/:id/pdf', async (req: Request, res: Response) => {
     `).get(id) as any;
 
     if (!dossier) {
-      res.status(404).json({ error: 'Dossier not found' });
+      res.status(404).json({ error: 'Dossier not found', code: 'DOSSIER_NOT_FOUND' });
       return;
     }
 
@@ -626,7 +626,7 @@ router.get('/dossiers/:id/pdf', async (req: Request, res: Response) => {
     try {
       profile = JSON.parse(dossier.profile_snapshot);
     } catch {
-      res.status(500).json({ error: 'Invalid profile snapshot data' });
+      res.status(500).json({ error: 'Invalid profile snapshot data', code: 'INVALID_PROFILE_SNAPSHOT_DATA' });
       return;
     }
 
@@ -859,7 +859,7 @@ router.get('/dossiers/:id/pdf', async (req: Request, res: Response) => {
     res.send(pdfBuffer);
   } catch (err) {
     console.error('[SkipTracer-v2] PDF export error:', err);
-    res.status(500).json({ error: 'Failed to export dossier PDF' });
+    res.status(500).json({ error: 'Failed to export dossier PDF', code: 'FAILED_TO_EXPORT_DOSSIER' });
   }
 });
 

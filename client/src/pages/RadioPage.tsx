@@ -420,7 +420,7 @@ export default function RadioPage() {
               type="text"
               value={historySearch}
               onChange={(e) => setHistorySearch(e.target.value)}
-              placeholder="Search transcripts..."
+              placeholder="Search transcripts..." aria-label="Search transcripts..."
               className="flex-1 bg-transparent text-[9px] text-white font-mono focus:outline-none"
             />
             <select
@@ -536,6 +536,9 @@ export default function RadioPage() {
       </div>
     </>
   );
+
+  // Set document title
+  useEffect(() => { document.title = 'Radio Communications \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="h-full flex flex-col" style={{ background: '#141e2b' }}>
