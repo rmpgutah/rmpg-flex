@@ -96,6 +96,8 @@ export function useMapBreadcrumbs({ mapInstanceRef, mapLoaded }: UseMapBreadcrum
     }
 
     let retryTimeout: ReturnType<typeof setTimeout>;
+    let retryCount = 0;
+    const MAX_RETRIES = 5;
 
     const fetchTrails = async () => {
       breadcrumbLinesRef.current.forEach((l) => l.setMap(null));
@@ -217,7 +219,11 @@ export function useMapBreadcrumbs({ mapInstanceRef, mapLoaded }: UseMapBreadcrum
           });
         });
       } catch {
-        retryTimeout = setTimeout(fetchTrails, 5000);
+        if (retryCount < MAX_RETRIES) {
+          const backoffMs = Math.min(5000 * Math.pow(2, retryCount), 60000);
+          retryCount++;
+          retryTimeout = setTimeout(fetchTrails, backoffMs);
+        }
       }
     };
 

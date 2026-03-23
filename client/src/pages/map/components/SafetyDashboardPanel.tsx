@@ -117,6 +117,7 @@ function Section({
       <button
         onClick={() => setOpen(!open)}
         className="flex items-center gap-1 w-full text-left py-1"
+        aria-expanded={open}
       >
         {open ? (
           <ChevronDown size={10} className="text-rmpg-500" />

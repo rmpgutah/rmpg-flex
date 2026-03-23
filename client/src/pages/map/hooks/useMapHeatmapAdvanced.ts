@@ -231,14 +231,6 @@ export function useMapHeatmapAdvanced(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchData, options.enabled, options.mode, temporalHour]);
 
-  // ── Temporal hour change → re-fetch ─────────────────────
-
-  useEffect(() => {
-    if (!options.enabled || options.mode !== 'temporal') return;
-    fetchData(temporalHour);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [temporalHour, fetchData]);
-
   // ── Temporal auto-advance ───────────────────────────────
 
   useEffect(() => {

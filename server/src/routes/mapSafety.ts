@@ -156,7 +156,7 @@ router.get(
       const cutoff90 = new Date(Date.now() - 90 * 86_400_000).toISOString();
 
       const nearbyCalls = db.prepare(`
-        SELECT weapons_involved, domestic_violence, injuries_reported,
+        SELECT latitude, longitude, weapons_involved, domestic_violence, injuries_reported,
                alcohol_involved, drugs_involved, incident_type, created_at
         FROM calls_for_service
         WHERE latitude IS NOT NULL AND longitude IS NOT NULL
@@ -325,7 +325,7 @@ router.get(
       const bbWide = boundingBox(lat, lng, 500);
       const dangerousCalls = db.prepare(`
         SELECT latitude, longitude FROM calls_for_service
-        WHERE (weapons_involved = 1 OR domestic_violence = 1 OR injuries_reported = 1)
+        WHERE ((weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0' AND weapons_involved != 'None') OR domestic_violence = 1 OR injuries_reported = 1)
           AND latitude IS NOT NULL AND longitude IS NOT NULL
           AND latitude BETWEEN ? AND ?
           AND longitude BETWEEN ? AND ?
@@ -528,7 +528,7 @@ router.get(
       const dangerousAreas = db.prepare(`
         SELECT latitude, longitude, weapons_involved, domestic_violence, injuries_reported
         FROM calls_for_service
-        WHERE (weapons_involved = 1 OR domestic_violence = 1 OR injuries_reported = 1)
+        WHERE ((weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0' AND weapons_involved != 'None') OR domestic_violence = 1 OR injuries_reported = 1)
           AND latitude IS NOT NULL AND longitude IS NOT NULL
           AND created_at >= ?
       `).all(cutoff90) as any[];
@@ -705,7 +705,7 @@ router.get(
       const stats = db.prepare(`
         SELECT
           COUNT(*) as total,
-          SUM(CASE WHEN weapons_involved = 1 THEN 1 ELSE 0 END) as weapon_calls,
+          SUM(CASE WHEN weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0' AND weapons_involved != 'None' THEN 1 ELSE 0 END) as weapon_calls,
           SUM(CASE WHEN domestic_violence = 1 THEN 1 ELSE 0 END) as dv_calls,
           SUM(CASE WHEN injuries_reported = 1 THEN 1 ELSE 0 END) as injury_calls,
           SUM(CASE WHEN drugs_involved = 1 THEN 1 ELSE 0 END) as drug_calls
@@ -721,7 +721,7 @@ router.get(
       const cutoff90 = new Date(Date.now() - 90 * 86_400_000).toISOString();
       const dangerousAreas = db.prepare(`
         SELECT latitude, longitude FROM calls_for_service
-        WHERE weapons_involved = 1
+        WHERE weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0' AND weapons_involved != 'None'
           AND latitude IS NOT NULL AND longitude IS NOT NULL
           AND created_at >= ?
       `).all(cutoff90) as any[];
@@ -746,7 +746,7 @@ router.get(
       const daysAgo7 = new Date(Date.now() - 7 * 86_400_000).toISOString();
       const prevStats = db.prepare(`
         SELECT COUNT(*) as cnt FROM calls_for_service
-        WHERE (weapons_involved = 1 OR domestic_violence = 1 OR injuries_reported = 1)
+        WHERE ((weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0' AND weapons_involved != 'None') OR domestic_violence = 1 OR injuries_reported = 1)
           AND created_at >= ?
       `).get(daysAgo7) as any;
 

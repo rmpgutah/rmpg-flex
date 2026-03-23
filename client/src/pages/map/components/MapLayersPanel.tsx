@@ -401,7 +401,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
 
         {/* Traffic Layer */}
         <button
-          onClick={onToggleTraffic}
+          onClick={() => onToggleTraffic?.()}
           className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${
             showTraffic ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70 hover:bg-rmpg-800/50'
           }`}

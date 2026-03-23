@@ -181,7 +181,7 @@ export default function GeofenceManager({
                   {isActive ? 'Active' : 'Inactive'}
                 </button>
                 <button
-                  onClick={() => onDelete(fence.id)}
+                  onClick={() => { if (window.confirm('Delete this geofence?')) onDelete(fence.id); }}
                   className="toolbar-btn p-1 text-red-400 hover:text-red-300"
                   title="Delete zone"
                 >

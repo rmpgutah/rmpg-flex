@@ -6,6 +6,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../../../hooks/useApi';
+import { escapeHtml } from '../../../utils/sanitize';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -109,7 +110,7 @@ export function useMapPredictions(
             <table style="width:100%;font-size:11px;border-collapse:collapse">
               <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Score</td><td style="font-weight:bold;color:#fff">${hs.score}</td></tr>
               <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Incidents</td><td style="color:#e0e0e0">${hs.incident_count}</td></tr>
-              <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Top Types</td><td style="color:#e0e0e0">${hs.top_types || '—'}</td></tr>
+              <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Top Types</td><td style="color:#e0e0e0">${hs.top_types ? escapeHtml(hs.top_types) : '—'}</td></tr>
               <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Weapons</td><td style="color:#ef4444">${hs.weapons_count}</td></tr>
               <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">DV</td><td style="color:#f59e0b">${hs.dv_count}</td></tr>
             </table>

@@ -69,7 +69,7 @@ export default function MapMobileSheet({
         initialSnap="half"
         collapsedHeight={0}
         header={
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1" role="tablist">
             {([
               { id: 'layers' as const, icon: Layers, label: 'Layers', color: '#3b82f6' },
               { id: 'units' as const, icon: Shield, label: `Units (${filteredUnits.length})`, color: '#22c55e' },
@@ -78,6 +78,8 @@ export default function MapMobileSheet({
               <button
                 key={id}
                 onClick={() => setMobileSheetTab(id)}
+                role="tab"
+                aria-selected={mobileSheetTab === id}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors"
                 style={{
                   color: mobileSheetTab === id ? color : '#6a7a8a',

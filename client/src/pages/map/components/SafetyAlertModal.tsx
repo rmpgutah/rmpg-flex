@@ -4,7 +4,7 @@
 // selection grid, location fields, details, and radius options.
 // ============================================================
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   AlertTriangle,
   X,
@@ -181,9 +181,14 @@ export default function SafetyAlertModal({
   return (
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center"
+      role="dialog"
+      aria-modal="true"
       style={{ background: 'rgba(0,0,0,0.7)' }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onClose();
       }}
     >
       <div

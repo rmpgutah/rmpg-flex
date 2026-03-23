@@ -38,6 +38,8 @@ export default function MapSidebar({
         onClick={() => setSidebarOpen(!sidebarOpen)}
         className="toolbar-btn flex items-center justify-center h-7"
         style={{ borderRadius: 0 }}
+        aria-expanded={sidebarOpen}
+        aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
       >
         {sidebarOpen ? <ChevronUp className="w-3.5 h-3.5 text-rmpg-400 rotate-90" /> : <ChevronDown className="w-3.5 h-3.5 text-rmpg-400 -rotate-90" />}
       </button>
@@ -64,16 +66,20 @@ export default function MapSidebar({
             {callsByPriority['P3'] ? <span className="text-[8px] font-mono font-bold text-blue-400">P3:{callsByPriority['P3']}</span> : null}
           </div>
 
-          <div className="tab-bar">
+          <div className="tab-bar" role="tablist">
             <button
               onClick={() => setSidebarTab('units')}
               className={`tab-bar-item flex items-center justify-center gap-1.5 ${sidebarTab === 'units' ? 'active' : ''}`}
+              role="tab"
+              aria-selected={sidebarTab === 'units'}
             >
               <Shield className="w-3 h-3" /> Units ({filteredUnits.length})
             </button>
             <button
               onClick={() => setSidebarTab('calls')}
               className={`tab-bar-item flex items-center justify-center gap-1.5 ${sidebarTab === 'calls' ? 'active' : ''}`}
+              role="tab"
+              aria-selected={sidebarTab === 'calls'}
             >
               <AlertTriangle className="w-3 h-3" /> Calls ({filteredCalls.length})
             </button>
@@ -88,6 +94,7 @@ export default function MapSidebar({
                 placeholder={sidebarTab === 'units' ? 'SEARCH UNITS...' : 'SEARCH CALLS...'}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                aria-label={sidebarTab === 'units' ? 'Search units' : 'Search calls'}
               />
             </div>
           </div>

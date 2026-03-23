@@ -66,7 +66,7 @@ export default function PredictionsPanel({
 
           return (
             <div
-              key={idx}
+              key={`${hs.latitude}-${hs.longitude}`}
               className="rounded-sm p-2"
               style={{
                 background: '#0d1520',

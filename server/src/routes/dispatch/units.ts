@@ -254,10 +254,20 @@ router.put('/units/:id/status', validateParamIdMiddleware, requireRole('admin', 
 router.put('/units/:id/mileage', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const unitId = parseInt(req.params.id, 10);
+    if (isNaN(unitId)) { res.status(400).json({ error: 'Invalid unit ID' }); return; }
+
     const { mileage } = req.body;
-    if (mileage === undefined) { res.status(400).json({ error: 'mileage required' }); return; }
-    db.prepare('UPDATE dispatch_units SET mileage = ?, updated_at = ? WHERE id = ?')
-      .run(mileage, localNow(), req.params.id);
+    const mileageNum = Number(mileage);
+    if (mileage === undefined || !Number.isFinite(mileageNum) || mileageNum < 0) {
+      res.status(400).json({ error: 'Valid mileage number required' }); return;
+    }
+
+    const unit = db.prepare('SELECT id FROM units WHERE id = ?').get(unitId);
+    if (!unit) { res.status(404).json({ error: 'Unit not found' }); return; }
+
+    db.prepare('UPDATE units SET mileage = ?, updated_at = ? WHERE id = ?')
+      .run(mileageNum, localNow(), unitId);
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: 'Internal server error' });

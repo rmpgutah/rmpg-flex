@@ -4,7 +4,7 @@
 // to visualize patrol coverage and identify gaps.
 // ============================================================
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -38,7 +38,7 @@ export function useMapCoverageGaps(
   radiusMiles: number,
 ): UseMapCoverageGapsReturn {
   const circlesRef = useRef<google.maps.Circle[]>([]);
-  const coverageCountRef = useRef(0);
+  const [coverageCount, setCoverageCount] = useState(0);
 
   // ── Render / clear circles ────────────────────────────────
 
@@ -46,7 +46,7 @@ export function useMapCoverageGaps(
     // Clear existing circles
     circlesRef.current.forEach((c) => c.setMap(null));
     circlesRef.current = [];
-    coverageCountRef.current = 0;
+    setCoverageCount(0);
 
     if (!map || !window.google?.maps || !enabled) return;
 
@@ -77,7 +77,7 @@ export function useMapCoverageGaps(
       circlesRef.current.push(circle);
     });
 
-    coverageCountRef.current = onDutyWithCoords.length;
+    setCoverageCount(onDutyWithCoords.length);
 
     return () => {
       circlesRef.current.forEach((c) => c.setMap(null));
@@ -94,5 +94,5 @@ export function useMapCoverageGaps(
     };
   }, []);
 
-  return { coverageCount: coverageCountRef.current };
+  return { coverageCount };
 }

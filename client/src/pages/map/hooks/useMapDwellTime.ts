@@ -138,7 +138,7 @@ export function useMapDwellTime(
           if (opacity <= 0.2) { opacity = 0.2; direction = 1; }
           if (opacity >= 0.9) { opacity = 0.9; direction = -1; }
           circle.setOptions({ strokeOpacity: opacity });
-        }, 100);
+        }, 500);
         pulseIntervalsRef.current.push(pulseInterval);
       }
 

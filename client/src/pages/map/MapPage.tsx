@@ -121,6 +121,21 @@ import SafetyAlertModal from './components/SafetyAlertModal';
 // Unit colors for breadcrumb trails — cycle through distinct colors per unit
 const TRAIL_COLORS = ['#22d3ee', '#a78bfa', '#f472b6', '#34d399', '#fbbf24', '#f87171', '#60a5fa', '#c084fc'];
 
+// Static Tailwind class lookups — avoids dynamic class generation that Tailwind can't purge
+const INTEL_LAYER_CLASSES: Record<string, { active: string; }> = {
+  red: { active: 'bg-red-900/20 text-red-400' },
+  amber: { active: 'bg-amber-900/20 text-amber-400' },
+  orange: { active: 'bg-orange-900/20 text-orange-400' },
+  purple: { active: 'bg-purple-900/20 text-purple-400' },
+};
+
+const PRIORITY_PILL_CLASSES: Record<string, { active: string; }> = {
+  red: { active: 'bg-red-900/40 text-red-400 border border-red-700/40' },
+  amber: { active: 'bg-amber-900/40 text-amber-400 border border-amber-700/40' },
+  blue: { active: 'bg-blue-900/40 text-blue-400 border border-blue-700/40' },
+  gray: { active: 'bg-gray-900/40 text-gray-400 border border-gray-700/40' },
+};
+
 // Speed-to-color mapping for breadcrumb speed mode (m/s → mph thresholds)
 const speedToColor = (mps: number | null): string => {
   if (mps == null || mps < 0.5) return '#6b7280';    // Stationary — gray
@@ -1671,13 +1686,13 @@ export default function MapPage() {
     if (u.status === 'off_duty') return false;
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
-    return u.call_sign.toLowerCase().includes(q) || u.officer_name.toLowerCase().includes(q);
+    return u.call_sign.toLowerCase().includes(q) || (u.officer_name || '').toLowerCase().includes(q);
   });
 
   const filteredCalls = calls.filter(c => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
-    return c.call_number.toLowerCase().includes(q) || c.incident_type.toLowerCase().includes(q) || c.location_address.toLowerCase().includes(q);
+    return c.call_number.toLowerCase().includes(q) || (c.incident_type || '').toLowerCase().includes(q) || (c.location_address || '').toLowerCase().includes(q);
   });
 
   // Quick call status change from map sidebar
@@ -2308,14 +2323,14 @@ export default function MapPage() {
                             type="range"
                             min={0} max={23}
                             value={advHeatmapHourRange[0]}
-                            onChange={(e) => setAdvHeatmapHourRange([Number(e.target.value), advHeatmapHourRange[1]])}
+                            onChange={(e) => { const v = Number(e.target.value); setAdvHeatmapHourRange([Math.min(v, advHeatmapHourRange[1]), advHeatmapHourRange[1]]); }}
                             className="flex-1 h-1 accent-red-400"
                           />
                           <input
                             type="range"
                             min={0} max={23}
                             value={advHeatmapHourRange[1]}
-                            onChange={(e) => setAdvHeatmapHourRange([advHeatmapHourRange[0], Number(e.target.value)])}
+                            onChange={(e) => { const v = Number(e.target.value); setAdvHeatmapHourRange([advHeatmapHourRange[0], Math.max(v, advHeatmapHourRange[0])]); }}
                             className="flex-1 h-1 accent-red-400"
                           />
                         </div>
@@ -2670,10 +2685,10 @@ export default function MapPage() {
                         setExportingPdf(true);
                         try {
                           const data = await apiFetch<any>(`/reports/patrol-tracking?hours=${breadcrumbHours}&geocode=true`);
-                          if (!data?.trails?.length) { alert('No tracking data for this period.'); return; }
+                          if (!data?.trails?.length) { addToast('No tracking data for this period.', 'warning'); return; }
                           await generatePatrolTrackingPdf(data);
                         } catch (err: any) {
-                          alert(err?.message || 'Failed to export PDF');
+                          addToast(err?.message || 'Failed to export PDF', 'error');
                         } finally { setExportingPdf(false); }
                       }}
                       disabled={exportingPdf}
@@ -2823,7 +2838,7 @@ export default function MapPage() {
                   key={key}
                   onClick={() => toggleIntelLayer(key)}
                   className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                    intelLayers[key] ? `bg-${color}-900/20 text-${color}-400` : 'text-rmpg-400 hover:bg-surface-raised'
+                    intelLayers[key] ? (INTEL_LAYER_CLASSES[color]?.active || 'bg-slate-900/20 text-slate-400') : 'text-rmpg-400 hover:bg-surface-raised'
                   }`}
                 >
                   <Shield className="w-3 h-3" />
@@ -2911,7 +2926,7 @@ export default function MapPage() {
                           )}
                           className={`px-1.5 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
                             callHistoryPriorities.includes(p)
-                              ? `bg-${c}-900/40 text-${c}-400 border border-${c}-700/40`
+                              ? (PRIORITY_PILL_CLASSES[c]?.active || 'bg-gray-900/40 text-gray-400 border border-gray-700/40')
                               : 'text-rmpg-600 hover:text-rmpg-400'
                           }`}
                         >
@@ -3703,8 +3718,8 @@ export default function MapPage() {
                             </span>
                             <div className="flex items-center gap-1">
                               <button
-                                onClick={() => {
-                                  try { shiftPlanning.savePlanToServer(shiftPlanning.activePlanId!); } catch { addToast('Failed to save shift plan', 'error'); }
+                                onClick={async () => {
+                                  try { await shiftPlanning.savePlanToServer(shiftPlanning.activePlanId!); } catch { addToast('Failed to save shift plan', 'error'); }
                                 }}
                                 className="text-rmpg-500 hover:text-emerald-400 transition-colors" title="Save to server"
                               >
@@ -4038,8 +4053,8 @@ export default function MapPage() {
               geofences={geofences.geofences}
               loading={geofences.loading}
               onDraw={() => geofences.setDrawingMode(!geofences.drawingMode)}
-              onDelete={(id) => { /* wired to API delete when endpoint is available */ }}
-              onToggle={(id) => { /* wired to API toggle when endpoint is available */ }}
+              onDelete={(id) => { addToast('Geofence delete coming soon', 'info'); }}
+              onToggle={(id) => { addToast('Geofence toggle coming soon', 'info'); }}
               drawingMode={geofences.drawingMode}
               onClose={() => setShowGeofences(false)}
             />
@@ -4061,10 +4076,10 @@ export default function MapPage() {
                 } : null,
                 lowVisibility: environment.lowVisibility,
                 weatherHazards: [
-                  environment.weatherHazards.freezing && 'Freezing',
-                  environment.weatherHazards.highWind && 'High Wind',
-                  environment.weatherHazards.rain && 'Rain',
-                  environment.weatherHazards.snow && 'Snow',
+                  environment.weatherHazards?.freezing && 'Freezing',
+                  environment.weatherHazards?.highWind && 'High Wind',
+                  environment.weatherHazards?.rain && 'Rain',
+                  environment.weatherHazards?.snow && 'Snow',
                 ].filter(Boolean) as string[],
                 icyRoad: environment.icyRoad,
                 windCondition: environment.windCondition ? {
@@ -4447,9 +4462,12 @@ export default function MapPage() {
                     const pColor = PRIORITY_COLORS[call.priority] || '#5a6e80';
                     const { category } = getIncidentCategory(call.incident_type);
                     return (
-                      <button
+                      <div
+                        role="button"
+                        tabIndex={0}
                         key={call.id}
                         onClick={() => hasCoords && panTo(call.latitude!, call.longitude!)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); hasCoords && panTo(call.latitude!, call.longitude!); } }}
                         className={`w-full text-left px-3 py-2.5 hover:bg-rmpg-800/50 transition-colors ${
                           hasCoords ? 'cursor-pointer' : 'cursor-default opacity-60'
                         }`}
@@ -4505,7 +4523,7 @@ export default function MapPage() {
                             </button>
                           )}
                         </div>
-                      </button>
+                      </div>
                     );
                   })}
                   {filteredCalls.length === 0 && (

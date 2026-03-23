@@ -370,12 +370,6 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
     };
   }, [isPlaying, playbackSpeed, mapLoaded, map, trail]);
 
-  // Cleanup playback marker when playback stops
-  useEffect(() => {
-    if (!isPlaying && playbackMarkerRef.current) {
-      // Keep marker visible at final position when paused
-    }
-  }, [isPlaying]);
 
   if (!isOpen) {
     return (

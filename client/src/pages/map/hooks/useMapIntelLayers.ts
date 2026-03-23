@@ -234,6 +234,7 @@ export function useMapIntelLayers(
   useEffect(() => {
     if (!map || !window.google?.maps) return;
 
+    let cancelled = false;
     const layers: IntelLayer[] = ['warrants', 'trespass', 'offenders', 'bolos'];
 
     layers.forEach((layer) => {
@@ -254,6 +255,7 @@ export function useMapIntelLayers(
 
       apiFetch<IntelRecord[] | { data?: IntelRecord[]; results?: IntelRecord[] }>(LAYER_ENDPOINTS[layer])
         .then((res) => {
+          if (cancelled) return;
           // Handle both array and paginated responses
           let records: IntelRecord[];
           if (Array.isArray(res)) {
@@ -271,9 +273,12 @@ export function useMapIntelLayers(
           setLoading((prev) => ({ ...prev, [layer]: false }));
         })
         .catch(() => {
+          if (cancelled) return;
           setLoading((prev) => ({ ...prev, [layer]: false }));
         });
     });
+
+    return () => { cancelled = true; };
   }, [map, enabledLayers, clearLayer, renderLayer]);
 
   // ── Cleanup on unmount ──────────────────────────────────

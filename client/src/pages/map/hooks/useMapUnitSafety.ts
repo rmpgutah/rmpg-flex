@@ -290,19 +290,25 @@ export function useMapUnitSafety(
     setLoading(true);
 
     try {
-      // Fetch unit exposure for each active unit
+      // Fetch unit exposure for each active unit (max 5 concurrent)
       const activeUnits = (units || []).filter(
         (u: any) => u.latitude != null && u.longitude != null,
       );
 
-      const exposureEntries = await Promise.allSettled(
-        activeUnits.map(async (u: any) => {
-          const data = await apiFetch<UnitExposureData>(
-            `/map/safety/unit-exposure/${encodeURIComponent(u.call_sign)}`,
-          );
-          return data;
-        }),
-      );
+      const CONCURRENCY = 5;
+      const exposureEntries: PromiseSettledResult<UnitExposureData | null>[] = [];
+      for (let i = 0; i < activeUnits.length; i += CONCURRENCY) {
+        const batch = activeUnits.slice(i, i + CONCURRENCY);
+        const batchResults = await Promise.allSettled(
+          batch.map(async (u: any) => {
+            const data = await apiFetch<UnitExposureData>(
+              `/map/safety/unit-exposure/${encodeURIComponent(u.call_sign)}`,
+            );
+            return data;
+          }),
+        );
+        exposureEntries.push(...batchResults);
+      }
 
       const newExposure = new Map<string, UnitExposureData>();
       exposureEntries.forEach((result) => {
