@@ -27,6 +27,10 @@ export interface DataTableProps<T> {
   rowKey?: (row: T) => string | number;
   className?: string;
   selectedKey?: string | number | null;
+  /** Show row numbers as the first column */
+  showRowNumbers?: boolean;
+  /** Accessible label for the table */
+  ariaLabel?: string;
 }
 
 // ── Skeleton loader rows ──────────────────────────────────────
@@ -81,6 +85,8 @@ export default function DataTable<T>({
   rowKey,
   className = '',
   selectedKey,
+  showRowNumbers = false,
+  ariaLabel,
 }: DataTableProps<T>) {
   const getKey = (row: T, index: number): string | number => {
     if (rowKey) return rowKey(row);
@@ -93,12 +99,15 @@ export default function DataTable<T>({
 
   return (
     <div className={`overflow-auto border border-rmpg-700/50 bg-surface-base ${className}`}>
-      <table className="w-full text-xs">
+      <table className="w-full text-xs" aria-label={ariaLabel}>
         <thead>
           <tr
             className="border-b border-rmpg-600"
             style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)' }}
           >
+            {showRowNumbers && (
+              <th className="px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-rmpg-400 text-center w-8" scope="col">#</th>
+            )}
             {columns.map((col) => {
               const isSortable = col.sortable && onSort;
               const isActive = sortKey === col.key;
@@ -129,7 +138,7 @@ export default function DataTable<T>({
             <SkeletonRows columns={columns} />
           ) : data.length === 0 ? (
             <tr>
-              <td colSpan={columns.length}>
+              <td colSpan={columns.length + (showRowNumbers ? 1 : 0)}>
                 <EmptyState
                   icon={emptyIcon || Inbox}
                   title={emptyMessage}
@@ -156,7 +165,11 @@ export default function DataTable<T>({
                       ? 'cursor-pointer hover:bg-brand-900/20'
                       : ''
                   }`}
+                  aria-selected={isSelected || undefined}
                 >
+                  {showRowNumbers && (
+                    <td className="px-2 py-2 text-rmpg-500 text-center tabular-nums">{idx + 1}</td>
+                  )}
                   {columns.map((col) => (
                     <td
                       key={col.key}

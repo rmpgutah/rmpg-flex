@@ -22,11 +22,13 @@ router.get('/employees', (_req: Request, res: Response) => {
       FROM users
       WHERE status = 'active'
       ORDER BY full_name
+    
+      LIMIT 1000
     `).all();
     res.json(users);
   } catch (error: any) {
     console.error('HR employees list error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to hr employees list', code: 'HR_EMPLOYEES_LIST_ERROR' });
   }
 });
 
@@ -42,7 +44,7 @@ router.get('/review-cycles', (_req: Request, res: Response) => {
       res.json([]);
     }
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -116,7 +118,7 @@ router.get('/dashboard', requireRole('admin', 'manager', 'supervisor'), (_req: R
     });
   } catch (error: any) {
     console.error('[HR] Dashboard error:', error?.message);
-    res.status(500).json({ error: 'Failed to load dashboard' });
+    res.status(500).json({ error: 'Failed to load dashboard', code: 'FAILED_TO_LOAD_DASHBOARD' });
   }
 });
 
@@ -144,20 +146,20 @@ router.get('/leave', (req: Request, res: Response) => {
 
     if (status) {
       const validStatuses = ['pending', 'approved', 'denied', 'cancelled'];
-      if (!validStatuses.includes(status as string)) { res.status(400).json({ error: 'Invalid status filter' }); return; }
+      if (!validStatuses.includes(status as string)) { res.status(400).json({ error: 'Invalid status filter', code: 'INVALID_STATUS_FILTER' }); return; }
       sql += ' AND lr.status = ?'; params.push(status);
     }
     if (type) {
       const validTypes = ['vacation', 'sick', 'personal', 'bereavement', 'military', 'jury_duty', 'unpaid', 'other'];
-      if (!validTypes.includes(type as string)) { res.status(400).json({ error: 'Invalid type filter' }); return; }
+      if (!validTypes.includes(type as string)) { res.status(400).json({ error: 'Invalid type filter', code: 'INVALID_TYPE_FILTER' }); return; }
       sql += ' AND lr.type = ?'; params.push(type);
     }
     if (start_date) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(start_date))) { res.status(400).json({ error: 'start_date must be YYYY-MM-DD' }); return; }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(start_date))) { res.status(400).json({ error: 'start_date must be YYYY-MM-DD', code: 'STARTDATE_MUST_BE_YYYYMMDD' }); return; }
       sql += ' AND lr.start_date >= ?'; params.push(start_date);
     }
     if (end_date) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(end_date))) { res.status(400).json({ error: 'end_date must be YYYY-MM-DD' }); return; }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(end_date))) { res.status(400).json({ error: 'end_date must be YYYY-MM-DD', code: 'ENDDATE_MUST_BE_YYYYMMDD' }); return; }
       sql += ' AND lr.end_date <= ?'; params.push(end_date);
     }
 
@@ -166,7 +168,7 @@ router.get('/leave', (req: Request, res: Response) => {
     res.json(rows);
   } catch (error: any) {
     console.error('[HR] Leave list error:', error?.message);
-    res.status(500).json({ error: 'Failed to load leave requests' });
+    res.status(500).json({ error: 'Failed to load leave requests', code: 'FAILED_TO_LOAD_LEAVE' });
   }
 });
 
@@ -179,11 +181,11 @@ router.post('/leave', (req: Request, res: Response) => {
     // ── Validate leave request ──
     const LEAVE_TYPES = ['vacation', 'sick', 'personal', 'bereavement', 'military', 'jury_duty', 'unpaid', 'other'] as const;
     const validType = validateEnum(type, LEAVE_TYPES, 'type');
-    if (!validType) return res.status(400).json({ error: 'type is required' });
+    if (!validType) return res.status(400).json({ error: 'type is required', code: 'TYPE_IS_REQUIRED' });
     const validStart = validateDateStr(start_date, 'start_date');
-    if (!validStart) return res.status(400).json({ error: 'start_date is required (YYYY-MM-DD)' });
+    if (!validStart) return res.status(400).json({ error: 'start_date is required (YYYY-MM-DD)', code: 'STARTDATE_IS_REQUIRED_YYYYMMDD' });
     const validEnd = validateDateStr(end_date, 'end_date');
-    if (!validEnd) return res.status(400).json({ error: 'end_date is required (YYYY-MM-DD)' });
+    if (!validEnd) return res.status(400).json({ error: 'end_date is required (YYYY-MM-DD)', code: 'ENDDATE_IS_REQUIRED_YYYYMMDD' });
     const validHours = requireFloat(hours_requested, 'hours_requested', 0, 2000) || 0;
     const validReason = validateStr(reason, 'reason', 2000);
 
@@ -202,7 +204,7 @@ router.post('/leave', (req: Request, res: Response) => {
       res.status(400).json({ error: error.message }); return;
     }
     console.error('[HR] Leave create error:', error?.message);
-    res.status(500).json({ error: 'Failed to create leave request' });
+    res.status(500).json({ error: 'Failed to create leave request', code: 'FAILED_TO_CREATE_LEAVE' });
   }
 });
 
@@ -213,9 +215,9 @@ router.put('/leave/:id', validateParamIdMiddleware, (req: Request, res: Response
     const id = Number(req.params.id);
 
     const existing = db.prepare('SELECT * FROM leave_requests WHERE id = ?').get(id) as any;
-    if (!existing) return res.status(404).json({ error: 'Leave request not found' });
-    if (existing.officer_id !== user.id) return res.status(403).json({ error: 'Can only update own requests' });
-    if (existing.status !== 'pending') return res.status(400).json({ error: 'Can only update pending requests' });
+    if (!existing) return res.status(404).json({ error: 'Leave request not found', code: 'LEAVE_REQUEST_NOT_FOUND' });
+    if (existing.officer_id !== user.id) return res.status(403).json({ error: 'Can only update own requests', code: 'CAN_ONLY_UPDATE_OWN' });
+    if (existing.status !== 'pending') return res.status(400).json({ error: 'Can only update pending requests', code: 'CAN_ONLY_UPDATE_PENDING' });
 
     const { type, start_date, end_date, hours_requested, reason } = req.body;
     const now = localNow();
@@ -231,7 +233,7 @@ router.put('/leave/:id', validateParamIdMiddleware, (req: Request, res: Response
     res.json({ success: true });
   } catch (error: any) {
     console.error('[HR] Leave update error:', error?.message);
-    res.status(500).json({ error: 'Failed to update leave request' });
+    res.status(500).json({ error: 'Failed to update leave request', code: 'FAILED_TO_UPDATE_LEAVE' });
   }
 });
 
@@ -243,8 +245,8 @@ router.post('/leave/:id/approve', validateParamIdMiddleware, requireRole('admin'
     const { review_notes } = req.body;
 
     const existing = db.prepare('SELECT * FROM leave_requests WHERE id = ?').get(id) as any;
-    if (!existing) return res.status(404).json({ error: 'Leave request not found' });
-    if (existing.status !== 'pending') return res.status(400).json({ error: 'Can only approve pending requests' });
+    if (!existing) return res.status(404).json({ error: 'Leave request not found', code: 'LEAVE_REQUEST_NOT_FOUND' });
+    if (existing.status !== 'pending') return res.status(400).json({ error: 'Can only approve pending requests', code: 'CAN_ONLY_APPROVE_PENDING' });
 
     const now = localNow();
 
@@ -275,7 +277,7 @@ router.post('/leave/:id/approve', validateParamIdMiddleware, requireRole('admin'
     res.json({ success: true });
   } catch (error: any) {
     console.error('[HR] Leave approve error:', error?.message);
-    res.status(500).json({ error: 'Failed to approve leave request' });
+    res.status(500).json({ error: 'Failed to approve leave request', code: 'FAILED_TO_APPROVE_LEAVE' });
   }
 });
 
@@ -287,8 +289,8 @@ router.post('/leave/:id/deny', validateParamIdMiddleware, requireRole('admin', '
     const { review_notes } = req.body;
 
     const existing = db.prepare('SELECT * FROM leave_requests WHERE id = ?').get(id) as any;
-    if (!existing) return res.status(404).json({ error: 'Leave request not found' });
-    if (existing.status !== 'pending') return res.status(400).json({ error: 'Can only deny pending requests' });
+    if (!existing) return res.status(404).json({ error: 'Leave request not found', code: 'LEAVE_REQUEST_NOT_FOUND' });
+    if (existing.status !== 'pending') return res.status(400).json({ error: 'Can only deny pending requests', code: 'CAN_ONLY_DENY_PENDING' });
 
     const now = localNow();
     db.prepare(
@@ -300,7 +302,7 @@ router.post('/leave/:id/deny', validateParamIdMiddleware, requireRole('admin', '
     res.json({ success: true });
   } catch (error: any) {
     console.error('[HR] Leave deny error:', error?.message);
-    res.status(500).json({ error: 'Failed to deny leave request' });
+    res.status(500).json({ error: 'Failed to deny leave request', code: 'FAILED_TO_DENY_LEAVE' });
   }
 });
 
@@ -310,9 +312,9 @@ router.post('/leave/bulk-approve', requireRole('admin', 'manager', 'supervisor')
     const db = getDb();
     const user = (req as any).user;
     const { ids, review_notes } = req.body;
-    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids array is required' });
-    if (ids.length > 100) return res.status(400).json({ error: 'Maximum 100 IDs per bulk action' });
-    for (const id of ids) { if (isNaN(parseInt(String(id), 10)) || parseInt(String(id), 10) < 1) return res.status(400).json({ error: 'All IDs must be positive integers' }); }
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids array is required', code: 'IDS_ARRAY_IS_REQUIRED' });
+    if (ids.length > 100) return res.status(400).json({ error: 'Maximum 100 IDs per bulk action', code: 'MAXIMUM_100_IDS_PER' });
+    for (const id of ids) { if (isNaN(parseInt(String(id), 10)) || parseInt(String(id), 10) < 1) return res.status(400).json({ error: 'All IDs must be positive integers', code: 'ALL_IDS_MUST_BE' }); }
 
     const now = localNow();
     let approved = 0;
@@ -342,7 +344,7 @@ router.post('/leave/bulk-approve', requireRole('admin', 'manager', 'supervisor')
     res.json({ success: true, approved, total: ids.length });
   } catch (error: any) {
     console.error('[HR] Bulk approve error:', error?.message);
-    res.status(500).json({ error: 'Failed to bulk approve' });
+    res.status(500).json({ error: 'Failed to bulk approve', code: 'FAILED_TO_BULK_APPROVE' });
   }
 });
 
@@ -353,9 +355,9 @@ router.delete('/leave/:id', validateParamIdMiddleware, (req: Request, res: Respo
     const id = Number(req.params.id);
 
     const existing = db.prepare('SELECT * FROM leave_requests WHERE id = ?').get(id) as any;
-    if (!existing) return res.status(404).json({ error: 'Leave request not found' });
-    if (existing.officer_id !== user.id) return res.status(403).json({ error: 'Can only cancel own requests' });
-    if (existing.status !== 'pending') return res.status(400).json({ error: 'Can only cancel pending requests' });
+    if (!existing) return res.status(404).json({ error: 'Leave request not found', code: 'LEAVE_REQUEST_NOT_FOUND' });
+    if (existing.officer_id !== user.id) return res.status(403).json({ error: 'Can only cancel own requests', code: 'CAN_ONLY_CANCEL_OWN' });
+    if (existing.status !== 'pending') return res.status(400).json({ error: 'Can only cancel pending requests', code: 'CAN_ONLY_CANCEL_PENDING' });
 
     const now = localNow();
     db.prepare(`UPDATE leave_requests SET status = 'cancelled', updated_at = ? WHERE id = ?`).run(now, id);
@@ -364,7 +366,7 @@ router.delete('/leave/:id', validateParamIdMiddleware, (req: Request, res: Respo
     res.json({ success: true });
   } catch (error: any) {
     console.error('[HR] Leave cancel error:', error?.message);
-    res.status(500).json({ error: 'Failed to cancel leave request' });
+    res.status(500).json({ error: 'Failed to cancel leave request', code: 'FAILED_TO_CANCEL_LEAVE' });
   }
 });
 
@@ -409,7 +411,9 @@ router.get('/leave/balances', (req: Request, res: Response) => {
     }
 
     // All active users — auto-create balances for anyone missing
-    const activeUsers = db.prepare(`SELECT id FROM users WHERE status = 'active'`).all() as any[];
+    const activeUsers = db.prepare(`SELECT id FROM users WHERE status = 'active'
+      LIMIT 1000
+    `).all() as any[];
     const insertBal = db.prepare(
       `INSERT OR IGNORE INTO leave_balances (officer_id, year, vacation_total, vacation_used, sick_total, sick_used, personal_total, personal_used, created_at, updated_at)
        VALUES (?, ?, 80, 0, 40, 0, 24, 0, ?, ?)`
@@ -426,7 +430,7 @@ router.get('/leave/balances', (req: Request, res: Response) => {
     res.json(rows);
   } catch (error: any) {
     console.error('[HR] Leave balances error:', error?.message);
-    res.status(500).json({ error: 'Failed to load leave balances' });
+    res.status(500).json({ error: 'Failed to load leave balances', code: 'FAILED_TO_LOAD_LEAVE' });
   }
 });
 
@@ -436,7 +440,7 @@ router.put('/leave/balances/:id', validateParamIdMiddleware, requireRole('admin'
     const id = Number(req.params.id);
 
     const existing = db.prepare('SELECT * FROM leave_balances WHERE id = ?').get(id) as any;
-    if (!existing) return res.status(404).json({ error: 'Balance not found' });
+    if (!existing) return res.status(404).json({ error: 'Balance not found', code: 'BALANCE_NOT_FOUND' });
 
     const { vacation_total, vacation_used, sick_total, sick_used, personal_total, personal_used } = req.body;
     const now = localNow();
@@ -454,7 +458,7 @@ router.put('/leave/balances/:id', validateParamIdMiddleware, requireRole('admin'
     res.json({ success: true });
   } catch (error: any) {
     console.error('[HR] Balance update error:', error?.message);
-    res.status(500).json({ error: 'Failed to update balance' });
+    res.status(500).json({ error: 'Failed to update balance', code: 'FAILED_TO_UPDATE_BALANCE' });
   }
 });
 
@@ -506,7 +510,7 @@ router.get('/disciplinary', (req: Request, res: Response) => {
     res.json(db.prepare(sql).all(...params));
   } catch (error: any) {
     console.error('[HR] Disciplinary list error:', error?.message);
-    res.status(500).json({ error: 'Failed to load disciplinary records' });
+    res.status(500).json({ error: 'Failed to load disciplinary records', code: 'FAILED_TO_LOAD_DISCIPLINARY' });
   }
 });
 
@@ -518,7 +522,7 @@ router.get('/disciplinary/:officerId/timeline', (req: Request, res: Response) =>
 
     // Officers can only see own timeline
     if (!isManagerOrAbove(user.role) && user.id !== officerId) {
-      return res.status(403).json({ error: 'Access denied' });
+      return res.status(403).json({ error: 'Access denied', code: 'ACCESS_DENIED' });
     }
 
     if (isManagerOrAbove(user.role)) {
@@ -545,7 +549,7 @@ router.get('/disciplinary/:officerId/timeline', (req: Request, res: Response) =>
     res.json(rows);
   } catch (error: any) {
     console.error('[HR] Disciplinary timeline error:', error?.message);
-    res.status(500).json({ error: 'Failed to load timeline' });
+    res.status(500).json({ error: 'Failed to load timeline', code: 'FAILED_TO_LOAD_TIMELINE' });
   }
 });
 
@@ -562,11 +566,11 @@ router.post('/disciplinary', requireRole('admin', 'manager'), (req: Request, res
     const DISC_STATUSES = ['open', 'pending_review', 'closed', 'appealed'] as const;
 
     const validOfficerId = requireInt(officer_id, 'officer_id');
-    if (!validOfficerId) return res.status(400).json({ error: 'officer_id is required' });
+    if (!validOfficerId) return res.status(400).json({ error: 'officer_id is required', code: 'OFFICERID_IS_REQUIRED' });
     const validIncDate = validateDateStr(incident_date, 'incident_date');
-    if (!validIncDate) return res.status(400).json({ error: 'incident_date is required (YYYY-MM-DD)' });
+    if (!validIncDate) return res.status(400).json({ error: 'incident_date is required (YYYY-MM-DD)', code: 'INCIDENTDATE_IS_REQUIRED_YYYYMMDD' });
     const validDesc = validateStr(description, 'description', 5000);
-    if (!validDesc) return res.status(400).json({ error: 'description is required' });
+    if (!validDesc) return res.status(400).json({ error: 'description is required', code: 'DESCRIPTION_IS_REQUIRED' });
     const validDiscType = validateEnum(type, DISC_TYPES, 'type') || 'verbal_warning';
     const validSeverity = validateEnum(severity, DISC_SEVERITIES, 'severity') || 'minor';
     const validDiscStatus = validateEnum(status, DISC_STATUSES, 'status') || 'open';
@@ -593,7 +597,7 @@ router.post('/disciplinary', requireRole('admin', 'manager'), (req: Request, res
       res.status(400).json({ error: error.message }); return;
     }
     console.error('[HR] Disciplinary create error:', error?.message);
-    res.status(500).json({ error: 'Failed to create disciplinary record' });
+    res.status(500).json({ error: 'Failed to create disciplinary record', code: 'FAILED_TO_CREATE_DISCIPLINARY' });
   }
 });
 
@@ -603,7 +607,7 @@ router.put('/disciplinary/:id', validateParamIdMiddleware, requireRole('admin', 
     const id = Number(req.params.id);
 
     const existing = db.prepare('SELECT * FROM disciplinary_records WHERE id = ?').get(id) as any;
-    if (!existing) return res.status(404).json({ error: 'Record not found' });
+    if (!existing) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
 
     const { type, severity, incident_date, description, action_taken,
             follow_up_date, follow_up_notes, status, witness, attachments } = req.body;
@@ -626,7 +630,7 @@ router.put('/disciplinary/:id', validateParamIdMiddleware, requireRole('admin', 
     res.json({ success: true });
   } catch (error: any) {
     console.error('[HR] Disciplinary update error:', error?.message);
-    res.status(500).json({ error: 'Failed to update disciplinary record' });
+    res.status(500).json({ error: 'Failed to update disciplinary record', code: 'FAILED_TO_UPDATE_DISCIPLINARY' });
   }
 });
 
@@ -636,7 +640,7 @@ router.delete('/disciplinary/:id', validateParamIdMiddleware, requireRole('admin
     const id = Number(req.params.id);
 
     const existing = db.prepare('SELECT * FROM disciplinary_records WHERE id = ?').get(id) as any;
-    if (!existing) return res.status(404).json({ error: 'Record not found' });
+    if (!existing) return res.status(404).json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' });
 
     db.prepare('DELETE FROM disciplinary_records WHERE id = ?').run(id);
 
@@ -644,7 +648,7 @@ router.delete('/disciplinary/:id', validateParamIdMiddleware, requireRole('admin
     res.json({ success: true });
   } catch (error: any) {
     console.error('[HR] Disciplinary delete error:', error?.message);
-    res.status(500).json({ error: 'Failed to delete disciplinary record' });
+    res.status(500).json({ error: 'Failed to delete disciplinary record', code: 'FAILED_TO_DELETE_DISCIPLINARY' });
   }
 });
 
@@ -678,7 +682,7 @@ router.get('/reviews', (req: Request, res: Response) => {
     res.json(db.prepare(sql).all(...params));
   } catch (error: any) {
     console.error('[HR] Reviews list error:', error?.message);
-    res.status(500).json({ error: 'Failed to load reviews' });
+    res.status(500).json({ error: 'Failed to load reviews', code: 'FAILED_TO_LOAD_REVIEWS' });
   }
 });
 
@@ -693,11 +697,11 @@ router.post('/reviews', requireRole('admin', 'manager', 'supervisor'), (req: Req
     const REVIEW_STATUSES = ['draft', 'submitted', 'completed', 'acknowledged'] as const;
 
     const validOid = requireInt(officer_id, 'officer_id');
-    if (!validOid) return res.status(400).json({ error: 'officer_id is required' });
+    if (!validOid) return res.status(400).json({ error: 'officer_id is required', code: 'OFFICERID_IS_REQUIRED' });
     const validStart = validateDateStr(review_period_start, 'review_period_start');
-    if (!validStart) return res.status(400).json({ error: 'review_period_start is required (YYYY-MM-DD)' });
+    if (!validStart) return res.status(400).json({ error: 'review_period_start is required (YYYY-MM-DD)', code: 'REVIEWPERIODSTART_IS_REQUIRED_YYYYMMDD' });
     const validEnd = validateDateStr(review_period_end, 'review_period_end');
-    if (!validEnd) return res.status(400).json({ error: 'review_period_end is required (YYYY-MM-DD)' });
+    if (!validEnd) return res.status(400).json({ error: 'review_period_end is required (YYYY-MM-DD)', code: 'REVIEWPERIODEND_IS_REQUIRED_YYYYMMDD' });
     if (reviewer_id) requireInt(reviewer_id, 'reviewer_id');
     if (review_date) validateDateStr(review_date, 'review_date');
     const validRevType = validateEnum(type, REVIEW_TYPES, 'type') || 'annual';
@@ -726,7 +730,7 @@ router.post('/reviews', requireRole('admin', 'manager', 'supervisor'), (req: Req
       res.status(400).json({ error: error.message }); return;
     }
     console.error('[HR] Review create error:', error?.message);
-    res.status(500).json({ error: 'Failed to create review' });
+    res.status(500).json({ error: 'Failed to create review', code: 'FAILED_TO_CREATE_REVIEW' });
   }
 });
 
@@ -737,12 +741,12 @@ router.put('/reviews/:id', validateParamIdMiddleware, (req: Request, res: Respon
     const id = Number(req.params.id);
 
     const existing = db.prepare('SELECT * FROM performance_reviews WHERE id = ?').get(id) as any;
-    if (!existing) return res.status(404).json({ error: 'Review not found' });
+    if (!existing) return res.status(404).json({ error: 'Review not found', code: 'REVIEW_NOT_FOUND' });
 
     // Managers/admins/supervisors can update any; officers can only update own drafts
     if (!isManagerOrAbove(user.role)) {
       if (existing.officer_id !== user.id || existing.status !== 'draft') {
-        return res.status(403).json({ error: 'Can only update own draft reviews' });
+        return res.status(403).json({ error: 'Can only update own draft reviews', code: 'CAN_ONLY_UPDATE_OWN' });
       }
     }
 
@@ -776,7 +780,7 @@ router.put('/reviews/:id', validateParamIdMiddleware, (req: Request, res: Respon
     res.json({ success: true });
   } catch (error: any) {
     console.error('[HR] Review update error:', error?.message);
-    res.status(500).json({ error: 'Failed to update review' });
+    res.status(500).json({ error: 'Failed to update review', code: 'FAILED_TO_UPDATE_REVIEW' });
   }
 });
 
@@ -788,8 +792,8 @@ router.post('/reviews/:id/acknowledge', validateParamIdMiddleware, (req: Request
     const { officer_comments } = req.body;
 
     const existing = db.prepare('SELECT * FROM performance_reviews WHERE id = ?').get(id) as any;
-    if (!existing) return res.status(404).json({ error: 'Review not found' });
-    if (existing.officer_id !== user.id) return res.status(403).json({ error: 'Can only acknowledge own reviews' });
+    if (!existing) return res.status(404).json({ error: 'Review not found', code: 'REVIEW_NOT_FOUND' });
+    if (existing.officer_id !== user.id) return res.status(403).json({ error: 'Can only acknowledge own reviews', code: 'CAN_ONLY_ACKNOWLEDGE_OWN' });
 
     const now = localNow();
     db.prepare(
@@ -801,7 +805,7 @@ router.post('/reviews/:id/acknowledge', validateParamIdMiddleware, (req: Request
     res.json({ success: true });
   } catch (error: any) {
     console.error('[HR] Review acknowledge error:', error?.message);
-    res.status(500).json({ error: 'Failed to acknowledge review' });
+    res.status(500).json({ error: 'Failed to acknowledge review', code: 'FAILED_TO_ACKNOWLEDGE_REVIEW' });
   }
 });
 
@@ -811,8 +815,8 @@ router.delete('/reviews/:id', validateParamIdMiddleware, requireRole('admin'), (
     const id = Number(req.params.id);
 
     const existing = db.prepare('SELECT * FROM performance_reviews WHERE id = ?').get(id) as any;
-    if (!existing) return res.status(404).json({ error: 'Review not found' });
-    if (existing.status !== 'draft') return res.status(400).json({ error: 'Can only delete draft reviews' });
+    if (!existing) return res.status(404).json({ error: 'Review not found', code: 'REVIEW_NOT_FOUND' });
+    if (existing.status !== 'draft') return res.status(400).json({ error: 'Can only delete draft reviews', code: 'CAN_ONLY_DELETE_DRAFT' });
 
     db.prepare('DELETE FROM performance_reviews WHERE id = ?').run(id);
 
@@ -820,7 +824,7 @@ router.delete('/reviews/:id', validateParamIdMiddleware, requireRole('admin'), (
     res.json({ success: true });
   } catch (error: any) {
     console.error('[HR] Review delete error:', error?.message);
-    res.status(500).json({ error: 'Failed to delete review' });
+    res.status(500).json({ error: 'Failed to delete review', code: 'FAILED_TO_DELETE_REVIEW' });
   }
 });
 
@@ -853,7 +857,7 @@ router.get('/payroll/periods', requireRole('admin', 'manager'), (req: Request, r
     res.json(periods);
   } catch (error: any) {
     console.error('[HR] Payroll periods error:', error?.message);
-    res.status(500).json({ error: 'Failed to fetch pay periods' });
+    res.status(500).json({ error: 'Failed to fetch pay periods', code: 'FAILED_TO_FETCH_PAY' });
   }
 });
 
@@ -861,7 +865,7 @@ router.post('/payroll/periods', requireRole('admin', 'manager'), (req: Request, 
   try {
     const db = getDb();
     const { name, start_date, end_date, pay_date } = req.body;
-    if (!start_date || !end_date || !pay_date) return res.status(400).json({ error: 'start_date, end_date, and pay_date are required' });
+    if (!start_date || !end_date || !pay_date) return res.status(400).json({ error: 'start_date, end_date, and pay_date are required', code: 'STARTDATE_ENDDATE_AND_PAYDATE' });
 
     const userId = (req as any).user?.id;
     const result = db.prepare(
@@ -873,7 +877,7 @@ router.post('/payroll/periods', requireRole('admin', 'manager'), (req: Request, 
     res.json(period);
   } catch (error: any) {
     console.error('[HR] Create pay period error:', error?.message);
-    res.status(500).json({ error: 'Failed to create pay period' });
+    res.status(500).json({ error: 'Failed to create pay period', code: 'FAILED_TO_CREATE_PAY' });
   }
 });
 
@@ -882,7 +886,7 @@ router.put('/payroll/periods/:id', validateParamIdMiddleware, requireRole('admin
     const db = getDb();
     const id = Number(req.params.id);
     const existing = db.prepare('SELECT * FROM hr_pay_periods WHERE id = ?').get(id) as any;
-    if (!existing) return res.status(404).json({ error: 'Pay period not found' });
+    if (!existing) return res.status(404).json({ error: 'Pay period not found', code: 'PAY_PERIOD_NOT_FOUND' });
 
     const { name, start_date, end_date, pay_date, status } = req.body;
     const updates: string[] = [];
@@ -892,7 +896,7 @@ router.put('/payroll/periods/:id', validateParamIdMiddleware, requireRole('admin
     if (end_date) { updates.push('end_date = ?'); params.push(end_date); }
     if (pay_date) { updates.push('pay_date = ?'); params.push(pay_date); }
     if (status) { updates.push('status = ?'); params.push(status); }
-    if (!updates.length) return res.status(400).json({ error: 'No fields to update' });
+    if (!updates.length) return res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
 
     params.push(id);
     db.prepare(`UPDATE hr_pay_periods SET ${updates.join(', ')} WHERE id = ?`).run(...params);
@@ -902,7 +906,7 @@ router.put('/payroll/periods/:id', validateParamIdMiddleware, requireRole('admin
     res.json(updated);
   } catch (error: any) {
     console.error('[HR] Update pay period error:', error?.message);
-    res.status(500).json({ error: 'Failed to update pay period' });
+    res.status(500).json({ error: 'Failed to update pay period', code: 'FAILED_TO_UPDATE_PAY' });
   }
 });
 
@@ -911,8 +915,8 @@ router.delete('/payroll/periods/:id', validateParamIdMiddleware, requireRole('ad
     const db = getDb();
     const id = Number(req.params.id);
     const existing = db.prepare('SELECT * FROM hr_pay_periods WHERE id = ?').get(id) as any;
-    if (!existing) return res.status(404).json({ error: 'Pay period not found' });
-    if (existing.status !== 'open') return res.status(400).json({ error: 'Can only delete open pay periods' });
+    if (!existing) return res.status(404).json({ error: 'Pay period not found', code: 'PAY_PERIOD_NOT_FOUND' });
+    if (existing.status !== 'open') return res.status(400).json({ error: 'Can only delete open pay periods', code: 'CAN_ONLY_DELETE_OPEN' });
 
     db.prepare('DELETE FROM hr_payroll_entries WHERE pay_period_id = ?').run(id);
     db.prepare('DELETE FROM hr_pay_periods WHERE id = ?').run(id);
@@ -921,7 +925,7 @@ router.delete('/payroll/periods/:id', validateParamIdMiddleware, requireRole('ad
     res.json({ success: true });
   } catch (error: any) {
     console.error('[HR] Delete pay period error:', error?.message);
-    res.status(500).json({ error: 'Failed to delete pay period' });
+    res.status(500).json({ error: 'Failed to delete pay period', code: 'FAILED_TO_DELETE_PAY' });
   }
 });
 
@@ -942,12 +946,14 @@ router.get('/payroll/rates', requireRole('admin', 'manager'), (req: Request, res
       LEFT JOIN users cb ON cb.id = pr.created_by
       ${where}
       ORDER BY u.full_name, pr.effective_date DESC
+    
+      LIMIT 1000
     `).all(...params);
 
     res.json(rates);
   } catch (error: any) {
     console.error('[HR] Pay rates error:', error?.message);
-    res.status(500).json({ error: 'Failed to fetch pay rates' });
+    res.status(500).json({ error: 'Failed to fetch pay rates', code: 'FAILED_TO_FETCH_PAY' });
   }
 });
 
@@ -956,7 +962,7 @@ router.post('/payroll/rates', requireRole('admin', 'manager'), (req: Request, re
     const db = getDb();
     const { user_id, pay_type, rate, overtime_rate, holiday_rate, effective_date, notes } = req.body;
     if (!user_id || !pay_type || rate === undefined || !effective_date) {
-      return res.status(400).json({ error: 'user_id, pay_type, rate, and effective_date are required' });
+      return res.status(400).json({ error: 'user_id, pay_type, rate, and effective_date are required', code: 'USERID_PAYTYPE_RATE_AND' });
     }
 
     const userId = (req as any).user?.id;
@@ -974,7 +980,7 @@ router.post('/payroll/rates', requireRole('admin', 'manager'), (req: Request, re
     res.json(newRate);
   } catch (error: any) {
     console.error('[HR] Create pay rate error:', error?.message);
-    res.status(500).json({ error: 'Failed to create pay rate' });
+    res.status(500).json({ error: 'Failed to create pay rate', code: 'FAILED_TO_CREATE_PAY' });
   }
 });
 
@@ -984,7 +990,7 @@ router.get('/payroll/entries', requireRole('admin', 'manager'), (req: Request, r
   try {
     const db = getDb();
     const { pay_period_id, user_id } = req.query;
-    if (!pay_period_id) return res.status(400).json({ error: 'pay_period_id is required' });
+    if (!pay_period_id) return res.status(400).json({ error: 'pay_period_id is required', code: 'PAYPERIODID_IS_REQUIRED' });
 
     let where = 'WHERE pe.pay_period_id = ?';
     const params: any[] = [Number(pay_period_id)];
@@ -1000,12 +1006,14 @@ router.get('/payroll/entries', requireRole('admin', 'manager'), (req: Request, r
       LEFT JOIN users ab ON ab.id = pe.approved_by
       ${where}
       ORDER BY u.full_name
+    
+      LIMIT 1000
     `).all(...params);
 
     res.json(entries);
   } catch (error: any) {
     console.error('[HR] Payroll entries error:', error?.message);
-    res.status(500).json({ error: 'Failed to fetch payroll entries' });
+    res.status(500).json({ error: 'Failed to fetch payroll entries', code: 'FAILED_TO_FETCH_PAYROLL' });
   }
 });
 
@@ -1013,7 +1021,7 @@ router.post('/payroll/entries', requireRole('admin', 'manager'), (req: Request, 
   try {
     const db = getDb();
     const { pay_period_id, user_id, regular_hours, overtime_hours, holiday_hours, pto_hours, sick_hours, other_hours, other_hours_description, notes } = req.body;
-    if (!pay_period_id || !user_id) return res.status(400).json({ error: 'pay_period_id and user_id are required' });
+    if (!pay_period_id || !user_id) return res.status(400).json({ error: 'pay_period_id and user_id are required', code: 'PAYPERIODID_AND_USERID_ARE' });
 
     // Find active pay rate
     const payRate = db.prepare(`
@@ -1057,7 +1065,7 @@ router.post('/payroll/entries', requireRole('admin', 'manager'), (req: Request, 
     res.json(entry);
   } catch (error: any) {
     console.error('[HR] Create payroll entry error:', error?.message);
-    res.status(500).json({ error: 'Failed to create payroll entry' });
+    res.status(500).json({ error: 'Failed to create payroll entry', code: 'FAILED_TO_CREATE_PAYROLL' });
   }
 });
 
@@ -1066,8 +1074,8 @@ router.put('/payroll/entries/:id', validateParamIdMiddleware, requireRole('admin
     const db = getDb();
     const id = Number(req.params.id);
     const existing = db.prepare('SELECT * FROM hr_payroll_entries WHERE id = ?').get(id) as any;
-    if (!existing) return res.status(404).json({ error: 'Payroll entry not found' });
-    if (existing.status === 'approved') return res.status(400).json({ error: 'Cannot edit approved entries' });
+    if (!existing) return res.status(404).json({ error: 'Payroll entry not found', code: 'PAYROLL_ENTRY_NOT_FOUND' });
+    if (existing.status === 'approved') return res.status(400).json({ error: 'Cannot edit approved entries', code: 'CANNOT_EDIT_APPROVED_ENTRIES' });
 
     const { regular_hours, overtime_hours, holiday_hours, pto_hours, sick_hours, other_hours, other_hours_description, notes, status } = req.body;
 
@@ -1119,7 +1127,7 @@ router.put('/payroll/entries/:id', validateParamIdMiddleware, requireRole('admin
     res.json(updated);
   } catch (error: any) {
     console.error('[HR] Update payroll entry error:', error?.message);
-    res.status(500).json({ error: 'Failed to update payroll entry' });
+    res.status(500).json({ error: 'Failed to update payroll entry', code: 'FAILED_TO_UPDATE_PAYROLL' });
   }
 });
 
@@ -1130,8 +1138,8 @@ router.post('/payroll/periods/:id/populate', validateParamIdMiddleware, requireR
     const db = getDb();
     const id = Number(req.params.id);
     const period = db.prepare('SELECT * FROM hr_pay_periods WHERE id = ?').get(id) as any;
-    if (!period) return res.status(404).json({ error: 'Pay period not found' });
-    if (period.status !== 'open') return res.status(400).json({ error: 'Can only populate open pay periods' });
+    if (!period) return res.status(404).json({ error: 'Pay period not found', code: 'PAY_PERIOD_NOT_FOUND' });
+    if (period.status !== 'open') return res.status(400).json({ error: 'Can only populate open pay periods', code: 'CAN_ONLY_POPULATE_OPEN' });
 
     // Get all active employees with pay rates
     const activeUsers = db.prepare(`
@@ -1140,6 +1148,8 @@ router.post('/payroll/periods/:id/populate', validateParamIdMiddleware, requireR
       LEFT JOIN hr_pay_rates pr ON pr.user_id = u.id AND pr.end_date IS NULL
       WHERE u.status = 'active' AND u.archived_at IS NULL
       ORDER BY u.full_name
+    
+      LIMIT 1000
     `).all() as any[];
 
     // Don't duplicate existing entries
@@ -1167,7 +1177,7 @@ router.post('/payroll/periods/:id/populate', validateParamIdMiddleware, requireR
     res.json({ success: true, created, total: activeUsers.length });
   } catch (error: any) {
     console.error('[HR] Populate pay period error:', error?.message);
-    res.status(500).json({ error: 'Failed to populate pay period' });
+    res.status(500).json({ error: 'Failed to populate pay period', code: 'FAILED_TO_POPULATE_PAY' });
   }
 });
 
@@ -1197,7 +1207,7 @@ router.get('/leave/export/csv', requireRole('admin', 'manager', 'supervisor'), (
     ], rows);
   } catch (error: any) {
     console.error('[HR] Leave CSV export error:', error?.message);
-    res.status(500).json({ error: 'Export failed' });
+    res.status(500).json({ error: 'Export failed', code: 'EXPORT_FAILED' });
   }
 });
 
@@ -1223,7 +1233,7 @@ router.get('/disciplinary/export/csv', requireRole('admin', 'manager'), (_req: R
     ], rows);
   } catch (error: any) {
     console.error('[HR] Disciplinary CSV export error:', error?.message);
-    res.status(500).json({ error: 'Export failed' });
+    res.status(500).json({ error: 'Export failed', code: 'EXPORT_FAILED' });
   }
 });
 
@@ -1248,7 +1258,7 @@ router.get('/reviews/export/csv', requireRole('admin', 'manager'), (_req: Reques
     ], rows);
   } catch (error: any) {
     console.error('[HR] Reviews CSV export error:', error?.message);
-    res.status(500).json({ error: 'Export failed' });
+    res.status(500).json({ error: 'Export failed', code: 'EXPORT_FAILED' });
   }
 });
 
@@ -1256,11 +1266,13 @@ router.get('/payroll/export/csv', requireRole('admin', 'manager'), (req: Request
   try {
     const db = getDb();
     const { pay_period_id } = req.query;
-    if (!pay_period_id) return res.status(400).json({ error: 'pay_period_id required' });
+    if (!pay_period_id) return res.status(400).json({ error: 'pay_period_id required', code: 'PAYPERIODID_REQUIRED' });
     const rows = db.prepare(`
       SELECT pe.*, u.full_name as officer_name, u.badge_number
       FROM hr_payroll_entries pe JOIN users u ON u.id = pe.user_id
       WHERE pe.pay_period_id = ? ORDER BY u.full_name
+    
+      LIMIT 1000
     `).all(Number(pay_period_id));
     sendCsv(res, 'payroll.csv', [
       { key: 'officer_name', header: 'Employee' },
@@ -1279,7 +1291,7 @@ router.get('/payroll/export/csv', requireRole('admin', 'manager'), (req: Request
     ], rows);
   } catch (error: any) {
     console.error('[HR] Payroll CSV export error:', error?.message);
-    res.status(500).json({ error: 'Export failed' });
+    res.status(500).json({ error: 'Export failed', code: 'EXPORT_FAILED' });
   }
 });
 
@@ -1318,10 +1330,12 @@ router.get('/payroll/overtime', (req: Request, res: Response) => {
     const role = req.user!.role;
     // Non-managers only see their own
     if (!isManagerOrAbove(role)) { where += ' AND officer_id = ?'; params.push(req.user!.userId); }
-    const rows = db.prepare(`SELECT * FROM overtime_requests ${where} ORDER BY created_at DESC`).all(...params);
+    const rows = db.prepare(`SELECT * FROM overtime_requests ${where} ORDER BY created_at DESC
+      LIMIT 1000
+    `).all(...params);
     res.json(rows);
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to fetch OT requests' });
+    res.status(500).json({ error: 'Failed to fetch OT requests', code: 'FAILED_TO_FETCH_OT' });
   }
 });
 
@@ -1331,7 +1345,7 @@ router.post('/payroll/overtime', (req: Request, res: Response) => {
     const db = getDb();
     const { requested_date, hours_requested, reason } = req.body;
     if (!requested_date || !hours_requested) {
-      res.status(400).json({ error: 'requested_date and hours_requested are required' });
+      res.status(400).json({ error: 'requested_date and hours_requested are required', code: 'REQUESTEDDATE_AND_HOURSREQUESTED_ARE' });
       return;
     }
     const now = localNow();
@@ -1342,7 +1356,7 @@ router.post('/payroll/overtime', (req: Request, res: Response) => {
     `).run(req.user!.userId, officerName, requested_date, parseFloat(hours_requested as string), reason || null, now);
     res.status(201).json({ id: result.lastInsertRowid });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to create OT request' });
+    res.status(500).json({ error: 'Failed to create OT request', code: 'FAILED_TO_CREATE_OT' });
   }
 });
 
@@ -1352,7 +1366,7 @@ router.put('/payroll/overtime/:id', requireRole('admin', 'manager', 'supervisor'
     const db = getDb();
     const { status, review_notes } = req.body;
     if (!['approved', 'denied'].includes(status)) {
-      res.status(400).json({ error: 'Status must be approved or denied' });
+      res.status(400).json({ error: 'Status must be approved or denied', code: 'STATUS_MUST_BE_APPROVED' });
       return;
     }
     const now = localNow();
@@ -1362,7 +1376,7 @@ router.put('/payroll/overtime/:id', requireRole('admin', 'manager', 'supervisor'
     `).run(status, req.user!.userId, reviewerName, now, review_notes || null, req.params.id);
     res.json({ success: true });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to update OT request' });
+    res.status(500).json({ error: 'Failed to update OT request', code: 'FAILED_TO_UPDATE_OT' });
   }
 });
 
@@ -1376,13 +1390,15 @@ router.get('/payroll/periods/:id/summary', validateParamIdMiddleware, requireRol
     const db = getDb();
     const id = Number(req.params.id);
     const period = db.prepare('SELECT * FROM hr_pay_periods WHERE id = ?').get(id) as any;
-    if (!period) return res.status(404).json({ error: 'Pay period not found' });
+    if (!period) return res.status(404).json({ error: 'Pay period not found', code: 'PAY_PERIOD_NOT_FOUND' });
 
     const entries = db.prepare(`
       SELECT pe.*, u.full_name as officer_name
       FROM hr_payroll_entries pe
       JOIN users u ON u.id = pe.user_id
       WHERE pe.pay_period_id = ?
+    
+      LIMIT 1000
     `).all(id) as any[];
 
     const summary = {
@@ -1402,7 +1418,7 @@ router.get('/payroll/periods/:id/summary', validateParamIdMiddleware, requireRol
     res.json(summary);
   } catch (error: any) {
     console.error('[HR] Period summary error:', error?.message);
-    res.status(500).json({ error: 'Failed to load period summary' });
+    res.status(500).json({ error: 'Failed to load period summary', code: 'FAILED_TO_LOAD_PERIOD' });
   }
 });
 
@@ -1448,7 +1464,7 @@ router.get('/review-templates', requireRole('admin', 'manager', 'supervisor'), (
     ];
     res.json(templates);
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to load templates' });
+    res.status(500).json({ error: 'Failed to load templates', code: 'FAILED_TO_LOAD_TEMPLATES' });
   }
 });
 
@@ -1463,11 +1479,13 @@ router.get('/reviews/trends/:officerId', (req: Request, res: Response) => {
       FROM performance_reviews
       WHERE officer_id = ? AND overall_rating IS NOT NULL
       ORDER BY review_period_end ASC
+    
+      LIMIT 1000
     `).all(officerId) as any[];
 
     res.json(reviews);
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to load review trends' });
+    res.status(500).json({ error: 'Failed to load review trends', code: 'FAILED_TO_LOAD_REVIEW' });
   }
 });
 
@@ -1482,6 +1500,8 @@ router.get('/disciplinary/:officerId/escalation', (req: Request, res: Response) 
       FROM disciplinary_records
       WHERE officer_id = ?
       ORDER BY incident_date ASC
+    
+      LIMIT 1000
     `).all(officerId) as any[];
 
     // Escalation levels
@@ -1498,7 +1518,7 @@ router.get('/disciplinary/:officerId/escalation', (req: Request, res: Response) 
 
     res.json({ records: escalation, current_level: latestType, next_step: nextStep, total_actions: records.length });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to load escalation' });
+    res.status(500).json({ error: 'Failed to load escalation', code: 'FAILED_TO_LOAD_ESCALATION' });
   }
 });
 
@@ -1513,17 +1533,17 @@ router.get('/training-certificate/:trainingId', (req: Request, res: Response) =>
       WHERE tr.id = ?
     `).get(Number(req.params.trainingId)) as any;
 
-    if (!record) return res.status(404).json({ error: 'Training record not found' });
-    if (record.status !== 'completed') return res.status(400).json({ error: 'Certificate only for completed training' });
+    if (!record) return res.status(404).json({ error: 'Training record not found', code: 'TRAINING_RECORD_NOT_FOUND' });
+    if (record.status !== 'completed') return res.status(400).json({ error: 'Certificate only for completed training', code: 'CERTIFICATE_ONLY_FOR_COMPLETED' });
 
     res.json({
       ...record,
       company: 'Rocky Mountain Protective Group',
       certificate_number: `RMPG-CERT-${String(record.id).padStart(6, '0')}`,
-      issued_date: record.completed_date || new Date().toISOString().slice(0, 10),
+      issued_date: record.completed_date || localToday(),
     });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to generate certificate' });
+    res.status(500).json({ error: 'Failed to generate certificate', code: 'FAILED_TO_GENERATE_CERTIFICATE' });
   }
 });
 
@@ -1538,7 +1558,7 @@ router.get('/documents', (req: Request, res: Response) => {
     sql += ' ORDER BY d.created_at DESC';
     res.json(db.prepare(sql).all(...params));
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to load documents' });
+    res.status(500).json({ error: 'Failed to load documents', code: 'FAILED_TO_LOAD_DOCUMENTS' });
   }
 });
 
@@ -1546,7 +1566,7 @@ router.post('/documents', requireRole('admin', 'manager'), (req: Request, res: R
   try {
     const db = getDb();
     const { title, category, description, file_path, file_name, file_size } = req.body;
-    if (!title) return res.status(400).json({ error: 'title is required' });
+    if (!title) return res.status(400).json({ error: 'title is required', code: 'TITLE_IS_REQUIRED' });
     const now = localNow();
     const result = db.prepare(
       `INSERT INTO hr_documents (title, category, description, file_path, file_name, file_size, uploaded_by, created_at, updated_at)
@@ -1554,7 +1574,7 @@ router.post('/documents', requireRole('admin', 'manager'), (req: Request, res: R
     ).run(title, category || 'policy', description || null, file_path || null, file_name || null, file_size || 0, (req as any).user?.id, now, now);
     res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to create document' });
+    res.status(500).json({ error: 'Failed to create document', code: 'FAILED_TO_CREATE_DOCUMENT' });
   }
 });
 
@@ -1564,7 +1584,7 @@ router.delete('/documents/:id', validateParamIdMiddleware, requireRole('admin'),
     db.prepare('DELETE FROM hr_documents WHERE id = ?').run(Number(req.params.id));
     res.json({ success: true });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to delete document' });
+    res.status(500).json({ error: 'Failed to delete document', code: 'FAILED_TO_DELETE_DOCUMENT' });
   }
 });
 
@@ -1582,7 +1602,7 @@ router.get('/acknowledgments', (req: Request, res: Response) => {
     sql += ' ORDER BY a.acknowledged_at DESC';
     res.json(db.prepare(sql).all(...params));
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to load acknowledgments' });
+    res.status(500).json({ error: 'Failed to load acknowledgments', code: 'FAILED_TO_LOAD_ACKNOWLEDGMENTS' });
   }
 });
 
@@ -1591,7 +1611,7 @@ router.post('/acknowledgments', (req: Request, res: Response) => {
     const db = getDb();
     const user = (req as any).user;
     const { document_id, signature } = req.body;
-    if (!document_id) return res.status(400).json({ error: 'document_id is required' });
+    if (!document_id) return res.status(400).json({ error: 'document_id is required', code: 'DOCUMENTID_IS_REQUIRED' });
 
     db.prepare(
       `INSERT OR REPLACE INTO hr_handbook_acknowledgments (officer_id, document_id, acknowledged_at, signature, ip_address)
@@ -1600,7 +1620,7 @@ router.post('/acknowledgments', (req: Request, res: Response) => {
 
     res.json({ success: true });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to save acknowledgment' });
+    res.status(500).json({ error: 'Failed to save acknowledgment', code: 'FAILED_TO_SAVE_ACKNOWLEDGMENT' });
   }
 });
 
@@ -1621,7 +1641,7 @@ router.get('/grievances', (req: Request, res: Response) => {
     sql += ' ORDER BY g.created_at DESC';
     res.json(db.prepare(sql).all(...params));
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to load grievances' });
+    res.status(500).json({ error: 'Failed to load grievances', code: 'FAILED_TO_LOAD_GRIEVANCES' });
   }
 });
 
@@ -1630,7 +1650,7 @@ router.post('/grievances', (req: Request, res: Response) => {
     const db = getDb();
     const user = (req as any).user;
     const { type, subject, description, priority } = req.body;
-    if (!subject || !description) return res.status(400).json({ error: 'subject and description are required' });
+    if (!subject || !description) return res.status(400).json({ error: 'subject and description are required', code: 'SUBJECT_AND_DESCRIPTION_ARE' });
     const now = localNow();
     const result = db.prepare(
       `INSERT INTO hr_grievances (officer_id, type, subject, description, priority, filed_at, created_at, updated_at)
@@ -1639,7 +1659,7 @@ router.post('/grievances', (req: Request, res: Response) => {
     auditLog(req, 'CREATE', 'hr_grievance', Number(result.lastInsertRowid), `Grievance filed: ${subject}`);
     res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to file grievance' });
+    res.status(500).json({ error: 'Failed to file grievance', code: 'FAILED_TO_FILE_GRIEVANCE' });
   }
 });
 
@@ -1659,7 +1679,7 @@ router.put('/grievances/:id', validateParamIdMiddleware, requireRole('admin', 'm
     auditLog(req, 'UPDATE', 'hr_grievance', id, `Grievance updated`);
     res.json({ success: true });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to update grievance' });
+    res.status(500).json({ error: 'Failed to update grievance', code: 'FAILED_TO_UPDATE_GRIEVANCE' });
   }
 });
 
@@ -1675,7 +1695,7 @@ router.get('/workers-comp', (req: Request, res: Response) => {
     sql += ' ORDER BY w.incident_date DESC';
     res.json(db.prepare(sql).all(...params));
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to load workers comp incidents' });
+    res.status(500).json({ error: 'Failed to load workers comp incidents', code: 'FAILED_TO_LOAD_WORKERS' });
   }
 });
 
@@ -1685,7 +1705,7 @@ router.post('/workers-comp', requireRole('admin', 'manager', 'supervisor'), (req
     const { officer_id, incident_date, injury_type, body_part, description, location,
             witnesses, treatment, physician, osha_recordable, osha_case_number, claim_number } = req.body;
     if (!officer_id || !incident_date || !injury_type || !description) {
-      return res.status(400).json({ error: 'officer_id, incident_date, injury_type, and description are required' });
+      return res.status(400).json({ error: 'officer_id, incident_date, injury_type, and description are required', code: 'OFFICERID_INCIDENTDATE_INJURYTYPE_AND' });
     }
     const now = localNow();
     const result = db.prepare(
@@ -1698,7 +1718,7 @@ router.post('/workers-comp', requireRole('admin', 'manager', 'supervisor'), (req
     auditLog(req, 'CREATE', 'hr_workers_comp', Number(result.lastInsertRowid), `Workers comp incident reported`);
     res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to create workers comp record' });
+    res.status(500).json({ error: 'Failed to create workers comp record', code: 'FAILED_TO_CREATE_WORKERS' });
   }
 });
 
@@ -1719,7 +1739,7 @@ router.put('/workers-comp/:id', validateParamIdMiddleware, requireRole('admin', 
     db.prepare(`UPDATE hr_workers_comp SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
     res.json({ success: true });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to update workers comp record' });
+    res.status(500).json({ error: 'Failed to update workers comp record', code: 'FAILED_TO_UPDATE_WORKERS' });
   }
 });
 
@@ -1737,7 +1757,7 @@ router.get('/exit-interviews', requireRole('admin', 'manager'), (req: Request, r
     sql += ' ORDER BY ei.interview_date DESC';
     res.json(db.prepare(sql).all(...params));
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to load exit interviews' });
+    res.status(500).json({ error: 'Failed to load exit interviews', code: 'FAILED_TO_LOAD_EXIT' });
   }
 });
 
@@ -1747,7 +1767,7 @@ router.post('/exit-interviews', requireRole('admin', 'manager'), (req: Request, 
     const { officer_id, interview_date, reason_for_leaving, satisfaction_rating, would_return,
             what_liked, what_disliked, suggestions, management_feedback,
             work_environment_rating, compensation_rating, training_rating, notes } = req.body;
-    if (!officer_id || !interview_date) return res.status(400).json({ error: 'officer_id and interview_date are required' });
+    if (!officer_id || !interview_date) return res.status(400).json({ error: 'officer_id and interview_date are required', code: 'OFFICERID_AND_INTERVIEWDATE_ARE' });
     const result = db.prepare(
       `INSERT INTO hr_exit_interviews (officer_id, interview_date, interviewer_id, reason_for_leaving,
        satisfaction_rating, would_return, what_liked, what_disliked, suggestions, management_feedback,
@@ -1760,7 +1780,7 @@ router.post('/exit-interviews', requireRole('admin', 'manager'), (req: Request, 
     auditLog(req, 'CREATE', 'hr_exit_interview', Number(result.lastInsertRowid), `Exit interview recorded`);
     res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to create exit interview' });
+    res.status(500).json({ error: 'Failed to create exit interview', code: 'FAILED_TO_CREATE_EXIT' });
   }
 });
 
@@ -1773,10 +1793,12 @@ router.get('/salary-history/:officerId', requireRole('admin', 'manager'), (req: 
       FROM hr_salary_history sh
       LEFT JOIN users u ON u.id = sh.approved_by
       WHERE sh.officer_id = ? ORDER BY sh.effective_date DESC
+    
+      LIMIT 1000
     `).all(Number(req.params.officerId));
     res.json(rows);
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to load salary history' });
+    res.status(500).json({ error: 'Failed to load salary history', code: 'FAILED_TO_LOAD_SALARY' });
   }
 });
 
@@ -1785,7 +1807,7 @@ router.post('/salary-history', requireRole('admin', 'manager'), (req: Request, r
     const db = getDb();
     const { officer_id, effective_date, salary_amount, pay_type, reason } = req.body;
     if (!officer_id || !effective_date || salary_amount === undefined) {
-      return res.status(400).json({ error: 'officer_id, effective_date, and salary_amount are required' });
+      return res.status(400).json({ error: 'officer_id, effective_date, and salary_amount are required', code: 'OFFICERID_EFFECTIVEDATE_AND_SALARYAMOUNT' });
     }
     const result = db.prepare(
       `INSERT INTO hr_salary_history (officer_id, effective_date, salary_amount, pay_type, reason, approved_by)
@@ -1795,7 +1817,7 @@ router.post('/salary-history', requireRole('admin', 'manager'), (req: Request, r
       `Salary change: $${salary_amount} effective ${effective_date}`);
     res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to save salary history' });
+    res.status(500).json({ error: 'Failed to save salary history', code: 'FAILED_TO_SAVE_SALARY' });
   }
 });
 
@@ -1812,7 +1834,7 @@ router.get('/benefits', (req: Request, res: Response) => {
     sql += ' ORDER BY b.benefit_type';
     res.json(db.prepare(sql).all(...params));
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to load benefits' });
+    res.status(500).json({ error: 'Failed to load benefits', code: 'FAILED_TO_LOAD_BENEFITS' });
   }
 });
 
@@ -1821,7 +1843,7 @@ router.post('/benefits', requireRole('admin', 'manager'), (req: Request, res: Re
     const db = getDb();
     const { officer_id, benefit_type, plan_name, provider, coverage_level,
             employee_cost, employer_cost, effective_date, end_date } = req.body;
-    if (!officer_id || !benefit_type) return res.status(400).json({ error: 'officer_id and benefit_type are required' });
+    if (!officer_id || !benefit_type) return res.status(400).json({ error: 'officer_id and benefit_type are required', code: 'OFFICERID_AND_BENEFITTYPE_ARE' });
     const now = localNow();
     const result = db.prepare(
       `INSERT INTO hr_benefits (officer_id, benefit_type, plan_name, provider, coverage_level,
@@ -1831,7 +1853,7 @@ router.post('/benefits', requireRole('admin', 'manager'), (req: Request, res: Re
       employee_cost || 0, employer_cost || 0, effective_date || null, end_date || null, now, now);
     res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to create benefit record' });
+    res.status(500).json({ error: 'Failed to create benefit record', code: 'FAILED_TO_CREATE_BENEFIT' });
   }
 });
 
@@ -1853,7 +1875,7 @@ router.put('/benefits/:id', validateParamIdMiddleware, requireRole('admin', 'man
     db.prepare(`UPDATE hr_benefits SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
     res.json({ success: true });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to update benefit' });
+    res.status(500).json({ error: 'Failed to update benefit', code: 'FAILED_TO_UPDATE_BENEFIT' });
   }
 });
 
@@ -1873,7 +1895,7 @@ router.get('/pips', requireRole('admin', 'manager', 'supervisor'), (req: Request
     const rows = db.prepare(sql).all(...params) as any[];
     res.json(rows.map((r: any) => ({ ...r, goals: JSON.parse(r.goals || '[]'), milestones: JSON.parse(r.milestones || '[]') })));
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to load PIPs' });
+    res.status(500).json({ error: 'Failed to load PIPs', code: 'FAILED_TO_LOAD_PIPS' });
   }
 });
 
@@ -1882,7 +1904,7 @@ router.post('/pips', requireRole('admin', 'manager', 'supervisor'), (req: Reques
     const db = getDb();
     const { officer_id, start_date, end_date, reason, goals, milestones } = req.body;
     if (!officer_id || !start_date || !end_date || !reason) {
-      return res.status(400).json({ error: 'officer_id, start_date, end_date, and reason are required' });
+      return res.status(400).json({ error: 'officer_id, start_date, end_date, and reason are required', code: 'OFFICERID_STARTDATE_ENDDATE_AND' });
     }
     const now = localNow();
     const result = db.prepare(
@@ -1893,7 +1915,7 @@ router.post('/pips', requireRole('admin', 'manager', 'supervisor'), (req: Reques
     auditLog(req, 'CREATE', 'hr_pip', Number(result.lastInsertRowid), `PIP created for officer ${officer_id}`);
     res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to create PIP' });
+    res.status(500).json({ error: 'Failed to create PIP', code: 'FAILED_TO_CREATE_PIP' });
   }
 });
 
@@ -1915,7 +1937,7 @@ router.put('/pips/:id', validateParamIdMiddleware, requireRole('admin', 'manager
     auditLog(req, 'UPDATE', 'hr_pip', id, `PIP updated`);
     res.json({ success: true });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to update PIP' });
+    res.status(500).json({ error: 'Failed to update PIP', code: 'FAILED_TO_UPDATE_PIP' });
   }
 });
 
@@ -1937,6 +1959,8 @@ router.get('/training-roi/:officerId', requireRole('admin', 'manager'), (req: Re
       SELECT overall_rating, review_date FROM performance_reviews
       WHERE officer_id = ? AND overall_rating IS NOT NULL
       ORDER BY review_date ASC
+    
+      LIMIT 1000
     `).all(officerId) as any[];
 
     const firstRating = reviews.length > 0 ? reviews[0].overall_rating : null;
@@ -1958,7 +1982,7 @@ router.get('/training-roi/:officerId', requireRole('admin', 'manager'), (req: Re
       roi_indicator: ratingImprovement && ratingImprovement > 0 ? 'positive' : ratingImprovement === 0 ? 'neutral' : 'needs_review',
     });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to calculate training ROI' });
+    res.status(500).json({ error: 'Failed to calculate training ROI', code: 'FAILED_TO_CALCULATE_TRAINING' });
   }
 });
 
@@ -1981,7 +2005,7 @@ router.get('/attendance', (req: Request, res: Response) => {
     sql += ' ORDER BY a.date DESC';
     res.json(db.prepare(sql).all(...params));
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to load attendance' });
+    res.status(500).json({ error: 'Failed to load attendance', code: 'FAILED_TO_LOAD_ATTENDANCE' });
   }
 });
 
@@ -1989,7 +2013,7 @@ router.post('/attendance', requireRole('admin', 'manager', 'supervisor'), (req: 
   try {
     const db = getDb();
     const { officer_id, date, type, minutes_late, reason, excused } = req.body;
-    if (!officer_id || !date || !type) return res.status(400).json({ error: 'officer_id, date, and type are required' });
+    if (!officer_id || !date || !type) return res.status(400).json({ error: 'officer_id, date, and type are required', code: 'OFFICERID_DATE_AND_TYPE' });
     const result = db.prepare(
       `INSERT INTO hr_attendance (officer_id, date, type, minutes_late, reason, excused, documented_by)
        VALUES (?, ?, ?, ?, ?, ?, ?)`
@@ -1997,7 +2021,7 @@ router.post('/attendance', requireRole('admin', 'manager', 'supervisor'), (req: 
     auditLog(req, 'CREATE', 'hr_attendance', Number(result.lastInsertRowid), `Attendance incident: ${type} for officer ${officer_id}`);
     res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to log attendance' });
+    res.status(500).json({ error: 'Failed to log attendance', code: 'FAILED_TO_LOG_ATTENDANCE' });
   }
 });
 
@@ -2033,7 +2057,7 @@ router.get('/attendance/summary/:officerId', (req: Request, res: Response) => {
       monday_friday_count: mondayFriday?.cnt || 0,
     });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to load attendance summary' });
+    res.status(500).json({ error: 'Failed to load attendance summary', code: 'FAILED_TO_LOAD_ATTENDANCE' });
   }
 });
 
@@ -2057,14 +2081,14 @@ router.post('/performance-reviews', requireRole('admin', 'manager', 'supervisor'
   try {
     const db = getDb();
     const { officer_id, review_type, review_date, period_start, period_end, overall_rating, strengths, areas_for_improvement, goals, comments } = req.body;
-    if (!officer_id || !review_type) return res.status(400).json({ error: 'officer_id and review_type required' });
+    if (!officer_id || !review_type) return res.status(400).json({ error: 'officer_id and review_type required', code: 'OFFICERID_AND_REVIEWTYPE_REQUIRED' });
     const result = db.prepare(`
       INSERT INTO hr_performance_reviews (officer_id, reviewer_id, review_type, review_date, period_start, period_end, overall_rating, strengths, areas_for_improvement, goals, comments, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
     `).run(officer_id, (req as any).user?.id, review_type, review_date || localNow(), period_start || null, period_end || null, overall_rating || null, strengths || null, areas_for_improvement || null, goals || null, comments || null);
     res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to create review' });
+    res.status(500).json({ error: 'Failed to create review', code: 'FAILED_TO_CREATE_REVIEW' });
   }
 });
 
@@ -2077,12 +2101,12 @@ router.put('/performance-reviews/:id', (req: Request, res: Response) => {
     for (const f of fields) {
       if (req.body[f] !== undefined) { sets.push(`${f} = ?`); vals.push(req.body[f]); }
     }
-    if (sets.length === 0) return res.status(400).json({ error: 'No fields to update' });
+    if (sets.length === 0) return res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
     vals.push(req.params.id);
     db.prepare(`UPDATE hr_performance_reviews SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
     res.json({ success: true });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to update review' });
+    res.status(500).json({ error: 'Failed to update review', code: 'FAILED_TO_UPDATE_REVIEW' });
   }
 });
 
@@ -2103,14 +2127,14 @@ router.post('/disciplinary-actions', requireRole('admin', 'manager'), (req: Requ
   try {
     const db = getDb();
     const { officer_id, action_type, severity, description, issued_date } = req.body;
-    if (!officer_id || !action_type) return res.status(400).json({ error: 'officer_id and action_type required' });
+    if (!officer_id || !action_type) return res.status(400).json({ error: 'officer_id and action_type required', code: 'OFFICERID_AND_ACTIONTYPE_REQUIRED' });
     const result = db.prepare(`
       INSERT INTO hr_disciplinary (officer_id, issued_by, action_type, severity, description, issued_date, status)
       VALUES (?, ?, ?, ?, ?, ?, 'active')
     `).run(officer_id, (req as any).user?.id, action_type, severity || 'written_warning', description || null, issued_date || localNow());
     res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to create disciplinary action' });
+    res.status(500).json({ error: 'Failed to create disciplinary action', code: 'FAILED_TO_CREATE_DISCIPLINARY' });
   }
 });
 
@@ -2123,12 +2147,12 @@ router.put('/disciplinary-actions/:id', requireRole('admin', 'manager'), (req: R
     for (const f of fields) {
       if (req.body[f] !== undefined) { sets.push(`${f} = ?`); vals.push(req.body[f]); }
     }
-    if (sets.length === 0) return res.status(400).json({ error: 'No fields to update' });
+    if (sets.length === 0) return res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
     vals.push(req.params.id);
     db.prepare(`UPDATE hr_disciplinary SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
     res.json({ success: true });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to update disciplinary action' });
+    res.status(500).json({ error: 'Failed to update disciplinary action', code: 'FAILED_TO_UPDATE_DISCIPLINARY' });
   }
 });
 

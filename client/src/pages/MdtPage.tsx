@@ -150,7 +150,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
               <div
                 key={msg.id}
                 onClick={() => !msg.read_at && msg.to_user_id && handleMarkRead(msg.id)}
-                className="px-3 py-2 border-b border-rmpg-800/50 cursor-pointer transition-colors hover:bg-white/[0.02]"
+                className="px-3 py-2 border-b border-rmpg-800/50 cursor-pointer transition-colors hover:bg-surface-raised/30"
                 style={{
                   background: ps.bg,
                   borderLeft: msg.read_at ? '3px solid transparent' : `3px solid ${ps.color}`,
@@ -234,6 +234,17 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
     </div>
   );
 }
+
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
 
 // ── Component ──────────────────────────────────────────────
 
@@ -506,6 +517,9 @@ export default function MdtPage() {
     );
   }
 
+  // Set document title
+  useEffect(() => { document.title = 'Mobile Data Terminal \u2014 RMPG Flex'; }, []);
+
   return (
     <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
       {/* ── Error Toast ── */}
@@ -593,21 +607,21 @@ export default function MdtPage() {
           <div className={`grid ${isMobile ? 'grid-cols-1' : 'grid-cols-4'} gap-2`}>
             <input
               type="text"
-              className="input-dark text-[10px]"
+              className="input-dark text-[10px] min-h-[36px]"
               placeholder="Subject Name *"
               value={fiData.subject_name}
               onChange={(e) => setFiData(prev => ({ ...prev, subject_name: e.target.value }))}
             />
             <input
               type="text"
-              className="input-dark text-[10px]"
+              className="input-dark text-[10px] min-h-[36px]"
               placeholder={gps.latitude ? `Location (auto: ${gps.latitude.toFixed(4)})` : 'Location'}
               value={fiData.location}
               onChange={(e) => setFiData(prev => ({ ...prev, location: e.target.value }))}
             />
             <input
               type="text"
-              className="input-dark text-[10px]"
+              className="input-dark text-[10px] min-h-[36px]"
               placeholder="Reason for contact"
               value={fiData.reason}
               onChange={(e) => setFiData(prev => ({ ...prev, reason: e.target.value }))}
@@ -615,7 +629,7 @@ export default function MdtPage() {
             <div className="flex items-center gap-1">
               <input
                 type="text"
-                className="input-dark text-[10px] flex-1"
+                className="input-dark text-[10px] flex-1 min-h-[36px]"
                 placeholder="Brief narrative"
                 value={fiData.narrative}
                 onChange={(e) => setFiData(prev => ({ ...prev, narrative: e.target.value }))}

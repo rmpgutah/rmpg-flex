@@ -5,7 +5,7 @@
 // results list, and detailed DL record view.
 // ============================================================
 
-import React, { useState, useCallback } from 'react';
+import React, {useState, useCallback, useEffect} from 'react';
 import { Search, CreditCard, User, MapPin, ChevronRight, Shield, Calendar, Database, Wifi, Plus } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -55,6 +55,17 @@ interface DlSearchResponse {
   searchId: number;
   resultCount: number;
 }
+
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
 
 export default function DlSearchPage() {
   const isMobile = useIsMobile();
@@ -167,17 +178,17 @@ export default function DlSearchPage() {
   // Desktop search bar
   const searchControls = (
     <div className="flex items-center gap-1.5 flex-wrap">
-      <input className="input-dark text-[10px] w-28" placeholder="Last Name" value={lastName}
+      <input className="input-dark text-[10px] w-28 min-h-[36px]" placeholder="Last Name" value={lastName}
         onChange={(e) => setLastName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
-      <input className="input-dark text-[10px] w-28" placeholder="First Name" value={firstName}
+      <input className="input-dark text-[10px] w-28 min-h-[36px]" placeholder="First Name" value={firstName}
         onChange={(e) => setFirstName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
-      <input className="input-dark text-[10px] w-28" placeholder="DL Number" value={dlNumber}
+      <input className="input-dark text-[10px] w-28 min-h-[36px]" placeholder="DL Number" value={dlNumber}
         onChange={(e) => setDlNumber(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
-      <select className="select-dark text-[10px] w-16" value={state} onChange={(e) => setState(e.target.value)}>
+      <select className="select-dark text-[10px] w-16 min-h-[36px]" value={state} onChange={(e) => setState(e.target.value)}>
         <option value="">State</option>
         {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
       </select>
-      <input className="input-dark text-[10px] w-28" type="date" placeholder="DOB" value={dob}
+      <input className="input-dark text-[10px] w-28 min-h-[36px]" type="date" placeholder="DOB" value={dob}
         onChange={(e) => setDob(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
       <button type="button" onClick={handleSearch} disabled={loading} className="toolbar-btn toolbar-btn-primary text-[10px]">
         {loading ? 'Searching...' : 'Search'}
@@ -187,6 +198,9 @@ export default function DlSearchPage() {
       </button>
     </div>
   );
+
+  // Set document title
+  useEffect(() => { document.title = 'DL Search \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
@@ -202,15 +216,15 @@ export default function DlSearchPage() {
       {isMobile && (
         <div className="flex flex-col gap-1.5 px-3 py-2 flex-shrink-0" style={{ background: '#111', borderBottom: '1px solid #222' }}>
           <div className="flex items-center gap-1.5">
-            <input className="input-dark text-[10px] flex-1" placeholder="Last Name" value={lastName}
+            <input className="input-dark text-[10px] flex-1 min-h-[36px]" placeholder="Last Name" value={lastName}
               onChange={(e) => setLastName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
-            <input className="input-dark text-[10px] flex-1" placeholder="First Name" value={firstName}
+            <input className="input-dark text-[10px] flex-1 min-h-[36px]" placeholder="First Name" value={firstName}
               onChange={(e) => setFirstName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
           </div>
           <div className="flex items-center gap-1.5">
-            <input className="input-dark text-[10px] flex-1" placeholder="DL Number" value={dlNumber}
+            <input className="input-dark text-[10px] flex-1 min-h-[36px]" placeholder="DL Number" value={dlNumber}
               onChange={(e) => setDlNumber(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
-            <select className="select-dark text-[10px] w-16" value={state} onChange={(e) => setState(e.target.value)}>
+            <select className="select-dark text-[10px] w-16 min-h-[36px]" value={state} onChange={(e) => setState(e.target.value)}>
               <option value="">State</option>
               {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>

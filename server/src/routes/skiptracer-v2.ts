@@ -27,7 +27,7 @@ router.get('/sources', (_req: Request, res: Response) => {
 
     res.json(sourceList);
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -50,7 +50,7 @@ router.put('/sources/:name/config', requireRole('admin'), (req: Request, res: Re
 
     res.json({ success: true });
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -88,10 +88,10 @@ router.get('/dossiers/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const dossier = db.prepare('SELECT * FROM skiptracer_dossiers WHERE id = ?').get(req.params.id);
-    if (!dossier) { res.status(404).json({ error: 'Dossier not found' }); return; }
+    if (!dossier) { res.status(404).json({ error: 'Dossier not found', code: 'DOSSIER_NOT_FOUND' }); return; }
     res.json(dossier);
   } catch {
-    res.status(404).json({ error: 'Dossier not found' });
+    res.status(404).json({ error: 'Dossier not found', code: 'DOSSIER_NOT_FOUND' });
   }
 });
 
@@ -105,7 +105,7 @@ router.post('/dossiers', (req: Request, res: Response) => {
     `).run(subject_name, subject_dob || null, notes || null, JSON.stringify(search_results || {}), req.user!.userId, localNow());
     res.status(201).json({ id: Number(result.lastInsertRowid) });
   } catch {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -115,12 +115,12 @@ router.delete('/dossiers/:id', (req: Request, res: Response) => {
     db.prepare('DELETE FROM skiptracer_dossiers WHERE id = ?').run(req.params.id);
     res.json({ success: true });
   } catch {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
 router.get('/dossiers/:id/pdf', (req: Request, res: Response) => {
-  res.status(501).json({ error: 'PDF export not yet implemented' });
+  res.status(501).json({ error: 'PDF export not yet implemented', code: 'PDF_EXPORT_NOT_YET' });
 });
 
 // ─── Search ────────────────────────────────────────────────
@@ -154,7 +154,7 @@ router.get('/search', async (req: Request, res: Response) => {
       sources_checked: ['local_records'],
     });
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 

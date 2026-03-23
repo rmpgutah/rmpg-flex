@@ -9,6 +9,8 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken } from '../middleware/auth';
+import { auditLog } from '../utils/auditLogger';
+import { broadcastRecordUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
 
 const router = Router();
@@ -56,10 +58,11 @@ router.get('/', (req: Request, res: Response) => {
       LIMIT ? OFFSET ?
     `).all(...params, limitNum, offset);
 
+    res.set('Cache-Control', 'private, max-age=30');
     res.json({ data: rows, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
   } catch (error: any) {
     console.error('Get DARs error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to retrieve daily activity reports', code: 'LIST_DAR_ERROR' });
   }
 });
 
@@ -68,11 +71,11 @@ router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID' }); return; }
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
     const row = db.prepare('SELECT * FROM daily_activity_reports WHERE id = ?').get(id);
-    if (!row) return res.status(404).json({ error: 'DAR not found' });
+    if (!row) return res.status(404).json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' });
     res.json({ data: row });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Failed to retrieve DAR', code: 'GET_DAR_ERROR' }); }
 });
 
 // ─── POST /auto-populate ────────────────────────────────
@@ -81,7 +84,7 @@ router.post('/auto-populate', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { officer_id, shift_date } = req.body;
-    if (!officer_id || !shift_date) return res.status(400).json({ error: 'Officer ID and shift date required' });
+    if (!officer_id || !shift_date) return res.status(400).json({ error: 'Officer ID and shift date required', code: 'OFFICER_ID_AND_SHIFT' });
 
     // Get officer info
     const officer = db.prepare('SELECT full_name FROM users WHERE id = ?').get(officer_id) as any;
@@ -92,18 +95,24 @@ router.post('/auto-populate', (req: Request, res: Response) => {
       FROM calls_for_service
       WHERE DATE(created_at) = ? AND (assigned_unit_ids LIKE ? OR dispatcher_id = ?)
       ORDER BY created_at
+    
+      LIMIT 1000
     `).all(shift_date, `%${officer_id}%`, officer_id) as any[];
 
     // Get incidents created
     const incidents = db.prepare(`
       SELECT id, incident_number, incident_type FROM incidents
       WHERE DATE(created_at) = ? AND officer_id = ?
+    
+      LIMIT 1000
     `).all(shift_date, officer_id) as any[];
 
     // Get citations issued
     const citations = db.prepare(`
       SELECT id, citation_number, type FROM citations
       WHERE violation_date = ? AND issuing_officer_id = ?
+    
+      LIMIT 1000
     `).all(shift_date, officer_id) as any[];
 
     // Get patrol scans
@@ -112,6 +121,8 @@ router.post('/auto-populate', (req: Request, res: Response) => {
       FROM patrol_scans ps
       JOIN patrol_checkpoints pc ON ps.checkpoint_id = pc.id
       WHERE DATE(ps.scanned_at) = ? AND ps.officer_id = ?
+    
+      LIMIT 1000
     `).all(shift_date, officer_id) as any[];
 
     // Get time entry for shift start/end
@@ -137,6 +148,8 @@ router.post('/auto-populate', (req: Request, res: Response) => {
         SELECT id, subject_first_name, subject_last_name, location, reason
         FROM field_interviews
         WHERE DATE(interview_date) = ? AND officer_id = ?
+      
+        LIMIT 1000
       `).all(shift_date, officer_id);
     } catch { /* table may not exist */ }
 
@@ -208,7 +221,7 @@ router.post('/auto-populate', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Auto-populate DAR error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to auto-populate DAR data', code: 'AUTO_POPULATE_ERROR' });
   }
 });
 
@@ -221,7 +234,12 @@ router.post('/', (req: Request, res: Response) => {
       property_id, property_name, post_assignment,
       calls_handled, incidents_created, citations_issued, patrols_completed,
       activities_narrative, notable_events, equipment_issues, safety_concerns, recommendations } = req.body;
-    if (!shift_date) return res.status(400).json({ error: 'Shift date is required' });
+    if (!shift_date) return res.status(400).json({ error: 'Shift date is required', code: 'MISSING_SHIFT_DATE' });
+
+    // Validate date format
+    if (typeof shift_date !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(shift_date)) {
+      return res.status(400).json({ error: 'shift_date must be in YYYY-MM-DD format', code: 'INVALID_DATE_FORMAT' });
+    }
 
     const effectiveOfficerId = officer_id || req.user!.userId;
     const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(effectiveOfficerId) as any;
@@ -248,7 +266,7 @@ router.post('/', (req: Request, res: Response) => {
     res.status(201).json({ data: { id: result.lastInsertRowid, dar_number } });
   } catch (error: any) {
     console.error('Create DAR error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create daily activity report', code: 'CREATE_DAR_ERROR' });
   }
 });
 
@@ -257,9 +275,9 @@ router.put('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID' }); return; }
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
     const existing = db.prepare('SELECT id FROM daily_activity_reports WHERE id = ?').get(id);
-    if (!existing) { res.status(404).json({ error: 'DAR not found' }); return; }
+    if (!existing) { res.status(404).json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' }); return; }
     const now = localNow();
     const fields = ['activities_narrative', 'notable_events', 'equipment_issues',
       'safety_concerns', 'recommendations', 'post_assignment', 'shift_start', 'shift_end'];
@@ -276,7 +294,7 @@ router.put('/:id', (req: Request, res: Response) => {
     params.push(id);
     db.prepare(`UPDATE daily_activity_reports SET ${updates.join(', ')} WHERE id = ?`).run(...params);
     res.json({ data: { id } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Failed to update DAR', code: 'UPDATE_DAR_ERROR' }); }
 });
 
 // ─── PUT /:id/submit ────────────────────────────────────
@@ -284,9 +302,9 @@ router.put('/:id/submit', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID' }); return; }
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID', code: 'INVALID_DAR_ID' }); return; }
     const existing = db.prepare('SELECT id, status FROM daily_activity_reports WHERE id = ?').get(id) as any;
-    if (!existing) { res.status(404).json({ error: 'DAR not found' }); return; }
+    if (!existing) { res.status(404).json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' }); return; }
     const now = localNow();
     db.prepare('UPDATE daily_activity_reports SET status = ?, submitted_at = ?, updated_at = ? WHERE id = ?')
       .run('submitted', now, now, id);
@@ -294,8 +312,9 @@ router.put('/:id/submit', (req: Request, res: Response) => {
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
       VALUES (?, 'submit', 'dar', ?, '{}', ?)`).run(req.user!.userId, id, now);
 
+    broadcastRecordUpdate({ type: 'dar_submitted', id });
     res.json({ data: { id, status: 'submitted' } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error', code: 'DAR_SUBMIT_ERROR' }); }
 });
 
 // ─── PUT /:id/approve ───────────────────────────────────
@@ -312,8 +331,9 @@ router.put('/:id/approve', (req: Request, res: Response) => {
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
       VALUES (?, 'approve', 'dar', ?, '{}', ?)`).run(req.user!.userId, req.params.id, now);
 
+    broadcastRecordUpdate({ type: 'dar_approved', id: parseInt(req.params.id) });
     res.json({ data: { id: parseInt(req.params.id), status: 'approved' } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error', code: 'DAR_APPROVE_ERROR' }); }
 });
 
 // ─── PUT /:id/return ────────────────────────────────────
@@ -323,14 +343,15 @@ router.put('/:id/return', (req: Request, res: Response) => {
     const now = localNow();
     const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
     const { review_notes } = req.body;
-    if (!review_notes) return res.status(400).json({ error: 'Review notes required when returning' });
+    if (!review_notes) return res.status(400).json({ error: 'Review notes required when returning', code: 'MISSING_REVIEW_NOTES' });
 
     db.prepare(`UPDATE daily_activity_reports SET status = 'returned', reviewed_by = ?,
       reviewed_by_name = ?, reviewed_at = ?, review_notes = ?, updated_at = ? WHERE id = ?`)
       .run(req.user!.userId, user?.full_name || '', now, review_notes, now, req.params.id);
 
+    broadcastRecordUpdate({ type: 'dar_returned', id: parseInt(req.params.id) });
     res.json({ data: { id: parseInt(req.params.id), status: 'returned' } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error', code: 'DAR_RETURN_ERROR' }); }
 });
 
 export default router;

@@ -268,7 +268,7 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
                       disabled={isSaving}
                       className="flex items-center gap-1 px-3 py-1 text-[10px] font-bold uppercase tracking-wider bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"
                     >
-                      {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                      {isSaving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save className="w-3 h-3" />}
                       Save
                     </button>
                   </div>

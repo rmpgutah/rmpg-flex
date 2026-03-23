@@ -46,14 +46,25 @@ export default function FleetTiresTab({ vehicleId }: { vehicleId: number | strin
 
   useEffect(() => { load(); }, [vehicleId]);
 
+  // Escape to close form
+  useEffect(() => {
+    if (!showForm) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowForm(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showForm]);
+
   const handleSubmit = async () => {
-    if (!form.position) return;
-    try { await apiFetch(`/fleet/${vehicleId}/tires`, { method: 'POST', body: JSON.stringify({ ...form, tread_depth: form.tread_depth ? Number(form.tread_depth) : null }) }); addToast('Tire added', 'success'); setShowForm(false); load(); } catch { addToast('Failed', 'error'); }
+    if (!form.position) { addToast('Position is required', 'error'); return; }
+    try { await apiFetch(`/fleet/${vehicleId}/tires`, { method: 'POST', body: JSON.stringify({ ...form, tread_depth: form.tread_depth ? Number(form.tread_depth) : null }) }); addToast('Tire added', 'success'); setShowForm(false); load(); } catch { addToast('Failed to add tire', 'error'); }
   };
 
   const updateTread = async (tireId: number, depth: string) => {
-    try { await apiFetch(`/fleet/tires/${tireId}`, { method: 'PUT', body: JSON.stringify({ tread_depth: Number(depth) }) }); addToast('Tread updated', 'success'); load(); } catch { /* handled */ }
+    try { await apiFetch(`/fleet/tires/${tireId}`, { method: 'PUT', body: JSON.stringify({ tread_depth: Number(depth) }) }); addToast('Tread updated', 'success'); load(); } catch { addToast('Failed to update tread depth', 'error'); }
   };
+
+  // Set document title
+  useEffect(() => { document.title = 'Fleet - Tires \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="space-y-3">
@@ -77,7 +88,7 @@ export default function FleetTiresTab({ vehicleId }: { vehicleId: number | strin
             <input type="number" step="0.1" value={form.tread_depth} onChange={e => setForm(f => ({ ...f, tread_depth: e.target.value }))} className="input-field text-xs" placeholder="Tread (32nds)" />
           </div>
           <div className="flex gap-2">
-            <button type="button" onClick={handleSubmit} className="toolbar-btn toolbar-btn-success text-[9px]">Save</button>
+            <button type="button" onClick={handleSubmit} disabled={!form.position} className="toolbar-btn toolbar-btn-success text-[9px] disabled:opacity-50">Save</button>
             <button type="button" onClick={() => setShowForm(false)} className="toolbar-btn text-[9px]">Cancel</button>
           </div>
         </div>

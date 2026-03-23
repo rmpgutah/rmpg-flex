@@ -18,7 +18,7 @@ import type { NextFunction } from 'express';
 function validateGraphId(req: Request, res: Response, next: NextFunction) {
   const id = req.params.id || req.params.aid;
   if (!id || !/^[A-Za-z0-9_=+\-]{10,250}$/.test(id)) {
-    return res.status(400).json({ error: 'Invalid message ID' });
+    return res.status(400).json({ error: 'Invalid message ID', code: 'INVALID_MESSAGE_ID' });
   }
   next();
 }
@@ -149,7 +149,7 @@ router.get('/status', (_req: Request, res: Response) => {
     res.json({ ...status, cachedMessages: cached?.count || 0 });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -160,7 +160,7 @@ router.get('/signature', (req: Request, res: Response) => {
     res.json({ signature: signature || '' });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -169,11 +169,11 @@ router.put('/signature', (req: Request, res: Response) => {
   try {
     const { signature } = req.body;
     if (signature !== undefined && typeof signature !== 'string') {
-      res.status(400).json({ error: 'Signature must be a string' });
+      res.status(400).json({ error: 'Signature must be a string', code: 'SIGNATURE_MUST_BE_A' });
       return;
     }
     if (signature && signature.length > 5000) {
-      res.status(400).json({ error: 'Signature must be 5000 characters or less' });
+      res.status(400).json({ error: 'Signature must be 5000 characters or less', code: 'SIGNATURE_MUST_BE_5000' });
       return;
     }
     const db = getDb();
@@ -187,7 +187,7 @@ router.put('/signature', (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -201,7 +201,7 @@ router.get('/unread-count', (_req: Request, res: Response) => {
     res.json({ count: row?.count || 0 });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -236,7 +236,7 @@ router.get('/folders', async (req: Request, res: Response) => {
     }
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -253,19 +253,19 @@ router.get('/folders/:id/children', validateGraphId, async (req: Request, res: R
     res.json(result.value || []);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // POST /api/email/folders — Create a new folder
 router.post('/folders', async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
     const { displayName, parentFolderId } = req.body;
-    if (!displayName?.trim()) { res.status(400).json({ error: 'Folder name required' }); return; }
-    if (displayName.length > 256) { res.status(400).json({ error: 'Folder name must be 256 characters or less' }); return; }
+    if (!displayName?.trim()) { res.status(400).json({ error: 'Folder name required', code: 'FOLDER_NAME_REQUIRED' }); return; }
+    if (displayName.length > 256) { res.status(400).json({ error: 'Folder name must be 256 characters or less', code: 'FOLDER_NAME_MUST_BE' }); return; }
     if (parentFolderId && !/^[A-Za-z0-9_=+\-]{10,250}$/.test(parentFolderId)) {
-      res.status(400).json({ error: 'Invalid parent folder ID' }); return;
+      res.status(400).json({ error: 'Invalid parent folder ID', code: 'INVALID_PARENT_FOLDER_ID' }); return;
     }
 
     const client = await getGraphClient();
@@ -278,16 +278,16 @@ router.post('/folders', async (req: Request, res: Response) => {
     res.json(folder);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // PATCH /api/email/folders/:id — Rename a folder
 router.patch('/folders/:id', validateGraphId, async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
     const { displayName } = req.body;
-    if (!displayName?.trim()) { res.status(400).json({ error: 'Folder name required' }); return; }
+    if (!displayName?.trim()) { res.status(400).json({ error: 'Folder name required', code: 'FOLDER_NAME_REQUIRED' }); return; }
 
     const client = await getGraphClient();
     await client.api(`/me/mailFolders/${req.params.id}`).update({ displayName: displayName.trim() });
@@ -295,21 +295,21 @@ router.patch('/folders/:id', validateGraphId, async (req: Request, res: Response
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // DELETE /api/email/folders/:id — Delete a folder
 router.delete('/folders/:id', validateGraphId, async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
     const client = await getGraphClient();
     await client.api(`/me/mailFolders/${req.params.id}`).delete();
     auditLog(req, 'DELETE', 'email_folder', 0, JSON.stringify({ folderId: req.params.id }));
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -431,7 +431,7 @@ router.get('/messages', async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -439,11 +439,11 @@ router.get('/messages', async (req: Request, res: Response) => {
 // IMPORTANT: Must be registered before /messages/:id to avoid Express treating "batch" as an ID
 router.post('/messages/batch', async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
     const { action, ids } = req.body;
     if (!action || !Array.isArray(ids) || ids.length === 0) {
-      res.status(400).json({ error: 'Action and ids[] required' });
+      res.status(400).json({ error: 'Action and ids[] required', code: 'ACTION_AND_IDS_REQUIRED' });
       return;
     }
     const VALID_BATCH_ACTIONS = ['delete', 'archive', 'markRead', 'markUnread'];
@@ -454,7 +454,7 @@ router.post('/messages/batch', async (req: Request, res: Response) => {
     // Validate all IDs are valid Graph IDs
     for (const id of ids) {
       if (typeof id !== 'string' || !/^[A-Za-z0-9_=+\-]{10,250}$/.test(id)) {
-        res.status(400).json({ error: 'Invalid message ID in batch' });
+        res.status(400).json({ error: 'Invalid message ID in batch', code: 'INVALID_MESSAGE_ID_IN' });
         return;
       }
     }
@@ -489,19 +489,19 @@ router.post('/messages/batch', async (req: Request, res: Response) => {
     res.json({ success, failed });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // POST /api/email/messages/mark-all-read — Mark all messages in a folder as read
 router.post('/messages/mark-all-read', async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
     const { folder = 'inbox' } = req.body;
     // Validate folder ID to prevent injection
     if (typeof folder !== 'string' || folder.length > 250) {
-      res.status(400).json({ error: 'Invalid folder' }); return;
+      res.status(400).json({ error: 'Invalid folder', code: 'INVALID_FOLDER' }); return;
     }
     const client = await getGraphClient();
     const db = getDb();
@@ -524,7 +524,7 @@ router.post('/messages/mark-all-read', async (req: Request, res: Response) => {
     res.json({ success: true, marked: success });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -532,7 +532,7 @@ router.post('/messages/mark-all-read', async (req: Request, res: Response) => {
 router.get('/messages/:id', validateGraphId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) {
-      res.status(503).json({ error: 'Email not authorized' });
+      res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' });
       return;
     }
 
@@ -575,14 +575,14 @@ router.get('/messages/:id', validateGraphId, async (req: Request, res: Response)
     });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // GET /api/email/messages/:id/attachments — List attachments
 router.get('/messages/:id/attachments', validateGraphId, async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
     const client = await getGraphClient();
     const result = await client
@@ -600,14 +600,14 @@ router.get('/messages/:id/attachments', validateGraphId, async (req: Request, re
     })));
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // GET /api/email/messages/:id/attachments/:aid — Download attachment
 router.get('/messages/:id/attachments/:aid', validateGraphId, async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
     const client = await getGraphClient();
     const attachment = await client
@@ -622,7 +622,7 @@ router.get('/messages/:id/attachments/:aid', validateGraphId, async (req: Reques
     res.send(content);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -631,19 +631,19 @@ router.post('/send', async (req: Request, res: Response) => {
   try {
     const { to, cc, bcc, subject, body, attachments } = req.body;
     if (!to || !subject) {
-      res.status(400).json({ error: 'To and subject are required' });
+      res.status(400).json({ error: 'To and subject are required', code: 'TO_AND_SUBJECT_ARE' });
       return;
     }
     if (typeof subject !== 'string' || subject.length > 998) {
-      res.status(400).json({ error: 'Subject must be a string of 998 characters or less' });
+      res.status(400).json({ error: 'Subject must be a string of 998 characters or less', code: 'SUBJECT_MUST_BE_A' });
       return;
     }
     if (body && typeof body !== 'string') {
-      res.status(400).json({ error: 'Body must be a string' });
+      res.status(400).json({ error: 'Body must be a string', code: 'BODY_MUST_BE_A' });
       return;
     }
     if (body && body.length > 500000) {
-      res.status(400).json({ error: 'Body too large (max 500KB)' });
+      res.status(400).json({ error: 'Body too large (max 500KB)', code: 'BODY_TOO_LARGE_MAX' });
       return;
     }
 
@@ -655,7 +655,7 @@ router.post('/send', async (req: Request, res: Response) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const allRecipients = [...toList, ...(ccList || []), ...(bccList || [])];
     if (allRecipients.length > 100) {
-      res.status(400).json({ error: 'Too many recipients (max 100)' });
+      res.status(400).json({ error: 'Too many recipients (max 100)', code: 'TOO_MANY_RECIPIENTS_MAX' });
       return;
     }
     for (const addr of allRecipients) {
@@ -667,7 +667,7 @@ router.post('/send', async (req: Request, res: Response) => {
 
     // Validate attachments
     if (attachments && (!Array.isArray(attachments) || attachments.length > 25)) {
-      res.status(400).json({ error: 'Attachments must be an array of 25 or fewer items' });
+      res.status(400).json({ error: 'Attachments must be an array of 25 or fewer items', code: 'ATTACHMENTS_MUST_BE_AN' });
       return;
     }
 
@@ -694,18 +694,18 @@ router.post('/send', async (req: Request, res: Response) => {
       broadcast('admin', 'email:sent', { to: toList, subject });
       res.json({ success: true });
     } else {
-      res.status(500).json({ error: 'Failed to send email' });
+      res.status(500).json({ error: 'Failed to send email', code: 'FAILED_TO_SEND_EMAIL' });
     }
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // POST /api/email/messages/:id/reply — Reply to message
 router.post('/messages/:id/reply', validateGraphId, async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
     const { body } = req.body;
     const client = await getGraphClient();
@@ -719,14 +719,14 @@ router.post('/messages/:id/reply', validateGraphId, async (req: Request, res: Re
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // POST /api/email/messages/:id/reply-all — Reply all
 router.post('/messages/:id/reply-all', validateGraphId, async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
     const { body } = req.body;
     const client = await getGraphClient();
@@ -740,17 +740,17 @@ router.post('/messages/:id/reply-all', validateGraphId, async (req: Request, res
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // POST /api/email/messages/:id/forward — Forward message
 router.post('/messages/:id/forward', validateGraphId, async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
     const { to, body } = req.body;
-    if (!to) { res.status(400).json({ error: 'Recipient required' }); return; }
+    if (!to) { res.status(400).json({ error: 'Recipient required', code: 'RECIPIENT_REQUIRED' }); return; }
 
     const toList = Array.isArray(to) ? to : [to];
     const emailRegexFwd = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -759,7 +759,7 @@ router.post('/messages/:id/forward', validateGraphId, async (req: Request, res: 
         res.status(400).json({ error: `Invalid email address: ${String(addr).slice(0, 50)}` }); return;
       }
     }
-    if (toList.length > 50) { res.status(400).json({ error: 'Too many recipients (max 50)' }); return; }
+    if (toList.length > 50) { res.status(400).json({ error: 'Too many recipients (max 50)', code: 'TOO_MANY_RECIPIENTS_MAX' }); return; }
     const client = await getGraphClient();
 
     const signature = getUserSignature(req.user!.userId);
@@ -774,14 +774,14 @@ router.post('/messages/:id/forward', validateGraphId, async (req: Request, res: 
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // PATCH /api/email/messages/:id — Update message (read/unread, flag)
 router.patch('/messages/:id', validateGraphId, async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
     const { isRead, isFlagged } = req.body;
     const client = await getGraphClient();
@@ -806,14 +806,14 @@ router.patch('/messages/:id', validateGraphId, async (req: Request, res: Respons
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // DELETE /api/email/messages/:id — Move to trash
 router.delete('/messages/:id', validateGraphId, async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
     const client = await getGraphClient();
 
@@ -830,17 +830,17 @@ router.delete('/messages/:id', validateGraphId, async (req: Request, res: Respon
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
 // POST /api/email/messages/:id/move — Move to folder
 router.post('/messages/:id/move', validateGraphId, async (req: Request, res: Response) => {
   try {
-    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized', code: 'EMAIL_NOT_AUTHORIZED' }); return; }
 
     const { folderId } = req.body;
-    if (!folderId) { res.status(400).json({ error: 'Folder ID required' }); return; }
+    if (!folderId) { res.status(400).json({ error: 'Folder ID required', code: 'FOLDER_ID_REQUIRED' }); return; }
 
     const client = await getGraphClient();
     await client.api(`/me/messages/${req.params.id}/move`).post({
@@ -854,7 +854,7 @@ router.post('/messages/:id/move', validateGraphId, async (req: Request, res: Res
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -871,11 +871,13 @@ router.get('/templates', (_req: Request, res: Response) => {
       FROM email_templates t
       LEFT JOIN users u ON t.created_by = u.id
       ORDER BY t.category, t.name
+    
+      LIMIT 1000
     `).all();
     res.json(templates);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -884,11 +886,11 @@ router.get('/templates/:id', validateParamIdMiddleware, (req: Request, res: Resp
   try {
     const db = getDb();
     const template = db.prepare('SELECT * FROM email_templates WHERE id = ?').get(req.params.id);
-    if (!template) { res.status(404).json({ error: 'Template not found' }); return; }
+    if (!template) { res.status(404).json({ error: 'Template not found', code: 'TEMPLATE_NOT_FOUND' }); return; }
     res.json(template);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -897,7 +899,7 @@ router.post('/templates', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { name, category, subject, body } = req.body;
-    if (!name) { res.status(400).json({ error: 'Template name is required' }); return; }
+    if (!name) { res.status(400).json({ error: 'Template name is required', code: 'TEMPLATE_NAME_IS_REQUIRED' }); return; }
 
     const result = db.prepare(`
       INSERT INTO email_templates (name, category, subject, body, created_by)
@@ -908,7 +910,7 @@ router.post('/templates', (req: Request, res: Response) => {
     res.json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -920,7 +922,7 @@ router.put('/templates/:id', validateParamIdMiddleware, (req: Request, res: Resp
     const now = localNow();
 
     const existing = db.prepare('SELECT id FROM email_templates WHERE id = ?').get(req.params.id);
-    if (!existing) { res.status(404).json({ error: 'Template not found' }); return; }
+    if (!existing) { res.status(404).json({ error: 'Template not found', code: 'TEMPLATE_NOT_FOUND' }); return; }
 
     db.prepare(`
       UPDATE email_templates SET name = ?, category = ?, subject = ?, body = ?, updated_at = ?
@@ -931,7 +933,7 @@ router.put('/templates/:id', validateParamIdMiddleware, (req: Request, res: Resp
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -940,15 +942,15 @@ router.delete('/templates/:id', validateParamIdMiddleware, requireRole('admin', 
   try {
     const db = getDb();
     const template = db.prepare('SELECT * FROM email_templates WHERE id = ?').get(req.params.id) as any;
-    if (!template) { res.status(404).json({ error: 'Template not found' }); return; }
-    if (template.is_system) { res.status(400).json({ error: 'Cannot delete system templates' }); return; }
+    if (!template) { res.status(404).json({ error: 'Template not found', code: 'TEMPLATE_NOT_FOUND' }); return; }
+    if (template.is_system) { res.status(400).json({ error: 'Cannot delete system templates', code: 'CANNOT_DELETE_SYSTEM_TEMPLATES' }); return; }
 
     db.prepare('DELETE FROM email_templates WHERE id = ?').run(req.params.id);
     auditLog(req, 'DELETE', 'email_template', parseInt(String(req.params.id), 10), `Deleted template: ${template.name}`);
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1007,7 +1009,7 @@ router.get('/contacts/search', (req: Request, res: Response) => {
     res.json(unique);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1020,9 +1022,9 @@ router.post('/link', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { emailGraphId, incidentId, callId, warrantId, personId, linkType, notes } = req.body;
-    if (!emailGraphId) { res.status(400).json({ error: 'Email ID is required' }); return; }
+    if (!emailGraphId) { res.status(400).json({ error: 'Email ID is required', code: 'EMAIL_ID_IS_REQUIRED' }); return; }
     if (!incidentId && !callId && !warrantId && !personId) {
-      res.status(400).json({ error: 'At least one link target is required' });
+      res.status(400).json({ error: 'At least one link target is required', code: 'AT_LEAST_ONE_LINK' });
       return;
     }
 
@@ -1038,7 +1040,7 @@ router.post('/link', (req: Request, res: Response) => {
     res.json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1059,11 +1061,13 @@ router.get('/links/:emailGraphId', (req: Request, res: Response) => {
       LEFT JOIN users u ON el.linked_by = u.id
       WHERE el.email_graph_id = ?
       ORDER BY el.created_at DESC
+    
+      LIMIT 1000
     `).all(String(req.params.emailGraphId));
     res.json(links);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1079,11 +1083,13 @@ router.get('/links/incident/:incidentId', (req: Request, res: Response) => {
       LEFT JOIN users u ON el.linked_by = u.id
       WHERE el.incident_id = ?
       ORDER BY ec.received_at DESC
+    
+      LIMIT 1000
     `).all(req.params.incidentId);
     res.json(links);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1095,7 +1101,7 @@ router.delete('/link/:id', validateParamIdMiddleware, requireRole('admin', 'mana
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1109,7 +1115,7 @@ router.post('/schedule', (req: Request, res: Response) => {
     const db = getDb();
     const { to, cc, bcc, subject, body, attachments, scheduledAt } = req.body;
     if (!to || !subject || !scheduledAt) {
-      res.status(400).json({ error: 'To, subject, and scheduledAt are required' });
+      res.status(400).json({ error: 'To, subject, and scheduledAt are required', code: 'TO_SUBJECT_AND_SCHEDULEDAT' });
       return;
     }
 
@@ -1133,7 +1139,7 @@ router.post('/schedule', (req: Request, res: Response) => {
     res.json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1148,11 +1154,13 @@ router.get('/scheduled', (req: Request, res: Response) => {
       LEFT JOIN users u ON se.created_by = u.id
       WHERE se.status = ? AND se.created_by = ?
       ORDER BY se.scheduled_at ASC
+    
+      LIMIT 1000
     `).all(String(status), req.user!.userId);
     res.json(rows);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1162,14 +1170,14 @@ router.delete('/scheduled/:id', validateParamIdMiddleware, (req: Request, res: R
     const db = getDb();
     const row = db.prepare('SELECT * FROM scheduled_emails WHERE id = ? AND created_by = ?')
       .get(req.params.id, req.user!.userId) as any;
-    if (!row) { res.status(404).json({ error: 'Scheduled email not found' }); return; }
-    if (row.status !== 'pending') { res.status(400).json({ error: 'Can only cancel pending emails' }); return; }
+    if (!row) { res.status(404).json({ error: 'Scheduled email not found', code: 'SCHEDULED_EMAIL_NOT_FOUND' }); return; }
+    if (row.status !== 'pending') { res.status(400).json({ error: 'Can only cancel pending emails', code: 'CAN_ONLY_CANCEL_PENDING' }); return; }
 
     db.prepare("UPDATE scheduled_emails SET status = 'cancelled' WHERE id = ?").run(req.params.id);
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1182,7 +1190,7 @@ router.put('/admin/credentials', requireRole('admin'), (req: Request, res: Respo
   try {
     const { clientId, clientSecret, tenantId } = req.body;
     if (!clientId || !clientSecret || !tenantId) {
-      res.status(400).json({ error: 'All three Azure AD credentials are required' });
+      res.status(400).json({ error: 'All three Azure AD credentials are required', code: 'ALL_THREE_AZURE_AD' });
       return;
     }
 
@@ -1195,7 +1203,7 @@ router.put('/admin/credentials', requireRole('admin'), (req: Request, res: Respo
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1220,7 +1228,7 @@ router.delete('/admin/credentials', requireRole('admin'), (req: Request, res: Re
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1228,7 +1236,7 @@ router.delete('/admin/credentials', requireRole('admin'), (req: Request, res: Re
 router.get('/admin/oauth/authorize', requireRole('admin'), (req: Request, res: Response) => {
   try {
     if (!isConfigured()) {
-      res.status(400).json({ error: 'Azure AD credentials not configured yet' });
+      res.status(400).json({ error: 'Azure AD credentials not configured yet', code: 'AZURE_AD_CREDENTIALS_NOT' });
       return;
     }
 
@@ -1243,7 +1251,7 @@ router.get('/admin/oauth/authorize', requireRole('admin'), (req: Request, res: R
     res.json({ url });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1259,7 +1267,7 @@ router.post('/admin/test-connection', requireRole('admin'), async (req: Request,
     });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1286,7 +1294,7 @@ router.put('/admin/enable', requireRole('admin'), (req: Request, res: Response) 
     res.json({ success: true, ...getStatus() });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1307,7 +1315,7 @@ router.put('/admin/smtp-settings', requireRole('admin'), (req: Request, res: Res
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1318,7 +1326,7 @@ router.post('/admin/sync-now', requireRole('admin'), async (req: Request, res: R
     res.json(result);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1383,7 +1391,7 @@ router.get('/flagged', async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1395,7 +1403,7 @@ router.get('/flagged', async (req: Request, res: Response) => {
 router.post('/categorize', (req: Request, res: Response) => {
   try {
     const { messageId, subject, bodyPreview } = req.body;
-    if (!messageId) { res.status(400).json({ error: 'messageId is required' }); return; }
+    if (!messageId) { res.status(400).json({ error: 'messageId is required', code: 'MESSAGEID_IS_REQUIRED' }); return; }
 
     const text = `${subject || ''} ${bodyPreview || ''}`.toLowerCase();
 
@@ -1426,7 +1434,7 @@ router.post('/categorize', (req: Request, res: Response) => {
     res.json({ messageId, categories });
   } catch (err: any) {
     console.error('Email categorize error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email categorize', code: 'EMAIL_CATEGORIZE_ERROR' });
   }
 });
 
@@ -1465,7 +1473,7 @@ router.post('/categorize/batch', (req: Request, res: Response) => {
     res.json({ processed: uncategorized.length, categorized });
   } catch (err: any) {
     console.error('Email batch categorize error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email batch categorize', code: 'EMAIL_BATCH_CATEGORIZE_ERROR' });
   }
 });
 
@@ -1577,7 +1585,7 @@ router.get('/threads', async (req: Request, res: Response) => {
     res.json({ threads: threadList, hasMore: Object.keys(threads).length > perPage });
   } catch (err: any) {
     console.error('Email threads error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email threads', code: 'EMAIL_THREADS_ERROR' });
   }
 });
 
@@ -1585,7 +1593,7 @@ router.get('/threads', async (req: Request, res: Response) => {
 router.get('/thread/:conversationId', async (req: Request, res: Response) => {
   try {
     const convId = req.params.conversationId;
-    if (!convId || convId.length > 250) { res.status(400).json({ error: 'Invalid conversation ID' }); return; }
+    if (!convId || convId.length > 250) { res.status(400).json({ error: 'Invalid conversation ID', code: 'INVALID_CONVERSATION_ID' }); return; }
 
     if (isAuthorized()) {
       try {
@@ -1642,7 +1650,7 @@ router.get('/thread/:conversationId', async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     console.error('Email thread error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email thread', code: 'EMAIL_THREAD_ERROR' });
   }
 });
 
@@ -1663,7 +1671,7 @@ router.get('/threads', authenticateToken, (req: Request, res: Response) => {
     const messages = db.prepare(sql).all(...params);
     res.json(messages);
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 

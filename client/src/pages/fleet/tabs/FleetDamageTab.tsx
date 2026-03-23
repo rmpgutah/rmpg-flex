@@ -30,6 +30,17 @@ const REPAIR_COLORS: Record<string, string> = {
   in_repair: 'text-cyan-400', completed: 'text-green-400', insurance_claim: 'text-amber-400',
 };
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function FleetDamageTab({ vehicleId }: { vehicleId: number | string }) {
   const { addToast } = useToast();
   const [reports, setReports] = useState<DamageReport[]>([]);
@@ -39,6 +50,7 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
     damage_date: new Date().toISOString().slice(0, 10), damage_type: '', location_on_vehicle: '',
     severity: 'minor', description: '', repair_estimate: '',
   });
+  const [submitting, setSubmitting] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -49,19 +61,32 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
 
   useEffect(() => { load(); }, [vehicleId]);
 
+  // Escape to close form
+  useEffect(() => {
+    if (!showForm) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowForm(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showForm]);
+
   const handleSubmit = async () => {
-    if (!form.damage_type || !form.description) { addToast('Type and description required', 'error'); return; }
+    if (!form.damage_type.trim()) { addToast('Damage type is required', 'error'); return; }
+    if (!form.description.trim()) { addToast('Description is required', 'error'); return; }
+    setSubmitting(true);
     try { await apiFetch(`/fleet/${vehicleId}/damage-reports`, {
       method: 'POST', body: JSON.stringify({ ...form, repair_estimate: form.repair_estimate ? Number(form.repair_estimate) : null }),
-    }); addToast('Damage reported', 'success'); setShowForm(false); load(); } catch { /* handled */ }
+    }); addToast('Damage reported', 'success'); setShowForm(false); load(); } catch { addToast('Failed to report damage', 'error'); } finally { setSubmitting(false); }
   };
 
   const updateRepairStatus = async (id: number, repair_status: string) => {
-    try { await apiFetch(`/fleet/damage-reports/${id}`, { method: 'PUT', body: JSON.stringify({ repair_status }) }); addToast('Status updated', 'success'); load(); } catch { /* handled */ }
+    try { await apiFetch(`/fleet/damage-reports/${id}`, { method: 'PUT', body: JSON.stringify({ repair_status }) }); addToast('Status updated', 'success'); load(); } catch { addToast('Failed to update status', 'error'); }
   };
 
   const totalEstimate = reports.reduce((s, r) => s + (r.repair_estimate || 0), 0);
   const totalCost = reports.reduce((s, r) => s + (r.repair_cost || 0), 0);
+
+  // Set document title
+  useEffect(() => { document.title = 'Fleet - Damage \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="space-y-3">
@@ -93,8 +118,8 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
           </div>
           <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="input-field w-full text-xs" rows={2} placeholder="Description..." />
           <div className="flex gap-2">
-            <button type="button" onClick={handleSubmit} className="toolbar-btn toolbar-btn-success text-[9px]">Submit</button>
-            <button type="button" onClick={() => setShowForm(false)} className="toolbar-btn text-[9px]">Cancel</button>
+            <button type="button" onClick={handleSubmit} disabled={submitting || !form.damage_type.trim() || !form.description.trim()} className="toolbar-btn toolbar-btn-success text-[9px] disabled:opacity-50">{submitting ? 'Submitting...' : 'Submit'}</button>
+            <button type="button" onClick={() => setShowForm(false)} disabled={submitting} className="toolbar-btn text-[9px]">Cancel</button>
           </div>
         </div>
       )}
@@ -110,7 +135,7 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
               </div>
               <p className="text-[10px] text-rmpg-300">{r.description}</p>
               <div className="flex items-center gap-3 mt-1 text-[10px] text-rmpg-400">
-                <span>{r.damage_date}</span>
+                <span>{r.damage_date ? new Date(r.damage_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}</span>
                 <span>By: {r.reported_by_name}</span>
                 {r.repair_estimate && <span>Est: ${r.repair_estimate}</span>}
                 {r.repair_cost && <span>Cost: ${r.repair_cost}</span>}

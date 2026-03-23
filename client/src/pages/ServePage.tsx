@@ -560,6 +560,18 @@ export default function ServePage() {
   // Render
   // ══════════════════════════════════════════════════════════════════════
 
+  // Set document title
+  useEffect(() => { document.title = 'Process Server \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setCreateJobOpen(false); setEditJob(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="flex flex-col h-full bg-surface-base">
       {fetchError && (
@@ -912,7 +924,7 @@ export default function ServePage() {
                   <div className="text-[10px] text-rmpg-400 uppercase font-semibold">Success Rates ({successRates.period_days}d)</div>
                   <button type="button" onClick={() => setSuccessRates(null)} className="text-rmpg-500 hover:text-rmpg-300 text-xs">Close</button>
                 </div>
-                <div className="grid grid-cols-4 gap-2 text-center">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
                   <div><div className="text-lg font-bold text-green-400">{successRates.overall?.success_rate}%</div><div className="text-[9px] text-rmpg-400">Overall</div></div>
                   <div><div className="text-lg font-bold text-white">{successRates.overall?.total}</div><div className="text-[9px] text-rmpg-400">Total Jobs</div></div>
                   <div><div className="text-lg font-bold text-green-400">{successRates.overall?.served}</div><div className="text-[9px] text-rmpg-400">Served</div></div>

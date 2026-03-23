@@ -156,7 +156,7 @@ router.get('/status', requireRole('admin', 'manager'), (_req: Request, res: Resp
     res.json({ integrations: statuses });
   } catch (error: any) {
     console.error('Integration status error:', error);
-    res.status(500).json({ error: 'Failed to fetch integration status' });
+    res.status(500).json({ error: 'Failed to fetch integration status', code: 'FAILED_TO_FETCH_INTEGRATION' });
   }
 });
 
@@ -169,7 +169,7 @@ router.get('/health-log/:id', requireRole('admin', 'manager'), (req: Request, re
     ).all(req.params.id);
     res.json({ logs });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to fetch health log' });
+    res.status(500).json({ error: 'Failed to fetch health log', code: 'FAILED_TO_FETCH_HEALTH' });
   }
 });
 
@@ -183,6 +183,8 @@ router.get('/keys', requireRole('admin'), (req: Request, res: Response) => {
       SELECT id, name, key_prefix, is_active, scopes, last_used_at, request_count, created_at
       FROM integration_api_keys
       ORDER BY created_at DESC
+    
+      LIMIT 1000
     `).all() as any[];
 
     const mapped = keys.map((k: any) => ({
@@ -199,7 +201,7 @@ router.get('/keys', requireRole('admin'), (req: Request, res: Response) => {
     res.json(mapped);
   } catch (error: any) {
     console.error('List API keys error:', error);
-    res.status(500).json({ error: 'Failed to list API keys' });
+    res.status(500).json({ error: 'Failed to list API keys', code: 'FAILED_TO_LIST_API' });
   }
 });
 
@@ -208,7 +210,7 @@ router.post('/keys', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const { name, scopes } = req.body;
     if (!name || typeof name !== 'string' || name.trim().length < 2) {
-      return res.status(400).json({ error: 'Name is required (min 2 characters)' });
+      return res.status(400).json({ error: 'Name is required (min 2 characters)', code: 'NAME_IS_REQUIRED_MIN' });
     }
 
     const db = getDb();
@@ -239,7 +241,7 @@ router.post('/keys', requireRole('admin'), (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Create API key error:', error);
-    res.status(500).json({ error: 'Failed to create API key' });
+    res.status(500).json({ error: 'Failed to create API key', code: 'FAILED_TO_CREATE_API' });
   }
 });
 
@@ -251,7 +253,7 @@ router.patch('/keys/:id/revoke', requireRole('admin'), (req: Request, res: Respo
 
     const existing = db.prepare('SELECT id, name, is_active FROM integration_api_keys WHERE id = ?').get(id) as any;
     if (!existing) {
-      return res.status(404).json({ error: 'API key not found' });
+      return res.status(404).json({ error: 'API key not found', code: 'API_KEY_NOT_FOUND' });
     }
 
     db.prepare('UPDATE integration_api_keys SET is_active = 0 WHERE id = ?').run(id);
@@ -260,7 +262,7 @@ router.patch('/keys/:id/revoke', requireRole('admin'), (req: Request, res: Respo
     res.json({ success: true, message: `API key "${existing.name}" revoked` });
   } catch (error: any) {
     console.error('Revoke API key error:', error);
-    res.status(500).json({ error: 'Failed to revoke API key' });
+    res.status(500).json({ error: 'Failed to revoke API key', code: 'FAILED_TO_REVOKE_API' });
   }
 });
 
@@ -272,7 +274,7 @@ router.patch('/keys/:id/activate', requireRole('admin'), (req: Request, res: Res
 
     const existing = db.prepare('SELECT id, name, is_active FROM integration_api_keys WHERE id = ?').get(id) as any;
     if (!existing) {
-      return res.status(404).json({ error: 'API key not found' });
+      return res.status(404).json({ error: 'API key not found', code: 'API_KEY_NOT_FOUND' });
     }
 
     db.prepare('UPDATE integration_api_keys SET is_active = 1 WHERE id = ?').run(id);
@@ -281,7 +283,7 @@ router.patch('/keys/:id/activate', requireRole('admin'), (req: Request, res: Res
     res.json({ success: true, message: `API key "${existing.name}" activated` });
   } catch (error: any) {
     console.error('Activate API key error:', error);
-    res.status(500).json({ error: 'Failed to activate API key' });
+    res.status(500).json({ error: 'Failed to activate API key', code: 'FAILED_TO_ACTIVATE_API' });
   }
 });
 
@@ -293,7 +295,7 @@ router.delete('/keys/:id', requireRole('admin'), (req: Request, res: Response) =
 
     const existing = db.prepare('SELECT id, name FROM integration_api_keys WHERE id = ?').get(id) as any;
     if (!existing) {
-      return res.status(404).json({ error: 'API key not found' });
+      return res.status(404).json({ error: 'API key not found', code: 'API_KEY_NOT_FOUND' });
     }
 
     db.prepare('DELETE FROM integration_api_keys WHERE id = ?').run(id);
@@ -302,7 +304,7 @@ router.delete('/keys/:id', requireRole('admin'), (req: Request, res: Response) =
     res.json({ success: true, message: `API key "${existing.name}" deleted` });
   } catch (error: any) {
     console.error('Delete API key error:', error);
-    res.status(500).json({ error: 'Failed to delete API key' });
+    res.status(500).json({ error: 'Failed to delete API key', code: 'FAILED_TO_DELETE_API' });
   }
 });
 
@@ -329,7 +331,7 @@ router.get('/keys/request-log', requireRole('admin'), (_req: Request, res: Respo
     res.json(mapped);
   } catch (error: any) {
     console.error('Request log error:', error);
-    res.status(500).json({ error: 'Failed to fetch request log' });
+    res.status(500).json({ error: 'Failed to fetch request log', code: 'FAILED_TO_FETCH_REQUEST' });
   }
 });
 
@@ -354,7 +356,7 @@ router.get('/services/rmpgutahps', requireRole('admin', 'manager'), (_req: Reque
     });
   } catch (err: any) {
     console.error('[Integrations] Get rmpgutahps config error:', err);
-    res.status(500).json({ error: 'Failed to get service config.' });
+    res.status(500).json({ error: 'Failed to get service config.', code: 'FAILED_TO_GET_SERVICE' });
   }
 });
 
@@ -366,7 +368,7 @@ router.put('/services/rmpgutahps', requireRole('admin', 'manager'), (req: Reques
     const now = localNow();
 
     if (!api_key || typeof api_key !== 'string' || !api_key.trim()) {
-      return res.status(400).json({ error: 'api_key is required.' });
+      return res.status(400).json({ error: 'api_key is required.', code: 'APIKEY_IS_REQUIRED' });
     }
 
     const encrypted = encryptApiKey(api_key.trim());
@@ -389,7 +391,7 @@ router.put('/services/rmpgutahps', requireRole('admin', 'manager'), (req: Reques
     res.json({ success: true, message: 'rmpgutahps.us API key saved.' });
   } catch (err: any) {
     console.error('[Integrations] Save rmpgutahps config error:', err);
-    res.status(500).json({ error: 'Failed to save service config.' });
+    res.status(500).json({ error: 'Failed to save service config.', code: 'FAILED_TO_SAVE_SERVICE' });
   }
 });
 
@@ -406,7 +408,7 @@ router.delete('/services/rmpgutahps', requireRole('admin', 'manager'), (req: Req
     res.json({ success: true, message: 'rmpgutahps.us API key cleared.' });
   } catch (err: any) {
     console.error('[Integrations] Clear rmpgutahps config error:', err);
-    res.status(500).json({ error: 'Failed to clear service config.' });
+    res.status(500).json({ error: 'Failed to clear service config.', code: 'FAILED_TO_CLEAR_SERVICE' });
   }
 });
 

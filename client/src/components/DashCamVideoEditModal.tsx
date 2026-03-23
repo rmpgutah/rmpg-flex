@@ -190,7 +190,9 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
           value={form.notes}
           onChange={e => set('notes', e.target.value)}
           placeholder="Optional notes about this footage..."
+          maxLength={3000}
         />
+        <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/3000</div>
       </div>
 
       {/* Info note */}

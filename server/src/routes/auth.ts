@@ -100,6 +100,8 @@ function createSession(userId: number, refreshToken: string, ip: string, userAge
   const activeSessions = db.prepare(`
     SELECT id FROM sessions WHERE user_id = ? AND is_active = 1
     ORDER BY last_used_at ASC
+  
+    LIMIT 1000
   `).all(userId) as { id: number }[];
 
   if (activeSessions.length >= config.session.maxPerUser) {
@@ -126,7 +128,7 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
     const userAgent = req.headers['user-agent'] || 'unknown';
 
     if (!username || !password) {
-      res.status(400).json({ error: 'Username and password are required' });
+      res.status(400).json({ error: 'Username and password are required', code: 'USERNAME_AND_PASSWORD_ARE' });
       return;
     }
 
@@ -151,13 +153,13 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
 
     if (!user) {
       logLoginAttempt(username, ip, false, 'user_not_found');
-      res.status(401).json({ error: 'Invalid username or password' });
+      res.status(401).json({ error: 'Invalid username or password', code: 'INVALID_USERNAME_OR_PASSWORD' });
       return;
     }
 
     if (user.status !== 'active') {
       logLoginAttempt(username, ip, false, 'account_inactive');
-      res.status(403).json({ error: 'Account is not active' });
+      res.status(403).json({ error: 'Account is not active', code: 'ACCOUNT_IS_NOT_ACTIVE' });
       return;
     }
 
@@ -300,7 +302,7 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Login error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to login', code: 'LOGIN_ERROR' });
   }
 });
 
@@ -310,7 +312,7 @@ router.post('/refresh', (req: Request, res: Response) => {
     const { refreshToken } = req.body;
 
     if (!refreshToken) {
-      res.status(400).json({ error: 'Refresh token is required' });
+      res.status(400).json({ error: 'Refresh token is required', code: 'REFRESH_TOKEN_IS_REQUIRED' });
       return;
     }
 
@@ -343,7 +345,7 @@ router.post('/refresh', (req: Request, res: Response) => {
     if (!user || user.status !== 'active') {
       // Deactivate session
       db.prepare('UPDATE sessions SET is_active = 0 WHERE id = ?').run(session.id);
-      res.status(403).json({ error: 'Account is no longer active' });
+      res.status(403).json({ error: 'Account is no longer active', code: 'ACCOUNT_IS_NO_LONGER' });
       return;
     }
 
@@ -373,7 +375,7 @@ router.post('/refresh', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Refresh token error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to refresh token', code: 'REFRESH_TOKEN_ERROR' });
   }
 });
 
@@ -406,7 +408,7 @@ router.post('/logout', authenticateToken, (req: Request, res: Response) => {
     res.json({ message: 'Logged out successfully' });
   } catch (error: any) {
     console.error('Logout error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to logout', code: 'LOGOUT_ERROR' });
   }
 });
 
@@ -421,7 +423,7 @@ router.get('/me', authenticateToken, (req: Request, res: Response) => {
     `).get(req.user!.userId) as any;
 
     if (!user) {
-      res.status(404).json({ error: 'User not found' });
+      res.status(404).json({ error: 'User not found', code: 'USER_NOT_FOUND' });
       return;
     }
 
@@ -449,7 +451,7 @@ router.get('/me', authenticateToken, (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get user error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get user', code: 'GET_USER_ERROR' });
   }
 });
 
@@ -462,12 +464,14 @@ router.get('/sessions', authenticateToken, (req: Request, res: Response) => {
       FROM sessions
       WHERE user_id = ? AND is_active = 1
       ORDER BY last_used_at DESC
+    
+      LIMIT 1000
     `).all(req.user!.userId);
 
     res.json(sessions);
   } catch (error: any) {
     console.error('Get sessions error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get sessions', code: 'GET_SESSIONS_ERROR' });
   }
 });
 
@@ -480,14 +484,14 @@ router.delete('/sessions/:sessionId', authenticateToken, (req: Request, res: Res
     ).run(req.params.sessionId, req.user!.userId);
 
     if (result.changes === 0) {
-      res.status(404).json({ error: 'Session not found' });
+      res.status(404).json({ error: 'Session not found', code: 'SESSION_NOT_FOUND' });
       return;
     }
 
     res.json({ message: 'Session revoked' });
   } catch (error: any) {
     console.error('Revoke session error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to revoke session', code: 'REVOKE_SESSION_ERROR' });
   }
 });
 
@@ -497,7 +501,7 @@ router.post('/change-password', authenticateToken, (req: Request, res: Response)
     const { currentPassword, newPassword } = req.body;
 
     if (!currentPassword || !newPassword) {
-      res.status(400).json({ error: 'Current password and new password are required' });
+      res.status(400).json({ error: 'Current password and new password are required', code: 'CURRENT_PASSWORD_AND_NEW' });
       return;
     }
 
@@ -517,19 +521,19 @@ router.post('/change-password', authenticateToken, (req: Request, res: Response)
       .get(req.user!.userId) as any;
 
     if (!user) {
-      res.status(404).json({ error: 'User not found' });
+      res.status(404).json({ error: 'User not found', code: 'USER_NOT_FOUND' });
       return;
     }
 
     const validPassword = bcryptjs.compareSync(currentPassword, user.password_hash);
     if (!validPassword) {
-      res.status(401).json({ error: 'Current password is incorrect' });
+      res.status(401).json({ error: 'Current password is incorrect', code: 'CURRENT_PASSWORD_IS_INCORRECT' });
       return;
     }
 
     // Prevent reusing the same password
     if (bcryptjs.compareSync(newPassword, user.password_hash)) {
-      res.status(400).json({ error: 'New password must be different from current password' });
+      res.status(400).json({ error: 'New password must be different from current password', code: 'NEW_PASSWORD_MUST_BE' });
       return;
     }
 
@@ -568,7 +572,7 @@ router.post('/change-password', authenticateToken, (req: Request, res: Response)
     res.json({ message: 'Password changed successfully. Please log in again.' });
   } catch (error: any) {
     console.error('Change password error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to change password', code: 'CHANGE_PASSWORD_ERROR' });
   }
 });
 
@@ -582,7 +586,7 @@ router.put('/profile', authenticateToken, (req: Request, res: Response) => {
       .get(req.user!.userId) as any;
 
     if (!user) {
-      res.status(404).json({ error: 'User not found' });
+      res.status(404).json({ error: 'User not found', code: 'USER_NOT_FOUND' });
       return;
     }
 
@@ -597,7 +601,7 @@ router.put('/profile', authenticateToken, (req: Request, res: Response) => {
       const fn = String(first_name).trim();
       const ln = String(last_name).trim();
       if (!fn || !ln) {
-        res.status(400).json({ error: 'First and last name are required and cannot be empty.' });
+        res.status(400).json({ error: 'First and last name are required and cannot be empty.', code: 'FIRST_AND_LAST_NAME' });
         return;
       }
       updates.push('first_name = ?', 'last_name = ?', 'full_name = ?');
@@ -605,7 +609,7 @@ router.put('/profile', authenticateToken, (req: Request, res: Response) => {
     }
 
     if (updates.length === 0) {
-      res.status(400).json({ error: 'No fields to update' });
+      res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
       return;
     }
 
@@ -625,18 +629,18 @@ router.put('/profile', authenticateToken, (req: Request, res: Response) => {
     try {
       broadcast('personnel', 'data_changed', {
         action: 'put', module: 'auth', entity: 'profile',
-        id: user.id, timestamp: new Date().toISOString(),
+        id: user.id, timestamp: localNow(),
       });
       broadcast('admin', 'data_changed', {
         action: 'put', module: 'auth', entity: 'profile',
-        id: user.id, timestamp: new Date().toISOString(),
+        id: user.id, timestamp: localNow(),
       });
     } catch { /* never break the response */ }
 
     res.json(updated);
   } catch (error: any) {
     console.error('Update profile error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update profile', code: 'UPDATE_PROFILE_ERROR' });
   }
 });
 
@@ -650,7 +654,7 @@ router.get('/signature', authenticateToken, (req: Request, res: Response) => {
     res.json({ signature: row?.digital_signature || null });
   } catch (error: any) {
     console.error('Get signature error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get signature', code: 'GET_SIGNATURE_ERROR' });
   }
 });
 
@@ -664,12 +668,12 @@ router.put('/signature', authenticateToken, (req: Request, res: Response) => {
     // Validate: must be a PNG data URL or null
     if (signature !== null && signature !== undefined) {
       if (typeof signature !== 'string' || !signature.startsWith('data:image/png;base64,')) {
-        res.status(400).json({ error: 'Signature must be a PNG data URL' });
+        res.status(400).json({ error: 'Signature must be a PNG data URL', code: 'SIGNATURE_MUST_BE_A' });
         return;
       }
       // Limit size (~500KB — a hand-drawn signature should be well under this)
       if (signature.length > 500_000) {
-        res.status(400).json({ error: 'Signature data too large' });
+        res.status(400).json({ error: 'Signature data too large', code: 'SIGNATURE_DATA_TOO_LARGE' });
         return;
       }
     }
@@ -680,7 +684,7 @@ router.put('/signature', authenticateToken, (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (error: any) {
     console.error('Save signature error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to save signature', code: 'SAVE_SIGNATURE_ERROR' });
   }
 });
 
@@ -714,7 +718,7 @@ function verify2FAHandler(req: Request, res: Response) {
     const { tempToken, code } = req.body;
 
     if (!tempToken || !code) {
-      res.status(400).json({ error: 'Token and verification code are required' });
+      res.status(400).json({ error: 'Token and verification code are required', code: 'TOKEN_AND_VERIFICATION_CODE' });
       return;
     }
 
@@ -723,12 +727,12 @@ function verify2FAHandler(req: Request, res: Response) {
     try {
       decoded = jwt.verify(tempToken, config.jwt.secret) as JwtPayload;
     } catch {
-      res.status(401).json({ error: 'Verification session expired. Please log in again.' });
+      res.status(401).json({ error: 'Verification session expired. Please log in again.', code: 'VERIFICATION_SESSION_EXPIRED_PLEASE' });
       return;
     }
 
     if (decoded.type !== '2fa_pending') {
-      res.status(403).json({ error: 'Invalid token type' });
+      res.status(403).json({ error: 'Invalid token type', code: 'INVALID_TOKEN_TYPE' });
       return;
     }
 
@@ -738,7 +742,7 @@ function verify2FAHandler(req: Request, res: Response) {
     ).get(decoded.userId) as any;
 
     if (!user || !user.totp_secret_enc) {
-      res.status(401).json({ error: 'Invalid verification session' });
+      res.status(401).json({ error: 'Invalid verification session', code: 'INVALID_VERIFICATION_SESSION' });
       return;
     }
 
@@ -762,7 +766,7 @@ function verify2FAHandler(req: Request, res: Response) {
     }
 
     if (!codeValid) {
-      res.status(401).json({ error: 'Invalid verification code' });
+      res.status(401).json({ error: 'Invalid verification code', code: 'INVALID_VERIFICATION_CODE' });
       return;
     }
 
@@ -831,7 +835,7 @@ function verify2FAHandler(req: Request, res: Response) {
     });
   } catch (error: any) {
     console.error('2FA verification error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to 2fa verification', code: '2FA_VERIFICATION_ERROR' });
   }
 }
 
@@ -851,7 +855,7 @@ router.get('/totp/status', authenticateToken, (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('TOTP status error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to totp status', code: 'TOTP_STATUS_ERROR' });
   }
 });
 
@@ -864,12 +868,12 @@ router.post('/totp/setup', authenticateToken, async (req: Request, res: Response
       .get(req.user!.userId) as any;
 
     if (!user) {
-      res.status(404).json({ error: 'User not found' });
+      res.status(404).json({ error: 'User not found', code: 'USER_NOT_FOUND' });
       return;
     }
 
     if (user.totp_enabled) {
-      res.status(400).json({ error: '2FA is already enabled. Disable it first to re-setup.' });
+      res.status(400).json({ error: '2FA is already enabled. Disable it first to re-setup.', code: '2FA_IS_ALREADY_ENABLED' });
       return;
     }
 
@@ -897,7 +901,7 @@ router.post('/totp/setup', authenticateToken, async (req: Request, res: Response
     });
   } catch (error: any) {
     console.error('TOTP setup error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to totp setup', code: 'TOTP_SETUP_ERROR' });
   }
 });
 
@@ -907,7 +911,7 @@ router.post('/totp/verify-setup', authenticateToken, (req: Request, res: Respons
   try {
     const { code } = req.body;
     if (!code) {
-      res.status(400).json({ error: 'Verification code is required' });
+      res.status(400).json({ error: 'Verification code is required', code: 'VERIFICATION_CODE_IS_REQUIRED' });
       return;
     }
 
@@ -916,14 +920,14 @@ router.post('/totp/verify-setup', authenticateToken, (req: Request, res: Respons
       .get(req.user!.userId) as any;
 
     if (!user?.totp_pending_secret) {
-      res.status(400).json({ error: 'No pending 2FA setup found. Call /totp/setup first.' });
+      res.status(400).json({ error: 'No pending 2FA setup found. Call /totp/setup first.', code: 'NO_PENDING_2FA_SETUP' });
       return;
     }
 
     // Decrypt pending secret and verify code
     const secret = decryptSecret(user.totp_pending_secret);
     if (!verifyTotpCode(secret, code)) {
-      res.status(401).json({ error: 'Invalid code. Ensure your authenticator app is synced and try again.' });
+      res.status(401).json({ error: 'Invalid code. Ensure your authenticator app is synced and try again.', code: 'INVALID_CODE_ENSURE_YOUR' });
       return;
     }
 
@@ -942,7 +946,7 @@ router.post('/totp/verify-setup', authenticateToken, (req: Request, res: Respons
     res.json({ enabled: true, message: 'Two-factor authentication is now active.' });
   } catch (error: any) {
     console.error('TOTP verify-setup error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to totp verify-setup', code: 'TOTP_VERIFYSETUP_ERROR' });
   }
 });
 
@@ -956,7 +960,7 @@ router.get('/session-timeout', authenticateToken, (_req: Request, res: Response)
     });
   } catch (error: any) {
     console.error('Session timeout config error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to session timeout config', code: 'SESSION_TIMEOUT_CONFIG_ERROR' });
   }
 });
 
@@ -966,7 +970,7 @@ router.post('/admin/reset-all-2fa', authenticateToken, (req: Request, res: Respo
   try {
     // Only admins can reset 2FA for all users
     if (req.user!.role !== 'admin') {
-      res.status(403).json({ error: 'Admin access required' });
+      res.status(403).json({ error: 'Admin access required', code: 'ADMIN_ACCESS_REQUIRED' });
       return;
     }
 
@@ -1009,7 +1013,7 @@ router.post('/admin/reset-all-2fa', authenticateToken, (req: Request, res: Respo
     });
   } catch (error: any) {
     console.error('Admin reset all 2FA error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to admin reset all 2fa', code: 'ADMIN_RESET_ALL_2FA' });
   }
 });
 
@@ -1019,7 +1023,7 @@ router.post('/totp/disable', authenticateToken, (req: Request, res: Response) =>
   try {
     const { password } = req.body;
     if (!password) {
-      res.status(400).json({ error: 'Password is required to disable 2FA' });
+      res.status(400).json({ error: 'Password is required to disable 2FA', code: 'PASSWORD_IS_REQUIRED_TO' });
       return;
     }
 
@@ -1028,17 +1032,17 @@ router.post('/totp/disable', authenticateToken, (req: Request, res: Response) =>
       .get(req.user!.userId) as any;
 
     if (!user) {
-      res.status(404).json({ error: 'User not found' });
+      res.status(404).json({ error: 'User not found', code: 'USER_NOT_FOUND' });
       return;
     }
 
     if (!user.totp_enabled) {
-      res.status(400).json({ error: '2FA is not currently enabled' });
+      res.status(400).json({ error: '2FA is not currently enabled', code: '2FA_IS_NOT_CURRENTLY' });
       return;
     }
 
     if (!bcryptjs.compareSync(password, user.password_hash)) {
-      res.status(401).json({ error: 'Incorrect password' });
+      res.status(401).json({ error: 'Incorrect password', code: 'INCORRECT_PASSWORD' });
       return;
     }
 
@@ -1055,7 +1059,7 @@ router.post('/totp/disable', authenticateToken, (req: Request, res: Response) =>
     res.json({ enabled: false, message: 'Two-factor authentication has been disabled.' });
   } catch (error: any) {
     console.error('TOTP disable error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to totp disable', code: 'TOTP_DISABLE_ERROR' });
   }
 });
 
@@ -1072,7 +1076,7 @@ router.get('/2fa/status', authenticateToken, (req: Request, res: Response) => {
     const required = requiredRoles.includes(req.user!.role);
     res.json({ enabled: !!(user?.totp_enabled), required });
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -1081,7 +1085,7 @@ router.post('/2fa/setup', authenticateToken, async (req: Request, res: Response)
   try {
     const db = getDb();
     const user = db.prepare('SELECT id, email, username FROM users WHERE id = ?').get(req.user!.userId) as any;
-    if (!user) { res.status(404).json({ error: 'User not found' }); return; }
+    if (!user) { res.status(404).json({ error: 'User not found', code: 'USER_NOT_FOUND' }); return; }
 
     const accountName = user.email || user.username;
     const { secret, otpauthUrl } = generateTotpSecret(accountName);
@@ -1095,7 +1099,7 @@ router.post('/2fa/setup', authenticateToken, async (req: Request, res: Response)
     res.json({ qrCodeDataUri, manualKey: secret });
   } catch (error: any) {
     console.error('2FA setup error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to 2fa setup', code: '2FA_SETUP_ERROR' });
   }
 });
 
@@ -1103,15 +1107,15 @@ router.post('/2fa/setup', authenticateToken, async (req: Request, res: Response)
 router.post('/2fa/setup/verify', authenticateToken, (req: Request, res: Response) => {
   try {
     const { code } = req.body;
-    if (!code) { res.status(400).json({ error: 'Verification code required' }); return; }
+    if (!code) { res.status(400).json({ error: 'Verification code required', code: 'VERIFICATION_CODE_REQUIRED' }); return; }
 
     const db = getDb();
     const user = db.prepare('SELECT id, totp_pending_secret FROM users WHERE id = ?').get(req.user!.userId) as any;
-    if (!user?.totp_pending_secret) { res.status(400).json({ error: 'No pending 2FA setup' }); return; }
+    if (!user?.totp_pending_secret) { res.status(400).json({ error: 'No pending 2FA setup', code: 'NO_PENDING_2FA_SETUP' }); return; }
 
     const secret = decryptSecret(user.totp_pending_secret);
     if (!verifyTotpCode(secret, code)) {
-      res.status(400).json({ error: 'Invalid verification code' });
+      res.status(400).json({ error: 'Invalid verification code', code: 'INVALID_VERIFICATION_CODE' });
       return;
     }
 
@@ -1126,7 +1130,7 @@ router.post('/2fa/setup/verify', authenticateToken, (req: Request, res: Response
     res.json({ success: true, backupCodes: backupResult.plain });
   } catch (error: any) {
     console.error('2FA verify setup error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to 2fa verify setup', code: '2FA_VERIFY_SETUP_ERROR' });
   }
 });
 
@@ -1136,7 +1140,7 @@ router.post('/2fa/backup-codes/regenerate', authenticateToken, (req: Request, re
     const db = getDb();
     const user = db.prepare('SELECT id, totp_enabled FROM users WHERE id = ?').get(req.user!.userId) as any;
     if (!user || !user.totp_enabled) {
-      res.status(400).json({ error: '2FA is not enabled' });
+      res.status(400).json({ error: '2FA is not enabled', code: '2FA_IS_NOT_ENABLED' });
       return;
     }
 
@@ -1148,7 +1152,7 @@ router.post('/2fa/backup-codes/regenerate', authenticateToken, (req: Request, re
     res.json({ backupCodes: backupResult.plain });
   } catch (error: any) {
     console.error('Regenerate backup codes error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to regenerate backup codes', code: 'REGENERATE_BACKUP_CODES_ERROR' });
   }
 });
 
@@ -1163,11 +1167,11 @@ router.post('/forgot-password', authRateLimit, (req: Request, res: Response) => 
 
 router.get('/reset-password/validate', (req: Request, res: Response) => {
   // Token-based reset not yet implemented — respond with a helpful message
-  res.status(400).json({ error: 'Password reset links are not enabled. Contact your administrator.' });
+  res.status(400).json({ error: 'Password reset links are not enabled. Contact your administrator.', code: 'PASSWORD_RESET_LINKS_ARE' });
 });
 
 router.post('/reset-password', (req: Request, res: Response) => {
-  res.status(400).json({ error: 'Password reset links are not enabled. Contact your administrator.' });
+  res.status(400).json({ error: 'Password reset links are not enabled. Contact your administrator.', code: 'PASSWORD_RESET_LINKS_ARE' });
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -1180,7 +1184,7 @@ router.get('/profile-image', authenticateToken, (req: Request, res: Response) =>
     const user = db.prepare('SELECT avatar_url FROM users WHERE id = ?').get(req.user!.userId) as any;
     res.json({ url: user?.avatar_url || null });
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -1192,7 +1196,7 @@ router.put('/profile-image', authenticateToken, (req: Request, res: Response) =>
       .run(url || null, localNow(), req.user!.userId);
     res.json({ success: true, url: url || null });
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -1204,14 +1208,14 @@ router.post('/sign-urls', authenticateToken, (req: Request, res: Response) => {
   try {
     const { urls } = req.body;
     if (!Array.isArray(urls)) {
-      res.status(400).json({ error: 'urls array required' });
+      res.status(400).json({ error: 'urls array required', code: 'URLS_ARRAY_REQUIRED' });
       return;
     }
     // For local file storage, just return the same URLs (no signing needed)
     const signed = urls.map((url: string) => ({ original: url, signed: url, expiresAt: new Date(Date.now() + 3600000).toISOString() }));
     res.json({ urls: signed });
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 

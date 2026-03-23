@@ -127,6 +127,8 @@ function findConnections(db: any, type: string, id: number): Connection[] {
       FROM record_links
       WHERE (source_type = ? AND source_id = ?)
          OR (target_type = ? AND target_id = ?)
+    
+      LIMIT 1000
     `).all(type, id, type, id) as any[];
 
     for (const link of links) {
@@ -156,6 +158,8 @@ function findConnections(db: any, type: string, id: number): Connection[] {
           FROM call_persons cp
           LEFT JOIN incidents i ON i.call_id = cp.call_id
           WHERE cp.person_id = ?
+        
+          LIMIT 1000
         `).all(id) as any[];
         for (const cp of callPersons) {
           if (cp.incident_id) {
@@ -186,6 +190,8 @@ function findConnections(db: any, type: string, id: number): Connection[] {
           FROM client_persons cp
           JOIN properties p ON p.client_id = cp.client_id
           WHERE cp.person_id = ?
+        
+          LIMIT 1000
         `).all(id) as any[];
         for (const cp of clientPersons) {
           results.push({ type: 'property', id: cp.property_id, relationship: cp.relationship, sourceTable: 'client_persons' });
@@ -206,6 +212,8 @@ function findConnections(db: any, type: string, id: number): Connection[] {
           FROM call_vehicles cv
           LEFT JOIN incidents i ON i.call_id = cv.call_id
           WHERE cv.vehicle_id = ?
+        
+          LIMIT 1000
         `).all(id) as any[];
         for (const cv of callVehicles) {
           if (cv.incident_id) {
@@ -406,14 +414,14 @@ router.get('/graph', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
     const { type, id, depth } = req.query;
 
     if (!type || !id) {
-      return res.status(400).json({ error: 'type and id query parameters are required' });
+      return res.status(400).json({ error: 'type and id query parameters are required', code: 'TYPE_AND_ID_QUERY' });
     }
     if (!VALID_TYPES.includes(String(type))) {
       return res.status(400).json({ error: `Invalid type. Must be one of: ${VALID_TYPES.join(', ')}` });
     }
 
     if (isNaN(Number(id)) || Number(id) < 1) {
-      return res.status(400).json({ error: 'id must be a positive integer' });
+      return res.status(400).json({ error: 'id must be a positive integer', code: 'ID_MUST_BE_A' });
     }
 
     const maxDepth = Math.min(Math.max(Number(depth) || 2, 1), 3);
@@ -424,7 +432,7 @@ router.get('/graph', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
     res.json(graph);
   } catch (error: any) {
     console.error('Connection graph error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Failed to build connection graph' });
+    res.status(500).json({ error: 'Failed to build connection graph', code: 'FAILED_TO_BUILD_CONNECTION' });
   }
 });
 
@@ -504,7 +512,7 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
     res.json(results);
   } catch (error: any) {
     console.error('Connection search error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Search failed' });
+    res.status(500).json({ error: 'Search failed', code: 'SEARCH_FAILED' });
   }
 });
 
@@ -530,7 +538,7 @@ router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: R
     ], rows);
   } catch (error: any) {
     console.error('[Connections] CSV export error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Export failed' });
+    res.status(500).json({ error: 'Export failed', code: 'EXPORT_FAILED' });
   }
 });
 

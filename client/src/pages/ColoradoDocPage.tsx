@@ -51,6 +51,17 @@ function statusClass(status: string | null): string {
   return 'bg-blue-900/50 text-blue-400 border-blue-700/50';
 }
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 // ── Main Component ───────────────────────────────────────────
 
 export default function ColoradoDocPage() {
@@ -181,6 +192,9 @@ export default function ColoradoDocPage() {
       return [offenses];
     }
   };
+
+  // Set document title
+  useEffect(() => { document.title = 'Colorado DOC \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="app-grid-bg h-full flex flex-col overflow-hidden">

@@ -68,6 +68,17 @@ const EMPTY_FORM = {
   notes: '',
 };
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function CourtTrackerPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
@@ -415,6 +426,18 @@ export default function CourtTrackerPage() {
 
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
+  // Set document title
+  useEffect(() => { document.title = 'Court Tracker \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setFormOpen(false); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className={`h-full flex ${isMobile ? 'flex-col' : ''}`}>
       {/* Left Panel */}
@@ -423,7 +446,7 @@ export default function CourtTrackerPage() {
           <button type="button" onClick={() => setCitationSearchOpen(true)} className="toolbar-btn text-[10px]">
             <FileText style={{ width: 11, height: 11 }} /> From Citation
           </button>
-          <button type="button" onClick={() => { clearAllErrors(); setFormOpen(true); setFormData({ ...EMPTY_FORM }); }} className="toolbar-btn toolbar-btn-primary">
+          <button type="button" onClick={() => { clearAllErrors(); setFormOpen(true); setFormData({ ...EMPTY_FORM }); }} className="toolbar-btn toolbar-btn-primary print:hidden">
             <Plus style={{ width: 11, height: 11 }} /> New
           </button>
         </PanelTitleBar>
@@ -458,7 +481,7 @@ export default function CourtTrackerPage() {
           <div className="flex gap-1 p-1.5 border-b border-rmpg-700 bg-surface-base">
             <div className="flex-1 relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" style={{ width: 12, height: 12 }} />
-              <input value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }} placeholder="Search events..." className="w-full pl-7 pr-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 outline-none" />
+              <input value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }} placeholder="Search events..." aria-label="Search events..." className="w-full pl-7 pr-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 outline-none" />
             </div>
             <select value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none">
               <option value="">All Types</option>
@@ -525,7 +548,7 @@ export default function CourtTrackerPage() {
         {activeView === 'stats' && (
           <div className="flex-1 overflow-y-auto p-3 space-y-3">
             {statsLoading ? (
-              <div className="flex items-center justify-center h-32"><Loader2 className="w-5 h-5 animate-spin text-rmpg-500" /></div>
+              <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div>
             ) : stats ? (
               <>
                 {/* Totals */}
@@ -589,7 +612,7 @@ export default function CourtTrackerPage() {
         {(activeView === 'upcoming' || activeView === 'list') && (
           <div className="flex-1 overflow-y-auto">
             {loading && activeView === 'list' ? (
-              <div className="flex items-center justify-center h-32"><Loader2 className="w-5 h-5 animate-spin text-rmpg-500" /></div>
+              <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div>
             ) : displayEvents.length === 0 ? (
               <EmptyState
                 icon={Scale}
@@ -658,7 +681,7 @@ export default function CourtTrackerPage() {
               )}
               {/* Feature 4: Outcome */}
               {selected.status !== 'completed' && (
-                <button type="button" onClick={() => { setOutcomeData({ outcome: '', sentence: '', fine_amount: '' }); setOutcomeOpen(true); }} className="toolbar-btn toolbar-btn-primary">
+                <button type="button" onClick={() => { setOutcomeData({ outcome: '', sentence: '', fine_amount: '' }); setOutcomeOpen(true); }} className="toolbar-btn toolbar-btn-primary print:hidden">
                   <CheckCircle style={{ width: 11, height: 11 }} /> Record Outcome
                 </button>
               )}
@@ -852,7 +875,7 @@ export default function CourtTrackerPage() {
                   const fees = JSON.parse((selected as any).court_fees || '{}');
                   const total = (fees.filing_fee || 0) + (fees.service_fee || 0) + (fees.other_fees || 0);
                   return (
-                    <div className="grid grid-cols-4 gap-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                       <div><span className="text-[9px] text-rmpg-500">Filing:</span> <span className="text-xs text-white">{fees.filing_fee ? `$${fees.filing_fee}` : '--'}</span></div>
                       <div><span className="text-[9px] text-rmpg-500">Service:</span> <span className="text-xs text-white">{fees.service_fee ? `$${fees.service_fee}` : '--'}</span></div>
                       <div><span className="text-[9px] text-rmpg-500">Other:</span> <span className="text-xs text-white">{fees.other_fees ? `$${fees.other_fees}` : '--'}</span></div>
@@ -950,7 +973,7 @@ export default function CourtTrackerPage() {
 
       {/* New Event Modal */}
       {formOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-label="New Court Event">
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-label="New Court Event">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="New Court Event" icon={Plus}>
               <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
@@ -996,8 +1019,8 @@ export default function CourtTrackerPage() {
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn">Cancel</button>
-                <button type="button" onClick={handleCreate} disabled={submitting} className="toolbar-btn toolbar-btn-primary">
-                  {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />}
+                <button type="button" onClick={handleCreate} disabled={submitting} className="toolbar-btn toolbar-btn-primary print:hidden">
+                  {submitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: 11, height: 11 }} />}
                   Create Event
                 </button>
               </div>
@@ -1008,7 +1031,7 @@ export default function CourtTrackerPage() {
 
       {/* Outcome Modal */}
       {outcomeOpen && selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-label="Record Outcome">
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-label="Record Outcome">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Record Outcome" icon={CheckCircle}>
               <button type="button" onClick={() => setOutcomeOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
@@ -1031,8 +1054,8 @@ export default function CourtTrackerPage() {
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setOutcomeOpen(false)} className="toolbar-btn">Cancel</button>
-                <button type="button" onClick={handleOutcome} disabled={outcomeSubmitting || !outcomeData.outcome} className="toolbar-btn toolbar-btn-primary">
-                  {outcomeSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />}
+                <button type="button" onClick={handleOutcome} disabled={outcomeSubmitting || !outcomeData.outcome} className="toolbar-btn toolbar-btn-primary print:hidden">
+                  {outcomeSubmitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: 11, height: 11 }} />}
                   Save Outcome
                 </button>
               </div>
@@ -1043,7 +1066,7 @@ export default function CourtTrackerPage() {
 
       {/* Feature 3: Continuance Modal */}
       {continuanceOpen && selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-label="Log Continuance">
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-label="Log Continuance">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Log Continuance" icon={RefreshCw}>
               <button type="button" onClick={() => setContinuanceOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
@@ -1065,8 +1088,8 @@ export default function CourtTrackerPage() {
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setContinuanceOpen(false)} className="toolbar-btn">Cancel</button>
-                <button type="button" onClick={handleContinuance} disabled={continuanceSubmitting || !continuanceData.reason} className="toolbar-btn toolbar-btn-primary">
-                  {continuanceSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />}
+                <button type="button" onClick={handleContinuance} disabled={continuanceSubmitting || !continuanceData.reason} className="toolbar-btn toolbar-btn-primary print:hidden">
+                  {continuanceSubmitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: 11, height: 11 }} />}
                   Save Continuance
                 </button>
               </div>
@@ -1077,7 +1100,7 @@ export default function CourtTrackerPage() {
 
       {/* Feature 6: Bail/Bond Modal */}
       {bailOpen && selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-label="Bail/Bond Info">
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-label="Bail/Bond Info">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Bail / Bond Information" icon={DollarSign}>
               <button type="button" onClick={() => setBailOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
@@ -1105,8 +1128,8 @@ export default function CourtTrackerPage() {
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setBailOpen(false)} className="toolbar-btn">Cancel</button>
-                <button type="button" onClick={handleBailSubmit} disabled={bailSubmitting} className="toolbar-btn toolbar-btn-primary">
-                  {bailSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />}
+                <button type="button" onClick={handleBailSubmit} disabled={bailSubmitting} className="toolbar-btn toolbar-btn-primary print:hidden">
+                  {bailSubmitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: 11, height: 11 }} />}
                   Save
                 </button>
               </div>
@@ -1117,7 +1140,7 @@ export default function CourtTrackerPage() {
 
       {/* Feature 8: Judge Notes Modal */}
       {judgeNotesOpen && selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-label="Judge Notes">
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-label="Judge Notes">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Judge Preferences / Notes" icon={BookOpen}>
               <button type="button" onClick={() => setJudgeNotesOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
@@ -1126,8 +1149,8 @@ export default function CourtTrackerPage() {
               <textarea value={judgeNotesText} onChange={e => setJudgeNotesText(e.target.value)} rows={6} placeholder="Judge preferences, courtroom rules, etc." className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setJudgeNotesOpen(false)} className="toolbar-btn">Cancel</button>
-                <button type="button" onClick={handleJudgeNotesSubmit} disabled={judgeNotesSubmitting} className="toolbar-btn toolbar-btn-primary">
-                  {judgeNotesSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />}
+                <button type="button" onClick={handleJudgeNotesSubmit} disabled={judgeNotesSubmitting} className="toolbar-btn toolbar-btn-primary print:hidden">
+                  {judgeNotesSubmitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: 11, height: 11 }} />}
                   Save Notes
                 </button>
               </div>
@@ -1138,7 +1161,7 @@ export default function CourtTrackerPage() {
 
       {/* Feature 7: Prosecutor Contact Modal */}
       {prosecutorOpen && selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Prosecutor Contact Info" icon={User}>
               <button type="button" onClick={() => setProsecutorOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
@@ -1152,8 +1175,8 @@ export default function CourtTrackerPage() {
                 <input type="email" value={prosecutorData.prosecutor_email} onChange={e => setProsecutorData(p => ({ ...p, prosecutor_email: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setProsecutorOpen(false)} className="toolbar-btn">Cancel</button>
-                <button type="button" onClick={handleSaveProsecutor} disabled={prosecutorSubmitting} className="toolbar-btn toolbar-btn-primary">
-                  {prosecutorSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />} Save
+                <button type="button" onClick={handleSaveProsecutor} disabled={prosecutorSubmitting} className="toolbar-btn toolbar-btn-primary print:hidden">
+                  {prosecutorSubmitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: 11, height: 11 }} />} Save
                 </button>
               </div>
             </div>
@@ -1163,7 +1186,7 @@ export default function CourtTrackerPage() {
 
       {/* Feature 8b: Court Fees Modal */}
       {feeOpen && selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Court Fee Tracking" icon={DollarSign}>
               <button type="button" onClick={() => setFeeOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
@@ -1179,8 +1202,8 @@ export default function CourtTrackerPage() {
                 <textarea value={feeData.fee_notes} onChange={e => setFeeData(p => ({ ...p, fee_notes: e.target.value }))} rows={2} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" /></div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setFeeOpen(false)} className="toolbar-btn">Cancel</button>
-                <button type="button" onClick={handleSaveFees} disabled={feeSubmitting} className="toolbar-btn toolbar-btn-primary">
-                  {feeSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />} Save
+                <button type="button" onClick={handleSaveFees} disabled={feeSubmitting} className="toolbar-btn toolbar-btn-primary print:hidden">
+                  {feeSubmitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: 11, height: 11 }} />} Save
                 </button>
               </div>
             </div>
@@ -1190,7 +1213,7 @@ export default function CourtTrackerPage() {
 
       {/* Feature 9: Witness List Modal */}
       {witnessOpen && selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="Witness Management" icon={Users}>
               <button type="button" onClick={() => setWitnessOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
@@ -1200,8 +1223,8 @@ export default function CourtTrackerPage() {
                 {witnesses.map((w, i) => (
                   <div key={i} className="panel-beveled p-2 space-y-1">
                     <div className="flex gap-2">
-                      <input value={w.name} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, name: e.target.value } : ww))} placeholder="Name" className="flex-1 px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
-                      <select value={w.contact_status} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, contact_status: e.target.value } : ww))} className="px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
+                      <input value={w.name} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, name: e.target.value } : ww))} placeholder="Name" className="flex-1 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                      <select value={w.contact_status} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, contact_status: e.target.value } : ww))} className="px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
                         <option value="pending">Pending</option>
                         <option value="contacted">Contacted</option>
                         <option value="confirmed">Confirmed</option>
@@ -1210,9 +1233,9 @@ export default function CourtTrackerPage() {
                       <button type="button" onClick={() => setWitnesses(ws => ws.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-300"><X style={{ width: 12, height: 12 }} /></button>
                     </div>
                     <div className="flex gap-2">
-                      <input value={w.phone || ''} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, phone: e.target.value } : ww))} placeholder="Phone" className="flex-1 px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
-                      <input value={w.email || ''} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, email: e.target.value } : ww))} placeholder="Email" className="flex-1 px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
-                      <input value={w.role || ''} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, role: e.target.value } : ww))} placeholder="Role" className="w-24 px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                      <input value={w.phone || ''} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, phone: e.target.value } : ww))} placeholder="Phone" className="flex-1 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                      <input value={w.email || ''} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, email: e.target.value } : ww))} placeholder="Email" className="flex-1 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                      <input value={w.role || ''} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, role: e.target.value } : ww))} placeholder="Role" className="w-24 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
                     </div>
                   </div>
                 ))}
@@ -1222,8 +1245,8 @@ export default function CourtTrackerPage() {
               </button>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setWitnessOpen(false)} className="toolbar-btn">Cancel</button>
-                <button type="button" onClick={handleSaveWitnesses} disabled={witnessSubmitting} className="toolbar-btn toolbar-btn-primary">
-                  {witnessSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />} Save Witnesses
+                <button type="button" onClick={handleSaveWitnesses} disabled={witnessSubmitting} className="toolbar-btn toolbar-btn-primary print:hidden">
+                  {witnessSubmitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: 11, height: 11 }} />} Save Witnesses
                 </button>
               </div>
             </div>
@@ -1233,7 +1256,7 @@ export default function CourtTrackerPage() {
 
       {/* Create from Citation Modal */}
       {citationSearchOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-label="Create from Citation" onClick={() => setCitationSearchOpen(false)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-label="Create from Citation" onClick={() => setCitationSearchOpen(false)}>
           <div className="panel-surface w-full max-w-lg mx-4" onClick={e => e.stopPropagation()}>
             <PanelTitleBar title="Create Court Event from Citation" icon={FileText}>
               <button type="button" onClick={() => setCitationSearchOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
@@ -1242,10 +1265,10 @@ export default function CourtTrackerPage() {
               <div className="flex gap-2">
                 <input value={citationSearchQ} onChange={e => setCitationSearchQ(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleSearchCitations()}
-                  placeholder="Search by citation number, name, or statute..."
-                  className="flex-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                  placeholder="Search by citation number, name, or statute..." aria-label="Search by citation number, name, or statute..."
+                  className="flex-1 px-2 py-1.5 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
                 <button type="button" onClick={handleSearchCitations} disabled={citationSearching} className="toolbar-btn-primary text-[10px] px-3">
-                  {citationSearching ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search style={{ width: 11, height: 11 }} />}
+                  {citationSearching ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Search style={{ width: 11, height: 11 }} />}
                   Search
                 </button>
               </div>

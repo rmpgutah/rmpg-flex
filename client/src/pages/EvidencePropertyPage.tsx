@@ -61,6 +61,17 @@ const STATUS_OPTIONS = [
 
 type DetailTab = 'info' | 'chain' | 'bwc';
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 // ─── Component ─────────────────────────────────────────
 export default function EvidencePropertyPage() {
   const isMobile = useIsMobile();
@@ -294,6 +305,18 @@ export default function EvidencePropertyPage() {
   };
 
   // ─── Render ────────────────────────────────────────
+  // Set document title
+  useEffect(() => { document.title = 'Evidence & Property \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setChainModalOpen(false); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className={`h-full flex ${isMobile ? 'flex-col' : ''}`}>
       {/* ── Left Panel: Evidence List ── */}
@@ -301,7 +324,7 @@ export default function EvidencePropertyPage() {
         <PanelTitleBar title="Evidence / Property Room" icon={Package}>
           <button type="button"
             onClick={() => setNewEvidenceOpen(true)}
-            className="toolbar-btn toolbar-btn-primary"
+            className="toolbar-btn toolbar-btn-primary print:hidden"
           >
             <Plus style={{ width: 11, height: 11 }} />
             <span className="hidden sm:inline">New Evidence</span>
@@ -340,8 +363,8 @@ export default function EvidencePropertyPage() {
               <input
                 value={searchQuery}
                 onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
-                placeholder="Search evidence..."
-                className="input-dark w-full pl-7 pr-2 py-1 text-xs"
+                placeholder="Search evidence..." aria-label="Search evidence..."
+                className="input-dark w-full pl-7 pr-2 py-1 text-xs min-h-[36px]"
               />
             </div>
             <select
@@ -374,9 +397,7 @@ export default function EvidencePropertyPage() {
         {/* Item List */}
         <div className="flex-1 overflow-y-auto">
           {loading ? (
-            <div className="flex items-center justify-center h-32">
-              <Loader2 className="w-5 h-5 animate-spin text-rmpg-500" />
-            </div>
+            <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div>
           ) : items.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-rmpg-500">
               <Package className="w-8 h-8 mb-2 text-rmpg-600" />
@@ -451,7 +472,7 @@ export default function EvidencePropertyPage() {
             <PanelTitleBar title={selected.evidence_number || `Evidence #${selected.id}`} icon={Box}>
               <button type="button"
                 onClick={() => { setChainAction('check_in'); setChainLocation(''); setChainNotes(''); setChainModalOpen(true); }}
-                className="toolbar-btn toolbar-btn-primary"
+                className="toolbar-btn toolbar-btn-primary print:hidden"
               >
                 <ArrowRightLeft style={{ width: 11, height: 11 }} />
                 <span className="hidden sm:inline">Chain Action</span>
@@ -591,8 +612,8 @@ export default function EvidencePropertyPage() {
                             <textarea value={releaseReason} onChange={e => setReleaseReason(e.target.value)} placeholder="Reason for release..."
                               rows={2} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
                             <div className="flex gap-1">
-                              <button type="button" onClick={handleRequestRelease} disabled={releaseSubmitting || !releaseReason.trim()} className="toolbar-btn toolbar-btn-primary">
-                                {releaseSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle style={{ width: 11, height: 11 }} />}
+                              <button type="button" onClick={handleRequestRelease} disabled={releaseSubmitting || !releaseReason.trim()} className="toolbar-btn toolbar-btn-primary print:hidden">
+                                {releaseSubmitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <CheckCircle style={{ width: 11, height: 11 }} />}
                                 Submit Request
                               </button>
                               <button type="button" onClick={() => setReleaseOpen(false)} className="toolbar-btn">Cancel</button>
@@ -664,9 +685,7 @@ export default function EvidencePropertyPage() {
               {detailTab === 'bwc' && (
                 <div>
                   {bwcLoading ? (
-                    <div className="flex items-center justify-center h-32">
-                      <Loader2 className="w-5 h-5 animate-spin text-rmpg-500" />
-                    </div>
+                    <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div>
                   ) : bwcVideos.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-12 text-rmpg-500">
                       <Camera className="w-8 h-8 mb-2 text-rmpg-600" />
@@ -738,7 +757,7 @@ export default function EvidencePropertyPage() {
 
       {/* ── Chain of Custody Action Modal ── */}
       {chainModalOpen && selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" role="dialog" aria-modal="true" onClick={() => setChainModalOpen(false)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/70" role="dialog" aria-modal="true" onClick={() => setChainModalOpen(false)}>
           <div className="bg-surface-base border border-rmpg-700 rounded-sm shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700 bg-surface-raised">
               <div className="flex items-center gap-2">
@@ -789,7 +808,7 @@ export default function EvidencePropertyPage() {
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setChainModalOpen(false)} className="toolbar-btn text-xs px-4 py-1.5">Cancel</button>
                 <button type="button" onClick={handleChainAction} disabled={chainSubmitting} className="toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5">
-                  {chainSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />}
+                  {chainSubmitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: 11, height: 11 }} />}
                   Record Action
                 </button>
               </div>
@@ -800,7 +819,7 @@ export default function EvidencePropertyPage() {
 
       {/* ── New Evidence Modal ── */}
       {newEvidenceOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" role="dialog" aria-modal="true" onClick={() => setNewEvidenceOpen(false)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/70" role="dialog" aria-modal="true" onClick={() => setNewEvidenceOpen(false)}>
           <div className="bg-surface-base border border-rmpg-700 rounded-sm shadow-xl w-full max-w-lg mx-4 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700 bg-surface-raised">
               <div className="flex items-center gap-2">
@@ -818,7 +837,7 @@ export default function EvidencePropertyPage() {
                   type="text"
                   value={newEvidence.description}
                   onChange={e => setNewEvidence(p => ({ ...p, description: e.target.value }))}
-                  className="input-dark w-full"
+                  className="input-dark w-full min-h-[36px]"
                   placeholder="Describe the evidence item..."
                 />
               </div>
@@ -840,7 +859,7 @@ export default function EvidencePropertyPage() {
                     type="text"
                     value={newEvidence.category}
                     onChange={e => setNewEvidence(p => ({ ...p, category: e.target.value }))}
-                    className="input-dark w-full"
+                    className="input-dark w-full min-h-[36px]"
                     placeholder="e.g. Firearm, Drug, etc."
                   />
                 </div>
@@ -853,7 +872,7 @@ export default function EvidencePropertyPage() {
                     type="text"
                     value={newEvidence.incident_id}
                     onChange={e => setNewEvidence(p => ({ ...p, incident_id: e.target.value }))}
-                    className="input-dark w-full"
+                    className="input-dark w-full min-h-[36px]"
                     placeholder="Optional incident ID"
                   />
                 </div>
@@ -877,7 +896,7 @@ export default function EvidencePropertyPage() {
                     type="text"
                     value={newEvidence.serial_number}
                     onChange={e => setNewEvidence(p => ({ ...p, serial_number: e.target.value }))}
-                    className="input-dark w-full"
+                    className="input-dark w-full min-h-[36px]"
                   />
                 </div>
                 <div>
@@ -886,7 +905,7 @@ export default function EvidencePropertyPage() {
                     type="text"
                     value={newEvidence.brand}
                     onChange={e => setNewEvidence(p => ({ ...p, brand: e.target.value }))}
-                    className="input-dark w-full"
+                    className="input-dark w-full min-h-[36px]"
                   />
                 </div>
                 <div>
@@ -895,7 +914,7 @@ export default function EvidencePropertyPage() {
                     type="text"
                     value={newEvidence.model}
                     onChange={e => setNewEvidence(p => ({ ...p, model: e.target.value }))}
-                    className="input-dark w-full"
+                    className="input-dark w-full min-h-[36px]"
                   />
                 </div>
               </div>
@@ -908,7 +927,7 @@ export default function EvidencePropertyPage() {
                     step="0.01"
                     value={newEvidence.estimated_value}
                     onChange={e => setNewEvidence(p => ({ ...p, estimated_value: e.target.value }))}
-                    className="input-dark w-full"
+                    className="input-dark w-full min-h-[36px]"
                     placeholder="0.00"
                   />
                 </div>
@@ -918,7 +937,7 @@ export default function EvidencePropertyPage() {
                     type="datetime-local"
                     value={newEvidence.collected_date}
                     onChange={e => setNewEvidence(p => ({ ...p, collected_date: e.target.value }))}
-                    className="input-dark w-full"
+                    className="input-dark w-full min-h-[36px]"
                   />
                 </div>
               </div>
@@ -941,7 +960,7 @@ export default function EvidencePropertyPage() {
                   disabled={newEvidenceSubmitting || !newEvidence.description || !newEvidence.evidence_type}
                   className="toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5"
                 >
-                  {newEvidenceSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus style={{ width: 11, height: 11 }} />}
+                  {newEvidenceSubmitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Plus style={{ width: 11, height: 11 }} />}
                   Create Evidence
                 </button>
               </div>

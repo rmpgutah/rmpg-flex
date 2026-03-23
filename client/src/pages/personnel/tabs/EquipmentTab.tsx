@@ -2,7 +2,7 @@
 // RMPG Flex — Personnel: Equipment Tab (All Equipment)
 // ============================================================
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Package, Plus, Edit3, Trash2, AlertTriangle, Box,
 } from 'lucide-react';
@@ -87,6 +87,9 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
     { label: 'Maintenance', value: stats.maintenance, color: 'text-blue-400', bgClass: 'bg-[#0a0f1a]', border: 'border-blue-700/30', topBorder: 'border-t-blue-500' },
     { label: 'Retired', value: stats.retired, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-600' },
   ];
+
+  // Set document title
+  useEffect(() => { document.title = 'Personnel - Equipment \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">

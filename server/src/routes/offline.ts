@@ -105,7 +105,7 @@ router.post('/sync/pull', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('[OFFLINE] Pull sync error:', error.message);
-    res.status(500).json({ error: 'Failed to pull sync data' });
+    res.status(500).json({ error: 'Failed to pull sync data', code: 'FAILED_TO_PULL_SYNC' });
   }
 });
 
@@ -118,7 +118,7 @@ router.post('/sync/push', (req: Request, res: Response) => {
     const db = getDb();
 
     if (!Array.isArray(items) || items.length === 0) {
-      res.status(400).json({ error: 'No items to push' });
+      res.status(400).json({ error: 'No items to push', code: 'NO_ITEMS_TO_PUSH' });
       return;
     }
 
@@ -167,7 +167,7 @@ router.post('/sync/push', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('[OFFLINE] Push sync error:', error.message);
-    res.status(500).json({ error: 'Failed to push sync data' });
+    res.status(500).json({ error: 'Failed to push sync data', code: 'FAILED_TO_PUSH_SYNC' });
   }
 });
 
@@ -302,6 +302,8 @@ router.get('/secrets', requireRole('admin'), (req: Request, res: Response) => {
       FROM offline_pin_secrets ops
       JOIN users u ON u.id = ops.user_id
       WHERE u.status = 'active'
+    
+      LIMIT 1000
     `).all();
 
     // Also include the admin_secret (stored under the admin's own user_id)
@@ -315,7 +317,7 @@ router.get('/secrets', requireRole('admin'), (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('[OFFLINE] Get secrets error:', error.message);
-    res.status(500).json({ error: 'Failed to get offline secrets' });
+    res.status(500).json({ error: 'Failed to get offline secrets', code: 'FAILED_TO_GET_OFFLINE' });
   }
 });
 
@@ -342,7 +344,7 @@ router.get('/my-secret', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('[OFFLINE] Get my-secret error:', error.message);
-    res.status(500).json({ error: 'Failed to get offline secret' });
+    res.status(500).json({ error: 'Failed to get offline secret', code: 'FAILED_TO_GET_OFFLINE' });
   }
 });
 
@@ -354,14 +356,14 @@ router.post('/secrets/generate', requireRole('admin'), (req: Request, res: Respo
     const db = getDb();
 
     if (!userId) {
-      res.status(400).json({ error: 'userId is required' });
+      res.status(400).json({ error: 'userId is required', code: 'USERID_IS_REQUIRED' });
       return;
     }
 
     // Verify user exists
     const user = db.prepare('SELECT id, username FROM users WHERE id = ?').get(userId);
     if (!user) {
-      res.status(404).json({ error: 'User not found' });
+      res.status(404).json({ error: 'User not found', code: 'USER_NOT_FOUND' });
       return;
     }
 
@@ -378,7 +380,7 @@ router.post('/secrets/generate', requireRole('admin'), (req: Request, res: Respo
     res.json({ userId, secret, generated_at: now });
   } catch (error: any) {
     console.error('[OFFLINE] Generate secret error:', error.message);
-    res.status(500).json({ error: 'Failed to generate offline secret' });
+    res.status(500).json({ error: 'Failed to generate offline secret', code: 'FAILED_TO_GENERATE_OFFLINE' });
   }
 });
 
@@ -407,7 +409,7 @@ router.post('/secrets/generate-all', requireRole('admin'), (req: Request, res: R
     res.json({ generated: users.length });
   } catch (error: any) {
     console.error('[OFFLINE] Generate-all error:', error.message);
-    res.status(500).json({ error: 'Failed to generate offline secrets' });
+    res.status(500).json({ error: 'Failed to generate offline secrets', code: 'FAILED_TO_GENERATE_OFFLINE' });
   }
 });
 

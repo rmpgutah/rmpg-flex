@@ -207,6 +207,17 @@ function formatCurrency(n: number | null | undefined): string {
 
 // ── Component ──────────────────────────────────────────────
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function CitationsPage() {
   const { user } = useAuth();
   const isMobile = useIsMobile();
@@ -632,7 +643,7 @@ export default function CitationsPage() {
               type="text"
               value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
-              placeholder="Search citations..."
+              placeholder="Search citations..." aria-label="Search citations..."
               className={`input-dark w-full pl-8 pr-3 ${isMobile ? 'py-2.5 text-sm' : 'py-1.5 text-xs'}`}
               style={isMobile ? { minHeight: 44 } : undefined}
             />
@@ -850,17 +861,17 @@ export default function CitationsPage() {
                   <div className="space-y-2 mt-2 p-2 border border-rmpg-700 bg-surface-sunken">
                     <div className="grid grid-cols-2 gap-2">
                       <div><label className="text-[9px] text-rmpg-400 uppercase">Amount *</label>
-                        <input type="number" step="0.01" className="input-dark text-xs w-full" value={paymentForm.amount} onChange={e => setPaymentForm(p => ({ ...p, amount: e.target.value }))} /></div>
+                        <input type="number" step="0.01" className="input-dark text-xs w-full min-h-[36px]" value={paymentForm.amount} onChange={e => setPaymentForm(p => ({ ...p, amount: e.target.value }))} /></div>
                       <div><label className="text-[9px] text-rmpg-400 uppercase">Date *</label>
-                        <input type="date" className="input-dark text-xs w-full" value={paymentForm.payment_date} onChange={e => setPaymentForm(p => ({ ...p, payment_date: e.target.value }))} /></div>
+                        <input type="date" className="input-dark text-xs w-full min-h-[36px]" value={paymentForm.payment_date} onChange={e => setPaymentForm(p => ({ ...p, payment_date: e.target.value }))} /></div>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div><label className="text-[9px] text-rmpg-400 uppercase">Method</label>
-                        <select className="input-dark text-xs w-full" value={paymentForm.payment_method} onChange={e => setPaymentForm(p => ({ ...p, payment_method: e.target.value }))}>
+                        <select className="input-dark text-xs w-full min-h-[36px]" value={paymentForm.payment_method} onChange={e => setPaymentForm(p => ({ ...p, payment_method: e.target.value }))}>
                           <option value="cash">Cash</option><option value="check">Check</option><option value="card">Card</option><option value="money_order">Money Order</option><option value="other">Other</option>
                         </select></div>
                       <div><label className="text-[9px] text-rmpg-400 uppercase">Reference #</label>
-                        <input className="input-dark text-xs w-full" value={paymentForm.reference_number} onChange={e => setPaymentForm(p => ({ ...p, reference_number: e.target.value }))} /></div>
+                        <input className="input-dark text-xs w-full min-h-[36px]" value={paymentForm.reference_number} onChange={e => setPaymentForm(p => ({ ...p, reference_number: e.target.value }))} /></div>
                     </div>
                     <div className="flex gap-2">
                       <button type="button" onClick={handleRecordPayment} disabled={paymentSubmitting || !paymentForm.amount} className="toolbar-btn-primary text-[10px] px-3 py-1">
@@ -1021,7 +1032,7 @@ export default function CitationsPage() {
         {isEdit && (
           <section>
             <h3 className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2">Status</h3>
-            <select value={form.status} onChange={e => updateField('status', e.target.value)} className="input-dark w-full py-2 text-xs">
+            <select value={form.status} onChange={e => updateField('status', e.target.value)} className="input-dark w-full py-2 text-xs min-h-[36px]">
               {CITATION_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
           </section>
@@ -1040,18 +1051,18 @@ export default function CitationsPage() {
                 value={form.statute_citation || undefined}
                 onClear={clearStatute}
                 categoryFilter={statuteCategoryFilter}
-                placeholder="Search statute code or description..."
+                placeholder="Search statute code or description..." aria-label="Search statute code or description..."
                 showStateFilter
               />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="field-label">Statute Citation</label>
-                <input type="text" value={form.statute_citation} onChange={e => updateField('statute_citation', e.target.value)} placeholder="e.g. 41-6a-601" className="input-dark w-full py-2 text-xs font-mono" />
+                <input type="text" value={form.statute_citation} onChange={e => updateField('statute_citation', e.target.value)} placeholder="e.g. 41-6a-601" className="input-dark w-full py-2 text-xs font-mono min-h-[36px]" />
               </div>
               <div>
                 <label className="field-label">Offense Level</label>
-                <input type="text" value={form.offense_level} onChange={e => updateField('offense_level', e.target.value)} placeholder="e.g. infraction" className="input-dark w-full py-2 text-xs capitalize" />
+                <input type="text" value={form.offense_level} onChange={e => updateField('offense_level', e.target.value)} placeholder="e.g. infraction" className="input-dark w-full py-2 text-xs capitalize min-h-[36px]" />
               </div>
             </div>
             <div>
@@ -1069,7 +1080,7 @@ export default function CitationsPage() {
               <label className="field-label">Fine Amount ($)</label>
               <div className="relative">
                 <DollarSign size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-rmpg-400" />
-                <input type="number" step="0.01" min="0" value={form.fine_amount} onChange={e => updateField('fine_amount', e.target.value)} placeholder="0.00" className="input-dark w-full py-2 pl-8 text-xs" />
+                <input type="number" step="0.01" min="0" value={form.fine_amount} onChange={e => updateField('fine_amount', e.target.value)} placeholder="0.00" className="input-dark w-full py-2 pl-8 text-xs min-h-[36px]" />
               </div>
             </div>
           </div>
@@ -1090,8 +1101,8 @@ export default function CitationsPage() {
                   value={personSearch}
                   onChange={e => handlePersonSearchChange(e.target.value)}
                   onFocus={() => { if (personResults.length > 0) setShowPersonDropdown(true); }}
-                  placeholder="Search by name or DL..."
-                  className="input-dark w-full py-2 pl-8 pr-8 text-xs"
+                  placeholder="Search by name or DL..." aria-label="Search by name or DL..."
+                  className="input-dark w-full py-2 pl-8 pr-8 text-xs min-h-[36px]"
                 />
                 {personSearching && <Loader2 size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-rmpg-400 animate-spin" />}
                 {form.person_id && (
@@ -1139,17 +1150,17 @@ export default function CitationsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="field-label">Date of Birth</label>
-                <input type="date" value={form.person_dob} onChange={e => updateField('person_dob', e.target.value)} className="input-dark w-full py-2 text-xs" />
+                <input type="date" value={form.person_dob} onChange={e => updateField('person_dob', e.target.value)} className="input-dark w-full py-2 text-xs min-h-[36px]" />
               </div>
               <div>
                 <label className="field-label">Driver License #</label>
-                <input type="text" value={form.person_dl} onChange={e => updateField('person_dl', e.target.value)} placeholder="DL number" className="input-dark w-full py-2 text-xs font-mono" />
+                <input type="text" value={form.person_dl} onChange={e => updateField('person_dl', e.target.value)} placeholder="DL number" className="input-dark w-full py-2 text-xs font-mono min-h-[36px]" />
               </div>
             </div>
 
             <div>
               <label className="field-label">Address</label>
-              <input type="text" value={form.person_address} onChange={e => updateField('person_address', e.target.value)} placeholder="Street, City, State ZIP" className="input-dark w-full py-2 text-xs" />
+              <input type="text" value={form.person_address} onChange={e => updateField('person_address', e.target.value)} placeholder="Street, City, State ZIP" className="input-dark w-full py-2 text-xs min-h-[36px]" />
             </div>
           </div>
         </section>
@@ -1163,16 +1174,16 @@ export default function CitationsPage() {
             <div className="space-y-3">
               <div>
                 <label className="field-label">Vehicle Description</label>
-                <input type="text" value={form.vehicle_description} onChange={e => updateField('vehicle_description', e.target.value)} placeholder="Year Make Model Color" className="input-dark w-full py-2 text-xs" />
+                <input type="text" value={form.vehicle_description} onChange={e => updateField('vehicle_description', e.target.value)} placeholder="Year Make Model Color" className="input-dark w-full py-2 text-xs min-h-[36px]" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">License Plate</label>
-                  <input type="text" value={form.vehicle_plate} onChange={e => updateField('vehicle_plate', e.target.value.toUpperCase())} placeholder="ABC1234" className="input-dark w-full py-2 text-xs font-mono uppercase" />
+                  <input type="text" value={form.vehicle_plate} onChange={e => updateField('vehicle_plate', e.target.value.toUpperCase())} placeholder="ABC1234" className="input-dark w-full py-2 text-xs font-mono uppercase min-h-[36px]" />
                 </div>
                 <div>
                   <label className="field-label">State</label>
-                  <select value={form.vehicle_state} onChange={e => updateField('vehicle_state', e.target.value)} className="input-dark w-full py-2 text-xs">
+                  <select value={form.vehicle_state} onChange={e => updateField('vehicle_state', e.target.value)} className="input-dark w-full py-2 text-xs min-h-[36px]">
                     {US_STATES.map(st => <option key={st} value={st}>{st}</option>)}
                   </select>
                 </div>
@@ -1200,12 +1211,12 @@ export default function CitationsPage() {
               </div>
               <div>
                 <label className="field-label">Violation Time</label>
-                <input type="time" value={form.violation_time} onChange={e => updateField('violation_time', e.target.value)} className="input-dark w-full py-2 text-xs" />
+                <input type="time" value={form.violation_time} onChange={e => updateField('violation_time', e.target.value)} className="input-dark w-full py-2 text-xs min-h-[36px]" />
               </div>
             </div>
             <div>
               <label className="field-label">Location</label>
-              <input type="text" value={form.location} onChange={e => updateField('location', e.target.value)} placeholder="Address or intersection" className="input-dark w-full py-2 text-xs" />
+              <input type="text" value={form.location} onChange={e => updateField('location', e.target.value)} placeholder="Address or intersection" className="input-dark w-full py-2 text-xs min-h-[36px]" />
             </div>
             {/* Section / Zone / Beat — cascading */}
             <div className="grid grid-cols-3 gap-2">
@@ -1245,11 +1256,11 @@ export default function CitationsPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="field-label">Officer Name</label>
-              <input type="text" value={form.issuing_officer_name} onChange={e => updateField('issuing_officer_name', e.target.value)} className="input-dark w-full py-2 text-xs" />
+              <input type="text" value={form.issuing_officer_name} onChange={e => updateField('issuing_officer_name', e.target.value)} className="input-dark w-full py-2 text-xs min-h-[36px]" />
             </div>
             <div>
               <label className="field-label">Badge #</label>
-              <input type="text" value={form.badge_number} onChange={e => updateField('badge_number', e.target.value)} className="input-dark w-full py-2 text-xs font-mono" />
+              <input type="text" value={form.badge_number} onChange={e => updateField('badge_number', e.target.value)} className="input-dark w-full py-2 text-xs font-mono min-h-[36px]" />
             </div>
           </div>
         </section>
@@ -1262,15 +1273,15 @@ export default function CitationsPage() {
           <div className="space-y-3">
             <div>
               <label className="field-label">Court Date</label>
-              <input type="date" value={form.court_date} onChange={e => updateField('court_date', e.target.value)} className="input-dark w-full py-2 text-xs" />
+              <input type="date" value={form.court_date} onChange={e => updateField('court_date', e.target.value)} className="input-dark w-full py-2 text-xs min-h-[36px]" />
             </div>
             <div>
               <label className="field-label">Court Name</label>
-              <input type="text" value={form.court_name} onChange={e => updateField('court_name', e.target.value)} placeholder="e.g. Provo Justice Court" className="input-dark w-full py-2 text-xs" />
+              <input type="text" value={form.court_name} onChange={e => updateField('court_name', e.target.value)} placeholder="e.g. Provo Justice Court" className="input-dark w-full py-2 text-xs min-h-[36px]" />
             </div>
             <div>
               <label className="field-label">Court Address</label>
-              <input type="text" value={form.court_address} onChange={e => updateField('court_address', e.target.value)} placeholder="Street, City, State ZIP" className="input-dark w-full py-2 text-xs" />
+              <input type="text" value={form.court_address} onChange={e => updateField('court_address', e.target.value)} placeholder="Street, City, State ZIP" className="input-dark w-full py-2 text-xs min-h-[36px]" />
             </div>
           </div>
         </section>
@@ -1283,7 +1294,7 @@ export default function CitationsPage() {
             onChange={e => updateField('notes', e.target.value)}
             placeholder="Additional notes or remarks..."
             rows={4}
-            className="input-dark w-full py-2 text-xs resize-none"
+            className="input-dark w-full py-2 text-xs resize-none min-h-[36px]"
           />
         </section>
       </div>
@@ -1333,7 +1344,7 @@ export default function CitationsPage() {
         <p className="text-xs text-center text-rmpg-500 mb-6 max-w-xs">
           Select a citation from the list to view details, or create a new one.
         </p>
-        <button type="button" onClick={handleNewCitation} className="toolbar-btn toolbar-btn-primary">
+        <button type="button" onClick={handleNewCitation} className="toolbar-btn toolbar-btn-primary print:hidden">
           <Plus size={14} /> New Citation
         </button>
       </div>
@@ -1347,6 +1358,9 @@ export default function CitationsPage() {
   // On mobile, show list OR detail/form — not both side by side
   const showListOnMobile = !isMobile || (mode === 'list' && !selectedCitation);
   const showRightOnMobile = !isMobile || mode !== 'list' || !!selectedCitation;
+
+  // Set document title
+  useEffect(() => { document.title = 'Citations \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">

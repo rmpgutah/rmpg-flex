@@ -329,7 +329,7 @@ export default function UserFormModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className={labelCls}>Badge Number</label>
-              <input type="text" value={form.badge_number} onChange={e => set('badge_number', e.target.value)} placeholder="O-101" className={inputCls} />
+              <input type="text" value={form.badge_number} onChange={e => set('badge_number', e.target.value)} placeholder="O-101" pattern="[A-Za-z0-9\-]{1,10}" className={inputCls} />
             </div>
             <div>
               <label className={labelCls}>Rank</label>
@@ -373,11 +373,11 @@ export default function UserFormModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>Email</label>
-              <input type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="user@rmpgsecurity.com" className={inputCls} />
+              <input type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="user@rmpgsecurity.com" pattern="[^\s@]+@[^\s@]+\.[^\s@]{2,}" className={inputCls} />
             </div>
             <div>
               <label className={labelCls}>Phone</label>
-              <input type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="(801) 555-1234" className={inputCls} />
+              <input type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="(801) 555-1234" pattern="[0-9()\-\s+]{7,20}" className={inputCls} />
             </div>
           </div>
           <div>
@@ -409,7 +409,7 @@ export default function UserFormModal({
             </div>
             <div>
               <label className={labelCls}>Zip Code</label>
-              <input type="text" value={form.zip} onChange={e => set('zip', e.target.value)} maxLength={10} placeholder="84101" className={inputCls} />
+              <input type="text" value={form.zip} onChange={e => set('zip', e.target.value)} maxLength={10} placeholder="84101" pattern="\d{5}(-\d{4})?" className={inputCls} />
             </div>
           </div>
         </div>
@@ -425,7 +425,7 @@ export default function UserFormModal({
             </div>
             <div>
               <label className={labelCls}>Contact Phone</label>
-              <input type="tel" value={form.emergency_contact_phone} onChange={e => set('emergency_contact_phone', e.target.value)} className={inputCls} />
+              <input type="tel" value={form.emergency_contact_phone} onChange={e => set('emergency_contact_phone', e.target.value)} placeholder="(801) 555-1234" pattern="[0-9()\-\s+]{7,20}" className={inputCls} />
             </div>
           </div>
           <div>
@@ -493,7 +493,8 @@ export default function UserFormModal({
           </div>
           <div>
             <label className={labelCls}>Notes</label>
-            <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={4} placeholder="Additional notes..." className={`${inputCls} resize-none`} />
+            <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={4} placeholder="Additional notes..." maxLength={5000} className={`${inputCls} resize-none`} />
+            <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/5000</div>
           </div>
         </div>
       )}

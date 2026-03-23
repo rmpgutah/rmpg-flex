@@ -2,7 +2,7 @@
 // RMPG Flex — Personnel: Credentials Tab (All Credentials)
 // ============================================================
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import {
   Award, AlertTriangle, CheckCircle, Plus, Edit3, Trash2, ShieldAlert,
 } from 'lucide-react';
@@ -63,6 +63,9 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
     { label: 'Expiring Soon', value: stats.expiringSoon, color: 'text-amber-400', bgClass: 'bg-[#1a1400]', border: 'border-amber-700/30', topBorder: 'border-t-amber-500' },
     { label: 'Expired', value: stats.expired, color: 'text-red-400', bgClass: 'bg-[#1a0a0a]', border: 'border-red-700/30', topBorder: 'border-t-red-500' },
   ];
+
+  // Set document title
+  useEffect(() => { document.title = 'Personnel - Credentials \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">

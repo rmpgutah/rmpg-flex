@@ -42,7 +42,7 @@ export default function PasswordStrengthMeter({ password, showRequirements = tru
   if (!password) return null;
 
   return (
-    <div className="mt-2 space-y-2">
+    <div className="mt-2 space-y-2" role="status" aria-label={`Password strength: ${strength.label || 'none'}`}>
       {/* Strength bar */}
       <div className="flex items-center gap-2">
         <div className="flex-1 h-1 flex gap-0.5">

@@ -58,6 +58,13 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
     apiFetch<ReviewCycle[]>('/hr/review-cycles').then(setCycles).catch(err => { console.warn('[HR] Review cycles load failed:', err); });
   }, []);
 
+  // Escape to close
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !saving) onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [saving, onClose]);
+
   const handleSubmit = async () => {
     if (!employeeId || !reviewDate || overallRating < 1) {
       setError('Employee, review date, and rating are required.');
@@ -99,7 +106,7 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
   const labelClass = 'block text-xs text-rmpg-400 mb-1';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={onClose}>
+    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm w-full max-w-xl mx-4 max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="px-4 py-2 border-b border-[#1e3048] flex items-center justify-between">

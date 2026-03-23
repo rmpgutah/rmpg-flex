@@ -89,7 +89,7 @@ export default function ClosestUnitPanel({
           className="p-0.5 hover:bg-white/10 transition-colors"
           style={{ borderRadius: 2 }}
         >
-          <X className="w-3.5 h-3.5 text-gray-500 hover:text-white" />
+          <X className="w-3.5 h-3.5 text-rmpg-500 hover:text-white" />
         </button>
       </div>
 

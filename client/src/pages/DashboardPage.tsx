@@ -320,6 +320,17 @@ function formatCountdown(totalSeconds: number): string {
 
 // ─── Component ───────────────────────────────────────────
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats>(DEFAULT_STATS);
   const [activities, setActivities] = useState<ActivityLogEntry[]>([]);
@@ -501,6 +512,18 @@ export default function DashboardPage() {
       </div>
     );
   }
+
+  // Set document title
+  useEffect(() => { document.title = 'Dashboard \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setShowNewCallModal(false); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   return (
     <div className="p-4 space-y-4 animate-fade-in">
@@ -712,7 +735,7 @@ export default function DashboardPage() {
               );
             })() : (
               <div className="flex items-center justify-center h-[100px]">
-                <Loader2 className="w-5 h-5 text-rmpg-500 animate-spin" />
+                <Loader2 className="w-5 h-5 text-rmpg-500 animate-spin" role="status" aria-label="Loading" />
                 <span className="text-[10px] text-rmpg-500 ml-2">Loading weather...</span>
               </div>
             )}

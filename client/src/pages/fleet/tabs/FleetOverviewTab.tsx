@@ -58,6 +58,17 @@ interface Props {
   onDeleteMaintenance?: (record: FleetMaintenance) => void;
 }
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function FleetOverviewTab({ detail, maintenance, onEditMaintenance, onDeleteMaintenance }: Props) {
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -276,11 +287,11 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
                 const typeColors: Record<string, string> = {
                   oil_change: 'bg-blue-500', tire_rotation: 'bg-cyan-500',
                   brake_service: 'bg-red-500', inspection: 'bg-green-500',
-                  repair: 'bg-amber-500', other: 'bg-gray-500',
+                  repair: 'bg-amber-500', other: 'bg-rmpg-500',
                 };
                 return (
                   <div key={m.id} className="flex gap-3 relative pl-6">
-                    <div className={`absolute left-1.5 top-2 w-3 h-3 rounded-full border-2 border-surface-base ${typeColors[m.type] || 'bg-gray-500'}`} />
+                    <div className={`absolute left-1.5 top-2 w-3 h-3 rounded-full border-2 border-surface-base ${typeColors[m.type] || 'bg-rmpg-500'}`} />
                     <div
                       className="flex-1 p-2 bg-surface-sunken border border-rmpg-700"
                       style={{ borderLeft: `3px solid ${TYPE_BORDER_COLOR[m.type] || '#6b7280'}` }}

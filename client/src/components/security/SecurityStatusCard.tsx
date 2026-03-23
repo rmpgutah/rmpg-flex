@@ -117,6 +117,8 @@ export default function SecurityStatusCard() {
         <div
           className="flex items-start gap-2 px-3 py-2"
           style={{ background: 'rgba(239, 68, 68, 0.08)', borderBottom: '1px solid rgba(239, 68, 68, 0.2)' }}
+          role="alert"
+          aria-live="assertive"
         >
           <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: '#ef4444' }} />
           <span className="text-[10px]" style={{ color: '#fca5a5' }}>{score.warning}</span>

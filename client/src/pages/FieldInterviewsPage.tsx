@@ -69,6 +69,17 @@ const EMPTY_FORM = {
   section_id: '', zone_id: '', beat_id: '',
 };
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function FieldInterviewsPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
@@ -277,6 +288,18 @@ export default function FieldInterviewsPage() {
     }));
   };
 
+  // Set document title
+  useEffect(() => { document.title = 'Field Interviews \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setFormOpen(false); setEditingFi(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -325,7 +348,7 @@ export default function FieldInterviewsPage() {
         <div className={`${selectedFi && !isMobile ? 'w-[40%]' : 'w-full'} overflow-y-auto border-r border-rmpg-700`}>
           {loading && fis.length === 0 ? (
             <div className="flex items-center justify-center h-32 text-rmpg-400">
-              <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading...
+              <Loader2 className="w-5 h-5 animate-spin mr-2" role="status" aria-label="Loading" /> Loading...
             </div>
           ) : fis.length === 0 ? (
             <EmptyState
@@ -452,7 +475,7 @@ export default function FieldInterviewsPage() {
 
       {/* Form Modal */}
       {formOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setFormOpen(false)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setFormOpen(false)}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#141e2b' }}>
               <span className="text-xs font-bold text-white uppercase">{editingFi ? 'Edit' : 'New'} Field Interview</span>
@@ -468,7 +491,7 @@ export default function FieldInterviewsPage() {
               <div>
                 <label className="field-label">Link to Person Record (Optional)</label>
                 <div className="relative">
-                  <input type="text" className="input-dark text-xs w-full" placeholder="Search person records..." aria-label="Search person records..."
+                  <input type="text" className="input-dark text-xs w-full min-h-[36px]" placeholder="Search person records..." aria-label="Search person records..."
                     value={personSearch} onChange={e => setPersonSearch(e.target.value)} />
                   {personResults.length > 0 && (
                     <div className="absolute z-10 w-full mt-1 bg-surface-raised border border-rmpg-600 max-h-40 overflow-y-auto">
@@ -488,12 +511,12 @@ export default function FieldInterviewsPage() {
               {/* Subject info */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div><label className="field-label">First Name</label>
-                  <input className="input-dark text-xs w-full" value={formData.subject_first_name} onChange={e => update('subject_first_name', e.target.value)} /></div>
+                  <input className="input-dark text-xs w-full min-h-[36px]" value={formData.subject_first_name} onChange={e => update('subject_first_name', e.target.value)} /></div>
                 <div><label className="field-label">Last Name *</label>
-                  <input className="input-dark text-xs w-full" value={formData.subject_last_name} onChange={e => update('subject_last_name', e.target.value)} />
+                  <input className="input-dark text-xs w-full min-h-[36px]" value={formData.subject_last_name} onChange={e => update('subject_last_name', e.target.value)} />
                   {formErrors.subject_last_name && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.subject_last_name}</p>}</div>
                 <div><label className="field-label">DOB</label>
-                  <input type="date" className="input-dark text-xs w-full" value={formData.subject_dob} onChange={e => update('subject_dob', e.target.value)} /></div>
+                  <input type="date" className="input-dark text-xs w-full min-h-[36px]" value={formData.subject_dob} onChange={e => update('subject_dob', e.target.value)} /></div>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -502,26 +525,26 @@ export default function FieldInterviewsPage() {
                     <option value="">—</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option>
                   </select></div>
                 <div><label className="field-label">Race</label>
-                  <input className="input-dark text-xs w-full" value={formData.subject_race} onChange={e => update('subject_race', e.target.value)} /></div>
+                  <input className="input-dark text-xs w-full min-h-[36px]" value={formData.subject_race} onChange={e => update('subject_race', e.target.value)} /></div>
                 <div><label className="field-label">Height</label>
-                  <input className="input-dark text-xs w-full" placeholder="5'10&quot;" value={formData.subject_height} onChange={e => update('subject_height', e.target.value)} /></div>
+                  <input className="input-dark text-xs w-full min-h-[36px]" placeholder="5'10&quot;" value={formData.subject_height} onChange={e => update('subject_height', e.target.value)} /></div>
                 <div><label className="field-label">Weight</label>
-                  <input className="input-dark text-xs w-full" placeholder="180" value={formData.subject_weight} onChange={e => update('subject_weight', e.target.value)} /></div>
+                  <input className="input-dark text-xs w-full min-h-[36px]" placeholder="180" value={formData.subject_weight} onChange={e => update('subject_weight', e.target.value)} /></div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div><label className="field-label">Hair</label>
-                  <input className="input-dark text-xs w-full" value={formData.subject_hair} onChange={e => update('subject_hair', e.target.value)} /></div>
+                  <input className="input-dark text-xs w-full min-h-[36px]" value={formData.subject_hair} onChange={e => update('subject_hair', e.target.value)} /></div>
                 <div><label className="field-label">Eyes</label>
-                  <input className="input-dark text-xs w-full" value={formData.subject_eye} onChange={e => update('subject_eye', e.target.value)} /></div>
+                  <input className="input-dark text-xs w-full min-h-[36px]" value={formData.subject_eye} onChange={e => update('subject_eye', e.target.value)} /></div>
                 <div><label className="field-label">Clothing</label>
-                  <input className="input-dark text-xs w-full" placeholder="Dark hoodie, jeans" value={formData.subject_clothing} onChange={e => update('subject_clothing', e.target.value)} /></div>
+                  <input className="input-dark text-xs w-full min-h-[36px]" placeholder="Dark hoodie, jeans" value={formData.subject_clothing} onChange={e => update('subject_clothing', e.target.value)} /></div>
               </div>
 
               {/* Location + reason */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div><label className="field-label">Location *</label>
-                  <input className="input-dark text-xs w-full" value={formData.location} onChange={e => update('location', e.target.value)} />
+                  <input className="input-dark text-xs w-full min-h-[36px]" value={formData.location} onChange={e => update('location', e.target.value)} />
                   {formErrors.location && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.location}</p>}</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div><label className="field-label">Reason</label>
@@ -572,17 +595,17 @@ export default function FieldInterviewsPage() {
                   <input className={`input-dark text-xs w-full ${formErrors.vehicle_plate ? '!border-red-500' : ''}`} value={formData.vehicle_plate} onChange={e => update('vehicle_plate', e.target.value)} />
                   {formErrors.vehicle_plate && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.vehicle_plate}</p>}</div>
                 <div><label className="field-label">Vehicle Desc.</label>
-                  <input className="input-dark text-xs w-full" value={formData.vehicle_description} onChange={e => update('vehicle_description', e.target.value)} /></div>
+                  <input className="input-dark text-xs w-full min-h-[36px]" value={formData.vehicle_description} onChange={e => update('vehicle_description', e.target.value)} /></div>
               </div>
 
               {/* Narrative */}
               <div><label className="field-label">Narrative</label>
-                <textarea className="input-dark text-xs w-full" rows={4} value={formData.narrative} onChange={e => update('narrative', e.target.value)} /></div>
+                <textarea className="input-dark text-xs w-full min-h-[36px]" rows={4} value={formData.narrative} onChange={e => update('narrative', e.target.value)} /></div>
 
               {/* Actions */}
               <div className={`flex ${isMobile ? 'flex-col gap-2' : 'justify-end gap-2'} pt-2 border-t border-rmpg-700`}>
                 <button type="submit" disabled={submitting} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={{ background: 'rgba(26,90,158,0.3)', borderColor: 'rgba(26,90,158,0.5)', minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : undefined }}>
-                  {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} />}
+                  {submitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} />}
                   {editingFi ? 'Update' : 'Create'} FI Card
                 </button>
                 <button type="button" onClick={() => setFormOpen(false)} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>Cancel</button>

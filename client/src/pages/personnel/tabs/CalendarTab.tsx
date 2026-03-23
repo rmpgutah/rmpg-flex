@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 
 interface Shift {
@@ -78,7 +78,7 @@ export default function CalendarTab() {
       </div>
 
       {loading ? (
-        <div className="text-center text-rmpg-400 py-8 text-xs">Loading...</div>
+        <div className="flex items-center justify-center gap-2 text-rmpg-400 py-8 text-xs"><Loader2 className="w-4 h-4 animate-spin" role="status" aria-label="Loading" /> Loading calendar...</div>
       ) : (
         <div className="border border-rmpg-700">
           {/* Day headers */}

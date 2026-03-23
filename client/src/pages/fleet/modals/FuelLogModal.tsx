@@ -1,4 +1,4 @@
-import React, { useId } from 'react';
+import React, { useId, useEffect } from 'react';
 import { Fuel, DollarSign } from 'lucide-react';
 import PanelTitleBar from '../../../components/PanelTitleBar';
 import type { FuelType } from '../../../types';
@@ -43,6 +43,14 @@ interface Props {
 
 export default function FuelLogModal({ isOpen, mode = 'create', form, onChange, onSave, onClose, saving }: Props) {
   const titleId = useId();
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !saving) onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, saving, onClose]);
+
   if (!isOpen) return null;
 
   const setField = (field: keyof FuelFormState, value: string) => {
@@ -61,8 +69,8 @@ export default function FuelLogModal({ isOpen, mode = 'create', form, onChange, 
   const grade = FUEL_GRADE[form.fuel_type] || FUEL_GRADE.regular;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ background: 'rgba(0,0,0,0.6)' }}>
-      <div className="panel-beveled w-[520px] max-h-[80vh] flex flex-col" style={{ background: '#1a2636' }}>
+    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ background: 'rgba(0,0,0,0.6)' }} onClick={saving ? undefined : onClose}>
+      <div className="panel-beveled w-[520px] max-h-[80vh] flex flex-col" style={{ background: '#1a2636' }} onClick={(e) => e.stopPropagation()}>
         <PanelTitleBar title={mode === 'edit' ? 'EDIT FUEL ENTRY' : 'LOG FUEL ENTRY'} icon={Fuel} id={titleId}>
           <button type="button" className="toolbar-btn text-[9px]" onClick={onClose}>X</button>
         </PanelTitleBar>
@@ -70,13 +78,13 @@ export default function FuelLogModal({ isOpen, mode = 'create', form, onChange, 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Date / Time *</label>
-              <input className="input-dark w-full text-[11px] font-mono" type="datetime-local" step="1"
+              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="datetime-local" step="1"
                 value={form.fuel_date}
                 onChange={(e) => setField('fuel_date', e.target.value)} />
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Fuel Type</label>
-              <select className="select-dark w-full text-[11px]" value={form.fuel_type}
+              <select className="select-dark w-full text-[11px] min-h-[36px]" value={form.fuel_type}
                 onChange={(e) => setField('fuel_type', e.target.value)}>
                 {FUEL_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
@@ -87,22 +95,22 @@ export default function FuelLogModal({ isOpen, mode = 'create', form, onChange, 
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Gallons *</label>
-              <input className="input-dark w-full text-[11px] font-mono" type="number" step="0.001" value={form.gallons}
+              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.001" value={form.gallons}
                 onChange={(e) => setField('gallons', e.target.value)} placeholder="e.g. 15.500" />
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Cost per Gallon ($)</label>
-              <input className="input-dark w-full text-[11px] font-mono" type="number" step="0.001" value={form.cost_per_gallon}
+              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.001" value={form.cost_per_gallon}
                 onChange={(e) => setField('cost_per_gallon', e.target.value)} placeholder="e.g. 3.450" />
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Total Cost ($)</label>
-              <input className="input-dark w-full text-[11px] font-mono" type="number" step="0.01" value={form.total_cost}
+              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" value={form.total_cost}
                 onChange={(e) => setField('total_cost', e.target.value)} />
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Odometer Reading</label>
-              <input className="input-dark w-full text-[11px] font-mono" type="number" step="0.1" value={form.odometer_reading}
+              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.1" value={form.odometer_reading}
                 onChange={(e) => setField('odometer_reading', e.target.value)} />
             </div>
 
@@ -123,19 +131,20 @@ export default function FuelLogModal({ isOpen, mode = 'create', form, onChange, 
 
             <div className="col-span-2">
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Station</label>
-              <input className="input-dark w-full text-[11px]" value={form.station}
+              <input className="input-dark w-full text-[11px] min-h-[36px]" value={form.station}
                 onChange={(e) => setField('station', e.target.value)} placeholder="e.g. Shell - Main St" />
             </div>
             <div className="col-span-2">
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Notes</label>
-              <textarea className="input-dark w-full text-[10px] h-14 resize-none" value={form.notes}
-                onChange={(e) => setField('notes', e.target.value)} />
+              <textarea className="input-dark w-full text-[10px] h-14 resize-none min-h-[36px]" value={form.notes}
+                onChange={(e) => setField('notes', e.target.value)} maxLength={2000} />
+              <div className="text-[8px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/2000</div>
             </div>
           </div>
         </div>
         <div className="flex items-center justify-end gap-2 px-4 py-2 border-t border-rmpg-700">
-          <button type="button" className="toolbar-btn" onClick={onClose}>Cancel</button>
-          <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={onSave} disabled={saving}>
+          <button type="button" className="toolbar-btn" onClick={onClose} disabled={saving}>Cancel</button>
+          <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={onSave} disabled={saving || !form.fuel_date || !form.gallons}>
             {saving ? 'Saving...' : mode === 'edit' ? 'Update Fuel' : 'Log Fuel'}
           </button>
         </div>

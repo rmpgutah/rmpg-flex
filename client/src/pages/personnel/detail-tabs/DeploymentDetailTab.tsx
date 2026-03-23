@@ -46,7 +46,7 @@ export default function DeploymentDetailTab({ deployments, loading, onAddDeploym
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <Loader2 className="w-5 h-5 text-brand-400 animate-spin" />
+        <Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" />
         <span className="ml-2 text-xs text-rmpg-400">Loading deployment history...</span>
       </div>
     );

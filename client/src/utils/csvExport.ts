@@ -42,3 +42,42 @@ export function exportToCsv(
   a.click();
   URL.revokeObjectURL(url);
 }
+
+/**
+ * Generate a timestamped filename for exports.
+ *
+ * @param prefix - Base name (e.g. "fleet_vehicles")
+ * @param extension - File extension (default: "csv")
+ * @returns Filename like "fleet_vehicles_2026-03-23_143022.csv"
+ */
+export function exportFilename(prefix: string, extension = 'csv'): string {
+  const now = new Date();
+  const ts = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+    '_',
+    String(now.getHours()).padStart(2, '0'),
+    String(now.getMinutes()).padStart(2, '0'),
+    String(now.getSeconds()).padStart(2, '0'),
+  ].join('');
+  return `${prefix}_${ts}.${extension}`;
+}
+
+/**
+ * Quick export helper: auto-generates columns from data keys.
+ * Useful when you don't need custom column labels.
+ */
+export function exportToCsvAuto(
+  filename: string,
+  rows: Record<string, any>[],
+  excludeKeys: string[] = [],
+): void {
+  if (rows.length === 0) return;
+  const allKeys = Object.keys(rows[0]).filter((k) => !excludeKeys.includes(k));
+  const columns: CsvColumn[] = allKeys.map((key) => ({
+    key,
+    label: key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+  }));
+  exportToCsv(filename, rows, columns);
+}

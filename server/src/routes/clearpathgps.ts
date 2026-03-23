@@ -87,7 +87,7 @@ router.get('/status', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('ClearPathGPS status error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to clearpathgps status', code: 'CLEARPATHGPS_STATUS_ERROR' });
   }
 });
 
@@ -96,7 +96,7 @@ router.post('/configure', requireRole('admin'), (req: Request, res: Response) =>
   try {
     const { account, user, password, base_url } = req.body;
     if (!account || !user || !password) {
-      res.status(400).json({ error: 'account, user, and password are required' });
+      res.status(400).json({ error: 'account, user, and password are required', code: 'ACCOUNT_USER_AND_PASSWORD' });
       return;
     }
     setConfigValue('clearpathgps_account', account, true);
@@ -114,7 +114,7 @@ router.post('/configure', requireRole('admin'), (req: Request, res: Response) =>
     res.json({ message: 'ClearPathGPS credentials saved' });
   } catch (error: any) {
     console.error('ClearPathGPS configure error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to clearpathgps configure', code: 'CLEARPATHGPS_CONFIGURE_ERROR' });
   }
 });
 
@@ -135,7 +135,7 @@ router.post('/test', requireRole('admin'), async (req: Request, res: Response) =
     }
 
     if (!creds) {
-      res.status(400).json({ error: 'No credentials configured' });
+      res.status(400).json({ error: 'No credentials configured', code: 'NO_CREDENTIALS_CONFIGURED' });
       return;
     }
 
@@ -153,7 +153,7 @@ router.delete('/configure', requireRole('admin'), (req: Request, res: Response) 
     res.json({ message: 'ClearPathGPS credentials removed' });
   } catch (error: any) {
     console.error('ClearPathGPS remove config error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to clearpathgps remove config', code: 'CLEARPATHGPS_REMOVE_CONFIG_ERROR' });
   }
 });
 
@@ -171,11 +171,13 @@ router.get('/vehicles', (req: Request, res: Response) => {
       FROM cpgps_vehicles cv
       LEFT JOIN fleet_vehicles fv ON cv.vehicle_id = fv.id
       ORDER BY cv.name ASC
+    
+      LIMIT 1000
     `).all();
     res.json(vehicles);
   } catch (error: any) {
     console.error('ClearPathGPS vehicles error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to clearpathgps vehicles', code: 'CLEARPATHGPS_VEHICLES_ERROR' });
   }
 });
 
@@ -184,7 +186,7 @@ router.get('/vehicles/:id/trips', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const cpgpsVehicle = db.prepare('SELECT * FROM cpgps_vehicles WHERE id = ?').get(req.params.id) as any;
-    if (!cpgpsVehicle) { res.status(404).json({ error: 'Vehicle not found' }); return; }
+    if (!cpgpsVehicle) { res.status(404).json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }); return; }
     const { page = '1', per_page = '50' } = req.query;
     const pageNum = parseInt(page as string, 10) || 1;
     const perPage = parseInt(per_page as string, 10) || 50;
@@ -196,7 +198,7 @@ router.get('/vehicles/:id/trips', (req: Request, res: Response) => {
     res.json({ trips, total, page: pageNum, per_page: perPage });
   } catch (error: any) {
     console.error('ClearPathGPS trips error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to clearpathgps trips', code: 'CLEARPATHGPS_TRIPS_ERROR' });
   }
 });
 
@@ -205,7 +207,7 @@ router.get('/vehicles/:id/locations', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const cpgpsVehicle = db.prepare('SELECT * FROM cpgps_vehicles WHERE id = ?').get(req.params.id) as any;
-    if (!cpgpsVehicle) { res.status(404).json({ error: 'Vehicle not found' }); return; }
+    if (!cpgpsVehicle) { res.status(404).json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }); return; }
     const { limit = '200' } = req.query;
     const locations = db.prepare(
       'SELECT * FROM cpgps_locations WHERE cpgps_vehicle_id = ? ORDER BY reported_at DESC LIMIT ?'
@@ -213,7 +215,7 @@ router.get('/vehicles/:id/locations', (req: Request, res: Response) => {
     res.json(locations);
   } catch (error: any) {
     console.error('ClearPathGPS locations error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to clearpathgps locations', code: 'CLEARPATHGPS_LOCATIONS_ERROR' });
   }
 });
 
@@ -222,7 +224,7 @@ router.get('/vehicles/:id/alerts', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const cpgpsVehicle = db.prepare('SELECT * FROM cpgps_vehicles WHERE id = ?').get(req.params.id) as any;
-    if (!cpgpsVehicle) { res.status(404).json({ error: 'Vehicle not found' }); return; }
+    if (!cpgpsVehicle) { res.status(404).json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }); return; }
     const { limit = '100' } = req.query;
     const alerts = db.prepare(
       'SELECT * FROM cpgps_alerts WHERE cpgps_vehicle_id = ? ORDER BY triggered_at DESC LIMIT ?'
@@ -230,7 +232,7 @@ router.get('/vehicles/:id/alerts', (req: Request, res: Response) => {
     res.json(alerts);
   } catch (error: any) {
     console.error('ClearPathGPS alerts error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to clearpathgps alerts', code: 'CLEARPATHGPS_ALERTS_ERROR' });
   }
 });
 
@@ -244,7 +246,7 @@ router.post('/link-vehicle', requireRole('admin'), (req: Request, res: Response)
     const db = getDb();
     const { cpgps_vehicle_id, fleet_vehicle_id } = req.body;
     if (!cpgps_vehicle_id) {
-      res.status(400).json({ error: 'cpgps_vehicle_id required' });
+      res.status(400).json({ error: 'cpgps_vehicle_id required', code: 'CPGPSVEHICLEID_REQUIRED' });
       return;
     }
     db.prepare('UPDATE cpgps_vehicles SET vehicle_id = ? WHERE id = ?')
@@ -260,7 +262,7 @@ router.post('/link-vehicle', requireRole('admin'), (req: Request, res: Response)
     res.json({ message: 'Vehicle linked' });
   } catch (error: any) {
     console.error('ClearPathGPS link vehicle error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to clearpathgps link vehicle', code: 'CLEARPATHGPS_LINK_VEHICLE_ERROR' });
   }
 });
 
@@ -276,7 +278,7 @@ let scrapeProgress = { stage: '', vehicleIndex: 0, vehicleTotal: 0, chunksProces
 router.post('/sync', requireRole('admin'), async (req: Request, res: Response) => {
   try {
     const creds = getCredentials();
-    if (!creds) { res.status(400).json({ error: 'ClearPathGPS not configured' }); return; }
+    if (!creds) { res.status(400).json({ error: 'ClearPathGPS not configured', code: 'CLEARPATHGPS_NOT_CONFIGURED' }); return; }
 
     const db = getDb();
     const syncLog = db.prepare(
@@ -353,7 +355,7 @@ router.post('/scrape', requireRole('admin'), async (req: Request, res: Response)
   }
 
   const creds = getCredentials();
-  if (!creds) { res.status(400).json({ error: 'ClearPathGPS not configured' }); return; }
+  if (!creds) { res.status(400).json({ error: 'ClearPathGPS not configured', code: 'CLEARPATHGPS_NOT_CONFIGURED' }); return; }
 
   scrapeRunning = true;
   scrapeProgress = { stage: 'starting', vehicleIndex: 0, vehicleTotal: 0, chunksProcessed: 0, chunksTotal: 0 };
@@ -545,7 +547,7 @@ router.get('/sync/status', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('ClearPathGPS sync status error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to clearpathgps sync status', code: 'CLEARPATHGPS_SYNC_STATUS_ERROR' });
   }
 });
 
@@ -558,7 +560,7 @@ router.post('/credentials', requireRole('admin'), (req: Request, res: Response) 
   try {
     const { account, username, password, base_url } = req.body;
     if (!account || !username || !password) {
-      res.status(400).json({ error: 'account, username, and password are required' });
+      res.status(400).json({ error: 'account, username, and password are required', code: 'ACCOUNT_USERNAME_AND_PASSWORD' });
       return;
     }
     setConfigValue('clearpathgps_account', account, true);
@@ -575,7 +577,7 @@ router.post('/credentials', requireRole('admin'), (req: Request, res: Response) 
     res.json({ success: true, message: 'ClearPathGPS credentials saved' });
   } catch (error: any) {
     console.error('ClearPathGPS save credentials error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to clearpathgps save credentials', code: 'CLEARPATHGPS_SAVE_CREDENTIALS_ERROR' });
   }
 });
 
@@ -586,7 +588,7 @@ router.delete('/credentials', requireRole('admin'), (req: Request, res: Response
     res.json({ success: true, message: 'ClearPathGPS credentials removed' });
   } catch (error: any) {
     console.error('ClearPathGPS remove credentials error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to clearpathgps remove credentials', code: 'CLEARPATHGPS_REMOVE_CREDENTIALS_ERROR' });
   }
 });
 
@@ -622,7 +624,7 @@ router.post('/test-connection', requireRole('admin'), async (req: Request, res: 
 router.post('/discover-accounts', requireRole('admin'), async (req: Request, res: Response) => {
   try {
     const creds = getCredentials();
-    if (!creds) { res.status(400).json({ error: 'Not configured' }); return; }
+    if (!creds) { res.status(400).json({ error: 'Not configured', code: 'NOT_CONFIGURED' }); return; }
 
     // ClearPathGPS typically has a single account — return the configured one
     res.json({
@@ -656,7 +658,7 @@ router.post('/enable', requireRole('admin'), (req: Request, res: Response) => {
     res.json({ success: true, enabled });
   } catch (error: any) {
     console.error('ClearPathGPS enable error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to clearpathgps enable', code: 'CLEARPATHGPS_ENABLE_ERROR' });
   }
 });
 
@@ -669,11 +671,13 @@ router.get('/devices', (req: Request, res: Response) => {
       FROM cpgps_vehicles cv
       LEFT JOIN fleet_vehicles fv ON cv.vehicle_id = fv.id
       ORDER BY cv.name
+    
+      LIMIT 1000
     `).all();
     res.json({ devices });
   } catch (error: any) {
     console.error('ClearPathGPS devices error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to clearpathgps devices', code: 'CLEARPATHGPS_DEVICES_ERROR' });
   }
 });
 
@@ -689,11 +693,13 @@ router.get('/mappings', (req: Request, res: Response) => {
       LEFT JOIN cpgps_vehicles cv ON m.cpgps_vehicle_id = cv.cpgps_id
       WHERE m.active = 1
       ORDER BY u.full_name
+    
+      LIMIT 1000
     `).all();
     res.json({ mappings });
   } catch (error: any) {
     console.error('ClearPathGPS mappings error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to clearpathgps mappings', code: 'CLEARPATHGPS_MAPPINGS_ERROR' });
   }
 });
 
@@ -703,7 +709,7 @@ router.post('/mappings', requireRole('admin'), (req: Request, res: Response) => 
     const db = getDb();
     const { officer_id, cpgps_vehicle_id, call_sign } = req.body;
     if (!officer_id || !cpgps_vehicle_id) {
-      res.status(400).json({ error: 'officer_id and cpgps_vehicle_id required' });
+      res.status(400).json({ error: 'officer_id and cpgps_vehicle_id required', code: 'OFFICERID_AND_CPGPSVEHICLEID_REQUIRED' });
       return;
     }
     db.prepare(`
@@ -713,7 +719,7 @@ router.post('/mappings', requireRole('admin'), (req: Request, res: Response) => 
     res.json({ success: true });
   } catch (error: any) {
     console.error('ClearPathGPS create mapping error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to clearpathgps create mapping', code: 'CLEARPATHGPS_CREATE_MAPPING_ERROR' });
   }
 });
 
@@ -725,7 +731,7 @@ router.delete('/mappings/:id', requireRole('admin'), (req: Request, res: Respons
     res.json({ success: true });
   } catch (error: any) {
     console.error('ClearPathGPS delete mapping error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to clearpathgps delete mapping', code: 'CLEARPATHGPS_DELETE_MAPPING_ERROR' });
   }
 });
 
@@ -738,7 +744,7 @@ router.get('/settings', (req: Request, res: Response) => {
     ).get() as any;
     res.json({ history_backfill: historyBackfill?.config_value === '1' });
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -749,7 +755,7 @@ router.post('/settings', requireRole('admin'), (req: Request, res: Response) => 
     setConfigValue('clearpathgps_history_backfill', history_backfill ? '1' : '0');
     res.json({ success: true });
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -774,7 +780,7 @@ router.get('/dashcam-events', (req: Request, res: Response) => {
     res.json({ events, total });
   } catch (error: any) {
     console.error('ClearPathGPS dashcam events error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to clearpathgps dashcam events', code: 'CLEARPATHGPS_DASHCAM_EVENTS_ERROR' });
   }
 });
 
@@ -792,7 +798,7 @@ router.get('/dashcam-events/by-officer/:officerId', (req: Request, res: Response
     `).all(req.params.officerId);
     res.json(events);
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -806,6 +812,8 @@ router.get('/dashcam-events/export', (req: Request, res: Response) => {
       LEFT JOIN users u ON de.officer_id = u.id
       LEFT JOIN cpgps_vehicles cv ON de.cpgps_vehicle_id = cv.cpgps_id
       ORDER BY de.event_at DESC
+    
+      LIMIT 1000
     `).all() as any[];
 
     const headers = ['Event Type', 'Severity', 'Description', 'Officer', 'Vehicle', 'Speed', 'Lat', 'Lon', 'Event Time'];
@@ -818,7 +826,7 @@ router.get('/dashcam-events/export', (req: Request, res: Response) => {
     res.setHeader('Content-Disposition', 'attachment; filename="dashcam-events.csv"');
     res.send(csv);
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -838,7 +846,7 @@ router.get('/media-status', (req: Request, res: Response) => {
       enabled: false,
     });
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -851,7 +859,7 @@ router.post('/media-settings', requireRole('admin'), (req: Request, res: Respons
     if (downloadPath) setConfigValue('clearpathgps_media_path', downloadPath);
     res.json({ success: true });
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -861,7 +869,7 @@ router.post('/media-sync-now', requireRole('admin'), (req: Request, res: Respons
     // Placeholder — media sync would download dashcam clips from ClearPathGPS
     res.json({ synced: 0, errors: 0, message: 'Media sync not yet configured — add ClearPathGPS media credentials first' });
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 

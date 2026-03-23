@@ -206,8 +206,10 @@ export default function LeaveRequestModal({
           onChange={e => setReason(e.target.value)}
           rows={3}
           placeholder="Optional — provide context for your request"
+          maxLength={2000}
           className={inputClass + ' resize-none'}
         />
+        <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{reason.length}/2000</div>
       </div>
     </FormModal>
   );

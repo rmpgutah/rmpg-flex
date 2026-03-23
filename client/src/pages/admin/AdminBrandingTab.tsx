@@ -114,6 +114,9 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
 
   if (loading) return <LoadingSpinner />;
 
+  // Set document title
+  useEffect(() => { document.title = 'Admin - Branding \u2014 RMPG Flex'; }, []);
+
   return (
     <div className="p-4 space-y-6 max-w-4xl">
       {/* Header */}
@@ -132,7 +135,7 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
           disabled={!dirty || saving}
           className={`toolbar-btn ${dirty ? 'toolbar-btn-primary' : 'toolbar-btn'} flex items-center gap-1.5`}
         >
-          {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : saved ? <CheckCircle className="w-3 h-3 text-green-400" /> : <Save className="w-3 h-3" />}
+          {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : saved ? <CheckCircle className="w-3 h-3 text-green-400" /> : <Save className="w-3 h-3" />}
           {saving ? 'Saving...' : saved ? 'Saved' : 'Save Changes'}
         </button>
       </div>
@@ -203,7 +206,7 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Default Classification</label>
             <select
-              className="input-dark text-xs w-full"
+              className="input-dark text-xs w-full min-h-[36px]"
               value={config.default_classification}
               onChange={(e) => update('default_classification', e.target.value)}
             >
@@ -291,7 +294,7 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
         <div className="sticky bottom-0 bg-rmpg-950/90 backdrop-blur-sm border-t border-rmpg-700 p-3 flex items-center justify-between -mx-4 px-4">
           <span className="text-[10px] text-amber-400">You have unsaved changes</span>
           <button type="button" onClick={saveConfig} disabled={saving} className="toolbar-btn toolbar-btn-primary flex items-center gap-1.5">
-            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+            {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save className="w-3 h-3" />}
             {saving ? 'Saving...' : 'Save All Changes'}
           </button>
         </div>

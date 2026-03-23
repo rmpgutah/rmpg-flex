@@ -118,7 +118,7 @@ function authenticateTokenOrQuery(req: Request, res: Response, next: NextFunctio
       next();
       return;
     }
-    res.status(403).json({ error: 'Invalid or expired file signature' });
+    res.status(403).json({ error: 'Invalid or expired file signature', code: 'INVALID_OR_EXPIRED_FILE' });
     return;
   }
 
@@ -132,14 +132,14 @@ function authenticateTokenOrQuery(req: Request, res: Response, next: NextFunctio
   const token = headerToken || queryToken;
 
   if (!token) {
-    res.status(401).json({ error: 'Authentication required' });
+    res.status(401).json({ error: 'Authentication required', code: 'AUTHENTICATION_REQUIRED' });
     return;
   }
 
   try {
     const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
     if (decoded.type === 'refresh') {
-      res.status(403).json({ error: 'Invalid token type' });
+      res.status(403).json({ error: 'Invalid token type', code: 'INVALID_TOKEN_TYPE' });
       return;
     }
     req.user = decoded;
@@ -148,7 +148,7 @@ function authenticateTokenOrQuery(req: Request, res: Response, next: NextFunctio
     if (err.name === 'TokenExpiredError') {
       res.status(401).json({ error: 'Token expired', code: 'TOKEN_EXPIRED' });
     } else {
-      res.status(403).json({ error: 'Invalid or expired token' });
+      res.status(403).json({ error: 'Invalid or expired token', code: 'INVALID_OR_EXPIRED_TOKEN' });
     }
   }
 }
@@ -167,6 +167,8 @@ router.get('/entity/:type/:id', authenticateToken, (req: Request, res: Response)
       LEFT JOIN users u ON a.uploaded_by = u.id
       WHERE a.entity_type = ? AND a.entity_id = ?
       ORDER BY a.created_at DESC
+    
+      LIMIT 1000
     `).all(String(req.params.type), parseInt(String(req.params.id), 10));
 
     // Enrich each attachment with an HMAC-signed access token (24h TTL)
@@ -178,7 +180,7 @@ router.get('/entity/:type/:id', authenticateToken, (req: Request, res: Response)
     res.json(enriched);
   } catch (error: any) {
     console.error('List attachments error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to list attachments', code: 'LIST_ATTACHMENTS_ERROR' });
   }
 });
 
@@ -191,7 +193,7 @@ router.get('/sign/:fileId', authenticateToken, (req: Request, res: Response) => 
     const attachment = db.prepare('SELECT file_id FROM attachments WHERE file_id = ?').get(req.params.fileId) as any;
 
     if (!attachment) {
-      res.status(404).json({ error: 'File not found' });
+      res.status(404).json({ error: 'File not found', code: 'FILE_NOT_FOUND' });
       return;
     }
 
@@ -199,7 +201,7 @@ router.get('/sign/:fileId', authenticateToken, (req: Request, res: Response) => 
     res.json({ sig, exp, file_id: req.params.fileId });
   } catch (error: any) {
     console.error('Sign file error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to sign file', code: 'SIGN_FILE_ERROR' });
   }
 });
 
@@ -213,14 +215,14 @@ router.get('/:fileId', authenticateTokenOrQuery, (req: Request, res: Response) =
     const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(req.params.fileId) as any;
 
     if (!attachment) {
-      res.status(404).json({ error: 'File not found' });
+      res.status(404).json({ error: 'File not found', code: 'FILE_NOT_FOUND' });
       return;
     }
 
     const filePath = safeFilePath(attachment.file_path);
-    if (!filePath) { res.status(403).json({ error: 'Invalid file path' }); return; }
+    if (!filePath) { res.status(403).json({ error: 'Invalid file path', code: 'INVALID_FILE_PATH' }); return; }
     if (!fs.existsSync(filePath)) {
-      res.status(404).json({ error: 'File not found on disk' });
+      res.status(404).json({ error: 'File not found on disk', code: 'FILE_NOT_FOUND_ON' });
       return;
     }
 
@@ -234,7 +236,7 @@ router.get('/:fileId', authenticateTokenOrQuery, (req: Request, res: Response) =
     res.sendFile(filePath);
   } catch (error: any) {
     console.error('Download error:', error);
-    res.status(500).json({ error: 'Download failed' });
+    res.status(500).json({ error: 'Download failed', code: 'DOWNLOAD_FAILED' });
   }
 });
 
@@ -245,14 +247,14 @@ router.get('/:fileId/download', authenticateTokenOrQuery, (req: Request, res: Re
     const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(req.params.fileId) as any;
 
     if (!attachment) {
-      res.status(404).json({ error: 'File not found' });
+      res.status(404).json({ error: 'File not found', code: 'FILE_NOT_FOUND' });
       return;
     }
 
     const filePath = safeFilePath(attachment.file_path);
-    if (!filePath) { res.status(403).json({ error: 'Invalid file path' }); return; }
+    if (!filePath) { res.status(403).json({ error: 'Invalid file path', code: 'INVALID_FILE_PATH' }); return; }
     if (!fs.existsSync(filePath)) {
-      res.status(404).json({ error: 'File not found on disk' });
+      res.status(404).json({ error: 'File not found on disk', code: 'FILE_NOT_FOUND_ON' });
       return;
     }
 
@@ -261,7 +263,7 @@ router.get('/:fileId/download', authenticateTokenOrQuery, (req: Request, res: Re
     res.sendFile(filePath);
   } catch (error: any) {
     console.error('Download error:', error);
-    res.status(500).json({ error: 'Download failed' });
+    res.status(500).json({ error: 'Download failed', code: 'DOWNLOAD_FAILED' });
   }
 });
 
@@ -272,20 +274,20 @@ router.get('/:fileId/thumbnail', authenticateTokenOrQuery, (req: Request, res: R
     const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(req.params.fileId) as any;
 
     if (!attachment) {
-      res.status(404).json({ error: 'File not found' });
+      res.status(404).json({ error: 'File not found', code: 'FILE_NOT_FOUND' });
       return;
     }
 
     // Only serve images as thumbnails
     if (!attachment.mime_type.startsWith('image/')) {
-      res.status(400).json({ error: 'Not an image' });
+      res.status(400).json({ error: 'Not an image', code: 'NOT_AN_IMAGE' });
       return;
     }
 
     const filePath = safeFilePath(attachment.file_path);
-    if (!filePath) { res.status(403).json({ error: 'Invalid file path' }); return; }
+    if (!filePath) { res.status(403).json({ error: 'Invalid file path', code: 'INVALID_FILE_PATH' }); return; }
     if (!fs.existsSync(filePath)) {
-      res.status(404).json({ error: 'File not found on disk' });
+      res.status(404).json({ error: 'File not found on disk', code: 'FILE_NOT_FOUND_ON' });
       return;
     }
 
@@ -297,7 +299,7 @@ router.get('/:fileId/thumbnail', authenticateTokenOrQuery, (req: Request, res: R
     res.sendFile(filePath);
   } catch (error: any) {
     console.error('Thumbnail error:', error);
-    res.status(500).json({ error: 'Thumbnail failed' });
+    res.status(500).json({ error: 'Thumbnail failed', code: 'THUMBNAIL_FAILED' });
   }
 });
 
@@ -309,7 +311,7 @@ router.post('/', upload.array('files', 10), (req: Request, res: Response) => {
   try {
     const files = req.files as Express.Multer.File[];
     if (!files || files.length === 0) {
-      res.status(400).json({ error: 'No files provided' });
+      res.status(400).json({ error: 'No files provided', code: 'NO_FILES_PROVIDED' });
       return;
     }
 
@@ -360,7 +362,7 @@ router.post('/', upload.array('files', 10), (req: Request, res: Response) => {
     if (error.message?.includes('not allowed')) {
       res.status(400).json({ error: error.message });
     } else {
-      res.status(500).json({ error: 'Upload failed' });
+      res.status(500).json({ error: 'Upload failed', code: 'UPLOAD_FAILED' });
     }
   }
 });
@@ -372,7 +374,7 @@ router.put('/:fileId/link', (req: Request, res: Response) => {
     const { entity_type, entity_id } = req.body;
 
     if (!entity_type || !entity_id) {
-      res.status(400).json({ error: 'entity_type and entity_id are required' });
+      res.status(400).json({ error: 'entity_type and entity_id are required', code: 'ENTITYTYPE_AND_ENTITYID_ARE' });
       return;
     }
 
@@ -381,7 +383,7 @@ router.put('/:fileId/link', (req: Request, res: Response) => {
     `).run(entity_type, parseInt(entity_id, 10), req.params.fileId);
 
     if (result.changes === 0) {
-      res.status(404).json({ error: 'File not found' });
+      res.status(404).json({ error: 'File not found', code: 'FILE_NOT_FOUND' });
       return;
     }
 
@@ -389,7 +391,7 @@ router.put('/:fileId/link', (req: Request, res: Response) => {
     res.json(attachment);
   } catch (error: any) {
     console.error('Link attachment error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to link attachment', code: 'LINK_ATTACHMENT_ERROR' });
   }
 });
 
@@ -400,7 +402,7 @@ router.delete('/:fileId', (req: Request, res: Response) => {
     const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(req.params.fileId) as any;
 
     if (!attachment) {
-      res.status(404).json({ error: 'File not found' });
+      res.status(404).json({ error: 'File not found', code: 'FILE_NOT_FOUND' });
       return;
     }
 
@@ -428,7 +430,7 @@ router.delete('/:fileId', (req: Request, res: Response) => {
     res.json({ message: 'File deleted' });
   } catch (error: any) {
     console.error('Delete attachment error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete attachment', code: 'DELETE_ATTACHMENT_ERROR' });
   }
 });
 

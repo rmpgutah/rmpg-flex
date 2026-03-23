@@ -305,7 +305,9 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
           placeholder="Additional details about this person's involvement..."
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
+          maxLength={2000}
         />
+        <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{notes.length}/2000</div>
       </div>
       {/* Create Person Modal */}
       <PersonFormModal

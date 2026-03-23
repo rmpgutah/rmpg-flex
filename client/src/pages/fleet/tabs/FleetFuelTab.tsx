@@ -57,7 +57,7 @@ export default function FleetFuelTab({ fuelLogs, summary, onAddFuel, onEditFuel,
         <h3 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider flex items-center gap-1.5">
           <Fuel className="w-3 h-3" /> Fuel Log ({fuelLogs.length})
         </h3>
-        <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={onAddFuel}>
+        <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={onAddFuel}>
           <Plus className="w-3 h-3" /> Add Fuel Log
         </button>
       </div>

@@ -176,7 +176,7 @@ router.get('/status', async (_req: Request, res: Response) => {
 router.put('/credentials', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const { baseUrl, apiKey } = req.body;
-    if (!baseUrl) return res.status(400).json({ error: 'baseUrl is required' });
+    if (!baseUrl) return res.status(400).json({ error: 'baseUrl is required', code: 'BASEURL_IS_REQUIRED' });
 
     setConfigValue(IPED_KEYS.baseUrl, baseUrl.trim(), true);
     if (apiKey) setConfigValue(IPED_KEYS.apiKey, apiKey.trim(), true);
@@ -203,7 +203,7 @@ router.delete('/credentials', requireRole('admin'), (_req: Request, res: Respons
 router.post('/test-connection', async (_req: Request, res: Response) => {
   try {
     const baseUrl = getDecryptedValue(IPED_KEYS.baseUrl);
-    if (!baseUrl) return res.status(400).json({ error: 'IPED not configured' });
+    if (!baseUrl) return res.status(400).json({ error: 'IPED not configured', code: 'IPED_NOT_CONFIGURED' });
 
     const start = Date.now();
     const result = await callIpedApi('/api/v1/cases');
@@ -227,7 +227,7 @@ router.post('/test-connection', async (_req: Request, res: Response) => {
 router.get('/cases', async (_req: Request, res: Response) => {
   try {
     const cases = await callIpedApi('/api/v1/cases');
-    if (!cases) return res.status(502).json({ error: 'Unable to reach IPED server' });
+    if (!cases) return res.status(502).json({ error: 'Unable to reach IPED server', code: 'UNABLE_TO_REACH_IPED' });
     res.json({ data: Array.isArray(cases) ? cases : [] });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -238,7 +238,7 @@ router.get('/cases', async (_req: Request, res: Response) => {
 router.get('/cases/:caseId', async (req: Request, res: Response) => {
   try {
     const result = await callIpedApi(`/api/v1/cases/${encodeURIComponent(req.params.caseId as string)}`);
-    if (!result) return res.status(502).json({ error: 'Unable to reach IPED server' });
+    if (!result) return res.status(502).json({ error: 'Unable to reach IPED server', code: 'UNABLE_TO_REACH_IPED' });
     res.json({ data: result });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -250,7 +250,7 @@ router.get('/cases/:caseId/stats', async (req: Request, res: Response) => {
   try {
     const caseId = encodeURIComponent(req.params.caseId as string);
     const result = await callIpedApi(`/api/v1/cases/${caseId}/statistics`);
-    if (!result) return res.status(502).json({ error: 'Unable to reach IPED server' });
+    if (!result) return res.status(502).json({ error: 'Unable to reach IPED server', code: 'UNABLE_TO_REACH_IPED' });
     res.json({ data: result });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -273,7 +273,7 @@ router.get('/cases/:caseId/search', async (req: Request, res: Response) => {
     const result = await callIpedApi(
       `/api/v1/cases/${caseId}/search?q=${encodeURIComponent(q)}&page=${page}&pageSize=${pageSize}${category}`
     );
-    if (!result) return res.status(502).json({ error: 'Unable to reach IPED server' });
+    if (!result) return res.status(502).json({ error: 'Unable to reach IPED server', code: 'UNABLE_TO_REACH_IPED' });
     res.json({ data: result });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -286,7 +286,7 @@ router.get('/cases/:caseId/items/:itemId', async (req: Request, res: Response) =
     const caseId = encodeURIComponent(req.params.caseId as string);
     const itemId = encodeURIComponent(req.params.itemId as string);
     const result = await callIpedApi(`/api/v1/cases/${caseId}/items/${itemId}`);
-    if (!result) return res.status(502).json({ error: 'Unable to reach IPED server' });
+    if (!result) return res.status(502).json({ error: 'Unable to reach IPED server', code: 'UNABLE_TO_REACH_IPED' });
     res.json({ data: result });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -302,7 +302,7 @@ router.get('/cases/:caseId/bookmarks', async (req: Request, res: Response) => {
   try {
     const caseId = encodeURIComponent(req.params.caseId as string);
     const result = await callIpedApi(`/api/v1/cases/${caseId}/bookmarks`);
-    if (!result) return res.status(502).json({ error: 'Unable to reach IPED server' });
+    if (!result) return res.status(502).json({ error: 'Unable to reach IPED server', code: 'UNABLE_TO_REACH_IPED' });
     res.json({ data: Array.isArray(result) ? result : [] });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -314,7 +314,7 @@ router.post('/cases/:caseId/bookmarks', async (req: Request, res: Response) => {
   try {
     const caseId = encodeURIComponent(req.params.caseId as string);
     const result = await callIpedApi(`/api/v1/cases/${caseId}/bookmarks`, 'POST', req.body);
-    if (!result) return res.status(502).json({ error: 'Unable to reach IPED server' });
+    if (!result) return res.status(502).json({ error: 'Unable to reach IPED server', code: 'UNABLE_TO_REACH_IPED' });
     res.json({ data: result });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -337,7 +337,7 @@ router.get('/cases/:caseId/findings', async (req: Request, res: Response) => {
     const result = await callIpedApi(
       `/api/v1/cases/${caseId}/search?q=*&category=${encodeURIComponent(category as string)}&pageSize=200`
     );
-    if (!result) return res.status(502).json({ error: 'Unable to reach IPED server' });
+    if (!result) return res.status(502).json({ error: 'Unable to reach IPED server', code: 'UNABLE_TO_REACH_IPED' });
 
     // Normalize findings into structured format
     const items = Array.isArray(result?.items || result) ? (result?.items || result) : [];
@@ -374,7 +374,7 @@ router.get('/cases/:caseId/timeline', async (req: Request, res: Response) => {
     const result = await callIpedApi(
       `/api/v1/cases/${caseId}/timeline?pageSize=500${from}${to}`
     );
-    if (!result) return res.status(502).json({ error: 'Unable to reach IPED server' });
+    if (!result) return res.status(502).json({ error: 'Unable to reach IPED server', code: 'UNABLE_TO_REACH_IPED' });
 
     const events = Array.isArray(result?.events || result) ? (result?.events || result) : [];
     res.json({ data: events, total: result?.totalEvents || events.length });
@@ -393,7 +393,7 @@ router.post('/import/link', async (req: Request, res: Response) => {
     const db = getDb();
     const user = (req as any).user;
     const { forensicCaseId, ipedCaseId, ipedCaseName } = req.body;
-    if (!forensicCaseId || !ipedCaseId) return res.status(400).json({ error: 'forensicCaseId and ipedCaseId required' });
+    if (!forensicCaseId || !ipedCaseId) return res.status(400).json({ error: 'forensicCaseId and ipedCaseId required', code: 'FORENSICCASEID_AND_IPEDCASEID_REQUIRED' });
 
     const now = localNow();
     const stmt = db.prepare(`
@@ -417,7 +417,7 @@ router.post('/import/findings', async (req: Request, res: Response) => {
     const user = (req as any).user;
     const { forensicCaseId, ipedCaseId, ipedCaseName, findings, analysisId, category } = req.body;
     if (!forensicCaseId || !ipedCaseId || !findings) {
-      return res.status(400).json({ error: 'forensicCaseId, ipedCaseId, and findings required' });
+      return res.status(400).json({ error: 'forensicCaseId, ipedCaseId, and findings required', code: 'FORENSICCASEID_IPEDCASEID_AND_FINDINGS' });
     }
 
     const now = localNow();
@@ -479,7 +479,7 @@ router.post('/import/timeline', async (req: Request, res: Response) => {
     const user = (req as any).user;
     const { forensicCaseId, ipedCaseId, ipedCaseName, events } = req.body;
     if (!forensicCaseId || !ipedCaseId || !events) {
-      return res.status(400).json({ error: 'forensicCaseId, ipedCaseId, and events required' });
+      return res.status(400).json({ error: 'forensicCaseId, ipedCaseId, and events required', code: 'FORENSICCASEID_IPEDCASEID_AND_EVENTS' });
     }
 
     const now = localNow();
@@ -523,7 +523,7 @@ router.post('/import/report', async (req: Request, res: Response) => {
     const user = (req as any).user;
     const { forensicCaseId, ipedCaseId, ipedCaseName, reportName, reportType, reportUrl, itemCount } = req.body;
     if (!forensicCaseId || !ipedCaseId) {
-      return res.status(400).json({ error: 'forensicCaseId and ipedCaseId required' });
+      return res.status(400).json({ error: 'forensicCaseId and ipedCaseId required', code: 'FORENSICCASEID_AND_IPEDCASEID_REQUIRED' });
     }
 
     const now = localNow();
@@ -560,7 +560,7 @@ router.post('/import/items', async (req: Request, res: Response) => {
     const user = (req as any).user;
     const { forensicCaseId, ipedCaseId, ipedCaseName, items } = req.body;
     if (!forensicCaseId || !ipedCaseId || !items) {
-      return res.status(400).json({ error: 'forensicCaseId, ipedCaseId, and items required' });
+      return res.status(400).json({ error: 'forensicCaseId, ipedCaseId, and items required', code: 'FORENSICCASEID_IPEDCASEID_AND_ITEMS' });
     }
 
     const now = localNow();
@@ -626,6 +626,8 @@ router.get('/imports/:forensicCaseId', (req: Request, res: Response) => {
     const caseId = parseInt(req.params.forensicCaseId as string);
     const rows = db.prepare(`
       SELECT * FROM iped_imports WHERE forensic_case_id = ? ORDER BY created_at DESC
+    
+      LIMIT 1000
     `).all(caseId);
     res.json({ data: rows });
   } catch (err: any) {
@@ -671,7 +673,7 @@ router.get('/hashes/search', (req: Request, res: Response) => {
     const db = getDb();
     const { q } = req.query;
     if (!q || String(q).trim().length < 4) {
-      return res.status(400).json({ error: 'Search query must be at least 4 characters' });
+      return res.status(400).json({ error: 'Search query must be at least 4 characters', code: 'SEARCH_QUERY_MUST_BE' });
     }
 
     const searchTerm = `%${String(q).trim()}%`;
@@ -688,7 +690,7 @@ router.get('/hashes/search', (req: Request, res: Response) => {
     res.json({ results, total: results.length });
   } catch (error: any) {
     console.error('Hash search error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to hash search', code: 'HASH_SEARCH_ERROR' });
   }
 });
 

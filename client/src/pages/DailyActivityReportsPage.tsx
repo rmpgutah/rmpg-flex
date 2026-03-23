@@ -10,7 +10,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   ClipboardCheck, Search, Plus, Clock, User, FileText,
   X, Save, Loader2, CheckCircle, AlertTriangle, Send, RotateCcw,
-  Zap, Calendar,
+  Zap, Calendar, RefreshCw,
 } from 'lucide-react';
 import type { DailyActivityReport, DARStatus } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -27,6 +27,17 @@ const STATUS_COLORS: Record<string, string> = {
   approved: 'bg-green-900/50 text-green-400 border-green-700/50',
   returned: 'bg-red-900/50 text-red-400 border-red-700/50',
   archived: 'bg-rmpg-700/50 text-rmpg-400 border-rmpg-600/50',
+};
+
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
 };
 
 export default function DailyActivityReportsPage() {
@@ -61,6 +72,21 @@ export default function DailyActivityReportsPage() {
   const [editNarrative, setEditNarrative] = useState('');
   const [editHighlights, setEditHighlights] = useState('');
   const [editIssues, setEditIssues] = useState('');
+
+  // Document title
+  useEffect(() => { document.title = 'Daily Activity Reports \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
+      if (e.key === 'Escape') { setCreateFormOpen(false); setSelected(null); }
+      if (e.key === 'n' || e.key === 'N') { setCreateFormOpen(true); setAutoPopulateData(null); }
+      if (e.key === 'r' || e.key === 'R') { fetchDars({ silent: true }); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   const fetchDars = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
@@ -191,17 +217,20 @@ export default function DailyActivityReportsPage() {
       {/* ── Left Panel ── */}
       <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[380px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Daily Activity Reports" icon={ClipboardCheck}>
-          <button type="button" onClick={() => { setCreateFormOpen(true); setAutoPopulateData(null); }} className="toolbar-btn toolbar-btn-primary">
+          <button type="button" onClick={() => fetchDars({ silent: true })} className="toolbar-btn print:hidden" title="Refresh (R)">
+            <RefreshCw style={{ width: 11, height: 11 }} />
+          </button>
+          <button type="button" onClick={() => { setCreateFormOpen(true); setAutoPopulateData(null); }} className="toolbar-btn toolbar-btn-primary print:hidden">
             <Plus style={{ width: 11, height: 11 }} /> New
           </button>
-          <span className="text-[9px] font-mono text-rmpg-500">{totalCount}</span>
+          <span className="text-[9px] font-mono text-rmpg-500 bg-rmpg-800 px-1.5 py-0.5 rounded-sm">{totalCount}</span>
         </PanelTitleBar>
 
         {/* Filters */}
         <div className="flex gap-1 p-1.5 border-b border-rmpg-700 bg-surface-base">
           <div className="flex-1 relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" style={{ width: 12, height: 12 }} />
-            <input value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }} placeholder="Search DARs..." className="w-full pl-7 pr-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 outline-none" />
+            <input value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }} placeholder="Search DARs..." aria-label="Search DARs..." className="w-full pl-7 pr-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 outline-none" />
           </div>
           <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none">
             <option value="">All</option>
@@ -215,9 +244,13 @@ export default function DailyActivityReportsPage() {
         {/* DAR List */}
         <div className="flex-1 overflow-y-auto">
           {loading ? (
-            <div className="flex items-center justify-center h-32"><Loader2 className="w-5 h-5 animate-spin text-rmpg-500" /></div>
+            <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div>
           ) : dars.length === 0 ? (
-            <div className="text-center py-8 text-rmpg-500 text-xs">No DARs found</div>
+            <div className="flex flex-col items-center justify-center py-12 text-rmpg-500">
+              <ClipboardCheck className="w-8 h-8 mb-2 opacity-50" />
+              <p className="text-sm">No DARs found</p>
+              <p className="text-xs text-rmpg-600 mt-1">Try adjusting your filters or create a new one</p>
+            </div>
           ) : (
             dars.map(dar => (
               <button type="button"
@@ -263,7 +296,7 @@ export default function DailyActivityReportsPage() {
           <>
             <PanelTitleBar title={`${selected.dar_number} — ${selected.shift_date ? new Date(selected.shift_date).toLocaleDateString() : ''}`} icon={ClipboardCheck}>
               {selected.status === 'draft' && (
-                <button type="button" onClick={handleSubmit} className="toolbar-btn toolbar-btn-primary">
+                <button type="button" onClick={handleSubmit} className="toolbar-btn toolbar-btn-primary print:hidden">
                   <Send style={{ width: 11, height: 11 }} /> Submit
                 </button>
               )}
@@ -346,16 +379,17 @@ export default function DailyActivityReportsPage() {
                 {editing ? (
                   <div className="space-y-2">
                     <div>
-                      <label className="text-[9px] text-rmpg-500">Narrative</label>
-                      <textarea value={editNarrative} onChange={e => setEditNarrative(e.target.value)} rows={5} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
+                      <label htmlFor="dar-narrative" className="text-[9px] text-rmpg-500">Narrative</label>
+                      <p className="text-[8px] text-rmpg-600 mb-0.5">Describe all activities during this shift</p>
+                      <textarea id="dar-narrative" value={editNarrative} onChange={e => setEditNarrative(e.target.value)} rows={5} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
                     </div>
                     <div>
-                      <label className="text-[9px] text-rmpg-500">Highlights</label>
-                      <textarea value={editHighlights} onChange={e => setEditHighlights(e.target.value)} rows={2} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
+                      <label htmlFor="dar-highlights" className="text-[9px] text-rmpg-500">Highlights</label>
+                      <textarea id="dar-highlights" value={editHighlights} onChange={e => setEditHighlights(e.target.value)} rows={2} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
                     </div>
                     <div>
-                      <label className="text-[9px] text-rmpg-500">Issues Encountered</label>
-                      <textarea value={editIssues} onChange={e => setEditIssues(e.target.value)} rows={2} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
+                      <label htmlFor="dar-issues" className="text-[9px] text-rmpg-500">Issues Encountered</label>
+                      <textarea id="dar-issues" value={editIssues} onChange={e => setEditIssues(e.target.value)} rows={2} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
                     </div>
                   </div>
                 ) : (
@@ -388,30 +422,30 @@ export default function DailyActivityReportsPage() {
 
       {/* ── New DAR Modal ── */}
       {createFormOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="New Daily Activity Report" icon={Plus}>
               <button type="button" onClick={() => setCreateFormOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div>
-                <label className="field-label">Shift Date *</label>
-                <input type="date" value={newDarDate} onChange={e => setNewDarDate(e.target.value)} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                <label htmlFor="dar-shift-date" className="field-label">Shift Date *</label>
+                <input id="dar-shift-date" type="date" value={newDarDate} onChange={e => setNewDarDate(e.target.value)} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none min-h-[44px]" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="field-label">Shift Start</label>
-                  <input type="time" value={newDarShiftStart} onChange={e => setNewDarShiftStart(e.target.value)} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                  <label htmlFor="dar-shift-start" className="field-label">Shift Start</label>
+                  <input id="dar-shift-start" type="time" value={newDarShiftStart} onChange={e => setNewDarShiftStart(e.target.value)} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none min-h-[44px]" />
                 </div>
                 <div>
-                  <label className="field-label">Shift End</label>
-                  <input type="time" value={newDarShiftEnd} onChange={e => setNewDarShiftEnd(e.target.value)} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                  <label htmlFor="dar-shift-end" className="field-label">Shift End</label>
+                  <input id="dar-shift-end" type="time" value={newDarShiftEnd} onChange={e => setNewDarShiftEnd(e.target.value)} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none min-h-[44px]" />
                 </div>
               </div>
 
               {/* Auto-populate button */}
               <button type="button" onClick={handleAutoPopulate} disabled={autoPopLoading} className="w-full toolbar-btn justify-center py-2">
-                {autoPopLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap style={{ width: 12, height: 12 }} />}
+                {autoPopLoading ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Zap style={{ width: 12, height: 12 }} />}
                 Auto-Populate from System Data
               </button>
 
@@ -449,8 +483,8 @@ export default function DailyActivityReportsPage() {
 
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setCreateFormOpen(false)} className="toolbar-btn">Cancel</button>
-                <button type="button" onClick={handleCreate} disabled={submitting} className="toolbar-btn toolbar-btn-primary">
-                  {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />}
+                <button type="button" onClick={handleCreate} disabled={submitting} className="toolbar-btn toolbar-btn-primary print:hidden">
+                  {submitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: 11, height: 11 }} />}
                   Create DAR
                 </button>
               </div>

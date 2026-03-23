@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useCallback, useRef } from 'react';
 import { Save, X, Loader2 } from 'lucide-react';
 
 interface FloatingSaveBarProps {
@@ -19,6 +19,28 @@ export default function FloatingSaveBar({
   saveLabel = 'Save',
   extraActions,
 }: FloatingSaveBarProps) {
+  const onSaveRef = useRef(onSave);
+  onSaveRef.current = onSave;
+  const onCancelRef = useRef(onCancel);
+  onCancelRef.current = onCancel;
+
+  // Ctrl+S keyboard shortcut to save, Escape to cancel
+  useEffect(() => {
+    if (!visible) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        if (!isSaving) onSaveRef.current();
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (!isSaving) onCancelRef.current();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [visible, isSaving]);
+
   if (!visible) return null;
 
   return (

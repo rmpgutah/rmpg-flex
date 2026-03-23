@@ -119,7 +119,7 @@ router.get('/info', (_req: Request, res: Response) => {
     res.json(info);
   } catch (error: any) {
     console.error('Downloads info error:', error);
-    res.status(500).json({ error: 'Failed to read download info' });
+    res.status(500).json({ error: 'Failed to read download info', code: 'FAILED_TO_READ_DOWNLOAD' });
   }
 });
 
@@ -157,7 +157,7 @@ router.get('/check', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Update check error:', error);
-    res.status(500).json({ error: 'Failed to check for updates' });
+    res.status(500).json({ error: 'Failed to check for updates', code: 'FAILED_TO_CHECK_FOR' });
   }
 });
 
@@ -169,7 +169,7 @@ export function mountDownloadFileRoute(app: any) {
     if (fs.existsSync(htmlPath)) {
       res.sendFile(htmlPath);
     } else {
-      res.status(404).json({ error: 'Download page not found' });
+      res.status(404).json({ error: 'Download page not found', code: 'DOWNLOAD_PAGE_NOT_FOUND' });
     }
   });
 
@@ -263,7 +263,7 @@ export function mountDownloadFileRoute(app: any) {
     // Security: only allow specific file extensions
     const ext = path.extname(filename).toLowerCase();
     if (!ALLOWED_EXTENSIONS.includes(ext)) {
-      res.status(403).json({ error: 'Forbidden file type' });
+      res.status(403).json({ error: 'Forbidden file type', code: 'FORBIDDEN_FILE_TYPE' });
       return;
     }
 
@@ -272,7 +272,7 @@ export function mountDownloadFileRoute(app: any) {
     const filePath = path.join(DOWNLOADS_DIR, safeName);
 
     if (!fs.existsSync(filePath)) {
-      res.status(404).json({ error: 'File not found' });
+      res.status(404).json({ error: 'File not found', code: 'FILE_NOT_FOUND' });
       return;
     }
 

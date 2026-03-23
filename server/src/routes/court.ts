@@ -8,6 +8,8 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken } from '../middleware/auth';
+import { auditLog } from '../utils/auditLogger';
+import { broadcastRecordUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
 import { createNotification } from './notifications';
 
@@ -55,10 +57,12 @@ router.get('/events', (req: Request, res: Response) => {
       ORDER BY e.event_date ASC, e.event_time ASC
       LIMIT ? OFFSET ?
     `).all(...params, limitNum, offset);
+    res.set('Cache-Control', 'private, max-age=30');
+    res.set('Cache-Control', 'private, max-age=30');
     res.json({ data: rows, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
   } catch (error: any) {
     console.error('Get court events error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get court events', code: 'GET_COURT_EVENTS_ERROR' });
   }
 });
 
@@ -76,7 +80,7 @@ router.get('/events/upcoming', (req: Request, res: Response) => {
       LIMIT 30
     `).all(today, `%${userId}%`, userId);
     res.json({ data: rows });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in court', code: 'COURT_ERROR' }); }
 });
 
 // ─── GET /calendar ───────────────────────────────────────
@@ -94,6 +98,8 @@ router.get('/calendar', (req: Request, res: Response) => {
       FROM court_events
       WHERE event_date >= ? AND event_date <= ?
       ORDER BY event_date ASC, event_time ASC
+    
+      LIMIT 1000
     `).all(startDate, endDate);
 
     // Group by date
@@ -104,7 +110,7 @@ router.get('/calendar', (req: Request, res: Response) => {
     }
 
     res.json({ data: calendar });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in court', code: 'COURT_ERROR' }); }
 });
 
 // ─── GET /events/:id ─────────────────────────────────────
@@ -112,15 +118,15 @@ router.get('/events/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) { res.status(400).json({ error: 'Invalid event ID' }); return; }
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid event ID', code: 'INVALID_EVENT_ID' }); return; }
     const row = db.prepare(`
       SELECT e.*, p.first_name || ' ' || p.last_name as defendant_full_name
       FROM court_events e LEFT JOIN persons p ON e.defendant_person_id = p.id
       WHERE e.id = ?
     `).get(id);
-    if (!row) return res.status(404).json({ error: 'Court event not found' });
+    if (!row) return res.status(404).json({ error: 'Court event not found', code: 'COURT_EVENT_NOT_FOUND' });
     res.json({ data: row });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in court', code: 'COURT_ERROR' }); }
 });
 
 // ─── POST /events ────────────────────────────────────────
@@ -132,7 +138,17 @@ router.post('/events', (req: Request, res: Response) => {
       court_case_number, citation_id, incident_id, case_id,
       defendant_person_id, defendant_name, prosecutor, defense_attorney,
       officers_required, notes } = req.body;
-    if (!event_type || !event_date) return res.status(400).json({ error: 'Event type and date required' });
+    if (!event_type || !event_date) return res.status(400).json({ error: 'Event type and date required', code: 'MISSING_FIELDS' });
+
+    // Validate event_date format
+    if (typeof event_date !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(event_date)) {
+      return res.status(400).json({ error: 'event_date must be in YYYY-MM-DD format', code: 'INVALID_DATE_FORMAT' });
+    }
+
+    // Input sanitization
+    const cleanCourtName = typeof court_name === 'string' ? court_name.trim() : court_name;
+    const cleanDefendantName = typeof defendant_name === 'string' ? defendant_name.trim() : defendant_name;
+    const cleanNotes = typeof notes === 'string' ? notes.trim() : notes;
 
     const event_number = nextEventNumber();
     const result = db.prepare(`
@@ -172,10 +188,11 @@ router.post('/events', (req: Request, res: Response) => {
       }
     }
 
+    broadcastRecordUpdate({ type: 'court_event_created', id: result.lastInsertRowid, event_number });
     res.status(201).json({ data: { id: result.lastInsertRowid, event_number } });
   } catch (error: any) {
     console.error('Create court event error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'CREATE_COURT_EVENT_ERROR' });
   }
 });
 
@@ -221,7 +238,7 @@ router.put('/events/:id', (req: Request, res: Response) => {
     }
 
     res.json({ data: { id: parseInt(req.params.id) } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in court', code: 'COURT_ERROR' }); }
 });
 
 // ─── PUT /events/:id/outcome ─────────────────────────────
@@ -229,18 +246,18 @@ router.put('/events/:id/outcome', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) { res.status(400).json({ error: 'Invalid event ID' }); return; }
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid event ID', code: 'INVALID_EVENT_ID' }); return; }
     const existing = db.prepare('SELECT id FROM court_events WHERE id = ?').get(id);
-    if (!existing) { res.status(404).json({ error: 'Court event not found' }); return; }
+    if (!existing) { res.status(404).json({ error: 'Court event not found', code: 'COURT_EVENT_NOT_FOUND' }); return; }
     const now = localNow();
     const { outcome, sentence, fine_amount, notes } = req.body;
-    if (!outcome) return res.status(400).json({ error: 'Outcome is required' });
+    if (!outcome) return res.status(400).json({ error: 'Outcome is required', code: 'OUTCOME_IS_REQUIRED' });
 
     // Validate fine_amount if provided
     if (fine_amount !== undefined && fine_amount !== null) {
       const fineNum = parseFloat(fine_amount);
       if (isNaN(fineNum) || fineNum < 0) {
-        res.status(400).json({ error: 'fine_amount must be a non-negative number' });
+        res.status(400).json({ error: 'fine_amount must be a non-negative number', code: 'FINEAMOUNT_MUST_BE_A' });
         return;
       }
     }
@@ -254,7 +271,7 @@ router.put('/events/:id/outcome', (req: Request, res: Response) => {
       VALUES (?, 'outcome', 'court_event', ?, ?, ?)`).run(req.user!.userId, id, JSON.stringify({ outcome }), now);
 
     res.json({ data: { id, outcome } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in court', code: 'COURT_ERROR' }); }
 });
 
 // ─── POST /events/from-citation ─────────────────────────
@@ -263,10 +280,10 @@ router.post('/events/from-citation', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { citation_id } = req.body;
-    if (!citation_id) return res.status(400).json({ error: 'citation_id is required' });
+    if (!citation_id) return res.status(400).json({ error: 'citation_id is required', code: 'CITATIONID_IS_REQUIRED' });
 
     const citation = db.prepare('SELECT * FROM citations WHERE id = ?').get(citation_id) as any;
-    if (!citation) return res.status(404).json({ error: 'Citation not found' });
+    if (!citation) return res.status(404).json({ error: 'Citation not found', code: 'CITATION_NOT_FOUND' });
 
     const now = localNow();
     const event_number = nextEventNumber();
@@ -298,7 +315,7 @@ router.post('/events/from-citation', (req: Request, res: Response) => {
     res.status(201).json({ data: { id: result.lastInsertRowid, event_number } });
   } catch (error: any) {
     console.error('Create court event from citation error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create court event from citation', code: 'CREATE_COURT_EVENT_FROM' });
   }
 });
 
@@ -307,7 +324,7 @@ router.get('/events/:id/conflicts', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evt = db.prepare('SELECT * FROM court_events WHERE id = ?').get(req.params.id) as any;
-    if (!evt) return res.status(404).json({ error: 'Court event not found' });
+    if (!evt) return res.status(404).json({ error: 'Court event not found', code: 'COURT_EVENT_NOT_FOUND' });
 
     const officers = JSON.parse(evt.officers_required || '[]');
     const conflicts: any[] = [];
@@ -331,6 +348,8 @@ router.get('/events/:id/conflicts', (req: Request, res: Response) => {
         SELECT * FROM court_events
         WHERE id != ? AND event_date = ? AND status = 'scheduled'
         AND officers_required LIKE ?
+      
+        LIMIT 1000
       `).all(evt.id, evt.event_date, `%${officerId}%`) as any[];
       if (otherCourt.length > 0) {
         const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(officerId) as any;
@@ -347,7 +366,7 @@ router.get('/events/:id/conflicts', (req: Request, res: Response) => {
     res.json({ data: conflicts });
   } catch (error: any) {
     console.error('Court conflict check error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to court conflict check', code: 'COURT_CONFLICT_CHECK_ERROR' });
   }
 });
 
@@ -357,10 +376,10 @@ router.post('/events/:id/continuance', (req: Request, res: Response) => {
     const db = getDb();
     const now = localNow();
     const { reason, new_date, new_time } = req.body;
-    if (!reason) return res.status(400).json({ error: 'Continuance reason is required' });
+    if (!reason) return res.status(400).json({ error: 'Continuance reason is required', code: 'CONTINUANCE_REASON_IS_REQUIRED' });
 
     const evt = db.prepare('SELECT * FROM court_events WHERE id = ?').get(req.params.id) as any;
-    if (!evt) return res.status(404).json({ error: 'Court event not found' });
+    if (!evt) return res.status(404).json({ error: 'Court event not found', code: 'COURT_EVENT_NOT_FOUND' });
 
     const log = JSON.parse(evt.continuance_log || '[]');
     log.push({
@@ -392,7 +411,7 @@ router.post('/events/:id/continuance', (req: Request, res: Response) => {
     res.json({ data: { id: parseInt(req.params.id), continuance_count: updates.continuance_count } });
   } catch (error: any) {
     console.error('Continuance error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to continuance', code: 'CONTINUANCE_ERROR' });
   }
 });
 
@@ -402,7 +421,7 @@ router.put('/events/:id/confirm', (req: Request, res: Response) => {
     const db = getDb();
     const now = localNow();
     const evt = db.prepare('SELECT * FROM court_events WHERE id = ?').get(req.params.id) as any;
-    if (!evt) return res.status(404).json({ error: 'Court event not found' });
+    if (!evt) return res.status(404).json({ error: 'Court event not found', code: 'COURT_EVENT_NOT_FOUND' });
 
     const confirmations = JSON.parse(evt.officer_confirmations || '{}');
     confirmations[String(req.user!.userId)] = { confirmed: true, at: now };
@@ -410,7 +429,7 @@ router.put('/events/:id/confirm', (req: Request, res: Response) => {
       .run(JSON.stringify(confirmations), now, req.params.id);
 
     res.json({ data: { confirmations } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in court', code: 'COURT_ERROR' }); }
 });
 
 // ─── Feature 6: Bail/bond tracking ──────────────────────
@@ -422,7 +441,7 @@ router.put('/events/:id/bail', (req: Request, res: Response) => {
     db.prepare(`UPDATE court_events SET bail_amount = ?, bond_status = ?, surety_info = ?, updated_at = ? WHERE id = ?`)
       .run(bail_amount ?? null, bond_status ?? null, surety_info ?? null, now, req.params.id);
     res.json({ data: { id: parseInt(req.params.id) } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in court', code: 'COURT_ERROR' }); }
 });
 
 // ─── Feature 7: Court document upload ───────────────────
@@ -431,10 +450,10 @@ router.post('/events/:id/documents', (req: Request, res: Response) => {
     const db = getDb();
     const now = localNow();
     const { file_url, file_name, doc_type } = req.body;
-    if (!file_url || !file_name) return res.status(400).json({ error: 'file_url and file_name required' });
+    if (!file_url || !file_name) return res.status(400).json({ error: 'file_url and file_name required', code: 'FILEURL_AND_FILENAME_REQUIRED' });
 
     const evt = db.prepare('SELECT * FROM court_events WHERE id = ?').get(req.params.id) as any;
-    if (!evt) return res.status(404).json({ error: 'Court event not found' });
+    if (!evt) return res.status(404).json({ error: 'Court event not found', code: 'COURT_EVENT_NOT_FOUND' });
 
     const docs = JSON.parse(evt.documents || '[]');
     docs.push({ file_url, file_name, doc_type: doc_type || 'other', uploaded_by: req.user!.userId, uploaded_at: now });
@@ -442,7 +461,7 @@ router.post('/events/:id/documents', (req: Request, res: Response) => {
       .run(JSON.stringify(docs), now, req.params.id);
 
     res.json({ data: { documents: docs } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in court', code: 'COURT_ERROR' }); }
 });
 
 // ─── Feature 8: Judge preferences/notes ─────────────────
@@ -454,7 +473,7 @@ router.put('/events/:id/judge-notes', (req: Request, res: Response) => {
     db.prepare('UPDATE court_events SET judge_notes = ?, updated_at = ? WHERE id = ?')
       .run(judge_notes ?? null, now, req.params.id);
     res.json({ data: { id: parseInt(req.params.id) } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in court', code: 'COURT_ERROR' }); }
 });
 
 // ─── Feature 10: Case disposition statistics ────────────
@@ -500,7 +519,7 @@ router.get('/statistics', (req: Request, res: Response) => {
     res.json({ data: { byOutcome, byType, byMonth, totals } });
   } catch (error: any) {
     console.error('Court statistics error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to court statistics', code: 'COURT_STATISTICS_ERROR' });
   }
 });
 
@@ -518,6 +537,8 @@ router.post('/events/generate-reminders', (req: Request, res: Response) => {
     const events = db.prepare(`
       SELECT * FROM court_events
       WHERE event_date = ? AND status = 'scheduled'
+    
+      LIMIT 1000
     `).all(tomorrowStr) as any[];
 
     let notificationsCreated = 0;
@@ -549,7 +570,7 @@ router.post('/events/generate-reminders', (req: Request, res: Response) => {
     res.json({ reminders_sent: notificationsCreated, events_tomorrow: events.length });
   } catch (error: any) {
     console.error('Court reminders error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to court reminders', code: 'COURT_REMINDERS_ERROR' });
   }
 });
 
@@ -564,7 +585,7 @@ router.put('/events/:id/prosecutor', (req: Request, res: Response) => {
     const { prosecutor_name, prosecutor_phone, prosecutor_email } = req.body;
 
     const evt = db.prepare('SELECT id FROM court_events WHERE id = ?').get(req.params.id);
-    if (!evt) return res.status(404).json({ error: 'Court event not found' });
+    if (!evt) return res.status(404).json({ error: 'Court event not found', code: 'COURT_EVENT_NOT_FOUND' });
 
     // Store prosecutor contact as JSON in the prosecutor field
     const prosecutorInfo = JSON.stringify({
@@ -579,7 +600,7 @@ router.put('/events/:id/prosecutor', (req: Request, res: Response) => {
     res.json({ data: { id: parseInt(req.params.id), prosecutor: JSON.parse(prosecutorInfo) } });
   } catch (error: any) {
     console.error('Prosecutor update error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to prosecutor update', code: 'PROSECUTOR_UPDATE_ERROR' });
   }
 });
 
@@ -594,7 +615,7 @@ router.put('/events/:id/fees', (req: Request, res: Response) => {
     const { filing_fee, service_fee, other_fees, fee_notes } = req.body;
 
     const evt = db.prepare('SELECT * FROM court_events WHERE id = ?').get(req.params.id) as any;
-    if (!evt) return res.status(404).json({ error: 'Court event not found' });
+    if (!evt) return res.status(404).json({ error: 'Court event not found', code: 'COURT_EVENT_NOT_FOUND' });
 
     const fees = JSON.parse(evt.court_fees || '{}');
     if (filing_fee !== undefined) fees.filing_fee = parseFloat(filing_fee) || 0;
@@ -610,7 +631,7 @@ router.put('/events/:id/fees', (req: Request, res: Response) => {
     res.json({ data: { id: parseInt(req.params.id), fees } });
   } catch (error: any) {
     console.error('Court fees error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to court fees', code: 'COURT_FEES_ERROR' });
   }
 });
 
@@ -622,9 +643,9 @@ router.get('/events/:id/witnesses', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evt = db.prepare('SELECT witnesses FROM court_events WHERE id = ?').get(req.params.id) as any;
-    if (!evt) return res.status(404).json({ error: 'Court event not found' });
+    if (!evt) return res.status(404).json({ error: 'Court event not found', code: 'COURT_EVENT_NOT_FOUND' });
     res.json({ data: JSON.parse(evt.witnesses || '[]') });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in court', code: 'COURT_ERROR' }); }
 });
 
 router.put('/events/:id/witnesses', (req: Request, res: Response) => {
@@ -634,10 +655,10 @@ router.put('/events/:id/witnesses', (req: Request, res: Response) => {
     const { witnesses } = req.body;
 
     const evt = db.prepare('SELECT id FROM court_events WHERE id = ?').get(req.params.id);
-    if (!evt) return res.status(404).json({ error: 'Court event not found' });
+    if (!evt) return res.status(404).json({ error: 'Court event not found', code: 'COURT_EVENT_NOT_FOUND' });
 
     // witnesses should be array of { name, phone, email, role, contact_status, notes }
-    if (!Array.isArray(witnesses)) return res.status(400).json({ error: 'witnesses must be an array' });
+    if (!Array.isArray(witnesses)) return res.status(400).json({ error: 'witnesses must be an array', code: 'WITNESSES_MUST_BE_AN' });
 
     const sanitized = witnesses.slice(0, 50).map((w: any) => ({
       name: String(w.name || '').slice(0, 200),
@@ -654,7 +675,7 @@ router.put('/events/:id/witnesses', (req: Request, res: Response) => {
     res.json({ data: sanitized });
   } catch (error: any) {
     console.error('Witnesses update error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to witnesses update', code: 'WITNESSES_UPDATE_ERROR' });
   }
 });
 
@@ -668,10 +689,10 @@ router.post('/events/:id/clone', (req: Request, res: Response) => {
     const now = localNow();
     const { new_date, new_time, notes_prefix } = req.body;
 
-    if (!new_date) return res.status(400).json({ error: 'new_date is required for cloning' });
+    if (!new_date) return res.status(400).json({ error: 'new_date is required for cloning', code: 'NEWDATE_IS_REQUIRED_FOR' });
 
     const evt = db.prepare('SELECT * FROM court_events WHERE id = ?').get(req.params.id) as any;
-    if (!evt) return res.status(404).json({ error: 'Court event not found' });
+    if (!evt) return res.status(404).json({ error: 'Court event not found', code: 'COURT_EVENT_NOT_FOUND' });
 
     const event_number = nextEventNumber();
     const cloneNotes = `${notes_prefix || 'Continued from'} ${evt.event_number}. ${evt.notes || ''}`.trim();
@@ -706,7 +727,7 @@ router.post('/events/:id/clone', (req: Request, res: Response) => {
     res.status(201).json({ data: { id: result.lastInsertRowid, event_number, cloned_from: evt.event_number } });
   } catch (error: any) {
     console.error('Court clone error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to court clone', code: 'COURT_CLONE_ERROR' });
   }
 });
 

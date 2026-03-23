@@ -1,4 +1,4 @@
-import React, { useId } from 'react';
+import React, { useId, useEffect } from 'react';
 import { ClipboardCheck } from 'lucide-react';
 import PanelTitleBar from '../../../components/PanelTitleBar';
 import type { InspectionType, InspectionResult, InspectionItemStatus, InspectionItem } from '../../../types';
@@ -91,6 +91,14 @@ interface Props {
 
 export default function InspectionFormModal({ isOpen, mode = 'create', form, onChange, onSave, onClose, saving }: Props) {
   const titleId = useId();
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !saving) onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, saving, onClose]);
+
   if (!isOpen) return null;
 
   const setField = (field: keyof InspectionFormState, value: any) =>
@@ -115,8 +123,8 @@ export default function InspectionFormModal({ isOpen, mode = 'create', form, onC
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ background: 'rgba(0,0,0,0.6)' }}>
-      <div className="panel-beveled w-[680px] max-h-[85vh] flex flex-col" style={{ background: '#1a2636' }}>
+    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ background: 'rgba(0,0,0,0.6)' }} onClick={saving ? undefined : onClose}>
+      <div className="panel-beveled w-[680px] max-h-[85vh] flex flex-col" style={{ background: '#1a2636' }} onClick={(e) => e.stopPropagation()}>
         <PanelTitleBar title={mode === 'edit' ? 'EDIT INSPECTION' : 'VEHICLE INSPECTION'} icon={ClipboardCheck} id={titleId}>
           <span className={`px-2 py-0.5 text-[9px] font-bold uppercase border ${resultColor[form.overall_result]}`}>
             {resultLabel[form.overall_result]}
@@ -129,24 +137,24 @@ export default function InspectionFormModal({ isOpen, mode = 'create', form, onC
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Type *</label>
-              <select className="select-dark w-full text-[11px]" value={form.inspection_type}
+              <select className="select-dark w-full text-[11px] min-h-[36px]" value={form.inspection_type}
                 onChange={(e) => setField('inspection_type', e.target.value)}>
                 {INSPECTION_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Inspector *</label>
-              <input className="input-dark w-full text-[11px]" value={form.inspector_name}
+              <input className="input-dark w-full text-[11px] min-h-[36px]" value={form.inspector_name}
                 onChange={(e) => setField('inspector_name', e.target.value)} />
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Date / Time *</label>
-              <input className="input-dark w-full text-[11px] font-mono" type="datetime-local" step="1" value={form.inspection_date}
+              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="datetime-local" step="1" value={form.inspection_date}
                 onChange={(e) => setField('inspection_date', e.target.value)} />
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Mileage</label>
-              <input className="input-dark w-full text-[11px] font-mono" type="number" value={form.mileage}
+              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" value={form.mileage}
                 onChange={(e) => setField('mileage', e.target.value)} />
             </div>
           </div>
@@ -171,7 +179,7 @@ export default function InspectionFormModal({ isOpen, mode = 'create', form, onC
                         {ITEM_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                       </select>
                       <input
-                        className="input-dark text-[9px] py-0.5 px-1.5 w-40"
+                        className="input-dark text-[9px] py-0.5 px-1.5 w-40 min-h-[36px]"
                         placeholder="Notes..."
                         value={item.notes || ''}
                         onChange={(e) => updateItem(index, 'notes', e.target.value)}
@@ -186,14 +194,15 @@ export default function InspectionFormModal({ isOpen, mode = 'create', form, onC
           {/* Overall notes */}
           <div>
             <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Additional Notes</label>
-            <textarea className="input-dark w-full text-[10px] h-16 resize-none" value={form.notes}
-              onChange={(e) => setField('notes', e.target.value)} />
+            <textarea className="input-dark w-full text-[10px] h-16 resize-none min-h-[36px]" value={form.notes}
+              onChange={(e) => setField('notes', e.target.value)} maxLength={3000} />
+            <div className="text-[8px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/3000</div>
           </div>
         </div>
 
         <div className="flex items-center justify-end gap-2 px-4 py-2 border-t border-rmpg-700">
-          <button type="button" className="toolbar-btn" onClick={onClose}>Cancel</button>
-          <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={onSave} disabled={saving}>
+          <button type="button" className="toolbar-btn" onClick={onClose} disabled={saving}>Cancel</button>
+          <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={onSave} disabled={saving || !form.inspector_name.trim() || !form.inspection_date}>
             {saving ? 'Saving...' : mode === 'edit' ? 'Update Inspection' : 'Submit Inspection'}
           </button>
         </div>

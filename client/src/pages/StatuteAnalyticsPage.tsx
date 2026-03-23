@@ -121,6 +121,9 @@ export default function StatuteAnalyticsPage() {
     } catch { addToast('Comparison failed', 'error'); }
   };
 
+  // Set document title
+  useEffect(() => { document.title = 'Statute Analytics \u2014 RMPG Flex'; }, []);
+
   return (
     <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
       {fetchError && (
@@ -154,7 +157,7 @@ export default function StatuteAnalyticsPage() {
       {/* Feature 36: Penalty Lookup Bar */}
       <div className="px-3 py-1.5 border-b border-rmpg-700/50 flex items-center gap-2 bg-surface-sunken flex-shrink-0">
         <Search className="w-3 h-3 text-rmpg-500" />
-        <input type="text" placeholder="Penalty lookup — enter statute (e.g. 76-5-102)" className="input-dark text-xs flex-1 max-w-xs"
+        <input type="text" placeholder="Penalty lookup — enter statute (e.g. 76-5-102)" className="input-dark text-xs flex-1 max-w-xs min-h-[36px]"
           value={penaltySearch} onChange={e => setPenaltySearch(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handlePenaltyLookup()} />
         <button type="button" onClick={handlePenaltyLookup} className="toolbar-btn text-[10px]">Lookup</button>
@@ -246,7 +249,7 @@ export default function StatuteAnalyticsPage() {
                   <input
                     type="text"
                     className="bg-surface-base border border-rmpg-600 text-white text-[10px] pl-6 pr-2 py-1 w-48 focus:border-brand-500 focus:outline-none"
-                    placeholder="Search statutes..."
+                    placeholder="Search statutes..." aria-label="Search statutes..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                   />
