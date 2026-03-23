@@ -50,18 +50,20 @@ export function useMapPredictions(
     setLoading(true);
 
     const qs = shift ? `?shift=${shift}` : '';
-    apiFetch<PredictedHotspot[]>(`/dispatch/heatmap/predictions${qs}`)
+    apiFetch<{ hotspots: PredictedHotspot[]; shift: string; total: number } | PredictedHotspot[]>(`/dispatch/heatmap/predictions${qs}`)
       .then((data) => {
-        if (!cancelled) {
-          setHotspots(data || []);
-          setLoading(false);
-        }
+        if (cancelled) return;
+        // Handle both { hotspots: [...] } and [...] response formats
+        const list = Array.isArray(data) ? data : (data?.hotspots || []);
+        console.log(`[Predictions] Fetched ${list.length} hotspots`);
+        setHotspots(list);
+        setLoading(false);
       })
-      .catch(() => {
-        if (!cancelled) {
-          setHotspots([]);
-          setLoading(false);
-        }
+      .catch((err) => {
+        if (cancelled) return;
+        console.error('[Predictions] Fetch error:', err);
+        setHotspots([]);
+        setLoading(false);
       });
 
     return () => { cancelled = true; };

@@ -1,11 +1,11 @@
 // ============================================================
 // RMPG Flex — PredictionsPanel Component
-// Sidebar panel listing predicted incident hotspots with
-// scores, incident counts, and navigation to each zone.
+// Floating panel showing predicted incident hotspots with
+// confidence scores, risk breakdowns, and navigate-to buttons.
 // ============================================================
 
 import React from 'react';
-import { Navigation, AlertTriangle, Loader2 } from 'lucide-react';
+import { X, Brain, Navigation, Loader2, Crosshair, Swords, Heart, TrendingUp } from 'lucide-react';
 import type { PredictedHotspot } from '../hooks/useMapPredictions';
 
 interface PredictionsPanelProps {
@@ -15,126 +15,195 @@ interface PredictionsPanelProps {
   onClose?: () => void;
 }
 
+function confidenceColor(score: number): string {
+  if (score >= 70) return '#ef4444';
+  if (score >= 40) return '#f59e0b';
+  return '#3b82f6';
+}
+
+function confidenceLabel(score: number): string {
+  if (score >= 70) return 'HIGH';
+  if (score >= 40) return 'MODERATE';
+  return 'LOW';
+}
+
 export default function PredictionsPanel({
   hotspots,
   loading,
   onNavigate,
   onClose,
 }: PredictionsPanelProps) {
+  const highCount = hotspots.filter(h => h.score >= 70).length;
+  const modCount = hotspots.filter(h => h.score >= 40 && h.score < 70).length;
+  const lowCount = hotspots.filter(h => h.score < 40).length;
+  const totalIncidents = hotspots.reduce((s, h) => s + h.incident_count, 0);
+
   return (
-    <div className="panel-beveled bg-surface-base overflow-hidden" style={{ width: 280 }}>
-      {/* Header */}
+    <div className="panel-beveled bg-surface-base overflow-hidden" style={{ width: 300 }}>
+      {/* ── Header ─────────────────────────────────────────── */}
       <div
         className="flex items-center justify-between px-3 py-2"
         style={{ background: '#0d1520', borderBottom: '1px solid #1e2a3a' }}
       >
         <div className="flex items-center gap-2">
-          <AlertTriangle size={14} className="text-rmpg-400" />
-          <span className="text-xs font-bold uppercase tracking-wider text-rmpg-200">
+          <Brain size={14} className="text-purple-400" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-rmpg-200">
             Predicted Hotspots
           </span>
+          {hotspots.length > 0 && (
+            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm bg-purple-900/30 text-purple-400">
+              {hotspots.length}
+            </span>
+          )}
         </div>
         {onClose && (
-          <button
-            onClick={onClose}
-            className="toolbar-btn p-1"
-            aria-label="Close predictions panel"
-            title="Close"
-          >
-            <span className="text-rmpg-400 text-xs">&times;</span>
+          <button onClick={onClose} className="toolbar-btn p-1" title="Close">
+            <X size={12} className="text-rmpg-400" />
           </button>
         )}
       </div>
 
-      {/* Content */}
-      <div className="p-2 space-y-1 max-h-[400px] overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
+      {/* ── Body ───────────────────────────────────────────── */}
+      <div className="p-2 space-y-2">
         {loading && (
-          <div className="flex items-center justify-center py-6 text-rmpg-500">
-            <Loader2 size={16} className="animate-spin" />
-            <span className="ml-2 text-xs">Loading predictions...</span>
+          <div className="flex items-center justify-center gap-2 py-6">
+            <Loader2 size={14} className="animate-spin text-purple-400" />
+            <span className="text-[9px] font-mono text-rmpg-500">Analyzing patterns…</span>
           </div>
         )}
 
         {!loading && hotspots.length === 0 && (
-          <div className="text-center py-6 text-rmpg-600 text-xs">
-            No predicted hotspots for this period.
+          <div className="text-center py-6 text-[9px] font-mono text-rmpg-500">
+            No predicted hotspots for this shift
           </div>
         )}
 
-        {hotspots.map((hs, idx) => {
-          const isHigh = hs.score > 50;
-          const color = isHigh ? '#dc2626' : '#f59e0b';
+        {!loading && hotspots.length > 0 && (
+          <>
+            {/* ── Summary stats ──────────────────────────── */}
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-2">
+                {highCount > 0 && (
+                  <span className="text-[8px] font-mono font-bold px-1.5 py-0.5 rounded-sm bg-red-900/30 text-red-400 border border-red-800/30">
+                    {highCount} HIGH
+                  </span>
+                )}
+                {modCount > 0 && (
+                  <span className="text-[8px] font-mono font-bold px-1.5 py-0.5 rounded-sm bg-amber-900/30 text-amber-400 border border-amber-800/30">
+                    {modCount} MOD
+                  </span>
+                )}
+                {lowCount > 0 && (
+                  <span className="text-[8px] font-mono font-bold px-1.5 py-0.5 rounded-sm bg-blue-900/30 text-blue-400 border border-blue-800/30">
+                    {lowCount} LOW
+                  </span>
+                )}
+              </div>
+              <span className="text-[8px] font-mono text-rmpg-500">
+                {totalIncidents} historical
+              </span>
+            </div>
 
-          return (
-            <div
-              key={`${hs.latitude}-${hs.longitude}`}
-              className="rounded-sm p-2"
-              style={{
-                background: '#0d1520',
-                border: '1px solid #1e2a3a',
-              }}
-            >
-              {/* Score badge + top types */}
-              <div className="flex items-start justify-between mb-1">
-                <div className="flex items-center gap-2">
-                  <span
-                    className="inline-block rounded-sm px-1.5 py-0.5 text-[10px] font-bold"
+            {/* ── Hotspot list ────────────────────────────── */}
+            <div className="max-h-[360px] space-y-1.5 overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin' }}>
+              {hotspots.map((hs, idx) => {
+                const color = confidenceColor(hs.score);
+                const label = confidenceLabel(hs.score);
+                const types = hs.top_types?.split(',').map(t => t.trim()).filter(Boolean) || [];
+                const maxScore = Math.max(...hotspots.map(h => h.score), 1);
+                const barWidth = Math.max(10, (hs.score / maxScore) * 100);
+
+                return (
+                  <div
+                    key={`${hs.latitude}-${hs.longitude}-${idx}`}
+                    className="rounded-sm overflow-hidden"
                     style={{
-                      background: `${color}22`,
-                      color,
-                      border: `1px solid ${color}44`,
+                      background: '#0d1520',
+                      border: '1px solid #1e2a3a',
+                      borderLeft: `3px solid ${color}`,
                     }}
                   >
-                    {hs.score}
-                  </span>
-                  <span className="text-xs text-rmpg-300 font-mono">
-                    {hs.incident_count} incidents
-                  </span>
-                </div>
-              </div>
+                    <div className="px-2 py-1.5">
+                      {/* Score + confidence bar */}
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="text-[11px] font-mono font-black"
+                            style={{ color }}
+                          >
+                            {hs.score}
+                          </span>
+                          <span
+                            className="text-[7px] font-bold uppercase px-1 py-0.5 rounded-sm"
+                            style={{ background: `${color}20`, color, border: `1px solid ${color}40` }}
+                          >
+                            {label}
+                          </span>
+                        </div>
+                        <span className="text-[9px] font-mono text-rmpg-400">
+                          {hs.incident_count} incidents
+                        </span>
+                      </div>
 
-              {/* Top types */}
-              {hs.top_types && (
-                <div className="text-[10px] text-rmpg-400 font-mono mb-1.5 truncate" title={hs.top_types}>
-                  {hs.top_types}
-                </div>
-              )}
+                      {/* Confidence bar */}
+                      <div className="h-1 rounded-full bg-rmpg-800 mb-1.5">
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{ width: `${barWidth}%`, background: color }}
+                        />
+                      </div>
 
-              {/* Stats row */}
-              <div className="flex items-center gap-3 text-[10px] font-mono mb-1.5">
-                {hs.weapons_count > 0 && (
-                  <span className="text-red-400">
-                    {hs.weapons_count} weapons
-                  </span>
-                )}
-                {hs.dv_count > 0 && (
-                  <span className="text-amber-400">
-                    {hs.dv_count} DV
-                  </span>
-                )}
-              </div>
+                      {/* Risk indicators */}
+                      <div className="flex items-center gap-1.5 mb-1">
+                        {hs.weapons_count > 0 && (
+                          <div className="flex items-center gap-0.5">
+                            <Swords size={9} className="text-red-400" />
+                            <span className="text-[8px] font-mono text-red-400">{hs.weapons_count}</span>
+                          </div>
+                        )}
+                        {hs.dv_count > 0 && (
+                          <div className="flex items-center gap-0.5">
+                            <Heart size={9} className="text-amber-400" />
+                            <span className="text-[8px] font-mono text-amber-400">{hs.dv_count}</span>
+                          </div>
+                        )}
+                        {types.length > 0 && (
+                          <span className="text-[7px] font-mono text-rmpg-500 truncate flex-1" title={hs.top_types}>
+                            {types.slice(0, 2).join(' · ')}
+                          </span>
+                        )}
+                      </div>
 
-              {/* Navigate button */}
-              <button
-                onClick={() => { if (hs.latitude != null && hs.longitude != null) onNavigate(hs.latitude, hs.longitude); }}
-                className="toolbar-btn flex items-center gap-1.5 px-2 py-1 text-[10px] w-full justify-center"
-                title="Center map on this hotspot"
-              >
-                <Navigation size={10} />
-                <span>Navigate</span>
-              </button>
+                      {/* Navigate */}
+                      <button
+                        onClick={() => { if (hs.latitude != null && hs.longitude != null) onNavigate(hs.latitude, hs.longitude); }}
+                        className="toolbar-btn flex items-center gap-1 px-2 py-0.5 text-[8px] w-full justify-center"
+                        title="Center map on this hotspot"
+                      >
+                        <Crosshair size={9} />
+                        <span>Navigate to Zone</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
+          </>
+        )}
       </div>
 
-      {/* Footer */}
+      {/* ── Footer ─────────────────────────────────────────── */}
       {hotspots.length > 0 && (
         <div
-          className="px-3 py-1.5 text-[9px] text-rmpg-600 font-mono"
-          style={{ borderTop: '1px solid #1e2a3a' }}
+          className="px-3 py-1.5 flex items-center justify-between"
+          style={{ borderTop: '1px solid #1e2a3a', background: '#0d1520' }}
         >
-          {hotspots.length} hotspot{hotspots.length !== 1 ? 's' : ''} predicted
+          <div className="flex items-center gap-1">
+            <TrendingUp size={10} className="text-purple-400" />
+            <span className="text-[8px] text-rmpg-500 font-mono">
+              Based on historical pattern analysis
+            </span>
+          </div>
         </div>
       )}
     </div>

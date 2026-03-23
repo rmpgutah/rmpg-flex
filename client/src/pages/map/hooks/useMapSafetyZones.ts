@@ -4,7 +4,7 @@
 // showing high and moderate risk areas.
 // ============================================================
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { apiFetch } from '../../../hooks/useApi';
 
 // ─── Types ──────────────────────────────────────────────────
@@ -18,11 +18,15 @@ export interface SafetyZone {
   injuries_count: number;
   total_flagged: number;
   last_incident: string;
+  incident_types?: string;
 }
 
 interface UseMapSafetyZonesReturn {
   zones: SafetyZone[];
   loading: boolean;
+  refresh: () => void;
+  days: number;
+  setDays: (d: number) => void;
 }
 
 // ─── Hook ───────────────────────────────────────────────────
@@ -33,9 +37,13 @@ export function useMapSafetyZones(
 ): UseMapSafetyZonesReturn {
   const [zones, setZones] = useState<SafetyZone[]>([]);
   const [loading, setLoading] = useState(false);
+  const [days, setDays] = useState(90);
+  const [fetchTrigger, setFetchTrigger] = useState(0);
 
   const circlesRef = useRef<google.maps.Circle[]>([]);
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
+
+  const refresh = useCallback(() => setFetchTrigger(n => n + 1), []);
 
   // ── Fetch safety zones ──────────────────────────────────
 
@@ -48,22 +56,24 @@ export function useMapSafetyZones(
     let cancelled = false;
     setLoading(true);
 
-    apiFetch<SafetyZone[]>('/dispatch/heatmap/safety-zones')
+    apiFetch<{ zones: SafetyZone[]; total: number } | SafetyZone[]>(`/dispatch/heatmap/safety-zones?days=${days}`)
       .then((data) => {
-        if (!cancelled) {
-          setZones(data || []);
-          setLoading(false);
-        }
+        if (cancelled) return;
+        // Handle both { zones: [...] } and [...] response formats
+        const zoneList = Array.isArray(data) ? data : (data?.zones || []);
+        console.log(`[SafetyZones] Fetched ${zoneList.length} zones (${days}d)`);
+        setZones(zoneList);
+        setLoading(false);
       })
-      .catch(() => {
-        if (!cancelled) {
-          setZones([]);
-          setLoading(false);
-        }
+      .catch((err) => {
+        if (cancelled) return;
+        console.error('[SafetyZones] Fetch error:', err);
+        setZones([]);
+        setLoading(false);
       });
 
     return () => { cancelled = true; };
-  }, [enabled]);
+  }, [enabled, days, fetchTrigger]);
 
   // ── Render circles ──────────────────────────────────────
 
@@ -191,5 +201,5 @@ export function useMapSafetyZones(
     };
   }, []);
 
-  return { zones, loading };
+  return { zones, loading, refresh, days, setDays };
 }

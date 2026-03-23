@@ -1,12 +1,12 @@
 // ============================================================
 // RMPG Flex — SafetyZonesPanel Component
-// Floating summary panel for the map. Shows when the Safety
-// Zones toggle is active — lists risk zones with aggregate
-// stats for weapons, DV, and injury calls.
+// Floating safety zone analysis panel. Shows risk zones with
+// aggregate stats, incident breakdowns, days filter, refresh,
+// and navigate-to-zone capability.
 // ============================================================
 
 import React from 'react';
-import { X, ShieldAlert, AlertTriangle, Loader2 } from 'lucide-react';
+import { X, ShieldAlert, AlertTriangle, Loader2, RefreshCw, MapPin, Crosshair, Swords, Heart, Scale } from 'lucide-react';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -18,11 +18,17 @@ interface SafetyZone {
   dv_count: number;
   injuries_count: number;
   total_flagged: number;
+  last_incident?: string;
+  incident_types?: string;
 }
 
 interface SafetyZonesPanelProps {
   zones: SafetyZone[];
   loading: boolean;
+  days: number;
+  onDaysChange: (d: number) => void;
+  onRefresh: () => void;
+  onNavigate: (lat: number, lng: number) => void;
   onClose: () => void;
 }
 
@@ -31,6 +37,10 @@ interface SafetyZonesPanelProps {
 export default function SafetyZonesPanel({
   zones,
   loading,
+  days,
+  onDaysChange,
+  onRefresh,
+  onNavigate,
   onClose,
 }: SafetyZonesPanelProps) {
   const highCount = zones.filter((z) => z.risk_level === 'high').length;
@@ -39,9 +49,10 @@ export default function SafetyZonesPanel({
   const totalWeapons = zones.reduce((s, z) => s + z.weapons_count, 0);
   const totalDV = zones.reduce((s, z) => s + z.dv_count, 0);
   const totalInjury = zones.reduce((s, z) => s + z.injuries_count, 0);
+  const totalFlagged = zones.reduce((s, z) => s + z.total_flagged, 0);
 
   return (
-    <div className="panel-beveled bg-surface-base overflow-hidden" style={{ maxWidth: 280 }}>
+    <div className="panel-beveled bg-surface-base overflow-hidden" style={{ maxWidth: 300 }}>
       {/* ── Header ─────────────────────────────────────────── */}
       <div
         className="flex items-center justify-between px-3 py-2"
@@ -52,124 +63,167 @@ export default function SafetyZonesPanel({
           <span className="text-[10px] font-bold uppercase tracking-wider text-rmpg-200">
             Safety Zones
           </span>
-          <span className="text-[9px] font-mono text-rmpg-500">
-            ({zones.length})
-          </span>
+          {zones.length > 0 && (
+            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm bg-red-900/30 text-red-400">
+              {zones.length}
+            </span>
+          )}
         </div>
-        <button
-          onClick={onClose}
-          className="toolbar-btn p-1"
-          aria-label="Close safety zones panel"
-          title="Close"
-        >
-          <X size={12} className="text-rmpg-400" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={onRefresh}
+            className="toolbar-btn p-1"
+            title="Refresh"
+          >
+            <RefreshCw size={11} className={`text-rmpg-400 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+          <button
+            onClick={onClose}
+            className="toolbar-btn p-1"
+            title="Close"
+          >
+            <X size={12} className="text-rmpg-400" />
+          </button>
+        </div>
       </div>
 
       {/* ── Body ───────────────────────────────────────────── */}
       <div className="p-2 space-y-2">
+        {/* ── Days filter ─────────────────────────────────── */}
+        <div className="flex items-center gap-1">
+          <span className="text-[7px] text-rmpg-500 uppercase font-bold w-8">Range:</span>
+          {[30, 60, 90, 180, 365].map((d) => (
+            <button
+              key={d}
+              onClick={() => onDaysChange(d)}
+              className={`px-1.5 py-0.5 text-[7px] font-mono font-bold rounded-sm transition-colors ${
+                days === d
+                  ? 'bg-red-900/50 text-red-400 border border-red-700/50'
+                  : 'text-rmpg-500 hover:text-rmpg-300'
+              }`}
+            >
+              {d < 365 ? `${d}d` : '1y'}
+            </button>
+          ))}
+        </div>
+
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-4">
             <Loader2 size={14} className="animate-spin text-rmpg-400" />
-            <span className="text-[9px] font-mono text-rmpg-500">Loading zones…</span>
+            <span className="text-[9px] font-mono text-rmpg-500">Analyzing zones…</span>
           </div>
         ) : zones.length === 0 ? (
           <div className="py-4 text-center text-[9px] font-mono text-rmpg-500">
-            No safety zones in view
+            No flagged zones found in the last {days} days
           </div>
         ) : (
           <>
             {/* ── Risk summary ────────────────────────────── */}
-            <div className="flex items-center gap-3 px-1">
-              <div className="flex items-center gap-1">
-                <span
-                  className="inline-block h-2 w-2 rounded-full"
-                  style={{ background: '#ef4444' }}
-                />
-                <span className="text-[9px] font-mono text-red-400">
-                  {highCount} High
-                </span>
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1">
+                  <span className="inline-block h-2.5 w-2.5 rounded-full animate-pulse" style={{ background: '#ef4444' }} />
+                  <span className="text-[10px] font-mono font-bold text-red-400">{highCount}</span>
+                  <span className="text-[8px] text-rmpg-500">HIGH</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: '#f59e0b' }} />
+                  <span className="text-[10px] font-mono font-bold text-amber-400">{moderateCount}</span>
+                  <span className="text-[8px] text-rmpg-500">MOD</span>
+                </div>
               </div>
-              <div className="flex items-center gap-1">
-                <span
-                  className="inline-block h-2 w-2 rounded-full"
-                  style={{ background: '#f59e0b' }}
-                />
-                <span className="text-[9px] font-mono text-amber-400">
-                  {moderateCount} Moderate
-                </span>
-              </div>
+              <span className="text-[9px] font-mono text-rmpg-400">{totalFlagged} total incidents</span>
             </div>
 
             {/* ── Aggregate stats ─────────────────────────── */}
             <div
-              className="grid grid-cols-3 gap-1 rounded-sm px-1 py-1.5"
-              style={{ background: '#0d1520' }}
+              className="grid grid-cols-3 gap-1 rounded-sm px-1 py-2"
+              style={{ background: '#0d1520', border: '1px solid #1e2a3a' }}
             >
               <div className="text-center">
-                <div className="text-[10px] uppercase tracking-wider text-rmpg-500">
-                  Weapons
-                </div>
-                <div className="text-[9px] font-mono font-bold text-red-400">
-                  {totalWeapons}
-                </div>
+                <Swords size={12} className="text-red-400 mx-auto mb-0.5" />
+                <div className="text-[12px] font-mono font-black text-red-400">{totalWeapons}</div>
+                <div className="text-[7px] uppercase tracking-wider text-rmpg-500">Weapons</div>
               </div>
               <div className="text-center">
-                <div className="text-[10px] uppercase tracking-wider text-rmpg-500">
-                  DV
-                </div>
-                <div className="text-[9px] font-mono font-bold text-amber-400">
-                  {totalDV}
-                </div>
+                <Heart size={12} className="text-amber-400 mx-auto mb-0.5" />
+                <div className="text-[12px] font-mono font-black text-amber-400">{totalDV}</div>
+                <div className="text-[7px] uppercase tracking-wider text-rmpg-500">DV</div>
               </div>
               <div className="text-center">
-                <div className="text-[10px] uppercase tracking-wider text-rmpg-500">
-                  Injury
-                </div>
-                <div className="text-[9px] font-mono font-bold text-orange-400">
-                  {totalInjury}
-                </div>
+                <Scale size={12} className="text-orange-400 mx-auto mb-0.5" />
+                <div className="text-[12px] font-mono font-black text-orange-400">{totalInjury}</div>
+                <div className="text-[7px] uppercase tracking-wider text-rmpg-500">Injury</div>
               </div>
             </div>
 
             {/* ── Zone list ───────────────────────────────── */}
-            <div
-              className="max-h-40 space-y-1 overflow-y-auto pr-1"
-              style={{ scrollbarWidth: 'thin' }}
-            >
-              {zones.map((zone, idx) => (
-                <div
-                  key={`${zone.latitude}-${zone.longitude}-${idx}`}
-                  className="flex items-center justify-between rounded-sm px-2 py-1"
-                  style={{
-                    background: zone.risk_level === 'high' ? '#1a0a0a' : '#1a1508',
-                    border: `1px solid ${zone.risk_level === 'high' ? '#3b1111' : '#3b2e0a'}`,
-                  }}
-                >
-                  <div className="flex items-center gap-2">
-                    {zone.risk_level === 'high' ? (
-                      <AlertTriangle size={10} className="text-red-500" />
-                    ) : (
-                      <AlertTriangle size={10} className="text-amber-500" />
+            <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold px-1">Zones</div>
+            <div className="max-h-52 space-y-1 overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin' }}>
+              {zones.map((zone, idx) => {
+                const isHigh = zone.risk_level === 'high';
+                const color = isHigh ? '#ef4444' : '#f59e0b';
+                const types = zone.incident_types?.split(',').slice(0, 3).map(t => t.trim()).filter(Boolean) || [];
+                const lastDate = zone.last_incident ? new Date(zone.last_incident).toLocaleDateString() : null;
+
+                return (
+                  <button
+                    key={`${zone.latitude}-${zone.longitude}-${idx}`}
+                    onClick={() => onNavigate(zone.latitude, zone.longitude)}
+                    className="w-full text-left rounded-sm px-2 py-1.5 transition-colors hover:brightness-125"
+                    style={{
+                      background: isHigh ? '#1a0808' : '#1a1508',
+                      border: `1px solid ${isHigh ? '#3b1111' : '#3b2e0a'}`,
+                      borderLeft: `3px solid ${color}`,
+                    }}
+                  >
+                    <div className="flex items-center justify-between mb-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <AlertTriangle size={10} style={{ color }} />
+                        <span className="text-[9px] font-mono font-bold uppercase" style={{ color }}>
+                          {zone.risk_level}
+                        </span>
+                        {isHigh && <span className="led-dot led-red animate-led-pulse" style={{ width: 4, height: 4 }} />}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[9px] font-mono font-bold text-rmpg-300">
+                          {zone.total_flagged}
+                        </span>
+                        <MapPin size={9} className="text-rmpg-500" />
+                      </div>
+                    </div>
+                    {/* Stat pills */}
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {zone.weapons_count > 0 && (
+                        <span className="text-[7px] font-mono px-1 py-0 rounded-sm bg-red-900/40 text-red-400">
+                          {zone.weapons_count} wpn
+                        </span>
+                      )}
+                      {zone.dv_count > 0 && (
+                        <span className="text-[7px] font-mono px-1 py-0 rounded-sm bg-amber-900/40 text-amber-400">
+                          {zone.dv_count} DV
+                        </span>
+                      )}
+                      {zone.injuries_count > 0 && (
+                        <span className="text-[7px] font-mono px-1 py-0 rounded-sm bg-orange-900/40 text-orange-400">
+                          {zone.injuries_count} inj
+                        </span>
+                      )}
+                      {lastDate && (
+                        <span className="text-[7px] font-mono text-rmpg-600 ml-auto">
+                          {lastDate}
+                        </span>
+                      )}
+                    </div>
+                    {/* Incident types */}
+                    {types.length > 0 && (
+                      <div className="text-[7px] font-mono text-rmpg-500 mt-0.5 truncate">
+                        {types.join(' · ')}
+                      </div>
                     )}
-                    <span
-                      className={`text-[9px] font-mono font-bold uppercase ${
-                        zone.risk_level === 'high' ? 'text-red-400' : 'text-amber-400'
-                      }`}
-                    >
-                      {zone.risk_level}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[9px] font-mono text-rmpg-400">
-                      {zone.total_flagged} flagged
-                    </span>
-                    <span className="text-[9px] font-mono text-rmpg-600">
-                      {zone.latitude.toFixed(3)},{zone.longitude.toFixed(3)}
-                    </span>
-                  </div>
-                </div>
-              ))}
+                  </button>
+                );
+              })}
             </div>
           </>
         )}

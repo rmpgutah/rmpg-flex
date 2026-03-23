@@ -4527,11 +4527,15 @@ export default function MapPage() {
         )}
 
         {/* ── Safety Zones Panel ── */}
-        {!isMobile && showSafetyZones && safetyZones.zones.length > 0 && (
-          <div className="absolute bottom-12 left-2 z-30" style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52 }}>
+        {!isMobile && showSafetyZones && (
+          <div className="absolute bottom-12 z-30" style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52 }}>
             <SafetyZonesPanel
               zones={safetyZones.zones}
               loading={safetyZones.loading}
+              days={safetyZones.days}
+              onDaysChange={safetyZones.setDays}
+              onRefresh={safetyZones.refresh}
+              onNavigate={(lat, lng) => panTo(lat, lng)}
               onClose={() => setShowSafetyZones(false)}
             />
           </div>

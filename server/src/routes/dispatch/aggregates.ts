@@ -1273,6 +1273,9 @@ router.get('/heatmap/safety-zones', requireRole('admin', 'manager', 'supervisor'
     const db = getDb();
     setCacheHeaders(res, 120);
 
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 90));
+    const cutoff = `-${days}`;
+
     const zones = db.prepare(`
       SELECT
         ROUND(latitude, 3) as latitude,
@@ -1281,30 +1284,32 @@ router.get('/heatmap/safety-zones', requireRole('admin', 'manager', 'supervisor'
         SUM(CASE WHEN domestic_violence = 1 THEN 1 ELSE 0 END) as dv_count,
         SUM(CASE WHEN injuries_reported = 1 THEN 1 ELSE 0 END) as injuries_count,
         COUNT(*) as total_flagged,
-        MAX(created_at) as last_incident
+        MAX(created_at) as last_incident,
+        GROUP_CONCAT(DISTINCT incident_type) as incident_types
       FROM calls_for_service
       WHERE latitude IS NOT NULL AND longitude IS NOT NULL
-        AND created_at >= datetime('now', 'localtime', '-90 days')
+        AND created_at >= datetime('now', 'localtime', ? || ' days')
         AND (
           (weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0')
           OR domestic_violence = 1
           OR injuries_reported = 1
         )
       GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
-      HAVING COUNT(*) >= 2
+      HAVING COUNT(*) >= 1
       ORDER BY total_flagged DESC
-      LIMIT 50
-    `).all() as any[];
+      LIMIT 100
+    `).all(cutoff) as any[];
 
     const result = zones.map(z => ({
       latitude: z.latitude,
       longitude: z.longitude,
-      risk_level: (z.weapons_count >= 3 || z.total_flagged >= 5) ? 'high' : 'moderate',
+      risk_level: (z.weapons_count >= 2 || z.total_flagged >= 3) ? 'high' : 'moderate',
       weapons_count: z.weapons_count,
       dv_count: z.dv_count,
       injuries_count: z.injuries_count,
       total_flagged: z.total_flagged,
       last_incident: z.last_incident,
+      incident_types: z.incident_types || '',
     }));
 
     logTiming('heatmap/safety-zones', startMs);
