@@ -6,6 +6,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { apiFetch } from '../../../hooks/useApi';
+import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -72,7 +73,26 @@ function createVehicleMarkerElement(vehicle: FleetVehicle): HTMLDivElement {
     border: 2px solid white;
     box-shadow: 0 2px 4px rgba(0,0,0,0.5);
     cursor: pointer;
+    position: relative;
   `;
+
+  // Fix 78: add direction arrow based on heading
+  if (vehicle.gps_heading != null && vehicle.gps_speed != null && vehicle.gps_speed > 1) {
+    const arrow = document.createElement('div');
+    arrow.style.cssText = `
+      position: absolute;
+      top: -4px;
+      left: 50%;
+      transform: translateX(-50%) rotate(${vehicle.gps_heading}deg);
+      width: 0;
+      height: 0;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-bottom: 8px solid ${color};
+      transform-origin: center bottom;
+    `;
+    el.appendChild(arrow);
+  }
 
   const label = document.createElement('span');
   label.style.cssText = 'color: white; font-size: 14px; font-weight: bold; line-height: 1;';
@@ -145,7 +165,7 @@ export function useMapFleetVehicles(
   const [vehicles, setVehicles] = useState<FleetVehicle[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
+  const markersRef = useRef<google.maps.OverlayView[]>([]);
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -153,8 +173,7 @@ export function useMapFleetVehicles(
 
   const clearMarkers = useCallback(() => {
     markersRef.current.forEach((m) => {
-      if (window.google?.maps?.event) google.maps.event.clearInstanceListeners(m);
-      m.map = null;
+      m.setMap(null);
     });
     markersRef.current = [];
   }, []);
@@ -162,7 +181,8 @@ export function useMapFleetVehicles(
   // ── Render markers ────────────────────────────────────────
 
   const renderMarkers = useCallback((data: FleetVehicle[]) => {
-    if (!map || !window.google?.maps?.marker?.AdvancedMarkerElement) return;
+    const OverlayMarkerClass = getOverlayMarkerClass();
+    if (!map || !OverlayMarkerClass) return;
 
     clearMarkers();
 
@@ -180,22 +200,21 @@ export function useMapFleetVehicles(
 
       const content = createVehicleMarkerElement(vehicle);
 
-      const marker = new google.maps.marker.AdvancedMarkerElement({
+      const marker = new OverlayMarkerClass({
         map,
         position: { lat, lng },
         content,
         title: `Vehicle ${vehicle.vehicle_number}`,
         zIndex: 15,
+        onClick: () => {
+          const infoContent = buildVehicleInfoContent(vehicle);
+          infoWindowRef.current?.setContent(infoContent);
+          infoWindowRef.current?.setPosition({ lat, lng });
+          infoWindowRef.current?.open(map);
+        },
       });
 
-      marker.addListener('click', () => {
-        const infoContent = buildVehicleInfoContent(vehicle);
-        infoWindowRef.current?.setContent(infoContent);
-        infoWindowRef.current?.setPosition({ lat, lng });
-        infoWindowRef.current?.open(map);
-      });
-
-      markersRef.current.push(marker);
+      markersRef.current.push(marker as unknown as google.maps.OverlayView);
     });
   }, [map, clearMarkers]);
 
@@ -255,7 +274,7 @@ export function useMapFleetVehicles(
 
   useEffect(() => {
     return () => {
-      markersRef.current.forEach((m) => { m.map = null; });
+      markersRef.current.forEach((m) => { m.setMap(null); });
       markersRef.current = [];
       if (infoWindowRef.current) {
         infoWindowRef.current.close();

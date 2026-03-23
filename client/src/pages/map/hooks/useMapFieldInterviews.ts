@@ -6,6 +6,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { apiFetch } from '../../../hooks/useApi';
+import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -41,9 +42,18 @@ function getReasonColor(reason: string): string {
 }
 
 // ─── Create diamond-shaped marker ───────────────────────────
+// Fix 74: color code by recency (recent = bright, old = faded)
 
-function createDiamondMarker(reason: string): HTMLDivElement {
+function createDiamondMarker(reason: string, createdAt?: string): HTMLDivElement {
   const color = getReasonColor(reason);
+
+  // Fix 74: calculate opacity based on recency
+  let opacity = 1;
+  if (createdAt) {
+    const ageMs = Date.now() - new Date(createdAt).getTime();
+    const ageDays = ageMs / (1000 * 60 * 60 * 24);
+    opacity = Math.max(0.4, 1 - (ageDays / 60)); // fade over 60 days
+  }
 
   const el = document.createElement('div');
   el.style.cssText = `
@@ -54,6 +64,7 @@ function createDiamondMarker(reason: string): HTMLDivElement {
     border: 2px solid white;
     box-shadow: 0 2px 4px rgba(0,0,0,0.5);
     cursor: pointer;
+    opacity: ${opacity};
   `;
 
   return el;
@@ -111,15 +122,14 @@ export function useMapFieldInterviews(
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(false);
 
-  const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
+  const markersRef = useRef<google.maps.OverlayView[]>([]);
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
 
   // ── Clear markers ─────────────────────────────────────────
 
   const clearMarkers = useCallback(() => {
     markersRef.current.forEach((m) => {
-      if (window.google?.maps?.event) google.maps.event.clearInstanceListeners(m);
-      m.map = null;
+      m.setMap(null);
     });
     markersRef.current = [];
   }, []);
@@ -127,7 +137,8 @@ export function useMapFieldInterviews(
   // ── Render markers ────────────────────────────────────────
 
   const renderMarkers = useCallback((records: FIRecord[]) => {
-    if (!map || !window.google?.maps?.marker?.AdvancedMarkerElement) return;
+    const OverlayMarkerClass = getOverlayMarkerClass();
+    if (!map || !OverlayMarkerClass) return;
 
     clearMarkers();
 
@@ -145,24 +156,23 @@ export function useMapFieldInterviews(
       const lat = Number(fi.latitude);
       const lng = Number(fi.longitude);
 
-      const content = createDiamondMarker(fi.contact_reason);
+      const content = createDiamondMarker(fi.contact_reason, fi.created_at); // Fix 74: pass date for recency
 
-      const marker = new google.maps.marker.AdvancedMarkerElement({
+      const marker = new OverlayMarkerClass({
         map,
         position: { lat, lng },
         content,
         title: `FI ${fi.fi_number}`,
         zIndex: 18,
+        onClick: () => {
+          const infoContent = buildFIInfoContent(fi);
+          infoWindowRef.current?.setContent(infoContent);
+          infoWindowRef.current?.setPosition({ lat, lng });
+          infoWindowRef.current?.open(map);
+        },
       });
 
-      marker.addListener('click', () => {
-        const infoContent = buildFIInfoContent(fi);
-        infoWindowRef.current?.setContent(infoContent);
-        infoWindowRef.current?.setPosition({ lat, lng });
-        infoWindowRef.current?.open(map);
-      });
-
-      markersRef.current.push(marker);
+      markersRef.current.push(marker as unknown as google.maps.OverlayView);
     });
   }, [map, clearMarkers]);
 
@@ -198,7 +208,7 @@ export function useMapFieldInterviews(
 
   useEffect(() => {
     return () => {
-      markersRef.current.forEach((m) => { m.map = null; });
+      markersRef.current.forEach((m) => { m.setMap(null); });
       markersRef.current = [];
       if (infoWindowRef.current) {
         infoWindowRef.current.close();

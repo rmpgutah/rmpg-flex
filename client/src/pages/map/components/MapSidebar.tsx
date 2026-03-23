@@ -1,9 +1,22 @@
-import React from 'react';
-import { Shield, AlertTriangle, Search, ChevronUp, ChevronDown } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { Shield, AlertTriangle, Search, ChevronUp, ChevronDown, AlertCircle } from 'lucide-react';
 import { formatIncidentType } from '../../../utils/caseNumbers';
 import type { UnitStatus } from '../../../types';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, getIncidentCategory } from '../utils/mapConstants';
 import type { MapUnit as Unit, ActiveCall } from '../utils/mapConstants';
+
+// Fix 98: unit status sort order (available first, then dispatched, etc.)
+const STATUS_SORT_ORDER: Record<string, number> = {
+  available: 0, dispatched: 1, enroute: 2, onscene: 3, busy: 4, off_duty: 5,
+};
+
+// Fix 99: priority sort order (P1 first)
+const PRIORITY_SORT_ORDER: Record<string, number> = {
+  P1: 0, P2: 1, P3: 2, P4: 3,
+};
+
+// Fix 100: stale threshold in ms (5 minutes)
+const GPS_STALE_THRESHOLD_MS = 5 * 60 * 1000;
 
 interface MapSidebarProps {
   sidebarOpen: boolean;
@@ -25,6 +38,22 @@ export default function MapSidebar({
   searchQuery, setSearchQuery, filteredUnits, filteredCalls,
   unitsByStatus, callsByPriority, panTo, handleCallStatusChange,
 }: MapSidebarProps) {
+  // Fix 98: sort units by status (available first, then dispatched, etc.)
+  const sortedUnits = useMemo(() =>
+    [...filteredUnits].sort((a, b) =>
+      (STATUS_SORT_ORDER[a.status] ?? 9) - (STATUS_SORT_ORDER[b.status] ?? 9)
+    ),
+    [filteredUnits]
+  );
+
+  // Fix 99: sort calls by priority (P1 first)
+  const sortedCalls = useMemo(() =>
+    [...filteredCalls].sort((a, b) =>
+      (PRIORITY_SORT_ORDER[a.priority] ?? 9) - (PRIORITY_SORT_ORDER[b.priority] ?? 9)
+    ),
+    [filteredCalls]
+  );
+
   return (
     <div
       className="flex flex-col panel-beveled transition-all"
@@ -73,7 +102,8 @@ export default function MapSidebar({
               role="tab"
               aria-selected={sidebarTab === 'units'}
             >
-              <Shield className="w-3 h-3" /> Units ({filteredUnits.length})
+              {/* Fix 96: unit count in tab header */}
+              <Shield className="w-3 h-3" /> Units <span className="text-[8px] font-mono font-bold text-green-400">({sortedUnits.length})</span>
             </button>
             <button
               onClick={() => setSidebarTab('calls')}
@@ -81,7 +111,8 @@ export default function MapSidebar({
               role="tab"
               aria-selected={sidebarTab === 'calls'}
             >
-              <AlertTriangle className="w-3 h-3" /> Calls ({filteredCalls.length})
+              {/* Fix 97: call count in tab header */}
+              <AlertTriangle className="w-3 h-3" /> Calls <span className="text-[8px] font-mono font-bold text-red-400">({sortedCalls.length})</span>
             </button>
           </div>
 
@@ -102,9 +133,14 @@ export default function MapSidebar({
           <div className="flex-1 overflow-y-auto">
             {sidebarTab === 'units' && (
               <div className="divide-y divide-rmpg-700/50">
-                {filteredUnits.map((unit) => {
+                {/* Fix 98: units sorted by status (available first) */}
+                {sortedUnits.map((unit) => {
                   const hasCoords = unit.latitude != null && unit.longitude != null;
                   const statusColor = UNIT_STATUS_COLORS[unit.status];
+                  // Fix 100: visual indicator for stale unit positions
+                  const isStale = hasCoords && (unit as any).gps_updated_at
+                    ? (Date.now() - new Date((unit as any).gps_updated_at).getTime()) > GPS_STALE_THRESHOLD_MS
+                    : false;
                   return (
                     <button
                       key={unit.id}
@@ -122,6 +158,10 @@ export default function MapSidebar({
                         {unit.gps_source === 'clearpathgps' && (
                           <span className="text-[7px] font-bold px-1 py-0 bg-blue-900/40 text-blue-400 border border-blue-700/30" title="ClearPathGPS Hardware Tracker">CPG</span>
                         )}
+                        {/* Fix 100: stale GPS indicator */}
+                        {isStale && (
+                          <span title="GPS position may be stale"><AlertCircle className="w-3 h-3 text-amber-500 shrink-0" /></span>
+                        )}
                         <span className="text-[9px] font-mono ml-auto uppercase font-bold" style={{ color: statusColor }}>{UNIT_STATUS_LABELS[unit.status]}</span>
                       </div>
                       <div className="ml-5 mt-0.5">
@@ -136,7 +176,7 @@ export default function MapSidebar({
                     </button>
                   );
                 })}
-                {filteredUnits.length === 0 && (
+                {sortedUnits.length === 0 && (
                   <div className="py-8 text-center text-[10px] text-rmpg-500 font-mono">No active units</div>
                 )}
               </div>
@@ -144,7 +184,8 @@ export default function MapSidebar({
 
             {sidebarTab === 'calls' && (
               <div className="divide-y divide-rmpg-700/50">
-                {filteredCalls.map((call) => {
+                {/* Fix 99: calls sorted by priority (P1 first) */}
+                {sortedCalls.map((call) => {
                   const hasCoords = call.latitude != null && call.longitude != null;
                   const pColor = PRIORITY_COLORS[call.priority] || '#5a6e80';
                   const { category } = getIncidentCategory(call.incident_type);
@@ -210,7 +251,7 @@ export default function MapSidebar({
                     </button>
                   );
                 })}
-                {filteredCalls.length === 0 && (
+                {sortedCalls.length === 0 && (
                   <div className="py-8 text-center text-[10px] text-rmpg-500 font-mono">No active calls</div>
                 )}
               </div>

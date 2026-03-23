@@ -39,6 +39,13 @@ function toBoolInt(val: any): number {
 
 const router = Router();
 
+// Fix 52: Add index on calls_for_service(latitude, longitude, created_at) for map queries
+try {
+  const db = getDb();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_calls_lat_lng_created
+    ON calls_for_service(latitude, longitude, created_at)`).run();
+} catch { /* table may not exist yet at import time */ }
+
 // GET /api/dispatch/calls - List calls with filters
 router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
@@ -196,17 +203,17 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     } = req.body;
 
     if (!incident_type || !priority || !location_address) {
-      res.status(400).json({ error: 'incident_type, priority, and location_address are required' });
+      res.status(400).json({ error: 'incident_type, priority, and location_address are required', code: 'MISSING_FIELDS' });
       return;
     }
 
-    // Validate numeric fields to prevent type coercion issues
+    // Fix 50: Validate latitude/longitude when creating calls
     if (latitude != null && (isNaN(Number(latitude)) || Math.abs(Number(latitude)) > 90)) {
-      res.status(400).json({ error: 'Invalid latitude value' });
+      res.status(400).json({ error: 'Invalid latitude value (must be between -90 and 90)', code: 'INVALID_LAT' });
       return;
     }
     if (longitude != null && (isNaN(Number(longitude)) || Math.abs(Number(longitude)) > 180)) {
-      res.status(400).json({ error: 'Invalid longitude value' });
+      res.status(400).json({ error: 'Invalid longitude value (must be between -180 and 180)', code: 'INVALID_LNG' });
       return;
     }
     if (req.body.num_subjects != null && (isNaN(Number(req.body.num_subjects)) || Number(req.body.num_subjects) < 0)) {
@@ -218,13 +225,16 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       return;
     }
 
-    // Normalize and validate priority against CHECK constraint (P1, P2, P3, P4)
+    // Fix 54: Validate priority values (P1-P4)
     const normalizedPriority = String(priority).toUpperCase();
     const VALID_PRIORITIES = ['P1', 'P2', 'P3', 'P4'];
     if (!VALID_PRIORITIES.includes(normalizedPriority)) {
-      res.status(400).json({ error: `Invalid priority. Must be one of: ${VALID_PRIORITIES.join(', ')}` });
+      res.status(400).json({ error: `Invalid priority. Must be one of: ${VALID_PRIORITIES.join(', ')}`, code: 'INVALID_PRIORITY' });
       return;
     }
+
+    // Fix 51: Normalize incident_type for consistent heatmap grouping (trim, lowercase)
+    const normalizedIncidentType = String(incident_type).trim().toLowerCase().replace(/\s+/g, '_');
 
     // Generate call number: YY-CFS#####
     const callNumber = generateCallNumber(db);
@@ -247,7 +257,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       property_damage: 'property', lost_found: 'property',
       daily_activity: 'admin', special_event: 'admin', training_exercise: 'admin',
     };
-    const caseType = INCIDENT_TO_CASE_TYPE[incident_type] || 'general';
+    const caseType = INCIDENT_TO_CASE_TYPE[normalizedIncidentType] || 'general';
     const caseNumber = generateCaseNumber(db, caseType);
 
     // Determine status — allow historical entries to set any valid status
@@ -346,7 +356,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
                 ?, ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        callNumber, caseNumber, incident_type, normalizedPriority, status, caller_name || null, caller_phone || null,
+        callNumber, caseNumber, normalizedIncidentType, normalizedPriority, status, caller_name || null, caller_phone || null,
         caller_relationship || null, caller_address || null, location_address, property_id || null,
         latitude ?? null, longitude ?? null, description || null, notes || null,
         source || 'phone', req.user!.userId,
@@ -383,7 +393,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?)
       `).run(
         caseNumber,
-        `${(incident_type || '').replace(/_/g, ' ').toUpperCase()} — ${location_address || 'Unknown location'}`,
+        `${(normalizedIncidentType || '').replace(/_/g, ' ').toUpperCase()} — ${location_address || 'Unknown location'}`,
         caseType,
         normalizedPriority === 'P1' ? 'critical' : normalizedPriority === 'P2' ? 'high' : 'normal',
         description || null,
@@ -400,7 +410,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       db.prepare(`
         INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
         VALUES (?, 'call_created', 'call', ?, ?, ?)
-      `).run(req.user!.userId, call.id, `${isHistorical ? 'Historical entry: ' : 'Created '}${callNumber} (Case ${caseNumber}): ${incident_type}`, req.ip || 'unknown');
+      `).run(req.user!.userId, call.id, `${isHistorical ? 'Historical entry: ' : 'Created '}${callNumber} (Case ${caseNumber}): ${normalizedIncidentType}`, req.ip || 'unknown');
 
       return call;
     });

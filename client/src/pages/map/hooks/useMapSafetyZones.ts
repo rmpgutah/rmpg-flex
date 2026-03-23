@@ -82,23 +82,44 @@ export function useMapSafetyZones(
 
     zones.forEach((zone) => {
       if (zone.latitude == null || zone.longitude == null) return;
+      // Validate finite coordinates
+      if (!isFinite(zone.latitude) || !isFinite(zone.longitude)) return;
 
       const isHigh = zone.risk_level === 'high';
+      // Fix 59: zone type indicator (color by risk level)
       const color = isHigh ? '#dc2626' : '#f59e0b';
       const radius = isHigh ? 200 : 150;
+
+      // Fix 61: scale zone opacity by severity (more flagged = more opaque)
+      const severity = Math.min(1, zone.total_flagged / 20);
+      const fillOpacity = 0.06 + severity * 0.15;
+      const strokeOpacity = 0.3 + severity * 0.4;
 
       const circle = new google.maps.Circle({
         center: { lat: zone.latitude, lng: zone.longitude },
         radius,
         fillColor: color,
-        fillOpacity: 0.12,
+        fillOpacity,
         strokeColor: color,
-        strokeWeight: 2,
-        strokeOpacity: 0.4,
+        strokeWeight: isHigh ? 3 : 2,
+        strokeOpacity,
         map,
         clickable: true,
         zIndex: 8,
       });
+
+      // Fix 62: pulsing border on active (high-risk) safety zones
+      if (isHigh) {
+        let pulseOp = strokeOpacity;
+        let dir = -1;
+        const pulseInterval = setInterval(() => {
+          pulseOp += dir * 0.04;
+          if (pulseOp <= 0.2) { pulseOp = 0.2; dir = 1; }
+          if (pulseOp >= 0.9) { pulseOp = 0.9; dir = -1; }
+          circle.setOptions({ strokeOpacity: pulseOp });
+        }, 500);
+        (circle as any)._pulseInterval = pulseInterval;
+      }
 
       circle.addListener('click', () => {
         const riskLabel = isHigh ? 'HIGH' : 'MODERATE';
@@ -148,6 +169,8 @@ export function useMapSafetyZones(
 
     return () => {
       circlesRef.current.forEach((c) => {
+        // Fix 62: clean up pulse intervals
+        if ((c as any)._pulseInterval) clearInterval((c as any)._pulseInterval);
         google.maps.event.clearInstanceListeners(c);
         c.setMap(null);
       });

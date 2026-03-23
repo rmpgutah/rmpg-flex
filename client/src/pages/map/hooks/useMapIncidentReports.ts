@@ -6,7 +6,8 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { apiFetch } from '../../../hooks/useApi';
-import { buildIncidentReportMarkerContent } from '../utils/mapMarkerBuilders';
+import { buildIncidentReportMarkerContent, getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
+import type { OverlayMarker } from '../utils/mapMarkerBuilders';
 import { formatIncidentType } from '../../../utils/caseNumbers';
 import { escapeHtml } from '../../../utils/sanitize';
 
@@ -40,6 +41,8 @@ interface UseMapIncidentReportsReturn {
   incidents: MapIncidentReport[];
   loading: boolean;
   count: number;
+  // Fix 86: counts by status for display
+  countsByStatus: Record<string, number>;
 }
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -86,23 +89,21 @@ export function useMapIncidentReports(opts: UseMapIncidentReportsOptions): UseMa
   const [incidents, setIncidents] = useState<MapIncidentReport[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
+  const markersRef = useRef<(OverlayMarker & google.maps.OverlayView)[]>([]);
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
 
   // ── Clear markers ───────────────────────────────────────
 
   const clearMarkers = useCallback(() => {
-    markersRef.current.forEach((m) => {
-      if (window.google?.maps?.event) google.maps.event.clearInstanceListeners(m);
-      m.map = null;
-    });
+    markersRef.current.forEach((m) => m.setMap(null));
     markersRef.current = [];
   }, []);
 
   // ── Render markers ──────────────────────────────────────
 
   const renderMarkers = useCallback((data: MapIncidentReport[]) => {
-    if (!map || !window.google?.maps?.marker?.AdvancedMarkerElement) return;
+    const OverlayMarkerClass = getOverlayMarkerClass();
+    if (!map || !OverlayMarkerClass) return;
 
     clearMarkers();
 
@@ -115,15 +116,13 @@ export function useMapIncidentReports(opts: UseMapIncidentReportsOptions): UseMa
 
       const content = buildIncidentReportMarkerContent(incident.status);
 
-      const marker = new google.maps.marker.AdvancedMarkerElement({
+      const marker = new OverlayMarkerClass({
         map,
         position: { lat: incident.latitude, lng: incident.longitude },
         content,
         title: `${incident.incident_number} - ${formatIncidentType(incident.incident_type)}`,
         zIndex: 40,
-      });
-
-      marker.addListener('click', () => {
+        onClick: () => {
         const sColor = STATUS_COLORS[incident.status] || '#6b7280';
         const pColor = PRIORITY_COLORS[incident.priority] || '#5a6e80';
         const sLabel = STATUS_LABELS[incident.status] || incident.status;
@@ -152,9 +151,10 @@ export function useMapIncidentReports(opts: UseMapIncidentReportsOptions): UseMa
         `);
         infoWindowRef.current?.setPosition({ lat: incident.latitude, lng: incident.longitude });
         infoWindowRef.current?.open(map);
+      },
       });
 
-      markersRef.current.push(marker);
+      markersRef.current.push(marker as OverlayMarker & google.maps.OverlayView);
     });
   }, [map, clearMarkers]);
 
@@ -198,7 +198,7 @@ export function useMapIncidentReports(opts: UseMapIncidentReportsOptions): UseMa
 
   useEffect(() => {
     return () => {
-      markersRef.current.forEach((m) => { m.map = null; });
+      markersRef.current.forEach((m) => m.setMap(null));
       markersRef.current = [];
       if (infoWindowRef.current) {
         infoWindowRef.current.close();
@@ -207,5 +207,11 @@ export function useMapIncidentReports(opts: UseMapIncidentReportsOptions): UseMa
     };
   }, []);
 
-  return { incidents, loading, count: incidents.length };
+  // Fix 86: counts by status for display
+  const countsByStatus = incidents.reduce<Record<string, number>>((acc, inc) => {
+    acc[inc.status] = (acc[inc.status] || 0) + 1;
+    return acc;
+  }, {});
+
+  return { incidents, loading, count: incidents.length, countsByStatus };
 }

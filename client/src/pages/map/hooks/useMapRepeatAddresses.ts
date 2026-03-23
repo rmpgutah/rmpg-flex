@@ -6,6 +6,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { apiFetch } from '../../../hooks/useApi';
+import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -25,18 +26,22 @@ interface UseMapRepeatAddressesReturn {
 }
 
 // ─── Color thresholds ───────────────────────────────────────
+// Fix 72: color code by severity (more repeats = redder)
 
 function getColor(count: number): string {
+  if (count >= 20) return '#991b1b'; // dark red (very severe)
   if (count >= 11) return '#dc2626'; // red
   if (count >= 6) return '#f97316';  // orange
-  return '#f59e0b';                  // amber (3-5)
+  if (count >= 4) return '#f59e0b';  // amber
+  return '#eab308';                  // yellow (3)
 }
 
 // ─── Create circle marker element using DOM API ─────────────
 
 function createCountMarker(count: number): HTMLDivElement {
   const color = getColor(count);
-  const size = count >= 11 ? 32 : count >= 6 ? 28 : 24;
+  // Fix 71: scale marker size by repeat count
+  const size = count >= 20 ? 38 : count >= 11 ? 32 : count >= 6 ? 28 : 24;
 
   const el = document.createElement('div');
   el.style.cssText = `
@@ -119,15 +124,14 @@ export function useMapRepeatAddresses(
   const [addresses, setAddresses] = useState<RepeatAddress[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
+  const markersRef = useRef<google.maps.OverlayView[]>([]);
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
 
   // ── Clear markers ─────────────────────────────────────────
 
   const clearMarkers = useCallback(() => {
     markersRef.current.forEach((m) => {
-      if (window.google?.maps?.event) google.maps.event.clearInstanceListeners(m);
-      m.map = null;
+      m.setMap(null);
     });
     markersRef.current = [];
   }, []);
@@ -173,7 +177,8 @@ export function useMapRepeatAddresses(
       infoWindowRef.current = new google.maps.InfoWindow();
     }
 
-    const hasAdvancedMarker = !!window.google?.maps?.marker?.AdvancedMarkerElement;
+    const OverlayMarkerClass = getOverlayMarkerClass();
+    if (!OverlayMarkerClass) return;
 
     addresses.forEach((addr) => {
       if (addr.lat == null || addr.lng == null) return;
@@ -182,26 +187,23 @@ export function useMapRepeatAddresses(
       const lng = Number(addr.lng);
       if (isNaN(lat) || isNaN(lng)) return;
 
-      if (!hasAdvancedMarker) return;
-
       const content = createCountMarker(addr.call_count);
 
-      const marker = new google.maps.marker.AdvancedMarkerElement({
+      const marker = new OverlayMarkerClass({
         map,
         position: { lat, lng },
         content,
         title: `${addr.call_count} calls — ${addr.location_address || 'Unknown'}`,
         zIndex: 25,
+        onClick: () => {
+          const infoContent = buildInfoContent(addr);
+          infoWindowRef.current?.setContent(infoContent);
+          infoWindowRef.current?.setPosition({ lat, lng });
+          infoWindowRef.current?.open(map);
+        },
       });
 
-      marker.addListener('click', () => {
-        const infoContent = buildInfoContent(addr);
-        infoWindowRef.current?.setContent(infoContent);
-        infoWindowRef.current?.setPosition({ lat, lng });
-        infoWindowRef.current?.open(map);
-      });
-
-      markersRef.current.push(marker);
+      markersRef.current.push(marker as unknown as google.maps.OverlayView);
     });
 
     return () => {
@@ -213,7 +215,7 @@ export function useMapRepeatAddresses(
 
   useEffect(() => {
     return () => {
-      markersRef.current.forEach((m) => { m.map = null; });
+      markersRef.current.forEach((m) => { m.setMap(null); });
       markersRef.current = [];
       if (infoWindowRef.current) {
         infoWindowRef.current.close();

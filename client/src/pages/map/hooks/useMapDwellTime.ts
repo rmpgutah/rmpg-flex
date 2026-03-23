@@ -110,23 +110,63 @@ export function useMapDwellTime(
 
     if (!enabled || dwellData.length === 0) return;
 
+    // Fix 67: create info window for dwell time details
+    const infoWindow = new google.maps.InfoWindow();
+
     dwellData.forEach((record) => {
       if (record.latitude == null || record.longitude == null) return;
+      // Validate finite coordinates
+      if (!isFinite(record.latitude) || !isFinite(record.longitude)) return;
 
       const tier = getTier(record.dwell_minutes);
       if (!tier) return;
 
+      // Fix 68: scale circle radius by dwell duration
+      const scaledRadius = Math.max(tier.radius, Math.min(250, tier.radius + record.dwell_minutes * 0.5));
+
       const circle = new google.maps.Circle({
         center: { lat: record.latitude, lng: record.longitude },
-        radius: tier.radius,
+        radius: scaledRadius,
         fillColor: tier.color,
         fillOpacity: 0.08,
         strokeColor: tier.color,
         strokeWeight: tier.strokeWeight,
         strokeOpacity: 0.7,
         map,
-        clickable: false,
+        clickable: true, // Fix 67: make clickable for info window
         zIndex: 6,
+      });
+
+      // Fix 67: info window showing dwell duration on click
+      circle.addListener('click', () => {
+        const hours = Math.floor(record.dwell_minutes / 60);
+        const mins = Math.round(record.dwell_minutes % 60);
+        const durationStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+        const container = document.createElement('div');
+        container.style.cssText = 'font-family:monospace;font-size:11px;color:#e0e0e0;min-width:180px;line-height:1.6;background:#0a0e14;padding:10px 12px;border-radius:4px;border:1px solid #1e2a3a';
+        const heading = document.createElement('div');
+        heading.style.cssText = `font-weight:bold;font-size:13px;margin-bottom:6px;color:${tier.color}`;
+        heading.textContent = `Dwell Time — ${record.call_sign}`;
+        container.appendChild(heading);
+        const table = document.createElement('table');
+        table.style.cssText = 'width:100%;font-size:11px;border-collapse:collapse';
+        const addRow = (lbl: string, val: string, color?: string) => {
+          const tr = document.createElement('tr');
+          const td1 = document.createElement('td');
+          td1.style.cssText = 'color:#6b7b8d;padding:1px 6px 1px 0';
+          td1.textContent = lbl;
+          const td2 = document.createElement('td');
+          td2.style.cssText = `color:${color || '#e0e0e0'}`;
+          td2.textContent = val;
+          tr.appendChild(td1); tr.appendChild(td2); table.appendChild(tr);
+        };
+        addRow('Duration', durationStr, tier.color);
+        addRow('Status', record.status);
+        addRow('Unit', record.call_sign);
+        container.appendChild(table);
+        infoWindow.setContent(container);
+        infoWindow.setPosition({ lat: record.latitude, lng: record.longitude });
+        infoWindow.open(map);
       });
 
       // Pulsing effect for 60+ min dwell

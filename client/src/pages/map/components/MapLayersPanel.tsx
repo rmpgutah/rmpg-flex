@@ -263,6 +263,22 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
       </div>
 
       <div className="p-1.5 space-y-0.5">
+        {/* Fix 93: Core layers group with All On/Off */}
+        <div className="flex items-center justify-between mb-0.5 px-1">
+          <span className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold">Core</span>
+          <div className="flex gap-1">
+            <button
+              onClick={() => { (['units', 'incidents', 'properties'] as const).forEach(k => { if (!layers[k]) toggleLayer(k); }); }}
+              className="text-[7px] font-bold text-green-400 hover:text-green-300 px-1"
+              title="Enable all core layers"
+            >ON</button>
+            <button
+              onClick={() => { (['units', 'incidents', 'properties'] as const).forEach(k => { if (layers[k]) toggleLayer(k); }); }}
+              className="text-[7px] font-bold text-red-400 hover:text-red-300 px-1"
+              title="Disable all core layers"
+            >OFF</button>
+          </div>
+        </div>
         {[
           { key: 'units' as const, icon: <Shield className="w-3 h-3" />, label: 'Units', count: unitsWithCoords.length, color: '#22c55e' },
           { key: 'incidents' as const, icon: <AlertTriangle className="w-3 h-3" />, label: 'Active Calls', count: callsWithCoords.length, color: '#ef4444' },
@@ -278,6 +294,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
             {layers[key] ? <Eye className="w-3 h-3 text-green-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
             <span style={{ color: layers[key] ? color : '#5a6e80' }}>{icon}</span>
             <span className="text-[10px] text-rmpg-200 flex-1">{label}</span>
+            {/* Fix 92: show feature count next to each toggle */}
             <span className="text-[9px] font-mono font-bold" style={{ color: layers[key] ? color : '#5a6e80' }}>{count}</span>
           </button>
         ))}
@@ -1295,9 +1312,25 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
         )}
 
       {/* ── Intelligence Layers ── */}
+      {/* Fix 93: group related toggles (intelligence group) */}
       {intelLayers && toggleIntelLayer && (
         <div className="border-t border-rmpg-700 p-1.5">
-          <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Intelligence</div>
+          <div className="flex items-center justify-between mb-1.5 px-1">
+            <span className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold">Intelligence</span>
+            {/* Fix 94: "All On" / "All Off" buttons per group */}
+            <div className="flex gap-1">
+              <button
+                onClick={() => { (['warrants', 'trespass', 'offenders', 'bolos'] as const).forEach(k => { if (!intelLayers[k]) toggleIntelLayer(k); }); }}
+                className="text-[7px] font-bold text-green-400 hover:text-green-300 px-1"
+                title="Enable all intelligence layers"
+              >ON</button>
+              <button
+                onClick={() => { (['warrants', 'trespass', 'offenders', 'bolos'] as const).forEach(k => { if (intelLayers[k]) toggleIntelLayer(k); }); }}
+                className="text-[7px] font-bold text-red-400 hover:text-red-300 px-1"
+                title="Disable all intelligence layers"
+              >OFF</button>
+            </div>
+          </div>
           {([
             { key: 'warrants' as const, label: 'Active Warrants', color: 'red' },
             { key: 'trespass' as const, label: 'Trespass Orders', color: 'orange' },
@@ -1313,8 +1346,15 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
             >
               <Shield className="w-3 h-3" />
               <span className="flex-1 text-left">{label}</span>
-              {intelLayers[key] && intelCounts && intelCounts[key] > 0 && (
-                <span className="text-[9px] font-mono">{intelCounts[key]}</span>
+              {/* Fix 92: show feature count next to each toggle */}
+              {intelCounts && (
+                <span className={`text-[9px] font-mono ${intelLayers[key] ? '' : 'opacity-50'}`}>
+                  {intelCounts[key] || 0}
+                </span>
+              )}
+              {/* Fix 48: show "no data" when count is 0 and layer is on */}
+              {intelLayers[key] && intelCounts && intelCounts[key] === 0 && (
+                <span className="text-[7px] text-rmpg-500">none</span>
               )}
             </button>
           ))}

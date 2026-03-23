@@ -7,7 +7,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { apiFetch } from '../../../hooks/useApi';
 import { PRIORITY_COLORS } from '../utils/mapConstants';
-import { buildHistoricalCallMarkerContent } from '../utils/mapMarkerBuilders';
+import { buildHistoricalCallMarkerContent, getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
+import type { OverlayMarker } from '../utils/mapMarkerBuilders';
 import { formatIncidentType } from '../../../utils/caseNumbers';
 import { escapeHtml } from '../../../utils/sanitize';
 
@@ -44,6 +45,8 @@ interface UseMapCallHistoryReturn {
   calls: HistoricalCall[];
   loading: boolean;
   count: number;
+  // Fix 84: expose available incident type categories for time-based filtering
+  incidentCategories: string[];
 }
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -95,23 +98,21 @@ export function useMapCallHistory(opts: UseMapCallHistoryOptions): UseMapCallHis
   const [calls, setCalls] = useState<HistoricalCall[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
+  const markersRef = useRef<(OverlayMarker & google.maps.OverlayView)[]>([]);
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
 
   // ── Clear markers ───────────────────────────────────────
 
   const clearMarkers = useCallback(() => {
-    markersRef.current.forEach((m) => {
-      if (window.google?.maps?.event) google.maps.event.clearInstanceListeners(m);
-      m.map = null;
-    });
+    markersRef.current.forEach((m) => m.setMap(null));
     markersRef.current = [];
   }, []);
 
   // ── Render markers ──────────────────────────────────────
 
   const renderMarkers = useCallback((data: HistoricalCall[]) => {
-    if (!map || !window.google?.maps?.marker?.AdvancedMarkerElement) return;
+    const OverlayMarkerClass = getOverlayMarkerClass();
+    if (!map || !OverlayMarkerClass) return;
 
     clearMarkers();
 
@@ -124,15 +125,13 @@ export function useMapCallHistory(opts: UseMapCallHistoryOptions): UseMapCallHis
 
       const content = buildHistoricalCallMarkerContent(call.priority, call.incident_type, call.call_number);
 
-      const marker = new google.maps.marker.AdvancedMarkerElement({
+      const marker = new OverlayMarkerClass({
         map,
         position: { lat: call.latitude, lng: call.longitude },
         content,
         title: `${call.call_number} - ${formatIncidentType(call.incident_type)}`,
         zIndex: 50,
-      });
-
-      marker.addListener('click', () => {
+        onClick: () => {
         const pColor = PRIORITY_COLORS[call.priority] || '#5a6e80';
         const sColor = getStatusColor(call.status);
 
@@ -163,9 +162,10 @@ export function useMapCallHistory(opts: UseMapCallHistoryOptions): UseMapCallHis
         `);
         infoWindowRef.current?.setPosition({ lat: call.latitude, lng: call.longitude });
         infoWindowRef.current?.open(map);
+      },
       });
 
-      markersRef.current.push(marker);
+      markersRef.current.push(marker as OverlayMarker & google.maps.OverlayView);
     });
   }, [map, clearMarkers]);
 
@@ -210,7 +210,7 @@ export function useMapCallHistory(opts: UseMapCallHistoryOptions): UseMapCallHis
 
   useEffect(() => {
     return () => {
-      markersRef.current.forEach((m) => { m.map = null; });
+      markersRef.current.forEach((m) => m.setMap(null));
       markersRef.current = [];
       if (infoWindowRef.current) {
         infoWindowRef.current.close();
@@ -219,5 +219,8 @@ export function useMapCallHistory(opts: UseMapCallHistoryOptions): UseMapCallHis
     };
   }, []);
 
-  return { calls, loading, count: calls.length };
+  // Fix 84: compute unique incident type categories
+  const incidentCategories = Array.from(new Set(calls.map(c => c.incident_type).filter(Boolean)));
+
+  return { calls, loading, count: calls.length, incidentCategories };
 }

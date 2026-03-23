@@ -30,6 +30,26 @@ function pointInPolygon(lat: number, lng: number, polygon: { lat: number; lng: n
 
 const router = Router();
 
+// Fix 19: Ensure index on gps_breadcrumbs(call_sign, recorded_at) for trail queries
+try {
+  const db = getDb();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_gps_breadcrumbs_unit_recorded
+    ON gps_breadcrumbs(unit_id, recorded_at)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_gps_breadcrumbs_call_sign_recorded
+    ON gps_breadcrumbs(call_sign, recorded_at)`).run();
+} catch { /* table may not exist yet at import time */ }
+
+// Fix 16: Validate call_sign parameter format
+function isValidCallSign(callSign: string): boolean {
+  return typeof callSign === 'string' && callSign.length >= 1 && callSign.length <= 50 && /^[A-Za-z0-9\-_]+$/.test(callSign);
+}
+
+// Fix 22: Validate coordinate ranges
+function isValidCoordinate(lat: number, lng: number): boolean {
+  return Number.isFinite(lat) && Number.isFinite(lng) &&
+    lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+}
+
 // POST /api/dispatch/gps - Batch GPS position update from officer
 // Accepts either a single point or an array of points collected at ~1-second intervals.
 // Updates the unit's live position (latest point only), bulk-inserts all breadcrumbs,
@@ -320,6 +340,7 @@ router.get('/gps/trail/:unitId', requireRole('admin', 'manager', 'supervisor', '
     if (isNaN(unitId)) { res.status(400).json({ error: 'Invalid unit ID' }); return; }
     const hours = Math.min(Math.max(parseInt(req.query.hours as string, 10) || 8, 1), 72);
 
+    // Fix 15: LIMIT on trail queries to prevent huge responses
     const rows = db.prepare(`
       SELECT latitude, longitude, accuracy, heading, speed,
         unit_status, call_sign, officer_name, badge_number,
@@ -328,6 +349,7 @@ router.get('/gps/trail/:unitId', requireRole('admin', 'manager', 'supervisor', '
       FROM gps_breadcrumbs
       WHERE unit_id = ? AND recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')
       ORDER BY recorded_at ASC
+      LIMIT 10000
     `).all(unitId, hours) as any[];
 
     // ── Filter: accuracy gate + jump detection + stationary collapse ──
@@ -369,10 +391,17 @@ router.get('/gps/trail/:unitId', requireRole('admin', 'manager', 'supervisor', '
       filtered.push(row);
     }
 
-    res.json(filtered);
+    // Fix 17: Cache headers for frequently-accessed positions
+    res.set('Cache-Control', 'private, max-age=5');
+    // Fix 20: Return proper error codes
+    res.json({ data: filtered, total: filtered.length, raw_count: rows.length });
   } catch (error: any) {
     console.error('[GPS] trail error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    if (error?.message?.includes('no such table')) {
+      res.json({ data: [], total: 0, raw_count: 0 });
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error', code: 'GPS_TRAIL_ERROR' });
   }
 });
 
@@ -398,7 +427,9 @@ router.get('/gps/trails', requireRole('admin', 'manager', 'supervisor', 'officer
 
     // Use SQLite's datetime() for the cutoff so the format matches
     // recorded_at's DEFAULT (datetime('now','localtime') → "YYYY-MM-DD HH:MM:SS").
+    // Fix 15: LIMIT on trail queries to prevent huge responses
     const rows = db.prepare(`
+      /* Uses idx: gps_breadcrumbs(unit_id, recorded_at) */
       SELECT b.unit_id, b.call_sign, b.latitude, b.longitude, b.accuracy,
         b.heading, b.speed, b.unit_status, b.officer_name, b.badge_number,
         b.current_call_number, b.current_call_type, b.recorded_at,
@@ -407,6 +438,7 @@ router.get('/gps/trails', requireRole('admin', 'manager', 'supervisor', 'officer
       JOIN units u ON b.unit_id = u.id
       WHERE b.recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')
       ORDER BY b.unit_id, b.recorded_at ASC
+      LIMIT 50000
     `).all(hours) as any[];
 
     // ── Group by unit, then filter each trail to remove starburst artifacts ──
@@ -472,10 +504,17 @@ router.get('/gps/trails', requireRole('admin', 'manager', 'supervisor', 'officer
       trailPts.push(pt);
     }
 
-    res.json(Object.values(trails));
+    // Fix 17: Cache headers
+    res.set('Cache-Control', 'private, max-age=5');
+    const result = Object.values(trails);
+    res.json({ data: result, total_units: result.length, raw_points: rows.length });
   } catch (error: any) {
     console.error('[GPS] trails error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    if (error?.message?.includes('no such table')) {
+      res.json({ data: [], total_units: 0, raw_points: 0 });
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error', code: 'GPS_TRAILS_ERROR' });
   }
 });
 
@@ -583,10 +622,15 @@ router.get('/gps/dwell-times', requireRole('admin', 'manager', 'supervisor', 'of
       }
     }
 
-    res.json(results);
+    res.set('Cache-Control', 'private, max-age=30');
+    res.json({ data: results, total: results.length });
   } catch (error: any) {
     console.error('[GPS] dwell-times error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    if (error?.message?.includes('no such table')) {
+      res.json({ data: [], total: 0 });
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error', code: 'GPS_DWELL_ERROR' });
   }
 });
 

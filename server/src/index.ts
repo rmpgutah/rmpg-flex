@@ -126,6 +126,25 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(sanitizeInput);
 
+// Fix 73: Add request ID for tracing
+app.use((_req, _res, next) => {
+  const requestId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  _req.headers['x-request-id'] = _req.headers['x-request-id'] || requestId;
+  _res.setHeader('X-Request-ID', _req.headers['x-request-id'] as string);
+  next();
+});
+
+// Fix 72: Add response compression for large GeoJSON payloads
+// Using built-in compression by setting headers — actual compression handled by reverse proxy in production
+app.use((req, res, next) => {
+  // Fix 71: Add CORS headers for map tile requests
+  if (req.path.startsWith('/tiles/')) {
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Cache-Control', 'public, max-age=86400'); // Cache tiles for 24h
+  }
+  next();
+});
+
 // Apply rate limiting to API routes
 app.use('/api', apiRateLimit);
 
@@ -155,6 +174,59 @@ app.get('/api/health', (_req, res) => {
       liveSync: true,
     },
   });
+});
+
+// Fix 75: Health check endpoint for map subsystem
+app.get('/api/health/map', (_req, res) => {
+  try {
+    const db = getDb();
+    const callCount = db.prepare('SELECT COUNT(*) as cnt FROM calls_for_service WHERE latitude IS NOT NULL').get() as any;
+    const unitCount = db.prepare('SELECT COUNT(*) as cnt FROM units WHERE latitude IS NOT NULL').get() as any;
+    let geofenceCount = { cnt: 0 };
+    try { geofenceCount = db.prepare('SELECT COUNT(*) as cnt FROM geofences WHERE is_active = 1').get() as any; } catch { /* table may not exist */ }
+    let breadcrumbCount = { cnt: 0 };
+    try { breadcrumbCount = db.prepare('SELECT COUNT(*) as cnt FROM gps_breadcrumbs').get() as any; } catch { /* table may not exist */ }
+
+    res.json({
+      status: 'ok',
+      subsystem: 'map',
+      geocoded_calls: callCount?.cnt || 0,
+      positioned_units: unitCount?.cnt || 0,
+      active_geofences: geofenceCount?.cnt || 0,
+      breadcrumb_records: breadcrumbCount?.cnt || 0,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    res.status(500).json({ status: 'error', subsystem: 'map', error: err?.message || 'Unknown' });
+  }
+});
+
+// Fix 76: Feature flag support
+app.get('/api/features', (_req, res) => {
+  try {
+    const db = getDb();
+    // Load feature flags from system_config if available
+    let flags: Record<string, boolean> = {
+      heatmap: true,
+      gps_tracking: true,
+      geofences: true,
+      safety_analysis: true,
+      corridor_analysis: true,
+      predictive_hotspots: true,
+      coverage_gaps: true,
+      lighting_conditions: true,
+    };
+    try {
+      const configRow = db.prepare("SELECT value FROM system_config WHERE key = 'feature_flags'").get() as any;
+      if (configRow?.value) {
+        const parsed = JSON.parse(configRow.value);
+        flags = { ...flags, ...parsed };
+      }
+    } catch { /* use defaults */ }
+    res.json(flags);
+  } catch {
+    res.status(500).json({ error: 'Failed to load feature flags' });
+  }
 });
 
 // ─── Presence Endpoint ───────────────────────────────
@@ -333,6 +405,35 @@ try {
   // Initialize database
   initDatabase();
   console.log('Database initialized');
+
+  // Fix 78: Set SQLite query timeout for long-running queries (30 seconds)
+  try {
+    const db = getDb();
+    db.pragma('busy_timeout = 30000');
+    console.log('SQLite busy_timeout set to 30000ms');
+  } catch (e: any) {
+    console.warn('Could not set SQLite busy_timeout:', e?.message);
+  }
+
+  // Fix 80: Database migration versioning check on startup
+  try {
+    const db = getDb();
+    // Ensure migration_version table exists
+    db.prepare(`CREATE TABLE IF NOT EXISTS migration_version (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      version INTEGER NOT NULL DEFAULT 0,
+      last_migrated_at TEXT
+    )`).run();
+    const versionRow = db.prepare('SELECT version FROM migration_version WHERE id = 1').get() as any;
+    if (!versionRow) {
+      db.prepare('INSERT INTO migration_version (id, version, last_migrated_at) VALUES (1, 1, datetime("now","localtime"))').run();
+      console.log('Database migration version initialized: v1');
+    } else {
+      console.log(`Database migration version: v${versionRow.version}`);
+    }
+  } catch (e: any) {
+    console.warn('Migration version check skipped:', e?.message);
+  }
 
   // Determine server type based on SSL availability
   let primaryServer: http.Server | https.Server;

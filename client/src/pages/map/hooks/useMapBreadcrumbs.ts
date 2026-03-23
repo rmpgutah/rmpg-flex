@@ -5,6 +5,21 @@ import { escapeHtml } from '../../../utils/sanitize';
 // Unit colors for breadcrumb trails — cycle through distinct colors per unit
 const TRAIL_COLORS = ['#22d3ee', '#a78bfa', '#f472b6', '#34d399', '#fbbf24', '#f87171', '#60a5fa', '#c084fc'];
 
+// Fix 15: cap trail points per unit to prevent performance issues
+const MAX_TRAIL_POINTS_PER_UNIT = 500;
+
+// Fix 18: minimum distance between trail points (meters) for deduplication
+const MIN_TRAIL_POINT_DISTANCE_M = 1;
+
+// Haversine distance in meters between two lat/lng points
+function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 // Speed-to-color mapping for breadcrumb speed mode (m/s → mph thresholds)
 export const speedToColor = (mps: number | null): string => {
   if (mps == null || mps < 0.5) return '#6b7280';
@@ -116,12 +131,29 @@ export function useMapBreadcrumbs({ mapInstanceRef, mapLoaded }: UseMapBreadcrum
         trails.forEach((trail, idx) => {
           if (trail.points.length === 0) return;
 
+          // Fix 15: cap trail points per unit
+          let points = trail.points.slice(0, MAX_TRAIL_POINTS_PER_UNIT);
+
+          // Fix 16: validate trail point coordinates
+          points = points.filter(pt => pt.lat != null && pt.lng != null && isFinite(pt.lat) && isFinite(pt.lng));
+
+          // Fix 18: deduplicate trail points within 1m of each other
+          const deduped: typeof points = [];
+          for (const pt of points) {
+            if (deduped.length === 0 || haversineMeters(deduped[deduped.length - 1].lat, deduped[deduped.length - 1].lng, pt.lat, pt.lng) >= MIN_TRAIL_POINT_DISTANCE_M) {
+              deduped.push(pt);
+            }
+          }
+          points = deduped;
+
+          if (points.length === 0) return;
+
           const unitColor = TRAIL_COLORS[idx % TRAIL_COLORS.length];
 
-          for (let i = 0; i < trail.points.length - 1; i++) {
-            const p1 = trail.points[i];
-            const p2 = trail.points[i + 1];
-            const freshness = (i + 1) / trail.points.length;
+          for (let i = 0; i < points.length - 1; i++) {
+            const p1 = points[i];
+            const p2 = points[i + 1];
+            const freshness = (i + 1) / points.length;
             const opacity = 0.25 + freshness * 0.6;
 
             let segColor: string;
@@ -133,20 +165,24 @@ export function useMapBreadcrumbs({ mapInstanceRef, mapLoaded }: UseMapBreadcrum
               segColor = unitColor;
             }
 
-            const seg = new google.maps.Polyline({
-              path: [{ lat: p1.lat, lng: p1.lng }, { lat: p2.lat, lng: p2.lng }],
-              geodesic: true,
-              strokeColor: segColor,
-              strokeOpacity: opacity,
-              strokeWeight: 3,
-              map,
-            });
-            breadcrumbLinesRef.current.push(seg);
+            try { // Fix 17: try/catch around Polyline creation
+              const seg = new google.maps.Polyline({
+                path: [{ lat: p1.lat, lng: p1.lng }, { lat: p2.lat, lng: p2.lng }],
+                geodesic: true,
+                strokeColor: segColor,
+                strokeOpacity: opacity,
+                strokeWeight: 3,
+                map,
+              });
+              breadcrumbLinesRef.current.push(seg);
+            } catch (err) {
+              console.warn('[useMapBreadcrumbs] Error creating polyline segment:', err);
+            }
           }
 
-          trail.points.forEach((pt, ptIdx) => {
+          points.forEach((pt, ptIdx) => {
             if (ptIdx % 8 !== 4 || pt.heading == null) return;
-            const freshness = (ptIdx + 1) / trail.points.length;
+            const freshness = (ptIdx + 1) / points.length;
             const arrow = new google.maps.Marker({
               position: { lat: pt.lat, lng: pt.lng },
               map,
@@ -166,14 +202,16 @@ export function useMapBreadcrumbs({ mapInstanceRef, mapLoaded }: UseMapBreadcrum
             breadcrumbArrowsRef.current.push(arrow);
           });
 
-          trail.points.forEach((pt, ptIdx) => {
-            const isLast = ptIdx === trail.points.length - 1;
+          points.forEach((pt, ptIdx) => {
+            const isLast = ptIdx === points.length - 1;
             let dotColor: string;
             if (breadcrumbColorMode === 'speed') dotColor = speedToColor(pt.speed);
             else if (breadcrumbColorMode === 'status') dotColor = statusToColor(pt.status);
             else dotColor = unitColor;
 
-            const dot = new google.maps.Circle({
+            let dot: google.maps.Circle;
+            try { // Fix 17: try/catch around Circle creation
+            dot = new google.maps.Circle({
               center: { lat: pt.lat, lng: pt.lng },
               radius: 4,
               fillColor: dotColor,
@@ -185,6 +223,10 @@ export function useMapBreadcrumbs({ mapInstanceRef, mapLoaded }: UseMapBreadcrum
               clickable: true,
               zIndex: ptIdx,
             });
+            } catch (err) {
+              console.warn('[useMapBreadcrumbs] Error creating circle:', err);
+              return;
+            }
 
             dot.addListener('click', () => {
               const time = new Date(pt.time).toLocaleString();

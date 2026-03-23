@@ -6,6 +6,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useWebSocket } from '../../../context/WebSocketContext';
+import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
+import type { OverlayMarker } from '../utils/mapMarkerBuilders';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -88,7 +90,7 @@ export function useMapGeofences(
   const [alerts, setAlerts] = useState<GeofenceAlert[]>([]);
 
   const polygonsRef = useRef<google.maps.Polygon[]>([]);
-  const labelsRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
+  const labelsRef = useRef<(OverlayMarker & google.maps.OverlayView)[]>([]);
   const drawMarkersRef = useRef<google.maps.Marker[]>([]);
   const drawPolylineRef = useRef<google.maps.Polyline | null>(null);
   const clickListenerRef = useRef<google.maps.MapsEventListener | null>(null);
@@ -130,10 +132,28 @@ export function useMapGeofences(
     // Clear existing
     polygonsRef.current.forEach((p) => p.setMap(null));
     polygonsRef.current = [];
-    labelsRef.current.forEach((l) => { l.map = null; });
+    labelsRef.current.forEach((l) => l.setMap(null));
     labelsRef.current = [];
 
     if (!enabled || geofences.length === 0) return;
+
+    // Fix 88: zone type color mapping
+    const ZONE_TYPE_COLORS: Record<string, string> = {
+      restricted: '#dc2626',     // red
+      patrol: '#3b82f6',         // blue
+      safety: '#f59e0b',         // amber
+      exclusion: '#ef4444',      // bright red
+      monitoring: '#8b5cf6',     // purple
+      property: '#22c55e',       // green
+    };
+
+    // Fix 89: count alerts per geofence
+    const alertCounts = new Map<number, number>();
+    alerts.forEach((a) => {
+      alertCounts.set(a.geofenceId, (alertCounts.get(a.geofenceId) || 0) + 1);
+    });
+
+    const infoWindowLocal = new google.maps.InfoWindow();
 
     geofences.forEach((fence) => {
       if (!fence.is_active || !fence.polygon_coords) return;
@@ -141,7 +161,8 @@ export function useMapGeofences(
       const path = parsePolygonCoords(fence.polygon_coords);
       if (path.length < 3) return;
 
-      const color = fence.color || '#3b82f6';
+      // Fix 88: color code by zone type, fallback to fence color
+      const color = ZONE_TYPE_COLORS[fence.zone_type?.toLowerCase()] || fence.color || '#3b82f6';
 
       const polygon = new google.maps.Polygon({
         paths: path,
@@ -151,34 +172,77 @@ export function useMapGeofences(
         strokeWeight: 2,
         strokeOpacity: 0.7,
         map,
-        clickable: false,
+        clickable: true, // Fix 90: make clickable for info window
         zIndex: 6,
+      });
+
+      // Fix 90: click handler for geofence properties
+      polygon.addListener('click', (e: google.maps.PolyMouseEvent) => {
+        const alertCount = alertCounts.get(fence.id) || 0;
+        const container = document.createElement('div');
+        container.style.cssText = 'font-family:monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#0a0e14;padding:10px 12px;border-radius:4px;border:1px solid #1e2a3a';
+        const heading = document.createElement('div');
+        heading.style.cssText = `font-weight:bold;font-size:13px;margin-bottom:6px;color:${color}`;
+        heading.textContent = fence.name;
+        container.appendChild(heading);
+        const table = document.createElement('table');
+        table.style.cssText = 'width:100%;font-size:11px;border-collapse:collapse';
+        const addRow = (lbl: string, val: string, c?: string) => {
+          const tr = document.createElement('tr');
+          const td1 = document.createElement('td');
+          td1.style.cssText = 'color:#6b7b8d;padding:1px 6px 1px 0';
+          td1.textContent = lbl;
+          const td2 = document.createElement('td');
+          td2.style.cssText = `color:${c || '#e0e0e0'}`;
+          td2.textContent = val;
+          tr.appendChild(td1); tr.appendChild(td2); table.appendChild(tr);
+        };
+        addRow('Type', fence.zone_type || 'Unknown');
+        addRow('Alerts', String(alertCount), alertCount > 0 ? '#f59e0b' : undefined);
+        addRow('Enter Alerts', fence.alert_on_enter ? 'Yes' : 'No');
+        addRow('Exit Alerts', fence.alert_on_exit ? 'Yes' : 'No');
+        container.appendChild(table);
+        const pos = e.latLng || computeCentroid(path);
+        infoWindowLocal.setContent(container);
+        infoWindowLocal.setPosition(pos);
+        infoWindowLocal.open(map);
       });
 
       polygonsRef.current.push(polygon);
 
-      // Add label at centroid using AdvancedMarkerElement
-      if (window.google?.maps?.marker?.AdvancedMarkerElement) {
+      // Add label at centroid using OverlayView
+      const OverlayMarkerClass = getOverlayMarkerClass();
+      if (OverlayMarkerClass) {
         const centroid = computeCentroid(path);
         const labelEl = document.createElement('div');
-        labelEl.style.cssText = 'background:rgba(0,0,0,0.7);color:white;font-size:10px;font-family:monospace;padding:2px 6px;border-radius:2px;white-space:nowrap;pointer-events:none';
-        labelEl.textContent = fence.name;
+        labelEl.style.cssText = 'background:rgba(0,0,0,0.7);color:white;font-size:10px;font-family:monospace;padding:2px 6px;border-radius:2px;white-space:nowrap;pointer-events:none;display:flex;align-items:center;gap:4px';
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = fence.name;
+        labelEl.appendChild(nameSpan);
+        // Fix 89: show alert count badge on geofence
+        const fenceAlertCount = alertCounts.get(fence.id) || 0;
+        if (fenceAlertCount > 0) {
+          const badge = document.createElement('span');
+          badge.style.cssText = 'background:#f59e0b;color:#0a0e14;font-size:8px;font-weight:bold;padding:0 4px;border-radius:8px;min-width:14px;text-align:center';
+          badge.textContent = String(fenceAlertCount);
+          labelEl.appendChild(badge);
+        }
 
-        const labelMarker = new google.maps.marker.AdvancedMarkerElement({
+        const labelMarker = new OverlayMarkerClass({
           map,
           position: centroid,
           content: labelEl,
           zIndex: 7,
         });
 
-        labelsRef.current.push(labelMarker);
+        labelsRef.current.push(labelMarker as OverlayMarker & google.maps.OverlayView);
       }
     });
 
     return () => {
       polygonsRef.current.forEach((p) => p.setMap(null));
       polygonsRef.current = [];
-      labelsRef.current.forEach((l) => { l.map = null; });
+      labelsRef.current.forEach((l) => l.setMap(null));
       labelsRef.current = [];
     };
   }, [map, enabled, geofences]);
@@ -309,7 +373,7 @@ export function useMapGeofences(
     return () => {
       polygonsRef.current.forEach((p) => p.setMap(null));
       polygonsRef.current = [];
-      labelsRef.current.forEach((l) => { l.map = null; });
+      labelsRef.current.forEach((l) => l.setMap(null));
       labelsRef.current = [];
       drawMarkersRef.current.forEach((m) => m.setMap(null));
       drawMarkersRef.current = [];

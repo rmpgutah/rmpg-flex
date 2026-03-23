@@ -6,6 +6,8 @@
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
+import type { OverlayMarker } from '../utils/mapMarkerBuilders';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -40,13 +42,13 @@ export function useMapClustering(
   callMarkers: google.maps.marker.AdvancedMarkerElement[],
 ): { clustered: boolean } {
   const [clustered, setClustered] = useState(false);
-  const clusterMarkersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
+  const clusterMarkersRef = useRef<(OverlayMarker & google.maps.OverlayView)[]>([]);
   const hiddenMarkersRef = useRef<Set<google.maps.marker.AdvancedMarkerElement>>(new Set());
 
   // ── Remove cluster markers ──────────────────────────────
 
   const clearClusters = useCallback(() => {
-    clusterMarkersRef.current.forEach((m) => { m.map = null; });
+    clusterMarkersRef.current.forEach((m) => m.setMap(null));
     clusterMarkersRef.current = [];
 
     // Restore hidden markers
@@ -171,7 +173,7 @@ export function useMapClustering(
     }
 
     // Clear old clusters
-    clusterMarkersRef.current.forEach((m) => { m.map = null; });
+    clusterMarkersRef.current.forEach((m) => m.setMap(null));
     clusterMarkersRef.current = [];
 
     // Restore previously hidden markers
@@ -218,30 +220,29 @@ export function useMapClustering(
       `;
       el.textContent = String(group.count);
 
-      if (window.google?.maps?.marker?.AdvancedMarkerElement) {
-        const clusterMarker = new google.maps.marker.AdvancedMarkerElement({
+      const OverlayMarkerClass = getOverlayMarkerClass();
+      if (OverlayMarkerClass) {
+        const clusterMarker = new OverlayMarkerClass({
           map,
           position: { lat: group.lat, lng: group.lng },
           content: el,
           zIndex: 100,
           title: `${group.count} incidents`,
+          onClick: () => {
+            const bounds = new google.maps.LatLngBounds();
+            group.markerIndices.forEach((idx) => {
+              const pos = markerInfos[idx].marker.position;
+              if (pos) {
+                const lat = typeof pos.lat === 'function' ? (pos as google.maps.LatLng).lat() : (pos as google.maps.LatLngLiteral).lat;
+                const lng = typeof pos.lng === 'function' ? (pos as google.maps.LatLng).lng() : (pos as google.maps.LatLngLiteral).lng;
+                bounds.extend(new google.maps.LatLng(lat, lng));
+              }
+            });
+            map.fitBounds(bounds);
+          },
         });
 
-        // Click to zoom in and show individual markers
-        clusterMarker.addListener('click', () => {
-          const bounds = new google.maps.LatLngBounds();
-          group.markerIndices.forEach((idx) => {
-            const pos = markerInfos[idx].marker.position;
-            if (pos) {
-              const lat = typeof pos.lat === 'function' ? (pos as google.maps.LatLng).lat() : (pos as google.maps.LatLngLiteral).lat;
-              const lng = typeof pos.lng === 'function' ? (pos as google.maps.LatLng).lng() : (pos as google.maps.LatLngLiteral).lng;
-              bounds.extend(new google.maps.LatLng(lat, lng));
-            }
-          });
-          map.fitBounds(bounds);
-        });
-
-        clusterMarkersRef.current.push(clusterMarker);
+        clusterMarkersRef.current.push(clusterMarker as OverlayMarker & google.maps.OverlayView);
       }
     });
 
@@ -285,7 +286,7 @@ export function useMapClustering(
 
   useEffect(() => {
     return () => {
-      clusterMarkersRef.current.forEach((m) => { m.map = null; });
+      clusterMarkersRef.current.forEach((m) => m.setMap(null));
       clusterMarkersRef.current = [];
       hiddenMarkersRef.current.clear();
     };

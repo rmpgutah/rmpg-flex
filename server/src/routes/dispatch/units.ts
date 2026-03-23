@@ -13,7 +13,9 @@ const router = Router();
 router.get('/units', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    // Fix 59: Index hints for GPS-related queries
     const units = db.prepare(`
+      /* Uses idx: units(officer_id), units(current_call_id) */
       SELECT u.*, usr.full_name as officer_name, usr.badge_number, usr.phone as officer_phone,
         c.call_number, c.incident_type as current_call_type, c.location_address as current_call_location
       FROM units u
@@ -22,7 +24,7 @@ router.get('/units', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       ORDER BY u.call_sign
     `).all();
 
-    res.json(units);
+    res.json({ data: units, total: units.length });
   } catch (error: any) {
     console.error('[Units] get units error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -198,6 +200,21 @@ router.put('/units/:id/status', validateParamIdMiddleware, requireRole('admin', 
     const params: any[] = [];
 
     if (status) {
+      // Fix 58: Validate status transitions
+      const INVALID_TRANSITIONS: Record<string, string[]> = {
+        off_duty: ['onscene'], // Can't go from off_duty directly to onscene
+        out_of_service: ['onscene', 'enroute'], // Must go available first
+      };
+      const blocked = INVALID_TRANSITIONS[unit.status];
+      if (blocked && blocked.includes(status)) {
+        res.status(400).json({
+          error: `Cannot transition from '${unit.status}' to '${status}'. Must go through 'available' or 'dispatched' first.`,
+          code: 'INVALID_STATUS_TRANSITION',
+          current_status: unit.status,
+          requested_status: status,
+        });
+        return;
+      }
       updates.push('status = ?');
       params.push(status);
       updates.push('last_status_change = ?');
@@ -210,7 +227,7 @@ router.put('/units/:id/status', validateParamIdMiddleware, requireRole('admin', 
     if (latitude !== undefined) {
       const lat = parseFloat(String(latitude));
       if (isNaN(lat) || lat < -90 || lat > 90) {
-        res.status(400).json({ error: 'latitude must be between -90 and 90' });
+        res.status(400).json({ error: 'latitude must be between -90 and 90', code: 'INVALID_LAT' });
         return;
       }
       updates.push('latitude = ?');
@@ -219,11 +236,16 @@ router.put('/units/:id/status', validateParamIdMiddleware, requireRole('admin', 
     if (longitude !== undefined) {
       const lng = parseFloat(String(longitude));
       if (isNaN(lng) || lng < -180 || lng > 180) {
-        res.status(400).json({ error: 'longitude must be between -180 and 180' });
+        res.status(400).json({ error: 'longitude must be between -180 and 180', code: 'INVALID_LNG' });
         return;
       }
       updates.push('longitude = ?');
       params.push(lng);
+    }
+    // Fix 57: Update last_position_update timestamp when coordinates change
+    if (latitude !== undefined || longitude !== undefined) {
+      updates.push('gps_updated_at = ?');
+      params.push(now);
     }
 
     if (updates.length === 0) {

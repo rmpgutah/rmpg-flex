@@ -90,6 +90,7 @@ import { useMapSafetyZones } from './hooks/useMapSafetyZones';
 import { useMapGeofences } from './hooks/useMapGeofences';
 import { useMapClustering } from './hooks/useMapClustering';
 import { useMapDragDispatch } from './hooks/useMapDragDispatch';
+import { useMapTrafficLayer } from './hooks/useMapTrafficLayer';
 import { useMapPatrolCheckpoints } from './hooks/useMapPatrolCheckpoints';
 import { useMapFieldInterviews } from './hooks/useMapFieldInterviews';
 import { useMapDwellTime } from './hooks/useMapDwellTime';
@@ -213,7 +214,40 @@ export default function MapPage() {
   const tileMonitorCleanupRef = useRef<(() => void) | null>(null);
   const offlineTileCleanupRef = useRef<(() => void) | null>(null);
 
-  const [layers, setLayers] = useState({ units: true, incidents: true, properties: true });
+  // Fix 28: restore layer toggle states from localStorage on mount
+  const [layers, setLayers] = useState(() => {
+    try {
+      const saved = localStorage.getItem('rmpg_map_layers');
+      if (saved) return JSON.parse(saved) as { units: boolean; incidents: boolean; properties: boolean };
+    } catch { /* use defaults */ }
+    return { units: true, incidents: true, properties: true };
+  });
+
+  // Fix 27+29: save layer toggle states to localStorage with debouncing
+  const layerSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (layerSaveTimerRef.current) clearTimeout(layerSaveTimerRef.current);
+    layerSaveTimerRef.current = setTimeout(() => {
+      try { localStorage.setItem('rmpg_map_layers', JSON.stringify(layers)); } catch { /* quota exceeded */ }
+    }, 300);
+    return () => { if (layerSaveTimerRef.current) clearTimeout(layerSaveTimerRef.current); };
+  }, [layers]);
+
+  // Fix 40-42: data freshness tracking
+  const [lastDataUpdate, setLastDataUpdate] = useState<Date>(new Date());
+  const dataStaleThresholdMs = 5 * 60 * 1000; // 5 minutes
+  const isDataStale = Date.now() - lastDataUpdate.getTime() > dataStaleThresholdMs;
+
+  // Fix 42: auto-refresh stale overlay data when tab becomes visible
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && Date.now() - lastDataUpdate.getTime() > dataStaleThresholdMs) {
+        fetchAllData?.({ silent: true });
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [lastDataUpdate]);
 
   // Data state
   const [units, setUnits] = useState<Unit[]>([]);
@@ -279,9 +313,16 @@ export default function MapPage() {
   // Layers panel (left) collapsed/expanded
   const [layersPanelOpen, setLayersPanelOpen] = useState(true);
 
-  // Sidebar state
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Fix 32-33: Sidebar open/closed state and active tab persisted via usePersistedTab
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    try { const v = localStorage.getItem('rmpg_map_sidebar_open'); return v !== 'false'; } catch { return true; }
+  });
   const [sidebarTab, setSidebarTab] = usePersistedTab('rmpg_map_sidebar', 'units', ['units', 'calls'] as const);
+
+  // Fix 32: persist sidebar open/closed state
+  useEffect(() => {
+    try { localStorage.setItem('rmpg_map_sidebar_open', String(sidebarOpen)); } catch { /* noop */ }
+  }, [sidebarOpen]);
 
   // Map style — seed from server preference if user hasn't picked one locally yet
   const serverDefaultStyle = (userPrefs?.default_map_style || 'dark') as MapStyleId;
@@ -384,6 +425,12 @@ export default function MapPage() {
   const [showSafetyZones, setShowSafetyZones] = useState(false);
   const [showGeofences, setShowGeofences] = useState(false);
   const [dragDispatchMode, setDragDispatchMode] = useState(false);
+  const [clusteringEnabled, setClusteringEnabled] = useState(false);
+
+  // Separate marker tracking for clustering & drag dispatch
+  const unitMarkersMapRef = useRef<Map<string, google.maps.marker.AdvancedMarkerElement>>(new Map());
+  const callMarkersMapRef = useRef<Map<string, { marker: google.maps.marker.AdvancedMarkerElement; callId: string }>>(new Map());
+  const callMarkersArrayRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
 
   // Intel layers
   const [intelLayers, setIntelLayers] = useState({ warrants: false, trespass: false, offenders: false, bolos: false });
@@ -438,8 +485,32 @@ export default function MapPage() {
   const intelLayerData = useMapIntelLayers(mapInstanceRef.current, intelLayers);
   const safetyZones = useMapSafetyZones(mapInstanceRef.current, showSafetyZones);
   const geofences = useMapGeofences(mapInstanceRef.current, showGeofences);
-  // Note: clustering and drag-dispatch need marker references which may not be easily available
-  // Wire them with empty arrays/maps for now — they'll work once markers are exposed
+  // Traffic layer
+  const { showTraffic, toggleTraffic } = useMapTrafficLayer();
+
+  // Clustering — groups call markers at low zoom levels
+  const clustering = useMapClustering(mapInstanceRef.current, clusteringEnabled, callMarkersArrayRef.current);
+
+  // Drag dispatch — drag a unit marker onto a call marker to dispatch
+  const dragDispatch = useMapDragDispatch(
+    mapInstanceRef.current,
+    dragDispatchMode,
+    unitMarkersMapRef.current,
+    callMarkersMapRef.current,
+    useCallback(async (unitId: string, callId: string) => {
+      try {
+        await apiFetch(`/dispatch/calls/${callId}/assign-unit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ unit_id: unitId }),
+        });
+        addToast(`Dispatched unit ${unitId} to call ${callId}`, 'success');
+      } catch (err: any) {
+        addToast(`Dispatch failed: ${err?.message || 'Unknown error'}`, 'error');
+        throw err;
+      }
+    }, [addToast]),
+  );
 
   // New tactical hooks
   const patrolCheckpoints = useMapPatrolCheckpoints(mapInstanceRef.current, showPatrolCheckpoints);
@@ -552,6 +623,7 @@ export default function MapPage() {
     if (!options?.silent) { setLoading(true); setError(null); }
     await Promise.all([fetchUnits(), fetchCalls(), fetchProperties()]);
     if (!options?.silent) setLoading(false);
+    setLastDataUpdate(new Date()); // Fix 40: track last data update timestamp
   }, [fetchUnits, fetchCalls, fetchProperties]);
 
   // ============================================================
@@ -707,9 +779,19 @@ export default function MapPage() {
       if (!mapRef.current || authFailed || cancelled) return;
       if (mapInstanceRef.current) { setMapLoaded(true); return; }
 
+      // Fix 31: restore map center/zoom from localStorage
+      let savedCenter = DEFAULT_CENTER;
+      let savedZoom = 12;
+      try {
+        const sc = localStorage.getItem('rmpg_map_center');
+        const sz = localStorage.getItem('rmpg_map_zoom');
+        if (sc) savedCenter = JSON.parse(sc);
+        if (sz) savedZoom = parseInt(sz, 10) || 12;
+      } catch { /* use defaults */ }
+
       const map = new google.maps.Map(mapRef.current, {
-        center: DEFAULT_CENTER,
-        zoom: 12,
+        center: savedCenter,
+        zoom: savedZoom,
         disableDefaultUI: true,
         zoomControl: false,
         styles: DARK_MAP_STYLE,
@@ -721,6 +803,18 @@ export default function MapPage() {
 
       mapInstanceRef.current = map;
       registerMapInstance(map);
+
+      // Fix 30: save map center/zoom to localStorage on idle
+      map.addListener('idle', () => {
+        try {
+          const c = map.getCenter();
+          const z = map.getZoom();
+          if (c && z != null) {
+            localStorage.setItem('rmpg_map_center', JSON.stringify({ lat: c.lat(), lng: c.lng() }));
+            localStorage.setItem('rmpg_map_zoom', String(z));
+          }
+        } catch { /* quota exceeded */ }
+      });
 
       // Attach offline tile layer — renders pre-downloaded CartoDB dark_matter
       // tiles beneath Google tiles. When online, Google tiles cover them.
@@ -944,6 +1038,9 @@ export default function MapPage() {
     // Clear existing markers
     markersRef.current.forEach((m) => removeMarker(m));
     markersRef.current = [];
+    unitMarkersMapRef.current.clear();
+    callMarkersMapRef.current.clear();
+    callMarkersArrayRef.current = [];
     infoWindowRef.current?.close();
 
     // Add unit markers
@@ -999,6 +1096,7 @@ export default function MapPage() {
           });
 
           markersRef.current.push(marker);
+          if (marker) unitMarkersMapRef.current.set(String(unit.id), marker);
         }
       });
     }
@@ -1063,6 +1161,10 @@ export default function MapPage() {
           });
 
           markersRef.current.push(marker);
+          if (marker) {
+            callMarkersMapRef.current.set(String(call.id), { marker, callId: String(call.id) });
+            callMarkersArrayRef.current.push(marker);
+          }
         }
       });
     }
@@ -1267,15 +1369,24 @@ export default function MapPage() {
     // Skip basic heatmap rendering when advanced heatmap is active (it manages its own layers)
     if (!showHeatmap || heatmapData.length === 0 || advancedHeatmapEnabled) return;
 
+    // Fix 9: guard for missing visualization library
+    if (!google.maps.visualization?.HeatmapLayer) {
+      console.warn('[MapPage] google.maps.visualization.HeatmapLayer not available');
+      return;
+    }
+
     // Build weighted data points for HeatmapLayer
     const weightedData = heatmapData
-      .filter((p: any) => p.latitude != null && p.longitude != null)
+      // Fix 11: validate heatmap data points have finite lat/lng
+      .filter((p: any) => p.latitude != null && p.longitude != null && isFinite(p.latitude) && isFinite(p.longitude))
+      // Fix 12: cap heatmap points at 10000
+      .slice(0, 10000)
       .map((point: any) => ({
         location: new google.maps.LatLng(point.latitude, point.longitude),
         weight: heatmapMode === 'risk' ? (point.risk_weight || point.count || 1) : (point.count || 1),
       }));
 
-    // Choose gradient based on mode
+    // Choose gradient based on mode (Fix 14: dark-theme compatible colors)
     const gradient = heatmapMode === 'risk'
       ? [
           'rgba(0,0,0,0)',        // transparent
@@ -1294,16 +1405,20 @@ export default function MapPage() {
           'rgba(255,50,0,0.95)', // red high
         ];
 
-    const heatmap = new google.maps.visualization.HeatmapLayer({
-      data: weightedData,
-      map,
-      radius: 30,
-      opacity: 0.7,
-      gradient,
-      dissipating: true,
-    });
+    try { // Fix 10: try/catch around heatmap creation
+      const heatmap = new google.maps.visualization.HeatmapLayer({
+        data: weightedData,
+        map,
+        radius: 30,
+        opacity: 0.7,
+        gradient,
+        dissipating: true, // Fix 13: ensure dissipating is always true
+      });
 
-    heatmapLayerRef.current = heatmap;
+      heatmapLayerRef.current = heatmap;
+    } catch (err) {
+      console.warn('[MapPage] Error creating heatmap layer:', err);
+    }
 
     return () => {
       if (heatmapLayerRef.current) {
@@ -1333,14 +1448,22 @@ export default function MapPage() {
       if (unit.latitude == null || unit.longitude == null) return;
       if (!unit.current_call_id) return;
       if (!CLEARABLE_STATUSES.includes(unit.status)) return;
+      // Fix 19: validate unit has finite coordinates
+      if (!isFinite(unit.latitude) || !isFinite(unit.longitude)) return;
 
       // Find the call this unit is assigned to
       const call = calls.find((c) => String(c.id) === String(unit.current_call_id));
       if (!call || call.latitude == null || call.longitude == null) return;
+      // Fix 19: validate call has finite coordinates
+      if (!isFinite(call.latitude) || !isFinite(call.longitude)) return;
+
+      // Fix 21: skip zero-length lines
+      if (unit.latitude === call.latitude && unit.longitude === call.longitude) return;
 
       const statusColor = UNIT_STATUS_COLORS[unit.status] || '#5a6e80';
       const isDashed = unit.status === 'dispatched';
 
+      try { // Fix 20: try/catch around Polyline creation
       const line = new google.maps.Polyline({
         path: [
           { lat: unit.latitude, lng: unit.longitude },
@@ -1359,6 +1482,9 @@ export default function MapPage() {
       });
 
       trackingLinesRef.current.push(line);
+      } catch (err) {
+        console.warn('[MapPage] Error creating tracking line:', err);
+      }
     });
     setTrackingLineCount(trackingLinesRef.current.length);
   }, [units, calls, showTrackingLines, mapLoaded]);
@@ -3358,6 +3484,30 @@ export default function MapPage() {
                 )}
               </button>
 
+              {/* Traffic Layer */}
+              <button
+                onClick={() => toggleTraffic(mapInstanceRef.current)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showTraffic ? 'panel-inset bg-green-900/20 text-green-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <Car className="w-3 h-3" />
+                <span className="flex-1 text-left">Traffic</span>
+                {showTraffic && <span className="led-dot led-green" style={{ width: 5, height: 5 }} />}
+              </button>
+
+              {/* Marker Clustering */}
+              <button
+                onClick={() => setClusteringEnabled(!clusteringEnabled)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  clusteringEnabled ? 'panel-inset bg-blue-900/20 text-blue-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <CircleDot className="w-3 h-3" />
+                <span className="flex-1 text-left">Cluster Calls</span>
+                {clusteringEnabled && clustering.clustered && <span className="led-dot led-blue" style={{ width: 5, height: 5 }} />}
+              </button>
+
               {/* Daylight Overlay */}
               <button
                 onClick={() => setShowDaylight(!showDaylight)}
@@ -4261,6 +4411,17 @@ export default function MapPage() {
                   <span className="text-cyan-400 text-[8px] font-mono font-bold">{trackingLineCount}</span>
                 </div>
               )}
+
+              {/* Fix 40-41: data freshness indicator */}
+              <div className="flex items-center gap-1 px-1.5 ml-auto">
+                {isDataStale && (
+                  <span className="text-[8px] font-mono font-bold text-red-400 animate-pulse" title="Data may be stale">STALE</span>
+                )}
+                <Clock className="w-2.5 h-2.5 text-rmpg-500" />
+                <span className="text-[8px] font-mono text-rmpg-400" title={`Last updated: ${lastDataUpdate.toLocaleTimeString()}`}>
+                  {lastDataUpdate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' })}
+                </span>
+              </div>
             </div>
           </div>
         </div>}

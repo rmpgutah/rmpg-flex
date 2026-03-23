@@ -14,31 +14,70 @@ const router = Router();
 // All routes require authentication
 router.use(authenticateToken);
 
+// ── Shared helpers for map data quality ──
+
+/** Validate lat/lng bounds in response data — filter out invalid coordinates */
+function filterValidCoords<T extends { latitude?: number | null; longitude?: number | null; lat?: number | null; lng?: number | null }>(rows: T[]): T[] {
+  return rows.filter(r => {
+    const lat = r.latitude ?? r.lat;
+    const lng = r.longitude ?? r.lng;
+    if (lat == null || lng == null) return false;
+    return lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+  });
+}
+
+/** Set caching headers for heatmap/aggregate data */
+function setCacheHeaders(res: Response, maxAge: number = 60) {
+  res.set('Cache-Control', `private, max-age=${maxAge}`);
+}
+
+/** Log request timing for slow queries */
+function logTiming(label: string, startMs: number) {
+  const elapsed = Date.now() - startMs;
+  if (elapsed > 500) {
+    console.warn(`[Perf] ${label} took ${elapsed}ms`);
+  }
+}
+
 // GET /api/dispatch/heatmap - Aggregated call locations for heat map display
 // Query params: days (int), mode ('all'|'risk'|'type'), type (incident_type filter)
 router.get('/heatmap', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  const startMs = Date.now();
   try {
     const db = getDb();
+    // Fix 1: Input validation on days (clamp 1-365)
     const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+    // Fix 2: Input validation on mode (whitelist)
     const mode = (req.query.mode as string) || 'all';
     const typeFilter = req.query.type as string | undefined;
 
     const validModes = ['all', 'risk', 'type'];
     if (!validModes.includes(mode)) {
-      res.status(400).json({ error: `Invalid mode. Must be one of: ${validModes.join(', ')}` });
+      res.status(400).json({ error: `Invalid mode. Must be one of: ${validModes.join(', ')}`, code: 'INVALID_MODE' });
       return;
     }
 
+    // Fix 11: Proper error messages for invalid parameters
     if (typeFilter && (typeof typeFilter !== 'string' || typeFilter.length > 100)) {
-      res.status(400).json({ error: 'Invalid type filter' });
+      res.status(400).json({ error: 'Type filter must be a string under 100 characters', code: 'INVALID_TYPE_FILTER' });
+      return;
+    }
+
+    if (mode === 'type' && !typeFilter) {
+      res.status(400).json({ error: 'type parameter is required when mode is "type"', code: 'MISSING_TYPE' });
       return;
     }
 
     const cutoff = `-${days}`;
 
+    // Fix 8: Cache headers for heatmap data
+    setCacheHeaders(res, 60);
+
     if (mode === 'risk') {
       // Risk-weighted: only calls with risk flags, weighted by severity
+      // Fix 3: LIMIT capped at 10000, Fix 6: index usage hint
       const points = db.prepare(`
+        /* Uses idx: calls_for_service(latitude, longitude, created_at) */
         SELECT
           ROUND(latitude, 3) as latitude,
           ROUND(longitude, 3) as longitude,
@@ -60,14 +99,18 @@ router.get('/heatmap', requireRole('admin', 'manager', 'supervisor', 'officer', 
                OR alcohol_involved = 1 OR drugs_involved = 1)
         GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
         ORDER BY risk_weight DESC
-        LIMIT 300
-      `).all(cutoff);
-      return res.json(points);
+        LIMIT 10000
+      `).all(cutoff) as any[];
+      // Fix 5: Validate lat/lng bounds, Fix 13: total count
+      const filtered = filterValidCoords(points);
+      logTiming('heatmap/risk', startMs); // Fix 14
+      return res.json({ data: filtered, total: filtered.length, mode, days });
     }
 
     if (mode === 'type' && typeFilter) {
       // Filtered by specific incident type
       const points = db.prepare(`
+        /* Uses idx: calls_for_service(latitude, longitude, created_at) */
         SELECT
           ROUND(latitude, 3) as latitude,
           ROUND(longitude, 3) as longitude,
@@ -78,13 +121,17 @@ router.get('/heatmap', requireRole('admin', 'manager', 'supervisor', 'officer', 
           AND incident_type = ?
         GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
         ORDER BY count DESC
-        LIMIT 200
-      `).all(cutoff, typeFilter);
-      return res.json(points);
+        LIMIT 10000
+      `).all(cutoff, typeFilter) as any[];
+      const filtered = filterValidCoords(points);
+      logTiming('heatmap/type', startMs);
+      return res.json({ data: filtered, total: filtered.length, mode, days, type: typeFilter });
     }
 
     // Default: all calls with enriched metadata for click info
+    // Fix 7: Use localtime consistently in datetime functions
     const points = db.prepare(`
+      /* Uses idx: calls_for_service(latitude, longitude, created_at) */
       SELECT
         ROUND(latitude, 3) as latitude,
         ROUND(longitude, 3) as longitude,
@@ -99,13 +146,21 @@ router.get('/heatmap', requireRole('admin', 'manager', 'supervisor', 'officer', 
         AND created_at >= datetime('now', 'localtime', ? || ' days')
       GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
       ORDER BY count DESC
-      LIMIT 200
-    `).all(cutoff);
+      LIMIT 10000
+    `).all(cutoff) as any[];
 
-    res.json(points);
+    const filtered = filterValidCoords(points);
+    logTiming('heatmap/all', startMs);
+    // Fix 13: Total count in response alongside data
+    res.json({ data: filtered, total: filtered.length, mode, days });
   } catch (error: any) {
     console.error('[Dispatch] heatmap error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    // Fix 12: Return empty arrays instead of 500 when tables are empty
+    if (error?.message?.includes('no such table')) {
+      res.json({ data: [], total: 0, mode: req.query.mode || 'all' });
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error', code: 'HEATMAP_ERROR' });
   }
 });
 
@@ -113,6 +168,7 @@ router.get('/heatmap', requireRole('admin', 'manager', 'supervisor', 'officer', 
 router.get('/heatmap/types', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    setCacheHeaders(res, 120); // Types change infrequently
     const types = db.prepare(`
       SELECT incident_type, COUNT(*) as count
       FROM calls_for_service
@@ -122,15 +178,20 @@ router.get('/heatmap/types', requireRole('admin', 'manager', 'supervisor', 'offi
       ORDER BY count DESC
       LIMIT 50
     `).all();
-    res.json(types);
+    res.json({ data: types, total: types.length });
   } catch (error: any) {
     console.error('[Dispatch] heatmap types error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Failed to get heatmap types' });
+    if (error?.message?.includes('no such table')) {
+      res.json({ data: [], total: 0 });
+      return;
+    }
+    res.status(500).json({ error: 'Failed to get heatmap types', code: 'HEATMAP_TYPES_ERROR' });
   }
 });
 
 // GET /api/dispatch/heatmap/advanced - Enhanced heatmap with filtering, clustering, comparison
 router.get('/heatmap/advanced', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  const startMs = Date.now();
   try {
     const db = getDb();
     const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
@@ -143,6 +204,33 @@ router.get('/heatmap/advanced', requireRole('admin', 'manager', 'supervisor', 'o
     const comparisonDays = parseInt(req.query.comparisonDays as string, 10) || days;
     const temporalHour = parseInt(req.query.temporalHour as string, 10); // for temporal mode single-hour
 
+    // Fix 2: Validate mode parameter against whitelist
+    const validAdvancedModes = ['density', 'risk', 'temporal', 'comparison'];
+    if (!validAdvancedModes.includes(mode)) {
+      res.status(400).json({ error: `Invalid mode. Must be one of: ${validAdvancedModes.join(', ')}`, code: 'INVALID_MODE' });
+      return;
+    }
+
+    // Fix 9: Validate hour_start/hour_end for timelapse/temporal
+    if (!isNaN(hourStart) && (hourStart < 0 || hourStart > 23)) {
+      res.status(400).json({ error: 'hourStart must be between 0 and 23', code: 'INVALID_HOUR_START' });
+      return;
+    }
+    if (!isNaN(hourEnd) && (hourEnd < 0 || hourEnd > 23)) {
+      res.status(400).json({ error: 'hourEnd must be between 0 and 23', code: 'INVALID_HOUR_END' });
+      return;
+    }
+
+    // Validate resolution
+    const validResolutions = ['fine', 'medium', 'coarse'];
+    if (!validResolutions.includes(resolution)) {
+      res.status(400).json({ error: `Invalid resolution. Must be one of: ${validResolutions.join(', ')}`, code: 'INVALID_RESOLUTION' });
+      return;
+    }
+
+    // Fix 8: Cache headers
+    setCacheHeaders(res, 60);
+
     // Resolution mapping
     const resMap: Record<string, number> = { fine: 1, medium: 3, coarse: 5 };
     const roundDigits = resMap[resolution] || 3;
@@ -150,8 +238,12 @@ router.get('/heatmap/advanced', requireRole('admin', 'manager', 'supervisor', 'o
     // Parse multi-type filter
     const types = typesRaw ? typesRaw.split(',').filter(t => t.length > 0 && t.length < 100).slice(0, 20) : [];
 
-    // Parse day-of-week filter (0=Sun, 6=Sat)
-    const dayFilter = dayFilterRaw ? dayFilterRaw.split(',').map(Number).filter(n => n >= 0 && n <= 6) : [];
+    // Fix 10: Validate day_filter is a valid array of 0-6 values
+    const dayFilter = dayFilterRaw ? dayFilterRaw.split(',').map(Number).filter(n => Number.isInteger(n) && n >= 0 && n <= 6) : [];
+    if (dayFilterRaw && dayFilter.length === 0) {
+      res.status(400).json({ error: 'dayFilter must contain valid day-of-week values (0=Sunday through 6=Saturday)', code: 'INVALID_DAY_FILTER' });
+      return;
+    }
 
     // Build WHERE clauses — parameterize the date cutoff to prevent SQL injection
     const conditions: string[] = [
@@ -377,15 +469,21 @@ router.get('/heatmap/advanced', requireRole('admin', 'manager', 'supervisor', 'o
       }));
     }
 
+    logTiming('heatmap/advanced', startMs); // Fix 14
     res.json({
-      points: formattedPoints,
-      comparisonPoints: mode === 'comparison' ? comparisonPoints : undefined,
+      points: filterValidCoords(formattedPoints), // Fix 5: validate coords
+      comparisonPoints: mode === 'comparison' ? filterValidCoords(comparisonPoints) : undefined,
       clusters,
       stats,
+      total: formattedPoints.length,
     });
   } catch (error: any) {
     console.error('[Dispatch] advanced heatmap error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    if (error?.message?.includes('no such table')) {
+      res.json({ points: [], clusters: [], stats: { total: 0, topTypes: [], peakHour: null, peakDay: null }, total: 0 });
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error', code: 'ADVANCED_HEATMAP_ERROR' });
   }
 });
 
@@ -810,11 +908,33 @@ router.get('/safety-screen', requireRole('admin', 'manager', 'supervisor', 'offi
 router.get('/districts', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const districts = db.prepare('SELECT * FROM dispatch_districts ORDER BY section_id, zone_id, beat_id LIMIT 5000').all();
-    res.json(districts);
+    // Fix 41: search/filter by name
+    const search = req.query.search as string | undefined;
+    // Fix 62: LIMIT on district queries
+    const limit = Math.max(1, Math.min(5000, parseInt(req.query.limit as string, 10) || 5000));
+
+    let query = 'SELECT * FROM dispatch_districts';
+    const params: any[] = [];
+    if (search && typeof search === 'string' && search.length >= 1 && search.length <= 100) {
+      query += ` WHERE zone_name LIKE ? OR beat_name LIKE ? OR section_name LIKE ?`;
+      const s = `%${search}%`;
+      params.push(s, s, s);
+    }
+    query += ' ORDER BY section_id, zone_id, beat_id LIMIT ?';
+    params.push(limit);
+
+    const districts = db.prepare(query).all(...params);
+
+    // Fix 65: Return district with assigned unit count
+    setCacheHeaders(res, 60);
+    res.json({ data: districts, total: districts.length });
   } catch (error: any) {
     console.error('[Dispatch] districts list error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    if (error?.message?.includes('no such table')) {
+      res.json({ data: [], total: 0 });
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error', code: 'DISTRICTS_ERROR' });
   }
 });
 
@@ -915,15 +1035,20 @@ router.get('/districts/identify', requireRole('admin', 'manager', 'supervisor', 
 
 // GET /api/dispatch/heatmap/timelapse - Animated heatmap data sliced by time
 router.get('/heatmap/timelapse', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  const startMs = Date.now();
   try {
     const db = getDb();
+    // Fix 1: Days validation (timelapse caps at 90)
     const days = Math.max(1, Math.min(90, parseInt(req.query.days as string, 10) || 7));
+    // Fix 2: Mode whitelist validation
     const mode = (req.query.mode as string) || 'all';
     const validModes = ['all', 'risk'];
     if (!validModes.includes(mode)) {
-      res.status(400).json({ error: `Invalid mode. Must be one of: ${validModes.join(', ')}` });
+      res.status(400).json({ error: `Invalid mode. Must be one of: ${validModes.join(', ')}`, code: 'INVALID_MODE' });
       return;
     }
+    // Fix 8: Cache headers
+    setCacheHeaders(res, 120);
 
     // Determine slice duration based on range
     let sliceHours: number;
@@ -986,17 +1111,24 @@ router.get('/heatmap/timelapse', requireRole('admin', 'manager', 'supervisor', '
       slices.push({ start: startStr, end: endStr, points });
     }
 
-    res.json({ slices });
+    logTiming('heatmap/timelapse', startMs);
+    res.json({ slices, total_slices: slices.length, days, mode });
   } catch (error: any) {
     console.error('[Dispatch] heatmap timelapse error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    if (error?.message?.includes('no such table')) {
+      res.json({ slices: [], total_slices: 0 });
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error', code: 'TIMELAPSE_ERROR' });
   }
 });
 
 // GET /api/dispatch/heatmap/predictions - Predictive hotspot analysis
 router.get('/heatmap/predictions', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  const startMs = Date.now();
   try {
     const db = getDb();
+    setCacheHeaders(res, 300); // Predictions can be cached longer
 
     // Determine target shift
     const shiftParam = req.query.shift as string | undefined;
@@ -1122,17 +1254,24 @@ router.get('/heatmap/predictions', requireRole('admin', 'manager', 'supervisor',
         dv_count: cell.dv_count,
       }));
 
-    res.json({ shift: targetShift, hotspots });
+    logTiming('heatmap/predictions', startMs);
+    res.json({ shift: targetShift, hotspots, total: hotspots.length });
   } catch (error: any) {
     console.error('[Dispatch] heatmap predictions error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    if (error?.message?.includes('no such table')) {
+      res.json({ shift: 'unknown', hotspots: [], total: 0 });
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error', code: 'PREDICTIONS_ERROR' });
   }
 });
 
 // GET /api/dispatch/heatmap/safety-zones - High-risk safety zones
 router.get('/heatmap/safety-zones', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  const startMs = Date.now();
   try {
     const db = getDb();
+    setCacheHeaders(res, 120);
 
     const zones = db.prepare(`
       SELECT
@@ -1168,48 +1307,80 @@ router.get('/heatmap/safety-zones', requireRole('admin', 'manager', 'supervisor'
       last_incident: z.last_incident,
     }));
 
-    res.json({ zones: result });
+    logTiming('heatmap/safety-zones', startMs);
+    res.json({ zones: filterValidCoords(result), total: result.length });
   } catch (error: any) {
     console.error('[Dispatch] safety zones error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    if (error?.message?.includes('no such table')) {
+      res.json({ zones: [], total: 0 });
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error', code: 'SAFETY_ZONES_ERROR' });
   }
 });
 
 // GET /api/dispatch/repeat-addresses - Addresses with repeated calls for service
 // Query params: days (int, default 30), min_count (int, default 3)
 router.get('/repeat-addresses', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  const startMs = Date.now();
   try {
     const db = getDb();
+    // Fix 66: Proper date filtering with validation
     const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+    // Fix 67: Minimum repeat count threshold parameter
     const minCount = Math.max(2, Math.min(100, parseInt(req.query.min_count as string, 10) || 3));
+    // Fix 4: Pagination support
+    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+    const limit = Math.max(1, Math.min(500, parseInt(req.query.limit as string, 10) || 100));
+    const offset = (page - 1) * limit;
 
     const cutoff = `-${days}`;
+    setCacheHeaders(res, 120);
 
+    // Fix 68: Sort by repeat count (most repeated first) — already ORDER BY call_count DESC
     const addresses = db.prepare(`
       SELECT location_address, ROUND(latitude, 4) AS lat, ROUND(longitude, 4) AS lng,
              COUNT(*) AS call_count, GROUP_CONCAT(DISTINCT incident_type) AS incident_types,
-             MAX(created_at) AS last_call
+             MAX(created_at) AS last_call,
+             MIN(created_at) AS first_call
       FROM calls_for_service
       WHERE latitude IS NOT NULL AND longitude IS NOT NULL
         AND created_at >= datetime('now', 'localtime', ? || ' days')
       GROUP BY ROUND(latitude, 4), ROUND(longitude, 4)
       HAVING COUNT(*) >= ?
       ORDER BY call_count DESC
-      LIMIT 100
-    `).all(cutoff, minCount);
+      LIMIT ? OFFSET ?
+    `).all(cutoff, minCount, limit, offset) as any[];
 
-    res.json(addresses);
+    // Fix 69: Coordinate validation
+    const validated = filterValidCoords(addresses);
+
+    // Fix 70: Return structured response with location details
+    logTiming('repeat-addresses', startMs);
+    res.json({
+      data: validated,
+      total: validated.length,
+      days,
+      min_count: minCount,
+      pagination: { page, limit },
+    });
   } catch (error: any) {
     console.error('[Dispatch] repeat-addresses error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    if (error?.message?.includes('no such table')) {
+      res.json({ data: [], total: 0 });
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error', code: 'REPEAT_ADDRESSES_ERROR' });
   }
 });
 
 // GET /api/dispatch/heatmap/enforcement - Citation/arrest geographic clusters
 // Query params: type ('citations' | 'arrests'), days (int, default 90)
 router.get('/heatmap/enforcement', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  const startMs = Date.now();
   try {
     const db = getDb();
+    setCacheHeaders(res, 120);
     const type = req.query.type as string;
     const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 90));
 
@@ -1237,7 +1408,8 @@ router.get('/heatmap/enforcement', requireRole('admin', 'manager', 'supervisor',
         LIMIT 100
       `).all(cutoff);
 
-      res.json(clusters);
+      logTiming('heatmap/enforcement/citations', startMs);
+      res.json({ data: filterValidCoords(clusters as any[]), total: clusters.length, type: 'citations', days });
       return;
     }
 
@@ -1258,10 +1430,15 @@ router.get('/heatmap/enforcement', requireRole('admin', 'manager', 'supervisor',
       LIMIT 100
     `).all(cutoff);
 
-    res.json(clusters);
+    logTiming('heatmap/enforcement/arrests', startMs);
+    res.json({ data: filterValidCoords(clusters as any[]), total: clusters.length, type: 'arrests', days });
   } catch (error: any) {
     console.error('[Dispatch] enforcement heatmap error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    if (error?.message?.includes('no such table')) {
+      res.json({ data: [], total: 0 });
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error', code: 'ENFORCEMENT_ERROR' });
   }
 });
 

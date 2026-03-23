@@ -6,6 +6,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { apiFetch } from '../../../hooks/useApi';
+import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -21,6 +22,7 @@ interface IntelRecord {
 interface UseMapIntelLayersReturn {
   counts: Record<IntelLayer, number>;
   loading: Record<IntelLayer, boolean>;
+  errors: Record<IntelLayer, number>; // Fix 46: error count tracking
 }
 
 // ─── Layer config ───────────────────────────────────────────
@@ -145,14 +147,18 @@ export function useMapIntelLayers(
   const [loading, setLoading] = useState<Record<IntelLayer, boolean>>({
     warrants: false, trespass: false, offenders: false, bolos: false,
   });
+  // Fix 46: error count tracking
+  const [errors, setErrors] = useState<Record<IntelLayer, number>>({
+    warrants: 0, trespass: 0, offenders: 0, bolos: 0,
+  });
 
   // Cache fetched data so we don't refetch when toggling off/on
   const dataCache = useRef<Record<IntelLayer, IntelRecord[]>>({
     warrants: [], trespass: [], offenders: [], bolos: [],
   });
 
-  // Map objects per layer
-  const markersRef = useRef<Record<IntelLayer, google.maps.marker.AdvancedMarkerElement[]>>({
+  // Map objects per layer (OverlayView-based markers)
+  const markersRef = useRef<Record<IntelLayer, google.maps.OverlayView[]>>({
     warrants: [], trespass: [], offenders: [], bolos: [],
   });
   const circlesRef = useRef<google.maps.Circle[]>([]);
@@ -161,7 +167,7 @@ export function useMapIntelLayers(
   // ── Clear markers for a specific layer ──────────────────
 
   const clearLayer = useCallback((layer: IntelLayer) => {
-    markersRef.current[layer].forEach((m) => { m.map = null; });
+    markersRef.current[layer].forEach((m) => { m.setMap(null); });
     markersRef.current[layer] = [];
 
     if (layer === 'offenders') {
@@ -173,7 +179,8 @@ export function useMapIntelLayers(
   // ── Render markers for a layer ──────────────────────────
 
   const renderLayer = useCallback((layer: IntelLayer, records: IntelRecord[]) => {
-    if (!map || !window.google?.maps?.marker?.AdvancedMarkerElement) return;
+    const OverlayMarkerClass = getOverlayMarkerClass();
+    if (!map || !OverlayMarkerClass) return;
 
     clearLayer(layer);
 
@@ -181,8 +188,9 @@ export function useMapIntelLayers(
       infoWindowRef.current = new google.maps.InfoWindow();
     }
 
+    // Fix 49: validate that records have required fields before rendering
     const withCoords = records.filter(
-      (r) => r.latitude != null && r.longitude != null && !isNaN(Number(r.latitude)) && !isNaN(Number(r.longitude))
+      (r) => r.latitude != null && r.longitude != null && !isNaN(Number(r.latitude)) && !isNaN(Number(r.longitude)) && isFinite(Number(r.latitude)) && isFinite(Number(r.longitude)) && r.id != null
     );
 
     setCounts((prev) => ({ ...prev, [layer]: withCoords.length }));
@@ -193,22 +201,21 @@ export function useMapIntelLayers(
 
       const content = createMarkerElement(layer);
 
-      const marker = new google.maps.marker.AdvancedMarkerElement({
+      const marker = new OverlayMarkerClass({
         map,
         position: { lat, lng },
         content,
         title: String(record.name || record.subject_name || record.full_name || `${layer} #${record.id}`),
         zIndex: 20,
+        onClick: () => {
+          const infoContent = buildInfoContent(layer, record);
+          infoWindowRef.current?.setContent(infoContent);
+          infoWindowRef.current?.setPosition({ lat, lng });
+          infoWindowRef.current?.open(map);
+        },
       });
 
-      marker.addListener('click', () => {
-        const infoContent = buildInfoContent(layer, record);
-        infoWindowRef.current?.setContent(infoContent);
-        infoWindowRef.current?.setPosition({ lat, lng });
-        infoWindowRef.current?.open(map);
-      });
-
-      markersRef.current[layer].push(marker);
+      markersRef.current[layer].push(marker as unknown as google.maps.OverlayView);
 
       // Add proximity circle for offenders
       if (layer === 'offenders') {
@@ -272,9 +279,30 @@ export function useMapIntelLayers(
           }
           setLoading((prev) => ({ ...prev, [layer]: false }));
         })
-        .catch(() => {
+        .catch((err) => {
           if (cancelled) return;
           setLoading((prev) => ({ ...prev, [layer]: false }));
+          // Fix 46: track error count per layer
+          setErrors((prev) => ({ ...prev, [layer]: (prev[layer] || 0) + 1 }));
+          console.warn(`[useMapIntelLayers] Failed to fetch ${layer}:`, err);
+          // Fix 47: retry logic on individual layer fetch failure (max 2 retries)
+          if ((errors[layer] || 0) < 2 && enabledLayers[layer]) {
+            setTimeout(() => {
+              if (!cancelled && enabledLayers[layer]) {
+                apiFetch<IntelRecord[] | { data?: IntelRecord[]; results?: IntelRecord[] }>(LAYER_ENDPOINTS[layer])
+                  .then((res) => {
+                    if (cancelled) return;
+                    let records: IntelRecord[];
+                    if (Array.isArray(res)) records = res;
+                    else if (res && typeof res === 'object') records = (res as any).data || (res as any).results || [];
+                    else records = [];
+                    dataCache.current[layer] = records;
+                    if (enabledLayers[layer]) renderLayer(layer, records);
+                  })
+                  .catch(() => { /* retry exhausted */ });
+              }
+            }, 5000);
+          }
         });
     });
 
@@ -287,7 +315,7 @@ export function useMapIntelLayers(
     return () => {
       const layers: IntelLayer[] = ['warrants', 'trespass', 'offenders', 'bolos'];
       layers.forEach((layer) => {
-        markersRef.current[layer].forEach((m) => { m.map = null; });
+        markersRef.current[layer].forEach((m) => { m.setMap(null); });
         markersRef.current[layer] = [];
       });
       circlesRef.current.forEach((c) => c.setMap(null));
@@ -299,5 +327,5 @@ export function useMapIntelLayers(
     };
   }, []);
 
-  return { counts, loading };
+  return { counts, loading, errors }; // Fix 46: expose error counts
 }

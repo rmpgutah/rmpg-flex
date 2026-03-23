@@ -25,10 +25,12 @@ interface UseMapEnforcementClustersReturn {
 }
 
 // ─── Color config ───────────────────────────────────────────
+// Fix 70: color code by enforcement type (citations vs arrests vs warnings)
 
 const TYPE_COLORS: Record<string, string> = {
-  citations: '#3b82f6',
-  arrests: '#dc2626',
+  citations: '#3b82f6',   // blue
+  arrests: '#dc2626',     // red
+  warnings: '#f59e0b',    // amber
 };
 
 // ─── Hook ───────────────────────────────────────────────────

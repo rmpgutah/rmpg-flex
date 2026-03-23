@@ -6,6 +6,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { apiFetch } from '../../../hooks/useApi';
+import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -26,6 +27,7 @@ interface UseMapPatrolCheckpointsReturn {
   checkpoints: CheckpointRecord[];
   loading: boolean;
   overdueCount: number;
+  completionPct: number; // Fix 82: completion percentage
 }
 
 // ─── Status color logic ─────────────────────────────────────
@@ -130,7 +132,7 @@ export function useMapPatrolCheckpoints(
   const [loading, setLoading] = useState(false);
   const [overdueCount, setOverdueCount] = useState(0);
 
-  const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
+  const markersRef = useRef<google.maps.OverlayView[]>([]);
   const polylinesRef = useRef<google.maps.Polyline[]>([]);
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -139,8 +141,7 @@ export function useMapPatrolCheckpoints(
 
   const clearAll = useCallback(() => {
     markersRef.current.forEach((m) => {
-      if (window.google?.maps?.event) google.maps.event.clearInstanceListeners(m);
-      m.map = null;
+      m.setMap(null);
     });
     markersRef.current = [];
     polylinesRef.current.forEach((p) => p.setMap(null));
@@ -150,7 +151,8 @@ export function useMapPatrolCheckpoints(
   // ── Render checkpoints on map ─────────────────────────────
 
   const renderCheckpoints = useCallback((data: CheckpointRecord[]) => {
-    if (!map || !window.google?.maps?.marker?.AdvancedMarkerElement) return;
+    const OverlayMarkerClass = getOverlayMarkerClass();
+    if (!map || !OverlayMarkerClass) return;
 
     clearAll();
 
@@ -177,22 +179,21 @@ export function useMapPatrolCheckpoints(
 
       const content = createCheckpointMarkerElement(status);
 
-      const marker = new google.maps.marker.AdvancedMarkerElement({
+      const marker = new OverlayMarkerClass({
         map,
         position: { lat, lng },
         content,
         title: `${cp.name} (${cp.property_name || 'Unknown'})`,
         zIndex: 15,
+        onClick: () => {
+          const infoContent = buildCheckpointInfoContent(cp, status);
+          infoWindowRef.current?.setContent(infoContent);
+          infoWindowRef.current?.setPosition({ lat, lng });
+          infoWindowRef.current?.open(map);
+        },
       });
 
-      marker.addListener('click', () => {
-        const infoContent = buildCheckpointInfoContent(cp, status);
-        infoWindowRef.current?.setContent(infoContent);
-        infoWindowRef.current?.setPosition({ lat, lng });
-        infoWindowRef.current?.open(map);
-      });
-
-      markersRef.current.push(marker);
+      markersRef.current.push(marker as unknown as google.maps.OverlayView);
     });
 
     // Draw dashed polylines per property (connecting checkpoints in sequence order)
@@ -281,7 +282,7 @@ export function useMapPatrolCheckpoints(
 
   useEffect(() => {
     return () => {
-      markersRef.current.forEach((m) => { m.map = null; });
+      markersRef.current.forEach((m) => { m.setMap(null); });
       markersRef.current = [];
       polylinesRef.current.forEach((p) => p.setMap(null));
       polylinesRef.current = [];
@@ -296,5 +297,10 @@ export function useMapPatrolCheckpoints(
     };
   }, []);
 
-  return { checkpoints, loading, overdueCount };
+  // Fix 82: calculate completion percentage
+  const completionPct = checkpoints.length > 0
+    ? Math.round(((checkpoints.length - overdueCount) / checkpoints.length) * 100)
+    : 0;
+
+  return { checkpoints, loading, overdueCount, completionPct };
 }

@@ -16,6 +16,53 @@ import { auditLog } from '../utils/auditLogger';
 const router = Router();
 router.use(authenticateToken);
 
+// Fix 23: Input validation helpers
+function validateLatLng(lat: number, lng: number): string | null {
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90) return 'lat must be between -90 and 90';
+  if (!Number.isFinite(lng) || lng < -180 || lng > 180) return 'lng must be between -180 and 180';
+  return null;
+}
+
+// Fix 24: Validate callSign format
+function isValidCallSign(callSign: string): boolean {
+  return typeof callSign === 'string' && callSign.length >= 1 && callSign.length <= 50 && /^[A-Za-z0-9\-_.]+$/.test(callSign);
+}
+
+// Fix 29: Structured error response helper
+function safetyError(res: Response, status: number, message: string, code: string) {
+  res.status(status).json({ error: message, code });
+}
+
+// Fix 27: Request timing for performance monitoring
+function logSafetyTiming(label: string, startMs: number) {
+  const elapsed = Date.now() - startMs;
+  if (elapsed > 500) {
+    console.warn(`[MapSafety:Perf] ${label} took ${elapsed}ms`);
+  }
+}
+
+// Fix 28: Simple in-memory cache for safety assessments
+const safetyCache = new Map<string, { data: any; expiry: number }>();
+const SAFETY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+function getCachedAssessment(key: string): any | null {
+  const entry = safetyCache.get(key);
+  if (entry && entry.expiry > Date.now()) return entry.data;
+  if (entry) safetyCache.delete(key);
+  return null;
+}
+
+function setCachedAssessment(key: string, data: any) {
+  // Evict old entries if cache grows too large
+  if (safetyCache.size > 1000) {
+    const now = Date.now();
+    for (const [k, v] of safetyCache) {
+      if (v.expiry < now) safetyCache.delete(k);
+    }
+  }
+  safetyCache.set(key, { data, expiry: Date.now() + SAFETY_CACHE_TTL });
+}
+
 // ─── Haversine Distance (meters) ─────────────────────────────
 function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6_371_000; // Earth radius in meters
@@ -135,12 +182,24 @@ router.get(
   '/threat-assessment/:lat/:lng',
   requireRole(...OP_ROLES),
   (req: Request, res: Response) => {
+    const startMs = Date.now();
     try {
       const db = getDb();
       const lat = parseFloat(req.params.lat);
       const lng = parseFloat(req.params.lng);
-      if (isNaN(lat) || isNaN(lng)) {
-        res.status(400).json({ error: 'Invalid coordinates' });
+      // Fix 23: Full coordinate validation
+      const coordErr = validateLatLng(lat, lng);
+      if (isNaN(lat) || isNaN(lng) || coordErr) {
+        safetyError(res, 400, coordErr || 'Invalid coordinates', 'INVALID_COORDS');
+        return;
+      }
+
+      // Fix 28: Check cache for same location
+      const cacheKey = `threat:${lat.toFixed(3)},${lng.toFixed(3)}`;
+      const cached = getCachedAssessment(cacheKey);
+      if (cached) {
+        res.set('X-Cache', 'HIT');
+        res.json(cached);
         return;
       }
 
@@ -279,10 +338,17 @@ router.get(
         recommendations.push('No significant safety concerns identified for this location');
       }
 
-      res.json({ threat_level, score, factors, recommendations });
+      const result = { threat_level, score, factors, recommendations };
+      // Fix 28: Cache the assessment
+      setCachedAssessment(cacheKey, result);
+      // Fix 36: Audit logging on safety data reads
+      auditLog(req, 'safety_read', 'threat_assessment', 0, `Threat assessment at ${lat.toFixed(4)},${lng.toFixed(4)}: ${threat_level} (${score})`);
+      logSafetyTiming('threat-assessment', startMs);
+      res.json(result);
     } catch (err: any) {
       console.error('Threat assessment error:', err);
-      res.status(500).json({ error: 'Failed to compute threat assessment' });
+      // Fix 26: Proper error messages
+      safetyError(res, 500, 'Failed to compute threat assessment', 'THREAT_ASSESSMENT_ERROR');
     }
   },
 );
@@ -294,12 +360,15 @@ router.get(
   '/approach-routes/:lat/:lng',
   requireRole(...OP_ROLES),
   (req: Request, res: Response) => {
+    const startMs = Date.now();
     try {
       const db = getDb();
       const lat = parseFloat(req.params.lat);
       const lng = parseFloat(req.params.lng);
-      if (isNaN(lat) || isNaN(lng)) {
-        res.status(400).json({ error: 'Invalid coordinates' });
+      // Fix 23: Full coordinate validation
+      const coordErr = validateLatLng(lat, lng);
+      if (isNaN(lat) || isNaN(lng) || coordErr) {
+        safetyError(res, 400, coordErr || 'Invalid coordinates', 'INVALID_COORDS');
         return;
       }
 
@@ -383,10 +452,11 @@ router.get(
         }
       }
 
+      logSafetyTiming('approach-routes', startMs);
       res.json({ approaches, nearby_hazards: nearby_hazards.slice(0, 10) });
     } catch (err: any) {
       console.error('Approach routes error:', err);
-      res.status(500).json({ error: 'Failed to compute approach routes' });
+      safetyError(res, 500, 'Failed to compute approach routes', 'APPROACH_ROUTES_ERROR');
     }
   },
 );
@@ -398,6 +468,7 @@ router.get(
   '/corridor-analysis',
   requireRole(...OP_ROLES),
   (req: Request, res: Response) => {
+    const startMs = Date.now();
     try {
       const db = getDb();
       const lat1 = parseFloat(req.query.lat1 as string);
@@ -406,7 +477,20 @@ router.get(
       const lng2 = parseFloat(req.query.lng2 as string);
 
       if ([lat1, lng1, lat2, lng2].some(isNaN)) {
-        res.status(400).json({ error: 'Invalid coordinates — provide lat1, lng1, lat2, lng2' });
+        safetyError(res, 400, 'Invalid coordinates — provide lat1, lng1, lat2, lng2', 'MISSING_COORDS');
+        return;
+      }
+      // Fix 23: Validate all coordinate ranges
+      const err1 = validateLatLng(lat1, lng1);
+      const err2 = validateLatLng(lat2, lng2);
+      if (err1 || err2) {
+        safetyError(res, 400, err1 || err2 || 'Invalid coordinates', 'INVALID_COORDS');
+        return;
+      }
+      // Fix 30: Haversine distance capping — skip if corridor > 50km
+      const corridorDist = haversineMeters(lat1, lng1, lat2, lng2);
+      if (corridorDist > 50_000) {
+        safetyError(res, 400, 'Corridor too long (max 50km)', 'CORRIDOR_TOO_LONG');
         return;
       }
 
@@ -490,10 +574,11 @@ router.get(
         }
       });
 
+      logSafetyTiming('corridor-analysis', startMs);
       res.json({ segments, total_calls, highest_risk_segment });
     } catch (err: any) {
       console.error('Corridor analysis error:', err);
-      res.status(500).json({ error: 'Failed to compute corridor analysis' });
+      safetyError(res, 500, 'Failed to compute corridor analysis', 'CORRIDOR_ANALYSIS_ERROR');
     }
   },
 );
@@ -505,9 +590,15 @@ router.get(
   '/unit-exposure/:callSign',
   requireRole(...OP_ROLES),
   (req: Request, res: Response) => {
+    const startMs = Date.now();
     try {
       const db = getDb();
       const callSign = req.params.callSign;
+      // Fix 24: Validate callSign format
+      if (!isValidCallSign(callSign)) {
+        safetyError(res, 400, 'Invalid call sign format (alphanumeric, hyphens, underscores, 1-50 chars)', 'INVALID_CALL_SIGN');
+        return;
+      }
 
       // Look up unit_id for this call_sign to query by indexed column
       const unitRow = db.prepare('SELECT id FROM units WHERE call_sign = ?').get(callSign) as any;
@@ -540,6 +631,7 @@ router.get(
         return;
       }
 
+      // Fix 25: LIMIT on safety-zone queries
       // Load recent high-risk areas — locations with weapon/DV/injury calls in 90 days
       const dangerousAreas = db.prepare(`
         SELECT latitude, longitude, weapons_involved, domestic_violence, injuries_reported
@@ -547,6 +639,7 @@ router.get(
         WHERE ((weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0' AND weapons_involved != 'None') OR domestic_violence = 1 OR injuries_reported = 1)
           AND latitude IS NOT NULL AND longitude IS NOT NULL
           AND created_at >= datetime('now','localtime','-90 days')
+        LIMIT 5000
       `).all() as any[];
 
       let highRiskMs = 0;
@@ -604,9 +697,10 @@ router.get(
         current_zone: currentZone,
         breadcrumb_count: breadcrumbs.length,
       });
+      logSafetyTiming('unit-exposure', startMs);
     } catch (err: any) {
       console.error('Unit exposure error:', err);
-      res.status(500).json({ error: 'Failed to compute unit exposure' });
+      safetyError(res, 500, 'Failed to compute unit exposure', 'UNIT_EXPOSURE_ERROR');
     }
   },
 );
@@ -618,21 +712,28 @@ router.get(
   '/perimeter-check/:lat/:lng',
   requireRole(...OP_ROLES),
   (req: Request, res: Response) => {
+    const startMs = Date.now();
     try {
       const db = getDb();
       const lat = parseFloat(req.params.lat);
       const lng = parseFloat(req.params.lng);
-      if (isNaN(lat) || isNaN(lng)) {
-        res.status(400).json({ error: 'Invalid coordinates' });
+      // Fix 23: Full coordinate validation
+      const coordErr = validateLatLng(lat, lng);
+      if (isNaN(lat) || isNaN(lng) || coordErr) {
+        safetyError(res, 400, coordErr || 'Invalid coordinates', 'INVALID_COORDS');
         return;
       }
 
-      // Get active units with GPS
+      // Fix 31: Bounding box pre-filter to optimize perimeter check
+      const bb = boundingBox(lat, lng, 10_000); // 10km radius
+      // Get active units with GPS, pre-filtered by bounding box
       const units = db.prepare(`
         SELECT id, call_sign, status, latitude, longitude FROM units
         WHERE status NOT IN ('off_duty', 'out_of_service')
           AND latitude IS NOT NULL AND longitude IS NOT NULL
-      `).all() as any[];
+          AND latitude BETWEEN ? AND ?
+          AND longitude BETWEEN ? AND ?
+      `).all(bb.minLat, bb.maxLat, bb.minLng, bb.maxLng) as any[];
 
       const quadrants: Record<string, { units: number; nearest_distance_m: number; unit_names: string[] }> = {
         NE: { units: 0, nearest_distance_m: Infinity, unit_names: [] },
@@ -670,6 +771,7 @@ router.get(
         recommended_staging = `Stage units to cover ${coverage_gaps.join(', ')} quadrant(s)`;
       }
 
+      logSafetyTiming('perimeter-check', startMs);
       res.json({
         quadrants,
         coverage_gaps,
@@ -678,7 +780,7 @@ router.get(
       });
     } catch (err: any) {
       console.error('Perimeter check error:', err);
-      res.status(500).json({ error: 'Failed to compute perimeter check' });
+      safetyError(res, 500, 'Failed to compute perimeter check', 'PERIMETER_CHECK_ERROR');
     }
   },
 );
@@ -788,7 +890,7 @@ router.get(
       });
     } catch (err: any) {
       console.error('Shift risk summary error:', err);
-      res.status(500).json({ error: 'Failed to compute shift risk summary' });
+      safetyError(res, 500, 'Failed to compute shift risk summary', 'SHIFT_RISK_ERROR');
     }
   },
 );
@@ -825,6 +927,13 @@ router.post(
         return;
       }
 
+      // Fix 34: Sanitize alert description text
+      const sanitizedDetails = typeof details === 'string'
+        ? details.replace(/<[^>]*>/g, '').substring(0, 500)
+        : '';
+      // Fix 46: Validate alert_radius is reasonable (max 10000m)
+      const safeRadius = Math.max(100, Math.min(10000, Number(radius_m) || 500));
+
       const now = localNow();
       const result = db.prepare(`
         INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
@@ -834,18 +943,18 @@ router.post(
         'broadcast_sent',
         'safety_alert',
         type, // Use the alert type as entity_id for meaningful identification
-        JSON.stringify({ type, lat: latNum, lng: lngNum, details, radius_m: radius_m || 500 }),
+        JSON.stringify({ type, lat: latNum, lng: lngNum, details: sanitizedDetails, radius_m: safeRadius }),
         req.ip || 'unknown',
         now,
       );
 
       const alertData = {
-        alert_id: result.lastInsertRowid,
+        alert_id: Number(result.lastInsertRowid),
         type,
         lat: latNum,
         lng: lngNum,
-        details: details || '',
-        radius_m: radius_m || 500,
+        details: sanitizedDetails,
+        radius_m: safeRadius,
         issued_by: req.user?.fullName || req.user?.username || 'Unknown',
         created_at: now,
       };
@@ -855,10 +964,14 @@ router.post(
       // Also broadcast on dispatch channel for dispatch page
       broadcast('dispatch', 'safety:broadcast', alertData);
 
-      res.json({ success: true, alert_id: result.lastInsertRowid });
+      // Fix 35: Return created alert ID in safety-alert response
+      // Fix 36: Audit logging
+      auditLog(req, 'safety_alert_broadcast', 'safety_alert', Number(result.lastInsertRowid),
+        `Safety alert: ${type} at ${latNum.toFixed(4)},${lngNum.toFixed(4)}`);
+      res.json({ success: true, alert_id: Number(result.lastInsertRowid), alert: alertData });
     } catch (err: any) {
       console.error('Safety alert error:', err);
-      res.status(500).json({ error: 'Failed to issue safety alert' });
+      safetyError(res, 500, 'Failed to issue safety alert', 'SAFETY_ALERT_ERROR');
     }
   },
 );
@@ -929,7 +1042,7 @@ router.get(
       res.json({ offenders: result });
     } catch (err: any) {
       console.error('Repeat offender map error:', err);
-      res.status(500).json({ error: 'Failed to query repeat offenders' });
+      safetyError(res, 500, 'Failed to query repeat offenders', 'REPEAT_OFFENDER_ERROR');
     }
   },
 );
@@ -1002,7 +1115,7 @@ router.get(
       });
     } catch (err: any) {
       console.error('Lighting conditions error:', err);
-      res.status(500).json({ error: 'Failed to compute lighting conditions' });
+      safetyError(res, 500, 'Failed to compute lighting conditions', 'LIGHTING_ERROR');
     }
   },
 );
@@ -1075,7 +1188,7 @@ router.get(
       });
     } catch (err: any) {
       console.error('Coverage gaps error:', err);
-      res.status(500).json({ error: 'Failed to compute coverage gaps' });
+      safetyError(res, 500, 'Failed to compute coverage gaps', 'COVERAGE_GAPS_ERROR');
     }
   },
 );
