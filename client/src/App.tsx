@@ -55,7 +55,7 @@ import EmailPage from './pages/EmailPage';
 import CrmPage from './pages/CrmPage';
 import ServePage from './pages/ServePage';
 import WebResearchPage from './pages/WebResearchPage';
-import HRPage from './pages/hr/HRPage';
+import HRPage from './pages/hr/HrPage';
 import IncidentDetailWindow from './pages/detached/IncidentDetailWindow';
 import RecordDetailWindow from './pages/detached/RecordDetailWindow';
 
