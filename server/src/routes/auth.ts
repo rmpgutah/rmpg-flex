@@ -26,6 +26,7 @@ import {
   decryptSecret,
 } from '../utils/totp';
 import { createNotification } from './notifications';
+import { isDeviceTrusted, trustDevice as trustDeviceUtil } from '../utils/deviceFingerprint';
 
 const router = Router();
 
@@ -212,6 +213,52 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
 
     // ── Two-Factor Authentication gate ──────────────────
     if (userFull?.totp_enabled) {
+      // Check if this device is already trusted (skip 2FA)
+      const { deviceFingerprint } = req.body;
+      if (deviceFingerprint) {
+        try {
+          const trusted = isDeviceTrusted(user.id, deviceFingerprint);
+          if (trusted) {
+            // Device is trusted — skip 2FA, issue full tokens directly
+            const refreshToken = generateRefreshToken(payload);
+            const sessionId = createSession(user.id, refreshToken, ip, userAgent);
+            const accessToken = generateAccessToken({ ...payload, sessionId });
+
+            db.prepare(`
+              INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+              VALUES (?, 'user_login_trusted_device', 'user', ?, '2FA bypassed — trusted device', ?)
+            `).run(user.id, user.id, ip);
+
+            db.prepare(`
+              UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = ? WHERE id = ?
+            `).run(localNow(), user.id);
+
+            res.json({
+              token: accessToken,
+              refreshToken,
+              sessionId,
+              expiresIn: config.jwt.accessExpiry,
+              user: {
+                id: user.id,
+                username: user.username,
+                first_name: user.first_name,
+                last_name: user.last_name,
+                full_name: user.full_name,
+                email: user.email,
+                role: user.role,
+                badge_number: user.badge_number,
+                phone: user.phone,
+                avatar_url: user.avatar_url,
+                status: user.status,
+                must_change_password: !!user.must_change_password,
+                totp_enabled: true,
+              },
+            });
+            return;
+          }
+        } catch { /* trusted device check failed — fall through to normal 2FA */ }
+      }
+
       // Don't issue full tokens yet — return a 2FA-pending token
       const tempToken = generate2faPendingToken(payload);
       res.json({
@@ -781,6 +828,16 @@ function verify2FAHandler(req: Request, res: Response) {
     const refreshToken = generateRefreshToken(payload);
     const sessionId = createSession(user.id, refreshToken, ip, userAgent);
     const accessToken = generateAccessToken({ ...payload, sessionId });
+
+    // Trust device if requested by the user
+    const { trustDevice: shouldTrust, deviceFingerprint } = req.body;
+    if (shouldTrust && deviceFingerprint) {
+      try {
+        trustDeviceUtil(user.id, deviceFingerprint, ip, userAgent);
+      } catch (e) {
+        console.warn('[Auth] Failed to trust device:', e);
+      }
+    }
 
     // Log activity
     db.prepare(`
