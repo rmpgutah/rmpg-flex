@@ -49,11 +49,11 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     });
 
     // Fix 48: Structured response with metadata
-    res.json({ data: enriched, total: enriched.length });
+    res.json(enriched);
   } catch (error: any) {
     console.error('[Geofences] list error:', error?.message || 'Unknown error');
     if (error?.message?.includes('no such table')) {
-      res.json({ data: [], total: 0 });
+      res.json([]);
       return;
     }
     res.status(500).json({ error: 'Internal server error', code: 'GEOFENCE_LIST_ERROR' });

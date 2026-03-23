@@ -2206,9 +2206,9 @@ router.get('/clearance-rate', (req: Request, res: Response) => {
 router.get('/patrol-coverage', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const totalBeats = db.prepare(`SELECT COUNT(DISTINCT beat_id) as count FROM patrol_checkpoints WHERE is_active = 1`).get() as any;
+    const totalBeats = db.prepare(`SELECT COUNT(DISTINCT property_id) as count FROM patrol_checkpoints WHERE is_active = 1`).get() as any;
     const coveredBeats = db.prepare(`
-      SELECT COUNT(DISTINCT pc.beat_id) as count
+      SELECT COUNT(DISTINCT pc.property_id) as count
       FROM patrol_scans ps JOIN patrol_checkpoints pc ON ps.checkpoint_id = pc.id
       WHERE ps.scanned_at >= datetime('now', '-8 hours')
     `).get() as any;
@@ -2244,9 +2244,9 @@ router.get('/upcoming-court', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const upcoming = db.prepare(`
-      SELECT cd.*, u.full_name as officer_name FROM court_dates cd
-      LEFT JOIN users u ON cd.officer_id = u.id
-      WHERE cd.date >= DATE('now') AND cd.date <= DATE('now', '+7 days') ORDER BY cd.date ASC
+      SELECT ce.*, u.full_name as officer_name FROM court_events ce
+      LEFT JOIN users u ON ce.created_by = u.id
+      WHERE ce.event_date >= DATE('now') AND ce.event_date <= DATE('now', '+7 days') ORDER BY ce.event_date ASC
     `).all();
     res.json({ count: upcoming.length, upcoming });
   } catch (error: any) {

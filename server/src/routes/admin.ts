@@ -920,7 +920,7 @@ router.get('/user-activity-heatmap', (req: Request, res: Response) => {
       ORDER BY day_of_week, hour
     `).all(cutoff);
 
-    res.json({ data: rows });
+    res.json(rows);
   } catch (error: any) {
     console.error('User activity heatmap error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -990,7 +990,7 @@ router.get('/config-history', (req: Request, res: Response) => {
       LIMIT ?
     `).all(limitNum);
 
-    res.json({ data: rows });
+    res.json(rows);
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -1091,7 +1091,7 @@ router.get('/error-logs', (req: Request, res: Response) => {
       LIMIT ?
     `).all(limitNum);
 
-    res.json({ data: rows });
+    res.json(rows);
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -1112,7 +1112,7 @@ router.get('/announcements', (req: Request, res: Response) => {
       ${where}
       ORDER BY a.created_at DESC
     `).all();
-    res.json({ data: rows });
+    res.json(rows);
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 

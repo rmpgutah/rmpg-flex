@@ -394,11 +394,11 @@ router.get('/gps/trail/:unitId', requireRole('admin', 'manager', 'supervisor', '
     // Fix 17: Cache headers for frequently-accessed positions
     res.set('Cache-Control', 'private, max-age=5');
     // Fix 20: Return proper error codes
-    res.json({ data: filtered, total: filtered.length, raw_count: rows.length });
+    res.json(filtered);
   } catch (error: any) {
     console.error('[GPS] trail error:', error?.message || 'Unknown error');
     if (error?.message?.includes('no such table')) {
-      res.json({ data: [], total: 0, raw_count: 0 });
+      res.json([]);
       return;
     }
     res.status(500).json({ error: 'Internal server error', code: 'GPS_TRAIL_ERROR' });
@@ -507,11 +507,11 @@ router.get('/gps/trails', requireRole('admin', 'manager', 'supervisor', 'officer
     // Fix 17: Cache headers
     res.set('Cache-Control', 'private, max-age=5');
     const result = Object.values(trails);
-    res.json({ data: result, total_units: result.length, raw_points: rows.length });
+    res.json(result);
   } catch (error: any) {
     console.error('[GPS] trails error:', error?.message || 'Unknown error');
     if (error?.message?.includes('no such table')) {
-      res.json({ data: [], total_units: 0, raw_points: 0 });
+      res.json([]);
       return;
     }
     res.status(500).json({ error: 'Internal server error', code: 'GPS_TRAILS_ERROR' });
@@ -623,11 +623,11 @@ router.get('/gps/dwell-times', requireRole('admin', 'manager', 'supervisor', 'of
     }
 
     res.set('Cache-Control', 'private, max-age=30');
-    res.json({ data: results, total: results.length });
+    res.json(results);
   } catch (error: any) {
     console.error('[GPS] dwell-times error:', error?.message || 'Unknown error');
     if (error?.message?.includes('no such table')) {
-      res.json({ data: [], total: 0 });
+      res.json([]);
       return;
     }
     res.status(500).json({ error: 'Internal server error', code: 'GPS_DWELL_ERROR' });

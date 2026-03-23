@@ -872,7 +872,7 @@ router.get('/templates', (_req: Request, res: Response) => {
       LEFT JOIN users u ON t.created_by = u.id
       ORDER BY t.category, t.name
     `).all();
-    res.json({ data: templates });
+    res.json(templates);
   } catch (err: any) {
     console.error('Email route error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
@@ -961,7 +961,7 @@ router.get('/contacts/search', (req: Request, res: Response) => {
   try {
     const { q } = req.query;
     if (!q || String(q).trim().length < 2) {
-      res.json({ data: [] });
+      res.json([]);
       return;
     }
 
@@ -1004,7 +1004,7 @@ router.get('/contacts/search', (req: Request, res: Response) => {
       return true;
     });
 
-    res.json({ data: unique });
+    res.json(unique);
   } catch (err: any) {
     console.error('Email route error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
@@ -1048,7 +1048,7 @@ router.get('/links/:emailGraphId', (req: Request, res: Response) => {
     const db = getDb();
     const links = db.prepare(`
       SELECT el.*,
-        i.case_number as incident_case_number,
+        i.incident_number as incident_case_number,
         c.call_number as call_number,
         p.first_name || ' ' || p.last_name as person_name,
         u.full_name as linked_by_name
@@ -1060,7 +1060,7 @@ router.get('/links/:emailGraphId', (req: Request, res: Response) => {
       WHERE el.email_graph_id = ?
       ORDER BY el.created_at DESC
     `).all(String(req.params.emailGraphId));
-    res.json({ data: links });
+    res.json(links);
   } catch (err: any) {
     console.error('Email route error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
@@ -1080,7 +1080,7 @@ router.get('/links/incident/:incidentId', (req: Request, res: Response) => {
       WHERE el.incident_id = ?
       ORDER BY ec.received_at DESC
     `).all(req.params.incidentId);
-    res.json({ data: links });
+    res.json(links);
   } catch (err: any) {
     console.error('Email route error:', err.message);
     res.status(500).json({ error: 'Internal server error' });
@@ -1149,7 +1149,7 @@ router.get('/scheduled', (req: Request, res: Response) => {
       WHERE se.status = ? AND se.created_by = ?
       ORDER BY se.scheduled_at ASC
     `).all(String(status), req.user!.userId);
-    res.json({ data: rows });
+    res.json(rows);
   } catch (err: any) {
     console.error('Email route error:', err.message);
     res.status(500).json({ error: 'Internal server error' });

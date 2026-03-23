@@ -104,7 +104,7 @@ router.get('/heatmap', requireRole('admin', 'manager', 'supervisor', 'officer', 
       // Fix 5: Validate lat/lng bounds, Fix 13: total count
       const filtered = filterValidCoords(points);
       logTiming('heatmap/risk', startMs); // Fix 14
-      return res.json({ data: filtered, total: filtered.length, mode, days });
+      return res.json(filtered);
     }
 
     if (mode === 'type' && typeFilter) {
@@ -125,7 +125,7 @@ router.get('/heatmap', requireRole('admin', 'manager', 'supervisor', 'officer', 
       `).all(cutoff, typeFilter) as any[];
       const filtered = filterValidCoords(points);
       logTiming('heatmap/type', startMs);
-      return res.json({ data: filtered, total: filtered.length, mode, days, type: typeFilter });
+      return res.json(filtered);
     }
 
     // Default: all calls with enriched metadata for click info
@@ -152,12 +152,12 @@ router.get('/heatmap', requireRole('admin', 'manager', 'supervisor', 'officer', 
     const filtered = filterValidCoords(points);
     logTiming('heatmap/all', startMs);
     // Fix 13: Total count in response alongside data
-    res.json({ data: filtered, total: filtered.length, mode, days });
+    res.json(filtered);
   } catch (error: any) {
     console.error('[Dispatch] heatmap error:', error?.message || 'Unknown error');
     // Fix 12: Return empty arrays instead of 500 when tables are empty
     if (error?.message?.includes('no such table')) {
-      res.json({ data: [], total: 0, mode: req.query.mode || 'all' });
+      res.json([]);
       return;
     }
     res.status(500).json({ error: 'Internal server error', code: 'HEATMAP_ERROR' });
@@ -178,11 +178,11 @@ router.get('/heatmap/types', requireRole('admin', 'manager', 'supervisor', 'offi
       ORDER BY count DESC
       LIMIT 50
     `).all();
-    res.json({ data: types, total: types.length });
+    res.json(types);
   } catch (error: any) {
     console.error('[Dispatch] heatmap types error:', error?.message || 'Unknown error');
     if (error?.message?.includes('no such table')) {
-      res.json({ data: [], total: 0 });
+      res.json([]);
       return;
     }
     res.status(500).json({ error: 'Failed to get heatmap types', code: 'HEATMAP_TYPES_ERROR' });
@@ -927,11 +927,11 @@ router.get('/districts', requireRole('admin', 'manager', 'supervisor', 'officer'
 
     // Fix 65: Return district with assigned unit count
     setCacheHeaders(res, 60);
-    res.json({ data: districts, total: districts.length });
+    res.json(districts);
   } catch (error: any) {
     console.error('[Dispatch] districts list error:', error?.message || 'Unknown error');
     if (error?.message?.includes('no such table')) {
-      res.json({ data: [], total: 0 });
+      res.json([]);
       return;
     }
     res.status(500).json({ error: 'Internal server error', code: 'DISTRICTS_ERROR' });
@@ -1357,17 +1357,11 @@ router.get('/repeat-addresses', requireRole('admin', 'manager', 'supervisor', 'o
 
     // Fix 70: Return structured response with location details
     logTiming('repeat-addresses', startMs);
-    res.json({
-      data: validated,
-      total: validated.length,
-      days,
-      min_count: minCount,
-      pagination: { page, limit },
-    });
+    res.json(validated);
   } catch (error: any) {
     console.error('[Dispatch] repeat-addresses error:', error?.message || 'Unknown error');
     if (error?.message?.includes('no such table')) {
-      res.json({ data: [], total: 0 });
+      res.json([]);
       return;
     }
     res.status(500).json({ error: 'Internal server error', code: 'REPEAT_ADDRESSES_ERROR' });
@@ -1409,7 +1403,7 @@ router.get('/heatmap/enforcement', requireRole('admin', 'manager', 'supervisor',
       `).all(cutoff);
 
       logTiming('heatmap/enforcement/citations', startMs);
-      res.json({ data: filterValidCoords(clusters as any[]), total: clusters.length, type: 'citations', days });
+      res.json(filterValidCoords(clusters as any[]));
       return;
     }
 
@@ -1431,11 +1425,11 @@ router.get('/heatmap/enforcement', requireRole('admin', 'manager', 'supervisor',
     `).all(cutoff);
 
     logTiming('heatmap/enforcement/arrests', startMs);
-    res.json({ data: filterValidCoords(clusters as any[]), total: clusters.length, type: 'arrests', days });
+    res.json(filterValidCoords(clusters as any[]));
   } catch (error: any) {
     console.error('[Dispatch] enforcement heatmap error:', error?.message || 'Unknown error');
     if (error?.message?.includes('no such table')) {
-      res.json({ data: [], total: 0 });
+      res.json([]);
       return;
     }
     res.status(500).json({ error: 'Internal server error', code: 'ENFORCEMENT_ERROR' });

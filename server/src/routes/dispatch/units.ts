@@ -24,7 +24,7 @@ router.get('/units', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       ORDER BY u.call_sign
     `).all();
 
-    res.json({ data: units, total: units.length });
+    res.json(units);
   } catch (error: any) {
     console.error('[Units] get units error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });

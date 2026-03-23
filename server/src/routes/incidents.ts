@@ -146,7 +146,7 @@ router.get('/map', (req: Request, res: Response) => {
         o.full_name as officer_name,
         i.created_at,
         c.call_number,
-        i.case_number
+        i.incident_number
       FROM incidents i
       LEFT JOIN users o ON i.officer_id = o.id
       LEFT JOIN calls_for_service c ON i.call_id = c.id
