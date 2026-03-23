@@ -194,14 +194,17 @@ export function useMapHeatmapAdvanced(
     apiFetch<AdvancedHeatmapResponse>(url)
       .then((data) => {
         if (counter !== fetchCounterRef.current) return;
-        setPoints(data?.points || []);
+        const pts = data?.points || [];
+        console.log(`[AdvancedHeatmap] Fetched ${pts.length} points, ${data?.clusters?.length ?? 0} clusters, mode=${options.mode}`);
+        setPoints(pts);
         setComparisonPoints(data?.comparisonPoints || []);
         setClusters(data?.clusters || []);
         setStats(data?.stats || null);
         setLoading(false);
       })
-      .catch(() => {
+      .catch((err) => {
         if (counter !== fetchCounterRef.current) return;
+        console.error('[AdvancedHeatmap] Fetch error:', err);
         setPoints([]);
         setComparisonPoints([]);
         setClusters([]);
@@ -273,7 +276,10 @@ export function useMapHeatmapAdvanced(
       heatmapLayerRef.current = null;
     }
 
-    if (!options.enabled || points.length === 0) return;
+    if (!options.enabled || points.length === 0) {
+      console.log(`[AdvancedHeatmap] Render skip: enabled=${options.enabled}, points=${points.length}, map=${!!map}`);
+      return;
+    }
 
     const weightedData = points
       .filter((p) => p.lat != null && p.lng != null)
@@ -282,7 +288,12 @@ export function useMapHeatmapAdvanced(
         weight: point.weight || 1,
       }));
 
-    if (weightedData.length === 0) return;
+    if (weightedData.length === 0) {
+      console.log('[AdvancedHeatmap] No valid weighted data after filtering');
+      return;
+    }
+
+    console.log(`[AdvancedHeatmap] Rendering ${weightedData.length} points, scheme=${options.colorScheme}, radius=${options.radius}, opacity=${options.opacity}`);
 
     const gradient = GRADIENTS[options.colorScheme] || GRADIENTS.heat;
 
