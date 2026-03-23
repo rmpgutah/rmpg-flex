@@ -5,7 +5,7 @@ import { auditLog } from '../utils/auditLogger';
 import { broadcast } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
 import { universalWarrantCheck, runUniversalWarrantScan } from '../utils/universalWarrantScanner';
-import { getUtahWarrantSyncStatus, isUtahApiBlocked, runWarrantWatchScan } from '../utils/utahWarrantScraper';
+import { getUtahWarrantSyncStatus, isUtahApiBlocked, runWarrantWatchScan, searchUtahWarrantsLive, searchUtahWarrantsCache } from '../utils/utahWarrantScraper';
 
 const router = Router();
 
@@ -1202,6 +1202,127 @@ router.post('/ingest-utah', requireRole('admin', 'manager', 'supervisor', 'dispa
   } catch (error: any) {
     console.error('Ingest Utah warrants error:', error);
     res.status(500).json({ error: 'Failed to ingest utah warrants', code: 'INGEST_UTAH_WARRANTS_ERROR' });
+  }
+});
+
+// ─── UTAH WARRANT SEARCH ─────────────────────────────────────────
+// POST /api/warrants/utah-search — Live search against warrants.utah.gov
+router.post('/utah-search', (req: Request, res: Response) => {
+  (async () => {
+    try {
+      const { firstName, lastName } = req.body;
+      if (!firstName?.trim() || !lastName?.trim()) {
+        res.status(400).json({ error: 'First and last name are required', code: 'NAME_REQUIRED' });
+        return;
+      }
+
+      const first = String(firstName).trim();
+      const last = String(lastName).trim();
+
+      // Try live API first, fall back to cache
+      let results: any[] = [];
+      let source: 'live' | 'cache' = 'live';
+      let blocked = false;
+
+      try {
+        if (isUtahApiBlocked()) {
+          blocked = true;
+          throw new Error('Utah API temporarily blocked');
+        }
+        results = (await searchUtahWarrantsLive(first, last)) || [];
+      } catch {
+        // Fallback to cached data
+        source = 'cache';
+        const db = getDb();
+        const cached = db.prepare(`
+          SELECT * FROM utah_warrants
+          WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?)
+          ORDER BY fetched_at DESC LIMIT 100
+        `).all(first, last) as any[];
+        results = cached;
+      }
+
+      // Also check local warrants for this person
+      const db = getDb();
+      const localWarrants = db.prepare(`
+        SELECT w.*, u.full_name as entered_by_name FROM warrants w
+        LEFT JOIN users u ON u.id = w.entered_by
+        WHERE LOWER(w.subject_first_name) = LOWER(?) AND LOWER(w.subject_last_name) = LOWER(?)
+          AND w.status = 'active'
+        LIMIT 50
+      `).all(first, last) as any[];
+
+      // Check scraped warrants too
+      const scrapedWarrants = db.prepare(`
+        SELECT * FROM scraped_warrants
+        WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?)
+          AND status = 'active'
+        LIMIT 50
+      `).all(first, last) as any[];
+
+      // Log the search
+      auditLog(req, 'SEARCH' as any, 'warrant' as any, 0, `Utah warrant search: ${first} ${last} — ${results.length} results`);
+
+      res.json({
+        utahResults: results,
+        localWarrants,
+        scrapedWarrants,
+        source,
+        blocked,
+        searchedAt: localNow(),
+        totalHits: results.length + localWarrants.length + scrapedWarrants.length,
+      });
+    } catch (error: any) {
+      console.error('Utah warrant search error:', error);
+      res.status(500).json({ error: 'Search failed', code: 'UTAH_SEARCH_ERROR' });
+    }
+  })();
+});
+
+// GET /api/warrants/utah-search/auto-poll — Run warrant checks against all persons in system
+router.get('/utah-search/auto-poll-status', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const syncStatus = getUtahWarrantSyncStatus();
+    const blocked = isUtahApiBlocked();
+
+    // Get recent warrant watch runs
+    const runs = db.prepare(`
+      SELECT * FROM warrant_watch_runs ORDER BY created_at DESC LIMIT 10
+    `).all() as any[];
+
+    // Get persons with active warrant flags
+    const flaggedPersons = db.prepare(`
+      SELECT p.id, p.first_name, p.last_name, p.dob, p.warrant_status, p.warrant_severity,
+        (SELECT COUNT(*) FROM warrants w WHERE w.subject_person_id = p.id AND w.status = 'active') as local_warrant_count,
+        (SELECT COUNT(*) FROM utah_warrants uw WHERE LOWER(uw.first_name) = LOWER(p.first_name) AND LOWER(uw.last_name) = LOWER(p.last_name)) as utah_hit_count
+      FROM persons p
+      WHERE p.warrant_status = 'ACTIVE_WARRANT' OR p.warrant_severity IS NOT NULL
+      ORDER BY CASE p.warrant_severity WHEN 'felony' THEN 1 WHEN 'misdemeanor' THEN 2 ELSE 3 END, p.last_name
+      LIMIT 200
+    `).all() as any[];
+
+    // Get recent warrant watch log entries
+    const recentHits = db.prepare(`
+      SELECT * FROM warrant_watch_log
+      WHERE event IN ('warrant_found', 'warrant_cleared')
+      ORDER BY created_at DESC LIMIT 50
+    `).all() as any[];
+
+    // Total persons being monitored
+    const totalPersons = (db.prepare(`SELECT COUNT(*) as cnt FROM persons WHERE first_name IS NOT NULL AND last_name IS NOT NULL`).get() as any)?.cnt || 0;
+
+    res.json({
+      syncStatus,
+      blocked,
+      runs,
+      flaggedPersons,
+      recentHits,
+      totalPersons,
+    });
+  } catch (error: any) {
+    console.error('Auto-poll status error:', error);
+    res.status(500).json({ error: 'Failed to get auto-poll status', code: 'AUTO_POLL_STATUS_ERROR' });
   }
 });
 
