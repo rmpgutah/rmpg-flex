@@ -2150,7 +2150,7 @@ export default function WarrantsPage() {
                 )}
               </>
             ) : (
-              <EmptyState icon={Radar} title="Watch List" message="No auto-poll data available yet. The system scans all persons in the database every 4 hours." />
+              <EmptyState icon={Radar} title="Watch List" description="No auto-poll data available yet. The system scans all persons in the database every 4 hours." />
             )}
           </div>
         </div>
