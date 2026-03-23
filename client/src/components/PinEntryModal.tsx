@@ -219,10 +219,10 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
             <Lock className="w-4 h-4 text-amber-500" />
             <span className="text-sm font-bold text-white">Offline Authorization</span>
           </div>
-          <button
+          <button type="button"
             onClick={onClose}
             className="p-1 text-rmpg-400 hover:text-white transition-colors"
-          >
+           aria-label="Close" title="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -337,7 +337,7 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
           )}
 
           {/* Submit button (mostly for accessibility — auto-submits on 6th digit) */}
-          <button
+          <button type="button"
             onClick={handleSubmit}
             disabled={submitting || (!isSelectedAdmin && digits.some(d => d === '')) || (!selectedUserId && employees.length > 0)}
             className="btn-primary w-full justify-center"

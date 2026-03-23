@@ -128,10 +128,10 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
               Quick PSO Client Request
             </h2>
           </div>
-          <button
+          <button type="button"
             onClick={onClose}
             className="p-1 hover:bg-purple-800/40 text-purple-300 hover:text-white transition-colors"
-          >
+           aria-label="Close" title="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -242,7 +242,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
             <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Priority</label>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {PRIORITY_OPTIONS.map((p) => (
-                <button
+                <button type="button"
                   key={p.value}
                   type="button"
                   onClick={() => update('priority', p.value)}
@@ -355,7 +355,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
 
           {/* Footer */}
           <div className="flex items-center justify-between pt-2 border-t border-rmpg-600">
-            <button
+            <button type="button"
               type="button"
               onClick={handleExpand}
               className="flex items-center gap-1 text-xs text-purple-400 hover:text-purple-300 transition-colors"
@@ -364,7 +364,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
               Full Form <ArrowRight className="w-3 h-3" />
             </button>
             <div className="flex items-center gap-2">
-              <button
+              <button type="button"
                 type="button"
                 onClick={onClose}
                 disabled={isSubmitting}
@@ -372,7 +372,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
               >
                 Cancel
               </button>
-              <button
+              <button type="button"
                 type="submit"
                 disabled={isSubmitting || !formData.location}
                 className="toolbar-btn"

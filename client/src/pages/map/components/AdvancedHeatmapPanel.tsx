@@ -246,14 +246,14 @@ export default function AdvancedHeatmapPanel({
           {loading && <Loader2 size={12} className="animate-spin text-rmpg-500" />}
         </div>
         <div className="flex items-center gap-1.5">
-          <button
+          <button type="button"
             onClick={onRefresh}
             className="toolbar-btn p-1 rounded-sm hover:bg-white/5"
             title="Refresh data"
           >
             <RotateCw size={12} className="text-rmpg-500 hover:text-rmpg-300" />
           </button>
-          <button
+          <button type="button"
             onClick={onClose}
             className="toolbar-btn p-1 rounded-sm hover:bg-white/5"
             aria-label="Close advanced heatmap panel"
@@ -273,7 +273,7 @@ export default function AdvancedHeatmapPanel({
               const active = mode === m.key;
               const Icon = m.icon;
               return (
-                <button
+                <button type="button"
                   key={m.key}
                   onClick={() => onModeChange(m.key)}
                   className="flex flex-col items-center gap-1 py-2 px-1 rounded-sm transition-all"
@@ -357,7 +357,7 @@ export default function AdvancedHeatmapPanel({
                   { label: 'Weekends', days: WEEKENDS },
                   { label: 'All', days: ALL_DAYS },
                 ].map((preset) => (
-                  <button
+                  <button type="button"
                     key={preset.label}
                     onClick={() => setDayPreset(preset.days)}
                     className="text-[7px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm transition-colors hover:text-rmpg-200"
@@ -376,7 +376,7 @@ export default function AdvancedHeatmapPanel({
               {DAY_LABELS.map((label, idx) => {
                 const active = dayFilter.includes(idx);
                 return (
-                  <button
+                  <button type="button"
                     key={label}
                     onClick={() => toggleDay(idx)}
                     className="py-1.5 rounded-sm text-[9px] font-bold uppercase transition-all text-center"
@@ -409,7 +409,7 @@ export default function AdvancedHeatmapPanel({
                 const active = colorScheme === scheme;
                 const colors = COLOR_SCHEME_GRADIENTS[scheme];
                 return (
-                  <button
+                  <button type="button"
                     key={scheme}
                     onClick={() => onColorSchemeChange(scheme)}
                     className="flex flex-col items-center gap-1 group"
@@ -484,7 +484,7 @@ export default function AdvancedHeatmapPanel({
               {RESOLUTION_OPTIONS.map((opt) => {
                 const active = resolution === opt.key;
                 return (
-                  <button
+                  <button type="button"
                     key={opt.key}
                     onClick={() => onResolutionChange(opt.key)}
                     className="px-2.5 py-1 rounded-sm text-[9px] font-semibold uppercase tracking-wider transition-all"
@@ -515,7 +515,7 @@ export default function AdvancedHeatmapPanel({
                   {clusterCount}
                 </span>
               )}
-              <button
+              <button type="button"
                 onClick={() => onShowClustersChange(!showClusters)}
                 className="relative w-8 h-4 rounded-full transition-colors"
                 style={{
@@ -541,7 +541,7 @@ export default function AdvancedHeatmapPanel({
               {types.length} of {availableTypes.length} selected
             </span>
             <div className="flex items-center gap-1.5">
-              <button
+              <button type="button"
                 onClick={() => onTypesChange(availableTypes.map((t) => t.incident_type))}
                 className="text-[7px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm transition-colors hover:text-rmpg-200"
                 style={{
@@ -552,7 +552,7 @@ export default function AdvancedHeatmapPanel({
               >
                 All
               </button>
-              <button
+              <button type="button"
                 onClick={() => onTypesChange([])}
                 className="text-[7px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm transition-colors hover:text-rmpg-200"
                 style={{
@@ -572,7 +572,7 @@ export default function AdvancedHeatmapPanel({
             {availableTypes.map((t) => {
               const checked = types.includes(t.incident_type);
               return (
-                <button
+                <button type="button"
                   key={t.incident_type}
                   onClick={() => toggleType(t.incident_type)}
                   className="flex items-center gap-2 w-full px-2 py-1 rounded-sm text-left transition-colors hover:bg-white/[0.03]"
@@ -626,7 +626,7 @@ export default function AdvancedHeatmapPanel({
 
               {/* Play/Pause + Speed */}
               <div className="flex items-center gap-3">
-                <button
+                <button type="button"
                   onClick={() => onTemporalPlayingChange(!temporalPlaying)}
                   className="flex items-center justify-center w-10 h-10 rounded-sm transition-all"
                   style={{
@@ -670,7 +670,7 @@ export default function AdvancedHeatmapPanel({
                   {([1, 2, 4] as const).map((s) => {
                     const active = temporalSpeed === s;
                     return (
-                      <button
+                      <button type="button"
                         key={s}
                         onClick={() => onTemporalSpeedChange(s)}
                         className="px-2.5 py-1 rounded-sm text-[9px] font-bold font-mono transition-all"
@@ -712,7 +712,7 @@ export default function AdvancedHeatmapPanel({
                 {COMPARISON_PERIODS.map((p) => {
                   const active = comparisonDays === p.days;
                   return (
-                    <button
+                    <button type="button"
                       key={p.days}
                       onClick={() => onComparisonDaysChange(p.days)}
                       className="flex-1 py-1.5 rounded-sm text-[10px] font-bold font-mono text-center transition-all"

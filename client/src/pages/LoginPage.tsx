@@ -506,7 +506,7 @@ export default function LoginPage() {
                       autoComplete="current-password"
                       required
                     />
-                    <button
+                    <button type="button"
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
                       className="absolute right-2 top-1/2 -translate-y-1/2 transition-colors"
@@ -520,7 +520,7 @@ export default function LoginPage() {
                     </button>
                   </div>
                 </div>
-                <button
+                <button type="button"
                   type="submit"
                   disabled={loginBusy || !loginUsername.trim() || !password}
                   className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
@@ -566,7 +566,7 @@ export default function LoginPage() {
                   error={!!error}
                 />
 
-                <button
+                <button type="button"
                   type="submit"
                   disabled={loginBusy || totpCode.replace(/\s/g, '').length < 6}
                   className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
@@ -600,7 +600,7 @@ export default function LoginPage() {
 
                 {/* Alternative methods */}
                 <div className="flex items-center justify-between pt-2">
-                  <button
+                  <button type="button"
                     type="button"
                     onClick={handleBackWebAuthn}
                     className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors"
@@ -612,7 +612,7 @@ export default function LoginPage() {
                     Back
                   </button>
                   <div className="flex items-center gap-3">
-                    <button
+                    <button type="button"
                       type="button"
                       onClick={() => { clearError(); handleSecurityKeyAuth(); }}
                       disabled={loginBusy}
@@ -624,7 +624,7 @@ export default function LoginPage() {
                       <Usb className="w-3 h-3" />
                       YubiKey
                     </button>
-                    <button
+                    <button type="button"
                       type="button"
                       onClick={() => { setTwoFactorMode('backup'); setUseBackupCode(true); clearError(); }}
                       className="text-[10px] uppercase tracking-wide font-bold transition-colors"
@@ -649,7 +649,7 @@ export default function LoginPage() {
                   </p>
                 </div>
 
-                <button
+                <button type="button"
                   type="button"
                   onClick={handleSecurityKeyAuth}
                   disabled={loginBusy}
@@ -669,7 +669,7 @@ export default function LoginPage() {
                 </button>
 
                 <div className="pt-2">
-                  <button
+                  <button type="button"
                     type="button"
                     onClick={handleBackWebAuthn}
                     className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors"
@@ -702,7 +702,7 @@ export default function LoginPage() {
                   maxLength={9}
                 />
 
-                <button
+                <button type="button"
                   type="submit"
                   disabled={loginBusy || !backupCode.trim()}
                   className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
@@ -718,7 +718,7 @@ export default function LoginPage() {
                 </button>
 
                 <div className="flex items-center justify-between pt-1">
-                  <button
+                  <button type="button"
                     type="button"
                     onClick={handleBackWebAuthn}
                     className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors"
@@ -729,7 +729,7 @@ export default function LoginPage() {
                     <ArrowLeft className="w-3 h-3" />
                     Back
                   </button>
-                  <button
+                  <button type="button"
                     type="button"
                     onClick={() => { setTwoFactorMode('totp'); clearError(); }}
                     className="text-[10px] uppercase tracking-wide font-bold transition-colors"
@@ -756,7 +756,7 @@ export default function LoginPage() {
                     <strong> Google Authenticator</strong> or <strong>Authy</strong>.
                   </p>
                 </div>
-                <button
+                <button type="button"
                   type="button"
                   onClick={handleStartSetup}
                   disabled={loginBusy}
@@ -771,7 +771,7 @@ export default function LoginPage() {
                     'BEGIN SETUP'
                   )}
                 </button>
-                <button
+                <button type="button"
                   onClick={handleBack}
                   className="w-full flex items-center justify-center gap-1 py-1.5 text-[9px] uppercase tracking-wider"
                   style={{ color: '#5a6e80', background: 'transparent', border: 'none' }}
@@ -800,7 +800,7 @@ export default function LoginPage() {
                 )}
 
                 <div className="text-center">
-                  <button
+                  <button type="button"
                     type="button"
                     onClick={() => setShowManualKey(!showManualKey)}
                     className="text-[9px] uppercase tracking-wide"
@@ -836,7 +836,7 @@ export default function LoginPage() {
                   />
                 </div>
 
-                <button
+                <button type="button"
                   type="submit"
                   disabled={loginBusy || setupCode.length !== 6}
                   className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
@@ -917,7 +917,7 @@ export default function LoginPage() {
                   )}
                 </div>
 
-                <button
+                <button type="button"
                   type="submit"
                   disabled={loginBusy || !newPassword || newPassword !== confirmPassword}
                   className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"

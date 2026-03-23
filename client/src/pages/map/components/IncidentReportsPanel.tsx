@@ -125,7 +125,7 @@ export default function IncidentReportsPanel({
             </span>
           )}
         </div>
-        <button
+        <button type="button"
           onClick={onClose}
           className="toolbar-btn p-1"
           aria-label="Close incident reports panel"
@@ -150,7 +150,7 @@ export default function IncidentReportsPanel({
                 <span className="text-[9px] font-mono text-rmpg-500 uppercase">Range</span>
                 <div className="flex items-center gap-0.5">
                   {DAYS_OPTIONS.map((d) => (
-                    <button
+                    <button type="button"
                       key={d}
                       onClick={() => onDaysChange(d)}
                       className={`toolbar-btn px-1.5 py-0.5 text-[9px] font-mono ${
@@ -267,7 +267,7 @@ export default function IncidentReportsPanel({
                             {timeAgo(r.created_at)}
                           </span>
                           {onNavigate && hasCoords && (
-                            <button
+                            <button type="button"
                               onClick={() => onNavigate(r.latitude!, r.longitude!)}
                               className="toolbar-btn p-0.5 text-emerald-400 hover:text-emerald-300"
                               title="Navigate to location"

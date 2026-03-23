@@ -199,7 +199,7 @@ export default function ArrestFormModal({
       {/* Section Tabs */}
       <div className="flex gap-1 -mt-2 mb-3 border-b border-rmpg-700 pb-2">
         {sections.map(s => (
-          <button
+          <button type="button"
             key={s.id}
             type="button"
             onClick={() => setActiveSection(s.id)}

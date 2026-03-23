@@ -702,7 +702,7 @@ export default function ForensicLabPage() {
       <div className="flex flex-col h-full bg-surface-base">
         {/* Detail Header */}
         <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1e3048] bg-[#0d1520]">
-          <button onClick={() => { setSelectedCase(null); setDetailTab('overview'); }} className="text-rmpg-400 hover:text-white transition-colors">
+          <button type="button" onClick={() => { setSelectedCase(null); setDetailTab('overview'); }} className="text-rmpg-400 hover:text-white transition-colors">
             <ChevronLeft size={16} />
           </button>
           <Microscope size={16} className="text-brand-400" />
@@ -715,7 +715,7 @@ export default function ForensicLabPage() {
             </div>
             <div className="text-sm font-semibold text-white truncate">{selectedCase.title}</div>
           </div>
-          <button
+          <button type="button"
             onClick={() => fetchCaseDetail(selectedCase.id)}
             className="toolbar-btn"
             title="Refresh"
@@ -760,7 +760,7 @@ export default function ForensicLabPage() {
             const labels = { overview: 'Overview', exhibits: `Exhibits (${selectedCase.exhibits?.length || 0})`, analyses: `Analyses (${selectedCase.analyses?.length || 0})`, timeline: 'Timeline', links: `Links (${caseLinks.length})`, hashes: 'Hashes' };
             const Icon = icons[tab];
             return (
-              <button
+              <button type="button"
                 key={tab}
                 onClick={() => setDetailTab(tab)}
                 className={`flex items-center gap-1.5 px-3 py-2 text-[10px] font-medium transition-colors border-b-2 ${
@@ -793,7 +793,7 @@ export default function ForensicLabPage() {
                     <option key={k} value={k}>{v.label}</option>
                   ))}
                 </select>
-                <button onClick={openEditModal} className="toolbar-btn text-[10px]">
+                <button type="button" onClick={openEditModal} className="toolbar-btn text-[10px]">
                   <Edit3 size={10} /> Edit Details
                 </button>
                 <button onClick={() => navigate(`/forensics?type=case&id=${selectedCase.id}`)} className="toolbar-btn text-[10px]">
@@ -813,7 +813,7 @@ export default function ForensicLabPage() {
                     {selectedCase.incident_id && (
                       <div className="flex justify-between">
                         <span className="text-rmpg-400">Linked Incident</span>
-                        <button onClick={() => navigate(`/incidents?id=${selectedCase.incident_id}`)} className="text-brand-400 hover:underline">#{selectedCase.incident_id}</button>
+                        <button type="button" onClick={() => navigate(`/incidents?id=${selectedCase.incident_id}`)} className="text-brand-400 hover:underline">#{selectedCase.incident_id}</button>
                       </div>
                     )}
                   </div>
@@ -959,7 +959,7 @@ export default function ForensicLabPage() {
                         <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Chain of Custody</div>
                         <span className="text-[9px] text-rmpg-600 font-mono">({custodyLog.length} entries)</span>
                       </div>
-                      <button
+                      <button type="button"
                         onClick={() => setShowCustodyModal(true)}
                         className="toolbar-btn toolbar-btn-primary text-[10px]"
                       >
@@ -1100,7 +1100,7 @@ export default function ForensicLabPage() {
             <>
               <div className="flex items-center justify-between">
                 <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Evidence Items</div>
-                <button onClick={() => setShowExhibitModal(true)} className="toolbar-btn toolbar-btn-primary text-[10px]">
+                <button type="button" onClick={() => setShowExhibitModal(true)} className="toolbar-btn toolbar-btn-primary text-[10px]">
                   <Plus size={10} /> Add Exhibit
                 </button>
               </div>
@@ -1142,12 +1142,12 @@ export default function ForensicLabPage() {
                             {/* Status actions */}
                             <div className="flex items-center gap-1.5 mt-2">
                               {ex.status === 'received' && (
-                                <button onClick={() => handleExhibitStatusChange(ex.id, 'examining')} className="text-[9px] px-2 py-0.5 bg-amber-900/20 text-amber-400 border border-amber-700/40 rounded-sm hover:bg-amber-900/40 transition-colors">
+                                <button type="button" onClick={() => handleExhibitStatusChange(ex.id, 'examining')} className="text-[9px] px-2 py-0.5 bg-amber-900/20 text-amber-400 border border-amber-700/40 rounded-sm hover:bg-amber-900/40 transition-colors">
                                   Begin Examination
                                 </button>
                               )}
                               {ex.status === 'examining' && (
-                                <button onClick={() => {
+                                <button type="button" onClick={() => {
                                   const result = prompt('Enter examination results:');
                                   if (result) handleExhibitStatusChange(ex.id, 'complete', { results: result });
                                 }} className="text-[9px] px-2 py-0.5 bg-green-900/20 text-green-400 border border-green-700/40 rounded-sm hover:bg-green-900/40 transition-colors">
@@ -1170,7 +1170,7 @@ export default function ForensicLabPage() {
             <>
               <div className="flex items-center justify-between">
                 <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Examination Records</div>
-                <button onClick={() => setShowAnalysisModal(true)} className="toolbar-btn toolbar-btn-primary text-[10px]">
+                <button type="button" onClick={() => setShowAnalysisModal(true)} className="toolbar-btn toolbar-btn-primary text-[10px]">
                   <Plus size={10} /> New Analysis
                 </button>
               </div>
@@ -1209,12 +1209,12 @@ export default function ForensicLabPage() {
                         {/* Status actions */}
                         <div className="flex items-center gap-1.5 mt-2">
                           {an.status === 'pending' && (
-                            <button onClick={() => handleAnalysisStatusChange(an.id, 'in_progress')} className="text-[9px] px-2 py-0.5 bg-amber-900/20 text-amber-400 border border-amber-700/40 rounded-sm hover:bg-amber-900/40 transition-colors">
+                            <button type="button" onClick={() => handleAnalysisStatusChange(an.id, 'in_progress')} className="text-[9px] px-2 py-0.5 bg-amber-900/20 text-amber-400 border border-amber-700/40 rounded-sm hover:bg-amber-900/40 transition-colors">
                               Start Analysis
                             </button>
                           )}
                           {an.status === 'in_progress' && (
-                            <button onClick={() => {
+                            <button type="button" onClick={() => {
                               const results = prompt('Enter analysis results:');
                               const conclusion = prompt('Enter conclusion:');
                               if (results) handleAnalysisStatusChange(an.id, 'complete', { results, conclusion: conclusion || undefined });
@@ -1246,7 +1246,7 @@ export default function ForensicLabPage() {
                     className="flex-1 px-3 py-1.5 text-xs bg-[#0d1520] border border-[#1e3048] rounded-sm text-white focus:border-brand-500 focus:outline-none"
                     placeholder="Add a note, observation, or update..."
                   />
-                  <button
+                  <button type="button"
                     onClick={handleAddTimelineNote}
                     disabled={!timelineNote.trim() || addingNote}
                     className="toolbar-btn toolbar-btn-primary text-[10px] px-3 disabled:opacity-40"
@@ -1364,7 +1364,7 @@ export default function ForensicLabPage() {
                     className="flex-1 px-3 py-1.5 text-xs bg-[#0d1520] border border-[#1e3048] rounded-sm text-white focus:border-brand-500 focus:outline-none"
                     placeholder="Search by name, case number, evidence ID..."
                   />
-                  <button onClick={handleLinkSearch} disabled={linkSearching || !linkSearchTerm.trim()} className="toolbar-btn toolbar-btn-primary text-[10px] px-3 disabled:opacity-40">
+                  <button type="button" onClick={handleLinkSearch} disabled={linkSearching || !linkSearchTerm.trim()} className="toolbar-btn toolbar-btn-primary text-[10px] px-3 disabled:opacity-40">
                     {linkSearching ? <Loader2 size={10} className="animate-spin" /> : <Search size={10} />} Search
                   </button>
                 </div>
@@ -1374,7 +1374,7 @@ export default function ForensicLabPage() {
                       <div key={`${r.type}-${r.id}-${i}`} className="flex items-center gap-2 p-2 bg-surface-base rounded-sm border border-[#1e3048] hover:border-brand-500/50 transition-colors">
                         <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm bg-brand-900/20 text-brand-400">{r.type}</span>
                         <span className="text-xs text-rmpg-200 flex-1 truncate">{r.label || r.name || r.title || `#${r.id}`}</span>
-                        <button onClick={() => handleLinkEntity(r.type, r.id)} className="text-[9px] px-2 py-0.5 bg-green-900/20 text-green-400 border border-green-700/40 rounded-sm hover:bg-green-900/40 transition-colors">
+                        <button type="button" onClick={() => handleLinkEntity(r.type, r.id)} className="text-[9px] px-2 py-0.5 bg-green-900/20 text-green-400 border border-green-700/40 rounded-sm hover:bg-green-900/40 transition-colors">
                           <Link2 size={10} className="inline mr-1" />Link
                         </button>
                       </div>
@@ -1397,7 +1397,7 @@ export default function ForensicLabPage() {
                       <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm bg-purple-900/20 text-purple-400">{link.entity_type}</span>
                       <span className="text-xs text-rmpg-200 flex-1">{link.entity_label || `${link.entity_type} #${link.entity_id}`}</span>
                       <span className="text-[9px] text-rmpg-500">{link.relationship}</span>
-                      <button onClick={() => handleUnlinkEntity(link.id)} className="text-rmpg-500 hover:text-red-400 transition-colors" title="Remove link">
+                      <button type="button" onClick={() => handleUnlinkEntity(link.id)} className="text-rmpg-500 hover:text-red-400 transition-colors" title="Remove link">
                         <Unlink size={12} />
                       </button>
                     </div>
@@ -1666,7 +1666,7 @@ export default function ForensicLabPage() {
         </div>
         <div className="flex items-center gap-1.5 ml-auto">
           <ExportButton exportUrl="/api/forensic-lab/export/csv" exportFilename="forensic-cases.csv" />
-          <button
+          <button type="button"
             onClick={() => navigate('/forensics')}
             className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-purple-400 bg-purple-900/20 hover:bg-purple-900/40 border border-purple-700/40 rounded-sm transition-colors"
             title="Connection Analysis Graph"
@@ -1743,7 +1743,7 @@ export default function ForensicLabPage() {
         {TABS.map(tab => {
           const Icon = tab === 'New Case' ? Plus : tab === 'My Cases' ? FileText : Search;
           return (
-            <button
+            <button type="button"
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={`flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-colors border-b-2 ${
@@ -1776,7 +1776,7 @@ export default function ForensicLabPage() {
                   className="w-full pl-8 pr-3 py-1.5 text-xs bg-[#0d1520] border border-[#1e3048] rounded-sm text-white focus:border-brand-500 focus:outline-none"
                 />
               </div>
-              <button
+              <button type="button"
                 onClick={() => setShowFilters(!showFilters)}
                 className={`toolbar-btn text-[10px] ${showFilters ? 'text-brand-400' : ''}`}
               >
@@ -1801,7 +1801,7 @@ export default function ForensicLabPage() {
                   ))}
                 </select>
                 {(filterStatus || filterType) && (
-                  <button onClick={() => { setFilterStatus(''); setFilterType(''); }} className="text-[10px] text-red-400 hover:underline">Clear</button>
+                  <button type="button" onClick={() => { setFilterStatus(''); setFilterType(''); }} className="text-[10px] text-red-400 hover:underline">Clear</button>
                 )}
               </div>
             )}
@@ -1816,7 +1816,7 @@ export default function ForensicLabPage() {
                 <Microscope size={32} className="text-rmpg-600 mx-auto mb-3" />
                 <p className="text-sm text-rmpg-300">No forensic cases found</p>
                 <p className="text-xs text-rmpg-500 mt-1">Create a new case using the "New Case" tab above</p>
-                <button onClick={() => setActiveTab('New Case')} className="mt-3 toolbar-btn toolbar-btn-primary text-xs">
+                <button type="button" onClick={() => setActiveTab('New Case')} className="mt-3 toolbar-btn toolbar-btn-primary text-xs">
                   <Plus size={12} /> Create First Case
                 </button>
               </div>
@@ -1871,7 +1871,7 @@ export default function ForensicLabPage() {
               {['Case Info', 'Evidence', 'Review'].map((step, i) => (
                 <React.Fragment key={step}>
                   {i > 0 && <div className={`w-8 h-px ${i <= wizardStep ? 'bg-brand-500' : 'bg-rmpg-600'}`} />}
-                  <button
+                  <button type="button"
                     onClick={() => i <= wizardStep && setWizardStep(i)}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-[10px] font-bold uppercase tracking-wide transition-colors ${
                       i === wizardStep ? 'bg-brand-500/20 text-brand-400 ring-1 ring-brand-500/40' :
@@ -1915,7 +1915,7 @@ export default function ForensicLabPage() {
                     {CASE_TYPES.map(ct => {
                       const Icon = ct.icon;
                       return (
-                        <button
+                        <button type="button"
                           key={ct.value}
                           onClick={() => setWizardData(d => ({ ...d, case_type: ct.value }))}
                           className={`flex items-start gap-2 p-2.5 rounded-sm border text-left transition-colors ${
@@ -1939,7 +1939,7 @@ export default function ForensicLabPage() {
                   <label className="block text-[11px] text-rmpg-400 mb-1">Priority</label>
                   <div className="flex gap-2">
                     {PRIORITIES.map(p => (
-                      <button
+                      <button type="button"
                         key={p.value}
                         onClick={() => setWizardData(d => ({ ...d, priority: p.value }))}
                         className={`flex-1 p-2 rounded-sm border text-center transition-colors ${
@@ -1978,7 +1978,7 @@ export default function ForensicLabPage() {
                 </div>
 
                 <div className="flex justify-end">
-                  <button
+                  <button type="button"
                     onClick={() => wizardData.title.trim() && setWizardStep(1)}
                     disabled={!wizardData.title.trim()}
                     className="toolbar-btn toolbar-btn-primary text-xs px-4 py-1.5 disabled:opacity-40"
@@ -2006,7 +2006,7 @@ export default function ForensicLabPage() {
                   <div key={i} className="panel-beveled bg-surface-base p-3 space-y-2 border-l-[3px] border-l-brand-500">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-brand-400">Exhibit {String.fromCharCode(65 + i)}</span>
-                      <button
+                      <button type="button"
                         onClick={() => setWizardData(d => ({ ...d, exhibits: d.exhibits.filter((_, j) => j !== i) }))}
                         className="text-red-400 hover:text-red-300"
                       >
@@ -2065,7 +2065,7 @@ export default function ForensicLabPage() {
                   </div>
                 ))}
 
-                <button
+                <button type="button"
                   onClick={() => setWizardData(d => ({
                     ...d,
                     exhibits: [...d.exhibits, { description: '', item_type: '', condition_received: '', examination_requested: '' }],
@@ -2076,10 +2076,10 @@ export default function ForensicLabPage() {
                 </button>
 
                 <div className="flex justify-between">
-                  <button onClick={() => setWizardStep(0)} className="toolbar-btn text-xs px-4 py-1.5">
+                  <button type="button" onClick={() => setWizardStep(0)} className="toolbar-btn text-xs px-4 py-1.5">
                     <ChevronLeft size={12} /> Back
                   </button>
-                  <button onClick={() => setWizardStep(2)} className="toolbar-btn toolbar-btn-primary text-xs px-4 py-1.5">
+                  <button type="button" onClick={() => setWizardStep(2)} className="toolbar-btn toolbar-btn-primary text-xs px-4 py-1.5">
                     Next: Review <ChevronRight size={12} />
                   </button>
                 </div>
@@ -2120,10 +2120,10 @@ export default function ForensicLabPage() {
                 )}
 
                 <div className="flex justify-between">
-                  <button onClick={() => setWizardStep(1)} className="toolbar-btn text-xs px-4 py-1.5">
+                  <button type="button" onClick={() => setWizardStep(1)} className="toolbar-btn text-xs px-4 py-1.5">
                     <ChevronLeft size={12} /> Back
                   </button>
-                  <button
+                  <button type="button"
                     onClick={handleWizardSubmit}
                     disabled={submitting || !wizardData.title.trim()}
                     className="toolbar-btn toolbar-btn-primary text-xs px-6 py-1.5 disabled:opacity-40"

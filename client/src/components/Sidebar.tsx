@@ -178,7 +178,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
               const active = isActive(item.path);
 
               return (
-                <button
+                <button type="button"
                   key={item.path}
                   onClick={() => navigate(item.path)}
                   onMouseEnter={() => collapsed ? setHoveredSection(item.path) : undefined}
@@ -234,7 +234,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
       </div>
 
       {/* Collapse toggle at bottom */}
-      <button
+      <button type="button"
         onClick={() => setCollapsed(!collapsed)}
         className="flex items-center justify-center gap-2 py-2 transition-colors"
         style={{

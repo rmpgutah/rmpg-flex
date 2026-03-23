@@ -351,7 +351,7 @@ export default function PersonFormModal({
       {/* Section Tabs */}
       <div className="flex gap-1 -mt-2 mb-3 border-b border-rmpg-700 pb-2">
         {sections.map((s) => (
-          <button
+          <button type="button"
             key={s.id}
             type="button"
             onClick={() => setActiveSection(s.id)}
@@ -612,7 +612,7 @@ export default function PersonFormModal({
                     onChange={handleSSNChange}
                     autoComplete="off"
                   />
-                  <button
+                  <button type="button"
                     type="button"
                     onClick={() => setShowSSN(!showSSN)}
                     className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white transition-colors"
@@ -683,12 +683,12 @@ export default function PersonFormModal({
                       className="w-full h-full object-cover"
                       onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                     />
-                    <button
+                    <button type="button"
                       type="button"
                       onClick={removeIdImage}
                       className="absolute top-1 right-1 w-5 h-5 bg-red-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                       title="Remove image"
-                    >
+                     aria-label="Close" title="Close">
                       <X className="w-3 h-3 text-white" />
                     </button>
                   </>
@@ -701,7 +701,7 @@ export default function PersonFormModal({
               </div>
               {/* Upload controls */}
               <div className="flex-1">
-                <button
+                <button type="button"
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase text-rmpg-200 bg-rmpg-700/60 border border-rmpg-500 hover:bg-rmpg-600/60 transition-colors"

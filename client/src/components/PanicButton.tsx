@@ -265,7 +265,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
       <div className="relative">
         {confirmVisible ? (
           <div className="flex items-center gap-1">
-            <button
+            <button type="button"
               onClick={handleConfirm}
               className="panic-btn-confirm animate-emergency-blink"
               title="CONFIRM — Send emergency alert NOW"
@@ -273,7 +273,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
               <AlertTriangle style={{ width: 11, height: 11 }} />
               CONFIRM
             </button>
-            <button
+            <button type="button"
               onClick={handleCancel}
               className="px-2 py-1 text-[9px] font-bold uppercase"
               style={{ background: '#1e3048', border: '1px solid #2a3e58', color: '#8a9aaa' }}
@@ -282,7 +282,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
             </button>
           </div>
         ) : (
-          <button
+          <button type="button"
             onClick={handlePanicClick}
             disabled={sending || panicAudio.isBroadcasting}
             className="panic-btn"
@@ -323,7 +323,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
               <span className="text-sm font-bold uppercase tracking-widest text-white">
                 Emergency Panic Alert
               </span>
-              <button
+              <button type="button"
                 onClick={dismissAlert}
                 className="ml-auto p-1 hover:bg-red-800/50 transition-colors"
               >
@@ -413,7 +413,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
               {/* Respond Button — talk back to panic sender */}
               <div className="flex gap-2">
                 {!panicAudio.isReceiving && panicAudio.panicSenderUserId && (
-                  <button
+                  <button type="button"
                     onClick={() => {
                       if (panicAudio.isResponding) {
                         panicAudio.stopResponse();
@@ -440,7 +440,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
                     )}
                   </button>
                 )}
-                <button
+                <button type="button"
                   onClick={dismissAlert}
                   className={`${!panicAudio.isReceiving && panicAudio.panicSenderUserId ? '' : 'w-full'} btn-danger py-2 justify-center flex-1`}
                 >

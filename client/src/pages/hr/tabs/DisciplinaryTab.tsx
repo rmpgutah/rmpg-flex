@@ -271,7 +271,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
         <div className="flex items-center gap-2">
           {/* View toggle */}
           <div className="flex border border-[#1e3048] rounded-sm overflow-hidden">
-            <button
+            <button type="button"
               onClick={() => setViewMode('list')}
               className={`px-2 py-1 text-xs flex items-center gap-1 ${
                 viewMode === 'list'
@@ -281,7 +281,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
             >
               <List size={12} /> List
             </button>
-            <button
+            <button type="button"
               onClick={() => setViewMode('timeline')}
               className={`px-2 py-1 text-xs flex items-center gap-1 ${
                 viewMode === 'timeline'
@@ -293,7 +293,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
             </button>
           </div>
           <ExportButton exportUrl="/api/hr/disciplinary/export/csv" exportFilename="disciplinary.csv" />
-          <button
+          <button type="button"
             onClick={handleCreate}
             className="px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm flex items-center gap-1.5"
           >
@@ -498,7 +498,7 @@ function RecordCard({
               : `${rec.description.slice(0, 120)}...`}
           </p>
           {rec.description.length > 120 && (
-            <button
+            <button type="button"
               onClick={onToggle}
               className="text-[10px] text-brand-400 hover:text-brand-300 flex items-center gap-0.5"
             >
@@ -535,7 +535,7 @@ function RecordCard({
         {manager && (
           <div className="flex items-center gap-1 shrink-0">
             {onEdit && (
-              <button
+              <button type="button"
                 onClick={onEdit}
                 className="p-1 text-rmpg-400 hover:text-white rounded-sm hover:bg-[#1a2636]"
                 title="Edit"
@@ -544,7 +544,7 @@ function RecordCard({
               </button>
             )}
             {isAdmin && onDelete && (
-              <button
+              <button type="button"
                 onClick={onDelete}
                 className="p-1 text-rmpg-400 hover:text-red-400 rounded-sm hover:bg-[#1a2636]"
                 title="Delete"

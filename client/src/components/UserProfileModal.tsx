@@ -504,7 +504,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
         <div className="panel-title-bar">
           <User className="title-icon" style={{ width: 14, height: 14 }} />
           <span>ACCOUNT SETTINGS</span>
-          <button onClick={onClose} className="ml-auto p-0.5 hover:text-red-400 transition-colors">
+          <button type="button" onClick={onClose} className="ml-auto p-0.5 hover:text-red-400 transition-colors">
             <X style={{ width: 12, height: 12 }} />
           </button>
         </div>
@@ -551,7 +551,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
           {tabs.map(tab => {
             const Icon = tab.icon;
             return (
-              <button
+              <button type="button"
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className="flex items-center gap-1.5 px-4 py-2 text-[10px] font-bold uppercase tracking-wider transition-colors"
@@ -699,7 +699,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       </div>
                     </div>
                     {profileImage && (
-                      <button
+                      <button type="button"
                         onClick={handleRemoveProfileImage}
                         disabled={imageUploading}
                         className="flex items-center gap-1 text-[10px] px-2 py-1 hover:text-red-400 transition-colors"
@@ -731,7 +731,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               )}
 
               <div className="flex justify-end pt-2">
-                <button onClick={handleProfileSave} disabled={profileSaving} className="btn-primary">
+                <button type="button" onClick={handleProfileSave} disabled={profileSaving} className="btn-primary">
                   <Save style={{ width: 12, height: 12 }} />
                   {profileSaving ? 'Saving...' : 'Save Changes'}
                 </button>
@@ -750,7 +750,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                     onChange={e => setCurrentPassword(e.target.value)}
                     className="input-dark pr-8"
                   />
-                  <button
+                  <button type="button"
                     type="button"
                     onClick={() => setShowCurrentPw(!showCurrentPw)}
                     className="absolute right-2 top-1/2 -translate-y-1/2"
@@ -769,7 +769,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                     onChange={e => setNewPassword(e.target.value)}
                     className="input-dark pr-8"
                   />
-                  <button
+                  <button type="button"
                     type="button"
                     onClick={() => setShowNewPw(!showNewPw)}
                     className="absolute right-2 top-1/2 -translate-y-1/2"
@@ -808,7 +808,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               )}
 
               <div className="flex justify-end pt-2">
-                <button
+                <button type="button"
                   onClick={handlePasswordChange}
                   disabled={pwSaving || !currentPassword || !newPassword || !confirmPassword}
                   className="btn-primary"
@@ -1050,7 +1050,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   )}
 
                   <div className="flex justify-between pt-3">
-                    <button
+                    <button type="button"
                       onClick={async () => {
                         try {
                           const result = await apiFetch<UserPreferences>('/user/preferences/reset', { method: 'POST' });
@@ -1066,7 +1066,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       <RotateCcw style={{ width: 10, height: 10 }} />
                       Reset to Defaults
                     </button>
-                    <button
+                    <button type="button"
                       onClick={async () => {
                         setPrefsSaving(true);
                         setPrefsMsg(null);
@@ -1102,7 +1102,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
             <>
               {/* Security sub-view navigation */}
               {securityView !== 'main' && (
-                <button
+                <button type="button"
                   onClick={() => setSecurityView('main')}
                   className="text-[10px] mb-3 flex items-center gap-1"
                   style={{ color: '#4a90c4' }}
@@ -1158,7 +1158,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
 
               {/* ── Idle: Enable / Disable buttons ──────── */}
               {setupStep === 'idle' && !totpStatus?.enabled && (
-                <button
+                <button type="button"
                   onClick={handleStartSetup}
                   disabled={securityBusy}
                   className="btn-primary w-full"
@@ -1169,7 +1169,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               )}
 
               {setupStep === 'idle' && totpStatus?.enabled && (
-                <button
+                <button type="button"
                   onClick={() => { setSetupStep('disabling'); setSecurityMsg(null); }}
                   className="btn-danger w-full"
                 >
@@ -1216,7 +1216,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       <span className="text-[10px]" style={{ color: '#8a9aaa' }}>Verifying...</span>
                     </div>
                   )}
-                  <button
+                  <button type="button"
                     type="button"
                     onClick={() => { setSetupStep('idle'); setSecurityMsg(null); }}
                     className="text-[10px] uppercase tracking-wide font-bold transition-colors"
@@ -1260,13 +1260,13 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                     autoFocus
                   />
                   <div className="flex gap-2">
-                    <button
+                    <button type="button"
                       onClick={() => { setSetupStep('idle'); setSecurityMsg(null); setDisablePassword(''); }}
                       className="btn-secondary flex-1"
                     >
                       Cancel
                     </button>
-                    <button
+                    <button type="button"
                       onClick={handleDisable2FA}
                       disabled={securityBusy || !disablePassword}
                       className="btn-danger flex-1"
@@ -1280,20 +1280,20 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
 
               {/* Quick links to devices / history / keys */}
               <div className="flex gap-2 mt-3 pt-3 flex-wrap" style={{ borderTop: '1px solid #162236' }}>
-                <button
+                <button type="button"
                   onClick={() => setSecurityView('keys')}
                   className="toolbar-btn flex-1 h-7 text-[10px] uppercase tracking-wider"
                   style={{ color: '#d97706', borderColor: '#d97706' }}
                 >
                   Security Keys
                 </button>
-                <button
+                <button type="button"
                   onClick={() => setSecurityView('devices')}
                   className="toolbar-btn flex-1 h-7 text-[10px] uppercase tracking-wider"
                 >
                   Trusted Devices
                 </button>
-                <button
+                <button type="button"
                   onClick={() => setSecurityView('history')}
                   className="toolbar-btn flex-1 h-7 text-[10px] uppercase tracking-wider"
                 >
@@ -1331,7 +1331,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                           Last used: {(session.last_used_at || session.created_at) ? new Date(session.last_used_at || session.created_at).toLocaleString() : 'N/A'}
                         </div>
                       </div>
-                      <button
+                      <button type="button"
                         onClick={() => handleRevokeSession(session.session_id)}
                         className="btn-danger btn-xs"
                       >
@@ -1365,7 +1365,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                             {tfaStatus.backupCodesRemaining} backup codes left
                           </span>
                         </div>
-                        <button
+                        <button type="button"
                           onClick={() => setSecurityView('regen-backup')}
                           className="toolbar-btn w-full h-7 text-[10px] uppercase tracking-wider flex items-center justify-center gap-1.5"
                         >
@@ -1379,7 +1379,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                           <span className="led-dot led-red" />
                           <span style={{ color: '#ef4444' }}>2FA is not enabled</span>
                         </div>
-                        <button
+                        <button type="button"
                           onClick={() => setSecurityView('setup-2fa')}
                           className="toolbar-btn toolbar-btn-primary w-full h-7 text-white text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5"
                         >
@@ -1392,13 +1392,13 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
 
                   {/* Quick links */}
                   <div className="flex gap-2">
-                    <button
+                    <button type="button"
                       onClick={() => setSecurityView('devices')}
                       className="toolbar-btn flex-1 h-7 text-[10px] uppercase tracking-wider"
                     >
                       Trusted Devices
                     </button>
-                    <button
+                    <button type="button"
                       onClick={() => setSecurityView('history')}
                       className="toolbar-btn flex-1 h-7 text-[10px] uppercase tracking-wider"
                     >
@@ -1410,7 +1410,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
 
               {securityView === 'setup-2fa' && (
                 <div>
-                  <button
+                  <button type="button"
                     onClick={() => setSecurityView('overview')}
                     className="text-[10px] mb-3 flex items-center gap-1"
                     style={{ color: '#4a90c4' }}
@@ -1431,7 +1431,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
 
               {securityView === 'regen-backup' && (
                 <div>
-                  <button
+                  <button type="button"
                     onClick={() => { setSecurityView('overview'); setRegenCodes(null); }}
                     className="text-[10px] mb-3 flex items-center gap-1"
                     style={{ color: '#4a90c4' }}
@@ -1478,7 +1478,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                         </div>
                       )}
 
-                      <button
+                      <button type="button"
                         onClick={handleRegenBackupCodes}
                         disabled={!regenPassword || regenLoading}
                         className="toolbar-btn toolbar-btn-primary w-full h-8 text-white text-[10px] font-bold uppercase tracking-wider disabled:opacity-50 flex items-center justify-center gap-1.5"
@@ -1492,7 +1492,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
 
               {securityView === 'devices' && (
                 <div>
-                  <button
+                  <button type="button"
                     onClick={() => setSecurityView('overview')}
                     className="text-[10px] mb-3 flex items-center gap-1"
                     style={{ color: '#4a90c4' }}
@@ -1505,7 +1505,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
 
               {securityView === 'history' && (
                 <div>
-                  <button
+                  <button type="button"
                     onClick={() => setSecurityView('overview')}
                     className="text-[10px] mb-3 flex items-center gap-1"
                     style={{ color: '#4a90c4' }}

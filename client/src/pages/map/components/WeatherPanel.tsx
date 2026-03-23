@@ -139,7 +139,7 @@ export default function WeatherPanel({
         <span className="text-[10px] font-semibold tracking-widest text-white/80 uppercase flex-1">
           Environment
         </span>
-        <button
+        <button type="button"
           onClick={onRefresh}
           disabled={loading}
           className="p-1 rounded-sm text-white/40 hover:text-white/80 hover:bg-white/5 transition-colors disabled:opacity-40"
@@ -151,7 +151,7 @@ export default function WeatherPanel({
             <RefreshCw size={13} />
           )}
         </button>
-        <button
+        <button type="button"
           onClick={onClose}
           className="p-1 rounded-sm text-white/40 hover:text-red-400 hover:bg-white/5 transition-colors"
           title="Close panel"

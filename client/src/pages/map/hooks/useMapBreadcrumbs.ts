@@ -261,7 +261,8 @@ export function useMapBreadcrumbs({ mapInstanceRef, mapLoaded }: UseMapBreadcrum
             breadcrumbMarkersRef.current.push(dot);
           });
         });
-      } catch {
+      } catch (err) {
+        console.warn('[useMapBreadcrumbs] Trail fetch failed:', err);
         if (retryCount < MAX_RETRIES) {
           const backoffMs = Math.min(5000 * Math.pow(2, retryCount), 60000);
           retryCount++;

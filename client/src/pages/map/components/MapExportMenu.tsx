@@ -65,7 +65,7 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
   return (
     <div ref={menuRef} className="relative">
       {/* Trigger button */}
-      <button
+      <button type="button"
         onClick={() => setOpen(!open)}
         disabled={busy}
         className={`backdrop-blur-md shadow-xl transition-colors ${
@@ -103,7 +103,7 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
             minWidth: 180,
           }}
         >
-          <button
+          <button type="button"
             role="menuitem"
             onClick={handleScreenshot}
             className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${textColor} ${hoverBg}`}
@@ -115,7 +115,7 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
               <div className={`text-[9px] ${light ? 'text-rmpg-400' : 'text-rmpg-500'}`}>Download as PNG</div>
             </div>
           </button>
-          <button
+          <button type="button"
             role="menuitem"
             onClick={handlePrint}
             className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${textColor} ${hoverBg}`}

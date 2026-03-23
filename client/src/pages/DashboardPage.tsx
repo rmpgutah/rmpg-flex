@@ -541,7 +541,7 @@ export default function DashboardPage() {
             <AlertTriangle className="w-4 h-4 text-red-400" />
             <span className="text-xs text-red-300">{error}</span>
           </div>
-          <button
+          <button type="button"
             className="text-xs text-red-400 hover:text-red-300 underline"
             onClick={() => fetchDashboardData()}
           >
@@ -732,7 +732,7 @@ export default function DashboardPage() {
                 { icon: Target, label: 'Process Server', path: '/serve', color: '#a855f7' },
                 { icon: Mail, label: 'Email', path: '/email', color: '#06b6d4' },
               ].map(({ icon: ActionIcon, label, path, color, action }) => (
-                <button
+                <button type="button"
                   key={label}
                   onClick={() => action ? action() : navigate(path)}
                   className={`flex flex-col items-center gap-1.5 ${isMobile ? 'p-3 min-h-[64px]' : 'p-2.5'} panel-beveled bg-surface-sunken hover:bg-surface-raised transition-all duration-150 cursor-pointer group border border-transparent hover:border-[#2a3e58]`}
@@ -753,7 +753,7 @@ export default function DashboardPage() {
 
       {/* BOLO Ticker */}
       {bolos.length > 0 && (
-        <div className="bg-red-900/20 panel-beveled p-2 cursor-pointer hover:bg-red-900/30 transition-colors border-l-4 border-l-red-500" onClick={() => navigate('/communications')}>
+        <div className="bg-red-900/20 panel-beveled p-2 cursor-pointer hover:bg-red-900/30 transition-colors border-l-4 border-l-red-500" role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/communications'); }} onClick={() => navigate('/communications')} aria-label="View active BOLOs">
           <div className="flex items-center gap-2 mb-1.5">
             <span className="led-dot led-red animate-led-pulse" />
             <AlertTriangle className="w-3.5 h-3.5 text-red-400 animate-emergency-blink" />
@@ -896,16 +896,16 @@ export default function DashboardPage() {
           <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5">
             <h4 className="text-[9px] font-bold text-rmpg-500 uppercase tracking-wider">Quick Actions</h4>
             <div className="grid grid-cols-2 gap-1.5">
-              <button className={`toolbar-btn toolbar-btn-primary justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/dispatch')}>
+              <button type="button" className={`toolbar-btn toolbar-btn-primary justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/dispatch')}>
                 <Plus style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> New Call
               </button>
-              <button className={`toolbar-btn justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/incidents')}>
+              <button type="button" className={`toolbar-btn justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/incidents')}>
                 <FileText style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Incident
               </button>
-              <button className={`toolbar-btn justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/map')}>
+              <button type="button" className={`toolbar-btn justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/map')}>
                 <MapPin style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Map
               </button>
-              <button className={`toolbar-btn justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/warrants')}>
+              <button type="button" className={`toolbar-btn justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/warrants')}>
                 <Gavel style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Warrants
               </button>
             </div>
@@ -1275,7 +1275,7 @@ export default function DashboardPage() {
         {/* Activity Feed */}
         <div className="lg:col-span-2 panel-beveled bg-surface-base">
           <PanelTitleBar title="RECENT ACTIVITY" icon={Activity}>
-            <button
+            <button type="button"
               className="toolbar-btn flex items-center gap-1"
               onClick={() => navigate('/audit')}
               title="View full audit log"

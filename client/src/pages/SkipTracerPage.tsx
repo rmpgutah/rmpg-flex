@@ -181,7 +181,7 @@ export default function SkipTracerPage() {
 
   // ─── Render helpers ─────────────────────────────────────
   const renderCopyButton = (text: string, label: string) => (
-    <button
+    <button type="button"
       onClick={(e) => { e.stopPropagation(); copy(text, label); }}
       className="ml-1 text-rmpg-600 hover:text-blue-400 transition-colors"
       title={`Copy ${label}`}
@@ -219,7 +219,7 @@ export default function SkipTracerPage() {
             <div className="text-[9px] font-bold text-rmpg-400 uppercase tracking-wider mb-2">Search Method</div>
             <div className="grid grid-cols-2 gap-1.5">
               {SEARCH_MODES.map(({ id, label, icon: Icon, color }) => (
-                <button
+                <button type="button"
                   key={id}
                   onClick={() => { setMode(id); setResults(null); setSelected(null); setPage(1); }}
                   className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider border transition-all ${
@@ -304,7 +304,7 @@ export default function SkipTracerPage() {
                 </div>
               )}
 
-              <button
+              <button type="button"
                 onClick={() => handleSearch()}
                 disabled={loading}
                 className="w-full flex items-center justify-center gap-2 py-2 text-[10px] font-bold uppercase tracking-wider bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 border border-blue-700"
@@ -334,7 +334,7 @@ export default function SkipTracerPage() {
             {/* Pagination */}
             {results && resultItems.length >= 10 && (
               <div className="flex items-center gap-2 pt-1">
-                <button
+                <button type="button"
                   onClick={() => page > 1 && handlePageChange(page - 1)}
                   disabled={page <= 1 || loading}
                   className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase bg-surface-base border border-rmpg-600 text-rmpg-400 hover:text-white disabled:opacity-30"
@@ -342,7 +342,7 @@ export default function SkipTracerPage() {
                   <ChevronLeft className="w-3 h-3" /> Prev
                 </button>
                 <span className="text-[10px] text-rmpg-500 tabular-nums">Page {page}</span>
-                <button
+                <button type="button"
                   onClick={() => handlePageChange(page + 1)}
                   disabled={loading}
                   className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase bg-surface-base border border-rmpg-600 text-rmpg-400 hover:text-white disabled:opacity-30"
@@ -358,11 +358,11 @@ export default function SkipTracerPage() {
             <div className="border-t border-rmpg-700 p-3">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[9px] font-bold text-rmpg-400 uppercase tracking-wider">Recent Searches</span>
-                <button onClick={clearSearchHistory} className="text-[8px] text-rmpg-600 hover:text-red-400 transition-colors">Clear</button>
+                <button type="button" onClick={clearSearchHistory} className="text-[8px] text-rmpg-600 hover:text-red-400 transition-colors">Clear</button>
               </div>
               <div className="space-y-1 max-h-40 overflow-y-auto">
                 {searchHistory.slice(0, 10).map((entry, i) => (
-                  <button key={i} onClick={() => rerunSearch(entry)}
+                  <button type="button" key={i} onClick={() => rerunSearch(entry)}
                     className="w-full text-left px-2 py-1.5 text-[10px] bg-surface-sunken border border-rmpg-800 hover:bg-rmpg-800/50 transition-colors">
                     <div className="flex items-center justify-between">
                       <span className="text-rmpg-200 font-mono truncate">{entry.query}</span>
@@ -390,7 +390,7 @@ export default function SkipTracerPage() {
                 const isActive = selected === person;
 
                 return (
-                  <button
+                  <button type="button"
                     key={idx}
                     onClick={() => setSelected(person)}
                     className={`w-full text-left px-3 py-2 border-b border-rmpg-800 transition-all ${
@@ -455,7 +455,7 @@ export default function SkipTracerPage() {
                     )}
                   </div>
                   {selected['Person ID'] && (
-                    <button
+                    <button type="button"
                       onClick={() => handleGetPersonDetails(selected['Person ID'])}
                       disabled={loadingDetail}
                       className="flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-blue-700/20 text-blue-400 border border-blue-700/50 hover:bg-blue-700/40 disabled:opacity-50"
@@ -566,7 +566,7 @@ function renderArraySection(
           {typeof item === 'string' ? (
             <div className="flex items-center gap-1">
               <span className="text-[11px] text-rmpg-200 font-mono">{item}</span>
-              <button
+              <button type="button"
                 onClick={() => copy(item, `${title}-${idx}`)}
                 className="text-rmpg-600 hover:text-blue-400"
               >

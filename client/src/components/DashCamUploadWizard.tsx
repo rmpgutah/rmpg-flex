@@ -498,7 +498,7 @@ export default function DashCamUploadWizard({
               {files.length} file{files.length !== 1 ? 's' : ''} selected
             </span>
             {files.length < MAX_FILES && (
-              <button
+              <button type="button"
                 type="button"
                 onClick={() => fileRef.current?.click()}
                 className="toolbar-btn text-[10px] px-2 py-1 flex items-center gap-1"
@@ -540,7 +540,7 @@ export default function DashCamUploadWizard({
               </div>
 
               {/* Remove */}
-              <button
+              <button type="button"
                 type="button"
                 onClick={() => removeFile(entry.id)}
                 className="toolbar-btn p-1 text-rmpg-500 hover:text-red-400"
@@ -571,7 +571,7 @@ export default function DashCamUploadWizard({
           <span className="text-[9px] text-rmpg-400">
             Copy Vehicle, Unit, and Classification from the open file to all files
           </span>
-          <button
+          <button type="button"
             type="button"
             onClick={applyToAll}
             disabled={!activeExpanded}
@@ -587,7 +587,7 @@ export default function DashCamUploadWizard({
           return (
             <div key={entry.id} className="panel-beveled overflow-hidden">
               {/* Accordion Header */}
-              <button
+              <button type="button"
                 type="button"
                 onClick={() => setExpandedFile(isExpanded ? null : entry.id)}
                 className="w-full flex items-center gap-2 px-3 py-2 hover:bg-surface-hover transition-colors"
@@ -905,7 +905,7 @@ export default function DashCamUploadWizard({
           <button type="button" onClick={handleClose} className="toolbar-btn text-xs px-4 py-1.5">
             Cancel
           </button>
-          <button
+          <button type="button"
             type="button"
             onClick={() => setStep(2)}
             disabled={files.length === 0}
@@ -921,14 +921,14 @@ export default function DashCamUploadWizard({
       const allHaveTitles = files.every((f) => f.title.trim().length > 0);
       return (
         <div className="flex items-center justify-between px-4 py-3 border-t border-rmpg-700">
-          <button
+          <button type="button"
             type="button"
             onClick={() => setStep(1)}
             className="toolbar-btn text-xs px-4 py-1.5 flex items-center gap-1.5"
           >
             <ArrowLeft className="w-3 h-3" /> Back
           </button>
-          <button
+          <button type="button"
             type="button"
             onClick={() => setStep(3)}
             disabled={!allHaveTitles}
@@ -944,7 +944,7 @@ export default function DashCamUploadWizard({
     return (
       <div className="flex items-center justify-between px-4 py-3 border-t border-rmpg-700">
         {!isUploading && !allDone && (
-          <button
+          <button type="button"
             type="button"
             onClick={() => setStep(2)}
             className="toolbar-btn text-xs px-4 py-1.5 flex items-center gap-1.5"
@@ -956,7 +956,7 @@ export default function DashCamUploadWizard({
         {isUploading && <div />}
 
         {allDone ? (
-          <button
+          <button type="button"
             type="button"
             onClick={handleCloseAfterUpload}
             className="toolbar-btn-primary text-xs px-4 py-1.5"
@@ -964,7 +964,7 @@ export default function DashCamUploadWizard({
             Close
           </button>
         ) : (
-          <button
+          <button type="button"
             type="button"
             onClick={startUploadAll}
             disabled={isUploading}
@@ -1002,11 +1002,11 @@ export default function DashCamUploadWizard({
             <Upload className="w-4 h-4 text-brand-400" />
             <h2 className="text-sm font-bold text-rmpg-100">Upload Dash Camera Videos</h2>
           </div>
-          <button
+          <button type="button"
             onClick={handleClose}
             disabled={isUploading}
             className="toolbar-btn p-1 disabled:opacity-30"
-          >
+           aria-label="Close" title="Close">
             <X className="w-4 h-4" />
           </button>
         </div>

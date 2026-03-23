@@ -275,10 +275,10 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
       <div className="flex items-center justify-between mb-2">
         <span className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold">Invoices</span>
         <div className="flex gap-1">
-          <button onClick={() => { fetchInvoices(); fetchStats(); }} className="toolbar-btn" title="Refresh">
+          <button type="button" onClick={() => { fetchInvoices(); fetchStats(); }} className="toolbar-btn" title="Refresh">
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
-          <button
+          <button type="button"
             onClick={() => {
               const now = new Date();
               const start = dateToLocalYMD(new Date(now.getFullYear(), now.getMonth(), 1));
@@ -351,7 +351,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
   const renderCreateView = () => (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 mb-3">
-        <button onClick={() => setView('list')} className="toolbar-btn"><ArrowLeft className="w-3.5 h-3.5" /></button>
+        <button type="button" onClick={() => setView('list')} className="toolbar-btn"><ArrowLeft className="w-3.5 h-3.5" /></button>
         <span className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold">Create New Invoice</span>
       </div>
 
@@ -397,8 +397,8 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
           />
         </div>
         <div className="pt-2 border-t border-rmpg-700 flex justify-end gap-2">
-          <button onClick={() => setView('list')} className="toolbar-btn text-rmpg-400">Cancel</button>
-          <button
+          <button type="button" onClick={() => setView('list')} className="toolbar-btn text-rmpg-400">Cancel</button>
+          <button type="button"
             onClick={handleCreate}
             disabled={saving || !createForm.period_start || !createForm.period_end}
             className="toolbar-btn text-brand-400 hover:text-brand-300 disabled:opacity-50"
@@ -421,7 +421,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         {/* Header */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <button onClick={() => { setView('list'); setSelectedInvoice(null); }} className="toolbar-btn"><ArrowLeft className="w-3.5 h-3.5" /></button>
+            <button type="button" onClick={() => { setView('list'); setSelectedInvoice(null); }} className="toolbar-btn"><ArrowLeft className="w-3.5 h-3.5" /></button>
             <span className="font-mono text-brand-400 font-bold text-sm">{inv.invoice_number}</span>
             <span className={`px-1.5 py-0.5 text-[9px] uppercase font-bold border rounded-sm ${STATUS_BADGE[inv.status] || STATUS_BADGE.draft}`}>
               {toDisplayLabel(inv.status)}
@@ -430,28 +430,28 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
           <div className="flex gap-1">
             {inv.status === 'draft' && (
               <>
-                <button onClick={handleRegenerate} className="toolbar-btn text-amber-400" title="Re-generate line items" disabled={saving}>
+                <button type="button" onClick={handleRegenerate} className="toolbar-btn text-amber-400" title="Re-generate line items" disabled={saving}>
                   <RefreshCw className="w-3.5 h-3.5" /> <span className="text-[10px]">Regenerate</span>
                 </button>
-                <button onClick={() => handleStatusChange('sent')} className="toolbar-btn text-blue-400" disabled={saving}>
+                <button type="button" onClick={() => handleStatusChange('sent')} className="toolbar-btn text-blue-400" disabled={saving}>
                   <Send className="w-3.5 h-3.5" /> <span className="text-[10px]">Send</span>
                 </button>
-                <button onClick={() => handleStatusChange('void')} className="toolbar-btn text-rmpg-500" disabled={saving}>
+                <button type="button" onClick={() => handleStatusChange('void')} className="toolbar-btn text-rmpg-500" disabled={saving}>
                   <XCircle className="w-3.5 h-3.5" /> <span className="text-[10px]">Void</span>
                 </button>
               </>
             )}
             {(inv.status === 'sent' || inv.status === 'partial' || inv.status === 'overdue') && (
               <>
-                <button onClick={() => setShowPayment(true)} className="toolbar-btn text-green-400" disabled={saving}>
+                <button type="button" onClick={() => setShowPayment(true)} className="toolbar-btn text-green-400" disabled={saving}>
                   <CreditCard className="w-3.5 h-3.5" /> <span className="text-[10px]">Record Payment</span>
                 </button>
                 {inv.status !== 'partial' && (
-                  <button onClick={() => handleStatusChange('paid')} className="toolbar-btn text-green-400" disabled={saving}>
+                  <button type="button" onClick={() => handleStatusChange('paid')} className="toolbar-btn text-green-400" disabled={saving}>
                     <CheckCircle className="w-3.5 h-3.5" /> <span className="text-[10px]">Mark Paid</span>
                   </button>
                 )}
-                <button onClick={() => handleStatusChange('void')} className="toolbar-btn text-rmpg-500" disabled={saving}>
+                <button type="button" onClick={() => handleStatusChange('void')} className="toolbar-btn text-rmpg-500" disabled={saving}>
                   <XCircle className="w-3.5 h-3.5" />
                 </button>
               </>
@@ -496,7 +496,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold">Line Items</span>
             {inv.status === 'draft' && (
-              <button onClick={() => setShowAddItem(!showAddItem)} className="toolbar-btn text-brand-400">
+              <button type="button" onClick={() => setShowAddItem(!showAddItem)} className="toolbar-btn text-brand-400">
                 <Plus className="w-3 h-3" /> <span className="text-[10px]">Add Item</span>
               </button>
             )}
@@ -531,10 +531,10 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                   <input type="number" step="0.01" className="input-dark w-full text-[10px]" value={itemForm.unit_price} onChange={e => setItemForm(f => ({ ...f, unit_price: e.target.value }))} />
                 </div>
                 <div className="col-span-2 flex items-end gap-1">
-                  <button onClick={handleAddLineItem} disabled={saving || !itemForm.description} className="toolbar-btn text-green-400 disabled:opacity-50">
+                  <button type="button" onClick={handleAddLineItem} disabled={saving || !itemForm.description} className="toolbar-btn text-green-400 disabled:opacity-50">
                     {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />} Add
                   </button>
-                  <button onClick={() => setShowAddItem(false)} className="toolbar-btn text-rmpg-500"><XCircle className="w-3 h-3" /> Cancel</button>
+                  <button type="button" onClick={() => setShowAddItem(false)} className="toolbar-btn text-rmpg-500"><XCircle className="w-3 h-3" /> Cancel</button>
                 </div>
               </div>
             </div>
@@ -563,7 +563,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                   </td>
                   {inv.status === 'draft' && (
                     <td className="p-1 text-center">
-                      <button onClick={() => handleDeleteLineItem(item.id)} className="text-rmpg-600 hover:text-red-400 transition-colors">
+                      <button type="button" onClick={() => handleDeleteLineItem(item.id)} className="text-rmpg-600 hover:text-red-400 transition-colors">
                         <Trash2 className="w-3 h-3" />
                       </button>
                     </td>
@@ -635,8 +635,8 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
               </div>
             </div>
             <div className="flex justify-end gap-1 mt-2">
-              <button onClick={() => setShowPayment(false)} className="toolbar-btn text-rmpg-500"><XCircle className="w-3 h-3" /> Cancel</button>
-              <button onClick={handleRecordPayment} disabled={saving || !payForm.amount} className="toolbar-btn text-green-400 disabled:opacity-50">
+              <button type="button" onClick={() => setShowPayment(false)} className="toolbar-btn text-rmpg-500"><XCircle className="w-3 h-3" /> Cancel</button>
+              <button type="button" onClick={handleRecordPayment} disabled={saving || !payForm.amount} className="toolbar-btn text-green-400 disabled:opacity-50">
                 {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <DollarSign className="w-3 h-3" />} Record Payment
               </button>
             </div>
@@ -667,7 +667,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                     <td className="p-1 text-rmpg-400">{pay.reference_number || '—'}</td>
                     <td className="p-1 text-rmpg-400">{pay.recorded_by_name || '—'}</td>
                     <td className="p-1">
-                      <button onClick={() => handleDeletePayment(pay.id)} className="text-rmpg-600 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
+                      <button type="button" onClick={() => handleDeletePayment(pay.id)} className="text-rmpg-600 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
                     </td>
                   </tr>
                 ))}
@@ -690,7 +690,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
 
         {/* PDF / Print / Preview Actions */}
         <div className="flex gap-2 mb-3">
-          <button
+          <button type="button"
             onClick={async () => {
               try {
                 setError(null);
@@ -710,7 +710,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
           >
             <Eye className="w-3.5 h-3.5" /> <span className="text-[10px]">Preview</span>
           </button>
-          <button
+          <button type="button"
             onClick={async () => {
               try {
                 setError(null);
@@ -728,7 +728,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
           >
             <Download className="w-3.5 h-3.5" /> <span className="text-[10px]">Download PDF</span>
           </button>
-          <button
+          <button type="button"
             onClick={async () => {
               try {
                 setError(null);
@@ -770,7 +770,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         <div className="flex items-center gap-2 bg-red-900/30 border border-red-700/50 text-red-300 text-[10px] px-3 py-2 rounded-sm mb-2">
           <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
           <span>{error}</span>
-          <button onClick={() => setError(null)} className="ml-auto"><XCircle className="w-3 h-3" /></button>
+          <button type="button" onClick={() => setError(null)} className="ml-auto"><XCircle className="w-3 h-3" /></button>
         </div>
       )}
       {view === 'list' && renderListView()}

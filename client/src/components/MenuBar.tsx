@@ -586,7 +586,7 @@ export default function MenuBar({
 
     if (item.type === 'toggle') {
       return (
-        <button
+        <button type="button"
           key={`toggle-${index}`}
           className={`menu-item ${isDisabled ? 'menu-item-disabled' : ''}`}
           onClick={() => !isDisabled && handleAction(item.action)}
@@ -602,7 +602,7 @@ export default function MenuBar({
 
     // Regular action
     return (
-      <button
+      <button type="button"
         key={`action-${index}`}
         className={`menu-item ${isDisabled ? 'menu-item-disabled' : ''}`}
         onClick={() => !isDisabled && handleAction(item.action)}
@@ -620,7 +620,7 @@ export default function MenuBar({
       <nav className="flex items-center gap-0" ref={menuBarRef} role="menubar" aria-label="Main application menu">
         {menus.map((menu) => (
           <div key={menu.label} className="relative" role="none">
-            <button
+            <button type="button"
               className={`menu-bar-btn ${openMenu === menu.label ? 'menu-bar-btn-active' : ''}`}
               onClick={() => handleMenuClick(menu.label)}
               onMouseEnter={() => handleMenuHover(menu.label)}
@@ -653,7 +653,7 @@ export default function MenuBar({
                 <Radio className="w-4 h-4 text-brand-400" />
                 10-Codes Quick Reference
               </h2>
-              <button onClick={() => setShow10Codes(false)} className="text-rmpg-400 hover:text-white text-xs">ESC</button>
+              <button type="button" onClick={() => setShow10Codes(false)} className="text-rmpg-400 hover:text-white text-xs">ESC</button>
             </div>
             <div className="flex-1 overflow-auto p-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -887,7 +887,7 @@ function LawBooksModal({ onClose }: { onClose: () => void }) {
     level ? level.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '';
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60" onClick={onClose}>
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={onClose}>
       <div
         className="panel-beveled w-[800px] max-h-[85vh] overflow-hidden flex flex-col"
         style={{ background: '#141e2b' }}
@@ -901,14 +901,14 @@ function LawBooksModal({ onClose }: { onClose: () => void }) {
           </h2>
           <div className="flex items-center gap-2 text-[10px] text-rmpg-500">
             <span>{total} statutes</span>
-            <button onClick={onClose} className="text-rmpg-400 hover:text-white text-xs">ESC</button>
+            <button type="button" onClick={onClose} className="text-rmpg-400 hover:text-white text-xs">ESC</button>
           </div>
         </div>
 
         {/* State Tabs */}
         <div className="flex border-b border-rmpg-700 overflow-x-auto" style={{ background: '#0d1520' }}>
           {LAW_STATE_CODES.map(st => (
-            <button
+            <button type="button"
               key={st}
               onClick={() => setActiveState(st)}
               className={`flex-shrink-0 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors ${
@@ -926,7 +926,7 @@ function LawBooksModal({ onClose }: { onClose: () => void }) {
         <div className="flex items-center gap-2 px-3 py-1.5 border-b border-rmpg-700 bg-surface-base">
           <div className="flex gap-0.5">
             {(['all', 'criminal', 'vehicle'] as const).map(cat => (
-              <button
+              <button type="button"
                 key={cat}
                 onClick={() => setActiveCategory(cat)}
                 className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider transition-colors ${
@@ -962,7 +962,7 @@ function LawBooksModal({ onClose }: { onClose: () => void }) {
           ) : (
             statutes.map(s => (
               <div key={s.id} className="border-b border-rmpg-700/30">
-                <button
+                <button type="button"
                   onClick={() => setExpandedId(expandedId === s.id ? null : s.id)}
                   className="w-full text-left px-3 py-2 hover:bg-rmpg-700/20 transition-colors"
                 >

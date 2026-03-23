@@ -203,7 +203,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 }, backoff);
                 return;
               }
-            } catch { /* fall through to logout */ }
+            } catch (err) { console.warn('[Auth] Token refresh retry failed:', err); /* fall through to logout */ }
           }
           clearTokens();
           setToken(null);

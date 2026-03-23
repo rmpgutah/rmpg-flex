@@ -118,7 +118,7 @@ export default function TacticalSummaryPanel({
             </span>
           )}
         </div>
-        <button
+        <button type="button"
           onClick={onClose}
           className="text-slate-500 hover:text-slate-300 transition-colors p-0.5"
           title="Close"

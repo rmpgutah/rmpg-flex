@@ -195,7 +195,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
             {searchResults.map((person) => {
               const flags = parseFlags(person.flags);
               return (
-                <button
+                <button type="button"
                   key={person.id}
                   type="button"
                   onClick={() => { setSelectedPerson(person); setSearchResults([]); checkWarrants(person.id); }}
@@ -228,7 +228,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
         {searchQuery.length >= 2 && searchResults.length === 0 && !isSearching && !selectedPerson && (
           <div className="mt-1 flex items-center gap-2">
             <p className="text-xs text-rmpg-400">No persons found</p>
-            <button
+            <button type="button"
               type="button"
               onClick={() => setShowCreatePerson(true)}
               className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase text-brand-400 bg-brand-900/30 border border-brand-700/40 hover:bg-brand-900/50 transition-colors"
@@ -252,7 +252,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
               {selectedPerson.phone && <span>{selectedPerson.phone}</span>}
             </div>
           </div>
-          <button
+          <button type="button"
             type="button"
             onClick={() => { setSelectedPerson(null); setSearchQuery(''); setWarrantWarning(null); }}
             className="text-xs text-rmpg-300 hover:text-white"

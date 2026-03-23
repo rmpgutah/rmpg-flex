@@ -358,8 +358,8 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         lastSentAt: new Date().toISOString(),
         error: null,
       }));
-    } catch {
-      // Will be retried in next batch
+    } catch (err) {
+      console.warn('[useGpsTracking] Immediate GPS send failed, queuing for next batch:', err);
       queueRef.current.push(point);
     }
   }, []);
@@ -464,8 +464,8 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           sendImmediate(point);
         }
       }
-    } catch {
-      // IP fallback failed — degrade gracefully
+    } catch (err) {
+      console.warn('[useGpsTracking] IP geolocation fallback failed:', err);
     }
   }, [maxSpeedMs, sendImmediate]);
 

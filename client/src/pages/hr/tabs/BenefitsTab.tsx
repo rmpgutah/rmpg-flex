@@ -56,7 +56,7 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
     <div className="p-4 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-bold text-white flex items-center gap-2"><Heart className="w-4 h-4" /> Benefits Enrollment</h2>
-        {isManager && <button onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> Add Benefit</button>}
+        {isManager && <button type="button" onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> Add Benefit</button>}
       </div>
 
       {showForm && isManager && (
@@ -107,8 +107,8 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
             </div>
           </div>
           <div className="flex gap-2">
-            <button onClick={handleSubmit} className="toolbar-btn toolbar-btn-success text-xs">Save</button>
-            <button onClick={() => setShowForm(false)} className="toolbar-btn text-xs">Cancel</button>
+            <button type="button" onClick={handleSubmit} className="toolbar-btn toolbar-btn-success text-xs">Save</button>
+            <button type="button" onClick={() => setShowForm(false)} className="toolbar-btn text-xs">Cancel</button>
           </div>
         </div>
       )}

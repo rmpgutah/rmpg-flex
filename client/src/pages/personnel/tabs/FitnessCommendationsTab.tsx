@@ -62,7 +62,7 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
       <div>
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-xs font-bold text-white flex items-center gap-1"><Activity className="w-3.5 h-3.5 text-green-400" /> Physical Fitness Tracking</h3>
-          <button onClick={() => setShowFitnessForm(!showFitnessForm)} className="toolbar-btn toolbar-btn-success text-[9px]"><Plus className="w-3 h-3" /> Record Score</button>
+          <button type="button" onClick={() => setShowFitnessForm(!showFitnessForm)} className="toolbar-btn toolbar-btn-success text-[9px]"><Plus className="w-3 h-3" /> Record Score</button>
         </div>
 
         {showFitnessForm && (
@@ -78,8 +78,8 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
               <input value={fitnessForm.notes} onChange={e => setFitnessForm(f => ({ ...f, notes: e.target.value }))} className="input-field text-xs" placeholder="Notes" />
             </div>
             <div className="flex gap-2">
-              <button onClick={submitFitness} className="toolbar-btn toolbar-btn-success text-[9px]">Save</button>
-              <button onClick={() => setShowFitnessForm(false)} className="toolbar-btn text-[9px]">Cancel</button>
+              <button type="button" onClick={submitFitness} className="toolbar-btn toolbar-btn-success text-[9px]">Save</button>
+              <button type="button" onClick={() => setShowFitnessForm(false)} className="toolbar-btn text-[9px]">Cancel</button>
             </div>
           </div>
         )}
@@ -118,7 +118,7 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
       <div>
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-xs font-bold text-white flex items-center gap-1"><Award className="w-3.5 h-3.5 text-amber-400" /> Commendations & Awards</h3>
-          <button onClick={() => setShowCommForm(!showCommForm)} className="toolbar-btn toolbar-btn-success text-[9px]"><Plus className="w-3 h-3" /> Add</button>
+          <button type="button" onClick={() => setShowCommForm(!showCommForm)} className="toolbar-btn toolbar-btn-success text-[9px]"><Plus className="w-3 h-3" /> Add</button>
         </div>
 
         {showCommForm && (
@@ -135,8 +135,8 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
             </div>
             <textarea value={commForm.description} onChange={e => setCommForm(f => ({ ...f, description: e.target.value }))} className="input-field w-full text-xs" rows={2} placeholder="Description..." />
             <div className="flex gap-2">
-              <button onClick={submitComm} className="toolbar-btn toolbar-btn-success text-[9px]">Save</button>
-              <button onClick={() => setShowCommForm(false)} className="toolbar-btn text-[9px]">Cancel</button>
+              <button type="button" onClick={submitComm} className="toolbar-btn toolbar-btn-success text-[9px]">Save</button>
+              <button type="button" onClick={() => setShowCommForm(false)} className="toolbar-btn text-[9px]">Cancel</button>
             </div>
           </div>
         )}

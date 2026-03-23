@@ -112,7 +112,7 @@ export default function EquipmentDetailTab({
           <Package className="w-3 h-3" />
           Equipment
         </h3>
-        <button
+        <button type="button"
           onClick={onAdd}
           className="toolbar-btn toolbar-btn-primary flex items-center gap-1 text-[10px]"
         >
@@ -155,14 +155,14 @@ export default function EquipmentDetailTab({
                   </span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button
+                  <button type="button"
                     onClick={() => onEdit(eq)}
                     className="toolbar-btn p-1"
                     title="Edit equipment"
                   >
                     <Edit2 className="w-3 h-3" />
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => onDelete(eq.id)}
                     className="toolbar-btn toolbar-btn-danger p-1"
                     title="Delete equipment"
@@ -222,17 +222,17 @@ export default function EquipmentDetailTab({
               {/* Checkout/Checkin Controls */}
               <div className="flex items-center gap-2 mt-2 pt-2 border-t border-rmpg-800/50">
                 {eq.status === 'issued' ? (
-                  <button onClick={() => handleCheckin(eq.id)} disabled={checkingOut === eq.id}
+                  <button type="button" onClick={() => handleCheckin(eq.id)} disabled={checkingOut === eq.id}
                     className="flex items-center gap-1 px-2 py-1 text-[10px] bg-blue-900/30 text-blue-300 border border-blue-700/40 hover:bg-blue-900/50">
                     <LogIn className="w-3 h-3" /> {checkingOut === eq.id ? '...' : 'Check In'}
                   </button>
                 ) : (
-                  <button onClick={() => handleCheckout(eq.id)} disabled={checkingOut === eq.id}
+                  <button type="button" onClick={() => handleCheckout(eq.id)} disabled={checkingOut === eq.id}
                     className="flex items-center gap-1 px-2 py-1 text-[10px] bg-green-900/30 text-green-300 border border-green-700/40 hover:bg-green-900/50">
                     <LogOut className="w-3 h-3" /> {checkingOut === eq.id ? '...' : 'Check Out'}
                   </button>
                 )}
-                <button onClick={() => toggleLog(eq.id)}
+                <button type="button" onClick={() => toggleLog(eq.id)}
                   className="flex items-center gap-1 px-2 py-1 text-[10px] text-rmpg-400 hover:text-rmpg-200">
                   <Clock className="w-3 h-3" /> History
                 </button>

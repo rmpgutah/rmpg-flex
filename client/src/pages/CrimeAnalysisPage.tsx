@@ -185,7 +185,7 @@ export default function CrimeAnalysisPage() {
               : `/reports/crime-analysis/export?format=csv&days=${dateRange}`}
             exportFilename="crime_analysis.csv"
           />
-          <button onClick={fetchData} className="toolbar-btn">
+          <button type="button" onClick={fetchData} className="toolbar-btn">
             <RefreshCw style={{ width: 11, height: 11 }} />
           </button>
         </div>

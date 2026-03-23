@@ -129,7 +129,10 @@ export function useDistrictIdentify() {
         };
       }
       return null;
-    } catch {
+    } catch (err) {
+      if (!(err instanceof DOMException && err.name === 'AbortError')) {
+        console.warn('[useDistrictIdentify] District identify failed:', err);
+      }
       return null;
     } finally {
       setIdentifying(false);

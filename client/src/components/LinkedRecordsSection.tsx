@@ -147,7 +147,7 @@ export default function LinkedRecordsSection({ entityType, entityId, onOpenLinkM
             </span>
           )}
         </div>
-        <button
+        <button type="button"
           type="button"
           className="toolbar-btn flex items-center gap-1 text-[10px]"
           onClick={onOpenLinkModal}
@@ -201,7 +201,7 @@ export default function LinkedRecordsSection({ entityType, entityId, onOpenLinkM
                 </span>
 
                 {/* Delete button */}
-                <button
+                <button type="button"
                   type="button"
                   className="text-rmpg-500 hover:text-red-400 p-1 disabled:opacity-40"
                   disabled={isDeleting}

@@ -146,7 +146,7 @@ export default function LinkRecordModal({
         <label className={labelClass}>Target Type</label>
         <div className="flex items-center gap-2">
           {TYPE_OPTIONS.map(({ type, label, icon: TypeIcon }) => (
-            <button
+            <button type="button"
               key={type}
               type="button"
               onClick={() => setTargetType(type)}
@@ -235,7 +235,7 @@ export default function LinkRecordModal({
           <span className="text-xs text-brand-300 font-medium truncate">
             {selectedTarget.label}
           </span>
-          <button
+          <button type="button"
             type="button"
             onClick={() => setSelectedTarget(null)}
             className="ml-auto text-[9px] text-rmpg-500 hover:text-rmpg-300 transition-colors"

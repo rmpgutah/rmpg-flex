@@ -344,14 +344,14 @@ export default function IpedPage() {
           <span className="text-[10px] text-rmpg-500 ml-1">IPED</span>
         </div>
         <div className="flex items-center gap-2">
-          <button
+          <button type="button"
             onClick={() => { fetchStatus(); fetchJobs(); fetchHashSets(); }}
             className="p-1.5 rounded-sm hover:bg-[#1a2636] text-rmpg-400 hover:text-white transition-colors"
             title="Refresh all"
           >
             <RefreshCw size={14} />
           </button>
-          <button
+          <button type="button"
             onClick={() => setShowNewJob(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-sm bg-brand-blue/20 text-brand-blue border border-brand-blue/30 hover:bg-brand-blue/30 transition-colors"
           >
@@ -364,7 +364,7 @@ export default function IpedPage() {
       {fetchError && (
         <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
           <span>⚠ {fetchError}</span>
-          <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
         </div>
       )}
 
@@ -399,7 +399,7 @@ export default function IpedPage() {
                 placeholder="Search MD5, SHA1, or SHA256 hash..."
                 className="flex-1 px-2 py-1.5 text-xs bg-[#0d1520] border border-[#1e3048] text-white placeholder-rmpg-500 font-mono outline-none"
               />
-              <button onClick={handleHashSearch} disabled={hashSearching || !hashSearchQuery.trim()}
+              <button type="button" onClick={handleHashSearch} disabled={hashSearching || !hashSearchQuery.trim()}
                 className="flex items-center gap-1 px-3 py-1 text-[10px] font-bold bg-brand-blue/20 text-brand-blue border border-brand-blue/30 hover:bg-brand-blue/30 disabled:opacity-50 transition-colors">
                 {hashSearching ? <Loader2 size={11} className="animate-spin" /> : <Search size={11} />}
                 Search
@@ -447,7 +447,7 @@ export default function IpedPage() {
               <span className="text-xs font-bold text-white uppercase tracking-wide">Hash Sets</span>
               <span className="text-[10px] text-rmpg-500">({hashSets.length})</span>
             </div>
-            <button
+            <button type="button"
               onClick={() => setShowImportHashSet(true)}
               className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded-sm bg-brand-blue/10 text-brand-blue border border-brand-blue/20 hover:bg-brand-blue/20 transition-colors"
             >
@@ -476,7 +476,7 @@ export default function IpedPage() {
                         <span className="text-[10px] text-rmpg-600">{(hs.hashType || 'MD5').toUpperCase()}</span>
                       </div>
                     </div>
-                    <button
+                    <button type="button"
                       onClick={() => handleRemoveHashSet(hs.name)}
                       className="p-1 rounded-sm text-rmpg-600 hover:text-red-400 hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-all"
                       title="Remove hash set"
@@ -582,7 +582,7 @@ export default function IpedPage() {
                         <td className="px-3 py-2 text-right">
                           <div className="flex items-center justify-end gap-1">
                             {job.status === 'running' && (
-                              <button
+                              <button type="button"
                                 onClick={(e) => { e.stopPropagation(); handleCancelJob(job.id); }}
                                 className="p-1 rounded-sm text-red-400 hover:bg-red-900/20 transition-colors"
                                 title="Cancel job"
@@ -590,7 +590,7 @@ export default function IpedPage() {
                                 <Square size={12} />
                               </button>
                             )}
-                            <button
+                            <button type="button"
                               onClick={(e) => { e.stopPropagation(); fetchJobDetail(job.id); }}
                               className="p-1 rounded-sm text-rmpg-400 hover:text-white hover:bg-[#1a2636] transition-colors"
                               title="View details"
@@ -614,14 +614,14 @@ export default function IpedPage() {
                 Page {jobsPage} of {totalPages} ({jobsTotal} total)
               </span>
               <div className="flex items-center gap-1">
-                <button
+                <button type="button"
                   disabled={jobsPage <= 1}
                   onClick={() => setJobsPage(p => p - 1)}
                   className="px-2 py-1 text-[10px] rounded-sm bg-[#0d1520] border border-[#1e3048] text-rmpg-400 hover:text-white disabled:opacity-40 transition-colors"
                 >
                   Prev
                 </button>
-                <button
+                <button type="button"
                   disabled={jobsPage >= totalPages}
                   onClick={() => setJobsPage(p => p + 1)}
                   className="px-2 py-1 text-[10px] rounded-sm bg-[#0d1520] border border-[#1e3048] text-rmpg-400 hover:text-white disabled:opacity-40 transition-colors"
@@ -644,7 +644,7 @@ export default function IpedPage() {
                   {selectedJob.status}
                 </span>
               </div>
-              <button
+              <button type="button"
                 onClick={() => { setSelectedJob(null); setJobHashes([]); setJobProgress(null); }}
                 className="p-1 rounded-sm text-rmpg-500 hover:text-white hover:bg-[#1a2636] transition-colors"
               >
@@ -794,14 +794,14 @@ export default function IpedPage() {
 
       {/* ── New Job Modal ────────────────────────────────── */}
       {showNewJob && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowNewJob(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowNewJob(false)}>
           <div className="card-glass rounded-sm w-full max-w-md mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e3048]">
               <div className="flex items-center gap-2">
                 <Plus size={14} className="text-brand-blue" />
                 <span className="text-sm font-bold text-white">Create Processing Job</span>
               </div>
-              <button onClick={() => setShowNewJob(false)} className="p-1 rounded-sm text-rmpg-500 hover:text-white hover:bg-[#1a2636] transition-colors">
+              <button type="button" onClick={() => setShowNewJob(false)} className="p-1 rounded-sm text-rmpg-500 hover:text-white hover:bg-[#1a2636] transition-colors">
                 <X size={14} />
               </button>
             </div>
@@ -870,13 +870,13 @@ export default function IpedPage() {
               </div>
             </div>
             <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-[#1e3048]">
-              <button
+              <button type="button"
                 onClick={() => setShowNewJob(false)}
                 className="px-3 py-1.5 text-xs rounded-sm bg-[#1a2636] text-rmpg-400 hover:text-white border border-[#1e3048] transition-colors"
               >
                 Cancel
               </button>
-              <button
+              <button type="button"
                 onClick={handleCreateJob}
                 disabled={newJobSubmitting}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-sm bg-brand-blue text-white hover:bg-brand-blue/80 disabled:opacity-50 transition-colors"
@@ -891,14 +891,14 @@ export default function IpedPage() {
 
       {/* ── Import Hash Set Modal ────────────────────────── */}
       {showImportHashSet && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowImportHashSet(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowImportHashSet(false)}>
           <div className="card-glass rounded-sm w-full max-w-md mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e3048]">
               <div className="flex items-center gap-2">
                 <Upload size={14} className="text-brand-blue" />
                 <span className="text-sm font-bold text-white">Import Hash Set</span>
               </div>
-              <button onClick={() => setShowImportHashSet(false)} className="p-1 rounded-sm text-rmpg-500 hover:text-white hover:bg-[#1a2636] transition-colors">
+              <button type="button" onClick={() => setShowImportHashSet(false)} className="p-1 rounded-sm text-rmpg-500 hover:text-white hover:bg-[#1a2636] transition-colors">
                 <X size={14} />
               </button>
             </div>
@@ -951,13 +951,13 @@ export default function IpedPage() {
               </div>
             </div>
             <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-[#1e3048]">
-              <button
+              <button type="button"
                 onClick={() => setShowImportHashSet(false)}
                 className="px-3 py-1.5 text-xs rounded-sm bg-[#1a2636] text-rmpg-400 hover:text-white border border-[#1e3048] transition-colors"
               >
                 Cancel
               </button>
-              <button
+              <button type="button"
                 onClick={handleImportHashSet}
                 disabled={importSubmitting}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-sm bg-brand-blue text-white hover:bg-brand-blue/80 disabled:opacity-50 transition-colors"

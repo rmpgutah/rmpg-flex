@@ -80,8 +80,9 @@ export function useMapDwellTime(
             setLoading(false);
           }
         })
-        .catch(() => {
+        .catch((err) => {
           if (!cancelled) {
+            console.warn('[useMapDwellTime] Dwell time fetch failed:', err);
             setDwellData([]);
             setLoading(false);
           }

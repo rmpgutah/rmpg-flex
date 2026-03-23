@@ -123,7 +123,7 @@ export default function DocumentViewer({
 
         <div className="flex items-center gap-1">
           {/* Zoom controls */}
-          <button
+          <button type="button"
             onClick={() => setZoom((z) => Math.max(25, z - 25))}
             className="toolbar-btn"
             style={{ fontSize: '9px' }}
@@ -132,7 +132,7 @@ export default function DocumentViewer({
             <ZoomOut style={{ width: 14, height: 14 }} />
           </button>
           <span className="text-[10px] text-rmpg-300 font-mono w-10 text-center">{zoom}%</span>
-          <button
+          <button type="button"
             onClick={() => setZoom((z) => Math.min(400, z + 25))}
             className="toolbar-btn"
             style={{ fontSize: '9px' }}
@@ -140,7 +140,7 @@ export default function DocumentViewer({
           >
             <ZoomIn style={{ width: 14, height: 14 }} />
           </button>
-          <button
+          <button type="button"
             onClick={() => setZoom(100)}
             className="toolbar-btn"
             style={{ fontSize: '9px' }}
@@ -154,7 +154,7 @@ export default function DocumentViewer({
           {/* Rotate (images only) */}
           {detectedType === 'image' && (
             <>
-              <button
+              <button type="button"
                 onClick={() => setRotation((r) => (r + 90) % 360)}
                 className="toolbar-btn"
                 style={{ fontSize: '9px' }}
@@ -167,7 +167,7 @@ export default function DocumentViewer({
           )}
 
           {/* Print */}
-          <button
+          <button type="button"
             onClick={handlePrint}
             className="toolbar-btn"
             style={{ fontSize: '9px' }}
@@ -177,7 +177,7 @@ export default function DocumentViewer({
           </button>
 
           {/* Download */}
-          <button
+          <button type="button"
             onClick={handleDownload}
             className="toolbar-btn"
             style={{ fontSize: '9px' }}
@@ -187,7 +187,7 @@ export default function DocumentViewer({
           </button>
 
           {/* Fullscreen toggle */}
-          <button
+          <button type="button"
             onClick={() => setIsFullscreen((f) => !f)}
             className="toolbar-btn"
             style={{ fontSize: '9px' }}
@@ -203,7 +203,7 @@ export default function DocumentViewer({
           <span className="toolbar-separator" />
 
           {/* Close */}
-          <button
+          <button type="button"
             onClick={onClose}
             className="toolbar-btn"
             style={{ fontSize: '9px' }}

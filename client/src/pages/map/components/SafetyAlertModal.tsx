@@ -211,7 +211,7 @@ export default function SafetyAlertModal({
               Safety Broadcast
             </span>
           </div>
-          <button onClick={onClose} className="toolbar-btn p-1" title="Cancel">
+          <button type="button" onClick={onClose} className="toolbar-btn p-1" title="Cancel">
             <X size={14} className="text-rmpg-400" />
           </button>
         </div>
@@ -230,7 +230,7 @@ export default function SafetyAlertModal({
               {ALERT_TYPES.map((at) => {
                 const isSelected = selectedType === at.type;
                 return (
-                  <button
+                  <button type="button"
                     key={at.type}
                     onClick={() => setSelectedType(at.type)}
                     className="rounded-sm flex items-center gap-2 px-2.5 py-2 text-left transition-colors"
@@ -323,7 +323,7 @@ export default function SafetyAlertModal({
             </label>
             <div className="flex gap-1.5">
               {RADIUS_OPTIONS.map((r) => (
-                <button
+                <button type="button"
                   key={r}
                   onClick={() => setRadius(r)}
                   className="flex-1 rounded-sm py-1.5 text-xs font-semibold transition-colors"
@@ -353,14 +353,14 @@ export default function SafetyAlertModal({
           className="flex items-center justify-end gap-2 px-4 py-3 shrink-0"
           style={{ borderTop: '1px solid #1e2a3a', background: '#0d1520' }}
         >
-          <button
+          <button type="button"
             onClick={onClose}
             disabled={broadcasting}
             className="toolbar-btn rounded-sm px-4 py-2 text-xs text-rmpg-400"
           >
             Cancel
           </button>
-          <button
+          <button type="button"
             onClick={handleBroadcast}
             disabled={broadcasting || !selectedType}
             className="rounded-sm px-4 py-2 text-xs font-bold uppercase tracking-wider transition-colors"

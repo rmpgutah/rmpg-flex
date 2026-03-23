@@ -60,7 +60,7 @@ export default function DeploymentDetailTab({ deployments, loading, onAddDeploym
           <MapPinned className="w-3.5 h-3.5 text-brand-400" />
           Deployment History
         </h3>
-        <button
+        <button type="button"
           onClick={() => onAddDeployment(officerId)}
           className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1"
         >

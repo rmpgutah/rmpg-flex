@@ -186,7 +186,7 @@ export default function LeaveRequestModal({
           <p className="text-xs text-rmpg-500 mt-1">
             Auto-calculated: {countBusinessDays(startDate, endDate)} business day{countBusinessDays(startDate, endDate) !== 1 ? 's' : ''} x 8 hrs = {autoHours} hrs
             {hoursManual && (
-              <button
+              <button type="button"
                 type="button"
                 onClick={() => { setHoursManual(false); setHours(autoHours); }}
                 className="ml-2 text-brand-400 hover:text-brand-300 underline"

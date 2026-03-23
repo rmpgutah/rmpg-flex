@@ -117,7 +117,7 @@ export default function AdminAuditTab({
           className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-2 py-1 outline-none"
           placeholder="To"
         />
-        <button
+        <button type="button"
           onClick={handleExport}
           disabled={exporting}
           className="toolbar-btn toolbar-btn-primary text-[10px]"

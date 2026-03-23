@@ -171,6 +171,10 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-label={`Call ${call.call_number}: ${formatIncidentType(call.incident_type)} at ${call.location || 'unknown location'}`}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick?.(call); } }}
       onClick={() => onClick?.(call)}
       onContextMenu={(e) => { if (onContextMenu) { e.preventDefault(); onContextMenu(e, call); } }}
       onDragOver={handleDragOver}
@@ -404,7 +408,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
 
       {/* Feature 6: Quick Note Add */}
       {onQuickNote && !showQuickNote && (
-        <button
+        <button type="button"
           onClick={(e) => { e.stopPropagation(); setShowQuickNote(true); }}
           className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-70 hover:!opacity-100 transition-opacity text-[8px] text-rmpg-400 hover:text-rmpg-200 z-10"
           title="Quick note"
@@ -431,7 +435,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             }}
             autoFocus
           />
-          <button
+          <button type="button"
             onClick={() => {
               if (quickNoteText.trim()) {
                 onQuickNote(call.id, quickNoteText.trim());
@@ -452,18 +456,18 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           onClick={(e) => e.stopPropagation()}
         >
           {call.status === 'pending' && (
-            <button onClick={() => onStatusChange(call.id, 'dispatched')} className="px-1.5 py-0.5 text-[8px] font-bold bg-amber-900/60 text-amber-300 border border-amber-700/50 hover:bg-amber-800/80 transition-colors" title="Dispatch">D</button>
+            <button type="button" onClick={() => onStatusChange(call.id, 'dispatched')} className="px-1.5 py-0.5 text-[8px] font-bold bg-amber-900/60 text-amber-300 border border-amber-700/50 hover:bg-amber-800/80 transition-colors" title="Dispatch" aria-label="Dispatch call">D</button>
           )}
           {call.status === 'dispatched' && (
-            <button onClick={() => onStatusChange(call.id, 'enroute')} className="px-1.5 py-0.5 text-[8px] font-bold bg-blue-900/60 text-blue-300 border border-blue-700/50 hover:bg-blue-800/80 transition-colors" title="En Route">ER</button>
+            <button type="button" onClick={() => onStatusChange(call.id, 'enroute')} className="px-1.5 py-0.5 text-[8px] font-bold bg-blue-900/60 text-blue-300 border border-blue-700/50 hover:bg-blue-800/80 transition-colors" title="En Route" aria-label="Set en route">ER</button>
           )}
           {call.status === 'enroute' && (
-            <button onClick={() => onStatusChange(call.id, 'onscene')} className="px-1.5 py-0.5 text-[8px] font-bold bg-purple-900/60 text-purple-300 border border-purple-700/50 hover:bg-purple-800/80 transition-colors" title="On Scene">OS</button>
+            <button type="button" onClick={() => onStatusChange(call.id, 'onscene')} className="px-1.5 py-0.5 text-[8px] font-bold bg-purple-900/60 text-purple-300 border border-purple-700/50 hover:bg-purple-800/80 transition-colors" title="On Scene" aria-label="Set on scene">OS</button>
           )}
           {['dispatched', 'enroute', 'onscene'].includes(call.status) && (
-            <button onClick={() => onStatusChange(call.id, 'cleared')} className="px-1.5 py-0.5 text-[8px] font-bold bg-green-900/60 text-green-300 border border-green-700/50 hover:bg-green-800/80 transition-colors" title="Clear">CL</button>
+            <button type="button" onClick={() => onStatusChange(call.id, 'cleared')} className="px-1.5 py-0.5 text-[8px] font-bold bg-green-900/60 text-green-300 border border-green-700/50 hover:bg-green-800/80 transition-colors" title="Clear" aria-label="Clear call">CL</button>
           )}
-          <button onClick={() => onStatusChange(call.id, 'closed')} className="px-1.5 py-0.5 text-[8px] font-bold bg-red-900/60 text-red-300 border border-red-700/50 hover:bg-red-800/80 transition-colors" title="Close Call">X</button>
+          <button type="button" onClick={() => onStatusChange(call.id, 'closed')} className="px-1.5 py-0.5 text-[8px] font-bold bg-red-900/60 text-red-300 border border-red-700/50 hover:bg-red-800/80 transition-colors" title="Close Call" aria-label="Close call">X</button>
         </div>
       )}
 

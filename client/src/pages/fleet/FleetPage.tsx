@@ -698,7 +698,7 @@ export default function FleetPage() {
             <span className="text-rmpg-600">|</span>
             <span>Assigned: <strong className="text-amber-400">{assignedVehicles}</strong></span>
           </div>
-          <button
+          <button type="button"
             className={`toolbar-btn ${showArchived ? 'text-amber-400 border-amber-600/50' : ''}`}
             onClick={() => { setShowArchived(!showArchived); setSelectedId(null); setDetail(null); }}
           >
@@ -706,18 +706,18 @@ export default function FleetPage() {
           </button>
           {!showArchived && (
             <>
-              <button className="toolbar-btn toolbar-btn-primary" onClick={openNewVehicle}>
+              <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={openNewVehicle}>
                 <Plus className="w-3 h-3" /> New Vehicle
               </button>
               {/* Feature 16: Pre-trip checklist button */}
               {selectedVehicle && (
-                <button className="toolbar-btn" onClick={() => setShowPretripModal(true)}>
+                <button type="button" className="toolbar-btn" onClick={() => setShowPretripModal(true)}>
                   <CheckCircle className="w-3 h-3" /> Pre-Trip
                 </button>
               )}
               {/* Feature 20: Cost per mile button */}
               {selectedVehicle && (
-                <button className="toolbar-btn" onClick={() => loadCostPerMile(selectedVehicle.id)}>
+                <button type="button" className="toolbar-btn" onClick={() => loadCostPerMile(selectedVehicle.id)}>
                   <Gauge className="w-3 h-3" /> Cost/Mi
                 </button>
               )}
@@ -732,7 +732,7 @@ export default function FleetPage() {
           {/* Status Gauges */}
           <div className="flex items-center gap-2">
             {VEHICLE_STATUSES.map(({ value, label }) => (
-              <button
+              <button type="button"
                 key={value}
                 className={`panel-beveled px-2.5 py-1.5 flex items-center gap-2 cursor-pointer transition-all ${
                   filterStatus === value ? 'ring-1 ring-brand-500 bg-brand-900/10' : 'bg-surface-base hover:border-rmpg-400'
@@ -978,7 +978,7 @@ export default function FleetPage() {
           ) : (
             <>
             {isMobile && (
-              <button onClick={() => { setSelectedId(null); setDetail(null); }} className="text-rmpg-400 hover:text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 border-b border-rmpg-700/50" style={{ background: '#0d1520' }}>
+              <button type="button" onClick={() => { setSelectedId(null); setDetail(null); }} className="text-rmpg-400 hover:text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 border-b border-rmpg-700/50" style={{ background: '#0d1520' }}>
                 ◀ Back to Vehicles
               </button>
             )}
@@ -1106,11 +1106,11 @@ export default function FleetPage() {
 
       {/* Feature 16: Pre-Trip Checklist Modal */}
       {showPretripModal && selectedVehicle && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowPretripModal(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowPretripModal(false)}>
           <div className="bg-surface-raised border border-rmpg-600 rounded w-[450px] max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-3 border-b border-rmpg-600">
               <h3 className="text-sm font-bold text-white">Pre-Trip Inspection: {selectedVehicle.vehicle_number}</h3>
-              <button onClick={() => setShowPretripModal(false)} className="text-rmpg-400 hover:text-white text-lg">&times;</button>
+              <button type="button" onClick={() => setShowPretripModal(false)} className="text-rmpg-400 hover:text-white text-lg">&times;</button>
             </div>
             <div className="p-3 flex-1 overflow-auto space-y-2">
               {[
@@ -1144,8 +1144,8 @@ export default function FleetPage() {
               />
             </div>
             <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
-              <button onClick={() => setShowPretripModal(false)} className="toolbar-btn">Cancel</button>
-              <button onClick={submitPretrip} disabled={pretripSaving} className="toolbar-btn toolbar-btn-primary">
+              <button type="button" onClick={() => setShowPretripModal(false)} className="toolbar-btn">Cancel</button>
+              <button type="button" onClick={submitPretrip} disabled={pretripSaving} className="toolbar-btn toolbar-btn-primary">
                 {pretripSaving ? 'Saving...' : 'Submit Pre-Trip'}
               </button>
             </div>
@@ -1158,7 +1158,7 @@ export default function FleetPage() {
         <div className="fixed bottom-16 right-4 z-40 bg-surface-raised border border-rmpg-600 rounded p-4 w-[300px] shadow-xl">
           <div className="flex items-center justify-between mb-2">
             <h4 className="text-sm font-bold text-white">Cost Analysis: {costPerMile.vehicle_number}</h4>
-            <button onClick={() => setCostPerMile(null)} className="text-rmpg-400 hover:text-white">&times;</button>
+            <button type="button" onClick={() => setCostPerMile(null)} className="text-rmpg-400 hover:text-white">&times;</button>
           </div>
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div>

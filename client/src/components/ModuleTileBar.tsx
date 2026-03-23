@@ -164,7 +164,7 @@ export default function ModuleTileBar({
             onMouseLeave={scheduleClose}
           >
             {/* Tile */}
-            <button
+            <button type="button"
               type="button"
               tabIndex={0}
               aria-haspopup={hasChildren && visibleChildren.length > 0 ? 'true' : undefined}
@@ -279,7 +279,7 @@ export default function ModuleTileBar({
                   const childActive = location.pathname === child.path || location.pathname.startsWith(child.path + '/');
 
                   return (
-                    <button
+                    <button type="button"
                       key={child.path}
                       type="button"
                       onClick={() => {

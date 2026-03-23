@@ -93,7 +93,7 @@ function MetricCard({
   onClick?: () => void;
 }) {
   return (
-    <button
+    <button type="button"
       onClick={onClick}
       disabled={!onClick}
       className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-4 text-left transition-colors hover:border-[#2a3f5a] disabled:cursor-default"
@@ -289,7 +289,7 @@ function OfficerDashboard({
       )}
 
       {/* Quick actions */}
-      <button
+      <button type="button"
         onClick={onNavigateToLeave}
         className="flex items-center gap-2 bg-[#141e2b] border border-[#1e3048] rounded-sm px-4 py-3 text-sm text-white hover:border-brand-500 transition-colors w-full md:w-auto"
       >

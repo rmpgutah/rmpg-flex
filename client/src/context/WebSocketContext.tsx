@@ -190,8 +190,8 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       };
 
       wsRef.current = ws;
-    } catch {
-      // WebSocket creation failed (e.g., invalid URL)
+    } catch (err) {
+      console.warn('[WebSocket] Connection creation failed:', err);
       setIsConnected(false);
     }
   }, [isAuthenticated, token]);

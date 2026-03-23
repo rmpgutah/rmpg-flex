@@ -176,7 +176,7 @@ export default function ResetPasswordPage() {
                         autoFocus
                         autoComplete="new-password"
                       />
-                      <button
+                      <button type="button"
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
                         className="absolute right-2.5 top-1/2 -translate-y-1/2 transition-colors"
@@ -223,7 +223,7 @@ export default function ResetPasswordPage() {
                     </div>
                   )}
 
-                  <button
+                  <button type="button"
                     type="submit"
                     disabled={submitting || !allMet}
                     className="w-full h-10 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"

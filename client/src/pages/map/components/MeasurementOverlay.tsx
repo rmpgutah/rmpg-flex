@@ -67,7 +67,7 @@ export default function MeasurementOverlay({
       {/* Action buttons */}
       <div className="flex items-center gap-1.5 ml-1">
         {measuring && (
-          <button
+          <button type="button"
             onClick={onFinish}
             className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-green-400 hover:bg-green-900/30 transition-colors"
             style={{ borderRadius: 2, border: '1px solid rgba(34, 197, 94, 0.3)' }}
@@ -77,12 +77,12 @@ export default function MeasurementOverlay({
             Done
           </button>
         )}
-        <button
+        <button type="button"
           onClick={onClear}
           className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-red-400 hover:bg-red-900/30 transition-colors"
           style={{ borderRadius: 2, border: '1px solid rgba(239, 68, 68, 0.3)' }}
           title="Clear measurement"
-        >
+         aria-label="Close" title="Close">
           <X className="w-3 h-3" />
           Clear
         </button>

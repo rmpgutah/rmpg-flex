@@ -173,7 +173,7 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
             )}
           </div>
           {isOfflineCapable && (
-            <button
+            <button type="button"
               onClick={triggerSync}
               disabled={isSyncing}
               className="mt-2 flex items-center gap-1 px-2 py-1 text-[10px] transition-colors"
@@ -217,7 +217,7 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
             <span className="text-xs font-bold text-white">PIN Generation</span>
           </div>
           <div className="flex items-center gap-2">
-            <button
+            <button type="button"
               onClick={handleGenerateAll}
               disabled={generatingAll}
               className="flex items-center gap-1 px-3 py-1.5 text-[10px] transition-colors"
@@ -231,7 +231,7 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
               {generatingAll ? 'Generating...' : 'Generate All Missing Secrets'}
             </button>
             {isOfflineCapable && (
-              <button
+              <button type="button"
                 onClick={() => setPinModalOpen(true)}
                 className="btn-primary text-[10px] py-1.5"
                 style={{ borderColor: '#d97706' }}
@@ -282,7 +282,7 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
                   </td>
                   <td className="text-center">
                     {!s.has_secret ? (
-                      <button
+                      <button type="button"
                         onClick={() => handleGenerateSecret(s.user_id)}
                         disabled={generatingSingle === s.user_id}
                         className="text-[10px] px-2 py-0.5 transition-colors"
@@ -299,7 +299,7 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
                         )}
                       </button>
                     ) : (
-                      <button
+                      <button type="button"
                         onClick={() => handleGenerateSecret(s.user_id)}
                         disabled={generatingSingle === s.user_id}
                         className="text-[10px] px-2 py-0.5 text-rmpg-500 hover:text-amber-400 transition-colors"

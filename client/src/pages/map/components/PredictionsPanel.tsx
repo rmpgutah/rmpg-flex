@@ -57,7 +57,7 @@ export default function PredictionsPanel({
           )}
         </div>
         {onClose && (
-          <button onClick={onClose} className="toolbar-btn p-1" title="Close">
+          <button type="button" onClick={onClose} className="toolbar-btn p-1" title="Close">
             <X size={12} className="text-rmpg-400" />
           </button>
         )}
@@ -175,7 +175,7 @@ export default function PredictionsPanel({
                       </div>
 
                       {/* Navigate */}
-                      <button
+                      <button type="button"
                         onClick={() => { if (hs.latitude != null && hs.longitude != null) onNavigate(hs.latitude, hs.longitude); }}
                         className="toolbar-btn flex items-center gap-1 px-2 py-0.5 text-[8px] w-full justify-center"
                         title="Center map on this hotspot"

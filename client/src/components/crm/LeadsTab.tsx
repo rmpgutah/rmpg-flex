@@ -423,13 +423,13 @@ export default function LeadsTab() {
           <option value="60">60+</option>
           <option value="80">80+</option>
         </select>
-        <button
+        <button type="button"
           onClick={() => setShowCreateModal(true)}
           className="bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold px-3 py-1.5 rounded-sm flex items-center gap-1"
         >
           <Plus className="w-3.5 h-3.5" /> Add Lead
         </button>
-        <button
+        <button type="button"
           onClick={() => setShowScraperPanel(!showScraperPanel)}
           className={`text-xs font-bold px-3 py-1.5 rounded-sm flex items-center gap-1 border ${showScraperPanel ? 'bg-brand-600/20 border-brand-500 text-brand-400' : 'bg-[#0d1520] border-rmpg-700 text-rmpg-300 hover:border-rmpg-600'}`}
         >
@@ -477,13 +477,13 @@ export default function LeadsTab() {
       {selectedIds.size > 0 && (
         <div className="flex items-center gap-2 px-3 py-1.5 bg-brand-600/10 border-b border-brand-700/50">
           <span className="text-xs text-brand-400 font-bold">{selectedIds.size} selected</span>
-          <button onClick={() => handleBulkAction('mark_contacted')} className="bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 text-xs font-bold px-2 py-1 rounded-sm border border-purple-700/50">
+          <button type="button" onClick={() => handleBulkAction('mark_contacted')} className="bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 text-xs font-bold px-2 py-1 rounded-sm border border-purple-700/50">
             Mark Contacted
           </button>
-          <button onClick={() => handleBulkAction('dismiss')} className="bg-rmpg-700/30 hover:bg-rmpg-700/50 text-rmpg-300 text-xs font-bold px-2 py-1 rounded-sm border border-rmpg-600/50">
+          <button type="button" onClick={() => handleBulkAction('dismiss')} className="bg-rmpg-700/30 hover:bg-rmpg-700/50 text-rmpg-300 text-xs font-bold px-2 py-1 rounded-sm border border-rmpg-600/50">
             Dismiss
           </button>
-          <button onClick={() => { setSelectedIds(new Set()); }} className="text-rmpg-400 hover:text-rmpg-200 text-xs ml-2">
+          <button type="button" onClick={() => { setSelectedIds(new Set()); }} className="text-rmpg-400 hover:text-rmpg-200 text-xs ml-2">
             Clear Selection
           </button>
         </div>
@@ -507,7 +507,7 @@ export default function LeadsTab() {
               <thead>
                 <tr className="bg-[#0d1520] border-b border-rmpg-700 sticky top-0 z-10">
                   <th className="text-[10px] text-rmpg-400 uppercase tracking-wider px-2 py-1.5 text-left w-8">
-                    <button onClick={toggleSelectAll} className="text-rmpg-400 hover:text-white">
+                    <button type="button" onClick={toggleSelectAll} className="text-rmpg-400 hover:text-white">
                       {selectedIds.size === leads.length && leads.length > 0 ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
                     </button>
                   </th>
@@ -575,7 +575,7 @@ export default function LeadsTab() {
                   <span className="text-[10px] text-rmpg-400 font-mono">Score: {selectedLead.lead_score}</span>
                 </div>
               </div>
-              <button onClick={() => setSelectedLead(null)} className="text-rmpg-400 hover:text-white">
+              <button type="button" onClick={() => setSelectedLead(null)} className="text-rmpg-400 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -688,7 +688,7 @@ export default function LeadsTab() {
                   className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
                 />
                 <div className="flex justify-end mt-1">
-                  <button
+                  <button type="button"
                     onClick={handleSaveNotes}
                     disabled={saving || editNotes === (selectedLead.notes || '')}
                     className="bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white text-[10px] font-bold px-2 py-1 rounded-sm flex items-center gap-1"
@@ -716,7 +716,7 @@ export default function LeadsTab() {
                   className="w-full bg-[#0d1520] border border-rmpg-700 text-white text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none resize-none"
                 />
                 <div className="flex justify-end mt-1">
-                  <button
+                  <button type="button"
                     onClick={handleAddNote}
                     disabled={!newNoteSubject.trim()}
                     className="bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white text-[10px] font-bold px-2 py-1 rounded-sm flex items-center gap-1"
@@ -752,7 +752,7 @@ export default function LeadsTab() {
 
               {/* Action buttons */}
               <div className="flex flex-col gap-1.5 pt-2 border-t border-rmpg-700">
-                <button
+                <button type="button"
                   onClick={() => {
                     // Navigate to proposals creation (parent CRM page can handle this)
                     addToast('Open Proposals tab to create a proposal for this lead', 'info');
@@ -762,7 +762,7 @@ export default function LeadsTab() {
                   <FileText className="w-3.5 h-3.5" /> Create Proposal
                 </button>
                 {selectedLead.pipeline_stage === 'won' && !selectedLead.client_id && (
-                  <button
+                  <button type="button"
                     onClick={() => handleConvert(selectedLead.id)}
                     className="bg-green-600 hover:bg-green-500 text-white text-xs font-bold px-3 py-1.5 rounded-sm flex items-center gap-1 justify-center"
                   >
@@ -770,7 +770,7 @@ export default function LeadsTab() {
                   </button>
                 )}
                 {selectedLead.pipeline_stage !== 'dismissed' && selectedLead.pipeline_stage !== 'won' && (
-                  <button
+                  <button type="button"
                     onClick={() => handleStageChange(selectedLead.id, 'dismissed')}
                     className="bg-rmpg-700/30 hover:bg-rmpg-700/50 text-rmpg-400 text-xs font-bold px-3 py-1.5 rounded-sm flex items-center gap-1 justify-center border border-rmpg-600/50"
                   >
@@ -785,10 +785,10 @@ export default function LeadsTab() {
 
       {/* ── Create Lead Modal ────────────────────────── */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowCreateModal(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowCreateModal(false)}>
           <div className="bg-[#141e2b] border border-rmpg-700 rounded-sm w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <PanelTitleBar title="Add Lead" icon={Plus}>
-              <button onClick={() => setShowCreateModal(false)} className="text-rmpg-400 hover:text-white">
+              <button type="button" onClick={() => setShowCreateModal(false)} className="text-rmpg-400 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
             </PanelTitleBar>

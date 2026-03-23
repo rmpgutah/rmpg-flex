@@ -250,14 +250,14 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
               placeholder={status?.configured ? 'Enter new key to replace...' : 'Enter your ServeManager API key...'}
               className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 pr-8 rounded-sm focus:border-brand-500 focus:outline-none font-mono"
             />
-            <button
+            <button type="button"
               onClick={() => setShowKey(!showKey)}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300"
             >
               {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
             </button>
           </div>
-          <button
+          <button type="button"
             onClick={handleSaveKey}
             disabled={savingKey || !apiKey.trim()}
             className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
@@ -267,7 +267,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
           </button>
           {status?.configured && (
             <>
-              <button
+              <button type="button"
                 onClick={handleTestConnection}
                 disabled={testing}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5"
@@ -275,7 +275,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                 {testing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
                 Test
               </button>
-              <button
+              <button type="button"
                 onClick={handleClearKey}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 text-red-400 hover:text-red-300"
               >
@@ -311,7 +311,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
               Data Sync
             </div>
             <div className="flex items-center gap-2">
-              <button
+              <button type="button"
                 onClick={() => handleSync('incremental')}
                 disabled={syncing}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5"
@@ -319,7 +319,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                 {syncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
                 Incremental Sync
               </button>
-              <button
+              <button type="button"
                 onClick={() => handleSync('full')}
                 disabled={syncing}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5"
@@ -390,7 +390,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
               Auto-Poller — Job-to-Dispatch
             </div>
             <div className="flex items-center gap-1.5">
-              <button
+              <button type="button"
                 onClick={handlePollerPollNow}
                 disabled={pollerPolling}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
@@ -398,7 +398,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                 {pollerPolling ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
                 Poll Now
               </button>
-              <button
+              <button type="button"
                 onClick={handlePollerSave}
                 disabled={pollerSaving || !pollerDirty}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 disabled:opacity-50"
@@ -434,7 +434,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                 <div className="text-[10px] font-bold text-rmpg-300">Poller Enabled</div>
                 <div className="text-[9px] text-rmpg-500">Automatically sync jobs on interval</div>
               </div>
-              <button
+              <button type="button"
                 onClick={() => { setPollerEnabled(!pollerEnabled); setPollerDirty(true); }}
                 className="text-rmpg-300 hover:text-rmpg-100 transition-colors"
               >
@@ -451,7 +451,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                 <div className="text-[10px] font-bold text-rmpg-300">Auto-Create Dispatch Calls</div>
                 <div className="text-[9px] text-rmpg-500">Create calls for unlinked target jobs</div>
               </div>
-              <button
+              <button type="button"
                 onClick={() => { setPollerAutoCreate(!pollerAutoCreate); setPollerDirty(true); }}
                 className="text-rmpg-300 hover:text-rmpg-100 transition-colors"
               >
@@ -521,7 +521,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                   className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] pl-7 pr-2 py-1 rounded-sm w-48 focus:border-brand-500 focus:outline-none"
                 />
               </div>
-              <button onClick={fetchJobs} className="toolbar-btn text-[10px] flex items-center gap-1">
+              <button type="button" onClick={fetchJobs} className="toolbar-btn text-[10px] flex items-center gap-1">
                 <RefreshCw className={`w-3 h-3 ${loadingJobs ? 'animate-spin' : ''}`} />
               </button>
             </div>
@@ -536,7 +536,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                   <span className="text-xs font-bold text-rmpg-100">Job #{selectedJob.sm_job_number}</span>
                   <ServiceStatusBadge status={selectedJob.service_status} />
                 </div>
-                <button onClick={() => setSelectedJob(null)} className="text-rmpg-500 hover:text-rmpg-300">
+                <button type="button" onClick={() => setSelectedJob(null)} className="text-rmpg-500 hover:text-rmpg-300">
                   <XCircle className="w-4 h-4" />
                 </button>
               </div>
@@ -629,14 +629,14 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                 Page {jobPage} of {jobTotalPages} ({jobTotal} total)
               </span>
               <div className="flex items-center gap-1">
-                <button
+                <button type="button"
                   onClick={() => setJobPage(p => Math.max(1, p - 1))}
                   disabled={jobPage <= 1}
                   className="toolbar-btn p-1 disabled:opacity-30"
                 >
                   <ChevronLeft className="w-3 h-3" />
                 </button>
-                <button
+                <button type="button"
                   onClick={() => setJobPage(p => Math.min(jobTotalPages, p + 1))}
                   disabled={jobPage >= jobTotalPages}
                   className="toolbar-btn p-1 disabled:opacity-30"

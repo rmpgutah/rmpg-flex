@@ -164,16 +164,16 @@ export default function FleetPersonnelTab({
 
             {/* Actions */}
             <div className="flex items-center gap-1.5">
-              <button className="toolbar-btn text-[9px]" onClick={() => setShowAssignPanel(!showAssignPanel)}>
+              <button type="button" className="toolbar-btn text-[9px]" onClick={() => setShowAssignPanel(!showAssignPanel)}>
                 <UserPlus className="w-3 h-3" /> Reassign
               </button>
-              <button
+              <button type="button"
                 className="toolbar-btn text-[9px] text-red-400 hover:text-red-300"
                 onClick={() => setConfirmUnassign(true)}
               >
                 <UserMinus className="w-3 h-3" /> Unassign
               </button>
-              <button className="toolbar-btn text-[9px]" onClick={onRefresh}>
+              <button type="button" className="toolbar-btn text-[9px]" onClick={onRefresh}>
                 <RefreshCw className="w-3 h-3" />
               </button>
             </div>
@@ -184,8 +184,8 @@ export default function FleetPersonnelTab({
             <div className="mt-2 p-2 bg-red-900/20 border border-red-700/30 flex items-center justify-between">
               <span className="text-[10px] text-red-400">Remove {officer?.full_name} from this vehicle?</span>
               <div className="flex gap-1.5">
-                <button className="toolbar-btn text-[9px]" onClick={() => setConfirmUnassign(false)}>Cancel</button>
-                <button className="toolbar-btn text-[9px] bg-red-900/50 text-red-400 border-red-700/40" onClick={handleUnassign}>
+                <button type="button" className="toolbar-btn text-[9px]" onClick={() => setConfirmUnassign(false)}>Cancel</button>
+                <button type="button" className="toolbar-btn text-[9px] bg-red-900/50 text-red-400 border-red-700/40" onClick={handleUnassign}>
                   Confirm Unassign
                 </button>
               </div>
@@ -201,7 +201,7 @@ export default function FleetPersonnelTab({
           <p className="text-[9px] text-rmpg-600 mt-1 max-w-[260px] mx-auto">
             This vehicle is not currently assigned to any unit or officer. Assign an officer to track personnel data.
           </p>
-          <button className="toolbar-btn toolbar-btn-primary mt-3" onClick={() => setShowAssignPanel(true)}>
+          <button type="button" className="toolbar-btn toolbar-btn-primary mt-3" onClick={() => setShowAssignPanel(true)}>
             <UserPlus className="w-3 h-3" /> Assign Officer
           </button>
         </div>
@@ -226,14 +226,14 @@ export default function FleetPersonnelTab({
                 </option>
               ))}
             </select>
-            <button
+            <button type="button"
               className="toolbar-btn toolbar-btn-primary text-[9px]"
               disabled={!selectedUnitId}
               onClick={handleAssign}
             >
               Assign
             </button>
-            <button className="toolbar-btn text-[9px]" onClick={() => { setShowAssignPanel(false); setSelectedUnitId(''); }}>
+            <button type="button" className="toolbar-btn text-[9px]" onClick={() => { setShowAssignPanel(false); setSelectedUnitId(''); }}>
               Cancel
             </button>
           </div>
@@ -431,7 +431,7 @@ export default function FleetPersonnelTab({
               onChange={(e) => setNoteText(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAddNote(); } }}
             />
-            <button
+            <button type="button"
               className="toolbar-btn toolbar-btn-primary self-end text-[9px]"
               disabled={!noteText.trim()}
               onClick={handleAddNote}
@@ -460,7 +460,7 @@ export default function FleetPersonnelTab({
                   </div>
                   <p className="text-[10px] text-rmpg-300 mt-0.5">{n.note}</p>
                 </div>
-                <button
+                <button type="button"
                   className="flex-shrink-0 p-1 text-rmpg-600 hover:text-red-400 transition-colors"
                   onClick={() => onDeleteNote(n.id)}
                   title="Delete note"

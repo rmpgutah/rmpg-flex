@@ -172,7 +172,7 @@ export default function ServeSkipTracePanel({
             <Search size={16} className="text-blue-400" />
             <h2 className="text-sm font-semibold text-white">Skip Trace Lookup</h2>
           </div>
-          <button
+          <button type="button"
             onClick={onClose}
             className="p-1 text-rmpg-500 hover:text-white transition-colors"
           >
@@ -204,7 +204,7 @@ export default function ServeSkipTracePanel({
                 placeholder="Last known address"
               />
             </div>
-            <button
+            <button type="button"
               onClick={runLookup}
               disabled={loading || !searchName.trim()}
               className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 disabled:bg-rmpg-700 disabled:text-rmpg-500 text-white rounded-sm transition-colors"
@@ -312,7 +312,7 @@ export default function ServeSkipTracePanel({
                                 )}
                               </div>
                             </div>
-                            <button
+                            <button type="button"
                               onClick={() => onAddToRoute(addr)}
                               className="shrink-0 flex items-center gap-1 px-2 py-1 text-[10px] font-medium bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 border border-blue-700/40 rounded-sm transition-colors"
                               title="Add to Route"
@@ -385,7 +385,7 @@ export default function ServeSkipTracePanel({
           {/* Previous Lookups Accordion */}
           {priorTraces.length > 0 && (
             <div className="border border-[#1e3048] rounded-sm overflow-hidden">
-              <button
+              <button type="button"
                 onClick={() => setHistoryOpen(v => !v)}
                 className="w-full flex items-center justify-between px-3 py-2 text-[11px] text-rmpg-400 hover:text-rmpg-300 bg-[#0d1520] transition-colors"
               >

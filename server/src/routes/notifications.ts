@@ -85,8 +85,8 @@ router.get('/', (req: Request, res: Response) => {
       is_read,
     } = req.query;
 
-    const pageNum = parseInt(page as string, 10);
-    const perPageNum = parseInt(per_page as string, 10);
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const perPageNum = Math.min(100, Math.max(1, parseInt(per_page as string, 10) || 25));
     const offset = (pageNum - 1) * perPageNum;
 
     const conditions: string[] = ['n.user_id = ?'];
@@ -173,11 +173,13 @@ router.get('/unread-count', (req: Request, res: Response) => {
 router.put('/:id/read', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid notification ID' }); return; }
 
     // Verify the notification belongs to the current user
     const notification = db.prepare(
       'SELECT * FROM notifications WHERE id = ? AND user_id = ?'
-    ).get(req.params.id, req.user!.userId) as any;
+    ).get(id, req.user!.userId) as any;
 
     if (!notification) {
       res.status(404).json({ error: 'Notification not found' });
@@ -221,11 +223,13 @@ router.post('/mark-all-read', (req: Request, res: Response) => {
 router.delete('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid notification ID' }); return; }
 
     // Verify the notification belongs to the current user
     const notification = db.prepare(
       'SELECT * FROM notifications WHERE id = ? AND user_id = ?'
-    ).get(req.params.id, req.user!.userId) as any;
+    ).get(id, req.user!.userId) as any;
 
     if (!notification) {
       res.status(404).json({ error: 'Notification not found' });

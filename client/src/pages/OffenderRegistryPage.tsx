@@ -104,7 +104,7 @@ function CdocSearchPanel() {
             placeholder="First name"
             className="flex-1 px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 outline-none focus:border-brand-600"
           />
-          <button onClick={searchCdoc} disabled={loading || !lastName.trim()} className="toolbar-btn toolbar-btn-primary px-2">
+          <button type="button" onClick={searchCdoc} disabled={loading || !lastName.trim()} className="toolbar-btn toolbar-btn-primary px-2">
             {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search style={{ width: 11, height: 11 }} />}
           </button>
         </div>
@@ -113,7 +113,7 @@ function CdocSearchPanel() {
       <div className="flex-1 overflow-y-auto">
         {selectedOffender ? (
           <div className="p-3 space-y-3">
-            <button onClick={() => setSelectedOffender(null)} className="text-[10px] text-brand-400 hover:text-brand-300 flex items-center gap-1">
+            <button type="button" onClick={() => setSelectedOffender(null)} className="text-[10px] text-brand-400 hover:text-brand-300 flex items-center gap-1">
               <X style={{ width: 10, height: 10 }} /> Back to results
             </button>
             <div className="flex gap-3 items-start">
@@ -155,7 +155,7 @@ function CdocSearchPanel() {
           </div>
         ) : results.length > 0 ? (
           results.map(r => (
-            <button
+            <button type="button"
               key={r.doc_number}
               onClick={() => setSelectedOffender(r)}
               className="w-full text-left px-3 py-2 border-b border-rmpg-700/50 hover:bg-rmpg-700/30 transition-colors"
@@ -336,13 +336,13 @@ export default function OffenderRegistryPage() {
       {fetchError && (
         <div className="absolute left-0 right-0 z-10 mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
           <span>⚠ {fetchError}</span>
-          <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
         </div>
       )}
       {/* ── Left Panel ── */}
       <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Known Offender Registry" icon={UserX}>
-          <button onClick={() => { clearAllErrors(); setFormOpen(true); setFormData({ ...EMPTY_FORM }); setSelectedPerson(null); setPersonSearch(''); }} className="toolbar-btn toolbar-btn-primary">
+          <button type="button" onClick={() => { clearAllErrors(); setFormOpen(true); setFormData({ ...EMPTY_FORM }); setSelectedPerson(null); setPersonSearch(''); }} className="toolbar-btn toolbar-btn-primary">
             <Plus style={{ width: 11, height: 11 }} /> New Alert
           </button>
         </PanelTitleBar>
@@ -396,7 +396,7 @@ export default function OffenderRegistryPage() {
             <div className="text-center py-8 text-rmpg-500 text-xs">No active alerts found</div>
           ) : (
             alerts.map(alert => (
-              <button
+              <button type="button"
                 key={alert.id}
                 onClick={() => setSelected(alert)}
                 className={`w-full text-left px-3 py-2 border-b border-rmpg-800 transition-colors ${
@@ -427,9 +427,9 @@ export default function OffenderRegistryPage() {
 
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-3 py-1.5 border-t border-rmpg-700 bg-surface-base">
-            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="text-[10px] text-rmpg-400 disabled:opacity-30">← Prev</button>
+            <button type="button" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="text-[10px] text-rmpg-400 disabled:opacity-30">← Prev</button>
             <span className="text-[9px] font-mono text-rmpg-500">Page {page}/{totalPages}</span>
-            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="text-[10px] text-rmpg-400 disabled:opacity-30">Next →</button>
+            <button type="button" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="text-[10px] text-rmpg-400 disabled:opacity-30">Next →</button>
           </div>
         )}
       </div>
@@ -439,7 +439,7 @@ export default function OffenderRegistryPage() {
         {selected ? (
           <>
             <PanelTitleBar title={`Alert — ${selected.person_name || `Person #${selected.person_id}`}`} icon={ShieldAlert}>
-              <button onClick={() => handleClear(selected.id)} className="toolbar-btn" style={{ color: '#22c55e' }}>
+              <button type="button" onClick={() => handleClear(selected.id)} className="toolbar-btn" style={{ color: '#22c55e' }}>
                 <ShieldCheck style={{ width: 11, height: 11 }} /> Clear Alert
               </button>
             </PanelTitleBar>
@@ -534,10 +534,10 @@ export default function OffenderRegistryPage() {
 
       {/* ── New Alert Modal ── */}
       {formOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="New Offender Alert" icon={Plus}>
-              <button onClick={() => setFormOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
+              <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               {/* Person search */}
@@ -547,7 +547,7 @@ export default function OffenderRegistryPage() {
                   <div className="mt-1 flex items-center gap-2 px-2 py-1.5 bg-surface-sunken border border-rmpg-700">
                     <User style={{ width: 12, height: 12 }} className="text-rmpg-500" />
                     <span className="text-xs text-white">{selectedPerson.first_name} {selectedPerson.last_name}</span>
-                    <button onClick={() => { setSelectedPerson(null); setFormData(p => ({ ...p, person_id: '' })); setPersonSearch(''); }} className="ml-auto text-rmpg-500 hover:text-white">
+                    <button type="button" onClick={() => { setSelectedPerson(null); setFormData(p => ({ ...p, person_id: '' })); setPersonSearch(''); }} className="ml-auto text-rmpg-500 hover:text-white">
                       <X style={{ width: 10, height: 10 }} />
                     </button>
                   </div>
@@ -558,7 +558,7 @@ export default function OffenderRegistryPage() {
                     {personResults.length > 0 && (
                       <div className="absolute z-10 top-full left-0 right-0 bg-surface-base border border-rmpg-700 max-h-40 overflow-y-auto">
                         {personResults.map(p => (
-                          <button
+                          <button type="button"
                             key={p.id}
                             onClick={() => { setSelectedPerson(p); setFormData(prev => ({ ...prev, person_id: String(p.id) })); setPersonResults([]); }}
                             className="w-full text-left px-3 py-1.5 text-xs text-rmpg-300 hover:bg-rmpg-700/40 hover:text-white border-b border-rmpg-800"
@@ -599,8 +599,8 @@ export default function OffenderRegistryPage() {
               </div>
 
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
-                <button onClick={() => setFormOpen(false)} className="toolbar-btn">Cancel</button>
-                <button onClick={handleCreate} disabled={submitting} className="toolbar-btn toolbar-btn-primary">
+                <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn">Cancel</button>
+                <button type="button" onClick={handleCreate} disabled={submitting} className="toolbar-btn toolbar-btn-primary">
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />}
                   Create Alert
                 </button>

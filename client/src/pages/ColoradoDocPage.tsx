@@ -203,7 +203,7 @@ export default function ColoradoDocPage() {
           <form onSubmit={handleSearch} className="card-glass m-2 p-3 space-y-2">
             {/* Mode Toggle */}
             <div className="flex items-center gap-1 mb-1">
-              <button
+              <button type="button"
                 type="button"
                 onClick={() => setSearchMode('name')}
                 className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors ${
@@ -214,7 +214,7 @@ export default function ColoradoDocPage() {
               >
                 Name Search
               </button>
-              <button
+              <button type="button"
                 type="button"
                 onClick={() => setSearchMode('doc')}
                 className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors ${
@@ -257,7 +257,7 @@ export default function ColoradoDocPage() {
             )}
 
             <div className="flex gap-2">
-              <button
+              <button type="button"
                 type="submit"
                 disabled={loading}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1a5a9e]/20 border border-[#1a5a9e]/40 text-blue-300 text-[10px] uppercase tracking-wider font-bold rounded-sm hover:bg-[#1a5a9e]/30 transition-colors disabled:opacity-40"
@@ -266,7 +266,7 @@ export default function ColoradoDocPage() {
                 Search
               </button>
               {searched && (
-                <button
+                <button type="button"
                   type="button"
                   onClick={clearSearch}
                   className="flex items-center gap-1 px-2.5 py-1.5 text-rmpg-500 text-[10px] uppercase tracking-wider hover:text-rmpg-300 transition-colors"
@@ -367,7 +367,7 @@ export default function ColoradoDocPage() {
                 <User size={14} className="text-blue-400" />
                 <span className="text-xs font-bold text-white">Offender Detail</span>
               </div>
-              <button
+              <button type="button"
                 onClick={() => setSelected(null)}
                 className="text-rmpg-500 hover:text-rmpg-300 transition-colors"
               >
@@ -460,7 +460,7 @@ export default function ColoradoDocPage() {
                         <div className="text-[10px] text-green-400/80 mt-0.5">{localMatch.full_name} (Person #{localMatch.id})</div>
                       </div>
                     </div>
-                    <button
+                    <button type="button"
                       onClick={() => navigate(`/records?person=${localMatch.id}`)}
                       className="mt-2 w-full text-[10px] py-1.5 bg-green-900/40 text-green-400 border border-green-700/50 hover:bg-green-800/50 transition-colors text-center font-bold uppercase tracking-wider"
                     >
@@ -473,7 +473,7 @@ export default function ColoradoDocPage() {
                       <AlertCircle size={14} className="text-rmpg-500 flex-shrink-0" />
                       <div className="text-[10px] text-rmpg-400">No local match found</div>
                     </div>
-                    <button
+                    <button type="button"
                       onClick={() => navigate(`/records?action=new-person&first_name=${encodeURIComponent(selected.first_name)}&last_name=${encodeURIComponent(selected.last_name)}${selected.dob ? `&dob=${encodeURIComponent(selected.dob)}` : ''}`)}
                       className="mt-2 w-full text-[10px] py-1.5 bg-brand-900/30 text-brand-400 border border-brand-700/50 hover:bg-brand-800/40 transition-colors text-center font-bold uppercase tracking-wider flex items-center justify-center gap-1"
                     >

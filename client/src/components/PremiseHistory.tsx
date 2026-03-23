@@ -164,7 +164,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
           </span>
         </div>
         {onClose && (
-          <button onClick={onClose} className="text-rmpg-500 hover:text-white">
+          <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-white">
             <X style={{ width: 12, height: 12 }} />
           </button>
         )}

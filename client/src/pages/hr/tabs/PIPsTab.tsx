@@ -63,7 +63,7 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
     <div className="p-4 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-bold text-white flex items-center gap-2"><TrendingUp className="w-4 h-4" /> Performance Improvement Plans</h2>
-        {isManager && <button onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> New PIP</button>}
+        {isManager && <button type="button" onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> New PIP</button>}
       </div>
 
       {/* Summary cards */}
@@ -102,14 +102,14 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
             {form.goals.map((g, i) => (
               <div key={i} className="flex gap-2 mb-1">
                 <input value={g} onChange={e => { const goals = [...form.goals]; goals[i] = e.target.value; setForm(f => ({ ...f, goals })); }} className="input-field flex-1 text-xs" placeholder={`Goal ${i + 1}`} />
-                {form.goals.length > 1 && <button onClick={() => setForm(f => ({ ...f, goals: f.goals.filter((_, j) => j !== i) }))} className="toolbar-btn toolbar-btn-danger text-xs"><X className="w-3 h-3" /></button>}
+                {form.goals.length > 1 && <button type="button" onClick={() => setForm(f => ({ ...f, goals: f.goals.filter((_, j) => j !== i) }))} className="toolbar-btn toolbar-btn-danger text-xs"><X className="w-3 h-3" /></button>}
               </div>
             ))}
-            <button onClick={() => setForm(f => ({ ...f, goals: [...f.goals, ''] }))} className="toolbar-btn text-[9px] mt-1"><Plus className="w-3 h-3" /> Add Goal</button>
+            <button type="button" onClick={() => setForm(f => ({ ...f, goals: [...f.goals, ''] }))} className="toolbar-btn text-[9px] mt-1"><Plus className="w-3 h-3" /> Add Goal</button>
           </div>
           <div className="flex gap-2">
-            <button onClick={handleSubmit} className="toolbar-btn toolbar-btn-success text-xs">Create PIP</button>
-            <button onClick={() => setShowForm(false)} className="toolbar-btn text-xs">Cancel</button>
+            <button type="button" onClick={handleSubmit} className="toolbar-btn toolbar-btn-success text-xs">Create PIP</button>
+            <button type="button" onClick={() => setShowForm(false)} className="toolbar-btn text-xs">Cancel</button>
           </div>
         </div>
       )}
@@ -151,9 +151,9 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
                   </div>
                   {isManager && p.status === 'active' && (
                     <div className="flex gap-1">
-                      <button onClick={() => updateStatus(p.id, 'completed')} className="toolbar-btn toolbar-btn-success text-[9px]">Complete</button>
-                      <button onClick={() => updateStatus(p.id, 'extended')} className="toolbar-btn text-[9px]">Extend</button>
-                      <button onClick={() => updateStatus(p.id, 'failed')} className="toolbar-btn toolbar-btn-danger text-[9px]">Fail</button>
+                      <button type="button" onClick={() => updateStatus(p.id, 'completed')} className="toolbar-btn toolbar-btn-success text-[9px]">Complete</button>
+                      <button type="button" onClick={() => updateStatus(p.id, 'extended')} className="toolbar-btn text-[9px]">Extend</button>
+                      <button type="button" onClick={() => updateStatus(p.id, 'failed')} className="toolbar-btn toolbar-btn-danger text-[9px]">Fail</button>
                     </div>
                   )}
                 </div>

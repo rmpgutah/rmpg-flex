@@ -116,7 +116,7 @@ export default function CallHistoryPanel({
             {loading ? '...' : stats.total}
           </span>
         </div>
-        <button
+        <button type="button"
           onClick={onClose}
           className="toolbar-btn p-1"
           aria-label="Close call history panel"

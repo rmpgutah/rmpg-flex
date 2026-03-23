@@ -225,13 +225,13 @@ export default function BodyCameraTab({
           <PrintButton />
           <ExportButton exportUrl={subTab === 'cameras' ? '/personnel/body-cameras/export?format=csv' : '/personnel/bodycam-videos/export?format=csv'} exportFilename={subTab === 'cameras' ? 'body-cameras.csv' : 'bodycam-videos.csv'} />
           {canManage && onUploadVideo && (
-            <button onClick={onUploadVideo} className="toolbar-btn text-[10px] px-3 py-1.5 flex items-center gap-1.5">
+            <button type="button" onClick={onUploadVideo} className="toolbar-btn text-[10px] px-3 py-1.5 flex items-center gap-1.5">
               <Upload className="w-3 h-3" />
               Upload Video
             </button>
           )}
           {canManage && (
-            <button onClick={onAddCamera} className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
+            <button type="button" onClick={onAddCamera} className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
               <Plus className="w-3 h-3" />
               Assign Camera
             </button>
@@ -264,7 +264,7 @@ export default function BodyCameraTab({
 
       {/* ── Sub-Tabs (Cameras / Videos) ── */}
       <div className="flex items-center gap-0 border-b border-rmpg-700">
-        <button
+        <button type="button"
           onClick={() => setSubTab('cameras')}
           className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-4 py-2 border-b-2 transition-colors ${
             subTab === 'cameras'
@@ -275,7 +275,7 @@ export default function BodyCameraTab({
           <Camera className="w-3 h-3" />
           Cameras ({cameras.length})
         </button>
-        <button
+        <button type="button"
           onClick={() => setSubTab('videos')}
           className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-4 py-2 border-b-2 transition-colors ${
             subTab === 'videos'
@@ -308,7 +308,7 @@ export default function BodyCameraTab({
         <div className="h-4 w-px bg-rmpg-700" />
         {subTab === 'cameras' ? (
           STATUS_FILTERS.map(f => (
-            <button
+            <button type="button"
               key={f.value}
               onClick={() => setStatusFilter(f.value)}
               className={`text-[10px] px-2.5 py-1 ${
@@ -320,7 +320,7 @@ export default function BodyCameraTab({
           ))
         ) : (
           VIDEO_CLASS_FILTERS.map(f => (
-            <button
+            <button type="button"
               key={f.value}
               onClick={() => setClassFilter(f.value)}
               className={`text-[10px] px-2.5 py-1 ${
@@ -342,7 +342,7 @@ export default function BodyCameraTab({
           </span>
           <span className="text-rmpg-600">|</span>
           {onBulkDeleteCameras && (
-            <button
+            <button type="button"
               onClick={async () => {
                 if (!confirm(`Delete ${selectedCameraIds.size} camera(s) and all their videos?`)) return;
                 try { await onBulkDeleteCameras(Array.from(selectedCameraIds)); setSelectedCameraIds(new Set()); } catch { /* handled by parent */ }
@@ -354,7 +354,7 @@ export default function BodyCameraTab({
               Delete Selected
             </button>
           )}
-          <button
+          <button type="button"
             onClick={() => setSelectedCameraIds(new Set())}
             className="toolbar-btn text-[10px] px-2 py-1 ml-auto"
           >
@@ -371,7 +371,7 @@ export default function BodyCameraTab({
           </span>
           <span className="text-rmpg-600">|</span>
           {onBulkDeleteVideos && (
-            <button
+            <button type="button"
               onClick={async () => {
                 if (!confirm(`Delete ${selectedVideoIds.size} video(s)? This cannot be undone.`)) return;
                 try { await onBulkDeleteVideos(Array.from(selectedVideoIds)); setSelectedVideoIds(new Set()); } catch { /* handled by parent */ }
@@ -395,7 +395,7 @@ export default function BodyCameraTab({
                 <option value="flagged">Flagged</option>
                 <option value="restricted">Restricted</option>
               </select>
-              <button
+              <button type="button"
                 onClick={async () => {
                   try { await onBulkClassifyVideos(Array.from(selectedVideoIds), bulkClassification); setSelectedVideoIds(new Set()); } catch { /* handled by parent */ }
                 }}
@@ -407,7 +407,7 @@ export default function BodyCameraTab({
               </button>
             </div>
           )}
-          <button
+          <button type="button"
             onClick={() => setSelectedVideoIds(new Set())}
             className="toolbar-btn text-[10px] px-2 py-1 ml-auto"
           >
@@ -424,7 +424,7 @@ export default function BodyCameraTab({
               <tr>
                 {canManage && (
                   <th className="w-8 text-center">
-                    <button onClick={toggleAllCameras} className="p-0.5 hover:text-brand-400 transition-colors">
+                    <button type="button" onClick={toggleAllCameras} className="p-0.5 hover:text-brand-400 transition-colors">
                       {allCamerasSelected ? <CheckSquare className="w-3.5 h-3.5 text-brand-400" /> : <Square className="w-3.5 h-3.5 text-rmpg-500" />}
                     </button>
                   </th>
@@ -460,7 +460,7 @@ export default function BodyCameraTab({
                   >
                     {canManage && (
                       <td className="text-center" onClick={e => e.stopPropagation()}>
-                        <button onClick={() => toggleCamera(cam.id)} className="p-0.5 hover:text-brand-400 transition-colors">
+                        <button type="button" onClick={() => toggleCamera(cam.id)} className="p-0.5 hover:text-brand-400 transition-colors">
                           {selectedCameraIds.has(cam.id) ? <CheckSquare className="w-3.5 h-3.5 text-brand-400" /> : <Square className="w-3.5 h-3.5 text-rmpg-600" />}
                         </button>
                       </td>
@@ -503,10 +503,10 @@ export default function BodyCameraTab({
                     {canManage && (
                       <td className="text-center" onClick={e => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1">
-                          <button onClick={() => onEditCamera(cam)} className="toolbar-btn p-1" title="Edit camera">
+                          <button type="button" onClick={() => onEditCamera(cam)} className="toolbar-btn p-1" title="Edit camera">
                             <Edit3 className="w-3 h-3" />
                           </button>
-                          <button onClick={() => onDeleteCamera(cam.id)} className="toolbar-btn toolbar-btn-danger p-1" title="Delete camera">
+                          <button type="button" onClick={() => onDeleteCamera(cam.id)} className="toolbar-btn toolbar-btn-danger p-1" title="Delete camera">
                             <Trash2 className="w-3 h-3" />
                           </button>
                         </div>
@@ -545,7 +545,7 @@ export default function BodyCameraTab({
                 <tr>
                   {canManage && (
                     <th className="w-8 text-center">
-                      <button onClick={toggleAllVideos} className="p-0.5 hover:text-purple-400 transition-colors">
+                      <button type="button" onClick={toggleAllVideos} className="p-0.5 hover:text-purple-400 transition-colors">
                         {allVideosSelected ? <CheckSquare className="w-3.5 h-3.5 text-purple-400" /> : <Square className="w-3.5 h-3.5 text-rmpg-500" />}
                       </button>
                     </th>
@@ -578,7 +578,7 @@ export default function BodyCameraTab({
                     <tr key={vid.id} className={`${vid.classification === 'flagged' ? 'bg-red-900/10' : ''} ${selectedVideoIds.has(vid.id) ? 'bg-purple-900/20' : ''}`}>
                       {canManage && (
                         <td className="text-center">
-                          <button onClick={() => toggleVideo(vid.id)} className="p-0.5 hover:text-purple-400 transition-colors">
+                          <button type="button" onClick={() => toggleVideo(vid.id)} className="p-0.5 hover:text-purple-400 transition-colors">
                             {selectedVideoIds.has(vid.id) ? <CheckSquare className="w-3.5 h-3.5 text-purple-400" /> : <Square className="w-3.5 h-3.5 text-rmpg-600" />}
                           </button>
                         </td>
@@ -587,7 +587,7 @@ export default function BodyCameraTab({
                         <span className="text-xs text-rmpg-200 font-medium">{vid.title}</span>
                       </td>
                       <td>
-                        <button
+                        <button type="button"
                           className="text-xs text-brand-400 hover:underline"
                           onClick={() => onSelectOfficer?.(String(vid.officer_id))}
                         >
@@ -631,7 +631,7 @@ export default function BodyCameraTab({
                       <td className="text-center">
                         <div className="flex items-center justify-center gap-1">
                           {onPlayVideo && (
-                            <button
+                            <button type="button"
                               onClick={() => onPlayVideo(vid)}
                               className="toolbar-btn p-1"
                               title="Play video"
@@ -640,7 +640,7 @@ export default function BodyCameraTab({
                             </button>
                           )}
                           {canManage && onDeleteVideo && (
-                            <button
+                            <button type="button"
                               onClick={() => onDeleteVideo(vid.id)}
                               className="toolbar-btn toolbar-btn-danger p-1"
                               title="Delete video"

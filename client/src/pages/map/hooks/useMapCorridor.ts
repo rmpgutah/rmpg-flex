@@ -206,8 +206,8 @@ export function useMapCorridor(
             let canvasDataUrl: string;
             try {
               canvasDataUrl = canvas.toDataURL();
-            } catch {
-              // Canvas tainted or toDataURL failed — skip this label
+            } catch (err) {
+              console.warn('[useMapCorridor] Canvas toDataURL failed:', err);
               return;
             }
 
@@ -225,7 +225,8 @@ export function useMapCorridor(
             trafficLabelsRef.current.push(label);
           }
         });
-      } catch {
+      } catch (err) {
+        console.warn('[useMapCorridor] Corridor analysis failed:', err);
         setCorridorData(null);
       } finally {
         setLoading(false);

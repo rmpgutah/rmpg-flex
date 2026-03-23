@@ -68,7 +68,7 @@ export default function MobileHeader({
       {/* Left — Hamburger + Logo + Title */}
       <div className="flex items-center gap-2 min-w-0">
         {/* Hamburger */}
-        <button
+        <button type="button"
           onClick={onMenuOpen}
           className="flex items-center justify-center w-10 h-10"
           style={{ color: '#b0bcc8' }}
@@ -78,7 +78,7 @@ export default function MobileHeader({
         </button>
 
         {/* Back / Forward */}
-        <button
+        <button type="button"
           onClick={onNavBack}
           disabled={!canGoBack}
           className="flex items-center justify-center w-8 h-8"
@@ -87,7 +87,7 @@ export default function MobileHeader({
         >
           <ChevronLeft style={{ width: 18, height: 18 }} />
         </button>
-        <button
+        <button type="button"
           onClick={onNavForward}
           disabled={!canGoForward}
           className="flex items-center justify-center w-8 h-8"
@@ -115,7 +115,7 @@ export default function MobileHeader({
         <PanicButton latitude={gpsLatitude} longitude={gpsLongitude} />
 
         {/* Profile Avatar */}
-        <button
+        <button type="button"
           onClick={onProfileTap}
           className="flex items-center justify-center w-9 h-9"
         >

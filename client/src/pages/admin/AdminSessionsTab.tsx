@@ -100,7 +100,7 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
       <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-2 flex items-center gap-2">
         <Shield style={{ width: 10, height: 10 }} />
         Active Sessions ({activeSessions.length})
-        <button onClick={fetchSessions} className="ml-auto text-rmpg-500 hover:text-white">
+        <button type="button" onClick={fetchSessions} className="ml-auto text-rmpg-500 hover:text-white">
           <RefreshCw style={{ width: 10, height: 10 }} />
         </button>
       </div>
@@ -138,7 +138,7 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
                   {new Date(s.expires_at).toLocaleString()}
                 </td>
                 <td className="px-3 py-2 text-right">
-                  <button
+                  <button type="button"
                     onClick={() => handleRevoke(s.id)}
                     className="text-rmpg-500 hover:text-red-400 transition-colors"
                     title="Revoke session"

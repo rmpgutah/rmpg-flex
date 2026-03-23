@@ -47,7 +47,7 @@ export default function DispositionPrompt({
             Clear {callNumber} — Select Disposition
           </span>
         </div>
-        <button
+        <button type="button"
           onClick={onCancel}
           className="text-rmpg-500 hover:text-white"
           title="Cancel clear"
@@ -71,7 +71,7 @@ export default function DispositionPrompt({
           ))}
         </select>
 
-        <button
+        <button type="button"
           onClick={() => selected && onConfirm(selected, createIncident)}
           disabled={!selected}
           className="flex items-center gap-1 px-3 py-1 text-[10px] font-bold uppercase tracking-wider"

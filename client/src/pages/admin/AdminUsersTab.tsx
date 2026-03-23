@@ -224,7 +224,7 @@ export default function AdminUsersTab({
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <button className="toolbar-btn toolbar-btn-primary" onClick={openAddUser}>
+          <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={openAddUser}>
             <Plus className="w-3.5 h-3.5" /> Add User
           </button>
         </div>
@@ -295,7 +295,7 @@ export default function AdminUsersTab({
                           </span>
                         );
                       })()}
-                      <button
+                      <button type="button"
                         onClick={(e) => { e.stopPropagation(); openEditUser(user); }}
                         className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors"
                         title="Edit"
@@ -342,7 +342,7 @@ export default function AdminUsersTab({
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <button
+                <button type="button"
                   onClick={() => openEditUser(selectedUser)}
                   className="toolbar-btn"
                 >
@@ -353,7 +353,7 @@ export default function AdminUsersTab({
                   const rawStatus = ((selectedUser as any).raw_status || (selectedUser.is_active ? 'active' : 'inactive')) as UserStatus;
                   if (rawStatus === 'active' && onStatusChange) {
                     return (
-                      <button
+                      <button type="button"
                         onClick={() => { if (window.confirm(`Suspend ${selectedUser.first_name} ${selectedUser.last_name}? Their sessions will be terminated.`)) onStatusChange(selectedUser.id, 'inactive'); }}
                         className="toolbar-btn text-yellow-400 hover:text-yellow-300 hover:bg-yellow-900/30"
                         title="Suspend user"
@@ -363,7 +363,7 @@ export default function AdminUsersTab({
                     );
                   } else if (rawStatus === 'inactive' && onStatusChange) {
                     return (
-                      <button
+                      <button type="button"
                         onClick={() => { if (window.confirm(`Reactivate ${selectedUser.first_name} ${selectedUser.last_name}?`)) onStatusChange(selectedUser.id, 'active'); }}
                         className="toolbar-btn text-green-400 hover:text-green-300 hover:bg-green-900/30"
                         title="Reactivate user"
@@ -375,7 +375,7 @@ export default function AdminUsersTab({
                   return null;
                 })()}
                 {(selectedUser as any).totp_enabled ? (
-                  <button
+                  <button type="button"
                     onClick={() => {
                       if (window.confirm(`Reset 2FA for ${selectedUser.first_name} ${selectedUser.last_name}? They will need to set up 2FA again.`))
                         apiFetch(`/admin/users/${selectedUser.id}/totp`, { method: 'DELETE' })
@@ -388,14 +388,14 @@ export default function AdminUsersTab({
                     <ShieldOff className="w-3.5 h-3.5" /> Reset 2FA
                   </button>
                 ) : null}
-                <button
+                <button type="button"
                   onClick={() => openDeleteUser(selectedUser)}
                   className="toolbar-btn text-red-400 hover:text-red-300 hover:bg-red-900/30"
                   title="Terminate user"
                 >
                   <Trash2 className="w-3.5 h-3.5" /> Terminate
                 </button>
-                <button onClick={() => setSelectedUser(null)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors">
+                <button type="button" onClick={() => setSelectedUser(null)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors">
                   <XCircle className="w-4 h-4" />
                 </button>
               </div>
@@ -412,7 +412,7 @@ export default function AdminUsersTab({
               { id: 'activity' as const, label: 'Activity Log' },
               { id: 'email' as const, label: 'Email Integration' },
             ]).map((tab) => (
-              <button
+              <button type="button"
                 key={tab.id}
                 onClick={() => setUserDetailTab(tab.id)}
                 className={`px-3 py-1.5 text-[10px] font-medium transition-colors ${
@@ -548,7 +548,7 @@ export default function AdminUsersTab({
                         {toDisplayLabel(selectedUser.role)}
                       </span>
                       {!roleEditing && (
-                        <button onClick={() => { setRoleEditing(true); setPendingRole(selectedUser.role); }} className="toolbar-btn text-[9px]">
+                        <button type="button" onClick={() => { setRoleEditing(true); setPendingRole(selectedUser.role); }} className="toolbar-btn text-[9px]">
                           <Edit className="w-3 h-3" /> Change Role
                         </button>
                       )}
@@ -565,7 +565,7 @@ export default function AdminUsersTab({
                           <option key={r} value={r}>{toDisplayLabel(r)}</option>
                         ))}
                       </select>
-                      <button
+                      <button type="button"
                         onClick={() => pendingRole && handleRoleChange(selectedUser.id, pendingRole)}
                         disabled={securityActionLoading === 'role-change' || pendingRole === selectedUser.role}
                         className="toolbar-btn toolbar-btn-primary text-[9px]"
@@ -573,7 +573,7 @@ export default function AdminUsersTab({
                         {securityActionLoading === 'role-change' ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
                         Apply
                       </button>
-                      <button onClick={() => { setRoleEditing(false); setPendingRole(null); }} className="toolbar-btn text-[9px]">
+                      <button type="button" onClick={() => { setRoleEditing(false); setPendingRole(null); }} className="toolbar-btn text-[9px]">
                         Cancel
                       </button>
                     </div>
@@ -611,7 +611,7 @@ export default function AdminUsersTab({
                         </>
                       )}
                     </div>
-                    <button
+                    <button type="button"
                       onClick={() => handleReset2FA(selectedUser.id)}
                       disabled={securityActionLoading === 'reset-2fa'}
                       className="toolbar-btn text-[9px] flex items-center gap-1"
@@ -658,7 +658,7 @@ export default function AdminUsersTab({
                       </span>
                     </div>
                   </div>
-                  <button
+                  <button type="button"
                     onClick={() => handleForcePasswordChange(selectedUser.id)}
                     disabled={securityActionLoading === 'force-pw'}
                     className="toolbar-btn text-[9px] flex items-center gap-1"
@@ -679,7 +679,7 @@ export default function AdminUsersTab({
                       Active Sessions ({userSessions.length})
                     </h3>
                     <div className="flex items-center gap-2">
-                      <button
+                      <button type="button"
                         onClick={() => loadUserSessions(selectedUser.id)}
                         disabled={loadingSessions}
                         className="toolbar-btn text-[9px] flex items-center gap-1"
@@ -688,7 +688,7 @@ export default function AdminUsersTab({
                         Refresh
                       </button>
                       {userSessions.length > 0 && (
-                        <button
+                        <button type="button"
                           onClick={() => {
                             if (window.confirm(`Revoke all ${userSessions.length} active sessions for ${selectedUser.first_name} ${selectedUser.last_name}? They will be logged out from all devices.`))
                               handleRevokeAllSessions(selectedUser.id);
@@ -785,7 +785,7 @@ export default function AdminUsersTab({
                   <p className="text-[11px] text-rmpg-500 mt-1 max-w-sm mx-auto">
                     Microsoft 365 business email connection will be established when online live integration between dispatchers and officers is implemented.
                   </p>
-                  <button className="toolbar-btn mt-4 opacity-50 cursor-not-allowed" disabled>
+                  <button type="button" className="toolbar-btn mt-4 opacity-50 cursor-not-allowed" disabled>
                     Connect Microsoft 365
                   </button>
                 </div>

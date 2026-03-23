@@ -59,7 +59,7 @@ export default function FleetTiresTab({ vehicleId }: { vehicleId: number | strin
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-xs font-bold text-white">Tire Tracking</h3>
-        <button onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-[9px]"><Plus className="w-3 h-3" /> Add Tire</button>
+        <button type="button" onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-[9px]"><Plus className="w-3 h-3" /> Add Tire</button>
       </div>
 
       {showForm && (
@@ -77,8 +77,8 @@ export default function FleetTiresTab({ vehicleId }: { vehicleId: number | strin
             <input type="number" step="0.1" value={form.tread_depth} onChange={e => setForm(f => ({ ...f, tread_depth: e.target.value }))} className="input-field text-xs" placeholder="Tread (32nds)" />
           </div>
           <div className="flex gap-2">
-            <button onClick={handleSubmit} className="toolbar-btn toolbar-btn-success text-[9px]">Save</button>
-            <button onClick={() => setShowForm(false)} className="toolbar-btn text-[9px]">Cancel</button>
+            <button type="button" onClick={handleSubmit} className="toolbar-btn toolbar-btn-success text-[9px]">Save</button>
+            <button type="button" onClick={() => setShowForm(false)} className="toolbar-btn text-[9px]">Cancel</button>
           </div>
         </div>
       )}

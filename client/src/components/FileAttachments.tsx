@@ -210,7 +210,7 @@ export default function FileAttachments({
       {error && (
         <div className="px-2 py-1 bg-red-900/40 border border-red-700/50 text-red-300 text-xs flex items-center justify-between">
           {error}
-          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-300">
+          <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300">
             <X className="w-3 h-3" />
           </button>
         </div>
@@ -306,7 +306,7 @@ export default function FileAttachments({
                   </div>
                   {/* Delete button */}
                   {!readOnly && (
-                    <button
+                    <button type="button"
                       onClick={(e) => { e.stopPropagation(); setDeleteTarget({ id: att.file_id, name: att.original_name }); }}
                       className="absolute top-1 right-1 p-0.5 bg-black/60 hover:bg-red-900/80 text-rmpg-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
                       title="Delete"
@@ -341,7 +341,7 @@ export default function FileAttachments({
                     </div>
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       {att.mime_type === 'application/pdf' && (
-                        <button
+                        <button type="button"
                           onClick={() => openPreview(att)}
                           className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-brand-400 transition-colors"
                           title="Preview"
@@ -360,7 +360,7 @@ export default function FileAttachments({
                         <Download className="w-3.5 h-3.5" />
                       </a>
                       {!readOnly && (
-                        <button
+                        <button type="button"
                           onClick={() => setDeleteTarget({ id: att.file_id, name: att.original_name })}
                           className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-red-400 transition-colors"
                           title="Delete"
@@ -400,7 +400,7 @@ export default function FileAttachments({
                 >
                   <Download className="w-4 h-4" />
                 </a>
-                <button
+                <button type="button"
                   onClick={() => setPreviewAttachment(null)}
                   className="p-1 hover:bg-rmpg-700 text-rmpg-200 hover:text-white transition-colors"
                 >

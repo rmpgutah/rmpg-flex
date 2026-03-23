@@ -212,8 +212,8 @@ export function useMapEnvironment(
           );
         }
       }
-    } catch {
-      // Use client-side calculation as fallback
+    } catch (err) {
+      console.warn('[useMapEnvironment] Light data fetch failed, using client-side fallback:', err);
     }
 
     // Weather from Open-Meteo

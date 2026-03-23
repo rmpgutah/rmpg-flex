@@ -116,7 +116,7 @@ export default function FormModal({
             {/* Decorative window buttons */}
             <button type="button" className="toolbar-btn" style={{ padding: '1px 4px', fontSize: '9px' }} tabIndex={-1}>_</button>
             <button type="button" className="toolbar-btn" style={{ padding: '1px 4px', fontSize: '9px' }} tabIndex={-1}>□</button>
-            <button
+            <button type="button"
               onClick={guardedClose}
               className="toolbar-btn"
               style={{ padding: '1px 4px' }}
@@ -160,14 +160,14 @@ export default function FormModal({
                 You have unsaved changes. Are you sure you want to close this form? All entered data will be lost.
               </p>
               <div className="flex items-center justify-end gap-3 mt-5">
-                <button
+                <button type="button"
                   type="button"
                   onClick={handleCancelDiscard}
                   className="toolbar-btn"
                 >
                   Keep Editing
                 </button>
-                <button
+                <button type="button"
                   type="button"
                   onClick={handleConfirmDiscard}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide border shadow-sm bg-red-700 hover:bg-red-600 border-red-500 text-white transition-colors"

@@ -405,7 +405,7 @@ export default function IncidentFormModal({
       {/* Section Tabs (dynamic based on incident type) */}
       <div className="flex gap-1 -mt-1 mb-2 flex-wrap">
         {getSectionTabs(formData.incident_type).map((tab) => (
-          <button
+          <button type="button"
             key={tab.id}
             type="button"
             onClick={() => setActiveSection(tab.id)}
@@ -468,7 +468,7 @@ export default function IncidentFormModal({
                   <div className="mt-1 flex flex-wrap gap-1">
                     <span className="text-[8px] text-rmpg-500">Suggested:</span>
                     {suggestions.slice(0, 3).map(s => (
-                      <button
+                      <button type="button"
                         key={s.type}
                         type="button"
                         className="px-1.5 py-0.5 text-[8px] bg-brand-900/30 text-brand-300 border border-brand-600/30 hover:bg-brand-800/40 transition-colors"
@@ -509,7 +509,7 @@ export default function IncidentFormModal({
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold mb-2 block">Priority</label>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {PRIORITY_OPTIONS.map((p) => (
-                <button
+                <button type="button"
                   key={p.value}
                   type="button"
                   onClick={() => update('priority', p.value)}
@@ -716,7 +716,7 @@ export default function IncidentFormModal({
                 return parts.length > 1 ? (
                   <div className="mt-1 flex items-center gap-2">
                     <span className="text-[9px] text-rmpg-400">Total: ${total.toFixed(2)}</span>
-                    <button
+                    <button type="button"
                       type="button"
                       className="text-[8px] text-brand-400 hover:text-brand-300 underline"
                       onClick={() => update('damage_estimate', total.toFixed(2))}
@@ -1137,7 +1137,7 @@ export default function IncidentFormModal({
           </p>
           {/* Feature 26: Witness Statement Template */}
           <div className="mt-2 flex gap-2">
-            <button
+            <button type="button"
               type="button"
               className="toolbar-btn text-[9px]"
               onClick={() => {

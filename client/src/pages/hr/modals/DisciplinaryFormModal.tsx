@@ -133,7 +133,7 @@ export default function DisciplinaryFormModal({
               {isEditing ? 'Edit' : 'New'} {isCommendation ? 'Commendation' : 'Disciplinary Record'}
             </h2>
           </div>
-          <button onClick={onClose} disabled={submitting} className="text-rmpg-400 hover:text-white">
+          <button type="button" onClick={onClose} disabled={submitting} className="text-rmpg-400 hover:text-white">
             <X size={16} />
           </button>
         </div>
@@ -266,7 +266,7 @@ export default function DisciplinaryFormModal({
 
           {/* Actions */}
           <div className="flex justify-end gap-2 pt-2 border-t border-[#1e3048]">
-            <button
+            <button type="button"
               type="button"
               onClick={onClose}
               disabled={submitting}
@@ -274,7 +274,7 @@ export default function DisciplinaryFormModal({
             >
               Cancel
             </button>
-            <button
+            <button type="button"
               type="submit"
               disabled={submitting}
               className={`px-3 py-1.5 text-xs font-medium rounded-sm flex items-center gap-1.5 ${

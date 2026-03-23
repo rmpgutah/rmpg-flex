@@ -92,7 +92,7 @@ export default function ReportTypeSelector({ incidentType, onSelect, onPreview, 
       <div className={`relative inline-flex ${className}`} ref={dropdownRef}>
         {/* Preview button */}
         {onPreview && (
-          <button
+          <button type="button"
             type="button"
             onClick={handleQuickPreview}
             className="toolbar-btn"
@@ -105,7 +105,7 @@ export default function ReportTypeSelector({ incidentType, onSelect, onPreview, 
 
         {/* Sign & Export button */}
         {onSignAndExport && (
-          <button
+          <button type="button"
             type="button"
             onClick={handleSignAndExport}
             className="toolbar-btn toolbar-btn-primary"
@@ -117,7 +117,7 @@ export default function ReportTypeSelector({ incidentType, onSelect, onPreview, 
         )}
 
         {/* Main export button */}
-        <button
+        <button type="button"
           type="button"
           onClick={handleQuickExport}
           className="toolbar-btn toolbar-btn-primary"
@@ -128,7 +128,7 @@ export default function ReportTypeSelector({ incidentType, onSelect, onPreview, 
         </button>
 
         {/* Dropdown arrow for other report types */}
-        <button
+        <button type="button"
           type="button"
           onClick={() => setIsOpen(!isOpen)}
           className="toolbar-btn toolbar-btn-primary"
@@ -153,7 +153,7 @@ export default function ReportTypeSelector({ incidentType, onSelect, onPreview, 
                     : 'text-rmpg-200'
                 }`}
               >
-                <button
+                <button type="button"
                   type="button"
                   onClick={() => {
                     onSelect(type);
@@ -168,7 +168,7 @@ export default function ReportTypeSelector({ incidentType, onSelect, onPreview, 
                   )}
                 </button>
                 {onPreview && (
-                  <button
+                  <button type="button"
                     type="button"
                     onClick={() => {
                       onPreview(type);
@@ -188,7 +188,7 @@ export default function ReportTypeSelector({ incidentType, onSelect, onPreview, 
 
       {/* Quick-sign modal */}
       {signModalOpen && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in" role="dialog" aria-modal="true">
           <div className="bg-surface-base border border-rmpg-600 shadow-2xl p-6 max-w-lg w-full mx-4">
             <h3 className="text-sm font-bold text-rmpg-100 mb-1">Sign Document</h3>
             <p className="text-[10px] text-rmpg-400 mb-4">
@@ -202,7 +202,7 @@ export default function ReportTypeSelector({ incidentType, onSelect, onPreview, 
               height={140}
               compact={false}
             />
-            <button
+            <button type="button"
               type="button"
               onClick={() => setSignModalOpen(false)}
               className="mt-3 text-xs text-rmpg-400 hover:text-rmpg-200 transition-colors"

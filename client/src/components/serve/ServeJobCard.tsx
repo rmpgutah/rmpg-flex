@@ -188,7 +188,7 @@ export default React.memo(function ServeJobCard({
             <div className="p-2 rounded-sm border mb-2" style={{ background: '#1a5a9e10', borderColor: '#1a5a9e30' }}>
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[10px] font-bold text-blue-300 uppercase">Dispatch Link</span>
-                <button
+                <button type="button"
                   className="text-[10px] text-blue-400 hover:text-blue-300 underline"
                   onClick={(e) => { e.stopPropagation(); window.open(`/dispatch?call=${linkedCall.call_number}`, '_blank', 'noopener,noreferrer'); }}
                 >
@@ -318,7 +318,7 @@ export default React.memo(function ServeJobCard({
 
       {/* Action buttons row */}
       <div className="flex items-center border-t border-rmpg-700/40 divide-x divide-rmpg-700/40">
-        <button
+        <button type="button"
           onClick={(e) => { e.stopPropagation(); onNavigate(job.id); }}
           className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-blue-400 hover:bg-blue-900/30 transition-colors"
           title="Navigate"
@@ -326,7 +326,7 @@ export default React.memo(function ServeJobCard({
           <MapPin className="w-3 h-3" />
           Navigate
         </button>
-        <button
+        <button type="button"
           onClick={(e) => { e.stopPropagation(); onAttempt(job.id); }}
           className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-green-400 hover:bg-green-900/30 transition-colors"
           title="Attempt Service"
@@ -334,7 +334,7 @@ export default React.memo(function ServeJobCard({
           <ClipboardCheck className="w-3 h-3" />
           Attempt
         </button>
-        <button
+        <button type="button"
           onClick={(e) => { e.stopPropagation(); onSkipTrace(job.id); }}
           className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-cyan-400 hover:bg-cyan-900/30 transition-colors"
           title="Skip Trace"
@@ -342,7 +342,7 @@ export default React.memo(function ServeJobCard({
           <Search className="w-3 h-3" />
           Skip Trace
         </button>
-        <button
+        <button type="button"
           onClick={(e) => { e.stopPropagation(); onFlagAddress(job.id); }}
           className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-amber-400 hover:bg-amber-900/30 transition-colors"
           title="Flag Bad Address"

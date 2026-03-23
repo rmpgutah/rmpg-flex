@@ -360,7 +360,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
 
         {/* Action buttons */}
         <div className="flex items-center gap-2 flex-wrap">
-          <button
+          <button type="button"
             onClick={handleSaveConfig}
             disabled={saving}
             className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
@@ -370,7 +370,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
           </button>
           {status?.configured && (
             <>
-              <button
+              <button type="button"
                 onClick={handleValidate}
                 disabled={validating}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5"
@@ -378,7 +378,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
                 {validating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Shield className="w-3 h-3" />}
                 Validate Installation
               </button>
-              <button
+              <button type="button"
                 onClick={handleClear}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 text-red-400 hover:text-red-300"
               >
@@ -483,7 +483,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
           <label className="text-[10px] text-rmpg-400">Default Processing Profile</label>
           <div className="space-y-0.5">
             {PROFILES.map(p => (
-              <button
+              <button type="button"
                 key={p.id}
                 onClick={() => handleProfileChange(p.id)}
                 className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-left transition-colors hover:bg-rmpg-800/30"
@@ -506,7 +506,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
 
         {/* Toggle settings */}
         <div className="space-y-1">
-          <button
+          <button type="button"
             onClick={handleTogglePhotoDna}
             className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-left transition-colors hover:bg-rmpg-800/30"
           >
@@ -519,7 +519,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
             </div>
           </button>
 
-          <button
+          <button type="button"
             onClick={handleToggleAutoHash}
             className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-left transition-colors hover:bg-rmpg-800/30"
           >
@@ -554,7 +554,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
           </div>
           {status?.configured && (
             <div className="flex items-center gap-2">
-              <button
+              <button type="button"
                 onClick={handleTestApi}
                 disabled={testingApi}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-2.5 py-1"
@@ -601,7 +601,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
                   <div className="text-[10px] font-medium text-rmpg-200">{hs.name}</div>
                   <div className="text-[9px] text-rmpg-500">{hs.category} • {(hs.count || 0).toLocaleString()} entries</div>
                 </div>
-                <button
+                <button type="button"
                   onClick={() => handleRemoveHashSet(hs.name)}
                   className="text-rmpg-600 hover:text-red-400 shrink-0 ml-2"
                 >
@@ -626,7 +626,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
               <Activity className="w-3.5 h-3.5" />
               Processing Dashboard
             </div>
-            <button
+            <button type="button"
               onClick={() => { fetchStatus(); fetchHashSets(); }}
               className="toolbar-btn text-[10px] flex items-center gap-1 px-2 py-1"
             >

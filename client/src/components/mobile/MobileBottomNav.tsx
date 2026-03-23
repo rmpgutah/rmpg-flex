@@ -46,7 +46,7 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
         const active = isActive(item.path);
         const Icon = item.icon;
         return (
-          <button
+          <button type="button"
             key={item.id}
             onClick={() => navigate(item.path)}
             style={{
@@ -115,7 +115,7 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
       })}
 
       {/* More button */}
-      <button
+      <button type="button"
         onClick={onMoreTap}
         style={{
           flex: 1,

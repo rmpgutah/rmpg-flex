@@ -747,7 +747,7 @@ export default function Layout() {
               </div>
             )}
 
-            <button
+            <button type="button"
               onClick={handleNameSetupSave}
               disabled={setupSaving || !setupFirstName.trim() || !setupLastName.trim()}
               className="btn-primary w-full justify-center"
@@ -832,7 +832,7 @@ export default function Layout() {
               </span>
               {/* Pop-out button — opens current page in a new window */}
               {POPOUT_PAGES[location.pathname] && (
-                <button
+                <button type="button"
                   onClick={() => openPageWindow(location.pathname)}
                   className="toolbar-btn ml-1"
                   title="Open in new window"
@@ -849,7 +849,7 @@ export default function Layout() {
             {/* Status indicators — compact inline */}
             <div className="hidden lg:flex items-center gap-1.5">
               {/* Active Calls */}
-              <button
+              <button type="button"
                 onClick={() => navigate('/dispatch')}
                 className="flex items-center gap-1 px-2 py-0.5 panel-inset cursor-pointer transition-colors bg-surface-sunken hover:bg-rmpg-800"
                 aria-label={`Active calls: ${activeCallCount}. Click to open dispatch.`}
@@ -861,7 +861,7 @@ export default function Layout() {
 
               {/* BOLO Indicator */}
               {activeBOLOs > 0 && (
-                <button
+                <button type="button"
                   onClick={() => navigate('/communications')}
                   className="flex items-center gap-1 px-2 py-0.5 cursor-pointer"
                   style={{ background: 'rgba(220, 38, 38, 0.25)', border: '1px solid #991b1b' }}
@@ -895,7 +895,7 @@ export default function Layout() {
               <NotificationCenter />
 
               {/* Search */}
-              <button
+              <button type="button"
                 onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))}
                 className="toolbar-btn"
                 title="Search (Ctrl+K)"
@@ -916,7 +916,7 @@ export default function Layout() {
 
             {/* Profile Menu */}
             <div className="relative" ref={profileDropdownRef}>
-              <button
+              <button type="button"
                 onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
                 className={`flex items-center gap-2 px-2 py-1 transition-all duration-100 border ${
                   profileDropdownOpen
@@ -984,20 +984,20 @@ export default function Layout() {
                   </div>
 
                   {/* Menu items */}
-                  <button onClick={() => openProfileModal('profile')} className="menu-item w-full">
+                  <button type="button" onClick={() => openProfileModal('profile')} className="menu-item w-full">
                     <span className="menu-item-icon"><User style={{ width: 12, height: 12 }} /></span>
                     <span className="menu-item-label">Edit Profile</span>
                   </button>
-                  <button onClick={() => openProfileModal('password')} className="menu-item w-full">
+                  <button type="button" onClick={() => openProfileModal('password')} className="menu-item w-full">
                     <span className="menu-item-icon"><Lock style={{ width: 12, height: 12 }} /></span>
                     <span className="menu-item-label">Change Password</span>
                   </button>
-                  <button onClick={() => openProfileModal('sessions')} className="menu-item w-full">
+                  <button type="button" onClick={() => openProfileModal('sessions')} className="menu-item w-full">
                     <span className="menu-item-icon"><Shield style={{ width: 12, height: 12 }} /></span>
                     <span className="menu-item-label">Active Sessions</span>
                   </button>
                   {isAdmin && (
-                    <button onClick={() => { setProfileDropdownOpen(false); navigate('/admin'); }} className="menu-item w-full">
+                    <button type="button" onClick={() => { setProfileDropdownOpen(false); navigate('/admin'); }} className="menu-item w-full">
                       <span className="menu-item-icon"><Settings style={{ width: 12, height: 12 }} /></span>
                       <span className="menu-item-label">System Settings</span>
                     </button>
@@ -1005,7 +1005,7 @@ export default function Layout() {
 
                   <div className="menu-separator" />
 
-                  <button onClick={() => { setProfileDropdownOpen(false); logout(); }} className="menu-item w-full">
+                  <button type="button" onClick={() => { setProfileDropdownOpen(false); logout(); }} className="menu-item w-full">
                     <span className="menu-item-icon"><LogOut style={{ width: 12, height: 12, color: '#ef4444' }} /></span>
                     <span className="menu-item-label" style={{ color: '#ef4444' }}>Sign Out</span>
                   </button>
@@ -1081,7 +1081,7 @@ export default function Layout() {
         data-nav-dropdown
       >
         {/* Back / Forward navigation buttons */}
-        <button
+        <button type="button"
           type="button"
           onClick={handleNavBack}
           disabled={!canGoBack}
@@ -1091,7 +1091,7 @@ export default function Layout() {
         >
           <ChevronLeft style={{ width: 16, height: 16 }} />
         </button>
-        <button
+        <button type="button"
           type="button"
           onClick={handleNavForward}
           disabled={!canGoForward}
@@ -1125,7 +1125,7 @@ export default function Layout() {
               return (
                 <React.Fragment key={item.path}>
                   {showSep && <div className="toolbar-separator" style={{ height: 36 }} />}
-                  <button
+                  <button type="button"
                     onClick={() => {
                       setOpenDropdown(null);
                       const token = localStorage.getItem('rmpg_token');
@@ -1155,7 +1155,7 @@ export default function Layout() {
                   />
                 )}
                 <div className="relative">
-                  <button
+                  <button type="button"
                     type="button"
                     onClick={() => {
                       if (hasChildren) {
@@ -1273,7 +1273,7 @@ export default function Layout() {
                         const ChildIcon = child.icon;
                         const childActive = child.path === '/' ? location.pathname === '/' : location.pathname.startsWith(child.path);
                         return (
-                          <button
+                          <button type="button"
                             key={child.path}
                             type="button"
                             onClick={() => {
@@ -1328,10 +1328,10 @@ export default function Layout() {
                 Your password expires in <strong>{passwordExpiryDays} day{passwordExpiryDays !== 1 ? 's' : ''}</strong>.
                 Please change it in your profile settings.
               </span>
-              <button onClick={() => { setProfileModalOpen(true); setProfileModalTab('password'); setShowPasswordExpiryWarning(false); }} className="ml-auto text-[10px] text-amber-400 hover:text-amber-200 font-bold">
+              <button type="button" onClick={() => { setProfileModalOpen(true); setProfileModalTab('password'); setShowPasswordExpiryWarning(false); }} className="ml-auto text-[10px] text-amber-400 hover:text-amber-200 font-bold">
                 Change Password
               </button>
-              <button onClick={() => setShowPasswordExpiryWarning(false)} className="text-amber-500 hover:text-amber-300"><X className="w-3 h-3" /></button>
+              <button type="button" onClick={() => setShowPasswordExpiryWarning(false)} className="text-amber-500 hover:text-amber-300"><X className="w-3 h-3" /></button>
             </div>
           )}
 
@@ -1385,12 +1385,12 @@ export default function Layout() {
 
       {/* Feature 24: Auto-logout idle warning dialog */}
       {showIdleDialog && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70" role="dialog" aria-modal="true">
           <div className="bg-surface-raised border border-rmpg-600 rounded p-6 w-[350px] text-center">
             <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto mb-3" />
             <h3 className="text-white font-bold mb-2">Are you still there?</h3>
             <p className="text-sm text-rmpg-300 mb-4">You will be logged out in 5 minutes due to inactivity.</p>
-            <button
+            <button type="button"
               onClick={() => { lastActivityRef.current = Date.now(); setShowIdleDialog(false); }}
               className="px-4 py-2 text-sm font-bold text-white bg-brand-600 hover:bg-brand-500 rounded"
             >
@@ -1402,11 +1402,11 @@ export default function Layout() {
 
       {/* Keyboard Shortcut Help Modal */}
       {showShortcutHelp && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowShortcutHelp(false)}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setShowShortcutHelp(false)}>
           <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm w-full max-w-md mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#1e3048] bg-[#0d1520]">
               <h3 className="text-sm font-semibold text-white">Keyboard Shortcuts</h3>
-              <button onClick={() => setShowShortcutHelp(false)} className="text-rmpg-500 hover:text-white"><X className="w-4 h-4" /></button>
+              <button type="button" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-500 hover:text-white"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto">
               <div className="space-y-1.5">
@@ -1471,7 +1471,7 @@ export default function Layout() {
                 paletteResults.map((result, idx) => {
                   const Icon = result.icon;
                   return (
-                    <button
+                    <button type="button"
                       key={`${result.path}-${idx}`}
                       onClick={() => { navigate(result.path); setShowCommandPalette(false); }}
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-brand-500/10 transition-colors border-b border-[#1e3048]/50 last:border-0"

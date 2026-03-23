@@ -158,7 +158,7 @@ export default React.memo(function UnitStatusBoard({
               {canAssign && (
                 <td>
                   {unit.status === 'available' && !assignedUnitIds.includes(unit.id) ? (
-                    <button
+                    <button type="button"
                       onClick={(e) => { e.stopPropagation(); onAssignUnit!(unit.id); }}
                       className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-green-400 bg-green-900/30 border border-green-700/50 hover:bg-green-800/40 transition-colors"
                       title={`Assign ${unit.call_sign} to call`}
@@ -177,7 +177,7 @@ export default React.memo(function UnitStatusBoard({
                 <td>
                   <div className="flex items-center gap-1">
                     {onEditUnit && (
-                      <button
+                      <button type="button"
                         onClick={(e) => { e.stopPropagation(); onEditUnit(unit); }}
                         className="p-0.5 text-rmpg-400 hover:text-brand-400 transition-colors"
                         title={`Edit ${unit.call_sign}`}
@@ -186,7 +186,7 @@ export default React.memo(function UnitStatusBoard({
                       </button>
                     )}
                     {onDeleteUnit && !unit.current_call_id && (
-                      <button
+                      <button type="button"
                         onClick={(e) => { e.stopPropagation(); onDeleteUnit(unit); }}
                         className="p-0.5 text-rmpg-400 hover:text-red-400 transition-colors"
                         title={`Delete ${unit.call_sign}`}
@@ -206,7 +206,7 @@ export default React.memo(function UnitStatusBoard({
                   <Radio className="w-6 h-6 text-rmpg-500" />
                   <p className="text-xs">No units configured</p>
                   {onCreateUnit && (
-                    <button
+                    <button type="button"
                       onClick={(e) => { e.stopPropagation(); onCreateUnit(); }}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-brand-400 bg-brand-900/30 border border-brand-600/50 hover:bg-brand-800/40 transition-colors mt-1"
                     >

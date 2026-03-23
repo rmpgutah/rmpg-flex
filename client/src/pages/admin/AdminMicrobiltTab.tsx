@@ -311,7 +311,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
           <span className="text-[10px] text-rmpg-400">Environment:</span>
           <div className="flex items-center gap-1">
             {(['sandbox', 'production'] as const).map(env => (
-              <button
+              <button type="button"
                 key={env}
                 onClick={() => handleEnvironmentChange(env)}
                 className="text-[10px] px-2.5 py-1 rounded-sm transition-colors"
@@ -356,7 +356,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
               placeholder={status?.configured ? 'Enter new secret to replace...' : 'Enter your Microbilt Client Secret...'}
               className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 pr-8 rounded-sm focus:border-brand-500 focus:outline-none font-mono"
             />
-            <button
+            <button type="button"
               onClick={() => setShowSecret(!showSecret)}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300"
             >
@@ -379,7 +379,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
 
         {/* Action buttons */}
         <div className="flex items-center gap-2">
-          <button
+          <button type="button"
             onClick={handleSaveCredentials}
             disabled={saving || !clientId.trim() || !clientSecret.trim()}
             className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
@@ -389,7 +389,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
           </button>
           {status?.configured && (
             <>
-              <button
+              <button type="button"
                 onClick={handleTest}
                 disabled={testing}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5"
@@ -397,7 +397,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
                 {testing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
                 Test Connection
               </button>
-              <button
+              <button type="button"
                 onClick={handleClear}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 text-red-400 hover:text-red-300"
               >
@@ -474,7 +474,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
                           background: enabled ? 'rgba(26, 90, 158, 0.06)' : undefined,
                         }}
                       >
-                        <button
+                        <button type="button"
                           onClick={() => status?.configured && handleToggleProduct(product.id)}
                           disabled={!status?.configured}
                           className="shrink-0 disabled:opacity-30"

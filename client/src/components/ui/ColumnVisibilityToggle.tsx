@@ -41,7 +41,7 @@ export default function ColumnVisibilityToggle({ columns, onChange, className = 
 
   return (
     <div ref={ref} className={`relative ${className}`}>
-      <button
+      <button type="button"
         onClick={() => setOpen(!open)}
         className="toolbar-btn text-[10px] flex items-center gap-1"
         title="Toggle columns"
@@ -53,10 +53,10 @@ export default function ColumnVisibilityToggle({ columns, onChange, className = 
         <div className="absolute right-0 top-full mt-1 z-50 min-w-[180px] bg-surface-base border border-[#2a3e58] shadow-xl py-1">
           <div className="px-3 py-1.5 border-b border-[#1e3048] flex items-center justify-between">
             <span className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Columns</span>
-            <button onClick={showAll} className="text-[9px] text-brand-400 hover:text-brand-300">Show All</button>
+            <button type="button" onClick={showAll} className="text-[9px] text-brand-400 hover:text-brand-300">Show All</button>
           </div>
           {columns.map(col => (
-            <button
+            <button type="button"
               key={col.key}
               onClick={() => toggleColumn(col.key)}
               disabled={col.locked}

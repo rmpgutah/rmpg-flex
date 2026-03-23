@@ -94,7 +94,7 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
   } : null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90" role="dialog" aria-modal="true" onClick={onClose}>
       <div
         ref={containerRef}
         className={`bg-black border border-rmpg-800 rounded-sm shadow-2xl overflow-hidden ${
@@ -121,22 +121,22 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
           </div>
           <div className="flex items-center gap-1">
             {onEditVideo && (
-              <button onClick={() => onEditVideo(video)} className="toolbar-btn p-1" title="Edit video metadata">
+              <button type="button" onClick={() => onEditVideo(video)} className="toolbar-btn p-1" title="Edit video metadata">
                 <Edit2 className="w-3.5 h-3.5" />
               </button>
             )}
-            <button onClick={onClose} className="toolbar-btn p-1">
+            <button type="button" onClick={onClose} className="toolbar-btn p-1" aria-label="Close" title="Close">
               <X className="w-4 h-4" />
             </button>
           </div>
           <div className="flex items-center gap-1">
-            <button onClick={() => setHudVisible(!hudVisible)} className="text-[9px] font-mono text-rmpg-500 hover:text-rmpg-200 px-1.5 py-0.5 transition-colors" title="Toggle HUD overlay">
+            <button type="button" onClick={() => setHudVisible(!hudVisible)} className="text-[9px] font-mono text-rmpg-500 hover:text-rmpg-200 px-1.5 py-0.5 transition-colors" title="Toggle HUD overlay">
               HUD {hudVisible ? 'ON' : 'OFF'}
             </button>
-            <button onClick={toggleFullscreen} className="toolbar-btn p-1" title="Toggle fullscreen">
+            <button type="button" onClick={toggleFullscreen} className="toolbar-btn p-1" title="Toggle fullscreen">
               {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
             </button>
-            <button onClick={onClose} className="toolbar-btn p-1">
+            <button type="button" onClick={onClose} className="toolbar-btn p-1" aria-label="Close" title="Close">
               <X className="w-4 h-4" />
             </button>
           </div>

@@ -284,7 +284,7 @@ export default function FieldInterviewsPage() {
         <span className="text-[9px] font-mono text-rmpg-400">{totalCount} TOTAL</span>
         <span className="toolbar-separator" />
         <ExportButton exportUrl="/field-interviews?per_page=9999" exportFilename="field_interviews_export.csv" />
-        <button onClick={handleOpenNew} className="toolbar-btn">
+        <button type="button" onClick={handleOpenNew} className="toolbar-btn">
           <Plus style={{ width: 11, height: 11 }} /> New FI Card
         </button>
       </PanelTitleBar>
@@ -315,7 +315,7 @@ export default function FieldInterviewsPage() {
       {error && (
         <div className="px-3 py-2 bg-red-900/40 border-b border-red-700 text-red-300 text-xs flex items-center justify-between">
           <span>Failed to load field interviews: {error}</span>
-          <button onClick={() => fetchFis()} className="text-red-200 hover:text-white underline text-[10px]">Retry</button>
+          <button type="button" onClick={() => fetchFis()} className="text-red-200 hover:text-white underline text-[10px]">Retry</button>
         </div>
       )}
 
@@ -372,9 +372,9 @@ export default function FieldInterviewsPage() {
           {/* Pagination */}
           {totalPages > 1 && (
             <div className={`flex items-center justify-center gap-2 py-2 ${isMobile ? 'text-xs' : 'text-[10px]'} text-rmpg-400`}>
-              <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined, minWidth: isMobile ? 48 : undefined }}>Prev</button>
+              <button type="button" disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined, minWidth: isMobile ? 48 : undefined }}>Prev</button>
               <span>Page {page} of {totalPages}</span>
-              <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined, minWidth: isMobile ? 48 : undefined }}>Next</button>
+              <button type="button" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined, minWidth: isMobile ? 48 : undefined }}>Next</button>
             </div>
           )}
         </div>
@@ -388,19 +388,19 @@ export default function FieldInterviewsPage() {
                 <span className="text-[10px] text-rmpg-400">Created {formatDateTime(selectedFi.created_at)}</span>
               </div>
               <div className={`flex items-center ${isMobile ? 'gap-2' : 'gap-1'}`}>
-                <button onClick={() => handleEdit(selectedFi)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
+                <button type="button" onClick={() => handleEdit(selectedFi)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
                   <FileText style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Edit
                 </button>
                 {selectedFi.status === 'active' ? (
-                  <button onClick={() => handleArchive(selectedFi)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
+                  <button type="button" onClick={() => handleArchive(selectedFi)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
                     <Archive style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Archive
                   </button>
                 ) : (
-                  <button onClick={() => handleUnarchive(selectedFi)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
+                  <button type="button" onClick={() => handleUnarchive(selectedFi)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
                     <RotateCcw style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Restore
                   </button>
                 )}
-                <button onClick={() => setSelectedFi(null)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
+                <button type="button" onClick={() => setSelectedFi(null)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
                   <X style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} />
                 </button>
               </div>
@@ -452,11 +452,11 @@ export default function FieldInterviewsPage() {
 
       {/* Form Modal */}
       {formOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setFormOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setFormOpen(false)}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#141e2b' }}>
               <span className="text-xs font-bold text-white uppercase">{editingFi ? 'Edit' : 'New'} Field Interview</span>
-              <button onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white"><X style={{ width: 14, height: 14 }} /></button>
+              <button type="button" onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white"><X style={{ width: 14, height: 14 }} /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-4 space-y-3">
               {repeatWarning && (

@@ -202,7 +202,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
         <div className="flex items-center gap-2 px-3 py-2 text-xs rounded-sm bg-red-500/10 border border-red-500/30 text-red-400">
           <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
           {error}
-          <button onClick={() => setError(null)} className="ml-auto text-red-400/60 hover:text-red-400">&times;</button>
+          <button type="button" onClick={() => setError(null)} className="ml-auto text-red-400/60 hover:text-red-400">&times;</button>
         </div>
       )}
 
@@ -290,7 +290,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
                 placeholder={status?.configured ? '••••••••••••••••' : 'Enter client secret'}
                 className="input-dark w-full text-xs font-mono pr-8"
               />
-              <button onClick={() => setShowSecret(!showSecret)}
+              <button type="button" onClick={() => setShowSecret(!showSecret)}
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white">
                 {showSecret ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
               </button>
@@ -309,18 +309,18 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
         </div>
 
         <div className="flex items-center gap-2">
-          <button onClick={handleSaveCredentials} disabled={saving}
+          <button type="button" onClick={handleSaveCredentials} disabled={saving}
             className="btn-primary text-[10px] px-3 py-1 flex items-center gap-1">
             {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
             Save Credentials
           </button>
           {status?.configured && (
             <>
-              <button onClick={handleClearCredentials}
+              <button type="button" onClick={handleClearCredentials}
                 className="btn-danger text-[10px] px-3 py-1 flex items-center gap-1">
                 <Trash2 className="w-3 h-3" /> Clear
               </button>
-              <button onClick={handleTestConnection} disabled={testing}
+              <button type="button" onClick={handleTestConnection} disabled={testing}
                 className="btn-secondary text-[10px] px-3 py-1 flex items-center gap-1">
                 {testing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wifi className="w-3 h-3" />}
                 Test Connection
@@ -355,7 +355,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
             Click below to sign in with Microsoft and grant RMPG Flex access to the mailbox.
             You will be redirected to Microsoft's login page.
           </p>
-          <button onClick={handleAuthorize}
+          <button type="button" onClick={handleAuthorize}
             className="btn-primary text-[10px] px-4 py-1.5 flex items-center gap-1.5">
             <ExternalLink className="w-3 h-3" />
             Authorize with Microsoft
@@ -371,7 +371,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
               <Clock className="w-3.5 h-3.5 text-brand-400" />
               Inbox Sync
             </h3>
-            <button onClick={handleToggleEnabled}
+            <button type="button" onClick={handleToggleEnabled}
               className="flex items-center gap-1.5 text-[10px]">
               {status.enabled ? (
                 <><ToggleRight className="w-5 h-5 text-green-400" /> <span className="text-green-400">Enabled</span></>
@@ -393,7 +393,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
               <option value={300}>5 minutes</option>
               <option value={600}>10 minutes</option>
             </select>
-            <button onClick={handleSyncNow} disabled={syncing}
+            <button type="button" onClick={handleSyncNow} disabled={syncing}
               className="btn-secondary text-[10px] px-2 py-0.5 flex items-center gap-1">
               {syncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
               Sync Now
@@ -409,7 +409,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
             <Send className="w-3.5 h-3.5 text-brand-400" />
             SMTP Fallback (Send-Only)
           </h3>
-          <button onClick={() => handleSmtpSettings(!status?.smtpFallback)}
+          <button type="button" onClick={() => handleSmtpSettings(!status?.smtpFallback)}
             className="flex items-center gap-1.5 text-[10px]">
             {status?.smtpFallback ? (
               <><ToggleRight className="w-5 h-5 text-green-400" /> <span className="text-green-400">Enabled</span></>
@@ -431,12 +431,12 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
               placeholder={status?.smtpFallback ? '••••••••••••' : 'Enter app password'}
               className="input-dark w-full text-xs font-mono pr-8"
             />
-            <button onClick={() => setShowSmtpPassword(!showSmtpPassword)}
+            <button type="button" onClick={() => setShowSmtpPassword(!showSmtpPassword)}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white">
               {showSmtpPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
             </button>
           </div>
-          <button onClick={() => handleSmtpSettings(true)}
+          <button type="button" onClick={() => handleSmtpSettings(true)}
             disabled={!smtpPassword}
             className="btn-primary text-[10px] px-3 py-1 flex items-center gap-1">
             <CheckCircle2 className="w-3 h-3" /> Save

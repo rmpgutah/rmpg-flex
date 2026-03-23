@@ -420,10 +420,10 @@ export default function CourtTrackerPage() {
       {/* Left Panel */}
       <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Court / Legal Tracker" icon={Gavel}>
-          <button onClick={() => setCitationSearchOpen(true)} className="toolbar-btn text-[10px]">
+          <button type="button" onClick={() => setCitationSearchOpen(true)} className="toolbar-btn text-[10px]">
             <FileText style={{ width: 11, height: 11 }} /> From Citation
           </button>
-          <button onClick={() => { clearAllErrors(); setFormOpen(true); setFormData({ ...EMPTY_FORM }); }} className="toolbar-btn toolbar-btn-primary">
+          <button type="button" onClick={() => { clearAllErrors(); setFormOpen(true); setFormData({ ...EMPTY_FORM }); }} className="toolbar-btn toolbar-btn-primary">
             <Plus style={{ width: 11, height: 11 }} /> New
           </button>
         </PanelTitleBar>
@@ -431,7 +431,7 @@ export default function CourtTrackerPage() {
         {fetchError && (
           <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
             <span>! {fetchError}</span>
-            <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">x</button>
+            <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">x</button>
           </div>
         )}
 
@@ -443,7 +443,7 @@ export default function CourtTrackerPage() {
             { id: 'calendar' as const, label: 'Calendar' },
             { id: 'stats' as const, label: 'Stats' },
           ].map(tab => (
-            <button
+            <button type="button"
               key={tab.id}
               onClick={() => setActiveView(tab.id)}
               className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider ${activeView === tab.id ? 'text-white border-b-2 border-brand-500 bg-brand-900/10' : 'text-rmpg-500'}`}
@@ -471,11 +471,11 @@ export default function CourtTrackerPage() {
         {activeView === 'calendar' && (
           <div className="flex-1 overflow-y-auto p-2">
             <div className="flex items-center justify-between mb-2">
-              <button onClick={() => { if (calendarMonth === 1) { setCalendarMonth(12); setCalendarYear(y => y - 1); } else setCalendarMonth(m => m - 1); }} className="toolbar-btn p-1">
+              <button type="button" onClick={() => { if (calendarMonth === 1) { setCalendarMonth(12); setCalendarYear(y => y - 1); } else setCalendarMonth(m => m - 1); }} className="toolbar-btn p-1">
                 <ChevronLeft style={{ width: 14, height: 14 }} />
               </button>
               <span className="text-xs font-bold text-white">{monthNames[calendarMonth - 1]} {calendarYear}</span>
-              <button onClick={() => { if (calendarMonth === 12) { setCalendarMonth(1); setCalendarYear(y => y + 1); } else setCalendarMonth(m => m + 1); }} className="toolbar-btn p-1">
+              <button type="button" onClick={() => { if (calendarMonth === 12) { setCalendarMonth(1); setCalendarYear(y => y + 1); } else setCalendarMonth(m => m + 1); }} className="toolbar-btn p-1">
                 <ChevronRight style={{ width: 14, height: 14 }} />
               </button>
             </div>
@@ -601,7 +601,7 @@ export default function CourtTrackerPage() {
               displayEvents.map(evt => {
                 const countdown = evt.event_date ? daysUntil(evt.event_date) : { text: '-', color: 'text-rmpg-500' };
                 return (
-                  <button
+                  <button type="button"
                     key={evt.id}
                     onClick={() => setSelected(evt)}
                     aria-label={`Court event ${evt.event_number}`}
@@ -646,19 +646,19 @@ export default function CourtTrackerPage() {
             <PanelTitleBar title={`${selected.event_number} -- ${EVENT_TYPES.find(t => t.value === selected.event_type)?.label}`} icon={Gavel}>
               {/* Feature 5: Confirm attendance */}
               {selected.status !== 'completed' && (
-                <button onClick={handleConfirmAttendance} className="toolbar-btn text-[10px]" title="Confirm your attendance">
+                <button type="button" onClick={handleConfirmAttendance} className="toolbar-btn text-[10px]" title="Confirm your attendance">
                   <Check style={{ width: 11, height: 11 }} /> Confirm
                 </button>
               )}
               {/* Feature 3: Continuance */}
               {selected.status !== 'completed' && (
-                <button onClick={() => { setContinuanceData({ reason: '', new_date: '', new_time: '' }); setContinuanceOpen(true); }} className="toolbar-btn text-[10px]">
+                <button type="button" onClick={() => { setContinuanceData({ reason: '', new_date: '', new_time: '' }); setContinuanceOpen(true); }} className="toolbar-btn text-[10px]">
                   <RefreshCw style={{ width: 11, height: 11 }} /> Continuance
                 </button>
               )}
               {/* Feature 4: Outcome */}
               {selected.status !== 'completed' && (
-                <button onClick={() => { setOutcomeData({ outcome: '', sentence: '', fine_amount: '' }); setOutcomeOpen(true); }} className="toolbar-btn toolbar-btn-primary">
+                <button type="button" onClick={() => { setOutcomeData({ outcome: '', sentence: '', fine_amount: '' }); setOutcomeOpen(true); }} className="toolbar-btn toolbar-btn-primary">
                   <CheckCircle style={{ width: 11, height: 11 }} /> Record Outcome
                 </button>
               )}
@@ -737,7 +737,7 @@ export default function CourtTrackerPage() {
                   <div className="text-[9px] font-mono text-rmpg-500 uppercase flex items-center gap-1">
                     <DollarSign style={{ width: 10, height: 10 }} /> Bail / Bond
                   </div>
-                  <button onClick={() => {
+                  <button type="button" onClick={() => {
                     setBailData({
                       bail_amount: (selected as any).bail_amount || '',
                       bond_status: (selected as any).bond_status || '',
@@ -787,7 +787,7 @@ export default function CourtTrackerPage() {
                   <div className="text-[9px] font-mono text-rmpg-500 uppercase flex items-center gap-1">
                     <BookOpen style={{ width: 10, height: 10 }} /> Judge Preferences / Notes
                   </div>
-                  <button onClick={() => { setJudgeNotesText((selected as any).judge_notes || ''); setJudgeNotesOpen(true); }} className="toolbar-btn text-[9px]">Edit</button>
+                  <button type="button" onClick={() => { setJudgeNotesText((selected as any).judge_notes || ''); setJudgeNotesOpen(true); }} className="toolbar-btn text-[9px]">Edit</button>
                 </div>
                 <div className="text-xs text-rmpg-300 whitespace-pre-wrap">{(selected as any).judge_notes || 'No notes recorded.'}</div>
               </div>
@@ -816,7 +816,7 @@ export default function CourtTrackerPage() {
                   <div className="text-[9px] font-mono text-rmpg-500 uppercase flex items-center gap-1">
                     <User style={{ width: 10, height: 10 }} /> Prosecutor Contact
                   </div>
-                  <button onClick={() => {
+                  <button type="button" onClick={() => {
                     const parsed = (() => { try { return JSON.parse(selected.prosecutor || '{}'); } catch { return { name: selected.prosecutor || '' }; } })();
                     setProsecutorData({ prosecutor_name: parsed.name || '', prosecutor_phone: parsed.phone || '', prosecutor_email: parsed.email || '' });
                     setProsecutorOpen(true);
@@ -842,7 +842,7 @@ export default function CourtTrackerPage() {
                   <div className="text-[9px] font-mono text-rmpg-500 uppercase flex items-center gap-1">
                     <DollarSign style={{ width: 10, height: 10 }} /> Court Fees
                   </div>
-                  <button onClick={() => {
+                  <button type="button" onClick={() => {
                     const fees = JSON.parse((selected as any).court_fees || '{}');
                     setFeeData({ filing_fee: fees.filing_fee || '', service_fee: fees.service_fee || '', other_fees: fees.other_fees || '', fee_notes: fees.fee_notes || '' });
                     setFeeOpen(true);
@@ -868,7 +868,7 @@ export default function CourtTrackerPage() {
                   <div className="text-[9px] font-mono text-rmpg-500 uppercase flex items-center gap-1">
                     <Users style={{ width: 10, height: 10 }} /> Witnesses
                   </div>
-                  <button onClick={() => {
+                  <button type="button" onClick={() => {
                     setWitnesses(JSON.parse((selected as any).witnesses || '[]'));
                     setWitnessOpen(true);
                   }} className="toolbar-btn text-[9px]">Manage</button>
@@ -890,11 +890,11 @@ export default function CourtTrackerPage() {
               {/* Feature 10b: Clone Event + Feature 6: Reminders */}
               <div className="flex items-center gap-2 flex-wrap">
                 {selected.status !== 'completed' && (
-                  <button onClick={() => handleCloneEvent(parseInt(String(selected.id)))} className="toolbar-btn text-[10px] px-2 py-1">
+                  <button type="button" onClick={() => handleCloneEvent(parseInt(String(selected.id)))} className="toolbar-btn text-[10px] px-2 py-1">
                     <RefreshCw style={{ width: 10, height: 10 }} /> Clone for Continuance
                   </button>
                 )}
-                <button onClick={handleGenerateReminders} className="toolbar-btn text-[10px] px-2 py-1">
+                <button type="button" onClick={handleGenerateReminders} className="toolbar-btn text-[10px] px-2 py-1">
                   <Clock style={{ width: 10, height: 10 }} /> Generate 24h Reminders
                 </button>
               </div>
@@ -953,7 +953,7 @@ export default function CourtTrackerPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-label="New Court Event">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="New Court Event" icon={Plus}>
-              <button onClick={() => setFormOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -995,8 +995,8 @@ export default function CourtTrackerPage() {
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
-                <button onClick={() => setFormOpen(false)} className="toolbar-btn">Cancel</button>
-                <button onClick={handleCreate} disabled={submitting} className="toolbar-btn toolbar-btn-primary">
+                <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn">Cancel</button>
+                <button type="button" onClick={handleCreate} disabled={submitting} className="toolbar-btn toolbar-btn-primary">
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />}
                   Create Event
                 </button>
@@ -1011,7 +1011,7 @@ export default function CourtTrackerPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-label="Record Outcome">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Record Outcome" icon={CheckCircle}>
-              <button onClick={() => setOutcomeOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <button type="button" onClick={() => setOutcomeOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div>
@@ -1030,8 +1030,8 @@ export default function CourtTrackerPage() {
                 <input value={outcomeData.fine_amount} onChange={e => setOutcomeData(p => ({ ...p, fine_amount: e.target.value }))} type="number" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
-                <button onClick={() => setOutcomeOpen(false)} className="toolbar-btn">Cancel</button>
-                <button onClick={handleOutcome} disabled={outcomeSubmitting || !outcomeData.outcome} className="toolbar-btn toolbar-btn-primary">
+                <button type="button" onClick={() => setOutcomeOpen(false)} className="toolbar-btn">Cancel</button>
+                <button type="button" onClick={handleOutcome} disabled={outcomeSubmitting || !outcomeData.outcome} className="toolbar-btn toolbar-btn-primary">
                   {outcomeSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />}
                   Save Outcome
                 </button>
@@ -1046,7 +1046,7 @@ export default function CourtTrackerPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-label="Log Continuance">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Log Continuance" icon={RefreshCw}>
-              <button onClick={() => setContinuanceOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <button type="button" onClick={() => setContinuanceOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div>
@@ -1064,8 +1064,8 @@ export default function CourtTrackerPage() {
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
-                <button onClick={() => setContinuanceOpen(false)} className="toolbar-btn">Cancel</button>
-                <button onClick={handleContinuance} disabled={continuanceSubmitting || !continuanceData.reason} className="toolbar-btn toolbar-btn-primary">
+                <button type="button" onClick={() => setContinuanceOpen(false)} className="toolbar-btn">Cancel</button>
+                <button type="button" onClick={handleContinuance} disabled={continuanceSubmitting || !continuanceData.reason} className="toolbar-btn toolbar-btn-primary">
                   {continuanceSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />}
                   Save Continuance
                 </button>
@@ -1080,7 +1080,7 @@ export default function CourtTrackerPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-label="Bail/Bond Info">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Bail / Bond Information" icon={DollarSign}>
-              <button onClick={() => setBailOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <button type="button" onClick={() => setBailOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div>
@@ -1104,8 +1104,8 @@ export default function CourtTrackerPage() {
                 <input value={bailData.surety_info} onChange={e => setBailData(p => ({ ...p, surety_info: e.target.value }))} placeholder="Bonding company, etc." className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
-                <button onClick={() => setBailOpen(false)} className="toolbar-btn">Cancel</button>
-                <button onClick={handleBailSubmit} disabled={bailSubmitting} className="toolbar-btn toolbar-btn-primary">
+                <button type="button" onClick={() => setBailOpen(false)} className="toolbar-btn">Cancel</button>
+                <button type="button" onClick={handleBailSubmit} disabled={bailSubmitting} className="toolbar-btn toolbar-btn-primary">
                   {bailSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />}
                   Save
                 </button>
@@ -1120,13 +1120,13 @@ export default function CourtTrackerPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-label="Judge Notes">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Judge Preferences / Notes" icon={BookOpen}>
-              <button onClick={() => setJudgeNotesOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <button type="button" onClick={() => setJudgeNotesOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <textarea value={judgeNotesText} onChange={e => setJudgeNotesText(e.target.value)} rows={6} placeholder="Judge preferences, courtroom rules, etc." className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
-                <button onClick={() => setJudgeNotesOpen(false)} className="toolbar-btn">Cancel</button>
-                <button onClick={handleJudgeNotesSubmit} disabled={judgeNotesSubmitting} className="toolbar-btn toolbar-btn-primary">
+                <button type="button" onClick={() => setJudgeNotesOpen(false)} className="toolbar-btn">Cancel</button>
+                <button type="button" onClick={handleJudgeNotesSubmit} disabled={judgeNotesSubmitting} className="toolbar-btn toolbar-btn-primary">
                   {judgeNotesSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />}
                   Save Notes
                 </button>
@@ -1141,7 +1141,7 @@ export default function CourtTrackerPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Prosecutor Contact Info" icon={User}>
-              <button onClick={() => setProsecutorOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
+              <button type="button" onClick={() => setProsecutorOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div><label className="field-label">Name</label>
@@ -1151,8 +1151,8 @@ export default function CourtTrackerPage() {
               <div><label className="field-label">Email</label>
                 <input type="email" value={prosecutorData.prosecutor_email} onChange={e => setProsecutorData(p => ({ ...p, prosecutor_email: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
-                <button onClick={() => setProsecutorOpen(false)} className="toolbar-btn">Cancel</button>
-                <button onClick={handleSaveProsecutor} disabled={prosecutorSubmitting} className="toolbar-btn toolbar-btn-primary">
+                <button type="button" onClick={() => setProsecutorOpen(false)} className="toolbar-btn">Cancel</button>
+                <button type="button" onClick={handleSaveProsecutor} disabled={prosecutorSubmitting} className="toolbar-btn toolbar-btn-primary">
                   {prosecutorSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />} Save
                 </button>
               </div>
@@ -1166,7 +1166,7 @@ export default function CourtTrackerPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Court Fee Tracking" icon={DollarSign}>
-              <button onClick={() => setFeeOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
+              <button type="button" onClick={() => setFeeOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div><label className="field-label">Filing Fee ($)</label>
@@ -1178,8 +1178,8 @@ export default function CourtTrackerPage() {
               <div><label className="field-label">Notes</label>
                 <textarea value={feeData.fee_notes} onChange={e => setFeeData(p => ({ ...p, fee_notes: e.target.value }))} rows={2} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" /></div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
-                <button onClick={() => setFeeOpen(false)} className="toolbar-btn">Cancel</button>
-                <button onClick={handleSaveFees} disabled={feeSubmitting} className="toolbar-btn toolbar-btn-primary">
+                <button type="button" onClick={() => setFeeOpen(false)} className="toolbar-btn">Cancel</button>
+                <button type="button" onClick={handleSaveFees} disabled={feeSubmitting} className="toolbar-btn toolbar-btn-primary">
                   {feeSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />} Save
                 </button>
               </div>
@@ -1193,7 +1193,7 @@ export default function CourtTrackerPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="Witness Management" icon={Users}>
-              <button onClick={() => setWitnessOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
+              <button type="button" onClick={() => setWitnessOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div className="max-h-[300px] overflow-y-auto space-y-2">
@@ -1207,7 +1207,7 @@ export default function CourtTrackerPage() {
                         <option value="confirmed">Confirmed</option>
                         <option value="unavailable">Unavailable</option>
                       </select>
-                      <button onClick={() => setWitnesses(ws => ws.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-300"><X style={{ width: 12, height: 12 }} /></button>
+                      <button type="button" onClick={() => setWitnesses(ws => ws.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-300"><X style={{ width: 12, height: 12 }} /></button>
                     </div>
                     <div className="flex gap-2">
                       <input value={w.phone || ''} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, phone: e.target.value } : ww))} placeholder="Phone" className="flex-1 px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
@@ -1217,12 +1217,12 @@ export default function CourtTrackerPage() {
                   </div>
                 ))}
               </div>
-              <button onClick={() => setWitnesses(ws => [...ws, { name: '', phone: '', email: '', role: 'witness', contact_status: 'pending', notes: '' }])} className="toolbar-btn text-[10px] w-full justify-center">
+              <button type="button" onClick={() => setWitnesses(ws => [...ws, { name: '', phone: '', email: '', role: 'witness', contact_status: 'pending', notes: '' }])} className="toolbar-btn text-[10px] w-full justify-center">
                 <Plus style={{ width: 10, height: 10 }} /> Add Witness
               </button>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
-                <button onClick={() => setWitnessOpen(false)} className="toolbar-btn">Cancel</button>
-                <button onClick={handleSaveWitnesses} disabled={witnessSubmitting} className="toolbar-btn toolbar-btn-primary">
+                <button type="button" onClick={() => setWitnessOpen(false)} className="toolbar-btn">Cancel</button>
+                <button type="button" onClick={handleSaveWitnesses} disabled={witnessSubmitting} className="toolbar-btn toolbar-btn-primary">
                   {witnessSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />} Save Witnesses
                 </button>
               </div>
@@ -1236,7 +1236,7 @@ export default function CourtTrackerPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-label="Create from Citation" onClick={() => setCitationSearchOpen(false)}>
           <div className="panel-surface w-full max-w-lg mx-4" onClick={e => e.stopPropagation()}>
             <PanelTitleBar title="Create Court Event from Citation" icon={FileText}>
-              <button onClick={() => setCitationSearchOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <button type="button" onClick={() => setCitationSearchOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div className="flex gap-2">
@@ -1244,7 +1244,7 @@ export default function CourtTrackerPage() {
                   onKeyDown={e => e.key === 'Enter' && handleSearchCitations()}
                   placeholder="Search by citation number, name, or statute..."
                   className="flex-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
-                <button onClick={handleSearchCitations} disabled={citationSearching} className="toolbar-btn-primary text-[10px] px-3">
+                <button type="button" onClick={handleSearchCitations} disabled={citationSearching} className="toolbar-btn-primary text-[10px] px-3">
                   {citationSearching ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search style={{ width: 11, height: 11 }} />}
                   Search
                 </button>
@@ -1258,7 +1258,7 @@ export default function CourtTrackerPage() {
                         <div className="text-[10px] text-rmpg-300">{c.person_name || 'Unknown'} -- {c.statute_citation || c.violation_description || ''}</div>
                         <div className="text-[9px] text-rmpg-500">{c.court_date ? `Court: ${c.court_date}` : 'No court date'} {c.court_name ? `at ${c.court_name}` : ''}</div>
                       </div>
-                      <button onClick={() => handleCreateFromCitation(c.id)} disabled={creatingFromCitation} className="toolbar-btn-primary text-[10px] px-2 py-1 flex-shrink-0">
+                      <button type="button" onClick={() => handleCreateFromCitation(c.id)} disabled={creatingFromCitation} className="toolbar-btn-primary text-[10px] px-2 py-1 flex-shrink-0">
                         {creatingFromCitation ? '...' : 'Create Event'}
                       </button>
                     </div>

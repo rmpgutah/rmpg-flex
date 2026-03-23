@@ -259,7 +259,7 @@ export default function CourtRecordsPage() {
     <div className="app-grid-bg h-full flex flex-col overflow-hidden">
       {/* ── Header Panel ── */}
       <PanelTitleBar title="COURT RECORDS" icon={Gavel} statusLed="green" ledPulse>
-        <button
+        <button type="button"
           onClick={() => setShowCreateModal(true)}
           className="toolbar-btn toolbar-btn-primary text-[10px]"
         >
@@ -327,7 +327,7 @@ export default function CourtRecordsPage() {
 
           {/* Clear filters */}
           {(statusFilter || typeFilter || dateFrom || dateTo || searchTerm) && (
-            <button
+            <button type="button"
               onClick={() => {
                 setStatusFilter('');
                 setTypeFilter('');
@@ -354,7 +354,7 @@ export default function CourtRecordsPage() {
         <div className="mx-2 mt-1 px-3 py-1.5 bg-red-900/30 border border-red-700/50 text-red-400 text-[10px] flex items-center gap-2">
           <AlertTriangle className="w-3 h-3 flex-shrink-0" />
           {error}
-          <button onClick={() => setError(null)} className="ml-auto text-red-500 hover:text-red-300">
+          <button type="button" onClick={() => setError(null)} className="ml-auto text-red-500 hover:text-red-300">
             <X className="w-3 h-3" />
           </button>
         </div>
@@ -497,7 +497,7 @@ export default function CourtRecordsPage() {
 
                           {/* Action buttons */}
                           {ev.status === 'scheduled' && !ev.outcome && (
-                            <button
+                            <button type="button"
                               onClick={e => { e.stopPropagation(); setOutcomeData({ outcome: '', sentence: '', fine_amount: '', notes: ev.notes || '' }); setShowOutcomeModal(ev.id); }}
                               className="toolbar-btn toolbar-btn-primary text-[9px] mt-2"
                             >
@@ -518,7 +518,7 @@ export default function CourtRecordsPage() {
       {/* ── Pagination ── */}
       {pagination.totalPages > 1 && (
         <div className="mx-2 mb-2 card-glass px-3 py-1.5 flex items-center justify-between">
-          <button
+          <button type="button"
             onClick={() => fetchEvents(pagination.page - 1)}
             disabled={pagination.page <= 1}
             className="toolbar-btn text-[9px] disabled:opacity-30"
@@ -528,7 +528,7 @@ export default function CourtRecordsPage() {
           <span className="text-[9px] text-rmpg-400 font-mono">
             Page {pagination.page} of {pagination.totalPages} ({pagination.total} total)
           </span>
-          <button
+          <button type="button"
             onClick={() => fetchEvents(pagination.page + 1)}
             disabled={pagination.page >= pagination.totalPages}
             className="toolbar-btn text-[9px] disabled:opacity-30"
@@ -540,13 +540,13 @@ export default function CourtRecordsPage() {
 
       {/* ── Create Court Event Modal ── */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowCreateModal(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowCreateModal(false)}>
           <div
             className="bg-[#141e2b] border border-[#1e3048] w-full max-w-lg mx-4 shadow-2xl animate-fadeIn"
             onClick={e => e.stopPropagation()}
           >
             <PanelTitleBar title="NEW COURT EVENT" icon={Plus}>
-              <button onClick={() => setShowCreateModal(false)} className="toolbar-btn text-[10px]">
+              <button type="button" onClick={() => setShowCreateModal(false)} className="toolbar-btn text-[10px]">
                 <X className="w-3 h-3" />
               </button>
             </PanelTitleBar>
@@ -687,8 +687,8 @@ export default function CourtRecordsPage() {
 
               {/* Buttons */}
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#1e3048]">
-                <button onClick={() => setShowCreateModal(false)} className="toolbar-btn text-[10px]">Cancel</button>
-                <button
+                <button type="button" onClick={() => setShowCreateModal(false)} className="toolbar-btn text-[10px]">Cancel</button>
+                <button type="button"
                   onClick={handleCreate}
                   disabled={!formData.event_type || !formData.event_date || saving}
                   className="toolbar-btn toolbar-btn-primary text-[10px] disabled:opacity-40"
@@ -704,13 +704,13 @@ export default function CourtRecordsPage() {
 
       {/* ── Outcome Modal ── */}
       {showOutcomeModal !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowOutcomeModal(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowOutcomeModal(null)}>
           <div
             className="bg-[#141e2b] border border-[#1e3048] w-full max-w-md mx-4 shadow-2xl animate-fadeIn"
             onClick={e => e.stopPropagation()}
           >
             <PanelTitleBar title="RECORD OUTCOME" icon={Scale}>
-              <button onClick={() => setShowOutcomeModal(null)} className="toolbar-btn text-[10px]">
+              <button type="button" onClick={() => setShowOutcomeModal(null)} className="toolbar-btn text-[10px]">
                 <X className="w-3 h-3" />
               </button>
             </PanelTitleBar>
@@ -765,8 +765,8 @@ export default function CourtRecordsPage() {
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#1e3048]">
-                <button onClick={() => setShowOutcomeModal(null)} className="toolbar-btn text-[10px]">Cancel</button>
-                <button
+                <button type="button" onClick={() => setShowOutcomeModal(null)} className="toolbar-btn text-[10px]">Cancel</button>
+                <button type="button"
                   onClick={handleOutcome}
                   disabled={!outcomeData.outcome || saving}
                   className="toolbar-btn toolbar-btn-primary text-[10px] disabled:opacity-40"

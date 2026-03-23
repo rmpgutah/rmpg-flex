@@ -203,7 +203,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
                     <td>
                       <div className="flex items-center gap-0.5">
                         {onEditTimeEntry && (
-                          <button
+                          <button type="button"
                             onClick={() => onEditTimeEntry(te)}
                             className="toolbar-btn p-1"
                             title="Edit time entry"
@@ -212,7 +212,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
                           </button>
                         )}
                         {onDeleteTimeEntry && (
-                          <button
+                          <button type="button"
                             onClick={() => setDeleteTarget(te.id)}
                             className="toolbar-btn toolbar-btn-danger p-1"
                             title="Delete time entry"

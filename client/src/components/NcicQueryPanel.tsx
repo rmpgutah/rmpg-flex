@@ -825,7 +825,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
               NCIC / NLETS Terminal
             </span>
           </div>
-          <button onClick={onClose} className="ncic-close-btn">
+          <button type="button" onClick={onClose} className="ncic-close-btn">
             <X style={{ width: 14, height: 14 }} />
           </button>
         </div>

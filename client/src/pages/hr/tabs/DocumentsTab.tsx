@@ -77,7 +77,7 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
             <option value="all">All Categories</option>
             {CATEGORIES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
           </select>
-          {isManager && <button onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> Add Document</button>}
+          {isManager && <button type="button" onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> Add Document</button>}
         </div>
       </div>
 
@@ -100,8 +100,8 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
             <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="input-field w-full text-xs" rows={3} />
           </div>
           <div className="flex gap-2">
-            <button onClick={handleCreate} className="toolbar-btn toolbar-btn-success text-xs">Create</button>
-            <button onClick={() => setShowForm(false)} className="toolbar-btn text-xs">Cancel</button>
+            <button type="button" onClick={handleCreate} className="toolbar-btn toolbar-btn-success text-xs">Create</button>
+            <button type="button" onClick={() => setShowForm(false)} className="toolbar-btn text-xs">Cancel</button>
           </div>
         </div>
       )}
@@ -124,14 +124,14 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
                 </div>
                 <div className="flex items-center gap-2">
                   {!myAcks.has(doc.id) ? (
-                    <button onClick={e => { e.stopPropagation(); handleAcknowledge(doc.id); }} className="toolbar-btn toolbar-btn-success text-[9px]">
+                    <button type="button" onClick={e => { e.stopPropagation(); handleAcknowledge(doc.id); }} className="toolbar-btn toolbar-btn-success text-[9px]">
                       <CheckCircle className="w-3 h-3" /> Acknowledge
                     </button>
                   ) : (
                     <span className="text-[10px] text-green-400 flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Acknowledged</span>
                   )}
                   {isManager && (
-                    <button onClick={e => { e.stopPropagation(); handleDelete(doc.id); }} className="toolbar-btn toolbar-btn-danger text-[9px]"><Trash2 className="w-3 h-3" /></button>
+                    <button type="button" onClick={e => { e.stopPropagation(); handleDelete(doc.id); }} className="toolbar-btn toolbar-btn-danger text-[9px]"><Trash2 className="w-3 h-3" /></button>
                   )}
                 </div>
               </div>

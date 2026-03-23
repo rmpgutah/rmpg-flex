@@ -59,7 +59,7 @@ export default function ScheduleDetailTab({
           <Calendar className="w-3 h-3" />
           Schedules
         </h3>
-        <button
+        <button type="button"
           onClick={onAddSchedule}
           className="toolbar-btn toolbar-btn-primary flex items-center gap-1 text-[10px]"
         >
@@ -130,7 +130,7 @@ export default function ScheduleDetailTab({
 
                   {/* Delete button (only for scheduled) */}
                   {sched.status === 'scheduled' && (
-                    <button
+                    <button type="button"
                       onClick={() => onDeleteSchedule(sched.id)}
                       className="toolbar-btn toolbar-btn-danger flex-shrink-0"
                       title="Delete schedule"

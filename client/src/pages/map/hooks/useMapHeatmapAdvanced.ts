@@ -137,7 +137,6 @@ export function useMapHeatmapAdvanced(
   options: HeatmapAdvancedOptions,
 ): UseMapHeatmapAdvancedReturn {
   // Diagnostic: log every render to trace enabled state
-  console.log(`[AdvancedHeatmap] Hook render: enabled=${options.enabled}, map=${!!map}, mode=${options.mode}, days=${options.days}`);
 
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<HeatmapStats | null>(null);
@@ -198,7 +197,6 @@ export function useMapHeatmapAdvanced(
       .then((data) => {
         if (counter !== fetchCounterRef.current) return;
         const pts = data?.points || [];
-        console.log(`[AdvancedHeatmap] Fetched ${pts.length} points, ${data?.clusters?.length ?? 0} clusters, mode=${options.mode}`);
         setPoints(pts);
         setComparisonPoints(data?.comparisonPoints || []);
         setClusters(data?.clusters || []);
@@ -219,7 +217,6 @@ export function useMapHeatmapAdvanced(
   // ── Main data fetch (non-temporal or initial) ───────────
 
   useEffect(() => {
-    console.log(`[AdvancedHeatmap] Fetch effect: enabled=${options.enabled}, mode=${options.mode}`);
     if (!options.enabled) {
       setPoints([]);
       setComparisonPoints([]);
@@ -281,7 +278,6 @@ export function useMapHeatmapAdvanced(
     }
 
     if (!options.enabled || points.length === 0) {
-      console.log(`[AdvancedHeatmap] Render skip: enabled=${options.enabled}, points=${points.length}, map=${!!map}`);
       return;
     }
 
@@ -293,11 +289,9 @@ export function useMapHeatmapAdvanced(
       }));
 
     if (weightedData.length === 0) {
-      console.log('[AdvancedHeatmap] No valid weighted data after filtering');
       return;
     }
 
-    console.log(`[AdvancedHeatmap] Rendering ${weightedData.length} points, scheme=${options.colorScheme}, radius=${options.radius}, opacity=${options.opacity}`);
 
     const gradient = GRADIENTS[options.colorScheme] || GRADIENTS.heat;
 

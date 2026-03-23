@@ -560,7 +560,7 @@ export default function OfflineMapFallback({
           </span>
         </div>
         {onRetry && (
-          <button
+          <button type="button"
             onClick={onRetry}
             disabled={retrying}
             className="ml-2 flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors"
@@ -582,7 +582,7 @@ export default function OfflineMapFallback({
 
       {/* Center on self button */}
       {selfPosition && !compact && (
-        <button
+        <button type="button"
           onClick={centerOnSelf}
           className="absolute bottom-20 right-3 z-[1000] p-2 transition-colors hover:border-blue-500"
           style={{

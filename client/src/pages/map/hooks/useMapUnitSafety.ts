@@ -334,8 +334,8 @@ export function useMapUnitSafety(
             gaps = perimeterData.gaps || [];
             covPct = perimeterData.coverage_percent ?? 100;
           }
-        } catch {
-          // fall through to coverage-gaps endpoint
+        } catch (err) {
+          console.warn('[useMapUnitSafety] Perimeter check failed, falling through:', err);
         }
       }
 
@@ -345,8 +345,8 @@ export function useMapUnitSafety(
         if (coverageData && coverageData.length > 0) {
           gaps = [...gaps, ...coverageData];
         }
-      } catch {
-        // non-fatal
+      } catch (err) {
+        console.warn('[useMapUnitSafety] Coverage gaps fetch failed:', err);
       }
 
       if (mountedRef.current) {
@@ -389,8 +389,8 @@ export function useMapUnitSafety(
       });
 
       renderOverlays(gaps, loneList, clusterList, newExposure);
-    } catch {
-      // non-fatal — keep previous state
+    } catch (err) {
+      console.warn('[useMapUnitSafety] Safety data fetch failed:', err);
     } finally {
       if (mountedRef.current) setLoading(false);
     }

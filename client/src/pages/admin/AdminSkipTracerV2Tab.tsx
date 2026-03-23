@@ -184,7 +184,7 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
                 {/* Source header row */}
                 <div className="flex items-center gap-3">
                   {/* Enable/disable toggle */}
-                  <button
+                  <button type="button"
                     onClick={() => handleToggle(source.name, isEnabled)}
                     className="shrink-0"
                     title={isEnabled ? 'Disable source' : 'Enable source'}
@@ -249,7 +249,7 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
                         placeholder="Enter API key"
                         className="w-full bg-surface-base border border-rmpg-600 text-white text-[10px] px-2 py-1 pr-7 font-mono focus:border-blue-500 focus:outline-none"
                       />
-                      <button
+                      <button type="button"
                         onClick={() => setShowKeys(prev => ({ ...prev, [source.name]: !prev[source.name] }))}
                         className="absolute right-1.5 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white"
                         type="button"
@@ -263,7 +263,7 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
                 {/* Save button when edits exist */}
                 {hasEdits && (
                   <div className="flex justify-end">
-                    <button
+                    <button type="button"
                       onClick={() => handleSave(source.name)}
                       disabled={isSaving}
                       className="flex items-center gap-1 px-3 py-1 text-[10px] font-bold uppercase tracking-wider bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"

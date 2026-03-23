@@ -61,10 +61,10 @@ export default function PerimeterToolsPanel({
             Perimeter Tools
           </span>
         </div>
-        <button
+        <button type="button"
           onClick={onClose}
           className="p-0.5 rounded-sm hover:bg-rmpg-700/50 text-rmpg-400 hover:text-rmpg-200 transition-colors"
-        >
+         aria-label="Close" title="Close">
           <X className="w-3.5 h-3.5" />
         </button>
       </div>
@@ -78,7 +78,7 @@ export default function PerimeterToolsPanel({
               Perimeter Check
             </span>
           </div>
-          <button
+          <button type="button"
             onClick={onAnalyzeCoverage}
             disabled={loading}
             className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-sm text-[9px] font-mono uppercase tracking-wider bg-rmpg-700/40 border border-rmpg-700 text-rmpg-300 hover:bg-rmpg-700/70 hover:text-rmpg-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -153,7 +153,7 @@ export default function PerimeterToolsPanel({
             </span>
           </div>
           <div className="flex gap-1.5">
-            <button
+            <button type="button"
               onClick={onStartContainment}
               disabled={isDrawingContainment}
               className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-sm text-[9px] font-mono uppercase tracking-wider bg-rmpg-700/40 border border-rmpg-700 text-rmpg-300 hover:bg-rmpg-700/70 hover:text-rmpg-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -161,11 +161,11 @@ export default function PerimeterToolsPanel({
               <Pentagon className="w-3 h-3" />
               Draw
             </button>
-            <button
+            <button type="button"
               onClick={onClearContainment}
               disabled={containmentVertices === 0 && !isDrawingContainment}
               className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-sm text-[9px] font-mono uppercase tracking-wider bg-rmpg-700/40 border border-rmpg-700 text-rmpg-300 hover:bg-rmpg-700/70 hover:text-rmpg-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
+             aria-label="Close" title="Close">
               <X className="w-3 h-3" />
               Clear
             </button>
@@ -197,7 +197,7 @@ export default function PerimeterToolsPanel({
               Critical Infrastructure
             </span>
           </div>
-          <button
+          <button type="button"
             onClick={onToggleHVTs}
             className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-sm text-[9px] font-mono uppercase tracking-wider bg-rmpg-700/40 border border-rmpg-700 text-rmpg-300 hover:bg-rmpg-700/70 hover:text-rmpg-200 transition-colors"
           >

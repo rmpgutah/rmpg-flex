@@ -107,12 +107,18 @@ router.get('/search', (req: Request, res: Response) => {
 router.get('/person/:personId', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const personId = parseInt(req.params.personId, 10);
+    if (isNaN(personId)) {
+      res.status(400).json({ error: 'Invalid person ID' });
+      return;
+    }
 
     const citations = db.prepare(`
       SELECT * FROM citations
       WHERE person_id = ?
       ORDER BY violation_date DESC, violation_time DESC
-    `).all(req.params.personId);
+      LIMIT 500
+    `).all(personId);
 
     res.json({ data: citations });
   } catch (error: any) {
@@ -137,8 +143,8 @@ router.get('/', (req: Request, res: Response) => {
       date_to,
     } = req.query;
 
-    const pageNum = parseInt(page as string, 10);
-    const limitNum = Math.min(parseInt(limit as string, 10) || 50, 200);
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const limitNum = Math.min(Math.max(1, parseInt(limit as string, 10) || 50), 200);
     const offset = (pageNum - 1) * limitNum;
 
     let whereClause = 'WHERE 1=1';
@@ -206,8 +212,13 @@ router.get('/', (req: Request, res: Response) => {
 router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      res.status(400).json({ error: 'Invalid citation ID' });
+      return;
+    }
 
-    const citation = db.prepare(`SELECT * FROM citations WHERE id = ?`).get(req.params.id) as any;
+    const citation = db.prepare(`SELECT * FROM citations WHERE id = ?`).get(id) as any;
 
     if (!citation) {
       res.status(404).json({ error: 'Citation not found' });
@@ -259,6 +270,21 @@ router.post('/', (req: Request, res: Response) => {
     if (!violation_date) {
       res.status(400).json({ error: 'violation_date is required' });
       return;
+    }
+
+    // Validate violation_date format
+    if (typeof violation_date !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(violation_date)) {
+      res.status(400).json({ error: 'violation_date must be in YYYY-MM-DD format' });
+      return;
+    }
+
+    // Validate fine_amount if provided
+    if (fine_amount !== undefined && fine_amount !== null) {
+      const fineNum = parseFloat(fine_amount);
+      if (isNaN(fineNum) || fineNum < 0) {
+        res.status(400).json({ error: 'fine_amount must be a non-negative number' });
+        return;
+      }
     }
 
     // Auto-generate citation number: CIT-YYYY-NNNN
@@ -332,7 +358,12 @@ router.post('/', (req: Request, res: Response) => {
 router.put('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const citation = db.prepare('SELECT * FROM citations WHERE id = ?').get(req.params.id) as any;
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      res.status(400).json({ error: 'Invalid citation ID' });
+      return;
+    }
+    const citation = db.prepare('SELECT * FROM citations WHERE id = ?').get(id) as any;
     if (!citation) {
       res.status(404).json({ error: 'Citation not found' });
       return;
@@ -410,7 +441,12 @@ router.put('/:id', (req: Request, res: Response) => {
 router.delete('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const citation = db.prepare('SELECT * FROM citations WHERE id = ?').get(req.params.id) as any;
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      res.status(400).json({ error: 'Invalid citation ID' });
+      return;
+    }
+    const citation = db.prepare('SELECT * FROM citations WHERE id = ?').get(id) as any;
     if (!citation) {
       res.status(404).json({ error: 'Citation not found' });
       return;
@@ -495,6 +531,12 @@ router.post('/:id/payments', (req: Request, res: Response) => {
     const { amount, payment_date, payment_method, reference_number, notes } = req.body;
     if (!amount || !payment_date) {
       res.status(400).json({ error: 'Amount and payment_date are required' });
+      return;
+    }
+
+    const parsedAmount = parseFloat(amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      res.status(400).json({ error: 'Amount must be a positive number' });
       return;
     }
 

@@ -121,7 +121,7 @@ export default function InspectionFormModal({ isOpen, mode = 'create', form, onC
           <span className={`px-2 py-0.5 text-[9px] font-bold uppercase border ${resultColor[form.overall_result]}`}>
             {resultLabel[form.overall_result]}
           </span>
-          <button className="toolbar-btn text-[9px] ml-2" onClick={onClose}>X</button>
+          <button type="button" className="toolbar-btn text-[9px] ml-2" onClick={onClose}>X</button>
         </PanelTitleBar>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -192,8 +192,8 @@ export default function InspectionFormModal({ isOpen, mode = 'create', form, onC
         </div>
 
         <div className="flex items-center justify-end gap-2 px-4 py-2 border-t border-rmpg-700">
-          <button className="toolbar-btn" onClick={onClose}>Cancel</button>
-          <button className="toolbar-btn toolbar-btn-primary" onClick={onSave} disabled={saving}>
+          <button type="button" className="toolbar-btn" onClick={onClose}>Cancel</button>
+          <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={onSave} disabled={saving}>
             {saving ? 'Saving...' : mode === 'edit' ? 'Update Inspection' : 'Submit Inspection'}
           </button>
         </div>

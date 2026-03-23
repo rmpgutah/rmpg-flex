@@ -74,8 +74,8 @@ export function useServiceWorker() {
           }, UPDATE_CHECK_INTERVAL);
         }
 
-      } catch {
-        // SW registration failed (e.g., no HTTPS in production) — not critical
+      } catch (err) {
+        console.warn('[useServiceWorker] Registration failed:', err);
       }
     };
 

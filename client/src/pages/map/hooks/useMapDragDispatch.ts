@@ -161,8 +161,8 @@ export function useMapDragDispatch(
             setDispatching(true);
             try {
               await onDispatch(unitId, nearest.callId);
-            } catch {
-              // Parent handles error
+            } catch (err) {
+              console.warn('[useMapDragDispatch] Dispatch failed:', err);
             } finally {
               if (mountedRef.current) setDispatching(false);
             }

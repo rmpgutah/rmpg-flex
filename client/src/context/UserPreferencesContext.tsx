@@ -49,8 +49,8 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
     try {
       const data = await apiFetch<UserPreferences>('/user/preferences');
       if (data) setPrefs(data);
-    } catch {
-      // Use defaults on error
+    } catch (err) {
+      console.warn('[UserPreferences] Failed to fetch preferences:', err);
     }
   }, [user]);
 

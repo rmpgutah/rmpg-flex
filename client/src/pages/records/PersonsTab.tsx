@@ -394,7 +394,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
           {searchQuery && (
-            <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white">
+            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white">
               <X className="w-3 h-3" />
             </button>
           )}
@@ -477,7 +477,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                 )}
                 <div className="flex items-center gap-1">
                   {!showArchived && (
-                    <button
+                    <button type="button"
                       onClick={(e) => { e.stopPropagation(); openEditPerson(person); }}
                       className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors"
                       title="Edit"
@@ -485,7 +485,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                       <Pencil className="w-3 h-3" />
                     </button>
                   )}
-                  <button
+                  <button type="button"
                     onClick={(e) => { e.stopPropagation(); openRecordWindow('person', person.id); }}
                     className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors"
                     title="Open in Window"
@@ -493,7 +493,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                     <ExternalLink className="w-3 h-3" />
                   </button>
                   {!showArchived && (
-                    <button
+                    <button type="button"
                       onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: 'person', id: person.id, label: `${person.first_name} ${person.last_name}` }); }}
                       className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400 transition-colors"
                       title="Delete"
@@ -502,7 +502,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                     </button>
                   )}
                   {!showArchived && (
-                    <button
+                    <button type="button"
                       onClick={(e) => { e.stopPropagation(); handleArchive('persons', person.id); }}
                       className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-amber-400 transition-colors"
                       title="Archive"
@@ -511,7 +511,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                     </button>
                   )}
                   {showArchived && (
-                    <button
+                    <button type="button"
                       onClick={(e) => { e.stopPropagation(); handleUnarchive('persons', person.id); }}
                       className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-green-400 transition-colors"
                       title="Unarchive"
@@ -688,7 +688,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
                         <span className="text-xs text-rmpg-200 font-mono tracking-wider">
                           {ssnRevealed ? selectedPerson.ssn_full : '***-**-' + (selectedPerson.ssn_last4 || selectedPerson.ssn_full.replace(/\D/g, '').slice(-4))}
                         </span>
-                        <button
+                        <button type="button"
                           onClick={() => setSSNRevealed(!ssnRevealed)}
                           className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase border transition-colors"
                           style={ssnRevealed

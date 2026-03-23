@@ -282,7 +282,7 @@ const AuditLogPage: React.FC = () => {
       {/* Header */}
       <div className="mb-6">
         <PanelTitleBar title="AUDIT TRAIL" icon={ScrollText}>
-          <button
+          <button type="button"
             onClick={() => {
               fetchLogs(true);
               fetchStats();
@@ -295,7 +295,7 @@ const AuditLogPage: React.FC = () => {
           </button>
           <ExportButton exportUrl="/audit/export?format=csv" exportFilename="audit_log_export.csv" />
           <PrintButton />
-          <button
+          <button type="button"
             onClick={exportToCSV}
             disabled={logs.length === 0}
             className="toolbar-btn toolbar-btn-primary"
@@ -377,10 +377,10 @@ const AuditLogPage: React.FC = () => {
           <Filter className="w-4 h-4 text-rmpg-300" />
           <span className="text-sm font-semibold">Filters</span>
           {hasActiveFilters && (
-            <button
+            <button type="button"
               onClick={clearFilters}
               className="ml-auto px-3 py-1 bg-rmpg-700 hover:bg-rmpg-600 text-xs flex items-center gap-1 border border-rmpg-600"
-            >
+             aria-label="Close" title="Close">
               <X className="w-3 h-3" />
               Clear All
             </button>
@@ -484,7 +484,7 @@ const AuditLogPage: React.FC = () => {
       {error && (
         <div className="mx-0 mb-3 px-3 py-2 bg-red-900/40 border border-red-700/50 text-red-300 text-xs flex items-center justify-between">
           <span>{error}</span>
-          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-300">
+          <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300">
             <X className="w-3 h-3" />
           </button>
         </div>
@@ -567,7 +567,7 @@ const AuditLogPage: React.FC = () => {
             Page {page} of {totalPages}
           </div>
           <div className="flex items-center gap-2">
-            <button
+            <button type="button"
               onClick={() => setPage(p => Math.max(1, p - 1))}
               disabled={page === 1}
               className="px-3 py-2 bg-rmpg-700 hover:bg-rmpg-600 text-xs flex items-center gap-1 border border-rmpg-600 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -589,7 +589,7 @@ const AuditLogPage: React.FC = () => {
                 }
 
                 return (
-                  <button
+                  <button type="button"
                     key={pageNum}
                     onClick={() => setPage(pageNum)}
                     className={`px-3 py-2 text-xs border ${
@@ -603,7 +603,7 @@ const AuditLogPage: React.FC = () => {
                 );
               })}
             </div>
-            <button
+            <button type="button"
               onClick={() => setPage(p => Math.min(totalPages, p + 1))}
               disabled={page === totalPages}
               className="px-3 py-2 bg-rmpg-700 hover:bg-rmpg-600 text-xs flex items-center gap-1 border border-rmpg-600 disabled:opacity-50 disabled:cursor-not-allowed"

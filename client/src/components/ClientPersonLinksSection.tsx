@@ -98,7 +98,7 @@ export function PersonClientLinks({ personId, personName }: PersonClientLinksPro
         <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider flex items-center gap-1.5">
           <Building2 className="w-3 h-3" /> Linked Clients
         </h3>
-        <button
+        <button type="button"
           type="button"
           onClick={() => setShowAddForm(!showAddForm)}
           className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase text-rmpg-300 hover:text-white bg-rmpg-700/40 hover:bg-rmpg-600/40 border border-rmpg-600/40 transition-colors"
@@ -143,7 +143,7 @@ export function PersonClientLinks({ personId, personName }: PersonClientLinksPro
                   </div>
                 </div>
               </div>
-              <button
+              <button type="button"
                 type="button"
                 onClick={() => handleRemove(link.id)}
                 className="p-1 text-rmpg-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
@@ -203,7 +203,7 @@ export function ClientPersonLinks({ clientId, clientName }: ClientPersonLinksPro
             <span className="ml-1 px-1.5 py-px bg-rmpg-700/60 text-rmpg-300 text-[9px] font-mono">{links.length}</span>
           )}
         </h3>
-        <button
+        <button type="button"
           type="button"
           onClick={() => setShowAddForm(!showAddForm)}
           className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase text-rmpg-300 hover:text-white bg-rmpg-700/40 hover:bg-rmpg-600/40 border border-rmpg-600/40 transition-colors"
@@ -253,7 +253,7 @@ export function ClientPersonLinks({ clientId, clientName }: ClientPersonLinksPro
                   </div>
                 </div>
               </div>
-              <button
+              <button type="button"
                 type="button"
                 onClick={() => handleRemove(link.id)}
                 className="p-1 text-rmpg-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
@@ -374,7 +374,7 @@ function AddClientPersonLinkForm({ personId, clientId, onLinked, onCancel }: Add
           {searchResults.length > 0 && (
             <div className="absolute z-20 w-full mt-1 max-h-40 overflow-y-auto bg-rmpg-800 border border-rmpg-600 shadow-lg">
               {searchResults.map((item) => (
-                <button
+                <button type="button"
                   key={item.id}
                   type="button"
                   onClick={() => handleSelect(item)}
@@ -449,14 +449,14 @@ function AddClientPersonLinkForm({ personId, clientId, onLinked, onCancel }: Add
               Primary contact
             </label>
             <div className="flex items-center gap-2">
-              <button
+              <button type="button"
                 type="button"
                 onClick={onCancel}
                 className="px-2 py-1 text-[9px] font-bold uppercase text-rmpg-400 hover:text-white transition-colors"
               >
                 Cancel
               </button>
-              <button
+              <button type="button"
                 type="button"
                 onClick={handleSubmit}
                 disabled={submitting}

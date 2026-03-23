@@ -72,7 +72,7 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
           <Award className="w-4 h-4 text-brand-400" />
           <h2 className="text-sm font-bold text-rmpg-200 uppercase tracking-wider">Credentials</h2>
         </div>
-        <button onClick={onAddCredential} className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
+        <button type="button" onClick={onAddCredential} className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
           <Plus className="w-3 h-3" />
           Add Credential
         </button>
@@ -90,7 +90,7 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
               ({stats.expired} expired, {stats.expiringSoon} expiring soon)
             </span>
           </div>
-          <button onClick={onAddCredential} className="toolbar-btn text-[10px] px-2 py-1 text-amber-400 border-amber-700/50">
+          <button type="button" onClick={onAddCredential} className="toolbar-btn text-[10px] px-2 py-1 text-amber-400 border-amber-700/50">
             <Plus className="w-2.5 h-2.5 inline mr-0.5" />
             Add
           </button>
@@ -173,14 +173,14 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
                   </td>
                   <td className="text-center">
                     <div className="flex items-center justify-center gap-1">
-                      <button
+                      <button type="button"
                         onClick={() => onEditCredential(cred)}
                         className="toolbar-btn p-1"
                         title="Edit credential"
                       >
                         <Edit3 className="w-3 h-3" />
                       </button>
-                      <button
+                      <button type="button"
                         onClick={() => onDeleteCredential(cred.id)}
                         className="toolbar-btn toolbar-btn-danger p-1"
                         title="Delete credential"

@@ -91,7 +91,7 @@ export default class ErrorBoundary extends Component<Props, State> {
 
               {/* Action buttons */}
               <div className="flex items-center gap-3 mb-4">
-                <button
+                <button type="button"
                   onClick={this.handleReload}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide
                              bg-red-700 hover:bg-red-600 border border-red-500 text-white shadow-sm transition-colors"
@@ -99,7 +99,7 @@ export default class ErrorBoundary extends Component<Props, State> {
                   <RefreshCw className="w-3.5 h-3.5" />
                   Reload Page
                 </button>
-                <button
+                <button type="button"
                   onClick={this.handleDismiss}
                   className="toolbar-btn"
                 >
@@ -108,7 +108,7 @@ export default class ErrorBoundary extends Component<Props, State> {
               </div>
 
               {/* Collapsible details */}
-              <button
+              <button type="button"
                 onClick={() => this.setState({ showDetails: !showDetails })}
                 className="flex items-center gap-1 text-[10px] text-rmpg-400 hover:text-rmpg-200 transition-colors uppercase tracking-wider font-bold"
               >

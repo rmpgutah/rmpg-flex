@@ -41,7 +41,7 @@ function StarPicker({
           const val = i + 1;
           const filled = val <= (hover || rating);
           return (
-            <button
+            <button type="button"
               key={i}
               type="button"
               onClick={() => onChange(val)}
@@ -161,7 +161,7 @@ export default function ReviewFormModal({
           <h2 className="text-sm font-semibold text-white">
             {editReview ? 'Edit Performance Review' : 'New Performance Review'}
           </h2>
-          <button
+          <button type="button"
             onClick={onClose}
             className="text-rmpg-400 hover:text-white transition-colors"
           >
@@ -340,14 +340,14 @@ export default function ReviewFormModal({
 
           {/* Footer */}
           <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-[#1e3048]">
-            <button
+            <button type="button"
               type="button"
               onClick={onClose}
               className="px-3 py-1.5 text-xs text-rmpg-400 hover:text-white transition-colors"
             >
               Cancel
             </button>
-            <button
+            <button type="button"
               type="submit"
               disabled={submitting}
               className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm transition-colors disabled:opacity-50"

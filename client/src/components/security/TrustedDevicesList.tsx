@@ -120,7 +120,7 @@ export default function TrustedDevicesList() {
           </div>
 
           {/* Revoke button */}
-          <button
+          <button type="button"
             onClick={() => revokeDevice(device.id)}
             disabled={revoking === device.id}
             className="toolbar-btn flex items-center gap-1 text-[9px]"

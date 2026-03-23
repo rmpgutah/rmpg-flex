@@ -114,7 +114,7 @@ function Section({
 
   return (
     <div>
-      <button
+      <button type="button"
         onClick={() => setOpen(!open)}
         className="flex items-center gap-1 w-full text-left py-1"
         aria-expanded={open}
@@ -174,7 +174,7 @@ export default function SafetyDashboardPanel({
             Safety Dashboard
           </span>
         </div>
-        <button onClick={onClose} className="toolbar-btn p-1" title="Close">
+        <button type="button" onClick={onClose} className="toolbar-btn p-1" title="Close">
           <X size={12} className="text-rmpg-400" />
         </button>
       </div>

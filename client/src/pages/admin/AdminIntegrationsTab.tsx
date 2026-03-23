@@ -279,14 +279,14 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                     className="flex-1 bg-transparent text-sm text-rmpg-300 placeholder-rmpg-600 focus:outline-none font-mono"
                     onKeyDown={(e) => e.key === 'Enter' && handleSaveSvc()}
                   />
-                  <button
+                  <button type="button"
                     onClick={() => setShowSvcKey(!showSvcKey)}
                     className="text-rmpg-500 hover:text-rmpg-300 transition-colors"
                   >
                     {showSvcKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                   </button>
                 </div>
-                <button
+                <button type="button"
                   onClick={handleSaveSvc}
                   disabled={savingSvc || !svcApiKey.trim()}
                   className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm transition-colors disabled:opacity-50"
@@ -295,7 +295,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                   Save
                 </button>
                 {svcConfigured && (
-                  <button
+                  <button type="button"
                     onClick={handleClearSvc}
                     className="flex items-center gap-1.5 px-3 py-2 text-xs text-red-400 hover:text-red-300 bg-red-900/20 hover:bg-red-900/30 border border-red-700/30 rounded-sm transition-colors"
                   >
@@ -322,7 +322,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
             <Key className="w-4 h-4 text-brand-400" />
             <h2 className="text-sm font-semibold text-rmpg-300">Integration API Keys</h2>
           </div>
-          <button
+          <button type="button"
             onClick={() => setShowCreateModal(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm transition-colors"
           >
@@ -392,7 +392,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                     <td className="px-4 py-2.5 text-right">
                       <div className="flex items-center justify-end gap-1.5">
                         {k.status === 'active' ? (
-                          <button
+                          <button type="button"
                             onClick={() => handleRevoke(k.id)}
                             className="flex items-center gap-1 px-2 py-1 text-xs text-yellow-400 hover:text-yellow-300 bg-yellow-900/20 hover:bg-yellow-900/30 border border-yellow-700/30 rounded-sm transition-colors"
                             title="Revoke key"
@@ -401,7 +401,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                             Revoke
                           </button>
                         ) : (
-                          <button
+                          <button type="button"
                             onClick={() => handleActivate(k.id)}
                             className="flex items-center gap-1 px-2 py-1 text-xs text-green-400 hover:text-green-300 bg-green-900/20 hover:bg-green-900/30 border border-green-700/30 rounded-sm transition-colors"
                             title="Re-activate key"
@@ -412,13 +412,13 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                         )}
                         {deletingId === k.id ? (
                           <div className="flex items-center gap-1">
-                            <button
+                            <button type="button"
                               onClick={() => handleDelete(k.id)}
                               className="px-2 py-1 text-xs text-red-400 hover:text-red-300 bg-red-900/30 hover:bg-red-900/40 border border-red-700/40 rounded-sm transition-colors"
                             >
                               Confirm
                             </button>
-                            <button
+                            <button type="button"
                               onClick={() => setDeletingId(null)}
                               className="px-2 py-1 text-xs text-rmpg-500 hover:text-rmpg-400 bg-[#1a2636] rounded-sm transition-colors"
                             >
@@ -426,7 +426,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                             </button>
                           </div>
                         ) : (
-                          <button
+                          <button type="button"
                             onClick={() => setDeletingId(k.id)}
                             className="flex items-center gap-1 px-2 py-1 text-xs text-red-400 hover:text-red-300 bg-red-900/20 hover:bg-red-900/30 border border-red-700/30 rounded-sm transition-colors"
                             title="Delete key"
@@ -451,7 +451,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
             <RotateCcw className="w-4 h-4 text-brand-400" />
             <h2 className="text-sm font-semibold text-rmpg-300">Recent Service Requests</h2>
           </div>
-          <button
+          <button type="button"
             onClick={() => { setLoadingLog(true); fetchRequestLog(); }}
             className="flex items-center gap-1 px-2 py-1 text-xs text-rmpg-400 hover:text-rmpg-300 bg-[#1a2636] hover:bg-[#1a2636]/80 rounded-sm transition-colors"
           >
@@ -509,12 +509,12 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
 
       {/* ── Create Key Modal ── */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
           <div className="bg-surface-raised border border-[#1c2e42] rounded-sm shadow-xl w-full max-w-md mx-4">
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#1c2e42]">
               <h3 className="text-sm font-semibold text-rmpg-300">Create API Key</h3>
               {createdKey && (
-                <button
+                <button type="button"
                   onClick={closeCreateModal}
                   className="text-rmpg-500 hover:text-rmpg-300 transition-colors"
                 >
@@ -539,13 +539,13 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                     />
                   </div>
                   <div className="flex justify-end gap-2">
-                    <button
+                    <button type="button"
                       onClick={closeCreateModal}
                       className="px-3 py-1.5 text-xs text-rmpg-400 hover:text-rmpg-300 bg-[#1a2636] rounded-sm transition-colors"
                     >
                       Cancel
                     </button>
-                    <button
+                    <button type="button"
                       onClick={handleCreate}
                       disabled={creating || !newKeyName.trim()}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm transition-colors disabled:opacity-50"
@@ -563,7 +563,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                       <code className="flex-1 px-3 py-2.5 text-sm font-mono bg-green-900/20 border border-green-700/40 rounded-sm text-green-300 break-all select-all">
                         {createdKey}
                       </code>
-                      <button
+                      <button type="button"
                         onClick={() => handleCopy(createdKey)}
                         className="flex-shrink-0 flex items-center gap-1 px-3 py-2.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm transition-colors"
                         title="Copy to clipboard"
@@ -580,7 +580,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                     </p>
                   </div>
                   <div className="flex justify-end">
-                    <button
+                    <button type="button"
                       onClick={closeCreateModal}
                       className="px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm transition-colors"
                     >

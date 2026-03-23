@@ -261,8 +261,8 @@ export function useMapPerimeter(
 
         // Render HVT markers
         renderHvtMarkers();
-      } catch {
-        // API error — silently fail
+      } catch (err) {
+        console.warn('[useMapPerimeter] Perimeter analysis fetch failed:', err);
       } finally {
         setLoading(false);
       }

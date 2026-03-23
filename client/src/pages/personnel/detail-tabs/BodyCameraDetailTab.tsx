@@ -92,7 +92,7 @@ export default function BodyCameraDetailTab({
           <Camera className="w-3 h-3" />
           Assigned Cameras
         </h3>
-        <button
+        <button type="button"
           onClick={onAddCamera}
           className="toolbar-btn toolbar-btn-primary flex items-center gap-1 text-[10px]"
         >
@@ -131,10 +131,10 @@ export default function BodyCameraDetailTab({
                   </span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button onClick={() => onEditCamera(cam)} className="toolbar-btn p-1" title="Edit camera">
+                  <button type="button" onClick={() => onEditCamera(cam)} className="toolbar-btn p-1" title="Edit camera">
                     <Edit2 className="w-3 h-3" />
                   </button>
-                  <button onClick={() => onDeleteCamera(cam.id)} className="toolbar-btn toolbar-btn-danger p-1" title="Delete camera">
+                  <button type="button" onClick={() => onDeleteCamera(cam.id)} className="toolbar-btn toolbar-btn-danger p-1" title="Delete camera">
                     <Trash2 className="w-3 h-3" />
                   </button>
                 </div>
@@ -196,7 +196,7 @@ export default function BodyCameraDetailTab({
           Video Footage
         </span>
         <div className="flex-1 h-px bg-rmpg-700" />
-        <button
+        <button type="button"
           onClick={onUploadVideo}
           className="toolbar-btn toolbar-btn-primary flex items-center gap-1 text-[10px]"
           disabled={cameras.length === 0}
@@ -252,21 +252,21 @@ export default function BodyCameraDetailTab({
                   </td>
                   <td className="text-center">
                     <div className="flex items-center justify-center gap-1">
-                      <button
+                      <button type="button"
                         onClick={() => onPlayVideo(vid)}
                         className="toolbar-btn p-1"
                         title="Play video"
                       >
                         <Play className="w-3 h-3" />
                       </button>
-                      <button
+                      <button type="button"
                         onClick={() => onEditVideo(vid)}
                         className="toolbar-btn p-1"
                         title="Edit video metadata"
                       >
                         <Edit2 className="w-3 h-3" />
                       </button>
-                      <button
+                      <button type="button"
                         onClick={() => onDeleteVideo(vid.id)}
                         className="toolbar-btn toolbar-btn-danger p-1"
                         title="Delete video"

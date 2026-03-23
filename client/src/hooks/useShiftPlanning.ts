@@ -331,8 +331,8 @@ export function useShiftPlanning() {
           return [...data, ...localOnly];
         });
       }
-    } catch {
-      // Server endpoint might not exist yet — use localStorage fallback
+    } catch (err) {
+      console.warn('[useShiftPlanning] Server plans fetch failed, using localStorage fallback:', err);
     }
   }, []);
 

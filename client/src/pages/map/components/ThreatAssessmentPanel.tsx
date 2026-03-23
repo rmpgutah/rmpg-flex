@@ -81,7 +81,7 @@ function Section({
 
   return (
     <div>
-      <button
+      <button type="button"
         onClick={() => setOpen(!open)}
         className="flex items-center gap-1 w-full text-left py-1"
         aria-expanded={open}
@@ -129,7 +129,7 @@ export default function ThreatAssessmentPanel({
             Threat Assessment
           </span>
         </div>
-        <button onClick={onClose} className="toolbar-btn p-1" title="Close">
+        <button type="button" onClick={onClose} className="toolbar-btn p-1" title="Close">
           <X size={12} className="text-rmpg-400" />
         </button>
       </div>
@@ -141,7 +141,7 @@ export default function ThreatAssessmentPanel({
       >
         {/* ── Action Buttons ──────────────────────────────── */}
         <div className="flex gap-1">
-          <button
+          <button type="button"
             onClick={onAssessCenter}
             disabled={loading}
             className="flex-1 flex items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-rmpg-200 transition-colors hover:text-white disabled:opacity-50"
@@ -155,7 +155,7 @@ export default function ThreatAssessmentPanel({
             Assess at Center
           </button>
           {assessment && (
-            <button
+            <button type="button"
               onClick={onClear}
               className="rounded-sm px-2 py-1.5 text-[10px] font-semibold text-rmpg-500 hover:text-rmpg-300 transition-colors"
               style={{ background: '#1a2636', border: '1px solid #1e2a3a' }}
@@ -329,7 +329,7 @@ export default function ThreatAssessmentPanel({
             {/* ── Approach Routes ──────────────────────────── */}
             <Section title="Approach Routes">
               {!approachRoutes ? (
-                <button
+                <button type="button"
                   onClick={onGetApproachRoutes}
                   disabled={loading}
                   className="w-full flex items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-rmpg-300 hover:text-white transition-colors disabled:opacity-50"

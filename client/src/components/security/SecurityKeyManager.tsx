@@ -221,7 +221,7 @@ export default function SecurityKeyManager() {
                 </div>
               </div>
 
-              <button
+              <button type="button"
                 onClick={() => handleRevoke(cred.id)}
                 disabled={revoking === cred.id}
                 className="toolbar-btn flex items-center gap-1 text-[9px]"
@@ -261,7 +261,7 @@ export default function SecurityKeyManager() {
               }
             }}
           />
-          <button
+          <button type="button"
             onClick={handleRegister}
             disabled={registering}
             className="toolbar-btn toolbar-btn-primary h-8 px-3 text-[10px] font-bold uppercase tracking-wide flex items-center gap-1"
@@ -273,7 +273,7 @@ export default function SecurityKeyManager() {
             )}
             {registering ? 'Tap Key...' : 'Register'}
           </button>
-          <button
+          <button type="button"
             onClick={() => {
               setShowNameInput(false);
               setNewKeyName('');
@@ -285,7 +285,7 @@ export default function SecurityKeyManager() {
           </button>
         </div>
       ) : (
-        <button
+        <button type="button"
           onClick={() => setShowNameInput(true)}
           className="toolbar-btn w-full h-8 flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-wide"
           style={{ color: '#d97706', borderColor: '#d97706' }}

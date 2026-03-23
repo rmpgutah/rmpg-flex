@@ -88,8 +88,8 @@ export function useMapMarkers({
         });
         if (opts.onClick) marker.addListener('click', opts.onClick);
         return marker;
-      } catch {
-        // Fall through to overlay
+      } catch (err) {
+        console.warn('[useMapMarkers] AdvancedMarkerElement creation failed, falling back to overlay:', err);
       }
     }
     const Cls = getOverlayMarkerClass();
@@ -286,7 +286,8 @@ export function useMapMarkers({
                 if ((infoWindowRef.current as any)?.getMap?.()) {
                   infoWindowRef.current?.setContent(buildPropertyInfoWindow(prop, details));
                 }
-              } catch {
+              } catch (err) {
+                console.warn('[useMapMarkers] Property details fetch failed:', err);
                 if ((infoWindowRef.current as any)?.getMap?.()) {
                   infoWindowRef.current?.setContent(buildPropertyFallbackWindow(prop));
                 }

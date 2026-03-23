@@ -493,7 +493,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
               placeholder={status?.configured ? 'Enter new password to replace...' : 'ClearPathGPS password...'}
               className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 pr-8 rounded-sm focus:border-brand-500 focus:outline-none font-mono"
             />
-            <button
+            <button type="button"
               onClick={() => setShowPassword(!showPassword)}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300"
             >
@@ -516,7 +516,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
 
         {/* Action buttons */}
         <div className="flex items-center gap-2">
-          <button
+          <button type="button"
             onClick={handleSaveCredentials}
             disabled={saving || !email.trim() || !password.trim() || !String(accountId).trim()}
             className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
@@ -526,7 +526,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
           </button>
           {status?.configured && (
             <>
-              <button
+              <button type="button"
                 onClick={handleTest}
                 disabled={testing}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5"
@@ -534,7 +534,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                 {testing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
                 Test Connection
               </button>
-              <button
+              <button type="button"
                 onClick={handleDiscoverAccounts}
                 disabled={discovering}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5"
@@ -542,7 +542,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                 {discovering ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
                 Discover Accounts
               </button>
-              <button
+              <button type="button"
                 onClick={handleClear}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 text-red-400 hover:text-red-300"
               >
@@ -573,7 +573,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
           <div className="space-y-1.5">
             <div className="text-[9px] text-rmpg-500 uppercase tracking-wider">Available Accounts</div>
             {discoveredAccounts.map((acct) => (
-              <button
+              <button type="button"
                 key={acct.accountId}
                 onClick={() => setAccountId(String(acct.accountId))}
                 className="w-full flex items-center gap-2 px-2 py-1.5 bg-surface-sunken hover:bg-brand-900/20 border border-rmpg-600 hover:border-brand-500 rounded-sm text-[11px] transition-colors text-left"
@@ -602,7 +602,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
 
           <div className="flex items-center gap-4">
             {/* Toggle */}
-            <button
+            <button type="button"
               onClick={handleToggleEnabled}
               className="flex items-center gap-2 text-[11px]"
             >
@@ -646,7 +646,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
 
           {/* History backfill toggle */}
           <div className="flex items-center gap-4 pt-2 border-t border-rmpg-700/50">
-            <button
+            <button type="button"
               onClick={handleToggleBackfill}
               className="flex items-center gap-2 text-[11px]"
             >
@@ -677,7 +677,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
               <Link2 className="w-3.5 h-3.5" />
               Device → Unit Mappings
             </div>
-            <button
+            <button type="button"
               onClick={handleFetchDevices}
               disabled={loadingDevices}
               className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5"
@@ -717,7 +717,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                           {new Date(m.last_synced_at).toLocaleTimeString()}
                         </span>
                       )}
-                      <button
+                      <button type="button"
                         onClick={() => handleRemoveMapping(m.id)}
                         className="ml-1 text-red-500 hover:text-red-400"
                         title="Remove mapping"
@@ -814,7 +814,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                 <span className="text-rmpg-500 font-normal">({dashcamTotal} total)</span>
               )}
             </div>
-            <button
+            <button type="button"
               onClick={fetchDashcamEvents}
               disabled={loadingDashcam}
               className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5"
@@ -879,7 +879,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
               <h3 className="field-label text-purple-400">Dashcam Video Sync</h3>
               <span className={`w-1.5 h-1.5 rounded-full ${mediaSyncEnabled ? 'bg-purple-400 animate-pulse' : 'bg-rmpg-600'}`} />
             </div>
-            <button
+            <button type="button"
               onClick={handleToggleMediaSync}
               disabled={savingMedia}
               className="flex items-center gap-1 text-[10px] text-rmpg-300 hover:text-white transition-colors"
@@ -920,7 +920,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
             </div>
 
             {/* Sync Now button */}
-            <button
+            <button type="button"
               onClick={handleSyncNow}
               disabled={syncing || !status?.enabled}
               className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wide

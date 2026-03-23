@@ -179,7 +179,7 @@ export default function LinkVehicleModal({ isOpen, onClose, incidentId, onLinked
         {searchResults.length > 0 && !selectedVehicle && (
           <div className="mt-1 max-h-48 overflow-y-auto border border-rmpg-600 bg-surface-sunken divide-y divide-rmpg-700">
             {searchResults.map((vehicle) => (
-              <button
+              <button type="button"
                 key={vehicle.id}
                 type="button"
                 onClick={() => { setSelectedVehicle(vehicle); setSearchResults([]); }}
@@ -207,7 +207,7 @@ export default function LinkVehicleModal({ isOpen, onClose, incidentId, onLinked
         {searchQuery.length >= 2 && searchResults.length === 0 && !isSearching && !selectedVehicle && (
           <div className="mt-1 flex items-center gap-2">
             <p className="text-xs text-rmpg-400">No vehicles found</p>
-            <button
+            <button type="button"
               type="button"
               onClick={() => setShowCreateVehicle(true)}
               className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase text-brand-400 bg-brand-900/30 border border-brand-700/40 hover:bg-brand-900/50 transition-colors"
@@ -231,7 +231,7 @@ export default function LinkVehicleModal({ isOpen, onClose, incidentId, onLinked
               {selectedVehicle.vin && <span className="ml-2">VIN: {selectedVehicle.vin}</span>}
             </div>
           </div>
-          <button
+          <button type="button"
             type="button"
             onClick={() => { setSelectedVehicle(null); setSearchQuery(''); }}
             className="text-xs text-rmpg-300 hover:text-white"

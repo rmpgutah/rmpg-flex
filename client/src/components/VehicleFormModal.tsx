@@ -221,7 +221,7 @@ export default function VehicleFormModal({
           { id: 'registration' as const, label: 'Registration' },
           { id: 'condition' as const, label: 'Condition' },
         ].map((s) => (
-          <button
+          <button type="button"
             key={s.id}
             type="button"
             onClick={() => setActiveSection(s.id)}

@@ -16,7 +16,7 @@ interface PrintButtonProps {
 
 export default function PrintButton({ label = 'Print', className = '' }: PrintButtonProps) {
   return (
-    <button
+    <button type="button"
       type="button"
       className={`toolbar-btn ${className}`}
       onClick={() => printWithLightMaps()}

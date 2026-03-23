@@ -41,7 +41,7 @@ export default function MapMobileSheet({
 }: MapMobileSheetProps) {
   return (
     <>
-      <button
+      <button type="button"
         className="mobile-fab"
         style={{
           position: 'absolute',
@@ -75,7 +75,7 @@ export default function MapMobileSheet({
               { id: 'units' as const, icon: Shield, label: `Units (${filteredUnits.length})`, color: '#22c55e' },
               { id: 'calls' as const, icon: AlertTriangle, label: `Calls (${filteredCalls.length})`, color: '#ef4444' },
             ] as const).map(({ id, icon: Icon, label, color }) => (
-              <button
+              <button type="button"
                 key={id}
                 onClick={() => setMobileSheetTab(id)}
                 role="tab"
@@ -102,7 +102,7 @@ export default function MapMobileSheet({
               { key: 'incidents' as const, icon: AlertTriangle, label: 'Active Calls', color: '#ef4444' },
               { key: 'properties' as const, icon: Building2, label: 'Properties', color: '#3b82f6' },
             ].map(({ key, icon: Icon, label, color }) => (
-              <button
+              <button type="button"
                 key={key}
                 onClick={() => toggleLayer(key)}
                 aria-label={`Toggle ${label} layer`}
@@ -119,7 +119,7 @@ export default function MapMobileSheet({
               </button>
             ))}
 
-            <button
+            <button type="button"
               onClick={() => setShowHeatmap(!showHeatmap)}
               className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
               style={{
@@ -133,7 +133,7 @@ export default function MapMobileSheet({
               <span className="text-sm text-rmpg-200 flex-1">Heat Map</span>
             </button>
 
-            <button
+            <button type="button"
               onClick={() => setShowBreadcrumbs(!showBreadcrumbs)}
               className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
               style={{
@@ -151,7 +151,7 @@ export default function MapMobileSheet({
               <div className="px-3 py-2 space-y-2" style={{ background: '#0d1520', border: '1px solid #1e3048' }}>
                 <div className="flex gap-1">
                   {[2, 4, 8, 12, 24].map((h) => (
-                    <button
+                    <button type="button"
                       key={h}
                       onClick={() => setBreadcrumbHours(h)}
                       className={`flex-1 py-2 text-xs font-bold rounded-sm ${
@@ -166,7 +166,7 @@ export default function MapMobileSheet({
                 </div>
                 <div className="flex gap-1">
                   {([['unit', 'Unit'], ['speed', 'Speed'], ['status', 'Status']] as const).map(([mode, label]) => (
-                    <button
+                    <button type="button"
                       key={mode}
                       onClick={() => setBreadcrumbColorMode(mode)}
                       className={`flex-1 py-1.5 text-[10px] font-bold rounded-sm ${
@@ -189,7 +189,7 @@ export default function MapMobileSheet({
                 {(Object.entries(MAP_STYLE_LABELS) as [MapStyleId, string][]).map(([key, label]) => {
                   const isActive = mapStyle === key;
                   return (
-                    <button
+                    <button type="button"
                       key={key}
                       onClick={() => setMapStyle(key)}
                       className={`py-2 text-[10px] font-bold rounded-sm transition-all ${
@@ -205,7 +205,7 @@ export default function MapMobileSheet({
               </div>
             </div>
 
-            <button
+            <button type="button"
               onClick={() => {
                 const map = mapInstanceRef.current;
                 if (map && gps.latitude != null && gps.longitude != null) {
@@ -235,7 +235,7 @@ export default function MapMobileSheet({
               const hasCoords = unit.latitude != null && unit.longitude != null;
               const statusColor = UNIT_STATUS_COLORS[unit.status];
               return (
-                <button
+                <button type="button"
                   key={unit.id}
                   onClick={() => { if (hasCoords) { panTo(unit.latitude!, unit.longitude!); setMobileLayersOpen(false); } }}
                   className={`w-full text-left px-3 py-3 transition-colors ${hasCoords ? 'active:bg-rmpg-700/30' : 'opacity-60'}`}
@@ -270,7 +270,7 @@ export default function MapMobileSheet({
               const pColor = PRIORITY_COLORS[call.priority] || '#5a6e80';
               const { category } = getIncidentCategory(call.incident_type);
               return (
-                <button
+                <button type="button"
                   key={call.id}
                   onClick={() => { if (hasCoords) { panTo(call.latitude!, call.longitude!); setMobileLayersOpen(false); } }}
                   className={`w-full text-left px-3 py-3 transition-colors ${hasCoords ? 'active:bg-rmpg-700/30' : 'opacity-60'}`}

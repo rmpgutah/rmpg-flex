@@ -29,8 +29,10 @@ export default function CollapsibleSection({
 
   return (
     <div className={className}>
-      <button
+      <button type="button"
         onClick={() => setIsOpen(!isOpen)}
+        aria-expanded={isOpen}
+        aria-label={`${title} section${count !== undefined ? ` (${count})` : ''}`}
         className="w-full flex items-center justify-between panel-title-bar"
       >
         <div className="flex items-center gap-1.5">

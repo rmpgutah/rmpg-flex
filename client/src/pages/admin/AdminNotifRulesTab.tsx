@@ -193,7 +193,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
             <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search..." className="input-dark text-[10px] pl-6 pr-2 py-1 w-40" />
           </div>
-          <button onClick={openNew} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
+          <button type="button" onClick={openNew} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
             <Plus className="w-3 h-3" />
             New Rule
           </button>
@@ -235,7 +235,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <button
+                  <button type="button"
                     onClick={() => testRule(r.id)}
                     disabled={testing === r.id}
                     className="toolbar-btn p-1"
@@ -243,13 +243,13 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
                   >
                     {testing === r.id ? <CheckCircle2 className="w-3 h-3 text-green-400" /> : <Play className="w-3 h-3" />}
                   </button>
-                  <button onClick={() => toggleActive(r)} className="toolbar-btn p-1" title={r.is_active ? 'Disable' : 'Enable'}>
+                  <button type="button" onClick={() => toggleActive(r)} className="toolbar-btn p-1" title={r.is_active ? 'Disable' : 'Enable'}>
                     <span className={`text-[9px] font-bold ${r.is_active ? 'text-green-400' : 'text-rmpg-500'}`}>
                       {r.is_active ? 'ON' : 'OFF'}
                     </span>
                   </button>
-                  <button onClick={() => openEdit(r)} className="toolbar-btn p-1"><Edit2 className="w-3 h-3" /></button>
-                  <button onClick={() => setDeleteId(r.id)} className="toolbar-btn p-1 text-red-400 hover:text-red-300"><Trash2 className="w-3 h-3" /></button>
+                  <button type="button" onClick={() => openEdit(r)} className="toolbar-btn p-1"><Edit2 className="w-3 h-3" /></button>
+                  <button type="button" onClick={() => setDeleteId(r.id)} className="toolbar-btn p-1 text-red-400 hover:text-red-300"><Trash2 className="w-3 h-3" /></button>
                 </div>
               </div>
             </div>
@@ -265,7 +265,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
               <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">
                 {editing ? 'Edit Notification Rule' : 'New Notification Rule'}
               </h3>
-              <button onClick={() => setShowForm(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+              <button type="button" onClick={() => setShowForm(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4 space-y-3">
               <div>
@@ -301,7 +301,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
                 </label>
                 <div className="flex flex-wrap gap-1.5">
                   {ROLES.map((role) => (
-                    <button
+                    <button type="button"
                       key={role}
                       onClick={() => toggleRole(role)}
                       className={`text-[10px] px-2 py-0.5 rounded-sm border transition-colors ${
@@ -317,8 +317,8 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
               </div>
             </div>
             <div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-rmpg-700">
-              <button onClick={() => setShowForm(false)} className="toolbar-btn text-[10px]">Cancel</button>
-              <button onClick={handleSubmit} disabled={submitting} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
+              <button type="button" onClick={() => setShowForm(false)} className="toolbar-btn text-[10px]">Cancel</button>
+              <button type="button" onClick={handleSubmit} disabled={submitting} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
                 {submitting && <Loader2 className="w-3 h-3 animate-spin" />}
                 {editing ? 'Update' : 'Create'}
               </button>

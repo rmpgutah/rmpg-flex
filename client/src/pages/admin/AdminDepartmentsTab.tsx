@@ -153,7 +153,7 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
               className="input-dark text-[10px] pl-6 pr-2 py-1 w-40"
             />
           </div>
-          <button onClick={openNew} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
+          <button type="button" onClick={openNew} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
             <Plus className="w-3 h-3" />
             New Department
           </button>
@@ -184,8 +184,8 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button onClick={() => openEdit(dept)} className="toolbar-btn p-1"><Edit2 className="w-3 h-3" /></button>
-                  <button onClick={() => setDeleteTarget(dept)} className="toolbar-btn p-1 text-red-400 hover:text-red-300"><Trash2 className="w-3 h-3" /></button>
+                  <button type="button" onClick={() => openEdit(dept)} className="toolbar-btn p-1"><Edit2 className="w-3 h-3" /></button>
+                  <button type="button" onClick={() => setDeleteTarget(dept)} className="toolbar-btn p-1 text-red-400 hover:text-red-300"><Trash2 className="w-3 h-3" /></button>
                 </div>
               </div>
               <div className="flex items-center gap-3 text-[10px] text-rmpg-400">
@@ -205,8 +205,8 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-[9px] text-rmpg-500">{sub.user_count} personnel</span>
-                        <button onClick={() => openEdit(sub)} className="toolbar-btn p-0.5"><Edit2 className="w-2.5 h-2.5" /></button>
-                        <button onClick={() => setDeleteTarget(sub)} className="toolbar-btn p-0.5 text-red-400"><Trash2 className="w-2.5 h-2.5" /></button>
+                        <button type="button" onClick={() => openEdit(sub)} className="toolbar-btn p-0.5"><Edit2 className="w-2.5 h-2.5" /></button>
+                        <button type="button" onClick={() => setDeleteTarget(sub)} className="toolbar-btn p-0.5 text-red-400"><Trash2 className="w-2.5 h-2.5" /></button>
                       </div>
                     </div>
                   ))}
@@ -225,7 +225,7 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
               <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">
                 {editing ? 'Edit Department' : 'New Department'}
               </h3>
-              <button onClick={() => setShowForm(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+              <button type="button" onClick={() => setShowForm(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4 space-y-3">
               <div>
@@ -262,8 +262,8 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
               </div>
             </div>
             <div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-rmpg-700">
-              <button onClick={() => setShowForm(false)} className="toolbar-btn text-[10px]">Cancel</button>
-              <button onClick={handleSubmit} disabled={submitting} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
+              <button type="button" onClick={() => setShowForm(false)} className="toolbar-btn text-[10px]">Cancel</button>
+              <button type="button" onClick={handleSubmit} disabled={submitting} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
                 {submitting && <Loader2 className="w-3 h-3 animate-spin" />}
                 {editing ? 'Update' : 'Create'}
               </button>

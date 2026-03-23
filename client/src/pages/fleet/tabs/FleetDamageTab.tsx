@@ -67,7 +67,7 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-xs font-bold text-white flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> Damage Reports</h3>
-        <button onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-[9px]"><Plus className="w-3 h-3" /> Report Damage</button>
+        <button type="button" onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-[9px]"><Plus className="w-3 h-3" /> Report Damage</button>
       </div>
 
       {/* Summary */}
@@ -93,8 +93,8 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
           </div>
           <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="input-field w-full text-xs" rows={2} placeholder="Description..." />
           <div className="flex gap-2">
-            <button onClick={handleSubmit} className="toolbar-btn toolbar-btn-success text-[9px]">Submit</button>
-            <button onClick={() => setShowForm(false)} className="toolbar-btn text-[9px]">Cancel</button>
+            <button type="button" onClick={handleSubmit} className="toolbar-btn toolbar-btn-success text-[9px]">Submit</button>
+            <button type="button" onClick={() => setShowForm(false)} className="toolbar-btn text-[9px]">Cancel</button>
           </div>
         </div>
       )}

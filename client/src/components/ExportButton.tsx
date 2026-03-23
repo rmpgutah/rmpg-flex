@@ -97,7 +97,7 @@ export default function ExportButton({
   return (
     <div className="relative" style={{ display: 'inline-block' }}>
       {/* Trigger button */}
-      <button
+      <button type="button"
         ref={buttonRef}
         type="button"
         className="toolbar-btn"
@@ -129,7 +129,7 @@ export default function ExportButton({
           }}
         >
           {/* Export CSV */}
-          <button
+          <button type="button"
             type="button"
             onClick={handleExportCSV}
             className="w-full flex items-center gap-2 px-3 py-2 text-left transition-colors"
@@ -159,7 +159,7 @@ export default function ExportButton({
           <div style={{ height: '1px', background: '#3a5070', margin: '0 8px' }} />
 
           {/* Print View */}
-          <button
+          <button type="button"
             type="button"
             onClick={handlePrint}
             className="w-full flex items-center gap-2 px-3 py-2 text-left transition-colors"

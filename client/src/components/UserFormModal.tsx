@@ -225,7 +225,7 @@ export default function UserFormModal({
       {/* Section Tabs */}
       <div className="flex flex-wrap gap-1 -mt-2 mb-3 border-b border-rmpg-700 pb-2">
         {SECTIONS.filter(s => !(isEdit && s.id === 'account')).map((s) => (
-          <button
+          <button type="button"
             key={s.id}
             type="button"
             onClick={() => setActiveSection(s.id)}

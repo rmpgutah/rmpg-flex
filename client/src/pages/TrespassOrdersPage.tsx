@@ -310,14 +310,14 @@ export default function TrespassOrdersPage() {
         <span className="toolbar-separator" />
         <ExportButton exportUrl="/trespass-orders?per_page=9999" exportFilename="trespass_orders_export.csv" />
         {/* Feature 18: Expiration Calendar */}
-        <button onClick={handleLoadExpirationCalendar} className="toolbar-btn" title="Expiration calendar">
+        <button type="button" onClick={handleLoadExpirationCalendar} className="toolbar-btn" title="Expiration calendar">
           <Calendar style={{ width: 11, height: 11 }} /> Expirations
         </button>
         {/* Feature 19: Bulk Create */}
-        <button onClick={() => { setBulkMode(!bulkMode); if (!bulkMode) setBulkPersons([{ first_name: '', last_name: '' }]); }} className="toolbar-btn" title="Bulk create orders">
+        <button type="button" onClick={() => { setBulkMode(!bulkMode); if (!bulkMode) setBulkPersons([{ first_name: '', last_name: '' }]); }} className="toolbar-btn" title="Bulk create orders">
           <Plus style={{ width: 11, height: 11 }} /> Bulk
         </button>
-        <button onClick={handleOpenNew} className="toolbar-btn">
+        <button type="button" onClick={handleOpenNew} className="toolbar-btn">
           <Plus style={{ width: 11, height: 11 }} /> New Order
         </button>
       </PanelTitleBar>
@@ -327,7 +327,7 @@ export default function TrespassOrdersPage() {
         <div className="px-3 py-2 border-b border-amber-700/50 bg-amber-900/10 text-xs">
           <div className="flex justify-between items-center mb-1">
             <span className="text-amber-400 font-bold text-[10px] uppercase">Expiring Orders ({expirationCalendar.total})</span>
-            <button onClick={() => setExpirationCalendar(null)} className="text-amber-500 hover:text-amber-300"><X style={{ width: 12, height: 12 }} /></button>
+            <button type="button" onClick={() => setExpirationCalendar(null)} className="text-amber-500 hover:text-amber-300"><X style={{ width: 12, height: 12 }} /></button>
           </div>
           {Object.entries(expirationCalendar.by_month || {}).map(([month, orders]: [string, any]) => (
             <div key={month} className="mb-1">
@@ -352,7 +352,7 @@ export default function TrespassOrdersPage() {
         <div className="px-3 py-2 border-b border-blue-700/50 bg-blue-900/10 text-xs">
           <div className="flex justify-between items-center mb-1">
             <span className="text-blue-400 font-bold text-[10px] uppercase">Bulk Trespass Order Creation</span>
-            <button onClick={() => { setBulkMode(false); setBulkPersons([]); }} className="text-blue-500 hover:text-blue-300"><X style={{ width: 12, height: 12 }} /></button>
+            <button type="button" onClick={() => { setBulkMode(false); setBulkPersons([]); }} className="text-blue-500 hover:text-blue-300"><X style={{ width: 12, height: 12 }} /></button>
           </div>
           <div className="space-y-1 mb-2">
             {bulkPersons.map((p, i) => (
@@ -361,13 +361,13 @@ export default function TrespassOrdersPage() {
                   onChange={e => { const arr = [...bulkPersons]; arr[i] = { ...arr[i], first_name: e.target.value }; setBulkPersons(arr); }} />
                 <input className="input-dark flex-1 text-xs" placeholder="Last name" value={p.last_name}
                   onChange={e => { const arr = [...bulkPersons]; arr[i] = { ...arr[i], last_name: e.target.value }; setBulkPersons(arr); }} />
-                <button onClick={() => setBulkPersons(prev => prev.filter((_, j) => j !== i))} className="text-red-500 hover:text-red-300 px-1"><X style={{ width: 10, height: 10 }} /></button>
+                <button type="button" onClick={() => setBulkPersons(prev => prev.filter((_, j) => j !== i))} className="text-red-500 hover:text-red-300 px-1"><X style={{ width: 10, height: 10 }} /></button>
               </div>
             ))}
           </div>
           <div className="flex gap-2">
-            <button onClick={handleAddBulkPerson} className="toolbar-btn text-[10px]"><Plus style={{ width: 10, height: 10 }} /> Add Person</button>
-            <button onClick={handleBulkCreate} className="toolbar-btn toolbar-btn-primary text-[10px]">Create {bulkPersons.filter(p => p.first_name && p.last_name).length} Orders</button>
+            <button type="button" onClick={handleAddBulkPerson} className="toolbar-btn text-[10px]"><Plus style={{ width: 10, height: 10 }} /> Add Person</button>
+            <button type="button" onClick={handleBulkCreate} className="toolbar-btn toolbar-btn-primary text-[10px]">Create {bulkPersons.filter(p => p.first_name && p.last_name).length} Orders</button>
           </div>
         </div>
       )}
@@ -447,9 +447,9 @@ export default function TrespassOrdersPage() {
           )}
           {totalPages > 1 && (
             <div className={`flex items-center justify-center gap-2 py-2 ${isMobile ? 'text-xs' : 'text-[10px]'} text-rmpg-400`}>
-              <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined, minWidth: isMobile ? 48 : undefined }}>Prev</button>
+              <button type="button" disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined, minWidth: isMobile ? 48 : undefined }}>Prev</button>
               <span>Page {page} of {totalPages}</span>
-              <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined, minWidth: isMobile ? 48 : undefined }}>Next</button>
+              <button type="button" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined, minWidth: isMobile ? 48 : undefined }}>Next</button>
             </div>
           )}
         </div>
@@ -463,29 +463,29 @@ export default function TrespassOrdersPage() {
                 <span className="text-[10px] text-rmpg-400">Issued {new Date(selectedOrder.created_at).toLocaleString()}</span>
               </div>
               <div className={`flex items-center ${isMobile ? 'gap-2 flex-wrap' : 'gap-1'}`}>
-                <button onClick={() => handleEdit(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>Edit</button>
+                <button type="button" onClick={() => handleEdit(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>Edit</button>
                 {selectedOrder.status === 'active' && (
                   <>
-                    <button onClick={() => handleServe(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: '#f59e0b', minHeight: isMobile ? 48 : undefined }}>
+                    <button type="button" onClick={() => handleServe(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: '#f59e0b', minHeight: isMobile ? 48 : undefined }}>
                       <CheckCircle style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Serve
                     </button>
-                    <button onClick={() => handleLift(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: '#22c55e', minHeight: isMobile ? 48 : undefined }}>Lift</button>
-                    <button onClick={() => handleViolate(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: '#a855f7', minHeight: isMobile ? 48 : undefined }}>
+                    <button type="button" onClick={() => handleLift(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: '#22c55e', minHeight: isMobile ? 48 : undefined }}>Lift</button>
+                    <button type="button" onClick={() => handleViolate(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: '#a855f7', minHeight: isMobile ? 48 : undefined }}>
                       <AlertTriangle style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Violated
                     </button>
                     {isExpiringWithin30Days(selectedOrder) && (
-                      <button onClick={() => handleRenew(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: '#60a5fa', minHeight: isMobile ? 48 : undefined }}>
+                      <button type="button" onClick={() => handleRenew(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: '#60a5fa', minHeight: isMobile ? 48 : undefined }}>
                         <RotateCcw style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Renew
                       </button>
                     )}
                   </>
                 )}
                 {(selectedOrder.status === 'expired' || selectedOrder.status === 'served') && (
-                  <button onClick={() => handleRenew(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: '#60a5fa', minHeight: isMobile ? 48 : undefined }}>
+                  <button type="button" onClick={() => handleRenew(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: '#60a5fa', minHeight: isMobile ? 48 : undefined }}>
                     <RotateCcw style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Renew
                   </button>
                 )}
-                <button onClick={() => setSelectedOrder(null)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
+                <button type="button" onClick={() => setSelectedOrder(null)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
                   <X style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} />
                 </button>
               </div>
@@ -548,11 +548,11 @@ export default function TrespassOrdersPage() {
 
       {/* Form Modal */}
       {formOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setFormOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setFormOpen(false)}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#141e2b' }}>
               <span className="text-xs font-bold text-white uppercase">{editingOrder ? 'Edit' : 'New'} Trespass Order</span>
-              <button onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white"><X style={{ width: 14, height: 14 }} /></button>
+              <button type="button" onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white"><X style={{ width: 14, height: 14 }} /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-4 space-y-3">
               {/* Person search */}

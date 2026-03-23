@@ -263,7 +263,7 @@ export default function PrintRecordButton({
 
   return (
     <>
-      <button
+      <button type="button"
         type="button"
         className={`toolbar-btn ${className}`}
         onClick={handlePreview}
@@ -273,7 +273,7 @@ export default function PrintRecordButton({
         <Eye style={{ width: 12, height: 12 }} />
         {!iconOnly && <span>{loading ? 'Loading…' : 'Preview'}</span>}
       </button>
-      <button
+      <button type="button"
         type="button"
         className={`toolbar-btn ${className}`}
         onClick={handlePrint}
@@ -283,7 +283,7 @@ export default function PrintRecordButton({
         <Printer style={{ width: 12, height: 12 }} />
         {!iconOnly && <span>{loading ? 'Loading…' : label}</span>}
       </button>
-      <button
+      <button type="button"
         type="button"
         className={`toolbar-btn toolbar-btn-primary ${className}`}
         onClick={handleSignAndExport}
@@ -303,7 +303,7 @@ export default function PrintRecordButton({
 
       {/* Quick-sign modal */}
       {signModalOpen && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in" role="dialog" aria-modal="true">
           <div className="bg-surface-base border border-rmpg-600 shadow-2xl p-6 max-w-lg w-full mx-4">
             <h3 className="text-sm font-bold text-rmpg-100 mb-1">Sign Document</h3>
             <p className="text-[10px] text-rmpg-400 mb-4">
@@ -317,7 +317,7 @@ export default function PrintRecordButton({
               height={140}
               compact={false}
             />
-            <button
+            <button type="button"
               type="button"
               onClick={() => setSignModalOpen(false)}
               className="mt-3 text-xs text-rmpg-400 hover:text-rmpg-200 transition-colors"

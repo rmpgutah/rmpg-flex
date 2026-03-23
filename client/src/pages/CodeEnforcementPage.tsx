@@ -294,7 +294,7 @@ export default function CodeEnforcementPage() {
       {/* ── Left Panel ── */}
       <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Code Enforcement" icon={Construction}>
-          <button
+          <button type="button"
             onClick={() => activeTab === 'violations' ? (clearVErrors(), setVFormOpen(true), setVFormData({ ...EMPTY_VIOLATION })) : (clearTErrors(), setTFormOpen(true), setTFormData({ ...EMPTY_TOW }))}
             className="toolbar-btn toolbar-btn-primary"
           >
@@ -306,7 +306,7 @@ export default function CodeEnforcementPage() {
         {fetchError && (
           <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
             <span>⚠ {fetchError}</span>
-            <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+            <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
           </div>
         )}
 
@@ -330,14 +330,14 @@ export default function CodeEnforcementPage() {
 
         {/* Tab toggle */}
         <div className="flex border-b border-rmpg-700">
-          <button
+          <button type="button"
             onClick={() => setActiveTab('violations')}
             className={`flex-1 ${isMobile ? 'py-3 text-xs' : 'py-1.5 text-[10px]'} font-bold uppercase tracking-wider ${activeTab === 'violations' ? 'text-white border-b-2 border-brand-500 bg-brand-900/10' : 'text-rmpg-500'}`}
             style={isMobile ? { minHeight: 48 } : undefined}
           >
             Violations ({vTotalCount})
           </button>
-          <button
+          <button type="button"
             onClick={() => setActiveTab('tows')}
             className={`flex-1 ${isMobile ? 'py-3 text-xs' : 'py-1.5 text-[10px]'} font-bold uppercase tracking-wider ${activeTab === 'tows' ? 'text-white border-b-2 border-brand-500 bg-brand-900/10' : 'text-rmpg-500'}`}
             style={isMobile ? { minHeight: 48 } : undefined}
@@ -379,7 +379,7 @@ export default function CodeEnforcementPage() {
             vLoading ? <div className="flex items-center justify-center h-32"><Loader2 className="w-5 h-5 animate-spin text-rmpg-500" /></div> :
             violations.length === 0 ? <div className="text-center py-8 text-rmpg-500 text-xs">No violations found</div> :
             violations.map(v => (
-              <button
+              <button type="button"
                 key={v.id}
                 onClick={() => setSelectedViolation(v)}
                 className={`w-full text-left px-3 ${isMobile ? 'py-3' : 'py-2'} border-b border-rmpg-800 transition-colors ${
@@ -408,7 +408,7 @@ export default function CodeEnforcementPage() {
             tLoading ? <div className="flex items-center justify-center h-32"><Loader2 className="w-5 h-5 animate-spin text-rmpg-500" /></div> :
             tows.length === 0 ? <div className="text-center py-8 text-rmpg-500 text-xs">No tows found</div> :
             tows.map(t => (
-              <button
+              <button type="button"
                 key={t.id}
                 onClick={() => setSelectedTow(t)}
                 className={`w-full text-left px-3 ${isMobile ? 'py-3' : 'py-2'} border-b border-rmpg-800 transition-colors ${
@@ -455,7 +455,7 @@ export default function CodeEnforcementPage() {
                 <div className="text-[9px] font-mono text-rmpg-500 uppercase mb-2">Actions</div>
                 <div className={`flex flex-wrap ${isMobile ? 'gap-2' : 'gap-1'}`}>
                   {['notice_sent', 'reinspection', 'resolved', 'referred', 'voided'].filter(s => s !== selectedViolation.status).map(s => (
-                    <button key={s} onClick={() => handleViolationStatus(selectedViolation.id, s)} className={`${isMobile ? 'text-xs px-3 py-2' : 'text-[10px] px-2 py-1'} border border-rmpg-600 text-rmpg-300 hover:bg-rmpg-700/40 transition-colors`} style={isMobile ? { minHeight: 48 } : undefined}>
+                    <button type="button" key={s} onClick={() => handleViolationStatus(selectedViolation.id, s)} className={`${isMobile ? 'text-xs px-3 py-2' : 'text-[10px] px-2 py-1'} border border-rmpg-600 text-rmpg-300 hover:bg-rmpg-700/40 transition-colors`} style={isMobile ? { minHeight: 48 } : undefined}>
                       {s.replace(/_/g, ' ')}
                     </button>
                   ))}
@@ -465,7 +465,7 @@ export default function CodeEnforcementPage() {
               <div className="panel-beveled p-3">
                 <div className="flex items-center justify-between mb-2">
                   <div className="text-[9px] font-mono text-rmpg-500 uppercase">Reinspection</div>
-                  <button
+                  <button type="button"
                     onClick={() => setShowReinspection(!showReinspection)}
                     className="text-[10px] px-2 py-1 border border-blue-700/50 text-blue-400 bg-blue-900/20 hover:bg-blue-900/40 transition-colors"
                   >
@@ -482,14 +482,14 @@ export default function CodeEnforcementPage() {
                       min={new Date().toISOString().slice(0, 10)}
                       className="input-dark text-[10px] px-2 py-1 flex-1"
                     />
-                    <button
+                    <button type="button"
                       onClick={handleScheduleReinspection}
                       disabled={!reinspectionDate || schedulingReinspection}
                       className="text-[10px] px-3 py-1 bg-blue-900/40 text-blue-400 border border-blue-700/50 hover:bg-blue-800/50 disabled:opacity-40 transition-colors"
                     >
                       {schedulingReinspection ? 'Scheduling...' : 'Confirm'}
                     </button>
-                    <button onClick={() => { setShowReinspection(false); setReinspectionDate(''); }} className="text-rmpg-500 hover:text-white">
+                    <button type="button" onClick={() => { setShowReinspection(false); setReinspectionDate(''); }} className="text-rmpg-500 hover:text-white">
                       <X style={{ width: 12, height: 12 }} />
                     </button>
                   </div>
@@ -558,7 +558,7 @@ export default function CodeEnforcementPage() {
                 <div className="text-[9px] font-mono text-rmpg-500 uppercase mb-2">Actions</div>
                 <div className={`flex flex-wrap ${isMobile ? 'gap-2' : 'gap-1'}`}>
                   {['dispatched', 'in_progress', 'completed', 'released', 'cancelled'].filter(s => s !== selectedTow.status).map(s => (
-                    <button key={s} onClick={() => handleTowStatus(selectedTow.id, s)} className={`${isMobile ? 'text-xs px-3 py-2' : 'text-[10px] px-2 py-1'} border border-rmpg-600 text-rmpg-300 hover:bg-rmpg-700/40 transition-colors`} style={isMobile ? { minHeight: 48 } : undefined}>
+                    <button type="button" key={s} onClick={() => handleTowStatus(selectedTow.id, s)} className={`${isMobile ? 'text-xs px-3 py-2' : 'text-[10px] px-2 py-1'} border border-rmpg-600 text-rmpg-300 hover:bg-rmpg-700/40 transition-colors`} style={isMobile ? { minHeight: 48 } : undefined}>
                       {s.replace(/_/g, ' ')}
                     </button>
                   ))}
@@ -595,10 +595,10 @@ export default function CodeEnforcementPage() {
 
       {/* ── New Violation Modal ── */}
       {vFormOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="New Code Violation" icon={Plus}>
-              <button onClick={() => setVFormOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
+              <button type="button" onClick={() => setVFormOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -662,11 +662,11 @@ export default function CodeEnforcementPage() {
                 </div>
               </div>
               <div className={`flex ${isMobile ? 'flex-col gap-2' : 'justify-end gap-2'} pt-2 border-t border-rmpg-700`}>
-                <button onClick={handleCreateViolation} disabled={submitting} className={`toolbar-btn toolbar-btn-primary ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>
+                <button type="button" onClick={handleCreateViolation} disabled={submitting} className={`toolbar-btn toolbar-btn-primary ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />}
                   Create
                 </button>
-                <button onClick={() => setVFormOpen(false)} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>Cancel</button>
+                <button type="button" onClick={() => setVFormOpen(false)} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>Cancel</button>
               </div>
             </div>
           </div>
@@ -675,10 +675,10 @@ export default function CodeEnforcementPage() {
 
       {/* ── New Tow Modal ── */}
       {tFormOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="New Tow Order" icon={Truck}>
-              <button onClick={() => setTFormOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
+              <button type="button" onClick={() => setTFormOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -697,11 +697,11 @@ export default function CodeEnforcementPage() {
                 <div><label className="field-label">Tow Fee ($)</label><input value={tFormData.tow_fee} onChange={e => setTFormData(p => ({ ...p, tow_fee: e.target.value }))} type="number" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
               </div>
               <div className={`flex ${isMobile ? 'flex-col gap-2' : 'justify-end gap-2'} pt-2 border-t border-rmpg-700`}>
-                <button onClick={handleCreateTow} disabled={submitting} className={`toolbar-btn toolbar-btn-primary ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>
+                <button type="button" onClick={handleCreateTow} disabled={submitting} className={`toolbar-btn toolbar-btn-primary ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />}
                   Create Tow
                 </button>
-                <button onClick={() => setTFormOpen(false)} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>Cancel</button>
+                <button type="button" onClick={() => setTFormOpen(false)} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>Cancel</button>
               </div>
             </div>
           </div>

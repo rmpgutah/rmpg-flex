@@ -63,7 +63,7 @@ export default function MapSidebar({
         flexShrink: 0,
       }}
     >
-      <button
+      <button type="button"
         onClick={() => setSidebarOpen(!sidebarOpen)}
         className="toolbar-btn flex items-center justify-center h-7"
         style={{ borderRadius: 0 }}
@@ -96,7 +96,7 @@ export default function MapSidebar({
           </div>
 
           <div className="tab-bar" role="tablist">
-            <button
+            <button type="button"
               onClick={() => setSidebarTab('units')}
               className={`tab-bar-item flex items-center justify-center gap-1.5 ${sidebarTab === 'units' ? 'active' : ''}`}
               role="tab"
@@ -105,7 +105,7 @@ export default function MapSidebar({
               {/* Fix 96: unit count in tab header */}
               <Shield className="w-3 h-3" /> Units <span className="text-[8px] font-mono font-bold text-green-400">({sortedUnits.length})</span>
             </button>
-            <button
+            <button type="button"
               onClick={() => setSidebarTab('calls')}
               className={`tab-bar-item flex items-center justify-center gap-1.5 ${sidebarTab === 'calls' ? 'active' : ''}`}
               role="tab"
@@ -142,7 +142,7 @@ export default function MapSidebar({
                     ? (Date.now() - new Date((unit as any).gps_updated_at).getTime()) > GPS_STALE_THRESHOLD_MS
                     : false;
                   return (
-                    <button
+                    <button type="button"
                       key={unit.id}
                       onClick={() => hasCoords && panTo(unit.latitude!, unit.longitude!)}
                       className={`w-full text-left px-3 py-2.5 hover:bg-rmpg-800/50 transition-colors ${
@@ -190,7 +190,7 @@ export default function MapSidebar({
                   const pColor = PRIORITY_COLORS[call.priority] || '#5a6e80';
                   const { category } = getIncidentCategory(call.incident_type);
                   return (
-                    <button
+                    <button type="button"
                       key={call.id}
                       onClick={() => hasCoords && panTo(call.latitude!, call.longitude!)}
                       className={`w-full text-left px-3 py-2.5 hover:bg-rmpg-800/50 transition-colors ${
@@ -216,7 +216,7 @@ export default function MapSidebar({
                       {/* Quick actions */}
                       <div className="ml-8 mt-1.5 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                         {call.status === 'pending' && (
-                          <button
+                          <button type="button"
                             onClick={(e) => { e.stopPropagation(); handleCallStatusChange(call.id, 'dispatched'); }}
                             className="px-1.5 py-0.5 text-[8px] font-bold font-mono bg-amber-900/30 text-amber-400 border border-amber-700/40 hover:bg-amber-800/40 transition-colors"
                           >
@@ -224,7 +224,7 @@ export default function MapSidebar({
                           </button>
                         )}
                         {call.status === 'dispatched' && (
-                          <button
+                          <button type="button"
                             onClick={(e) => { e.stopPropagation(); handleCallStatusChange(call.id, 'enroute'); }}
                             className="px-1.5 py-0.5 text-[8px] font-bold font-mono bg-blue-900/30 text-blue-400 border border-blue-700/40 hover:bg-blue-800/40 transition-colors"
                           >
@@ -232,7 +232,7 @@ export default function MapSidebar({
                           </button>
                         )}
                         {call.status === 'enroute' && (
-                          <button
+                          <button type="button"
                             onClick={(e) => { e.stopPropagation(); handleCallStatusChange(call.id, 'onscene'); }}
                             className="px-1.5 py-0.5 text-[8px] font-bold font-mono bg-purple-900/30 text-purple-400 border border-purple-700/40 hover:bg-purple-800/40 transition-colors"
                           >
@@ -240,7 +240,7 @@ export default function MapSidebar({
                           </button>
                         )}
                         {['dispatched', 'enroute', 'onscene'].includes(call.status) && (
-                          <button
+                          <button type="button"
                             onClick={(e) => { e.stopPropagation(); handleCallStatusChange(call.id, 'cleared'); }}
                             className="px-1.5 py-0.5 text-[8px] font-bold font-mono bg-rmpg-700/30 text-rmpg-300 border border-rmpg-600/40 hover:bg-rmpg-600/40 transition-colors"
                           >

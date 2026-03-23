@@ -426,7 +426,7 @@ export default function CrmPage() {
             const Icon = item.icon;
             const isActive = activeSection === item.id;
             return (
-              <button
+              <button type="button"
                 key={item.id}
                 onClick={() => setActiveSection(item.id)}
                 className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors ${
@@ -453,7 +453,7 @@ export default function CrmPage() {
         {fetchError && (
           <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
             <span>⚠ {fetchError}</span>
-            <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+            <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
           </div>
         )}
         {activeSection === 'dashboard' && renderDashboard()}
@@ -471,11 +471,11 @@ export default function CrmPage() {
 
       {/* ── Task Modal ────────────────────────────────── */}
       {showTaskModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowTaskModal(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowTaskModal(false)}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
             <div className="panel-title-bar flex items-center justify-between">
               <span className="text-xs font-bold text-white">{editingTask ? 'Edit Task' : 'New Task'}</span>
-              <button onClick={() => setShowTaskModal(false)} className="text-rmpg-400 hover:text-rmpg-200"><X className="w-3.5 h-3.5" /></button>
+              <button type="button" onClick={() => setShowTaskModal(false)} className="text-rmpg-400 hover:text-rmpg-200"><X className="w-3.5 h-3.5" /></button>
             </div>
             <div className="p-4 space-y-3">
               <div>
@@ -530,8 +530,8 @@ export default function CrmPage() {
               )}
             </div>
             <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
-              <button onClick={() => setShowTaskModal(false)} className="toolbar-btn">Cancel</button>
-              <button onClick={saveTask} className="toolbar-btn toolbar-btn-primary" disabled={!taskForm.title?.trim()}>
+              <button type="button" onClick={() => setShowTaskModal(false)} className="toolbar-btn">Cancel</button>
+              <button type="button" onClick={saveTask} className="toolbar-btn toolbar-btn-primary" disabled={!taskForm.title?.trim()}>
                 <Save className="w-3 h-3" /> {editingTask ? 'Update' : 'Create'}
               </button>
             </div>
@@ -541,11 +541,11 @@ export default function CrmPage() {
 
       {/* ── Activity Log Modal ────────────────────────── */}
       {showActivityModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowActivityModal(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowActivityModal(false)}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
             <div className="panel-title-bar flex items-center justify-between">
               <span className="text-xs font-bold text-white">Log Activity</span>
-              <button onClick={() => setShowActivityModal(false)} className="text-rmpg-400 hover:text-rmpg-200"><X className="w-3.5 h-3.5" /></button>
+              <button type="button" onClick={() => setShowActivityModal(false)} className="text-rmpg-400 hover:text-rmpg-200"><X className="w-3.5 h-3.5" /></button>
             </div>
             <div className="p-4 space-y-3">
               <div>
@@ -571,8 +571,8 @@ export default function CrmPage() {
               </div>
             </div>
             <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
-              <button onClick={() => setShowActivityModal(false)} className="toolbar-btn">Cancel</button>
-              <button onClick={logActivity} className="toolbar-btn toolbar-btn-primary" disabled={!activityForm.client_id}>
+              <button type="button" onClick={() => setShowActivityModal(false)} className="toolbar-btn">Cancel</button>
+              <button type="button" onClick={logActivity} className="toolbar-btn toolbar-btn-primary" disabled={!activityForm.client_id}>
                 <Save className="w-3 h-3" /> Log
               </button>
             </div>
@@ -619,8 +619,8 @@ export default function CrmPage() {
         <PanelTitleBar title="OVERWATCH DASHBOARD" icon={LayoutDashboard}>
           <RmpgLogo height={16} iconOnly />
           <ExportButton exportUrl="/api/crm/export/csv" exportFilename="crm.csv" />
-          <button onClick={() => fetchDashboard()} className="toolbar-btn"><RefreshCw className="w-3 h-3" /> Refresh</button>
-          <button onClick={() => { setActivityForm({ client_id: '', activity_type: 'note', subject: '', details: '' }); setShowActivityModal(true); }} className="toolbar-btn toolbar-btn-primary">
+          <button type="button" onClick={() => fetchDashboard()} className="toolbar-btn"><RefreshCw className="w-3 h-3" /> Refresh</button>
+          <button type="button" onClick={() => { setActivityForm({ client_id: '', activity_type: 'note', subject: '', details: '' }); setShowActivityModal(true); }} className="toolbar-btn toolbar-btn-primary">
             <Plus className="w-3 h-3" /> Log Activity
           </button>
         </PanelTitleBar>
@@ -821,7 +821,7 @@ export default function CrmPage() {
         <div className="w-80 border-r border-rmpg-600 flex flex-col flex-shrink-0">
           <PanelTitleBar title="CLIENTS" icon={Building2}>
             <input className="input-dark text-xs flex-1" style={{ maxWidth: 120 }} placeholder="Search..." value={clientSearch} onChange={e => setClientSearch(e.target.value)} />
-            <button onClick={() => { setEditingClient(null); setShowClientModal(true); }} className="toolbar-btn toolbar-btn-primary">
+            <button type="button" onClick={() => { setEditingClient(null); setShowClientModal(true); }} className="toolbar-btn toolbar-btn-primary">
               <Plus className="w-3 h-3" /> New
             </button>
           </PanelTitleBar>
@@ -834,7 +834,7 @@ export default function CrmPage() {
               </div>
             )}
             {filteredClients.map(c => (
-              <button
+              <button type="button"
                 key={c.id}
                 onClick={() => setSelectedClientId(String(c.id))}
                 className={`w-full text-left px-3 py-2 border-b border-rmpg-700/30 transition-colors ${
@@ -864,9 +864,9 @@ export default function CrmPage() {
                   )}
                 </div>
                 <div className="flex items-center gap-1">
-                  <button onClick={() => { setEditingClient(selectedClient); setShowClientModal(true); }} className="toolbar-btn"><Edit3 className="w-3 h-3" /> Edit</button>
-                  <button onClick={() => openNewTask(selectedClientId!)} className="toolbar-btn"><Plus className="w-3 h-3" /> Task</button>
-                  <button onClick={() => { setActivityForm({ client_id: selectedClientId!, activity_type: 'note', subject: '', details: '' }); setShowActivityModal(true); }} className="toolbar-btn">
+                  <button type="button" onClick={() => { setEditingClient(selectedClient); setShowClientModal(true); }} className="toolbar-btn"><Edit3 className="w-3 h-3" /> Edit</button>
+                  <button type="button" onClick={() => openNewTask(selectedClientId!)} className="toolbar-btn"><Plus className="w-3 h-3" /> Task</button>
+                  <button type="button" onClick={() => { setActivityForm({ client_id: selectedClientId!, activity_type: 'note', subject: '', details: '' }); setShowActivityModal(true); }} className="toolbar-btn">
                     <Activity className="w-3 h-3" /> Log
                   </button>
                 </div>
@@ -918,7 +918,7 @@ export default function CrmPage() {
                 <div className="panel-inset p-3">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-bold text-white">Activity Timeline</span>
-                    <button onClick={() => { setActivityForm({ client_id: selectedClientId!, activity_type: 'note', subject: '', details: '' }); setShowActivityModal(true); }} className="toolbar-btn">
+                    <button type="button" onClick={() => { setActivityForm({ client_id: selectedClientId!, activity_type: 'note', subject: '', details: '' }); setShowActivityModal(true); }} className="toolbar-btn">
                       <Plus className="w-3 h-3" /> Log
                     </button>
                   </div>
@@ -1024,7 +1024,7 @@ export default function CrmPage() {
             <option value="">All Relationships</option>
             {RELATIONSHIP_TYPES.map(r => <option key={r} value={r}>{toDisplayLabel(r)}</option>)}
           </select>
-          <button onClick={fetchContacts} className="toolbar-btn"><Search className="w-3 h-3" /> Search</button>
+          <button type="button" onClick={fetchContacts} className="toolbar-btn"><Search className="w-3 h-3" /> Search</button>
         </PanelTitleBar>
         <div className="p-4">
           {contacts.length === 0 ? (
@@ -1137,7 +1137,7 @@ export default function CrmPage() {
             <option value="completed">Completed</option>
             <option value="cancelled">Cancelled</option>
           </select>
-          <button onClick={() => openNewTask()} className="toolbar-btn toolbar-btn-primary">
+          <button type="button" onClick={() => openNewTask()} className="toolbar-btn toolbar-btn-primary">
             <Plus className="w-3 h-3" /> New Task
           </button>
         </PanelTitleBar>
@@ -1149,7 +1149,7 @@ export default function CrmPage() {
               {tasks.map(task => (
                 <div key={task.id} className="panel-inset p-3 flex items-start gap-3">
                   {/* Checkbox */}
-                  <button
+                  <button type="button"
                     onClick={() => toggleTaskComplete(task)}
                     className={`mt-0.5 w-4 h-4 border flex-shrink-0 flex items-center justify-center ${
                       task.status === 'completed'
@@ -1184,8 +1184,8 @@ export default function CrmPage() {
 
                   {/* Actions */}
                   <div className="flex items-center gap-1 flex-shrink-0">
-                    <button onClick={() => openEditTask(task)} className="p-1 text-rmpg-400 hover:text-rmpg-200"><Edit3 className="w-3 h-3" /></button>
-                    <button onClick={() => deleteTask(task.id)} className="p-1 text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => openEditTask(task)} className="p-1 text-rmpg-400 hover:text-rmpg-200"><Edit3 className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => deleteTask(task.id)} className="p-1 text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
                   </div>
                 </div>
               ))}

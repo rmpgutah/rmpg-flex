@@ -122,7 +122,7 @@ export default function DeploymentTab({ deployments, coverageGaps, officers, loa
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           {FILTER_BUTTONS.map((btn) => (
-            <button
+            <button type="button"
               key={btn.value}
               onClick={() => setStatusFilter(btn.value)}
               className={`text-[10px] px-2.5 py-1 ${
@@ -133,7 +133,7 @@ export default function DeploymentTab({ deployments, coverageGaps, officers, loa
             </button>
           ))}
         </div>
-        <button onClick={onAddDeployment} className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1">
+        <button type="button" onClick={onAddDeployment} className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1">
           <Plus className="w-3 h-3" />
           Add Deployment
         </button>

@@ -60,6 +60,10 @@ export default function StatsCard({
   return (
     <div
       onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
+      aria-label={`${label}: ${value}`}
       className={`
         relative overflow-hidden p-3 border-l-4 panel-beveled
         ${ACCENT_COLORS[accent] || ACCENT_COLORS.blue}

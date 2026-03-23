@@ -117,10 +117,10 @@ export default function PinGeneratorModal({ isOpen, onClose, users }: PinGenerat
             <Key className="w-4 h-4 text-amber-500" />
             <span className="text-sm font-bold text-white">Generate Offline PIN</span>
           </div>
-          <button
+          <button type="button"
             onClick={onClose}
             className="p-1 text-rmpg-400 hover:text-white transition-colors"
-          >
+           aria-label="Close" title="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -152,7 +152,7 @@ export default function PinGeneratorModal({ isOpen, onClose, users }: PinGenerat
 
           {/* Generate button */}
           {!generatedPin && (
-            <button
+            <button type="button"
               onClick={handleGenerate}
               disabled={generating || !selectedUserId}
               className="btn-primary w-full justify-center"
@@ -212,7 +212,7 @@ export default function PinGeneratorModal({ isOpen, onClose, users }: PinGenerat
               </div>
 
               {/* Copy button */}
-              <button
+              <button type="button"
                 onClick={handleCopy}
                 className="flex items-center gap-2 mx-auto px-3 py-1.5 text-xs transition-colors"
                 style={{
@@ -244,7 +244,7 @@ export default function PinGeneratorModal({ isOpen, onClose, users }: PinGenerat
               </div>
 
               {/* Generate another */}
-              <button
+              <button type="button"
                 onClick={() => {
                   setGeneratedPin(null);
                   setExpiresAt(null);

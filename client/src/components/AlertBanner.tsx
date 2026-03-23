@@ -85,7 +85,7 @@ export default function AlertBanner({ alerts, onDismiss }: AlertBannerProps) {
 
             {/* Dismiss button */}
             {onDismiss && (
-              <button
+              <button type="button"
                 type="button"
                 onClick={() => onDismiss(index)}
                 className="flex-shrink-0 p-1 hover:bg-white/10 transition-colors"

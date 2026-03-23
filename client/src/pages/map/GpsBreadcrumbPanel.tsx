@@ -373,7 +373,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
 
   if (!isOpen) {
     return (
-      <button
+      <button type="button"
         onClick={onToggle}
         className="absolute top-[70px] left-2 z-[500] panel-beveled bg-surface-raised px-2 py-1.5 flex items-center gap-1.5 hover:bg-surface-base transition-colors"
         title="GPS History Playback"
@@ -399,7 +399,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
           <History className="w-3.5 h-3.5 text-amber-400" />
           <span className="text-[11px] font-mono font-bold text-white tracking-wide">GPS HISTORY</span>
         </div>
-        <button onClick={onToggle} className="p-0.5 hover:bg-white/10 rounded-sm transition-colors">
+        <button type="button" onClick={onToggle} className="p-0.5 hover:bg-white/10 rounded-sm transition-colors" aria-label="Close" title="Close">
           <X className="w-3.5 h-3.5 text-rmpg-400" />
         </button>
       </div>
@@ -470,7 +470,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
         </div>
 
         {/* Load button */}
-        <button
+        <button type="button"
           onClick={loadTrail}
           disabled={loading || selectedUnit == null}
           className="w-full btn-primary flex items-center justify-center gap-1.5 text-[11px] font-mono font-bold py-1.5 disabled:opacity-40"
@@ -598,7 +598,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
 
               {/* Controls row */}
               <div className="flex items-center gap-1">
-                <button
+                <button type="button"
                   onClick={() => {
                     setPlaybackIdx(0);
                     if (trail.points[0] && playbackMarkerRef.current) {
@@ -611,7 +611,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                   <SkipBack className="w-3 h-3 text-rmpg-300" />
                 </button>
 
-                <button
+                <button type="button"
                   onClick={() => {
                     if (isPlaying) {
                       setIsPlaying(false);
@@ -631,7 +631,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                   )}
                 </button>
 
-                <button
+                <button type="button"
                   onClick={() => {
                     const lastIdx = totalPts - 1;
                     setPlaybackIdx(lastIdx);
@@ -649,7 +649,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                 {/* Speed buttons */}
                 <div className="flex items-center gap-0.5 ml-auto">
                   {[1, 2, 4, 8].map((s) => (
-                    <button
+                    <button type="button"
                       key={s}
                       onClick={() => setPlaybackSpeed(s)}
                       className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
@@ -698,7 +698,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
             </div>
 
             {/* Clear button */}
-            <button
+            <button type="button"
               onClick={() => {
                 clearMapObjects();
                 setTrail(null);

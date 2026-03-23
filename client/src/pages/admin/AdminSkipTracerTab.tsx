@@ -212,7 +212,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
             </div>
 
             <div className="flex gap-2">
-              <button
+              <button type="button"
                 onClick={handleTest}
                 disabled={testing}
                 className="flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-blue-700/20 text-blue-400 border border-blue-700/50 hover:bg-blue-700/40 disabled:opacity-50"
@@ -221,7 +221,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
                 Test Connection
               </button>
 
-              <button
+              <button type="button"
                 onClick={handleClear}
                 className="flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-red-900/20 text-red-400 border border-red-700/50 hover:bg-red-900/40"
               >
@@ -269,7 +269,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
                     placeholder="Enter your x-rapidapi-key"
                     className="w-full bg-surface-sunken border border-rmpg-600 text-white text-xs px-3 py-1.5 pr-8 font-mono focus:border-blue-500 focus:outline-none"
                   />
-                  <button
+                  <button type="button"
                     onClick={() => setShowKey(!showKey)}
                     className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white"
                     type="button"
@@ -277,7 +277,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
                     {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                   </button>
                 </div>
-                <button
+                <button type="button"
                   onClick={handleSaveKey}
                   disabled={!apiKey.trim() || saving}
                   className="flex items-center gap-1 px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"
@@ -362,7 +362,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
             <Clock className="w-3.5 h-3.5" />
             Recent Search History
           </div>
-          <button
+          <button type="button"
             onClick={handleLoadHistory}
             className="text-[10px] text-blue-400 hover:text-blue-300 uppercase tracking-wider font-bold"
           >

@@ -330,14 +330,14 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
 
       {/* ═══ Action Bar ═══ */}
       <div className="flex items-center gap-2 flex-wrap">
-        <button
+        <button type="button"
           onClick={() => { setShowForm(!showForm); setEditingId(null); setForm({ ...EMPTY_BOOKING }); }}
           className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white"
         >
           <Plus className="w-3 h-3" />
           Add Booking
         </button>
-        <button
+        <button type="button"
           onClick={() => { setShowCsvImport(!showCsvImport); setCsvResult(null); }}
           className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-rmpg-700 hover:bg-rmpg-600 text-rmpg-200"
         >
@@ -369,7 +369,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
             className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] pl-7 pr-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
           />
           {searchTerm && (
-            <button onClick={() => setSearchTerm('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300">
+            <button type="button" onClick={() => setSearchTerm('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300">
               <X className="w-3 h-3" />
             </button>
           )}
@@ -446,7 +446,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
           </div>
 
           <div className="flex items-center gap-2">
-            <button
+            <button type="button"
               onClick={handleSubmitBooking}
               disabled={formSaving || !form.full_name.trim()}
               className="toolbar-btn text-[10px] flex items-center gap-1 px-4 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
@@ -454,7 +454,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
               {formSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
               {editingId ? 'Update Record' : 'Save Booking'}
             </button>
-            <button onClick={() => { setShowForm(false); setEditingId(null); }} className="toolbar-btn text-[10px] px-3 py-1.5 text-rmpg-400">
+            <button type="button" onClick={() => { setShowForm(false); setEditingId(null); }} className="toolbar-btn text-[10px] px-3 py-1.5 text-rmpg-400">
               Cancel
             </button>
           </div>
@@ -513,7 +513,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
           )}
 
           <div className="flex items-center gap-2">
-            <button
+            <button type="button"
               onClick={handleCsvImport}
               disabled={csvImporting || !csvData.trim()}
               className="toolbar-btn text-[10px] flex items-center gap-1 px-4 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
@@ -521,7 +521,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
               {csvImporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
               {csvImporting ? 'Importing...' : 'Import Records'}
             </button>
-            <button onClick={() => setShowCsvImport(false)} className="toolbar-btn text-[10px] px-3 py-1.5 text-rmpg-400">
+            <button type="button" onClick={() => setShowCsvImport(false)} className="toolbar-btn text-[10px] px-3 py-1.5 text-rmpg-400">
               Cancel
             </button>
           </div>
@@ -537,9 +537,9 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
             <span className="text-brand-400">({recordsTotal})</span>
           </div>
           <div className="flex items-center gap-1 text-[10px] text-rmpg-500">
-            <button disabled={recordsPage <= 1} onClick={() => setRecordsPage(p => p - 1)} className="px-1.5 py-0.5 hover:text-rmpg-200 disabled:opacity-30">‹</button>
+            <button type="button" disabled={recordsPage <= 1} onClick={() => setRecordsPage(p => p - 1)} className="px-1.5 py-0.5 hover:text-rmpg-200 disabled:opacity-30">‹</button>
             <span>{recordsPage} / {totalPages || 1}</span>
-            <button disabled={recordsPage >= totalPages} onClick={() => setRecordsPage(p => p + 1)} className="px-1.5 py-0.5 hover:text-rmpg-200 disabled:opacity-30">›</button>
+            <button type="button" disabled={recordsPage >= totalPages} onClick={() => setRecordsPage(p => p + 1)} className="px-1.5 py-0.5 hover:text-rmpg-200 disabled:opacity-30">›</button>
           </div>
         </div>
 
@@ -591,10 +591,10 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
 
                 {/* Actions */}
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => handleEdit(rec)} className="p-1 text-rmpg-500 hover:text-brand-400" title="Edit">
+                  <button type="button" onClick={() => handleEdit(rec)} className="p-1 text-rmpg-500 hover:text-brand-400" title="Edit">
                     <Edit2 className="w-3 h-3" />
                   </button>
-                  <button onClick={() => handleDelete(rec.id)} className="p-1 text-rmpg-500 hover:text-red-400" title="Delete">
+                  <button type="button" onClick={() => handleDelete(rec.id)} className="p-1 text-rmpg-500 hover:text-red-400" title="Delete">
                     <Trash2 className="w-3 h-3" />
                   </button>
                 </div>
@@ -606,7 +606,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
 
       {/* ═══ Legacy API Settings (Collapsible) ═══ */}
       <div className="panel-beveled bg-surface-base rounded-sm">
-        <button
+        <button type="button"
           onClick={() => setShowApiSettings(!showApiSettings)}
           className="w-full flex items-center gap-2 p-3 text-left"
         >
@@ -644,26 +644,26 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                   placeholder={status?.configured ? 'Enter new key to replace...' : 'Enter RapidAPI key...'}
                   className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 pr-8 rounded-sm focus:border-brand-500 focus:outline-none font-mono"
                 />
-                <button onClick={() => setShowKey(!showKey)} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300">
+                <button type="button" onClick={() => setShowKey(!showKey)} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300">
                   {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 </button>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
-              <button onClick={handleSaveKey} disabled={saving || !apiKey.trim() || apiKey.trim().length < 10}
+              <button type="button" onClick={handleSaveKey} disabled={saving || !apiKey.trim() || apiKey.trim().length < 10}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50">
                 {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Key className="w-3 h-3" />}
                 Save Key
               </button>
               {status?.configured && (
                 <>
-                  <button onClick={handleSync} disabled={syncing}
+                  <button type="button" onClick={handleSync} disabled={syncing}
                     className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-rmpg-700 hover:bg-rmpg-600 text-rmpg-200 disabled:opacity-50">
                     {syncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
                     {syncing ? 'Syncing...' : 'Sync Now'}
                   </button>
-                  <button onClick={async () => {
+                  <button type="button" onClick={async () => {
                     try { await apiFetch('/arrests/credentials', { method: 'DELETE' }); fetchStatus(); } catch { /* handled by apiFetch */ }
                   }} className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 text-red-400 hover:text-red-300">
                     <Trash2 className="w-3 h-3" /> Clear Key
@@ -684,7 +684,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
 
       {/* ═══ Jail Roster Scraper (Collapsible) ═══ */}
       <div className="panel-beveled bg-surface-base rounded-sm">
-        <button
+        <button type="button"
           onClick={() => { setShowScraper(!showScraper); if (!scraperStatus) fetchScraperStatus(); }}
           className="w-full flex items-center gap-2 p-3 text-left"
         >
@@ -748,7 +748,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                           }`}>{county.roster_type}</span>
 
                           {/* Enable/Disable toggle */}
-                          <button
+                          <button type="button"
                             onClick={() => handleScraperToggle(county.county, !county.enabled)}
                             className="text-rmpg-500 hover:text-rmpg-200"
                             title={county.enabled ? 'Disable' : 'Enable'}
@@ -786,7 +786,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                           </select>
 
                           {/* Sync Now button */}
-                          <button
+                          <button type="button"
                             onClick={() => handleScraperSync(county.county)}
                             disabled={syncingCounty === county.county}
                             className="flex items-center gap-1 text-[9px] text-brand-400 hover:text-brand-300 disabled:opacity-50"
@@ -801,7 +801,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
 
                           {/* Reset Errors button */}
                           {isCircuitBroken && (
-                            <button
+                            <button type="button"
                               onClick={() => handleResetErrors(county.county)}
                               className="flex items-center gap-1 text-[9px] text-red-400 hover:text-red-300"
                             >
@@ -848,7 +848,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                 )}
 
                 {/* Refresh button */}
-                <button
+                <button type="button"
                   onClick={fetchScraperStatus}
                   className="flex items-center gap-1 text-[9px] text-rmpg-500 hover:text-rmpg-300"
                 >

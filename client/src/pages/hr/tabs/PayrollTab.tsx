@@ -441,7 +441,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
         {SUB_TABS.map(t => {
           const Icon = t.icon;
           return (
-            <button key={t.key} onClick={() => setSubTab(t.key)}
+            <button type="button" key={t.key} onClick={() => setSubTab(t.key)}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-sm transition-colors ${
                 subTab === t.key
                   ? 'text-white bg-brand-500/20 border border-brand-500/40'
@@ -467,12 +467,12 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
             </h3>
             <div className="flex-1" />
             {isManager && (
-              <button onClick={() => setShowPeriodForm(!showPeriodForm)}
+              <button type="button" onClick={() => setShowPeriodForm(!showPeriodForm)}
                 className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-green-400 bg-green-900/20 hover:bg-green-900/40 border border-green-700/40 rounded-sm transition-colors">
                 <Plus size={12} /> New Period
               </button>
             )}
-            <button onClick={fetchPeriods}
+            <button type="button" onClick={fetchPeriods}
               className="flex items-center gap-1 px-2.5 py-1 text-[11px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/30 rounded-sm transition-colors">
               <RefreshCw size={12} /> Refresh
             </button>
@@ -505,8 +505,8 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 </div>
               </div>
               <div className="flex justify-end gap-2">
-                <button onClick={() => setShowPeriodForm(false)} className="px-3 py-1 text-[11px] text-rmpg-400 hover:text-white">Cancel</button>
-                <button onClick={handleCreatePeriod}
+                <button type="button" onClick={() => setShowPeriodForm(false)} className="px-3 py-1 text-[11px] text-rmpg-400 hover:text-white">Cancel</button>
+                <button type="button" onClick={handleCreatePeriod}
                   className="px-4 py-1 text-[11px] font-medium bg-brand-500 hover:bg-brand-600 text-white rounded-sm transition-colors">Create</button>
               </div>
             </div>
@@ -554,11 +554,11 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                       <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
                         {period.status === 'open' && (
                           <>
-                            <button onClick={() => handlePopulatePeriod(period.id)} title="Auto-populate employees"
+                            <button type="button" onClick={() => handlePopulatePeriod(period.id)} title="Auto-populate employees"
                               className="p-1 text-rmpg-500 hover:text-cyan-400 transition-colors"><Users size={13} /></button>
-                            <button onClick={() => handleClosePeriod(period.id)} title="Close period"
+                            <button type="button" onClick={() => handleClosePeriod(period.id)} title="Close period"
                               className="p-1 text-rmpg-500 hover:text-green-400 transition-colors"><Check size={13} /></button>
-                            <button onClick={() => handleDeletePeriod(period.id)} title="Delete"
+                            <button type="button" onClick={() => handleDeletePeriod(period.id)} title="Delete"
                               className="p-1 text-rmpg-500 hover:text-red-400 transition-colors"><Trash2 size={13} /></button>
                           </>
                         )}
@@ -584,7 +584,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
             </h3>
             <div className="flex-1" />
             {isManager && (
-              <button onClick={() => setShowRateForm(!showRateForm)}
+              <button type="button" onClick={() => setShowRateForm(!showRateForm)}
                 className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-green-400 bg-green-900/20 hover:bg-green-900/40 border border-green-700/40 rounded-sm transition-colors">
                 <Plus size={12} /> Set Rate
               </button>
@@ -635,8 +635,8 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 </div>
               </div>
               <div className="flex justify-end gap-2">
-                <button onClick={() => setShowRateForm(false)} className="px-3 py-1 text-[11px] text-rmpg-400 hover:text-white">Cancel</button>
-                <button onClick={handleCreateRate}
+                <button type="button" onClick={() => setShowRateForm(false)} className="px-3 py-1 text-[11px] text-rmpg-400 hover:text-white">Cancel</button>
+                <button type="button" onClick={handleCreateRate}
                   className="px-4 py-1 text-[11px] font-medium bg-brand-500 hover:bg-brand-600 text-white rounded-sm transition-colors">Save Rate</button>
               </div>
             </div>
@@ -700,7 +700,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
               {periods.map(p => <option key={p.id} value={p.id}>{p.name} ({p.status})</option>)}
             </select>
             {selectedPeriod && entries.length > 0 && (
-              <button
+              <button type="button"
                 onClick={handleExportCSV}
                 className="flex items-center gap-1 px-2 py-1 text-[11px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/30 rounded-sm transition-colors"
               >
@@ -783,13 +783,13 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                             <div className="flex items-center justify-center gap-1">
                               {isEditing ? (
                                 <>
-                                  <button onClick={() => handleSaveEntry(entry.id)} className="p-0.5 text-green-400 hover:text-green-300"><Check size={13} /></button>
-                                  <button onClick={() => setEditingEntry(null)} className="p-0.5 text-rmpg-500 hover:text-white"><X size={13} /></button>
+                                  <button type="button" onClick={() => handleSaveEntry(entry.id)} className="p-0.5 text-green-400 hover:text-green-300"><Check size={13} /></button>
+                                  <button type="button" onClick={() => setEditingEntry(null)} className="p-0.5 text-rmpg-500 hover:text-white"><X size={13} /></button>
                                 </>
                               ) : (
                                 <>
-                                  <button onClick={() => startEditing(entry)} className="p-0.5 text-rmpg-500 hover:text-brand-400" title="Edit hours"><Edit3 size={13} /></button>
-                                  <button onClick={() => handleApproveEntry(entry.id)} className="p-0.5 text-rmpg-500 hover:text-green-400" title="Approve"><Check size={13} /></button>
+                                  <button type="button" onClick={() => startEditing(entry)} className="p-0.5 text-rmpg-500 hover:text-brand-400" title="Edit hours"><Edit3 size={13} /></button>
+                                  <button type="button" onClick={() => handleApproveEntry(entry.id)} className="p-0.5 text-rmpg-500 hover:text-green-400" title="Approve"><Check size={13} /></button>
                                 </>
                               )}
                             </div>
@@ -831,7 +831,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
               <AlertTriangle size={15} /> Overtime Requests
             </h3>
             <div className="flex-1" />
-            <button onClick={() => setShowOtForm(true)} className="flex items-center gap-1 px-3 py-1.5 text-xs bg-brand-500/20 text-brand-300 border border-brand-500/30 hover:bg-brand-500/30 transition-colors">
+            <button type="button" onClick={() => setShowOtForm(true)} className="flex items-center gap-1 px-3 py-1.5 text-xs bg-brand-500/20 text-brand-300 border border-brand-500/30 hover:bg-brand-500/30 transition-colors">
               <Plus size={13} /> Request OT
             </button>
           </div>
@@ -855,10 +855,10 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 </div>
               </div>
               <div className="flex gap-2 pt-1">
-                <button onClick={handleRequestOt} className="flex items-center gap-1 px-3 py-1 text-xs bg-brand-500/20 text-brand-300 border border-brand-500/30 hover:bg-brand-500/30">
+                <button type="button" onClick={handleRequestOt} className="flex items-center gap-1 px-3 py-1 text-xs bg-brand-500/20 text-brand-300 border border-brand-500/30 hover:bg-brand-500/30">
                   <Check size={12} /> Submit Request
                 </button>
-                <button onClick={() => setShowOtForm(false)} className="px-3 py-1 text-xs text-rmpg-400 hover:text-white">Cancel</button>
+                <button type="button" onClick={() => setShowOtForm(false)} className="px-3 py-1 text-xs text-rmpg-400 hover:text-white">Cancel</button>
               </div>
             </div>
           )}
@@ -897,8 +897,8 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                         <td className="px-2 py-1.5">
                           {ot.status === 'requested' && (
                             <div className="flex gap-1">
-                              <button onClick={() => handleOtDecision(ot.id, 'approved')} className="text-green-400 hover:text-green-300 text-[10px] font-bold">Approve</button>
-                              <button onClick={() => handleOtDecision(ot.id, 'denied')} className="text-red-400 hover:text-red-300 text-[10px] font-bold">Deny</button>
+                              <button type="button" onClick={() => handleOtDecision(ot.id, 'approved')} className="text-green-400 hover:text-green-300 text-[10px] font-bold">Approve</button>
+                              <button type="button" onClick={() => handleOtDecision(ot.id, 'denied')} className="text-red-400 hover:text-red-300 text-[10px] font-bold">Deny</button>
                             </div>
                           )}
                           {ot.status !== 'requested' && ot.reviewed_by_name && (
@@ -926,7 +926,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
             </h3>
             <span className="text-[9px] text-rmpg-500">Accrual: {PTO_ACCRUAL_PER_PAY_PERIOD} hrs/pay period ({ANNUAL_PTO_ALLOTMENT} hrs/year)</span>
             <div className="flex-1" />
-            <button onClick={fetchLeaveBalances}
+            <button type="button" onClick={fetchLeaveBalances}
               className="flex items-center gap-1 px-2.5 py-1 text-[11px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/30 rounded-sm transition-colors">
               <RefreshCw size={12} /> Refresh
             </button>

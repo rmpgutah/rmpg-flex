@@ -45,8 +45,8 @@ router.get('/', (req: Request, res: Response) => {
       where += ' AND t.archived_at IS NULL';
     }
 
-    const pageNum = parseInt(page as string, 10);
-    const perPage = parseInt(per_page as string, 10);
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 50));
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare(`SELECT COUNT(*) as total FROM trespass_orders t ${where}`).get(...params) as any;
@@ -68,7 +68,8 @@ router.get('/', (req: Request, res: Response) => {
       pagination: { page: pageNum, per_page: perPage, total: countRow.total, totalPages: Math.ceil(countRow.total / perPage) },
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('[TrespassOrders] Error:', err?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -102,7 +103,8 @@ router.get('/check', (req: Request, res: Response) => {
 
     res.json({ orders: rows, count: rows.length });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('[TrespassOrders] Error:', err?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -110,6 +112,8 @@ router.get('/check', (req: Request, res: Response) => {
 router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid trespass order ID' }); return; }
     const row = db.prepare(`
       SELECT t.*, u.full_name as issued_by_display,
         p.first_name as linked_person_first, p.last_name as linked_person_last,
@@ -121,11 +125,12 @@ router.get('/:id', (req: Request, res: Response) => {
       LEFT JOIN properties prop ON t.property_id = prop.id
       LEFT JOIN users su ON t.served_by = su.id
       WHERE t.id = ?
-    `).get(req.params.id);
+    `).get(id);
     if (!row) return res.status(404).json({ error: 'Trespass order not found' });
     res.json(row);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('[TrespassOrders] Error:', err?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -181,7 +186,8 @@ router.post('/', (req: Request, res: Response) => {
     broadcast('alerts', 'trespass_order_created', created);
     res.status(201).json(created);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('[TrespassOrders] Error:', err?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -217,7 +223,8 @@ router.put('/:id', (req: Request, res: Response) => {
     broadcast('alerts', 'trespass_order_updated', updated);
     res.json(updated);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('[TrespassOrders] Error:', err?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -227,13 +234,18 @@ router.put('/:id/serve', (req: Request, res: Response) => {
     const db = getDb();
     const user = (req as any).user;
     const now = localNow();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID' }); return; }
+    const existing = db.prepare('SELECT id FROM trespass_orders WHERE id = ?').get(id);
+    if (!existing) { res.status(404).json({ error: 'Trespass order not found' }); return; }
     db.prepare(`UPDATE trespass_orders SET status = 'served', served_at = ?, served_by = ?, updated_at = ? WHERE id = ?`)
-      .run(now, user.id, now, req.params.id);
-    const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id);
+      .run(now, user.id, now, id);
+    const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(id);
     broadcast('alerts', 'trespass_order_served', updated);
     res.json(updated);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('[TrespassOrders] Error:', err?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -242,12 +254,17 @@ router.put('/:id/lift', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
-    db.prepare(`UPDATE trespass_orders SET status = 'lifted', updated_at = ? WHERE id = ?`).run(now, req.params.id);
-    const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id);
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID' }); return; }
+    const existing = db.prepare('SELECT id FROM trespass_orders WHERE id = ?').get(id);
+    if (!existing) { res.status(404).json({ error: 'Trespass order not found' }); return; }
+    db.prepare(`UPDATE trespass_orders SET status = 'lifted', updated_at = ? WHERE id = ?`).run(now, id);
+    const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(id);
     broadcast('alerts', 'trespass_order_lifted', updated);
     res.json(updated);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('[TrespassOrders] Error:', err?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -256,12 +273,17 @@ router.put('/:id/violate', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
-    db.prepare(`UPDATE trespass_orders SET status = 'violated', updated_at = ? WHERE id = ?`).run(now, req.params.id);
-    const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id);
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID' }); return; }
+    const existing = db.prepare('SELECT id FROM trespass_orders WHERE id = ?').get(id);
+    if (!existing) { res.status(404).json({ error: 'Trespass order not found' }); return; }
+    db.prepare(`UPDATE trespass_orders SET status = 'violated', updated_at = ? WHERE id = ?`).run(now, id);
+    const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(id);
     broadcast('alerts', 'trespass_order_violated', updated);
     res.json(updated);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('[TrespassOrders] Error:', err?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -313,7 +335,8 @@ router.post('/:id/renew', (req: Request, res: Response) => {
     broadcast('alerts', 'trespass_order_renewed', { old: existing, new: created });
     res.status(201).json(created);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('[TrespassOrders] Error:', err?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -337,7 +360,8 @@ router.put('/:id/photo', (req: Request, res: Response) => {
     const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id);
     res.json(updated);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('[TrespassOrders] Error:', err?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -393,7 +417,8 @@ router.get('/detect-violation', (req: Request, res: Response) => {
         : null,
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('[TrespassOrders] Error:', err?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -429,7 +454,8 @@ router.get('/expiration-calendar', (req: Request, res: Response) => {
 
     res.json({ expiring_orders: expiring, by_month: byMonth, total: expiring.length });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('[TrespassOrders] Error:', err?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -485,7 +511,8 @@ router.post('/bulk', (req: Request, res: Response) => {
     broadcast('alerts', 'trespass_orders_bulk_created', { count: created.length });
     res.status(201).json({ created: created.length, orders: created });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('[TrespassOrders] Error:', err?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -549,7 +576,8 @@ router.get('/:id/pdf-data', (req: Request, res: Response) => {
 
     res.json(pdfData);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('[TrespassOrders] Error:', err?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

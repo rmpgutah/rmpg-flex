@@ -235,7 +235,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
 
   if (!layersPanelOpen) {
     return (
-      <button
+      <button type="button"
         onClick={() => setLayersPanelOpen(true)}
         className="bg-black/30 border border-white/15 backdrop-blur-md p-2 hover:bg-black/50 transition-colors shadow-lg"
         style={{ borderRadius: 2 }}
@@ -252,7 +252,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
         <Layers className="w-3.5 h-3.5 text-brand-400" />
         <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-widest flex-1">Layers</span>
         <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-400 animate-pulse' : 'bg-red-500'}`} />
-        <button
+        <button type="button"
           onClick={() => setLayersPanelOpen(false)}
           className="toolbar-btn"
           style={{ padding: '0 2px' }}
@@ -267,12 +267,12 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
         <div className="flex items-center justify-between mb-0.5 px-1">
           <span className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold">Core</span>
           <div className="flex gap-1">
-            <button
+            <button type="button"
               onClick={() => { (['units', 'incidents', 'properties'] as const).forEach(k => { if (!layers[k]) toggleLayer(k); }); }}
               className="text-[7px] font-bold text-green-400 hover:text-green-300 px-1"
               title="Enable all core layers"
             >ON</button>
-            <button
+            <button type="button"
               onClick={() => { (['units', 'incidents', 'properties'] as const).forEach(k => { if (layers[k]) toggleLayer(k); }); }}
               className="text-[7px] font-bold text-red-400 hover:text-red-300 px-1"
               title="Disable all core layers"
@@ -284,7 +284,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
           { key: 'incidents' as const, icon: <AlertTriangle className="w-3 h-3" />, label: 'Active Calls', count: callsWithCoords.length, color: '#ef4444' },
           { key: 'properties' as const, icon: <Building2 className="w-3 h-3" />, label: 'Properties', count: propertiesWithCoords.length, color: '#3b82f6' },
         ].map(({ key, icon, label, count, color }) => (
-          <button
+          <button type="button"
             key={key}
             onClick={() => toggleLayer(key)}
             className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${
@@ -300,7 +300,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
         ))}
 
         {/* Heat Map */}
-        <button
+        <button type="button"
           onClick={() => setShowHeatmap(!showHeatmap)}
           className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${
             showHeatmap ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70 hover:bg-rmpg-800/50'
@@ -317,7 +317,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
           <div className="px-3 py-1 space-y-1">
             <div className="flex items-center gap-1">
               {[7, 14, 30, 90].map((days) => (
-                <button
+                <button type="button"
                   key={days}
                   onClick={() => setHeatmapDays(days)}
                   className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
@@ -332,7 +332,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
             </div>
             <div className="flex items-center gap-1">
               {([['all', 'All'], ['risk', 'Risk'], ['type', 'Type']] as const).map(([mode, label]) => (
-                <button
+                <button type="button"
                   key={mode}
                   onClick={() => { setHeatmapMode(mode); if (mode !== 'type') setHeatmapTypeFilter(''); }}
                   className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
@@ -365,7 +365,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
             {/* Timelapse controls */}
             {setShowTimelapse && timelapse && (
               <div className="border-t border-rmpg-700/50 pt-1 mt-1">
-                <button
+                <button type="button"
                   onClick={() => setShowTimelapse(!showTimelapse)}
                   className={`flex items-center gap-1.5 w-full text-[9px] font-bold transition-colors ${
                     showTimelapse ? 'text-orange-400' : 'text-rmpg-500 hover:text-rmpg-300'
@@ -378,7 +378,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                 {showTimelapse && (
                   <div className="mt-1 space-y-1">
                     <div className="flex items-center gap-1">
-                      <button
+                      <button type="button"
                         onClick={() => timelapse.setIsPlaying(!timelapse.isPlaying)}
                         className="p-0.5 rounded-sm hover:bg-orange-900/40 transition-colors"
                       >
@@ -397,7 +397,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                       <span className="text-[7px] font-mono text-orange-300">{timelapse.currentLabel}</span>
                       <div className="flex items-center gap-0.5">
                         {([1, 2, 4] as const).map((s) => (
-                          <button
+                          <button type="button"
                             key={s}
                             onClick={() => timelapse.setSpeed(s)}
                             className={`px-1 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
@@ -417,7 +417,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
         )}
 
         {/* Traffic Layer */}
-        <button
+        <button type="button"
           onClick={() => onToggleTraffic?.()}
           className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${
             showTraffic ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70 hover:bg-rmpg-800/50'
@@ -429,7 +429,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
         </button>
 
         {/* Tracking Lines */}
-        <button
+        <button type="button"
           onClick={() => setShowTrackingLines(!showTrackingLines)}
           className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${
             showTrackingLines ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70 hover:bg-rmpg-800/50'
@@ -441,7 +441,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
         </button>
 
         {/* Breadcrumbs */}
-        <button
+        <button type="button"
           onClick={() => setShowBreadcrumbs(!showBreadcrumbs)}
           className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${
             showBreadcrumbs ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70 hover:bg-rmpg-800/50'
@@ -455,7 +455,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
           <div className="px-3 py-1 space-y-1">
             <div className="flex items-center gap-1">
               {[2, 4, 8, 12, 24].map((h) => (
-                <button
+                <button type="button"
                   key={h}
                   onClick={() => setBreadcrumbHours(h)}
                   className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
@@ -467,7 +467,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                   {h}h
                 </button>
               ))}
-              <button
+              <button type="button"
                 onClick={async () => {
                   setExportingPdf(true);
                   try {
@@ -489,7 +489,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
             <div className="flex items-center gap-1">
               <Palette className="w-2.5 h-2.5 text-rmpg-400" />
               {([['unit', 'Unit'], ['speed', 'Speed'], ['status', 'Status']] as const).map(([mode, label]) => (
-                <button
+                <button type="button"
                   key={mode}
                   onClick={() => setBreadcrumbColorMode(mode)}
                   className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
@@ -543,7 +543,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                   return (
                     <div className="space-y-1">
                       <div className="flex items-center gap-1">
-                        <button
+                        <button type="button"
                           onClick={() => {
                             if (isPlaying) {
                               setIsPlaying(false);
@@ -582,7 +582,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                       <div className="flex items-center gap-1">
                         <Gauge className="w-2.5 h-2.5 text-rmpg-400" />
                         {[1, 2, 5, 10].map((spd) => (
-                          <button
+                          <button type="button"
                             key={spd}
                             onClick={() => setPlaybackSpeed(spd)}
                             className={`px-1 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
@@ -616,7 +616,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
           <span className="text-[10px] text-rmpg-300 flex-1">Measure</span>
         </div>
         <div className="flex items-center gap-1 px-2">
-          <button
+          <button type="button"
             onClick={() => onStartMeasure?.('distance')}
             className={`flex items-center gap-1 px-2 py-1 text-[9px] font-mono font-bold transition-colors ${
               measuring && measureMode === 'distance'
@@ -629,7 +629,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
             <Ruler className="w-2.5 h-2.5" />
             Dist
           </button>
-          <button
+          <button type="button"
             onClick={() => onStartMeasure?.('area')}
             className={`flex items-center gap-1 px-2 py-1 text-[9px] font-mono font-bold transition-colors ${
               measuring && measureMode === 'area'
@@ -643,12 +643,12 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
             Area
           </button>
           {measureMode && (
-            <button
+            <button type="button"
               onClick={onClearMeasurement}
               className="px-1.5 py-1 text-[9px] font-mono font-bold text-red-400 hover:bg-red-900/30 transition-colors ml-auto"
               style={{ borderRadius: 2 }}
               title="Clear measurement"
-            >
+             aria-label="Close" title="Close">
               <X className="w-2.5 h-2.5" />
             </button>
           )}
@@ -656,7 +656,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
       </div>
 
       <div className="border-t border-rmpg-700 p-1.5">
-        <button
+        <button type="button"
           onClick={() => setShowMapStyles(!showMapStyles)}
           className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors hover:bg-rmpg-800/50"
         >
@@ -671,7 +671,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
               const isActive = mapStyle === key;
               const desc = MAP_STYLE_DESCRIPTIONS[key];
               return (
-                <button
+                <button type="button"
                   key={key}
                   onClick={() => { setMapStyle(key); setShowMapStyles(false); }}
                   className={`text-left px-2 py-1.5 rounded-sm transition-all ${
@@ -693,7 +693,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
 
       {/* GeoJSON Spatial Layers Section */}
       <div className="border-t border-rmpg-700 p-1.5">
-        <button
+        <button type="button"
           onClick={() => setShowGeoPanel(!showGeoPanel)}
           className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors hover:bg-rmpg-800/50"
         >
@@ -709,7 +709,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
             {geoConfigs.map((cfg: any) => {
               const state = geoLayerStates[cfg.id];
               return (
-                <button
+                <button type="button"
                   key={cfg.id}
                   onClick={() => toggleGeoLayer(cfg.id)}
                   className={`flex items-center gap-2 w-full px-2 py-1 text-left transition-colors ${
@@ -734,7 +734,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
       {/* District Legend Section */}
       {geoLayerStates.beat?.visible && districtSections.length > 0 && (
         <div className="border-t border-rmpg-700 p-1.5">
-          <button
+          <button type="button"
             onClick={() => setShowDistrictLegend(!showDistrictLegend)}
             className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors rounded-sm hover:bg-rmpg-700/30"
           >
@@ -763,7 +763,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
 
       {/* Shift Planning Section */}
       <div className="border-t border-rmpg-700 p-1.5">
-        <button
+        <button type="button"
           onClick={() => setShowShiftPanel(!showShiftPanel)}
           className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors hover:bg-rmpg-800/50"
         >
@@ -810,7 +810,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                         {plan.status.toUpperCase()}
                       </span>
                       <span className="text-[8px] text-rmpg-500 font-mono">{plan.assignments.length}</span>
-                      <button
+                      <button type="button"
                         onClick={(e) => { e.stopPropagation(); shiftPlanning.deletePlan(plan.id); }}
                         className="p-0.5 hover:text-red-400 text-rmpg-600 transition-colors"
                       >
@@ -841,7 +841,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
               </div>
               <div className="flex items-center gap-1">
                 {(Object.entries(SHIFT_TYPES) as [ShiftType, typeof SHIFT_TYPES.day][]).map(([key, info]) => (
-                  <button
+                  <button type="button"
                     key={key}
                     onClick={() => setNewShiftPlanType(key)}
                     className={`flex-1 text-[8px] py-0.5 font-bold transition-colors ${
@@ -854,7 +854,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                     {info.label.split(' ')[0]}
                   </button>
                 ))}
-                <button
+                <button type="button"
                   onClick={() => {
                     if (newShiftPlanName.trim()) {
                       shiftPlanning.createPlan(newShiftPlanName.trim(), newShiftPlanDate, newShiftPlanType);
@@ -873,7 +873,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
             {shiftPlanning.activePlan && (
               <>
                 <div className="border-t border-rmpg-700 pt-1 mt-1 px-1">
-                  <button
+                  <button type="button"
                     onClick={() => {
                       shiftPlanning.toggleSelectionMode();
                       if (!shiftPlanning.selectionMode) {
@@ -917,7 +917,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                               <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
                               <span className="text-[8px] text-amber-300 flex-1 truncate">{feat.label}</span>
                               <span className="text-[7px] text-rmpg-500 uppercase">{feat.layerId}</span>
-                              <button
+                              <button type="button"
                                 onClick={() => shiftPlanning.handleFeatureClick(feat)}
                                 className="text-rmpg-600 hover:text-red-400"
                               >
@@ -1011,7 +1011,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                           </div>
 
                           <div className="flex items-center gap-1 px-1">
-                            <button
+                            <button type="button"
                               onClick={() => {
                                 const shiftInfo = SHIFT_TYPES[shiftPlanning.activePlan?.shiftType as ShiftType] || SHIFT_TYPES.custom;
                                 shiftPlanning.assignAreasToOfficers(
@@ -1031,7 +1031,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                               <UserCheck className="w-2.5 h-2.5" />
                               Assign
                             </button>
-                            <button
+                            <button type="button"
                               onClick={() => shiftPlanning.clearSelection()}
                               className="toolbar-btn px-2 py-1 text-[8px] font-bold transition-colors"
                             >
@@ -1051,7 +1051,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                         Assignments ({shiftPlanning.activePlan?.assignments.length})
                       </span>
                       <div className="flex items-center gap-1">
-                        <button
+                        <button type="button"
                           onClick={() => {
                             try { shiftPlanning.savePlanToServer(shiftPlanning.activePlanId!); } catch { addToast('Failed to save shift plan', 'error'); }
                           }}
@@ -1059,7 +1059,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                         >
                           <Save className="w-2.5 h-2.5" />
                         </button>
-                        <button
+                        <button type="button"
                           onClick={() => shiftPlanning.updatePlanStatus(shiftPlanning.activePlanId!, 'active')}
                           className="text-rmpg-500 hover:text-green-400 transition-colors" title="Activate plan"
                         >
@@ -1082,7 +1082,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                             </div>
                           </div>
                           <span className="text-[7px] text-rmpg-600 uppercase">{assignment.layerId}</span>
-                          <button
+                          <button type="button"
                             onClick={() => shiftPlanning.removeAssignment(assignment.id)}
                             className="p-0.5 text-rmpg-600 hover:text-red-400"
                           >
@@ -1112,7 +1112,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                 )}
 
                 <div className="flex items-center gap-1 px-1 pt-1">
-                  <button
+                  <button type="button"
                     onClick={() => {
                       const tomorrow = new Date();
                       tomorrow.setDate(tomorrow.getDate() + 1);
@@ -1124,7 +1124,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                     <Copy className="w-2 h-2" /> Duplicate
                   </button>
                   {shiftPlanning.activePlan?.assignments.length > 0 && (
-                    <button
+                    <button type="button"
                       onClick={() => shiftPlanning.removeAllAssignments()}
                       className="toolbar-btn-danger flex items-center gap-1 px-1.5 py-0.5 text-[8px] transition-colors"
                     >
@@ -1140,7 +1140,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
 
       {/* Event Planning Section */}
       <div className="border-t border-rmpg-700 p-1.5">
-        <button
+        <button type="button"
           onClick={() => setShowEventPanel(!showEventPanel)}
           className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors hover:bg-rmpg-800/50"
         >
@@ -1172,7 +1172,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                     <FileText className="w-2.5 h-2.5 text-amber-400" />
                     <span className="text-[9px] text-rmpg-200 flex-1 truncate">{plan.name}</span>
                     <span className="text-[8px] text-rmpg-500 font-mono">{plan.items.length}</span>
-                    <button
+                    <button type="button"
                       onClick={(e) => { e.stopPropagation(); eventPlanning.deletePlan(plan.id); }}
                       className="p-0.5 hover:text-red-400 text-rmpg-600 transition-colors"
                     >
@@ -1197,7 +1197,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                 placeholder="New plan name..."
                 className="input-dark flex-1 px-1.5 py-0.5 text-[9px]"
               />
-              <button
+              <button type="button"
                 onClick={() => {
                   if (newPlanName.trim()) {
                     eventPlanning.createPlan(newPlanName.trim());
@@ -1221,7 +1221,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                       { type: 'staging' as PlanItemType, icon: <MapPin className="w-2.5 h-2.5" />, label: 'Staging' },
                       { type: 'annotation' as PlanItemType, icon: <Type className="w-2.5 h-2.5" />, label: 'Note' },
                     ]).map(({ type, icon, label }) => (
-                      <button
+                      <button type="button"
                         key={type}
                         onClick={() => {
                           if (eventPlanning.drawMode === type) {
@@ -1256,14 +1256,14 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                     </div>
                     <div className="flex items-center gap-1 mt-1">
                       {(eventPlanning.drawMode === 'perimeter' || eventPlanning.drawMode === 'route') && (
-                        <button
+                        <button type="button"
                           onClick={() => eventPlanning.finishDrawing()}
                           className="toolbar-btn-success text-[8px] px-1.5 py-0.5"
                         >
                           <Check className="w-2.5 h-2.5 inline mr-0.5" />Finish
                         </button>
                       )}
-                      <button
+                      <button type="button"
                         onClick={() => eventPlanning.cancelDrawing()}
                         className="toolbar-btn-danger text-[8px] px-1.5 py-0.5"
                       >
@@ -1277,7 +1277,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                   <div className="border-t border-rmpg-700 pt-1 mt-1">
                     <div className="flex items-center justify-between px-2 mb-1">
                       <span className="text-[8px] text-rmpg-500 uppercase tracking-wider font-bold">Plan Items</span>
-                      <button
+                      <button type="button"
                         onClick={() => eventPlanning.setPlanVisible(!eventPlanning.planVisible)}
                         className="text-rmpg-500 hover:text-rmpg-300"
                       >
@@ -1295,7 +1295,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                           <div className="w-1.5 h-1.5" style={{ backgroundColor: item.color }} />
                           <span className="text-[9px] text-rmpg-300 flex-1 truncate">{item.label}</span>
                           <span className="text-[7px] text-rmpg-600 uppercase">{item.type}</span>
-                          <button
+                          <button type="button"
                             onClick={() => eventPlanning.removeItemFromPlan(item.id)}
                             className="p-0.5 text-rmpg-600 hover:text-red-400"
                           >
@@ -1319,12 +1319,12 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
             <span className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold">Intelligence</span>
             {/* Fix 94: "All On" / "All Off" buttons per group */}
             <div className="flex gap-1">
-              <button
+              <button type="button"
                 onClick={() => { (['warrants', 'trespass', 'offenders', 'bolos'] as const).forEach(k => { if (!intelLayers[k]) toggleIntelLayer(k); }); }}
                 className="text-[7px] font-bold text-green-400 hover:text-green-300 px-1"
                 title="Enable all intelligence layers"
               >ON</button>
-              <button
+              <button type="button"
                 onClick={() => { (['warrants', 'trespass', 'offenders', 'bolos'] as const).forEach(k => { if (intelLayers[k]) toggleIntelLayer(k); }); }}
                 className="text-[7px] font-bold text-red-400 hover:text-red-300 px-1"
                 title="Disable all intelligence layers"
@@ -1337,7 +1337,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
             { key: 'offenders' as const, label: 'Sex Offenders', color: 'purple' },
             { key: 'bolos' as const, label: 'BOLOs', color: 'amber' },
           ] as const).map(({ key, label }) => (
-            <button
+            <button type="button"
               key={key}
               onClick={() => toggleIntelLayer(key)}
               className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
@@ -1367,7 +1367,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
           <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Analysis</div>
 
           {setShowPredictions && (
-            <button
+            <button type="button"
               onClick={() => setShowPredictions(!showPredictions)}
               className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
                 showPredictions ? 'panel-inset bg-purple-900/20 text-purple-400' : 'text-rmpg-400 hover:bg-surface-raised'
@@ -1382,7 +1382,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
           )}
 
           {setShowSafetyZones && (
-            <button
+            <button type="button"
               onClick={() => setShowSafetyZones(!showSafetyZones)}
               className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
                 showSafetyZones ? 'panel-inset bg-red-900/20 text-red-400' : 'text-rmpg-400 hover:bg-surface-raised'
@@ -1398,7 +1398,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
 
           {setShowGeofences && (
             <div className="flex items-center gap-0.5">
-              <button
+              <button type="button"
                 onClick={() => setShowGeofences(!showGeofences)}
                 className={`flex-1 flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
                   showGeofences ? 'panel-inset bg-cyan-900/20 text-cyan-400' : 'text-rmpg-400 hover:bg-surface-raised'
@@ -1411,7 +1411,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                 )}
               </button>
               {showGeofences && onToggleGeofenceDraw && (
-                <button
+                <button type="button"
                   onClick={onToggleGeofenceDraw}
                   className={`px-1.5 py-1 text-[8px] font-bold rounded-sm transition-colors ${
                     geofenceDrawingMode ? 'bg-cyan-900/50 text-cyan-300 border border-cyan-700/50' : 'text-rmpg-500 hover:text-rmpg-300'
@@ -1432,7 +1432,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
 
           {/* Patrol Checkpoints */}
           {setShowPatrolCheckpoints && (
-            <button
+            <button type="button"
               onClick={() => setShowPatrolCheckpoints(!showPatrolCheckpoints)}
               className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
                 showPatrolCheckpoints ? 'panel-inset bg-green-900/20 text-green-400' : 'text-rmpg-400 hover:bg-surface-raised'
@@ -1452,7 +1452,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
           {/* Field Interviews */}
           {setShowFieldInterviews && (
             <>
-              <button
+              <button type="button"
                 onClick={() => setShowFieldInterviews(!showFieldInterviews)}
                 className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
                   showFieldInterviews ? 'panel-inset bg-blue-900/20 text-blue-400' : 'text-rmpg-400 hover:bg-surface-raised'
@@ -1467,7 +1467,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
               {showFieldInterviews && setFiDays && (
                 <div className="px-3 py-1 flex items-center gap-1">
                   {[7, 14, 30, 90].map((d) => (
-                    <button
+                    <button type="button"
                       key={d}
                       onClick={() => setFiDays(d)}
                       className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
@@ -1486,7 +1486,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
 
           {/* Dwell Time */}
           {setShowDwellTime && (
-            <button
+            <button type="button"
               onClick={() => setShowDwellTime(!showDwellTime)}
               className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
                 showDwellTime ? 'panel-inset bg-amber-900/20 text-amber-400' : 'text-rmpg-400 hover:bg-surface-raised'
@@ -1502,7 +1502,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
 
           {/* Response Radius */}
           {setShowResponseRadius && (
-            <button
+            <button type="button"
               onClick={() => setShowResponseRadius(!showResponseRadius)}
               className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
                 showResponseRadius ? 'panel-inset bg-indigo-900/20 text-indigo-400' : 'text-rmpg-400 hover:bg-surface-raised'
@@ -1519,7 +1519,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
           {/* Enforcement Clusters */}
           {setShowEnforcementClusters && (
             <>
-              <button
+              <button type="button"
                 onClick={() => setShowEnforcementClusters(!showEnforcementClusters)}
                 className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
                   showEnforcementClusters ? 'panel-inset bg-rose-900/20 text-rose-400' : 'text-rmpg-400 hover:bg-surface-raised'
@@ -1535,7 +1535,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                 <div className="px-3 py-1 space-y-1">
                   <div className="flex items-center gap-1">
                     {(['citations', 'arrests'] as const).map((t) => (
-                      <button
+                      <button type="button"
                         key={t}
                         onClick={() => setEnforcementType(t)}
                         className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
@@ -1550,7 +1550,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                   </div>
                   <div className="flex items-center gap-1">
                     {[30, 60, 90, 180].map((d) => (
-                      <button
+                      <button type="button"
                         key={d}
                         onClick={() => setEnforcementDays(d)}
                         className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
@@ -1571,7 +1571,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
           {/* Coverage Map */}
           {setShowCoverage && (
             <>
-              <button
+              <button type="button"
                 onClick={() => setShowCoverage(!showCoverage)}
                 className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
                   showCoverage ? 'panel-inset bg-teal-900/20 text-teal-400' : 'text-rmpg-400 hover:bg-surface-raised'
@@ -1586,7 +1586,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
               {showCoverage && setCoverageRadius && (
                 <div className="px-3 py-1 flex items-center gap-1">
                   {[1, 2, 3, 5].map((r) => (
-                    <button
+                    <button type="button"
                       key={r}
                       onClick={() => setCoverageRadius(r)}
                       className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
@@ -1605,7 +1605,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
 
           {/* Fleet Vehicles */}
           {setShowFleetVehicles && (
-            <button
+            <button type="button"
               onClick={() => setShowFleetVehicles(!showFleetVehicles)}
               className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
                 showFleetVehicles ? 'panel-inset bg-sky-900/20 text-sky-400' : 'text-rmpg-400 hover:bg-surface-raised'
@@ -1622,7 +1622,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
           {/* Repeat Addresses */}
           {setShowRepeatAddresses && (
             <>
-              <button
+              <button type="button"
                 onClick={() => setShowRepeatAddresses(!showRepeatAddresses)}
                 className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
                   showRepeatAddresses ? 'panel-inset bg-orange-900/20 text-orange-400' : 'text-rmpg-400 hover:bg-surface-raised'
@@ -1638,7 +1638,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                 <div className="px-3 py-1 space-y-1">
                   <div className="flex items-center gap-1">
                     {[7, 14, 30, 90].map((d) => (
-                      <button
+                      <button type="button"
                         key={d}
                         onClick={() => setRepeatDays(d)}
                         className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
@@ -1654,7 +1654,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                   <div className="flex items-center gap-1">
                     <span className="text-[7px] text-rmpg-500">Min:</span>
                     {[2, 3, 5, 10].map((c) => (
-                      <button
+                      <button type="button"
                         key={c}
                         onClick={() => setRepeatMinCount(c)}
                         className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
@@ -1674,7 +1674,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
 
           {/* Panic Zone */}
           {setShowPanicZone && (
-            <button
+            <button type="button"
               onClick={() => setShowPanicZone(!showPanicZone)}
               className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
                 showPanicZone ? 'panel-inset bg-red-900/20 text-red-400' : 'text-rmpg-400 hover:bg-surface-raised'
@@ -1690,7 +1690,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
 
           {/* Daylight Overlay */}
           {setShowDaylight && (
-            <button
+            <button type="button"
               onClick={() => setShowDaylight(!showDaylight)}
               className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
                 showDaylight ? 'panel-inset bg-yellow-900/20 text-yellow-400' : 'text-rmpg-400 hover:bg-surface-raised'
@@ -1709,7 +1709,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
       {/* ── Dispatch Mode ── */}
       {setDragDispatchMode && (
         <div className="border-t border-rmpg-700 p-1.5">
-          <button
+          <button type="button"
             onClick={() => setDragDispatchMode(!dragDispatchMode)}
             className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
               dragDispatchMode ? 'panel-inset bg-amber-900/20 text-amber-400' : 'text-rmpg-400 hover:bg-surface-raised'

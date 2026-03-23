@@ -150,14 +150,14 @@ export default function TrainingDocsPage() {
               className="input-dark text-[11px] pl-6 pr-2 py-1 w-48"
             />
             {search && (
-              <button onClick={() => setSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2">
+              <button type="button" onClick={() => setSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2">
                 <X className="w-3 h-3 text-rmpg-500 hover:text-rmpg-300" />
               </button>
             )}
           </div>
           <ExportButton exportUrl="/api/company-documents/export/csv" exportFilename="training-docs.csv" />
           {isAdmin && (
-            <button
+            <button type="button"
               onClick={() => { setEditDoc(null); setShowModal(true); }}
               className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1"
             >
@@ -171,7 +171,7 @@ export default function TrainingDocsPage() {
       {/* Category Tabs */}
       <div className="panel-inset mx-3 mt-3 p-1.5 flex items-center gap-1 flex-wrap flex-shrink-0">
         {CATEGORIES.map((cat) => (
-          <button
+          <button type="button"
             key={cat.key}
             onClick={() => setCategory(cat.key)}
             className={`text-[10px] px-2.5 py-1 ${
@@ -254,7 +254,7 @@ export default function TrainingDocsPage() {
 
                 {/* Actions */}
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  <button
+                  <button type="button"
                     onClick={() => handleDownload(doc)}
                     className="toolbar-btn p-1.5"
                     title={doc.content_type === 'link' ? 'Open Link' : 'Download'}
@@ -267,14 +267,14 @@ export default function TrainingDocsPage() {
                   </button>
                   {isAdmin && (
                     <>
-                      <button
+                      <button type="button"
                         onClick={() => { setEditDoc(doc); setShowModal(true); }}
                         className="toolbar-btn p-1.5"
                         title="Edit"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
-                      <button
+                      <button type="button"
                         onClick={() => handleDelete(doc)}
                         className="toolbar-btn p-1.5 text-red-400 hover:text-red-300"
                         title="Delete"
@@ -369,14 +369,14 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
       <div className="panel-beveled bg-surface-base w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-3 border-b border-rmpg-700">
           <h2 className="text-sm font-bold text-rmpg-100">
             {isEdit ? 'Edit Document' : 'Add Document'}
           </h2>
-          <button onClick={onClose} className="toolbar-btn p-1">
+          <button type="button" onClick={onClose} className="toolbar-btn p-1" aria-label="Close" title="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -434,7 +434,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
           <div>
             <label className="field-label mb-1 block">Document Type</label>
             <div className="flex gap-2">
-              <button
+              <button type="button"
                 onClick={() => setContentType('file')}
                 className={`flex-1 text-[10px] px-3 py-1.5 flex items-center justify-center gap-1.5 ${
                   contentType === 'file' ? 'toolbar-btn-primary' : 'toolbar-btn'
@@ -443,7 +443,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
                 <Upload className="w-3 h-3" />
                 File Upload
               </button>
-              <button
+              <button type="button"
                 onClick={() => setContentType('link')}
                 className={`flex-1 text-[10px] px-3 py-1.5 flex items-center justify-center gap-1.5 ${
                   contentType === 'link' ? 'toolbar-btn-primary' : 'toolbar-btn'
@@ -514,10 +514,10 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
 
         {/* Footer */}
         <div className="flex items-center justify-end gap-2 p-3 border-t border-rmpg-700">
-          <button onClick={onClose} className="toolbar-btn text-[10px] px-4 py-1.5">
+          <button type="button" onClick={onClose} className="toolbar-btn text-[10px] px-4 py-1.5">
             Cancel
           </button>
-          <button
+          <button type="button"
             onClick={handleSave}
             disabled={saving}
             className="toolbar-btn-primary text-[10px] px-4 py-1.5 flex items-center gap-1"

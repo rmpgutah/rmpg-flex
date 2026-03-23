@@ -138,7 +138,7 @@ export default function AdminRetentionTab({ LoadingSpinner, error, setError }: P
           <h2 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">Data Retention Policies</h2>
         </div>
         <div className="flex items-center gap-2">
-          <button
+          <button type="button"
             onClick={fetchPreview}
             disabled={previewLoading}
             className="toolbar-btn text-[10px] flex items-center gap-1"
@@ -146,7 +146,7 @@ export default function AdminRetentionTab({ LoadingSpinner, error, setError }: P
             <Eye className={`w-3 h-3 ${previewLoading ? 'animate-pulse' : ''}`} />
             Preview Impact
           </button>
-          <button
+          <button type="button"
             onClick={() => setRunConfirm(true)}
             disabled={running}
             className="toolbar-btn-primary text-[10px] flex items-center gap-1"
@@ -168,7 +168,7 @@ export default function AdminRetentionTab({ LoadingSpinner, error, setError }: P
                 ? `${pluralize(runResult.total_affected, 'record')} processed across ${runResult.results.length} ${runResult.results.length === 1 ? 'policy' : 'policies'}.`
                 : 'No records needed processing.'}
             </div>
-            <button onClick={() => setRunResult(null)} className="text-[10px] text-green-500 hover:text-green-300 mt-1">Dismiss</button>
+            <button type="button" onClick={() => setRunResult(null)} className="text-[10px] text-green-500 hover:text-green-300 mt-1">Dismiss</button>
           </div>
         </div>
       )}
@@ -212,7 +212,7 @@ export default function AdminRetentionTab({ LoadingSpinner, error, setError }: P
                     />
                   </td>
                   <td className="px-3 py-2 text-center">
-                    <button
+                    <button type="button"
                       onClick={() => updatePolicy(p.id, { auto_archive: p.auto_archive ? 0 : 1 })}
                       className={`w-6 h-6 rounded-sm flex items-center justify-center transition-colors ${
                         p.auto_archive ? 'bg-amber-600/30 border border-amber-600 text-amber-400' : 'bg-surface-sunken border border-rmpg-700 text-rmpg-600'
@@ -222,7 +222,7 @@ export default function AdminRetentionTab({ LoadingSpinner, error, setError }: P
                     </button>
                   </td>
                   <td className="px-3 py-2 text-center">
-                    <button
+                    <button type="button"
                       onClick={() => updatePolicy(p.id, { auto_delete: p.auto_delete ? 0 : 1 })}
                       className={`w-6 h-6 rounded-sm flex items-center justify-center transition-colors ${
                         p.auto_delete ? 'bg-red-600/30 border border-red-600 text-red-400' : 'bg-surface-sunken border border-rmpg-700 text-rmpg-600'
@@ -248,7 +248,7 @@ export default function AdminRetentionTab({ LoadingSpinner, error, setError }: P
                     </span>
                   </td>
                   <td className="px-3 py-2 text-center">
-                    <button
+                    <button type="button"
                       onClick={() => updatePolicy(p.id, { is_active: p.is_active ? 0 : 1 })}
                       className={`text-[10px] px-2 py-0.5 rounded-sm font-bold ${
                         p.is_active ? 'bg-green-900/40 text-green-400' : 'bg-rmpg-700 text-rmpg-500'

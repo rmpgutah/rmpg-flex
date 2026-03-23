@@ -94,7 +94,7 @@ export default function ForgotPasswordPage() {
                     </div>
                   </div>
 
-                  <button
+                  <button type="button"
                     type="submit"
                     disabled={loading || !email.trim()}
                     className="w-full h-10 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"

@@ -1150,15 +1150,15 @@ export default function AdminSystemTab({
     if (!deletingUnitId) return null;
     const unitName = adminUnits.find((u) => u.id === deletingUnitId)?.call_sign || '';
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
         <div className="bg-rmpg-800 border border-rmpg-600 p-6 max-w-md w-full mx-4">
           <h3 className="text-sm font-bold text-white mb-2">Delete Dispatch Unit</h3>
           <p className="text-xs text-rmpg-300 mb-4">
             Are you sure you want to permanently delete unit "{unitName}"? This action cannot be undone.
           </p>
           <div className="flex justify-end gap-2">
-            <button onClick={() => setDeletingUnitId(null)} className="toolbar-btn">Cancel</button>
-            <button
+            <button type="button" onClick={() => setDeletingUnitId(null)} className="toolbar-btn">Cancel</button>
+            <button type="button"
               onClick={handleDeleteUnit}
               disabled={unitDeleteLoading}
               className="toolbar-btn bg-red-900/50 text-red-400 hover:bg-red-900/70 border-red-700/50"
@@ -1194,7 +1194,7 @@ export default function AdminSystemTab({
             const isActive = activeSection === sec.id;
             const badge = sectionBadges[sec.id];
             return (
-              <button
+              <button type="button"
                 key={sec.id}
                 onClick={() => setActiveSection(sec.id)}
                 className={`flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-medium transition-all ${
@@ -1264,7 +1264,7 @@ export default function AdminSystemTab({
                               <span className="text-rmpg-300">-</span>
                               {t.label}
                               {cfgItem && (
-                                <button
+                                <button type="button"
                                   onClick={() => removeConfigItem(cfgItem.id)}
                                   className="text-rmpg-500 hover:text-red-400 transition-colors ml-1"
                                   title="Remove"
@@ -1278,7 +1278,7 @@ export default function AdminSystemTab({
                         {inactiveInCategory.map((t) => {
                           const code = INCIDENT_TYPE_CODES[t.value] || '---';
                           return (
-                            <button
+                            <button type="button"
                               key={t.value}
                               onClick={async () => {
                                 try {
@@ -1315,7 +1315,7 @@ export default function AdminSystemTab({
                     onChange={(e) => setNewIncidentType(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && addIncidentType()}
                   />
-                  <button className="toolbar-btn toolbar-btn-primary" onClick={addIncidentType}>
+                  <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={addIncidentType}>
                     <Plus className="w-3 h-3" /> Add Custom
                   </button>
                 </div>
@@ -1373,23 +1373,23 @@ export default function AdminSystemTab({
                             <div className="flex items-center gap-1">
                               {isEditing ? (
                                 <>
-                                  <button onClick={() => updateDispositionCode(item.id)} className="p-1 hover:bg-rmpg-700 text-green-400 hover:text-green-300" title="Save">
+                                  <button type="button" onClick={() => updateDispositionCode(item.id)} className="p-1 hover:bg-rmpg-700 text-green-400 hover:text-green-300" title="Save">
                                     <Save className="w-3 h-3" />
                                   </button>
-                                  <button onClick={() => setEditingDispId(null)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-rmpg-200" title="Cancel">
+                                  <button type="button" onClick={() => setEditingDispId(null)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-rmpg-200" title="Cancel">
                                     <XCircle className="w-3 h-3" />
                                   </button>
                                 </>
                               ) : (
                                 <>
-                                  <button
+                                  <button type="button"
                                     onClick={() => { setEditingDispId(item.id); setEditDispDesc(parsed.description); setEditDispColor(parsed.color || '#3b82f6'); }}
                                     className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-brand-400"
                                     title="Edit"
                                   >
                                     <Edit className="w-3 h-3" />
                                   </button>
-                                  <button onClick={() => removeConfigItem(item.id)} className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-red-400" title="Remove">
+                                  <button type="button" onClick={() => removeConfigItem(item.id)} className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-red-400" title="Remove">
                                     <Trash2 className="w-3 h-3" />
                                   </button>
                                 </>
@@ -1417,7 +1417,7 @@ export default function AdminSystemTab({
                         />
                       </td>
                       <td>
-                        <button className="toolbar-btn toolbar-btn-primary" onClick={addDispositionCode}>
+                        <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={addDispositionCode}>
                           <Plus className="w-3 h-3" /> Add
                         </button>
                       </td>
@@ -1472,7 +1472,7 @@ export default function AdminSystemTab({
                 </div>
                 {prioritiesDirty && (
                   <div className="mt-3 flex justify-end">
-                    <button className="toolbar-btn toolbar-btn-primary" onClick={savePriorities}>
+                    <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={savePriorities}>
                       <Save className="w-3 h-3" /> Save Priority Config
                     </button>
                   </div>
@@ -1504,10 +1504,10 @@ export default function AdminSystemTab({
                             onKeyDown={(e) => { if (e.key === 'Enter') saveEditCallSource(); if (e.key === 'Escape') cancelEditCallSource(); }}
                             autoFocus
                           />
-                          <button onClick={saveEditCallSource} className="p-0.5 text-green-400 hover:text-green-300" title="Save">
+                          <button type="button" onClick={saveEditCallSource} className="p-0.5 text-green-400 hover:text-green-300" title="Save">
                             <CheckCircle className="w-3.5 h-3.5" />
                           </button>
-                          <button onClick={cancelEditCallSource} className="p-0.5 text-rmpg-400 hover:text-rmpg-200" title="Cancel">
+                          <button type="button" onClick={cancelEditCallSource} className="p-0.5 text-rmpg-400 hover:text-rmpg-200" title="Cancel">
                             <XCircle className="w-3.5 h-3.5" />
                           </button>
                         </>
@@ -1518,10 +1518,10 @@ export default function AdminSystemTab({
                           </span>
                           <span className="text-[10px] text-rmpg-500 font-mono">{src}</span>
                           <div className="flex items-center gap-0.5">
-                            <button onClick={() => startEditCallSource(i)} className="p-0.5 text-rmpg-400 hover:text-brand-400" title="Edit">
+                            <button type="button" onClick={() => startEditCallSource(i)} className="p-0.5 text-rmpg-400 hover:text-brand-400" title="Edit">
                               <Edit className="w-3 h-3" />
                             </button>
-                            <button
+                            <button type="button"
                               onClick={() => moveCallSource(i, 'up')}
                               disabled={i === 0}
                               className="p-0.5 text-rmpg-400 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed"
@@ -1529,7 +1529,7 @@ export default function AdminSystemTab({
                             >
                               <ChevronDown className="w-3 h-3 rotate-180" />
                             </button>
-                            <button
+                            <button type="button"
                               onClick={() => moveCallSource(i, 'down')}
                               disabled={i === callSources.length - 1}
                               className="p-0.5 text-rmpg-400 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed"
@@ -1537,7 +1537,7 @@ export default function AdminSystemTab({
                             >
                               <ChevronDown className="w-3 h-3" />
                             </button>
-                            <button onClick={() => removeCallSource(src)} className="p-0.5 text-rmpg-400 hover:text-red-400" title="Remove">
+                            <button type="button" onClick={() => removeCallSource(src)} className="p-0.5 text-rmpg-400 hover:text-red-400" title="Remove">
                               <XCircle className="w-3 h-3" />
                             </button>
                           </div>
@@ -1555,11 +1555,11 @@ export default function AdminSystemTab({
                     onChange={(e) => setNewCallSource(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && addCallSource()}
                   />
-                  <button className="toolbar-btn toolbar-btn-primary" onClick={addCallSource}>
+                  <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={addCallSource}>
                     <Plus className="w-3 h-3" /> Add Source
                   </button>
                   {callSourcesDirty && (
-                    <button className="toolbar-btn toolbar-btn-primary ml-auto" onClick={saveCallSources}>
+                    <button type="button" className="toolbar-btn toolbar-btn-primary ml-auto" onClick={saveCallSources}>
                       <Save className="w-3 h-3" /> Save Sources
                     </button>
                   )}
@@ -1595,10 +1595,10 @@ export default function AdminSystemTab({
                             <div className="text-[10px] text-rmpg-500 font-mono mt-0.5">{ut.type}</div>
                           </div>
                           <div className="flex flex-col gap-0.5 flex-shrink-0">
-                            <button onClick={saveEditUnitType} className="p-0.5 text-green-400 hover:text-green-300" title="Save">
+                            <button type="button" onClick={saveEditUnitType} className="p-0.5 text-green-400 hover:text-green-300" title="Save">
                               <CheckCircle className="w-3 h-3" />
                             </button>
-                            <button onClick={cancelEditUnitType} className="p-0.5 text-rmpg-400 hover:text-rmpg-200" title="Cancel">
+                            <button type="button" onClick={cancelEditUnitType} className="p-0.5 text-rmpg-400 hover:text-rmpg-200" title="Cancel">
                               <XCircle className="w-3 h-3" />
                             </button>
                           </div>
@@ -1611,10 +1611,10 @@ export default function AdminSystemTab({
                             <div className="text-[10px] text-rmpg-500 font-mono">{ut.type}</div>
                           </div>
                           <div className="flex items-center gap-0.5 flex-shrink-0">
-                            <button onClick={() => startEditUnitType(ut)} className="text-rmpg-400 hover:text-brand-400" title="Edit">
+                            <button type="button" onClick={() => startEditUnitType(ut)} className="text-rmpg-400 hover:text-brand-400" title="Edit">
                               <Edit className="w-3 h-3" />
                             </button>
-                            <button onClick={() => removeUnitType(ut.type)} className="text-rmpg-400 hover:text-red-400" title="Remove">
+                            <button type="button" onClick={() => removeUnitType(ut.type)} className="text-rmpg-400 hover:text-red-400" title="Remove">
                               <XCircle className="w-3 h-3" />
                             </button>
                           </div>
@@ -1640,11 +1640,11 @@ export default function AdminSystemTab({
                     onChange={(e) => setNewUnitLabel(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && addUnitType()}
                   />
-                  <button className="toolbar-btn toolbar-btn-primary" onClick={addUnitType}>
+                  <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={addUnitType}>
                     <Plus className="w-3 h-3" /> Add Type
                   </button>
                   {unitTypesDirty && (
-                    <button className="toolbar-btn toolbar-btn-primary ml-auto" onClick={saveUnitTypes}>
+                    <button type="button" className="toolbar-btn toolbar-btn-primary ml-auto" onClick={saveUnitTypes}>
                       <Save className="w-3 h-3" /> Save Unit Types
                     </button>
                   )}
@@ -1704,10 +1704,10 @@ export default function AdminSystemTab({
                                   <td className="text-rmpg-500 text-xs">-</td>
                                   <td>
                                     <div className="flex items-center gap-1">
-                                      <button onClick={handleUpdateUnit} disabled={unitSaving} className="toolbar-btn toolbar-btn-primary text-[10px]" title="Save">
+                                      <button type="button" onClick={handleUpdateUnit} disabled={unitSaving} className="toolbar-btn toolbar-btn-primary text-[10px]" title="Save">
                                         {unitSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
                                       </button>
-                                      <button onClick={cancelEditUnit} className="toolbar-btn text-[10px]" title="Cancel">
+                                      <button type="button" onClick={cancelEditUnit} className="toolbar-btn text-[10px]" title="Cancel">
                                         <XCircle className="w-3 h-3" />
                                       </button>
                                     </div>
@@ -1732,11 +1732,11 @@ export default function AdminSystemTab({
                                   <td className="text-xs font-mono text-rmpg-300">{unit.current_call_number || <span className="text-rmpg-500">-</span>}</td>
                                   <td>
                                     <div className="flex items-center gap-1">
-                                      <button onClick={() => startEditUnit(unit)} className="text-rmpg-400 hover:text-blue-400" title="Edit unit">
+                                      <button type="button" onClick={() => startEditUnit(unit)} className="text-rmpg-400 hover:text-blue-400" title="Edit unit">
                                         <Edit className="w-3.5 h-3.5" />
                                       </button>
                                       {!unit.current_call_id && (
-                                        <button onClick={() => setDeletingUnitId(unit.id)} className="text-rmpg-400 hover:text-red-400" title="Delete unit">
+                                        <button type="button" onClick={() => setDeletingUnitId(unit.id)} className="text-rmpg-400 hover:text-red-400" title="Delete unit">
                                           <Trash2 className="w-3.5 h-3.5" />
                                         </button>
                                       )}
@@ -1765,7 +1765,7 @@ export default function AdminSystemTab({
                           <option key={s.value} value={s.value}>{s.label}</option>
                         ))}
                       </select>
-                      <button className="toolbar-btn toolbar-btn-primary" onClick={handleCreateUnit} disabled={!newUnitCallSign.trim() || unitSaving}>
+                      <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={handleCreateUnit} disabled={!newUnitCallSign.trim() || unitSaving}>
                         {unitSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />} Add Unit
                       </button>
                     </div>
@@ -1808,8 +1808,8 @@ export default function AdminSystemTab({
                               </td>
                               <td>
                                 <div className="flex items-center gap-1">
-                                  <button onClick={saveEditZone} className="p-1 text-green-400 hover:text-green-300" title="Save"><CheckCircle className="w-3 h-3" /></button>
-                                  <button onClick={cancelEditZone} className="p-1 text-rmpg-400 hover:text-rmpg-200" title="Cancel"><XCircle className="w-3 h-3" /></button>
+                                  <button type="button" onClick={saveEditZone} className="p-1 text-green-400 hover:text-green-300" title="Save"><CheckCircle className="w-3 h-3" /></button>
+                                  <button type="button" onClick={cancelEditZone} className="p-1 text-rmpg-400 hover:text-rmpg-200" title="Cancel"><XCircle className="w-3 h-3" /></button>
                                 </div>
                               </td>
                             </>
@@ -1820,8 +1820,8 @@ export default function AdminSystemTab({
                               <td className="text-rmpg-300 text-xs">{z.description || '--'}</td>
                               <td>
                                 <div className="flex items-center gap-1">
-                                  <button onClick={() => startEditZone(z)} className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-brand-400" title="Edit"><Edit className="w-3 h-3" /></button>
-                                  <button onClick={() => removeZone(z.code)} className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-red-400" title="Remove"><Trash2 className="w-3 h-3" /></button>
+                                  <button type="button" onClick={() => startEditZone(z)} className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-brand-400" title="Edit"><Edit className="w-3 h-3" /></button>
+                                  <button type="button" onClick={() => removeZone(z.code)} className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-red-400" title="Remove"><Trash2 className="w-3 h-3" /></button>
                                 </div>
                               </td>
                             </>
@@ -1837,9 +1837,9 @@ export default function AdminSystemTab({
                   <input type="text" className="input-dark text-xs w-20" placeholder="Code" value={newZoneCode} onChange={(e) => setNewZoneCode(e.target.value)} />
                   <input type="text" className="input-dark text-xs w-40" placeholder="Name" value={newZoneName} onChange={(e) => setNewZoneName(e.target.value)} />
                   <input type="text" className="input-dark text-xs flex-1 min-w-[160px]" placeholder="Description (optional)" value={newZoneDesc} onChange={(e) => setNewZoneDesc(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addZone()} />
-                  <button className="toolbar-btn toolbar-btn-primary" onClick={addZone}><Plus className="w-3 h-3" /> Add Entry</button>
+                  <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={addZone}><Plus className="w-3 h-3" /> Add Entry</button>
                   {zonesDirty && (
-                    <button className="toolbar-btn toolbar-btn-primary ml-auto" onClick={saveZones}><Save className="w-3 h-3" /> Save</button>
+                    <button type="button" className="toolbar-btn toolbar-btn-primary ml-auto" onClick={saveZones}><Save className="w-3 h-3" /> Save</button>
                   )}
                 </div>
               </div>
@@ -1861,15 +1861,15 @@ export default function AdminSystemTab({
                       {editingEvidenceIdx === i ? (
                         <>
                           <input type="text" className="input-dark text-xs w-36" value={editEvidenceVal} onChange={(e) => setEditEvidenceVal(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditEvidence(); if (e.key === 'Escape') cancelEditEvidence(); }} autoFocus />
-                          <button onClick={saveEditEvidence} className="p-0.5 text-green-400 hover:text-green-300" title="Save"><CheckCircle className="w-3 h-3" /></button>
-                          <button onClick={cancelEditEvidence} className="p-0.5 text-rmpg-400 hover:text-rmpg-200" title="Cancel"><XCircle className="w-3 h-3" /></button>
+                          <button type="button" onClick={saveEditEvidence} className="p-0.5 text-green-400 hover:text-green-300" title="Save"><CheckCircle className="w-3 h-3" /></button>
+                          <button type="button" onClick={cancelEditEvidence} className="p-0.5 text-rmpg-400 hover:text-rmpg-200" title="Cancel"><XCircle className="w-3 h-3" /></button>
                         </>
                       ) : (
                         <>
                           <span className="text-xs text-rmpg-200">{et.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</span>
                           <span className="text-[10px] text-rmpg-500 font-mono">({et})</span>
-                          <button onClick={() => startEditEvidence(i)} className="p-0.5 text-rmpg-400 hover:text-brand-400" title="Edit"><Edit className="w-3 h-3" /></button>
-                          <button onClick={() => removeEvidenceType(et)} className="p-0.5 text-rmpg-400 hover:text-red-400" title="Remove"><XCircle className="w-3 h-3" /></button>
+                          <button type="button" onClick={() => startEditEvidence(i)} className="p-0.5 text-rmpg-400 hover:text-brand-400" title="Edit"><Edit className="w-3 h-3" /></button>
+                          <button type="button" onClick={() => removeEvidenceType(et)} className="p-0.5 text-rmpg-400 hover:text-red-400" title="Remove"><XCircle className="w-3 h-3" /></button>
                         </>
                       )}
                     </div>
@@ -1877,9 +1877,9 @@ export default function AdminSystemTab({
                 </div>
                 <div className="flex items-center gap-2">
                   <input type="text" className="input-dark text-xs w-48" placeholder="New type (e.g. audio_recording)" value={newEvidenceType} onChange={(e) => setNewEvidenceType(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addEvidenceType()} />
-                  <button className="toolbar-btn toolbar-btn-primary" onClick={addEvidenceType}><Plus className="w-3 h-3" /> Add Type</button>
+                  <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={addEvidenceType}><Plus className="w-3 h-3" /> Add Type</button>
                   {evidenceTypesDirty && (
-                    <button className="toolbar-btn toolbar-btn-primary ml-auto" onClick={saveEvidenceTypes}><Save className="w-3 h-3" /> Save Evidence Types</button>
+                    <button type="button" className="toolbar-btn toolbar-btn-primary ml-auto" onClick={saveEvidenceTypes}><Save className="w-3 h-3" /> Save Evidence Types</button>
                   )}
                 </div>
               </div>
@@ -1939,8 +1939,8 @@ export default function AdminSystemTab({
                                   </td>
                                   <td>
                                     <div className="flex items-center gap-1">
-                                      <button onClick={saveEditTemplate} className="p-1 text-green-400 hover:text-green-300" title="Save"><CheckCircle className="w-3 h-3" /></button>
-                                      <button onClick={cancelEditTemplate} className="p-1 text-rmpg-400 hover:text-rmpg-200" title="Cancel"><XCircle className="w-3 h-3" /></button>
+                                      <button type="button" onClick={saveEditTemplate} className="p-1 text-green-400 hover:text-green-300" title="Save"><CheckCircle className="w-3 h-3" /></button>
+                                      <button type="button" onClick={cancelEditTemplate} className="p-1 text-rmpg-400 hover:text-rmpg-200" title="Cancel"><XCircle className="w-3 h-3" /></button>
                                     </div>
                                   </td>
                                 </>
@@ -1962,8 +1962,8 @@ export default function AdminSystemTab({
                                   <td className="text-xs text-rmpg-300 max-w-xs truncate">{tpl.description_template || '--'}</td>
                                   <td>
                                     <div className="flex items-center gap-1">
-                                      <button onClick={() => startEditTemplate(tpl)} className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-brand-400" title="Edit"><Edit className="w-3 h-3" /></button>
-                                      <button onClick={() => removeCallTemplate(tpl.id)} className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-red-400" title="Remove"><Trash2 className="w-3 h-3" /></button>
+                                      <button type="button" onClick={() => startEditTemplate(tpl)} className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-brand-400" title="Edit"><Edit className="w-3 h-3" /></button>
+                                      <button type="button" onClick={() => removeCallTemplate(tpl.id)} className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-red-400" title="Remove"><Trash2 className="w-3 h-3" /></button>
                                     </div>
                                   </td>
                                 </>
@@ -1992,7 +1992,7 @@ export default function AdminSystemTab({
                         <input type="text" className="input-dark text-xs" placeholder="Description template (optional)" value={newTemplateDesc} onChange={(e) => setNewTemplateDesc(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addCallTemplate()} />
                       </div>
                       <div className="flex justify-end">
-                        <button className="toolbar-btn toolbar-btn-primary" onClick={addCallTemplate}><Plus className="w-3 h-3" /> Add Template</button>
+                        <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={addCallTemplate}><Plus className="w-3 h-3" /> Add Template</button>
                       </div>
                     </div>
                   </>
@@ -2027,7 +2027,7 @@ export default function AdminSystemTab({
                         { key: 'require_numbers' as const, label: 'Require Numbers' },
                         { key: 'require_special_chars' as const, label: 'Require Special Characters' },
                       ].map((opt) => (
-                        <button
+                        <button type="button"
                           key={opt.key}
                           onClick={() => toggleSecurityBool(opt.key)}
                           className={`flex items-center gap-2 w-full p-2 border transition-colors text-left ${
@@ -2066,7 +2066,7 @@ export default function AdminSystemTab({
                 </div>
                 {securityDirty && (
                   <div className="mt-4 flex justify-end border-t border-rmpg-700 pt-3">
-                    <button className="toolbar-btn toolbar-btn-primary" onClick={saveSecurityConfig}><Save className="w-3 h-3" /> Save Security Settings</button>
+                    <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={saveSecurityConfig}><Save className="w-3 h-3" /> Save Security Settings</button>
                   </div>
                 )}
               </div>
@@ -2132,7 +2132,7 @@ export default function AdminSystemTab({
                 </div>
                 {brandingDirty && (
                   <div className="mt-4 flex justify-end border-t border-rmpg-700 pt-3">
-                    <button className="toolbar-btn toolbar-btn-primary" onClick={saveBrandingConfig}><Save className="w-3 h-3" /> Save Branding</button>
+                    <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={saveBrandingConfig}><Save className="w-3 h-3" /> Save Branding</button>
                   </div>
                 )}
               </div>
@@ -2213,7 +2213,7 @@ export default function AdminSystemTab({
                   <div className="flex items-center justify-between mt-3 pt-3 border-t border-rmpg-700">
                     <span className="text-[10px] text-rmpg-400">{statuteTotal} statutes total</span>
                     <div className="flex gap-1">
-                      <button
+                      <button type="button"
                         className="toolbar-btn text-[10px] px-2 py-0.5"
                         disabled={statutePage <= 1}
                         onClick={() => setStatutePage((p) => Math.max(1, p - 1))}
@@ -2221,7 +2221,7 @@ export default function AdminSystemTab({
                         Prev
                       </button>
                       <span className="text-[10px] text-rmpg-300 px-2 py-0.5">{statutePage} / {statuteTotalPages}</span>
-                      <button
+                      <button type="button"
                         className="toolbar-btn text-[10px] px-2 py-0.5"
                         disabled={statutePage >= statuteTotalPages}
                         onClick={() => setStatutePage((p) => Math.min(statuteTotalPages, p + 1))}
@@ -2292,7 +2292,7 @@ export default function AdminSystemTab({
                       { key: 'feature_evidence', label: 'Evidence', desc: 'Evidence tracking & chain of custody' },
                       { key: 'feature_patrol_checkpoints', label: 'Patrol QR', desc: 'QR checkpoint scanning' },
                     ].map((feat) => (
-                      <button
+                      <button type="button"
                         key={feat.key}
                         onClick={() => toggleFeature(feat.key)}
                         className={`flex items-center gap-2 p-2.5 border transition-colors text-left ${
@@ -2316,7 +2316,7 @@ export default function AdminSystemTab({
                 </div>
                 {settingsDirty && (
                   <div className="mt-4 flex justify-end border-t border-rmpg-700 pt-3">
-                    <button className="toolbar-btn toolbar-btn-primary" onClick={saveSystemSettings} disabled={savingSettings}>
+                    <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={saveSystemSettings} disabled={savingSettings}>
                       {savingSettings ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
                       Save System Settings
                     </button>

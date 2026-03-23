@@ -208,7 +208,7 @@ export default function ClientFormModal({
           { id: 'contract' as const, label: 'Contract' },
           { id: 'account' as const, label: 'Account Details' },
         ].map((s) => (
-          <button
+          <button type="button"
             key={s.id}
             type="button"
             onClick={() => setActiveSection(s.id)}

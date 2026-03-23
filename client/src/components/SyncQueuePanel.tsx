@@ -113,14 +113,14 @@ export default function SyncQueuePanel({ onClose }: SyncQueuePanelProps) {
           </span>
           <div className="flex items-center gap-2">
             {failedItems.length > 0 && (
-              <button
+              <button type="button"
                 onClick={handleClearFailed}
                 className="px-2 py-0.5 text-[10px] font-medium bg-[#3b1111] text-[#ef4444] border border-[#5c1a1a] rounded-sm hover:bg-[#4a1515] transition-colors"
               >
                 CLEAR FAILED ({failedItems.length})
               </button>
             )}
-            <button
+            <button type="button"
               onClick={handleSyncNow}
               disabled={syncing || items.length === 0}
               className="px-2 py-0.5 text-[10px] font-medium bg-[#0d2847] text-[#4a9eed] border border-[#1a5a9e] rounded-sm hover:bg-[#133660] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"

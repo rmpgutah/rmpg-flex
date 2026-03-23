@@ -155,12 +155,12 @@ export default function StatuteLookup({
           {value}
         </span>
         {onClear && (
-          <button
+          <button type="button"
             type="button"
             onClick={onClear}
             className="p-0.5 text-rmpg-400 hover:text-red-400 transition-colors"
             title="Remove statute"
-          >
+           aria-label="Close" title="Close">
             <X className="w-3.5 h-3.5" />
           </button>
         )}
@@ -193,7 +193,7 @@ export default function StatuteLookup({
           {showStateFilter && !stateFilter && (
             <div className="flex border-b border-rmpg-700/50 overflow-x-auto">
               {STATE_CODES.map((st) => (
-                <button
+                <button type="button"
                   key={st}
                   type="button"
                   onClick={() => setActiveState(st)}
@@ -212,7 +212,7 @@ export default function StatuteLookup({
           {!categoryFilter && (
             <div className="flex">
               {(['all', 'criminal', 'vehicle'] as const).map((cat) => (
-                <button
+                <button type="button"
                   key={cat}
                   type="button"
                   onClick={() => setActiveCategory(cat)}
@@ -257,7 +257,7 @@ export default function StatuteLookup({
                   key={s.id}
                   className="border-b border-rmpg-700/30 last:border-b-0"
                 >
-                  <button
+                  <button type="button"
                     type="button"
                     onClick={() => handleSelect(s)}
                     className="w-full flex items-start gap-2 px-3 py-2 text-left hover:bg-rmpg-700/30 transition-colors"
@@ -285,7 +285,7 @@ export default function StatuteLookup({
                           </span>
                         )}
                         {s.definition && (
-                          <button
+                          <button type="button"
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();

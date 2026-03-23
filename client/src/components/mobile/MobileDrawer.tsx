@@ -330,7 +330,7 @@ export default function MobileDrawer({
           </div>
 
           {/* Close button */}
-          <button
+          <button type="button"
             onClick={onClose}
             className="flex items-center justify-center w-8 h-8 text-rmpg-400"
           >
@@ -368,7 +368,7 @@ export default function MobileDrawer({
                       : location.pathname.startsWith(item.path);
 
                   return (
-                    <button
+                    <button type="button"
                       key={item.path}
                       onClick={() => handleNav(item.path)}
                       className="w-full flex items-center gap-3 px-4 text-left transition-colors"
@@ -463,7 +463,7 @@ export default function MobileDrawer({
           </div>
 
           {/* Sign Out */}
-          <button
+          <button type="button"
             onClick={() => {
               onClose();
               onLogout();

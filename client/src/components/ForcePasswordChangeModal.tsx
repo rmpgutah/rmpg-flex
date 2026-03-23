@@ -140,7 +140,7 @@ export default function ForcePasswordChangeModal() {
                   autoFocus
                   autoComplete="current-password"
                 />
-                <button
+                <button type="button"
                   type="button"
                   onClick={() => setShowCurrentPw(!showCurrentPw)}
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white"
@@ -165,7 +165,7 @@ export default function ForcePasswordChangeModal() {
                   placeholder="Enter a new password"
                   autoComplete="new-password"
                 />
-                <button
+                <button type="button"
                   type="button"
                   onClick={() => setShowNewPw(!showNewPw)}
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white"
@@ -215,7 +215,7 @@ export default function ForcePasswordChangeModal() {
             )}
 
             {/* Submit Button */}
-            <button
+            <button type="button"
               type="submit"
               disabled={!canSubmit}
               className="btn-primary w-full justify-center"

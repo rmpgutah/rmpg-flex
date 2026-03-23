@@ -164,7 +164,7 @@ export default function CustomReportBuilder() {
             <span className="text-[9px] text-brand-400 font-bold uppercase">{SOURCES[source]?.label}</span>
           )}
           {results.length > 0 && (
-            <button onClick={exportCsv} className="toolbar-btn toolbar-btn-primary">
+            <button type="button" onClick={exportCsv} className="toolbar-btn toolbar-btn-primary">
               <Download className="w-3 h-3" /> Export CSV
             </button>
           )}
@@ -176,7 +176,7 @@ export default function CustomReportBuilder() {
         {steps.map((s, i) => (
           <React.Fragment key={s.id}>
             {i > 0 && <ChevronRight className="w-3 h-3 text-rmpg-600 mx-1" />}
-            <button
+            <button type="button"
               onClick={() => { if (s.id === 'source' || source) setStep(s.id); }}
               className={`flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-colors ${
                 step === s.id ? 'text-brand-400 bg-brand-900/30 border border-brand-700/50' : 'text-rmpg-500 hover:text-rmpg-300'
@@ -195,7 +195,7 @@ export default function CustomReportBuilder() {
             <h2 className="text-xs font-bold text-rmpg-200 uppercase tracking-wider mb-4">Select Data Source</h2>
             <div className={`grid ${isMobile ? 'grid-cols-1' : 'grid-cols-3'} gap-3`}>
               {Object.entries(SOURCES).map(([key, src]) => (
-                <button
+                <button type="button"
                   key={key}
                   onClick={() => handleSourceSelect(key)}
                   className={`panel-surface p-4 text-left hover:border-brand-500 transition-colors ${
@@ -217,8 +217,8 @@ export default function CustomReportBuilder() {
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">Select Columns</h2>
               <div className="flex gap-2">
-                <button onClick={() => setSelectedCols(availableCols)} className="text-[9px] text-brand-400 hover:text-brand-300">Select All</button>
-                <button onClick={() => setSelectedCols([])} className="text-[9px] text-rmpg-400 hover:text-rmpg-300">Clear</button>
+                <button type="button" onClick={() => setSelectedCols(availableCols)} className="text-[9px] text-brand-400 hover:text-brand-300">Select All</button>
+                <button type="button" onClick={() => setSelectedCols([])} className="text-[9px] text-rmpg-400 hover:text-rmpg-300">Clear</button>
               </div>
             </div>
             <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-2`}>
@@ -235,7 +235,7 @@ export default function CustomReportBuilder() {
               ))}
             </div>
             <div className="flex justify-end mt-4">
-              <button onClick={() => setStep('filters')} disabled={selectedCols.length === 0} className="toolbar-btn toolbar-btn-primary">
+              <button type="button" onClick={() => setStep('filters')} disabled={selectedCols.length === 0} className="toolbar-btn toolbar-btn-primary">
                 Next: Filters <ChevronRight className="w-3 h-3" />
               </button>
             </div>
@@ -247,7 +247,7 @@ export default function CustomReportBuilder() {
           <div className="space-y-3">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">Set Filters (Optional)</h2>
-              <button onClick={addFilter} className="toolbar-btn"><Filter className="w-3 h-3" /> Add Filter</button>
+              <button type="button" onClick={addFilter} className="toolbar-btn"><Filter className="w-3 h-3" /> Add Filter</button>
             </div>
 
             {filters.map((f, i) => (
@@ -262,7 +262,7 @@ export default function CustomReportBuilder() {
                     <option value="gte">≥</option>
                     <option value="lte">≤</option>
                   </select>
-                  <button onClick={() => removeFilter(i)} className="text-red-400 hover:text-red-300 text-xs">✕</button>
+                  <button type="button" onClick={() => removeFilter(i)} className="text-red-400 hover:text-red-300 text-xs">✕</button>
                 </div>
                 <input
                   type="text"
@@ -296,7 +296,7 @@ export default function CustomReportBuilder() {
             </div>
 
             <div className="flex justify-end mt-4">
-              <button onClick={runQuery} disabled={loading} className="toolbar-btn toolbar-btn-primary">
+              <button type="button" onClick={runQuery} disabled={loading} className="toolbar-btn toolbar-btn-primary">
                 {loading ? 'Running...' : 'Run Query'} <Play className="w-3 h-3" />
               </button>
             </div>
@@ -312,11 +312,11 @@ export default function CustomReportBuilder() {
                 Results — {rowCount} rows
               </h2>
               <div className="flex gap-2">
-                <button onClick={() => setStep('filters')} className="toolbar-btn">Edit Query</button>
-                <button onClick={runQuery} disabled={loading} className="toolbar-btn">
+                <button type="button" onClick={() => setStep('filters')} className="toolbar-btn">Edit Query</button>
+                <button type="button" onClick={runQuery} disabled={loading} className="toolbar-btn">
                   <RefreshCw className="w-3 h-3" /> Re-run
                 </button>
-                <button onClick={exportCsv} className="toolbar-btn toolbar-btn-primary">
+                <button type="button" onClick={exportCsv} className="toolbar-btn toolbar-btn-primary">
                   <Download className="w-3 h-3" /> CSV
                 </button>
               </div>

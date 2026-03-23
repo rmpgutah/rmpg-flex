@@ -86,7 +86,7 @@ export default function TacticalToolsPanel({
         <span className="text-[10px] uppercase tracking-widest text-rmpg-300 font-semibold">
           Tactical Tools
         </span>
-        <button
+        <button type="button"
           onClick={onClose}
           className="text-rmpg-400 hover:text-white transition-colors"
           title="Close"
@@ -110,14 +110,14 @@ export default function TacticalToolsPanel({
           </div>
         )}
         <div className="flex items-center gap-1.5">
-          <button
+          <button type="button"
             onClick={onSetRallyPoint}
             className="toolbar-btn text-[9px] px-2 py-0.5"
           >
             Set at Center
           </button>
           {rallyPoint && (
-            <button
+            <button type="button"
               onClick={onClearRallyPoint}
               className="toolbar-btn text-[9px] px-2 py-0.5 text-red-400 hover:text-red-300"
             >
@@ -137,13 +137,13 @@ export default function TacticalToolsPanel({
           100m / 300m / 500m perimeter
         </div>
         <div className="flex items-center gap-1.5">
-          <button
+          <button type="button"
             onClick={onShowCommandRings}
             className="toolbar-btn text-[9px] px-2 py-0.5"
           >
             Deploy at Center
           </button>
-          <button
+          <button type="button"
             onClick={onClearCommandRings}
             className="toolbar-btn text-[9px] px-2 py-0.5 text-red-400 hover:text-red-300"
           >
@@ -162,13 +162,13 @@ export default function TacticalToolsPanel({
           800m green circle
         </div>
         <div className="flex items-center gap-1.5">
-          <button
+          <button type="button"
             onClick={onShowK9Radius}
             className="toolbar-btn text-[9px] px-2 py-0.5"
           >
             Show at Center
           </button>
-          <button
+          <button type="button"
             onClick={onClearK9Radius}
             className="toolbar-btn text-[9px] px-2 py-0.5 text-red-400 hover:text-red-300"
           >
@@ -184,21 +184,21 @@ export default function TacticalToolsPanel({
           Emergency Services
         </div>
         <div className="flex items-center gap-1.5 flex-wrap">
-          <button
+          <button type="button"
             onClick={onShowHospitals}
             className="toolbar-btn text-[9px] px-2 py-0.5 inline-flex items-center gap-1"
           >
             <Building2 size={9} />
             Show Hospitals
           </button>
-          <button
+          <button type="button"
             onClick={onShowFireStations}
             className="toolbar-btn text-[9px] px-2 py-0.5 inline-flex items-center gap-1"
           >
             <Flame size={9} />
             Show Fire Stations
           </button>
-          <button
+          <button type="button"
             onClick={onHideEmergencyServices}
             className="toolbar-btn text-[9px] px-2 py-0.5 text-red-400 hover:text-red-300"
           >
@@ -222,7 +222,7 @@ export default function TacticalToolsPanel({
             placeholder="Label..."
             className="flex-1 bg-surface-sunken border border-rmpg-700 rounded-sm px-1.5 py-0.5 text-[9px] font-mono text-rmpg-300 placeholder-rmpg-600 outline-none focus:border-rmpg-500"
           />
-          <button
+          <button type="button"
             onClick={handleAddEntry}
             className="toolbar-btn text-[9px] px-1.5 py-0.5 inline-flex items-center gap-0.5"
             title="Add at Center"
@@ -246,7 +246,7 @@ export default function TacticalToolsPanel({
                 </div>
               ))}
             </div>
-            <button
+            <button type="button"
               onClick={onClearEntryPoints}
               className="toolbar-btn text-[9px] px-2 py-0.5 text-red-400 hover:text-red-300 inline-flex items-center gap-0.5"
             >
