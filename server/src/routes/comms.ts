@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { auditLog } from '../utils/auditLogger';
 import { broadcastNewMessage, broadcastAlert, sendToUser } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
 
@@ -17,7 +18,14 @@ router.post('/messages', (req: Request, res: Response) => {
     const { to_user_id, channel, content, priority, subject, parent_id } = req.body;
 
     if (!content) {
-      res.status(400).json({ error: 'content is required' });
+      res.status(400).json({ error: 'content is required', code: 'MISSING_CONTENT' });
+      return;
+    }
+
+    // Input sanitization
+    const cleanContent = typeof content === 'string' ? content.trim() : content;
+    if (typeof cleanContent === 'string' && cleanContent.length === 0) {
+      res.status(400).json({ error: 'content cannot be empty', code: 'EMPTY_CONTENT' });
       return;
     }
 
@@ -77,10 +85,11 @@ router.post('/messages', (req: Request, res: Response) => {
       });
     }
 
-    res.status(201).json(message);
+    auditLog(req, 'message_sent', 'message', result.lastInsertRowid as number, `Sent ${msgChannel} message`);
+    res.status(201).json({ data: message });
   } catch (error: any) {
     console.error('Send message error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'SEND_MESSAGE_ERROR' });
   }
 });
 
@@ -133,7 +142,7 @@ router.get('/messages', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get messages error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get messages', code: 'GET_MESSAGES_ERROR' });
   }
 });
 
@@ -152,7 +161,7 @@ router.put('/messages/:id/read', (req: Request, res: Response) => {
     res.json({ message: 'Marked as read' });
   } catch (error: any) {
     console.error('Mark read error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to mark read', code: 'MARK_READ_ERROR' });
   }
 });
 
@@ -169,7 +178,7 @@ router.post('/messages/mark-all-read', (req: Request, res: Response) => {
     res.json({ message: 'All messages marked as read', count: result.changes });
   } catch (error: any) {
     console.error('Mark all read error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to mark all read', code: 'MARK_ALL_READ_ERROR' });
   }
 });
 
@@ -192,7 +201,7 @@ router.delete('/messages/:id', (req: Request, res: Response) => {
     res.json({ success: true, id });
   } catch (error: any) {
     console.error('Delete message error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete message', code: 'DELETE_MESSAGE_ERROR' });
   }
 });
 
@@ -231,12 +240,14 @@ router.get('/bolos', (req: Request, res: Response) => {
       ORDER BY
         CASE b.priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 END,
         b.created_at DESC
+    
+      LIMIT 1000
     `).all(...params);
 
     res.json(bolos);
   } catch (error: any) {
     console.error('Get BOLOs error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get bolos', code: 'GET_BOLOS_ERROR' });
   }
 });
 
@@ -253,12 +264,14 @@ router.get('/bolos/active', (req: Request, res: Response) => {
       ORDER BY
         CASE b.priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 END,
         b.created_at DESC
+    
+      LIMIT 1000
     `).all(localNow());
 
     res.json(bolos);
   } catch (error: any) {
     console.error('Get active BOLOs error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get active bolos', code: 'GET_ACTIVE_BOLOS_ERROR' });
   }
 });
 
@@ -325,7 +338,7 @@ router.get('/bolos/check', (req: Request, res: Response) => {
     res.json({ matches, count: matches.length });
   } catch (error: any) {
     console.error('BOLO check error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to bolo check', code: 'BOLO_CHECK_ERROR' });
   }
 });
 
@@ -348,7 +361,7 @@ router.get('/bolos/:id', (req: Request, res: Response) => {
     res.json(bolo);
   } catch (error: any) {
     console.error('Get BOLO error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get bolo', code: 'GET_BOLO_ERROR' });
   }
 });
 
@@ -405,7 +418,7 @@ router.post('/bolos', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     res.status(201).json(bolo);
   } catch (error: any) {
     console.error('Create BOLO error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create bolo', code: 'CREATE_BOLO_ERROR' });
   }
 });
 
@@ -463,7 +476,7 @@ router.put('/bolos/:id', requireRole('admin', 'manager', 'supervisor', 'dispatch
     res.json(updated);
   } catch (error: any) {
     console.error('Update BOLO error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update bolo', code: 'UPDATE_BOLO_ERROR' });
   }
 });
 
@@ -487,7 +500,7 @@ router.delete('/bolos/:id', requireRole('admin', 'manager', 'supervisor'), (req:
     res.json({ message: 'BOLO cancelled' });
   } catch (error: any) {
     console.error('Cancel BOLO error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to cancel bolo', code: 'CANCEL_BOLO_ERROR' });
   }
 });
 
@@ -510,7 +523,7 @@ router.post('/bolos/:id/archive', requireRole('admin', 'manager', 'supervisor', 
     res.json(updated);
   } catch (error: any) {
     console.error('Archive BOLO error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to archive bolo', code: 'ARCHIVE_BOLO_ERROR' });
   }
 });
 
@@ -532,7 +545,7 @@ router.post('/bolos/:id/unarchive', requireRole('admin', 'manager', 'supervisor'
     res.json(updated);
   } catch (error: any) {
     console.error('Unarchive BOLO error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unarchive bolo', code: 'UNARCHIVE_BOLO_ERROR' });
   }
 });
 
@@ -576,7 +589,7 @@ router.get('/activity-feed', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get activity feed error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get activity feed', code: 'GET_ACTIVITY_FEED_ERROR' });
   }
 });
 
@@ -628,7 +641,7 @@ router.get('/radio/transcripts', (req: Request, res: Response) => {
     res.json({ data: transcripts, total: countRow.total, limit: limitNum, offset: offsetNum });
   } catch (error: any) {
     console.error('Get radio transcripts error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get radio transcripts', code: 'GET_RADIO_TRANSCRIPTS_ERROR' });
   }
 });
 
@@ -665,7 +678,7 @@ router.get('/radio-channels', (req: Request, res: Response) => {
     }
   } catch (error: any) {
     console.error('Get radio channels error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get radio channels', code: 'GET_RADIO_CHANNELS_ERROR' });
   }
 });
 
@@ -683,7 +696,7 @@ router.put('/messages/:id/read-receipt', (req: Request, res: Response) => {
       .run(JSON.stringify(receipts), now, req.params.id);
 
     res.json({ data: { receipts } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in comms', code: 'COMMS_ERROR' }); }
 });
 
 // ─── Feature 13: BOLO expiration tracking ───────────────
@@ -705,7 +718,7 @@ router.post('/bolos/expire-check', requireRole('admin', 'manager', 'supervisor',
     `).run(now, now);
 
     res.json({ expired: (result.changes || 0) + (result2.changes || 0) });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in comms', code: 'COMMS_ERROR' }); }
 });
 
 // ─── Feature 14: Broadcast templates ────────────────────
@@ -717,9 +730,11 @@ router.get('/templates', (req: Request, res: Response) => {
       FROM broadcast_templates bt
       LEFT JOIN users u ON bt.created_by = u.id
       ORDER BY bt.category ASC, bt.name ASC
+    
+      LIMIT 1000
     `).all();
     res.json({ data: templates });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in comms', code: 'COMMS_ERROR' }); }
 });
 
 router.post('/templates', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
@@ -735,7 +750,7 @@ router.post('/templates', requireRole('admin', 'manager', 'supervisor', 'dispatc
 
     const template = db.prepare('SELECT * FROM broadcast_templates WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json({ data: template });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in comms', code: 'COMMS_ERROR' }); }
 });
 
 router.delete('/templates/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
@@ -743,7 +758,7 @@ router.delete('/templates/:id', requireRole('admin', 'manager'), (req: Request, 
     const db = getDb();
     db.prepare('DELETE FROM broadcast_templates WHERE id = ?').run(req.params.id);
     res.json({ success: true });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in comms', code: 'COMMS_ERROR' }); }
 });
 
 // ─── Feature 16: Officer acknowledgment tracking ────────
@@ -760,7 +775,7 @@ router.put('/messages/:id/acknowledge', (req: Request, res: Response) => {
       .run(JSON.stringify(acks), req.params.id);
 
     res.json({ data: { acknowledgments: acks } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in comms', code: 'COMMS_ERROR' }); }
 });
 
 // ─── Feature 17: Broadcast scheduling ───────────────────
@@ -776,7 +791,7 @@ router.post('/messages/scheduled', requireRole('admin', 'manager', 'supervisor',
     `).run(req.user!.userId, channel || 'broadcast', content, priority || 'routine', subject || null, scheduled_at);
 
     res.status(201).json({ data: { id: result.lastInsertRowid, scheduled_at } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in comms', code: 'COMMS_ERROR' }); }
 });
 
 // ─── Feature 18: Message search with filters ────────────
@@ -810,7 +825,7 @@ router.get('/messages/search', (req: Request, res: Response) => {
     `).all(...params, limitNum);
 
     res.json({ data: messages });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in comms', code: 'COMMS_ERROR' }); }
 });
 
 // ─── Feature 19: Alert escalation check ─────────────────
@@ -829,6 +844,8 @@ router.post('/alerts/escalation-check', requireRole('admin', 'manager', 'supervi
       AND m.priority IN ('urgent', 'emergency')
       AND m.created_at <= ?
       AND (m.acknowledgments IS NULL OR m.acknowledgments = '{}')
+    
+      LIMIT 1000
     `).all(cutoff);
 
     // Broadcast escalation alert for each
@@ -842,7 +859,7 @@ router.post('/alerts/escalation-check', requireRole('admin', 'manager', 'supervi
     }
 
     res.json({ escalated: (unacked as any[]).length });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in comms', code: 'COMMS_ERROR' }); }
 });
 
 // ─── Feature 20: Broadcast history archive ──────────────
@@ -870,7 +887,7 @@ router.get('/messages/archive', (req: Request, res: Response) => {
     `).all(...params, limitNum, offset);
 
     res.json({ data: messages, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in comms', code: 'COMMS_ERROR' }); }
 });
 
 // ── Feature 26: Message drafts ────────────────────────────────────
@@ -890,7 +907,7 @@ router.post('/drafts', (req: Request, res: Response) => {
     res.status(201).json({ id: Number(result.lastInsertRowid), is_draft: true });
   } catch (error: any) {
     console.error('Save draft error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to save draft', code: 'SAVE_DRAFT_ERROR' });
   }
 });
 
@@ -908,7 +925,7 @@ router.get('/drafts', (req: Request, res: Response) => {
     res.json(drafts);
   } catch (error: any) {
     console.error('Get drafts error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get drafts', code: 'GET_DRAFTS_ERROR' });
   }
 });
 
@@ -931,7 +948,7 @@ router.put('/drafts/:id', (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (error: any) {
     console.error('Update draft error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update draft', code: 'UPDATE_DRAFT_ERROR' });
   }
 });
 
@@ -963,7 +980,7 @@ router.post('/drafts/:id/send', (req: Request, res: Response) => {
     res.json(message);
   } catch (error: any) {
     console.error('Send draft error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to send draft', code: 'SEND_DRAFT_ERROR' });
   }
 });
 
@@ -982,7 +999,7 @@ router.put('/bolos/:id/photos', (req: Request, res: Response) => {
     res.json({ success: true, photos });
   } catch (error: any) {
     console.error('Update BOLO photos error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update bolo photos', code: 'UPDATE_BOLO_PHOTOS_ERROR' });
   }
 });
 
@@ -1019,7 +1036,7 @@ router.post('/broadcast-group', requireRole('admin', 'manager', 'dispatcher', 's
     res.status(201).json({ success: true, recipients_count: recipients.length, message_ids: results });
   } catch (error: any) {
     console.error('Broadcast group error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to broadcast group', code: 'BROADCAST_GROUP_ERROR' });
   }
 });
 
@@ -1034,7 +1051,7 @@ router.post('/messages/:id/delivered', (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delivery confirm error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delivery confirm', code: 'DELIVERY_CONFIRM_ERROR' });
   }
 });
 
@@ -1047,7 +1064,7 @@ router.get('/messages/:id/delivery-status', (req: Request, res: Response) => {
     res.json(msg);
   } catch (error: any) {
     console.error('Delivery status error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delivery status', code: 'DELIVERY_STATUS_ERROR' });
   }
 });
 
@@ -1092,7 +1109,7 @@ router.post('/emergency-broadcast', requireRole('admin', 'manager', 'dispatcher'
     res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
     console.error('Emergency broadcast error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to emergency broadcast', code: 'EMERGENCY_BROADCAST_ERROR' });
   }
 });
 

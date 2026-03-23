@@ -1150,7 +1150,7 @@ export default function AdminSystemTab({
     if (!deletingUnitId) return null;
     const unitName = adminUnits.find((u) => u.id === deletingUnitId)?.call_sign || '';
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
+      <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
         <div className="bg-rmpg-800 border border-rmpg-600 p-6 max-w-md w-full mx-4">
           <h3 className="text-sm font-bold text-white mb-2">Delete Dispatch Unit</h3>
           <p className="text-xs text-rmpg-300 mb-4">
@@ -1163,7 +1163,7 @@ export default function AdminSystemTab({
               disabled={unitDeleteLoading}
               className="toolbar-btn bg-red-900/50 text-red-400 hover:bg-red-900/70 border-red-700/50"
             >
-              {unitDeleteLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+              {unitDeleteLoading ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : null}
               Delete
             </button>
           </div>
@@ -1183,6 +1183,9 @@ export default function AdminSystemTab({
     units: adminUnits.length,
     criminal_codes: statuteTotal || undefined,
   };
+
+  // Set document title
+  useEffect(() => { document.title = 'Admin - System \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -1309,13 +1312,13 @@ export default function AdminSystemTab({
                 <div className="flex items-center gap-2 mt-3 pt-3 border-t border-rmpg-700">
                   <input
                     type="text"
-                    className="input-dark text-xs w-64"
+                    className="input-dark text-xs w-64 min-h-[36px]"
                     placeholder="Custom type key (e.g. noise_complaint)"
                     value={newIncidentType}
                     onChange={(e) => setNewIncidentType(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && addIncidentType()}
                   />
-                  <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={addIncidentType}>
+                  <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={addIncidentType}>
                     <Plus className="w-3 h-3" /> Add Custom
                   </button>
                 </div>
@@ -1360,7 +1363,7 @@ export default function AdminSystemTab({
                             {isEditing ? (
                               <input
                                 type="text"
-                                className="input-dark text-xs w-full"
+                                className="input-dark text-xs w-full min-h-[36px]"
                                 value={editDispDesc}
                                 onChange={(e) => setEditDispDesc(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && updateDispositionCode(item.id)}
@@ -1404,12 +1407,12 @@ export default function AdminSystemTab({
                         <input type="color" value={newDispColor} onChange={(e) => setNewDispColor(e.target.value)} className="w-6 h-6 cursor-pointer border-0 p-0 bg-transparent" />
                       </td>
                       <td>
-                        <input type="text" className="input-dark text-xs w-20" placeholder="Code" value={newDispCode} onChange={(e) => setNewDispCode(e.target.value)} />
+                        <input type="text" className="input-dark text-xs w-20 min-h-[36px]" placeholder="Code" value={newDispCode} onChange={(e) => setNewDispCode(e.target.value)} />
                       </td>
                       <td>
                         <input
                           type="text"
-                          className="input-dark text-xs w-full"
+                          className="input-dark text-xs w-full min-h-[36px]"
                           placeholder="Description"
                           value={newDispDesc}
                           onChange={(e) => setNewDispDesc(e.target.value)}
@@ -1417,7 +1420,7 @@ export default function AdminSystemTab({
                         />
                       </td>
                       <td>
-                        <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={addDispositionCode}>
+                        <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={addDispositionCode}>
                           <Plus className="w-3 h-3" /> Add
                         </button>
                       </td>
@@ -1453,7 +1456,7 @@ export default function AdminSystemTab({
                         <label className="text-[9px] text-rmpg-400 uppercase">Label</label>
                         <input
                           type="text"
-                          className="input-dark text-xs w-full"
+                          className="input-dark text-xs w-full min-h-[36px]"
                           value={p.label}
                           onChange={(e) => updatePriority(i, 'label', e.target.value)}
                         />
@@ -1462,7 +1465,7 @@ export default function AdminSystemTab({
                         <label className="text-[9px] text-rmpg-400 uppercase">Response Target</label>
                         <input
                           type="text"
-                          className="input-dark text-xs w-full"
+                          className="input-dark text-xs w-full min-h-[36px]"
                           value={p.target}
                           onChange={(e) => updatePriority(i, 'target', e.target.value)}
                         />
@@ -1472,7 +1475,7 @@ export default function AdminSystemTab({
                 </div>
                 {prioritiesDirty && (
                   <div className="mt-3 flex justify-end">
-                    <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={savePriorities}>
+                    <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={savePriorities}>
                       <Save className="w-3 h-3" /> Save Priority Config
                     </button>
                   </div>
@@ -1498,7 +1501,7 @@ export default function AdminSystemTab({
                         <>
                           <input
                             type="text"
-                            className="input-dark text-xs flex-1"
+                            className="input-dark text-xs flex-1 min-h-[36px]"
                             value={editCallSourceVal}
                             onChange={(e) => setEditCallSourceVal(e.target.value)}
                             onKeyDown={(e) => { if (e.key === 'Enter') saveEditCallSource(); if (e.key === 'Escape') cancelEditCallSource(); }}
@@ -1549,13 +1552,13 @@ export default function AdminSystemTab({
                 <div className="flex items-center gap-2">
                   <input
                     type="text"
-                    className="input-dark text-xs w-48"
+                    className="input-dark text-xs w-48 min-h-[36px]"
                     placeholder="New source (e.g. social_media)"
                     value={newCallSource}
                     onChange={(e) => setNewCallSource(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && addCallSource()}
                   />
-                  <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={addCallSource}>
+                  <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={addCallSource}>
                     <Plus className="w-3 h-3" /> Add Source
                   </button>
                   {callSourcesDirty && (
@@ -1586,7 +1589,7 @@ export default function AdminSystemTab({
                           <div className="flex-1 min-w-0">
                             <input
                               type="text"
-                              className="input-dark text-xs w-full"
+                              className="input-dark text-xs w-full min-h-[36px]"
                               value={editUnitTypeLabel}
                               onChange={(e) => setEditUnitTypeLabel(e.target.value)}
                               onKeyDown={(e) => { if (e.key === 'Enter') saveEditUnitType(); if (e.key === 'Escape') cancelEditUnitType(); }}
@@ -1627,20 +1630,20 @@ export default function AdminSystemTab({
                   <input type="color" value={newUnitColor} onChange={(e) => setNewUnitColor(e.target.value)} className="w-6 h-6 cursor-pointer border-0 p-0 bg-transparent" />
                   <input
                     type="text"
-                    className="input-dark text-xs w-32"
+                    className="input-dark text-xs w-32 min-h-[36px]"
                     placeholder="Key (e.g. k9)"
                     value={newUnitType}
                     onChange={(e) => setNewUnitType(e.target.value)}
                   />
                   <input
                     type="text"
-                    className="input-dark text-xs w-40"
+                    className="input-dark text-xs w-40 min-h-[36px]"
                     placeholder="Label (e.g. K9 Unit)"
                     value={newUnitLabel}
                     onChange={(e) => setNewUnitLabel(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && addUnitType()}
                   />
-                  <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={addUnitType}>
+                  <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={addUnitType}>
                     <Plus className="w-3 h-3" /> Add Type
                   </button>
                   {unitTypesDirty && (
@@ -1663,7 +1666,7 @@ export default function AdminSystemTab({
             </div>
                 {loadingAdminUnits ? (
                   <div className="flex items-center justify-center py-6 text-rmpg-400">
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading units...
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" role="status" aria-label="Loading" /> Loading units...
                   </div>
                 ) : (
                   <>
@@ -1684,7 +1687,7 @@ export default function AdminSystemTab({
                               {editingAdminUnitId === unit.id ? (
                                 <>
                                   <td>
-                                    <input type="text" className="input-dark text-xs w-full" value={editUnitCallSign} onChange={(e) => setEditUnitCallSign(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleUpdateUnit()} />
+                                    <input type="text" className="input-dark text-xs w-full min-h-[36px]" value={editUnitCallSign} onChange={(e) => setEditUnitCallSign(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleUpdateUnit()} />
                                   </td>
                                   <td>
                                     <select className="select-dark text-xs w-full" value={editUnitOfficerId} onChange={(e) => setEditUnitOfficerId(e.target.value)}>
@@ -1705,7 +1708,7 @@ export default function AdminSystemTab({
                                   <td>
                                     <div className="flex items-center gap-1">
                                       <button type="button" onClick={handleUpdateUnit} disabled={unitSaving} className="toolbar-btn toolbar-btn-primary text-[10px]" title="Save">
-                                        {unitSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                                        {unitSaving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save className="w-3 h-3" />}
                                       </button>
                                       <button type="button" onClick={cancelEditUnit} className="toolbar-btn text-[10px]" title="Cancel">
                                         <XCircle className="w-3 h-3" />
@@ -1753,7 +1756,7 @@ export default function AdminSystemTab({
                     )}
 
                     <div className="flex items-center gap-2 flex-wrap">
-                      <input type="text" className="input-dark text-xs w-28" placeholder="Call Sign *" value={newUnitCallSign} onChange={(e) => setNewUnitCallSign(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleCreateUnit()} />
+                      <input type="text" className="input-dark text-xs w-28 min-h-[36px]" placeholder="Call Sign *" value={newUnitCallSign} onChange={(e) => setNewUnitCallSign(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleCreateUnit()} />
                       <select className="select-dark text-xs w-44" value={newUnitOfficerId} onChange={(e) => setNewUnitOfficerId(e.target.value)}>
                         <option value="">-- Assign Officer --</option>
                         {activeOfficers.map((o) => (
@@ -1765,8 +1768,8 @@ export default function AdminSystemTab({
                           <option key={s.value} value={s.value}>{s.label}</option>
                         ))}
                       </select>
-                      <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={handleCreateUnit} disabled={!newUnitCallSign.trim() || unitSaving}>
-                        {unitSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />} Add Unit
+                      <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={handleCreateUnit} disabled={!newUnitCallSign.trim() || unitSaving}>
+                        {unitSaving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Plus className="w-3 h-3" />} Add Unit
                       </button>
                     </div>
                   </>
@@ -1801,10 +1804,10 @@ export default function AdminSystemTab({
                             <>
                               <td className="font-bold text-white font-mono">{z.code}</td>
                               <td>
-                                <input type="text" className="input-dark text-xs w-full" value={editZoneName} onChange={(e) => setEditZoneName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditZone(); if (e.key === 'Escape') cancelEditZone(); }} autoFocus />
+                                <input type="text" className="input-dark text-xs w-full min-h-[36px]" value={editZoneName} onChange={(e) => setEditZoneName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditZone(); if (e.key === 'Escape') cancelEditZone(); }} autoFocus />
                               </td>
                               <td>
-                                <input type="text" className="input-dark text-xs w-full" value={editZoneDesc} onChange={(e) => setEditZoneDesc(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditZone(); if (e.key === 'Escape') cancelEditZone(); }} />
+                                <input type="text" className="input-dark text-xs w-full min-h-[36px]" value={editZoneDesc} onChange={(e) => setEditZoneDesc(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditZone(); if (e.key === 'Escape') cancelEditZone(); }} />
                               </td>
                               <td>
                                 <div className="flex items-center gap-1">
@@ -1834,10 +1837,10 @@ export default function AdminSystemTab({
                   <div className="text-xs text-rmpg-500 mb-3 py-4 text-center border border-dashed border-rmpg-700">No sections/zones/beats configured. Add your first entry below.</div>
                 )}
                 <div className="flex items-center gap-2 flex-wrap">
-                  <input type="text" className="input-dark text-xs w-20" placeholder="Code" value={newZoneCode} onChange={(e) => setNewZoneCode(e.target.value)} />
-                  <input type="text" className="input-dark text-xs w-40" placeholder="Name" value={newZoneName} onChange={(e) => setNewZoneName(e.target.value)} />
-                  <input type="text" className="input-dark text-xs flex-1 min-w-[160px]" placeholder="Description (optional)" value={newZoneDesc} onChange={(e) => setNewZoneDesc(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addZone()} />
-                  <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={addZone}><Plus className="w-3 h-3" /> Add Entry</button>
+                  <input type="text" className="input-dark text-xs w-20 min-h-[36px]" placeholder="Code" value={newZoneCode} onChange={(e) => setNewZoneCode(e.target.value)} />
+                  <input type="text" className="input-dark text-xs w-40 min-h-[36px]" placeholder="Name" value={newZoneName} onChange={(e) => setNewZoneName(e.target.value)} />
+                  <input type="text" className="input-dark text-xs flex-1 min-w-[160px] min-h-[36px]" placeholder="Description (optional)" value={newZoneDesc} onChange={(e) => setNewZoneDesc(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addZone()} />
+                  <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={addZone}><Plus className="w-3 h-3" /> Add Entry</button>
                   {zonesDirty && (
                     <button type="button" className="toolbar-btn toolbar-btn-primary ml-auto" onClick={saveZones}><Save className="w-3 h-3" /> Save</button>
                   )}
@@ -1860,7 +1863,7 @@ export default function AdminSystemTab({
                     <div key={et} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-rmpg-900 border border-rmpg-600 hover:border-rmpg-500 transition-colors">
                       {editingEvidenceIdx === i ? (
                         <>
-                          <input type="text" className="input-dark text-xs w-36" value={editEvidenceVal} onChange={(e) => setEditEvidenceVal(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditEvidence(); if (e.key === 'Escape') cancelEditEvidence(); }} autoFocus />
+                          <input type="text" className="input-dark text-xs w-36 min-h-[36px]" value={editEvidenceVal} onChange={(e) => setEditEvidenceVal(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditEvidence(); if (e.key === 'Escape') cancelEditEvidence(); }} autoFocus />
                           <button type="button" onClick={saveEditEvidence} className="p-0.5 text-green-400 hover:text-green-300" title="Save"><CheckCircle className="w-3 h-3" /></button>
                           <button type="button" onClick={cancelEditEvidence} className="p-0.5 text-rmpg-400 hover:text-rmpg-200" title="Cancel"><XCircle className="w-3 h-3" /></button>
                         </>
@@ -1876,8 +1879,8 @@ export default function AdminSystemTab({
                   ))}
                 </div>
                 <div className="flex items-center gap-2">
-                  <input type="text" className="input-dark text-xs w-48" placeholder="New type (e.g. audio_recording)" value={newEvidenceType} onChange={(e) => setNewEvidenceType(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addEvidenceType()} />
-                  <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={addEvidenceType}><Plus className="w-3 h-3" /> Add Type</button>
+                  <input type="text" className="input-dark text-xs w-48 min-h-[36px]" placeholder="New type (e.g. audio_recording)" value={newEvidenceType} onChange={(e) => setNewEvidenceType(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addEvidenceType()} />
+                  <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={addEvidenceType}><Plus className="w-3 h-3" /> Add Type</button>
                   {evidenceTypesDirty && (
                     <button type="button" className="toolbar-btn toolbar-btn-primary ml-auto" onClick={saveEvidenceTypes}><Save className="w-3 h-3" /> Save Evidence Types</button>
                   )}
@@ -1896,7 +1899,7 @@ export default function AdminSystemTab({
             </div>
                 {loadingTemplates ? (
                   <div className="flex items-center gap-2 py-4 justify-center">
-                    <Loader2 className="w-4 h-4 text-brand-400 animate-spin" />
+                    <Loader2 className="w-4 h-4 text-brand-400 animate-spin" role="status" aria-label="Loading" />
                     <span className="text-xs text-rmpg-400">Loading templates...</span>
                   </div>
                 ) : (
@@ -1918,7 +1921,7 @@ export default function AdminSystemTab({
                               {editingTemplateId === tpl.id ? (
                                 <>
                                   <td>
-                                    <input type="text" className="input-dark text-xs w-full" value={editTemplateName} onChange={(e) => setEditTemplateName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditTemplate(); if (e.key === 'Escape') cancelEditTemplate(); }} autoFocus />
+                                    <input type="text" className="input-dark text-xs w-full min-h-[36px]" value={editTemplateName} onChange={(e) => setEditTemplateName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditTemplate(); if (e.key === 'Escape') cancelEditTemplate(); }} autoFocus />
                                   </td>
                                   <td>
                                     <select className="select-dark text-xs w-full" value={editTemplateType} onChange={(e) => setEditTemplateType(e.target.value)}>
@@ -1935,7 +1938,7 @@ export default function AdminSystemTab({
                                     </select>
                                   </td>
                                   <td>
-                                    <input type="text" className="input-dark text-xs w-full" value={editTemplateDesc} onChange={(e) => setEditTemplateDesc(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditTemplate(); if (e.key === 'Escape') cancelEditTemplate(); }} />
+                                    <input type="text" className="input-dark text-xs w-full min-h-[36px]" value={editTemplateDesc} onChange={(e) => setEditTemplateDesc(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditTemplate(); if (e.key === 'Escape') cancelEditTemplate(); }} />
                                   </td>
                                   <td>
                                     <div className="flex items-center gap-1">
@@ -1978,7 +1981,7 @@ export default function AdminSystemTab({
                     <div className="bg-rmpg-900 border border-rmpg-600 p-3 space-y-2">
                       <div className="text-[10px] text-rmpg-400 uppercase font-bold">Add Template</div>
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-                        <input type="text" className="input-dark text-xs" placeholder="Template name" value={newTemplateName} onChange={(e) => setNewTemplateName(e.target.value)} />
+                        <input type="text" className="input-dark text-xs min-h-[36px]" placeholder="Template name" value={newTemplateName} onChange={(e) => setNewTemplateName(e.target.value)} />
                         <select className="select-dark text-xs" value={newTemplateType} onChange={(e) => setNewTemplateType(e.target.value)}>
                           {Object.entries(INCIDENT_TYPE_CODES).map(([key, code]) => (
                             <option key={key} value={key}>{code} - {key.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</option>
@@ -1989,10 +1992,10 @@ export default function AdminSystemTab({
                             <option key={p.level} value={p.level}>{p.level} - {p.label}</option>
                           ))}
                         </select>
-                        <input type="text" className="input-dark text-xs" placeholder="Description template (optional)" value={newTemplateDesc} onChange={(e) => setNewTemplateDesc(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addCallTemplate()} />
+                        <input type="text" className="input-dark text-xs min-h-[36px]" placeholder="Description template (optional)" value={newTemplateDesc} onChange={(e) => setNewTemplateDesc(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addCallTemplate()} />
                       </div>
                       <div className="flex justify-end">
-                        <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={addCallTemplate}><Plus className="w-3 h-3" /> Add Template</button>
+                        <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={addCallTemplate}><Plus className="w-3 h-3" /> Add Template</button>
                       </div>
                     </div>
                   </>
@@ -2015,11 +2018,11 @@ export default function AdminSystemTab({
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1">Password Policy</div>
                     <div>
                       <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Minimum Password Length</label>
-                      <input type="number" className="input-dark text-xs w-full" value={securityConfig.min_password_length} onChange={(e) => updateSecuritySetting('min_password_length', e.target.value)} min="6" max="32" />
+                      <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={securityConfig.min_password_length} onChange={(e) => updateSecuritySetting('min_password_length', e.target.value)} min="6" max="32" />
                     </div>
                     <div>
                       <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Password Expiry (days, 0 = never)</label>
-                      <input type="number" className="input-dark text-xs w-full" value={securityConfig.password_expiry_days} onChange={(e) => updateSecuritySetting('password_expiry_days', e.target.value)} min="0" max="365" />
+                      <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={securityConfig.password_expiry_days} onChange={(e) => updateSecuritySetting('password_expiry_days', e.target.value)} min="0" max="365" />
                     </div>
                     <div className="space-y-2">
                       {[
@@ -2050,23 +2053,23 @@ export default function AdminSystemTab({
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1">Lockout & Sessions</div>
                     <div>
                       <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Max Login Attempts</label>
-                      <input type="number" className="input-dark text-xs w-full" value={securityConfig.max_login_attempts} onChange={(e) => updateSecuritySetting('max_login_attempts', e.target.value)} min="1" max="20" />
+                      <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={securityConfig.max_login_attempts} onChange={(e) => updateSecuritySetting('max_login_attempts', e.target.value)} min="1" max="20" />
                       <p className="text-[9px] text-rmpg-500 mt-0.5">Account locks after this many failed attempts.</p>
                     </div>
                     <div>
                       <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Lockout Duration (minutes)</label>
-                      <input type="number" className="input-dark text-xs w-full" value={securityConfig.lockout_duration_minutes} onChange={(e) => updateSecuritySetting('lockout_duration_minutes', e.target.value)} min="1" max="1440" />
+                      <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={securityConfig.lockout_duration_minutes} onChange={(e) => updateSecuritySetting('lockout_duration_minutes', e.target.value)} min="1" max="1440" />
                     </div>
                     <div>
                       <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Max Active Sessions</label>
-                      <input type="number" className="input-dark text-xs w-full" value={securityConfig.max_active_sessions} onChange={(e) => updateSecuritySetting('max_active_sessions', e.target.value)} min="1" max="10" />
+                      <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={securityConfig.max_active_sessions} onChange={(e) => updateSecuritySetting('max_active_sessions', e.target.value)} min="1" max="10" />
                       <p className="text-[9px] text-rmpg-500 mt-0.5">Maximum concurrent sessions per user.</p>
                     </div>
                   </div>
                 </div>
                 {securityDirty && (
                   <div className="mt-4 flex justify-end border-t border-rmpg-700 pt-3">
-                    <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={saveSecurityConfig}><Save className="w-3 h-3" /> Save Security Settings</button>
+                    <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={saveSecurityConfig}><Save className="w-3 h-3" /> Save Security Settings</button>
                   </div>
                 )}
               </div>
@@ -2132,7 +2135,7 @@ export default function AdminSystemTab({
                 </div>
                 {brandingDirty && (
                   <div className="mt-4 flex justify-end border-t border-rmpg-700 pt-3">
-                    <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={saveBrandingConfig}><Save className="w-3 h-3" /> Save Branding</button>
+                    <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={saveBrandingConfig}><Save className="w-3 h-3" /> Save Branding</button>
                   </div>
                 )}
               </div>
@@ -2153,8 +2156,8 @@ export default function AdminSystemTab({
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" />
                     <input
                       type="text"
-                      className="input-dark text-xs w-full pl-8"
-                      placeholder="Search statutes (e.g. 76-5-102 or assault)..."
+                      className="input-dark text-xs w-full pl-8 min-h-[36px]"
+                      placeholder="Search statutes (e.g. 76-5-102 or assault)..." aria-label="Search statutes (e.g. 76-5-102 or assault)..."
                       value={statuteSearch}
                       onChange={(e) => { setStatuteSearch(e.target.value); setStatutePage(1); }}
                     />
@@ -2172,7 +2175,7 @@ export default function AdminSystemTab({
 
                 {/* Statute Table */}
                 {loadingStatutes ? (
-                  <div className="text-center py-4"><Loader2 className="w-4 h-4 animate-spin inline-block text-rmpg-400" /></div>
+                  <div className="text-center py-4"><Loader2 className="w-4 h-4 animate-spin inline-block text-rmpg-400" role="status" aria-label="Loading" /></div>
                 ) : statutes.length === 0 ? (
                   <p className="text-xs text-rmpg-400 py-4 text-center">No statutes found</p>
                 ) : (
@@ -2249,11 +2252,11 @@ export default function AdminSystemTab({
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1">Agency Information</div>
                     <div>
                       <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Agency Name</label>
-                      <input type="text" className="input-dark text-xs w-full" value={systemSettings.agency_name} onChange={(e) => updateSetting('agency_name', e.target.value)} placeholder="Used in PDF report headers" />
+                      <input type="text" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.agency_name} onChange={(e) => updateSetting('agency_name', e.target.value)} placeholder="Used in PDF report headers" />
                     </div>
                     <div>
                       <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Agency ORI Number</label>
-                      <input type="text" className="input-dark text-xs w-full" value={systemSettings.agency_ori} onChange={(e) => updateSetting('agency_ori', e.target.value)} placeholder="e.g. UT0190000" />
+                      <input type="text" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.agency_ori} onChange={(e) => updateSetting('agency_ori', e.target.value)} placeholder="e.g. UT0190000" />
                     </div>
                     <div>
                       <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Default Timezone</label>
@@ -2272,12 +2275,12 @@ export default function AdminSystemTab({
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1">System Parameters</div>
                     <div>
                       <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Auto-Archive After (days)</label>
-                      <input type="number" className="input-dark text-xs w-full" value={systemSettings.auto_archive_days} onChange={(e) => updateSetting('auto_archive_days', e.target.value)} min="0" max="365" />
+                      <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.auto_archive_days} onChange={(e) => updateSetting('auto_archive_days', e.target.value)} min="0" max="365" />
                       <p className="text-[9px] text-rmpg-500 mt-0.5">Closed calls are auto-archived after this many days. 0 = disabled.</p>
                     </div>
                     <div>
                       <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Session Timeout (minutes)</label>
-                      <input type="number" className="input-dark text-xs w-full" value={systemSettings.session_timeout_minutes} onChange={(e) => updateSetting('session_timeout_minutes', e.target.value)} min="5" max="1440" />
+                      <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.session_timeout_minutes} onChange={(e) => updateSetting('session_timeout_minutes', e.target.value)} min="5" max="1440" />
                       <p className="text-[9px] text-rmpg-500 mt-0.5">Inactive sessions are logged out after this duration.</p>
                     </div>
                   </div>
@@ -2316,8 +2319,8 @@ export default function AdminSystemTab({
                 </div>
                 {settingsDirty && (
                   <div className="mt-4 flex justify-end border-t border-rmpg-700 pt-3">
-                    <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={saveSystemSettings} disabled={savingSettings}>
-                      {savingSettings ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                    <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={saveSystemSettings} disabled={savingSettings}>
+                      {savingSettings ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save className="w-3 h-3" />}
                       Save System Settings
                     </button>
                   </div>

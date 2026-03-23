@@ -54,7 +54,7 @@ router.get('/status', authenticateToken, (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Security status error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to security status', code: 'SECURITY_STATUS_ERROR' });
   }
 });
 
@@ -95,7 +95,7 @@ router.get('/login-history', authenticateToken, (req: Request, res: Response) =>
     });
   } catch (error: any) {
     console.error('Login history error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to login history', code: 'LOGIN_HISTORY_ERROR' });
   }
 });
 
@@ -109,12 +109,14 @@ router.get('/trusted-devices', authenticateToken, (req: Request, res: Response) 
       FROM trusted_devices
       WHERE user_id = ? AND trusted_until > ?
       ORDER BY last_used_at DESC
+    
+      LIMIT 1000
     `).all(req.user!.userId, localNow());
 
     res.json(devices);
   } catch (error: any) {
     console.error('Trusted devices error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to trusted devices', code: 'TRUSTED_DEVICES_ERROR' });
   }
 });
 
@@ -147,7 +149,7 @@ router.delete('/trusted-devices/:id', validateParamIdMiddleware, authenticateTok
     res.json({ message: 'Trusted device removed' });
   } catch (error: any) {
     console.error('Remove device error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to remove device', code: 'REMOVE_DEVICE_ERROR' });
   }
 });
 
@@ -174,7 +176,7 @@ router.get('/notifications', authenticateToken, (req: Request, res: Response) =>
     res.json({ notifications: rows, total: total.count, limit, offset });
   } catch (error: any) {
     console.error('Security notifications error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to security notifications', code: 'SECURITY_NOTIFICATIONS_ERROR' });
   }
 });
 
@@ -196,7 +198,7 @@ router.put('/notifications/:id/read', validateParamIdMiddleware, authenticateTok
     res.json({ message: 'Marked as read' });
   } catch (error: any) {
     console.error('Mark notification read error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to mark notification read', code: 'MARK_NOTIFICATION_READ_ERROR' });
   }
 });
 
@@ -214,7 +216,7 @@ router.put('/notifications/read-all', authenticateToken, (req: Request, res: Res
     res.json({ message: 'All marked as read' });
   } catch (error: any) {
     console.error('Mark all read error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to mark all read', code: 'MARK_ALL_READ_ERROR' });
   }
 });
 
@@ -226,7 +228,7 @@ router.get('/blocked-ips', authenticateToken, requireRole('admin'), (_req: Reque
     res.json({ blocked, count: blocked.length });
   } catch (error: any) {
     console.error('Get blocked IPs error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get blocked ips', code: 'GET_BLOCKED_IPS_ERROR' });
   }
 });
 
@@ -258,7 +260,7 @@ router.post('/unblock-ip', authenticateToken, requireRole('admin'), (req: Reques
     res.json({ success: true, message: msg, unblocked: count });
   } catch (error: any) {
     console.error('Unblock IP error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unblock ip', code: 'UNBLOCK_IP_ERROR' });
   }
 });
 
@@ -281,7 +283,7 @@ router.get('/recent-threats', authenticateToken, requireRole('admin'), (_req: Re
     res.json(threats);
   } catch (error: any) {
     console.error('Recent threats error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to recent threats', code: 'RECENT_THREATS_ERROR' });
   }
 });
 

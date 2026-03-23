@@ -343,7 +343,7 @@ router.get('/health/detailed', requireRole('admin', 'manager'), (req: Request, r
     });
   } catch (error: any) {
     console.error('Health detailed error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to health detailed', code: 'HEALTH_DETAILED_ERROR' });
   }
 });
 
@@ -380,6 +380,8 @@ router.get('/announcements', (req: Request, res: Response) => {
       ORDER BY
         CASE sa.priority WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'normal' THEN 3 END,
         sa.created_at DESC
+    
+      LIMIT 1000
     `).all(now, now) as any[];
 
     // Filter by target_roles — empty array means all roles
@@ -396,7 +398,7 @@ router.get('/announcements', (req: Request, res: Response) => {
     res.json(filtered);
   } catch (error: any) {
     console.error('Get announcements error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get announcements', code: 'GET_ANNOUNCEMENTS_ERROR' });
   }
 });
 
@@ -409,12 +411,14 @@ router.get('/announcements/all', requireRole('admin'), (req: Request, res: Respo
       FROM system_announcements sa
       LEFT JOIN users u ON sa.created_by = u.id
       ORDER BY sa.created_at DESC
+    
+      LIMIT 1000
     `).all();
 
     res.json(announcements);
   } catch (error: any) {
     console.error('Get all announcements error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get all announcements', code: 'GET_ALL_ANNOUNCEMENTS_ERROR' });
   }
 });
 
@@ -459,7 +463,7 @@ router.post('/announcements', requireRole('admin', 'manager'), (req: Request, re
     res.status(201).json(announcement);
   } catch (error: any) {
     console.error('Create announcement error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create announcement', code: 'CREATE_ANNOUNCEMENT_ERROR' });
   }
 });
 
@@ -507,7 +511,7 @@ router.put('/announcements/:id', requireRole('admin', 'manager'), (req: Request,
     res.json(updated);
   } catch (error: any) {
     console.error('Update announcement error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update announcement', code: 'UPDATE_ANNOUNCEMENT_ERROR' });
   }
 });
 
@@ -531,7 +535,7 @@ router.delete('/announcements/:id', requireRole('admin'), (req: Request, res: Re
     res.json({ message: 'Announcement deleted' });
   } catch (error: any) {
     console.error('Delete announcement error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete announcement', code: 'DELETE_ANNOUNCEMENT_ERROR' });
   }
 });
 
@@ -547,7 +551,7 @@ router.get('/retention', requireRole('admin', 'manager'), (req: Request, res: Re
     res.json(policies);
   } catch (error: any) {
     console.error('Get retention policies error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get retention policies', code: 'GET_RETENTION_POLICIES_ERROR' });
   }
 });
 
@@ -592,7 +596,7 @@ router.put('/retention/:id', requireRole('admin', 'manager'), (req: Request, res
     res.json(updated);
   } catch (error: any) {
     console.error('Update retention policy error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update retention policy', code: 'UPDATE_RETENTION_POLICY_ERROR' });
   }
 });
 
@@ -671,7 +675,7 @@ router.post('/retention/run', requireRole('admin'), (req: Request, res: Response
     res.json({ executed_at: now, results });
   } catch (error: any) {
     console.error('Run retention policies error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to run retention policies', code: 'RUN_RETENTION_POLICIES_ERROR' });
   }
 });
 
@@ -734,7 +738,7 @@ router.get('/retention/preview', requireRole('admin', 'manager'), (req: Request,
     res.json(previews);
   } catch (error: any) {
     console.error('Retention preview error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to retention preview', code: 'RETENTION_PREVIEW_ERROR' });
   }
 });
 
@@ -753,12 +757,14 @@ router.get('/departments', (req: Request, res: Response) => {
       LEFT JOIN users u ON d.manager_id = u.id
       LEFT JOIN departments pd ON d.parent_id = pd.id
       ORDER BY d.name
+    
+      LIMIT 1000
     `).all();
 
     res.json(departments);
   } catch (error: any) {
     console.error('Get departments error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get departments', code: 'GET_DEPARTMENTS_ERROR' });
   }
 });
 
@@ -806,7 +812,7 @@ router.post('/departments', requireRole('admin', 'manager'), (req: Request, res:
       return;
     }
     console.error('Create department error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create department', code: 'CREATE_DEPARTMENT_ERROR' });
   }
 });
 
@@ -859,7 +865,7 @@ router.put('/departments/:id', requireRole('admin', 'manager'), (req: Request, r
       return;
     }
     console.error('Update department error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update department', code: 'UPDATE_DEPARTMENT_ERROR' });
   }
 });
 
@@ -897,7 +903,7 @@ router.delete('/departments/:id', requireRole('admin'), (req: Request, res: Resp
     res.json({ message: 'Department deleted' });
   } catch (error: any) {
     console.error('Delete department error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete department', code: 'DELETE_DEPARTMENT_ERROR' });
   }
 });
 
@@ -914,12 +920,14 @@ router.get('/notification-rules', requireRole('admin', 'manager'), (req: Request
       FROM notification_rules nr
       LEFT JOIN users u ON nr.created_by = u.id
       ORDER BY nr.name
+    
+      LIMIT 1000
     `).all();
 
     res.json(rules);
   } catch (error: any) {
     console.error('Get notification rules error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get notification rules', code: 'GET_NOTIFICATION_RULES_ERROR' });
   }
 });
 
@@ -976,7 +984,7 @@ router.post('/notification-rules', requireRole('admin', 'manager'), (req: Reques
     res.status(201).json(rule);
   } catch (error: any) {
     console.error('Create notification rule error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create notification rule', code: 'CREATE_NOTIFICATION_RULE_ERROR' });
   }
 });
 
@@ -1028,7 +1036,7 @@ router.put('/notification-rules/:id', requireRole('admin', 'manager'), (req: Req
     res.json(updated);
   } catch (error: any) {
     console.error('Update notification rule error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update notification rule', code: 'UPDATE_NOTIFICATION_RULE_ERROR' });
   }
 });
 
@@ -1052,7 +1060,7 @@ router.delete('/notification-rules/:id', requireRole('admin', 'manager'), (req: 
     res.json({ message: 'Notification rule deleted' });
   } catch (error: any) {
     console.error('Delete notification rule error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete notification rule', code: 'DELETE_NOTIFICATION_RULE_ERROR' });
   }
 });
 
@@ -1123,7 +1131,7 @@ router.post('/notification-rules/:id/test', requireRole('admin', 'manager'), (re
     res.json({ message: `Test notification sent to ${sentCount} user(s)`, sent_to: targetUserIds });
   } catch (error: any) {
     console.error('Test notification rule error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to test notification rule', code: 'TEST_NOTIFICATION_RULE_ERROR' });
   }
 });
 
@@ -1149,6 +1157,8 @@ router.get('/training', (req: Request, res: Response) => {
       JOIN users u ON u.id = c.officer_id
       WHERE c.type = 'training' OR c.type = 'certification'
       ORDER BY c.expiry_date ASC
+    
+      LIMIT 1000
     `).all();
     res.json(training);
   } catch (error: any) {

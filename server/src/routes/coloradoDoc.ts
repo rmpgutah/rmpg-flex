@@ -72,7 +72,7 @@ router.get('/offender/:docNumber', requireRole('admin', 'manager', 'supervisor',
     res.json(offender);
   } catch (error: any) {
     console.error('CDOC offender lookup error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to cdoc offender lookup', code: 'CDOC_OFFENDER_LOOKUP_ERROR' });
   }
 });
 
@@ -83,7 +83,7 @@ router.get('/stats', requireRole('admin', 'manager', 'supervisor'), (req: Reques
     res.json(stats);
   } catch (error: any) {
     console.error('CDOC stats error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to cdoc stats', code: 'CDOC_STATS_ERROR' });
   }
 });
 

@@ -2,7 +2,7 @@
 // RMPG Flex — Personnel: Time & Attendance Tab
 // ============================================================
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Clock, LogIn, LogOut, Coffee, Users, BarChart3, Pencil, Trash2 } from 'lucide-react';
 import type { TimeEntry } from '../../../types';
 import type { OfficerWithStatus } from '../utils/personnelMappers';
@@ -60,6 +60,9 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
     { label: 'Clocked Out', value: stats.clockedOutCount, icon: LogOut, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-600' },
     { label: 'Avg Hours/Officer', value: stats.avgHours, icon: BarChart3, color: 'text-brand-400', bgClass: 'bg-[#0a1020]', border: 'border-brand-700/30', topBorder: 'border-t-brand-500' },
   ];
+
+  // Set document title
+  useEffect(() => { document.title = 'Personnel - Time \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">

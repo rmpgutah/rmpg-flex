@@ -8,6 +8,8 @@ import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { auditLog } from '../utils/auditLogger';
+import { broadcastFleetUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
 
 const execAsync = promisify(exec);
@@ -159,6 +161,8 @@ router.get('/analytics', (req: Request, res: Response) => {
       default: dateCutoff = new Date(now.getTime() - 90 * 86400000).toISOString();
     }
 
+    res.set('Cache-Control', 'private, max-age=120');
+
     // Maintenance cost trend (monthly)
     const maintenanceCostTrend = db.prepare(`
       SELECT strftime('%Y-%m', performed_at) AS month, SUM(cost) AS total_cost, COUNT(*) AS count
@@ -213,6 +217,8 @@ router.get('/analytics', (req: Request, res: Response) => {
       FROM fleet_fuel_logs
       WHERE fuel_date >= ? AND odometer_reading IS NOT NULL
       ORDER BY vehicle_id, fuel_date
+    
+      LIMIT 1000
     `).all(dateCutoff) as any[];
 
     // Group by vehicle, compute per-interval MPG
@@ -300,6 +306,8 @@ router.get('/map', (req: Request, res: Response) => {
         LEFT JOIN cpgps_vehicles cv ON cv.vehicle_id = fv.id
         WHERE fv.status != 'retired'
         ORDER BY fv.vehicle_number
+      
+        LIMIT 1000
       `).all();
     } else {
       rows = db.prepare(`
@@ -313,6 +321,8 @@ router.get('/map', (req: Request, res: Response) => {
         LEFT JOIN units u ON u.id = fv.assigned_unit_id
         WHERE fv.status != 'retired'
         ORDER BY fv.vehicle_number
+      
+        LIMIT 1000
       `).all();
     }
 
@@ -682,7 +692,7 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete fleet vehicle error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete fleet vehicle', code: 'DELETE_FLEET_VEHICLE_ERROR' });
   }
 });
 
@@ -705,7 +715,7 @@ router.post('/:id/archive', requireRole('admin', 'manager'), (req: Request, res:
     res.json({ ...updated, equipment: safeParseJson(updated.equipment, []) });
   } catch (error: any) {
     console.error('Archive fleet vehicle error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to archive fleet vehicle', code: 'ARCHIVE_FLEET_VEHICLE_ERROR' });
   }
 });
 
@@ -727,7 +737,7 @@ router.post('/:id/unarchive', requireRole('admin', 'manager'), (req: Request, re
     res.json({ ...updated, equipment: safeParseJson(updated.equipment, []) });
   } catch (error: any) {
     console.error('Unarchive fleet vehicle error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unarchive fleet vehicle', code: 'UNARCHIVE_FLEET_VEHICLE_ERROR' });
   }
 });
 
@@ -889,7 +899,7 @@ router.put('/maintenance/:id', requireRole('admin', 'manager', 'supervisor'), (r
     res.json(updated);
   } catch (error: any) {
     console.error('Update maintenance error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update maintenance', code: 'UPDATE_MAINTENANCE_ERROR' });
   }
 });
 
@@ -906,7 +916,7 @@ router.delete('/maintenance/:id', requireRole('admin', 'manager'), (req: Request
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete maintenance error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete maintenance', code: 'DELETE_MAINTENANCE_ERROR' });
   }
 });
 
@@ -923,7 +933,7 @@ router.post('/maintenance/:id/archive', requireRole('admin', 'manager'), (req: R
     res.json(updated);
   } catch (error: any) {
     console.error('Archive maintenance error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to archive maintenance', code: 'ARCHIVE_MAINTENANCE_ERROR' });
   }
 });
 
@@ -939,7 +949,7 @@ router.post('/maintenance/:id/unarchive', requireRole('admin', 'manager'), (req:
     res.json(updated);
   } catch (error: any) {
     console.error('Unarchive maintenance error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unarchive maintenance', code: 'UNARCHIVE_MAINTENANCE_ERROR' });
   }
 });
 
@@ -984,6 +994,8 @@ router.get('/:id/fuel', (req: Request, res: Response) => {
       SELECT gallons, odometer_reading FROM fleet_fuel_logs
       WHERE vehicle_id = ? AND odometer_reading IS NOT NULL
       ORDER BY fuel_date ASC, id ASC
+    
+      LIMIT 1000
     `).all(id) as any[];
 
     let totalMiles = 0;
@@ -1112,7 +1124,7 @@ router.put('/fuel/:id', requireRole('admin', 'manager', 'supervisor', 'officer')
     res.json(updated);
   } catch (error: any) {
     console.error('Update fuel log error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update fuel log', code: 'UPDATE_FUEL_LOG_ERROR' });
   }
 });
 
@@ -1129,7 +1141,7 @@ router.delete('/fuel/:id', requireRole('admin', 'manager'), (req: Request, res: 
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete fuel log error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete fuel log', code: 'DELETE_FUEL_LOG_ERROR' });
   }
 });
 
@@ -1146,7 +1158,7 @@ router.post('/fuel/:id/archive', requireRole('admin', 'manager'), (req: Request,
     res.json(updated);
   } catch (error: any) {
     console.error('Archive fuel log error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to archive fuel log', code: 'ARCHIVE_FUEL_LOG_ERROR' });
   }
 });
 
@@ -1162,7 +1174,7 @@ router.post('/fuel/:id/unarchive', requireRole('admin', 'manager'), (req: Reques
     res.json(updated);
   } catch (error: any) {
     console.error('Unarchive fuel log error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unarchive fuel log', code: 'UNARCHIVE_FUEL_LOG_ERROR' });
   }
 });
 
@@ -1324,7 +1336,7 @@ router.put('/inspections/:id', requireRole('admin', 'manager', 'supervisor'), (r
     res.json({ ...updated, items: safeParseJson(updated.items, []) });
   } catch (error: any) {
     console.error('Update inspection error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update inspection', code: 'UPDATE_INSPECTION_ERROR' });
   }
 });
 
@@ -1341,7 +1353,7 @@ router.delete('/inspections/:id', requireRole('admin', 'manager'), (req: Request
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete inspection error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete inspection', code: 'DELETE_INSPECTION_ERROR' });
   }
 });
 
@@ -1358,7 +1370,7 @@ router.post('/inspections/:id/archive', requireRole('admin', 'manager'), (req: R
     res.json({ ...updated, items: safeParseJson(updated.items, []) });
   } catch (error: any) {
     console.error('Archive inspection error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to archive inspection', code: 'ARCHIVE_INSPECTION_ERROR' });
   }
 });
 
@@ -1374,7 +1386,7 @@ router.post('/inspections/:id/unarchive', requireRole('admin', 'manager'), (req:
     res.json({ ...updated, items: safeParseJson(updated.items, []) });
   } catch (error: any) {
     console.error('Unarchive inspection error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unarchive inspection', code: 'UNARCHIVE_INSPECTION_ERROR' });
   }
 });
 
@@ -1464,6 +1476,8 @@ router.get('/:id/personnel', (req: Request, res: Response) => {
           LEFT JOIN users u ON c.officer_id = u.id
           WHERE c.officer_id = ?
           ORDER BY c.expiry_date ASC
+        
+          LIMIT 1000
         `).all(unit.officer_id);
 
         // Today's schedule
@@ -1473,6 +1487,8 @@ router.get('/:id/personnel', (req: Request, res: Response) => {
           FROM schedules s
           LEFT JOIN properties p ON s.property_id = p.id
           WHERE s.officer_id = ? AND s.shift_date = ?
+        
+          LIMIT 1000
         `).all(unit.officer_id, today);
 
         // Active time entry
@@ -1489,6 +1505,8 @@ router.get('/:id/personnel', (req: Request, res: Response) => {
       SELECT * FROM fleet_personnel_notes
       WHERE vehicle_id = ?
       ORDER BY created_at DESC
+    
+      LIMIT 1000
     `).all(id);
 
     res.json({
@@ -1719,11 +1737,13 @@ router.get('/dash-cameras', (req: Request, res: Response) => {
       FROM dash_cameras dc
       LEFT JOIN fleet_vehicles fv ON dc.vehicle_id = fv.id
       ORDER BY dc.created_at DESC
+    
+      LIMIT 1000
     `).all();
     res.json(cameras);
   } catch (error: any) {
     console.error('List dash cameras error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to list dash cameras', code: 'LIST_DASH_CAMERAS_ERROR' });
   }
 });
 
@@ -1756,7 +1776,7 @@ router.post('/dash-cameras', requireRole('admin'), (req: Request, res: Response)
       return;
     }
     console.error('Create dash camera error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create dash camera', code: 'CREATE_DASH_CAMERA_ERROR' });
   }
 });
 
@@ -1788,7 +1808,7 @@ router.put('/dash-cameras/:id', requireRole('admin'), (req: Request, res: Respon
     res.json(cam);
   } catch (error: any) {
     console.error('Update dash camera error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update dash camera', code: 'UPDATE_DASH_CAMERA_ERROR' });
   }
 });
 
@@ -1803,7 +1823,7 @@ router.delete('/dash-cameras/:id', requireRole('admin'), (req: Request, res: Res
     res.json({ message: 'Dash camera deleted' });
   } catch (error: any) {
     console.error('Delete dash camera error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete dash camera', code: 'DELETE_DASH_CAMERA_ERROR' });
   }
 });
 
@@ -1822,7 +1842,7 @@ router.delete('/dash-cameras/bulk', requireRole('admin'), (req: Request, res: Re
     res.json({ deleted: result.changes });
   } catch (error: any) {
     console.error('Bulk delete dash cameras error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to bulk delete dash cameras', code: 'BULK_DELETE_DASH_CAMERAS' });
   }
 });
 
@@ -1838,11 +1858,13 @@ router.get('/dashcam-videos', (req: Request, res: Response) => {
       LEFT JOIN dash_cameras dc ON v.camera_id = dc.id
       LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
       ORDER BY v.created_at DESC
+    
+      LIMIT 1000
     `).all();
     res.json(videos);
   } catch (error: any) {
     console.error('List dashcam videos error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to list dashcam videos', code: 'LIST_DASHCAM_VIDEOS_ERROR' });
   }
 });
 
@@ -1954,7 +1976,7 @@ router.get('/dashcam-videos/:id/stream', (req: Request, res: Response, next) => 
     }
   } catch (error: any) {
     console.error('Stream dashcam video error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to stream dashcam video', code: 'STREAM_DASHCAM_VIDEO_ERROR' });
   }
 });
 
@@ -1972,7 +1994,7 @@ router.delete('/dashcam-videos/:id', requireRole('admin'), (req: Request, res: R
     res.json({ message: 'Video deleted' });
   } catch (error: any) {
     console.error('Delete dashcam video error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete dashcam video', code: 'DELETE_DASHCAM_VIDEO_ERROR' });
   }
 });
 
@@ -1991,7 +2013,7 @@ router.put('/dashcam-videos/bulk', requireRole('admin'), (req: Request, res: Res
     res.json({ updated: videoIds.length });
   } catch (error: any) {
     console.error('Bulk classify dashcam videos error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to bulk classify dashcam videos', code: 'BULK_CLASSIFY_DASHCAM_VIDEOS' });
   }
 });
 
@@ -2015,7 +2037,7 @@ router.delete('/dashcam-videos/bulk', requireRole('admin'), (req: Request, res: 
     res.json({ deleted: result.changes });
   } catch (error: any) {
     console.error('Bulk delete dashcam videos error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to bulk delete dashcam videos', code: 'BULK_DELETE_DASHCAM_VIDEOS' });
   }
 });
 
@@ -2046,6 +2068,8 @@ router.get('/:id/assignment-history', (req: Request, res: Response) => {
       LEFT JOIN users u ON u.id = un.officer_id
       WHERE fa.vehicle_id = ?
       ORDER BY fa.assigned_at DESC
+    
+      LIMIT 1000
     `).all(id);
     res.json(rows);
   } catch (error: any) {
@@ -2068,6 +2092,8 @@ router.get('/:id/fuel-efficiency', (req: Request, res: Response) => {
       FROM fleet_fuel_logs
       WHERE vehicle_id = ? AND odometer_reading IS NOT NULL
       ORDER BY fuel_date ASC, id ASC
+    
+      LIMIT 1000
     `).all(id) as any[];
 
     const efficiencyData: any[] = [];
@@ -2193,6 +2219,8 @@ router.get('/status-dashboard', (req: Request, res: Response) => {
       LEFT JOIN units u ON u.id = fv.assigned_unit_id
       WHERE fv.archived_at IS NULL
       ORDER BY fv.vehicle_number
+    
+      LIMIT 1000
     `).all() as any[];
 
     const now = new Date().toISOString().slice(0, 10);
@@ -2277,6 +2305,8 @@ router.get('/:id/damage-reports', (req: Request, res: Response) => {
       FROM fleet_damage_reports dr
       LEFT JOIN users u ON u.id = dr.reported_by
       WHERE dr.vehicle_id = ? ORDER BY dr.damage_date DESC
+    
+      LIMIT 1000
     `).all(req.params.id);
     res.json(rows);
   } catch (error: any) {
@@ -2341,6 +2371,8 @@ router.get('/utilization-report', (req: Request, res: Response) => {
       SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year, fv.status
       FROM fleet_vehicles fv WHERE fv.archived_at IS NULL
       ORDER BY fv.vehicle_number
+    
+      LIMIT 1000
     `).all() as any[];
 
     const result = vehicles.map((v: any) => {
@@ -2546,7 +2578,7 @@ router.get('/pretrip/:vehicleId', (req: Request, res: Response) => {
     res.json(checklists);
   } catch (error: any) {
     console.error('Get pre-trip checklists error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get pre-trip checklists', code: 'GET_PRETRIP_CHECKLISTS_ERROR' });
   }
 });
 
@@ -2567,6 +2599,8 @@ router.get('/daily-mileage/:vehicleId', (req: Request, res: Response) => {
       FROM gps_breadcrumbs
       WHERE unit_id = ? AND recorded_at >= datetime('now', '-${dayCount} days', 'localtime')
       ORDER BY recorded_at ASC
+    
+      LIMIT 1000
     `).all(unit.id) as any[];
 
     // Group by day and calculate distance
@@ -2593,7 +2627,7 @@ router.get('/daily-mileage/:vehicleId', (req: Request, res: Response) => {
     res.json(dailyMileage);
   } catch (error: any) {
     console.error('Daily mileage error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to daily mileage', code: 'DAILY_MILEAGE_ERROR' });
   }
 });
 
@@ -2615,6 +2649,8 @@ router.get('/maintenance-calendar', (req: Request, res: Response) => {
       JOIN fleet_vehicles fv ON fm.vehicle_id = fv.id
       WHERE fm.scheduled_date BETWEEN ? AND ?
       ORDER BY fm.scheduled_date ASC
+    
+      LIMIT 1000
     `).all(startDate, endDate) as any[];
 
     // Vehicles with next_service_due
@@ -2623,6 +2659,8 @@ router.get('/maintenance-calendar', (req: Request, res: Response) => {
       FROM fleet_vehicles
       WHERE next_service_due IS NOT NULL AND next_service_due BETWEEN ? AND ?
       ORDER BY next_service_due ASC
+    
+      LIMIT 1000
     `).all(startDate, endDate) as any[];
 
     res.json({
@@ -2631,7 +2669,7 @@ router.get('/maintenance-calendar', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Maintenance calendar error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to maintenance calendar', code: 'MAINTENANCE_CALENDAR_ERROR' });
   }
 });
 
@@ -2656,7 +2694,7 @@ router.post('/vehicle-swap', (req: Request, res: Response) => {
     res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
     console.error('Vehicle swap error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to vehicle swap', code: 'VEHICLE_SWAP_ERROR' });
   }
 });
 
@@ -2689,7 +2727,7 @@ router.get('/vehicle-swaps', (req: Request, res: Response) => {
     res.json(swaps);
   } catch (error: any) {
     console.error('Get vehicle swaps error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get vehicle swaps', code: 'GET_VEHICLE_SWAPS_ERROR' });
   }
 });
 
@@ -2729,7 +2767,7 @@ router.get('/cost-per-mile/:vehicleId', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Cost per mile error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to cost per mile', code: 'COST_PER_MILE_ERROR' });
   }
 });
 

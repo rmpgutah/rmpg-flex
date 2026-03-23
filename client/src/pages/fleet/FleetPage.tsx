@@ -69,6 +69,17 @@ function parseEquipment(eq: unknown): string[] {
   return [];
 }
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function FleetPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
@@ -684,6 +695,18 @@ export default function FleetPage() {
   // Render
   // ----------------------------------------------------------
 
+  // Set document title
+  useEffect(() => { document.title = 'Fleet Management \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setShowPretripModal(false); setEditingMaintenanceId(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="flex flex-col h-full animate-fade-in bg-surface-base">
 
@@ -706,7 +729,7 @@ export default function FleetPage() {
           </button>
           {!showArchived && (
             <>
-              <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={openNewVehicle}>
+              <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={openNewVehicle}>
                 <Plus className="w-3 h-3" /> New Vehicle
               </button>
               {/* Feature 16: Pre-trip checklist button */}
@@ -815,7 +838,7 @@ export default function FleetPage() {
         <div className={`flex flex-col ${isMobile ? (selectedId ? 'hidden' : 'w-full') : ''}`} style={isMobile ? { background: '#1a2636' } : { width: '36%', minWidth: 300, maxWidth: 440, background: '#1a2636' }}>
           <div className="flex items-center gap-2 px-2 py-1.5 border-b border-rmpg-700" style={{ background: '#141e2b' }}>
             <select
-              className="select-dark text-[10px] py-1 px-2"
+              className="select-dark text-[10px] py-1 px-2 min-h-[36px]"
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
             >
@@ -827,8 +850,8 @@ export default function FleetPage() {
             <div className="flex-1 relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
               <input
-                className="input-dark w-full text-[10px] py-1 pl-6 pr-2"
-                placeholder="Search vehicles..."
+                className="input-dark w-full text-[10px] py-1 pl-6 pr-2 min-h-[36px]"
+                placeholder="Search vehicles..." aria-label="Search vehicles..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -1106,7 +1129,7 @@ export default function FleetPage() {
 
       {/* Feature 16: Pre-Trip Checklist Modal */}
       {showPretripModal && selectedVehicle && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowPretripModal(false)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowPretripModal(false)}>
           <div className="bg-surface-raised border border-rmpg-600 rounded w-[450px] max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-3 border-b border-rmpg-600">
               <h3 className="text-sm font-bold text-white">Pre-Trip Inspection: {selectedVehicle.vehicle_number}</h3>
@@ -1139,13 +1162,13 @@ export default function FleetPage() {
               <textarea
                 value={pretripForm.notes}
                 onChange={e => setPretripForm(prev => ({ ...prev, notes: e.target.value }))}
-                className="input-dark w-full h-16 text-sm mt-2"
+                className="input-dark w-full h-16 text-sm mt-2 min-h-[36px]"
                 placeholder="Notes (defects, damage, etc.)..."
               />
             </div>
             <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
               <button type="button" onClick={() => setShowPretripModal(false)} className="toolbar-btn">Cancel</button>
-              <button type="button" onClick={submitPretrip} disabled={pretripSaving} className="toolbar-btn toolbar-btn-primary">
+              <button type="button" onClick={submitPretrip} disabled={pretripSaving} className="toolbar-btn toolbar-btn-primary print:hidden">
                 {pretripSaving ? 'Saving...' : 'Submit Pre-Trip'}
               </button>
             </div>

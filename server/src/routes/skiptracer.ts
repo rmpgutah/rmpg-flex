@@ -242,7 +242,7 @@ router.put('/config', requireRole('admin'), (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (err: any) {
     console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
   }
 });
 
@@ -257,7 +257,7 @@ router.delete('/config', requireRole('admin'), (req: Request, res: Response) => 
     res.json({ success: true });
   } catch (err: any) {
     console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
   }
 });
 
@@ -320,7 +320,7 @@ router.get('/search/byname', skipSearchRateLimit, async (req: Request, res: Resp
     res.json(data);
   } catch (err: any) {
     console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
   }
 });
 
@@ -344,7 +344,7 @@ router.get('/search/byaddress', skipSearchRateLimit, async (req: Request, res: R
     res.json(data);
   } catch (err: any) {
     console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
   }
 });
 
@@ -369,7 +369,7 @@ router.get('/search/bynameaddress', skipSearchRateLimit, async (req: Request, re
     res.json(data);
   } catch (err: any) {
     console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
   }
 });
 
@@ -397,7 +397,7 @@ router.get('/search/byphone', skipSearchRateLimit, async (req: Request, res: Res
     res.json(data);
   } catch (err: any) {
     console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
   }
 });
 
@@ -425,7 +425,7 @@ router.get('/search/byemail', skipSearchRateLimit, async (req: Request, res: Res
     res.json(data);
   } catch (err: any) {
     console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
   }
 });
 
@@ -440,7 +440,7 @@ router.get('/person/:id', validateParamIdMiddleware, async (req: Request, res: R
     res.json(data);
   } catch (err: any) {
     console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
   }
 });
 
@@ -466,7 +466,7 @@ router.get('/history', async (req: Request, res: Response) => {
     res.json({ searches: rows, total, limit, offset });
   } catch (err: any) {
     console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
   }
 });
 
@@ -491,10 +491,11 @@ router.get('/stats', async (_req: Request, res: Response) => {
       ORDER BY count DESC
     `).all();
 
+    res.set('Cache-Control', 'private, max-age=60');
     res.json({ ...stats, byType });
   } catch (err: any) {
     console.error('Skip tracer error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to skip tracer', code: 'SKIP_TRACER_ERROR' });
   }
 });
 

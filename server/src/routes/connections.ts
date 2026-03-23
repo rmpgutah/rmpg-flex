@@ -127,6 +127,8 @@ function findConnections(db: any, type: string, id: number): Connection[] {
       FROM record_links
       WHERE (source_type = ? AND source_id = ?)
          OR (target_type = ? AND target_id = ?)
+    
+      LIMIT 1000
     `).all(type, id, type, id) as any[];
 
     for (const link of links) {
@@ -156,6 +158,8 @@ function findConnections(db: any, type: string, id: number): Connection[] {
           FROM call_persons cp
           LEFT JOIN incidents i ON i.call_id = cp.call_id
           WHERE cp.person_id = ?
+        
+          LIMIT 1000
         `).all(id) as any[];
         for (const cp of callPersons) {
           if (cp.incident_id) {
@@ -186,6 +190,8 @@ function findConnections(db: any, type: string, id: number): Connection[] {
           FROM client_persons cp
           JOIN properties p ON p.client_id = cp.client_id
           WHERE cp.person_id = ?
+        
+          LIMIT 1000
         `).all(id) as any[];
         for (const cp of clientPersons) {
           results.push({ type: 'property', id: cp.property_id, relationship: cp.relationship, sourceTable: 'client_persons' });
@@ -206,6 +212,8 @@ function findConnections(db: any, type: string, id: number): Connection[] {
           FROM call_vehicles cv
           LEFT JOIN incidents i ON i.call_id = cv.call_id
           WHERE cv.vehicle_id = ?
+        
+          LIMIT 1000
         `).all(id) as any[];
         for (const cv of callVehicles) {
           if (cv.incident_id) {

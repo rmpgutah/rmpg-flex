@@ -241,8 +241,8 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-400" />
           <input
             type="text"
-            className="input-dark pl-8 w-full text-[11px] py-1"
-            placeholder="Search properties..."
+            className="input-dark pl-8 w-full text-[11px] py-1 min-h-[36px]"
+            placeholder="Search properties..." aria-label="Search properties..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -454,9 +454,32 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
 // Legacy default export
 // ════════════════════════════════════════════════════
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function PropertiesTab(props: PropertiesTabProps) {
   const state = usePropertiesTab(props);
   if (props.loadingProperties) return null;
+  // Set document title
+  useEffect(() => { document.title = 'Records - Properties \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setPropertyModalOpen(false); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <>
       <div className={`${state.selectedProperty ? 'w-[40%]' : 'w-full'} border-r border-rmpg-600 flex flex-col overflow-hidden transition-all`}>

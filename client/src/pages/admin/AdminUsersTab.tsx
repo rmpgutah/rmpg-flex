@@ -101,6 +101,17 @@ interface AdminUsersTabProps {
 // Component
 // ============================================================
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function AdminUsersTab({
   users,
   loadingUsers,
@@ -218,13 +229,13 @@ export default function AdminUsersTab({
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
             <input
               type="text"
-              className="input-dark pl-9 text-xs"
-              placeholder="Search users..."
+              className="input-dark pl-9 text-xs min-h-[36px]"
+              placeholder="Search users..." aria-label="Search users..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={openAddUser}>
+          <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={openAddUser}>
             <Plus className="w-3.5 h-3.5" /> Add User
           </button>
         </div>
@@ -557,7 +568,7 @@ export default function AdminUsersTab({
                   {roleEditing && (
                     <div className="mt-3 flex items-center gap-2">
                       <select
-                        className="input-dark text-xs flex-1"
+                        className="input-dark text-xs flex-1 min-h-[36px]"
                         value={pendingRole || selectedUser.role}
                         onChange={(e) => setPendingRole(e.target.value as UserRole)}
                       >
@@ -570,7 +581,7 @@ export default function AdminUsersTab({
                         disabled={securityActionLoading === 'role-change' || pendingRole === selectedUser.role}
                         className="toolbar-btn toolbar-btn-primary text-[9px]"
                       >
-                        {securityActionLoading === 'role-change' ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
+                        {securityActionLoading === 'role-change' ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <CheckCircle className="w-3 h-3" />}
                         Apply
                       </button>
                       <button type="button" onClick={() => { setRoleEditing(false); setPendingRole(null); }} className="toolbar-btn text-[9px]">
@@ -697,7 +708,7 @@ export default function AdminUsersTab({
                           className="toolbar-btn text-[9px] text-red-400 hover:text-red-300 hover:bg-red-900/30 flex items-center gap-1"
                         >
                           {securityActionLoading === 'revoke-sessions' ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
+                            <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />
                           ) : (
                             <LogOut className="w-3 h-3" />
                           )}
@@ -707,7 +718,7 @@ export default function AdminUsersTab({
                     </div>
                   </div>
                   {loadingSessions ? (
-                    <div className="flex items-center gap-2 py-3"><Loader2 className="w-3 h-3 animate-spin text-brand-400" /><span className="text-[11px] text-rmpg-400">Loading sessions...</span></div>
+                    <div className="flex items-center gap-2 py-3"><Loader2 className="w-3 h-3 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[11px] text-rmpg-400">Loading sessions...</span></div>
                   ) : userSessions.length > 0 ? (
                     <div className="space-y-1.5">
                       {userSessions.map((session) => (
@@ -754,7 +765,7 @@ export default function AdminUsersTab({
                   Recent Activity ({userActivity.length})
                 </h3>
                 {loadingUserActivity ? (
-                  <div className="flex items-center gap-2"><Loader2 className="w-3 h-3 animate-spin text-brand-400" /><span className="text-[11px] text-rmpg-400">Loading...</span></div>
+                  <div className="flex items-center gap-2"><Loader2 className="w-3 h-3 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[11px] text-rmpg-400">Loading...</span></div>
                 ) : userActivity.length > 0 ? (
                   <div className="space-y-1">
                     {userActivity.map((entry) => (
@@ -781,13 +792,15 @@ export default function AdminUsersTab({
                 <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Microsoft 365 Business Email</h3>
                 <div className="py-8 text-center border border-dashed border-rmpg-700">
                   <Settings className="w-8 h-8 text-rmpg-500 mx-auto mb-3" />
-                  <p className="text-sm text-rmpg-300 font-medium">Email Integration Coming Soon</p>
+                  <p className="text-sm text-rmpg-300 font-medium">Microsoft 365 Email Integration</p>
                   <p className="text-[11px] text-rmpg-500 mt-1 max-w-sm mx-auto">
-                    Microsoft 365 business email connection will be established when online live integration between dispatchers and officers is implemented.
+                    Microsoft 365 integration requires Azure AD application registration and admin consent.
+                    Contact your system administrator to configure the OAuth2 app credentials for this deployment.
                   </p>
-                  <button type="button" className="toolbar-btn mt-4 opacity-50 cursor-not-allowed" disabled>
-                    Connect Microsoft 365
-                  </button>
+                  <div className="mt-3 text-[10px] text-rmpg-500 space-y-0.5">
+                    <p>Required: Azure AD App ID, Client Secret, Tenant ID</p>
+                    <p>Configure in Admin &rarr; System &rarr; Integrations</p>
+                  </div>
                 </div>
               </div>
             )}

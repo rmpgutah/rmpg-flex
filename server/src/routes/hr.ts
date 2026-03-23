@@ -22,11 +22,13 @@ router.get('/employees', (_req: Request, res: Response) => {
       FROM users
       WHERE status = 'active'
       ORDER BY full_name
+    
+      LIMIT 1000
     `).all();
     res.json(users);
   } catch (error: any) {
     console.error('HR employees list error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to hr employees list', code: 'HR_EMPLOYEES_LIST_ERROR' });
   }
 });
 
@@ -409,7 +411,9 @@ router.get('/leave/balances', (req: Request, res: Response) => {
     }
 
     // All active users — auto-create balances for anyone missing
-    const activeUsers = db.prepare(`SELECT id FROM users WHERE status = 'active'`).all() as any[];
+    const activeUsers = db.prepare(`SELECT id FROM users WHERE status = 'active'
+      LIMIT 1000
+    `).all() as any[];
     const insertBal = db.prepare(
       `INSERT OR IGNORE INTO leave_balances (officer_id, year, vacation_total, vacation_used, sick_total, sick_used, personal_total, personal_used, created_at, updated_at)
        VALUES (?, ?, 80, 0, 40, 0, 24, 0, ?, ?)`
@@ -942,6 +946,8 @@ router.get('/payroll/rates', requireRole('admin', 'manager'), (req: Request, res
       LEFT JOIN users cb ON cb.id = pr.created_by
       ${where}
       ORDER BY u.full_name, pr.effective_date DESC
+    
+      LIMIT 1000
     `).all(...params);
 
     res.json(rates);
@@ -1000,6 +1006,8 @@ router.get('/payroll/entries', requireRole('admin', 'manager'), (req: Request, r
       LEFT JOIN users ab ON ab.id = pe.approved_by
       ${where}
       ORDER BY u.full_name
+    
+      LIMIT 1000
     `).all(...params);
 
     res.json(entries);
@@ -1140,6 +1148,8 @@ router.post('/payroll/periods/:id/populate', validateParamIdMiddleware, requireR
       LEFT JOIN hr_pay_rates pr ON pr.user_id = u.id AND pr.end_date IS NULL
       WHERE u.status = 'active' AND u.archived_at IS NULL
       ORDER BY u.full_name
+    
+      LIMIT 1000
     `).all() as any[];
 
     // Don't duplicate existing entries
@@ -1261,6 +1271,8 @@ router.get('/payroll/export/csv', requireRole('admin', 'manager'), (req: Request
       SELECT pe.*, u.full_name as officer_name, u.badge_number
       FROM hr_payroll_entries pe JOIN users u ON u.id = pe.user_id
       WHERE pe.pay_period_id = ? ORDER BY u.full_name
+    
+      LIMIT 1000
     `).all(Number(pay_period_id));
     sendCsv(res, 'payroll.csv', [
       { key: 'officer_name', header: 'Employee' },
@@ -1318,7 +1330,9 @@ router.get('/payroll/overtime', (req: Request, res: Response) => {
     const role = req.user!.role;
     // Non-managers only see their own
     if (!isManagerOrAbove(role)) { where += ' AND officer_id = ?'; params.push(req.user!.userId); }
-    const rows = db.prepare(`SELECT * FROM overtime_requests ${where} ORDER BY created_at DESC`).all(...params);
+    const rows = db.prepare(`SELECT * FROM overtime_requests ${where} ORDER BY created_at DESC
+      LIMIT 1000
+    `).all(...params);
     res.json(rows);
   } catch (error: any) {
     res.status(500).json({ error: 'Failed to fetch OT requests' });
@@ -1383,6 +1397,8 @@ router.get('/payroll/periods/:id/summary', validateParamIdMiddleware, requireRol
       FROM hr_payroll_entries pe
       JOIN users u ON u.id = pe.user_id
       WHERE pe.pay_period_id = ?
+    
+      LIMIT 1000
     `).all(id) as any[];
 
     const summary = {
@@ -1463,6 +1479,8 @@ router.get('/reviews/trends/:officerId', (req: Request, res: Response) => {
       FROM performance_reviews
       WHERE officer_id = ? AND overall_rating IS NOT NULL
       ORDER BY review_period_end ASC
+    
+      LIMIT 1000
     `).all(officerId) as any[];
 
     res.json(reviews);
@@ -1482,6 +1500,8 @@ router.get('/disciplinary/:officerId/escalation', (req: Request, res: Response) 
       FROM disciplinary_records
       WHERE officer_id = ?
       ORDER BY incident_date ASC
+    
+      LIMIT 1000
     `).all(officerId) as any[];
 
     // Escalation levels
@@ -1773,6 +1793,8 @@ router.get('/salary-history/:officerId', requireRole('admin', 'manager'), (req: 
       FROM hr_salary_history sh
       LEFT JOIN users u ON u.id = sh.approved_by
       WHERE sh.officer_id = ? ORDER BY sh.effective_date DESC
+    
+      LIMIT 1000
     `).all(Number(req.params.officerId));
     res.json(rows);
   } catch (error: any) {
@@ -1937,6 +1959,8 @@ router.get('/training-roi/:officerId', requireRole('admin', 'manager'), (req: Re
       SELECT overall_rating, review_date FROM performance_reviews
       WHERE officer_id = ? AND overall_rating IS NOT NULL
       ORDER BY review_date ASC
+    
+      LIMIT 1000
     `).all(officerId) as any[];
 
     const firstRating = reviews.length > 0 ? reviews[0].overall_rating : null;

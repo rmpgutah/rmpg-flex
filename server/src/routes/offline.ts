@@ -302,6 +302,8 @@ router.get('/secrets', requireRole('admin'), (req: Request, res: Response) => {
       FROM offline_pin_secrets ops
       JOIN users u ON u.id = ops.user_id
       WHERE u.status = 'active'
+    
+      LIMIT 1000
     `).all();
 
     // Also include the admin_secret (stored under the admin's own user_id)

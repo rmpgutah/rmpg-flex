@@ -66,6 +66,17 @@ const EMPTY_TOW = {
   tow_reason: 'parking_violation' as TowReason, tow_company: '', tow_fee: '', storage_fee: '', notes: '',
 };
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function CodeEnforcementPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
@@ -289,6 +300,18 @@ export default function CodeEnforcementPage() {
     } catch (err: any) { addToast(err?.message || 'Operation failed', 'error'); }
   };
 
+  // Set document title
+  useEffect(() => { document.title = 'Code Enforcement \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setVFormOpen(false); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className={`h-full flex ${isMobile ? 'flex-col' : ''}`}>
       {/* ── Left Panel ── */}
@@ -296,7 +319,7 @@ export default function CodeEnforcementPage() {
         <PanelTitleBar title="Code Enforcement" icon={Construction}>
           <button type="button"
             onClick={() => activeTab === 'violations' ? (clearVErrors(), setVFormOpen(true), setVFormData({ ...EMPTY_VIOLATION })) : (clearTErrors(), setTFormOpen(true), setTFormData({ ...EMPTY_TOW }))}
-            className="toolbar-btn toolbar-btn-primary"
+            className="toolbar-btn toolbar-btn-primary print:hidden"
           >
             <Plus style={{ width: 11, height: 11 }} />
             New
@@ -352,7 +375,7 @@ export default function CodeEnforcementPage() {
             <>
               <div className="flex-1 relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" style={{ width: 12, height: 12 }} />
-                <input value={vSearch} onChange={e => { setVSearch(e.target.value); setVPage(1); }} placeholder="Search violations..." className={`w-full pl-7 pr-2 ${isMobile ? 'py-2.5 text-sm' : 'py-1 text-xs'} bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 outline-none`} style={isMobile ? { minHeight: 44 } : undefined} />
+                <input value={vSearch} onChange={e => { setVSearch(e.target.value); setVPage(1); }} placeholder="Search violations..." aria-label="Search violations..." className={`w-full pl-7 pr-2 ${isMobile ? 'py-2.5 text-sm' : 'py-1 text-xs'} bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 outline-none`} style={isMobile ? { minHeight: 44 } : undefined} />
               </div>
               <select value={vFilterStatus} onChange={e => { setVFilterStatus(e.target.value); setVPage(1); }} className={`${isMobile ? 'text-sm py-2' : 'text-[10px]'} bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none`} style={isMobile ? { minHeight: 44 } : undefined}>
                 <option value="">All</option>
@@ -363,7 +386,7 @@ export default function CodeEnforcementPage() {
             <>
               <div className="flex-1 relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" style={{ width: 12, height: 12 }} />
-                <input value={tSearch} onChange={e => { setTSearch(e.target.value); setTPage(1); }} placeholder="Search tows..." className={`w-full pl-7 pr-2 ${isMobile ? 'py-2.5 text-sm' : 'py-1 text-xs'} bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 outline-none`} style={isMobile ? { minHeight: 44 } : undefined} />
+                <input value={tSearch} onChange={e => { setTSearch(e.target.value); setTPage(1); }} placeholder="Search tows..." aria-label="Search tows..." className={`w-full pl-7 pr-2 ${isMobile ? 'py-2.5 text-sm' : 'py-1 text-xs'} bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 outline-none`} style={isMobile ? { minHeight: 44 } : undefined} />
               </div>
               <select value={tFilterStatus} onChange={e => { setTFilterStatus(e.target.value); setTPage(1); }} className={`${isMobile ? 'text-sm py-2' : 'text-[10px]'} bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none`} style={isMobile ? { minHeight: 44 } : undefined}>
                 <option value="">All</option>
@@ -376,8 +399,8 @@ export default function CodeEnforcementPage() {
         {/* List */}
         <div className="flex-1 overflow-y-auto">
           {activeTab === 'violations' ? (
-            vLoading ? <div className="flex items-center justify-center h-32"><Loader2 className="w-5 h-5 animate-spin text-rmpg-500" /></div> :
-            violations.length === 0 ? <div className="text-center py-8 text-rmpg-500 text-xs">No violations found</div> :
+            vLoading ? <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div> :
+            violations.length === 0 ? <div className="flex flex-col items-center justify-center py-12 text-rmpg-500"><p className="text-sm">No violations found</p><p className="text-xs text-rmpg-600 mt-1">Try adjusting your filters or create a new one</p></div> :
             violations.map(v => (
               <button type="button"
                 key={v.id}
@@ -405,8 +428,8 @@ export default function CodeEnforcementPage() {
               </button>
             ))
           ) : (
-            tLoading ? <div className="flex items-center justify-center h-32"><Loader2 className="w-5 h-5 animate-spin text-rmpg-500" /></div> :
-            tows.length === 0 ? <div className="text-center py-8 text-rmpg-500 text-xs">No tows found</div> :
+            tLoading ? <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div> :
+            tows.length === 0 ? <div className="flex flex-col items-center justify-center py-12 text-rmpg-500"><p className="text-sm">No tows found</p><p className="text-xs text-rmpg-600 mt-1">Try adjusting your filters or create a new one</p></div> :
             tows.map(t => (
               <button type="button"
                 key={t.id}
@@ -480,7 +503,7 @@ export default function CodeEnforcementPage() {
                       value={reinspectionDate}
                       onChange={e => setReinspectionDate(e.target.value)}
                       min={new Date().toISOString().slice(0, 10)}
-                      className="input-dark text-[10px] px-2 py-1 flex-1"
+                      className="input-dark text-[10px] px-2 py-1 flex-1 min-h-[36px]"
                     />
                     <button type="button"
                       onClick={handleScheduleReinspection}
@@ -595,7 +618,7 @@ export default function CodeEnforcementPage() {
 
       {/* ── New Violation Modal ── */}
       {vFormOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="New Code Violation" icon={Plus}>
               <button type="button" onClick={() => setVFormOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
@@ -663,7 +686,7 @@ export default function CodeEnforcementPage() {
               </div>
               <div className={`flex ${isMobile ? 'flex-col gap-2' : 'justify-end gap-2'} pt-2 border-t border-rmpg-700`}>
                 <button type="button" onClick={handleCreateViolation} disabled={submitting} className={`toolbar-btn toolbar-btn-primary ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>
-                  {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />}
+                  {submitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: 11, height: 11 }} />}
                   Create
                 </button>
                 <button type="button" onClick={() => setVFormOpen(false)} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>Cancel</button>
@@ -675,7 +698,7 @@ export default function CodeEnforcementPage() {
 
       {/* ── New Tow Modal ── */}
       {tFormOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="New Tow Order" icon={Truck}>
               <button type="button" onClick={() => setTFormOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
@@ -698,7 +721,7 @@ export default function CodeEnforcementPage() {
               </div>
               <div className={`flex ${isMobile ? 'flex-col gap-2' : 'justify-end gap-2'} pt-2 border-t border-rmpg-700`}>
                 <button type="button" onClick={handleCreateTow} disabled={submitting} className={`toolbar-btn toolbar-btn-primary ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>
-                  {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />}
+                  {submitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: 11, height: 11 }} />}
                   Create Tow
                 </button>
                 <button type="button" onClick={() => setTFormOpen(false)} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>Cancel</button>

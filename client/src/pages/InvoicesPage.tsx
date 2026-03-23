@@ -1005,7 +1005,7 @@ export default function InvoicesPage() {
                   <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
                   <input
                     type="text"
-                    placeholder="Search invoices..."
+                    placeholder="Search invoices..." aria-label="Search invoices..."
                     value={searchQuery}
                     onChange={e => handleSearchChange(e.target.value)}
                     className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm pl-7 pr-2 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none"
@@ -1068,6 +1068,9 @@ export default function InvoicesPage() {
   }
 
   // Desktop: split panel
+  // Set document title
+  useEffect(() => { document.title = 'Invoices \u2014 RMPG Flex'; }, []);
+
   return (
     <div className="app-grid-bg h-full flex flex-col">
       {/* Toolbar */}
@@ -1105,7 +1108,7 @@ export default function InvoicesPage() {
           <Search size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
           <input
             type="text"
-            placeholder="Search..."
+            placeholder="Search..." aria-label="Search..."
             value={searchQuery}
             onChange={e => handleSearchChange(e.target.value)}
             className="w-full bg-[#141e2b] border border-[#1e3048] rounded-sm pl-6 pr-2 py-1 text-[11px] text-white focus:border-brand-500 focus:outline-none"

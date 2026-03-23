@@ -32,8 +32,8 @@ const STATUS_COLORS: Record<string, string> = {
   in_progress: 'bg-amber-500',
   served: 'bg-green-500',
   failed: 'bg-red-500',
-  skipped: 'bg-gray-500',
-  archived: 'bg-gray-600',
+  skipped: 'bg-rmpg-500',
+  archived: 'bg-rmpg-600',
 };
 
 const PRIORITY_STYLES: Record<string, string> = {
@@ -66,7 +66,7 @@ function AttemptDots({ count, max }: { count: number; max: number }) {
       <span
         key={i}
         className={`inline-block w-2 h-2 rounded-full ${
-          i < count ? 'bg-amber-400' : 'bg-gray-600'
+          i < count ? 'bg-amber-400' : 'bg-rmpg-600'
         }`}
       />
     );
@@ -122,7 +122,7 @@ export default React.memo(function ServeJobCard({
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-2 min-w-0">
             {/* Status LED */}
-            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${STATUS_COLORS[job.status] || 'bg-gray-500'}`} />
+            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${STATUS_COLORS[job.status] || 'bg-rmpg-500'}`} />
             <span className="text-sm font-bold text-white truncate">{job.recipient_name}</span>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">

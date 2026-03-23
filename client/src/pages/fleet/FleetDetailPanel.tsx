@@ -260,7 +260,7 @@ export default function FleetDetailPanel({
               <button type="button" className="toolbar-btn" onClick={onEditVehicle}>
                 <Settings className="w-3 h-3" /> Edit
               </button>
-              <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={onLogMaintenance}>
+              <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={onLogMaintenance}>
                 <Wrench className="w-3 h-3" /> Maintenance
               </button>
               {detail.status === 'retired' && (

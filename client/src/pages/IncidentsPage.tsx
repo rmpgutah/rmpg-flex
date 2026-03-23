@@ -155,6 +155,17 @@ function SortIcon({ colKey, sortKey, sortAsc }: { colKey: SortKey; sortKey: Sort
   );
 }
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function IncidentsPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -727,7 +738,7 @@ export default function IncidentsPage() {
               New UoF Report
             </button>
             <button type="button"
-              className="toolbar-btn toolbar-btn-primary"
+              className="toolbar-btn toolbar-btn-primary print:hidden"
               onClick={() => {
                 setEditingIncident(undefined);
                 setFormDefaultType('');
@@ -1426,7 +1437,7 @@ export default function IncidentsPage() {
           defaultOpen
           actions={
             ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status) ? (
-              <button type="button" onClick={() => setShowLinkPersonModal(true)} className="toolbar-btn toolbar-btn-primary">
+              <button type="button" onClick={() => setShowLinkPersonModal(true)} className="toolbar-btn toolbar-btn-primary print:hidden">
                 <Plus className="w-3 h-3" /> Link
               </button>
             ) : undefined
@@ -1478,7 +1489,7 @@ export default function IncidentsPage() {
           defaultOpen
           actions={
             ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status) ? (
-              <button type="button" onClick={() => setShowLinkVehicleModal(true)} className="toolbar-btn toolbar-btn-primary">
+              <button type="button" onClick={() => setShowLinkVehicleModal(true)} className="toolbar-btn toolbar-btn-primary print:hidden">
                 <Plus className="w-3 h-3" /> Link
               </button>
             ) : undefined
@@ -1527,7 +1538,7 @@ export default function IncidentsPage() {
           defaultOpen
           actions={
             ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status) ? (
-              <button type="button" onClick={() => setShowEvidenceModal(true)} className="toolbar-btn toolbar-btn-primary">
+              <button type="button" onClick={() => setShowEvidenceModal(true)} className="toolbar-btn toolbar-btn-primary print:hidden">
                 <Plus className="w-3 h-3" /> Add
               </button>
             ) : undefined
@@ -1625,7 +1636,7 @@ export default function IncidentsPage() {
           defaultOpen={false}
           actions={
             <button type="button"
-              className="toolbar-btn toolbar-btn-primary"
+              className="toolbar-btn toolbar-btn-primary print:hidden"
               onClick={() => setShowSupplementModal(true)}
             >
               <Plus className="w-3 h-3" /> New Supplement
@@ -1634,7 +1645,7 @@ export default function IncidentsPage() {
         >
           {supplementsLoading ? (
             <div className="flex items-center gap-2 py-2">
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-rmpg-400" />
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-rmpg-400" role="status" aria-label="Loading" />
               <span className="text-xs text-rmpg-400">Loading supplements...</span>
             </div>
           ) : supplementsError ? (
@@ -1803,7 +1814,7 @@ export default function IncidentsPage() {
             {showArchived && (
               <button type="button"
                 onClick={() => handleUnarchiveIncident(selectedIncident)}
-                className="toolbar-btn toolbar-btn-primary"
+                className="toolbar-btn toolbar-btn-primary print:hidden"
                 title="Unarchive this incident"
               >
                 <RotateCcw className="w-3.5 h-3.5" /> Unarchive
@@ -1813,12 +1824,12 @@ export default function IncidentsPage() {
         ) : (
           <>
             <button type="button"
-              className="toolbar-btn toolbar-btn-primary"
+              className="toolbar-btn toolbar-btn-primary print:hidden"
               onClick={handleSaveDraft}
               disabled={isSubmitting}
             >
               {isSubmitting ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" />
               ) : (
                 <Save className="w-3.5 h-3.5" />
               )}
@@ -1841,6 +1852,18 @@ export default function IncidentsPage() {
       </div>
     </div>
   ) : null;
+
+  // Set document title
+  useEffect(() => { document.title = 'Incident Reports \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setShowFormModal(false); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   return (
     <div className="flex h-full flex-col">
@@ -1960,7 +1983,7 @@ export default function IncidentsPage() {
 
       {/* Custody Transfer Modal */}
       {custodyTransfer && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setCustodyTransfer(null)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setCustodyTransfer(null)}>
           <div
             className="bg-surface-raised border border-rmpg-600 shadow-xl w-[400px] max-w-[95vw]"
             style={{ borderRadius: 2 }}
@@ -2037,7 +2060,7 @@ export default function IncidentsPage() {
                 disabled={custodySubmitting}
                 className={`toolbar-btn toolbar-btn-primary ${isMobile ? 'w-full min-h-[48px] text-sm justify-center' : 'px-3 py-1.5 text-[11px]'} flex items-center gap-1`}
               >
-                {custodySubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
+                {custodySubmitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <CheckCircle className="w-3 h-3" />}
                 Record Action
               </button>
             </div>

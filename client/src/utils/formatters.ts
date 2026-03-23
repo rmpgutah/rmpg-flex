@@ -238,3 +238,92 @@ export function formatLabel(value: string | null | undefined): string {
     .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
     .join(' ');
 }
+
+// ============================================================
+// Memoization utility
+// ============================================================
+
+/**
+ * Simple memoization wrapper for pure formatting functions.
+ * Caches the last N results to avoid redundant computation
+ * in frequently re-rendered lists and tables.
+ */
+export function memoize<T extends (...args: any[]) => any>(fn: T, maxSize = 200): T {
+  const cache = new Map<string, ReturnType<T>>();
+  return ((...args: Parameters<T>): ReturnType<T> => {
+    const key = JSON.stringify(args);
+    if (cache.has(key)) return cache.get(key)!;
+    const result = fn(...args);
+    if (cache.size >= maxSize) {
+      // Evict oldest entry
+      const firstKey = cache.keys().next().value;
+      if (firstKey !== undefined) cache.delete(firstKey);
+    }
+    cache.set(key, result);
+    return result;
+  }) as T;
+}
+
+// Memoized versions of expensive formatters
+export const memoFormatPhone = memoize(formatPhone);
+export const memoFormatCurrency = memoize(formatCurrency);
+export const memoFormatDOBWithAge = memoize(formatDOBWithAge);
+export const memoFormatVIN = memoize(formatVIN);
+export const memoFormatAddress = memoize(formatAddress);
+export const memoFormatName = memoize(formatName);
+
+// ============================================================
+// Additional formatters
+// ============================================================
+
+/**
+ * Format a number as compact (1.2K, 3.5M, etc.)
+ */
+export function formatCompact(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) return `${(n / 1000).toFixed(1)}K`;
+  if (n < 1_000_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  return `${(n / 1_000_000_000).toFixed(1)}B`;
+}
+
+/**
+ * Format bytes per second as a human-readable speed.
+ */
+export function formatSpeed(bytesPerSecond: number): string {
+  if (bytesPerSecond < 1024) return `${Math.round(bytesPerSecond)} B/s`;
+  if (bytesPerSecond < 1048576) return `${(bytesPerSecond / 1024).toFixed(1)} KB/s`;
+  return `${(bytesPerSecond / 1048576).toFixed(1)} MB/s`;
+}
+
+/**
+ * Format a badge number: uppercase, trimmed, padded.
+ */
+export function formatBadge(badge: string | null | undefined): string {
+  if (!badge) return '';
+  return badge.toUpperCase().trim();
+}
+
+/**
+ * Format a boolean as Yes/No.
+ */
+export function formatYesNo(value: boolean | number | null | undefined): string {
+  if (value == null) return 'N/A';
+  return value ? 'Yes' : 'No';
+}
+
+/**
+ * Format an array of strings as comma-separated list.
+ */
+export function formatList(items: string[] | null | undefined, separator = ', '): string {
+  if (!items || items.length === 0) return '';
+  return items.filter(Boolean).join(separator);
+}
+
+/**
+ * Mask sensitive data, showing only last N characters.
+ * e.g. maskValue("1234567890", 4) → "******7890"
+ */
+export function maskValue(value: string, showLast = 4, maskChar = '*'): string {
+  if (value.length <= showLast) return value;
+  return maskChar.repeat(value.length - showLast) + value.slice(-showLast);
+}

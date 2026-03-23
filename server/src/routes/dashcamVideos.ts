@@ -121,7 +121,7 @@ router.get('/', authenticateToken, (req: Request, res: Response) => {
     res.json({ videos, total });
   } catch (error: any) {
     console.error('[DashcamVideos] list videos error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to list videos', code: 'DASHCAMVIDEOS_LIST_VIDEOS_ERROR' });
   }
 });
 
@@ -152,7 +152,7 @@ router.get('/:id', validateParamIdMiddleware, authenticateToken, (req: Request, 
     res.json(video);
   } catch (error: any) {
     console.error('[DashcamVideos] get video error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get video', code: 'DASHCAMVIDEOS_GET_VIDEO_ERROR' });
   }
 });
 
@@ -335,7 +335,7 @@ router.put('/:id', validateParamIdMiddleware, authenticateToken, requireRole('ad
     res.json({ success: true });
   } catch (error: any) {
     console.error('[DashcamVideos] update video error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update video', code: 'DASHCAMVIDEOS_UPDATE_VIDEO_ERROR' });
   }
 });
 
@@ -367,7 +367,7 @@ router.delete('/:id', validateParamIdMiddleware, authenticateToken, requireRole(
     res.json({ success: true });
   } catch (error: any) {
     console.error('[DashcamVideos] delete video error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete video', code: 'DASHCAMVIDEOS_DELETE_VIDEO_ERROR' });
   }
 });
 
@@ -439,7 +439,7 @@ router.get('/:id/stream', validateParamIdMiddleware, (req: Request, res: Respons
     }
   } catch (error: any) {
     console.error('[DashcamVideos] stream video error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to stream video', code: 'DASHCAMVIDEOS_STREAM_VIDEO_ERROR' });
   }
 });
 
@@ -454,12 +454,14 @@ router.get('/:id/links', validateParamIdMiddleware, authenticateToken, (req: Req
 
     const links = db.prepare(`
       SELECT * FROM dashcam_video_links WHERE video_id = ? ORDER BY created_at DESC
+    
+      LIMIT 1000
     `).all(videoId);
 
     res.json(links);
   } catch (error: any) {
     console.error('[DashcamVideos] list video links error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to list video links', code: 'DASHCAMVIDEOS_LIST_VIDEO_LINKS' });
   }
 });
 
@@ -526,7 +528,7 @@ router.post('/:id/links', validateParamIdMiddleware, authenticateToken, requireR
     res.json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (error: any) {
     console.error('[DashcamVideos] link video error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to link video', code: 'DASHCAMVIDEOS_LINK_VIDEO_ERROR' });
   }
 });
 
@@ -554,7 +556,7 @@ router.delete('/:id/links/:linkId', validateParamIdMiddleware, authenticateToken
     res.json({ success: true });
   } catch (error: any) {
     console.error('[DashcamVideos] unlink video error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unlink video', code: 'DASHCAMVIDEOS_UNLINK_VIDEO_ERROR' });
   }
 });
 

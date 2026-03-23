@@ -103,7 +103,7 @@ router.get('/status', authenticateToken, (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('WebAuthn status error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to webauthn status', code: 'WEBAUTHN_STATUS_ERROR' });
   }
 });
 
@@ -123,7 +123,7 @@ router.get('/credentials', authenticateToken, (req: Request, res: Response) => {
     })));
   } catch (error: any) {
     console.error('WebAuthn list credentials error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to webauthn list credentials', code: 'WEBAUTHN_LIST_CREDENTIALS_ERROR' });
   }
 });
 
@@ -174,7 +174,7 @@ router.post('/register-options', authenticateToken, mfaRateLimit, async (req: Re
     res.json({ options, challengeId });
   } catch (error: any) {
     console.error('WebAuthn register-options error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to webauthn register-options', code: 'WEBAUTHN_REGISTEROPTIONS_ERROR' });
   }
 });
 
@@ -284,7 +284,7 @@ router.post('/register-verify', authenticateToken, mfaRateLimit, async (req: Req
     });
   } catch (error: any) {
     console.error('WebAuthn register-verify error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to webauthn register-verify', code: 'WEBAUTHN_REGISTERVERIFY_ERROR' });
   }
 });
 
@@ -340,7 +340,7 @@ router.delete('/credentials/:id', validateParamIdMiddleware, authenticateToken, 
     res.json({ message: 'Security key removed' });
   } catch (error: any) {
     console.error('WebAuthn delete credential error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to webauthn delete credential', code: 'WEBAUTHN_DELETE_CREDENTIAL_ERROR' });
   }
 });
 
@@ -403,7 +403,7 @@ router.post('/authenticate-options', mfaRateLimit, async (req: Request, res: Res
     res.json({ options, challengeId, hasSecurityKeys: true });
   } catch (error: any) {
     console.error('WebAuthn authenticate-options error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to webauthn authenticate-options', code: 'WEBAUTHN_AUTHENTICATEOPTIONS_ERROR' });
   }
 });
 
@@ -607,7 +607,7 @@ router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Resp
     });
   } catch (error: any) {
     console.error('WebAuthn authenticate-verify error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to webauthn authenticate-verify', code: 'WEBAUTHN_AUTHENTICATEVERIFY_ERROR' });
   }
 });
 

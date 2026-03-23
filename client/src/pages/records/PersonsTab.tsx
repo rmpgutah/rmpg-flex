@@ -388,8 +388,8 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
           <input
             type="text"
-            className="input-dark pl-9 w-full text-[11px]"
-            placeholder="Search persons by name, address, flags..."
+            className="input-dark pl-9 w-full text-[11px] min-h-[36px]"
+            placeholder="Search persons by name, address, flags..." aria-label="Search persons by name, address, flags..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -790,6 +790,18 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
 export default function PersonsTab(props: PersonsTabProps) {
   const state = usePersonsTab(props);
   if (props.loadingPersons) return null;
+  // Set document title
+  useEffect(() => { document.title = 'Records - Persons \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setPersonModalOpen(false); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <>
       <div className={`${state.selectedPerson ? 'w-[40%]' : 'w-full'} border-r border-rmpg-600 flex flex-col overflow-hidden transition-all`}>

@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken } from '../middleware/auth';
+import { auditLog } from '../utils/auditLogger';
+import { broadcastRecordUpdate } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
 import { localNow, localToday } from '../utils/timeUtils';
 import { searchOfacLocal } from '../utils/ofacScraper';
@@ -97,7 +99,7 @@ router.get('/persons', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get persons error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get persons', code: 'GET_PERSONS_ERROR' });
   }
 });
 
@@ -125,7 +127,7 @@ router.get('/persons/search', (req: Request, res: Response) => {
     res.json(persons);
   } catch (error: any) {
     console.error('Search persons error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to search persons', code: 'SEARCH_PERSONS_ERROR' });
   }
 });
 
@@ -148,6 +150,8 @@ router.get('/persons/export', (req: Request, res: Response) => {
       FROM persons
       ${whereClause}
       ORDER BY last_name, first_name
+    
+      LIMIT 1000
     `).all(...params);
 
     sendCsv(res, 'persons_export.csv', [
@@ -163,7 +167,7 @@ router.get('/persons/export', (req: Request, res: Response) => {
     ], rows);
   } catch (error: any) {
     console.error('Export persons error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to export persons', code: 'EXPORT_PERSONS_ERROR' });
   }
 });
 
@@ -197,13 +201,15 @@ router.get('/persons/:id', (req: Request, res: Response) => {
         JOIN clients c ON cp.client_id = c.id
         WHERE cp.person_id = ?
         ORDER BY cp.is_primary DESC, c.name
+      
+        LIMIT 1000
       `).all(person.id);
     } catch { /* table might not exist yet */ }
 
     res.json({ ...person, vehicles, linked_clients });
   } catch (error: any) {
     console.error('Get person error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get person', code: 'GET_PERSON_ERROR' });
   }
 });
 
@@ -233,6 +239,8 @@ router.get('/persons/:id/history', (req: Request, res: Response) => {
       SELECT * FROM bolos
       WHERE subject_description LIKE ? OR description LIKE ?
       ORDER BY created_at DESC
+    
+      LIMIT 1000
     `).all(`%${person.last_name}%`, `%${person.last_name}%`);
 
     res.json({
@@ -242,7 +250,7 @@ router.get('/persons/:id/history', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get person history error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get person history', code: 'GET_PERSON_HISTORY_ERROR' });
   }
 });
 
@@ -267,6 +275,8 @@ router.get('/persons/:id/system-history', (req: Request, res: Response) => {
         ORDER BY
           CASE WHEN status = 'active' THEN 0 ELSE 1 END,
           created_at DESC
+      
+        LIMIT 1000
       `).all(person.id);
     } catch (e) {
       // warrants table might not exist
@@ -283,6 +293,8 @@ router.get('/persons/:id/system-history', (req: Request, res: Response) => {
         JOIN incidents i ON ip.incident_id = i.id
         WHERE ip.person_id = ?
         ORDER BY i.created_at DESC
+      
+        LIMIT 1000
       `).all(person.id);
     } catch (e) {
       console.warn('system-history: incidents query failed', (e as Error).message);
@@ -300,6 +312,8 @@ router.get('/persons/:id/system-history', (req: Request, res: Response) => {
         JOIN calls_for_service c ON i.call_id = c.id
         WHERE ip.person_id = ? AND i.call_id IS NOT NULL
         ORDER BY c.created_at DESC
+      
+        LIMIT 1000
       `).all(person.id);
       calls = callRows;
     } catch (e) {
@@ -319,6 +333,8 @@ router.get('/persons/:id/system-history', (req: Request, res: Response) => {
         ORDER BY
           CASE WHEN status = 'issued' THEN 0 WHEN status = 'contested' THEN 1 ELSE 2 END,
           violation_date DESC
+      
+        LIMIT 1000
       `).all(person.id);
     } catch (e) {
       console.warn('system-history: citations query failed', (e as Error).message);
@@ -356,7 +372,7 @@ router.get('/persons/:id/system-history', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get person system-history error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get person system-history', code: 'GET_PERSON_SYSTEMHISTORY_ERROR' });
   }
 });
 
@@ -433,7 +449,7 @@ router.post('/persons', (req: Request, res: Response) => {
     res.status(201).json(person);
   } catch (error: any) {
     console.error('Create person error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create person', code: 'CREATE_PERSON_ERROR' });
   }
 });
 
@@ -537,7 +553,7 @@ router.put('/persons/:id', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update person error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update person', code: 'UPDATE_PERSON_ERROR' });
   }
 });
 
@@ -565,7 +581,7 @@ router.delete('/persons/:id', (req: Request, res: Response) => {
     res.json({ message: 'Person deleted' });
   } catch (error: any) {
     console.error('Delete person error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete person', code: 'DELETE_PERSON_ERROR' });
   }
 });
 
@@ -681,7 +697,7 @@ router.get('/vehicles', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get vehicles error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get vehicles', code: 'GET_VEHICLES_ERROR' });
   }
 });
 
@@ -711,7 +727,7 @@ router.get('/vehicles/search', (req: Request, res: Response) => {
     res.json(vehicles);
   } catch (error: any) {
     console.error('Search vehicles error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to search vehicles', code: 'SEARCH_VEHICLES_ERROR' });
   }
 });
 
@@ -726,6 +742,8 @@ router.get('/vehicles/export', (req: Request, res: Response) => {
       FROM vehicles_records v
       LEFT JOIN persons p ON v.owner_person_id = p.id
       ORDER BY v.created_at DESC
+    
+      LIMIT 1000
     `).all();
 
     sendCsv(res, 'vehicles_export.csv', [
@@ -741,7 +759,7 @@ router.get('/vehicles/export', (req: Request, res: Response) => {
     ], rows);
   } catch (error: any) {
     console.error('Export vehicles error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to export vehicles', code: 'EXPORT_VEHICLES_ERROR' });
   }
 });
 
@@ -764,7 +782,7 @@ router.get('/vehicles/:id', (req: Request, res: Response) => {
     res.json(vehicle);
   } catch (error: any) {
     console.error('Get vehicle error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get vehicle', code: 'GET_VEHICLE_ERROR' });
   }
 });
 
@@ -821,7 +839,7 @@ router.post('/vehicles', (req: Request, res: Response) => {
     res.status(201).json(vehicle);
   } catch (error: any) {
     console.error('Create vehicle error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create vehicle', code: 'CREATE_VEHICLE_ERROR' });
   }
 });
 
@@ -900,7 +918,7 @@ router.put('/vehicles/:id', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update vehicle error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update vehicle', code: 'UPDATE_VEHICLE_ERROR' });
   }
 });
 
@@ -926,7 +944,7 @@ router.delete('/vehicles/:id', (req: Request, res: Response) => {
     res.json({ message: 'Vehicle deleted' });
   } catch (error: any) {
     console.error('Delete vehicle error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete vehicle', code: 'DELETE_VEHICLE_ERROR' });
   }
 });
 
@@ -990,12 +1008,14 @@ router.get('/properties', (req: Request, res: Response) => {
       LEFT JOIN clients c ON p.client_id = c.id
       ${whereClause}
       ORDER BY c.name, p.name
+    
+      LIMIT 1000
     `).all(...params);
 
     res.json(properties);
   } catch (error: any) {
     console.error('Get properties error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get properties', code: 'GET_PROPERTIES_ERROR' });
   }
 });
 
@@ -1026,6 +1046,8 @@ router.get('/properties/:id', (req: Request, res: Response) => {
     const checkpoints = db.prepare(`
       SELECT * FROM patrol_checkpoints WHERE property_id = ?
       ORDER BY sequence_order
+    
+      LIMIT 1000
     `).all(property.id);
 
     // Get today's schedule
@@ -1035,6 +1057,8 @@ router.get('/properties/:id', (req: Request, res: Response) => {
       FROM schedules s
       LEFT JOIN users u ON s.officer_id = u.id
       WHERE s.property_id = ? AND s.shift_date = ?
+    
+      LIMIT 1000
     `).all(property.id, today);
 
     res.json({
@@ -1045,7 +1069,7 @@ router.get('/properties/:id', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get property error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get property', code: 'GET_PROPERTY_ERROR' });
   }
 });
 
@@ -1095,7 +1119,7 @@ router.post('/properties', (req: Request, res: Response) => {
     res.status(201).json(property);
   } catch (error: any) {
     console.error('Create property error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create property', code: 'CREATE_PROPERTY_ERROR' });
   }
 });
 
@@ -1120,12 +1144,14 @@ router.get('/persons/:id/incidents', (req: Request, res: Response) => {
       LEFT JOIN users o ON i.officer_id = o.id
       WHERE ip.person_id = ?
       ORDER BY i.created_at DESC
+    
+      LIMIT 1000
     `).all(person.id);
 
     res.json(incidents);
   } catch (error: any) {
     console.error('Get person incidents error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get person incidents', code: 'GET_PERSON_INCIDENTS_ERROR' });
   }
 });
 
@@ -1148,12 +1174,14 @@ router.get('/vehicles/:id/incidents', (req: Request, res: Response) => {
       LEFT JOIN users o ON i.officer_id = o.id
       WHERE iv.vehicle_id = ?
       ORDER BY i.created_at DESC
+    
+      LIMIT 1000
     `).all(vehicle.id);
 
     res.json(incidents);
   } catch (error: any) {
     console.error('Get vehicle incidents error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get vehicle incidents', code: 'GET_VEHICLE_INCIDENTS_ERROR' });
   }
 });
 
@@ -1197,7 +1225,7 @@ router.get('/evidence', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get evidence error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get evidence', code: 'GET_EVIDENCE_ERROR' });
   }
 });
 
@@ -1258,7 +1286,7 @@ router.put('/evidence/:id', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update evidence error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update evidence', code: 'UPDATE_EVIDENCE_ERROR' });
   }
 });
 
@@ -1283,7 +1311,7 @@ router.delete('/evidence/:id', (req: Request, res: Response) => {
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete evidence error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete evidence', code: 'DELETE_EVIDENCE_ERROR' });
   }
 });
 
@@ -1306,7 +1334,7 @@ router.post('/evidence/:id/archive', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Archive evidence error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to archive evidence', code: 'ARCHIVE_EVIDENCE_ERROR' });
   }
 });
 
@@ -1328,7 +1356,7 @@ router.post('/evidence/:id/unarchive', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Unarchive evidence error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unarchive evidence', code: 'UNARCHIVE_EVIDENCE_ERROR' });
   }
 });
 
@@ -1380,7 +1408,7 @@ router.post('/evidence/:id/custody', (req: Request, res: Response) => {
     res.status(201).json(updated);
   } catch (error: any) {
     console.error('Add custody entry error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to add custody entry', code: 'ADD_CUSTODY_ENTRY_ERROR' });
   }
 });
 
@@ -1414,7 +1442,7 @@ router.get('/evidence/stats', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Evidence stats error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to evidence stats', code: 'EVIDENCE_STATS_ERROR' });
   }
 });
 
@@ -1426,6 +1454,8 @@ router.get('/evidence/locations', (req: Request, res: Response) => {
       SELECT config_key as name, config_value as details
       FROM system_config WHERE category = 'evidence_location' AND is_active = 1
       ORDER BY sort_order
+    
+      LIMIT 1000
     `).all();
     res.json({ data: locations });
   } catch (error: any) {
@@ -1476,7 +1506,7 @@ router.post('/evidence/:id/chain-action', (req: Request, res: Response) => {
     res.json({ data: { id: evidence.id, status: newStatus, chain_of_custody: chain } });
   } catch (error: any) {
     console.error('Evidence chain-action error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to evidence chain-action', code: 'EVIDENCE_CHAINACTION_ERROR' });
   }
 });
 
@@ -1514,7 +1544,7 @@ router.post('/evidence/:id/request-release', (req: Request, res: Response) => {
     res.json({ data: { id: evidence.id, release_status: 'release_requested' } });
   } catch (error: any) {
     console.error('Evidence release request error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to evidence release request', code: 'EVIDENCE_RELEASE_REQUEST_ERROR' });
   }
 });
 
@@ -1561,7 +1591,7 @@ router.put('/evidence/:id/approve-release', (req: Request, res: Response) => {
     res.json({ data: { id: evidence.id, release_status: action === 'approve' ? 'released' : null } });
   } catch (error: any) {
     console.error('Approve evidence release error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to approve evidence release', code: 'APPROVE_EVIDENCE_RELEASE_ERROR' });
   }
 });
 
@@ -1621,7 +1651,7 @@ router.put('/properties/:id', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update property error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update property', code: 'UPDATE_PROPERTY_ERROR' });
   }
 });
 
@@ -1655,7 +1685,7 @@ router.delete('/properties/:id', (req: Request, res: Response) => {
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete property error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete property', code: 'DELETE_PROPERTY_ERROR' });
   }
 });
 
@@ -1755,7 +1785,7 @@ router.post('/evidence', (req: Request, res: Response) => {
     res.status(201).json(created);
   } catch (error: any) {
     console.error('Create evidence error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create evidence', code: 'CREATE_EVIDENCE_ERROR' });
   }
 });
 
@@ -1807,6 +1837,8 @@ router.get('/links', (req: Request, res: Response) => {
       WHERE (rl.source_type = ? AND rl.source_id = ?)
          OR (rl.target_type = ? AND rl.target_id = ?)
       ORDER BY rl.created_at DESC
+    
+      LIMIT 1000
     `).all(type, id, type, id) as any[];
 
     // Resolve display labels and normalize direction
@@ -1825,7 +1857,7 @@ router.get('/links', (req: Request, res: Response) => {
     res.json(enriched);
   } catch (error: any) {
     console.error('Get record links error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get record links', code: 'GET_RECORD_LINKS_ERROR' });
   }
 });
 
@@ -1872,7 +1904,7 @@ router.post('/links', (req: Request, res: Response) => {
       return;
     }
     console.error('Create record link error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create record link', code: 'CREATE_RECORD_LINK_ERROR' });
   }
 });
 
@@ -1896,7 +1928,7 @@ router.delete('/links/:id', (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete record link error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete record link', code: 'DELETE_RECORD_LINK_ERROR' });
   }
 });
 
@@ -1908,11 +1940,13 @@ router.get('/clients', (req: Request, res: Response) => {
     const db = getDb();
     const clients = db.prepare(`
       SELECT id, name, status FROM clients ORDER BY name
+    
+      LIMIT 1000
     `).all();
     res.json(clients);
   } catch (error: any) {
     console.error('Get clients list error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get clients list', code: 'GET_CLIENTS_LIST_ERROR' });
   }
 });
 
@@ -1987,7 +2021,7 @@ router.get('/search', (req: Request, res: Response) => {
     res.json(results);
   } catch (error: any) {
     console.error('Record search error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to record search', code: 'RECORD_SEARCH_ERROR' });
   }
 });
 
@@ -2005,11 +2039,13 @@ router.get('/persons/:id/criminal-history', (req: Request, res: Response) => {
       LEFT JOIN users u ON ch.created_by = u.id
       WHERE ch.person_id = ?
       ORDER BY ch.offense_date DESC, ch.created_at DESC
+    
+      LIMIT 1000
     `).all(req.params.id);
     res.json(rows);
   } catch (error: any) {
     console.error('Get criminal history error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get criminal history', code: 'GET_CRIMINAL_HISTORY_ERROR' });
   }
 });
 
@@ -2048,7 +2084,7 @@ router.post('/persons/:id/criminal-history', (req: Request, res: Response) => {
     res.status(201).json(newRecord);
   } catch (error: any) {
     console.error('Create criminal history error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create criminal history', code: 'CREATE_CRIMINAL_HISTORY_ERROR' });
   }
 });
 
@@ -2090,7 +2126,7 @@ router.put('/criminal-history/:id', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update criminal history error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update criminal history', code: 'UPDATE_CRIMINAL_HISTORY_ERROR' });
   }
 });
 
@@ -2102,7 +2138,7 @@ router.delete('/criminal-history/:id', (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete criminal history error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete criminal history', code: 'DELETE_CRIMINAL_HISTORY_ERROR' });
   }
 });
 
@@ -2123,11 +2159,13 @@ router.get('/persons/:id/clients', (req: Request, res: Response) => {
       LEFT JOIN users u ON cp.created_by = u.id
       WHERE cp.person_id = ?
       ORDER BY cp.is_primary DESC, c.name
+    
+      LIMIT 1000
     `).all(req.params.id);
     res.json(rows);
   } catch (error: any) {
     console.error('Get person clients error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get person clients', code: 'GET_PERSON_CLIENTS_ERROR' });
   }
 });
 
@@ -2144,11 +2182,13 @@ router.get('/clients/:id/persons', (req: Request, res: Response) => {
       LEFT JOIN users u ON cp.created_by = u.id
       WHERE cp.client_id = ?
       ORDER BY cp.is_primary DESC, p.last_name, p.first_name
+    
+      LIMIT 1000
     `).all(req.params.id);
     res.json(rows);
   } catch (error: any) {
     console.error('Get client persons error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get client persons', code: 'GET_CLIENT_PERSONS_ERROR' });
   }
 });
 
@@ -2204,7 +2244,7 @@ router.post('/client-persons', (req: Request, res: Response) => {
       return res.status(409).json({ error: 'This person is already linked to this client' });
     }
     console.error('Link client-person error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to link client-person', code: 'LINK_CLIENTPERSON_ERROR' });
   }
 });
 
@@ -2243,7 +2283,7 @@ router.put('/client-persons/:id', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update client-person link error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update client-person link', code: 'UPDATE_CLIENTPERSON_LINK_ERROR' });
   }
 });
 
@@ -2275,7 +2315,7 @@ router.delete('/client-persons/:id', (req: Request, res: Response) => {
     res.json({ message: 'Link removed' });
   } catch (error: any) {
     console.error('Delete client-person link error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete client-person link', code: 'DELETE_CLIENTPERSON_LINK_ERROR' });
   }
 });
 
@@ -2293,6 +2333,8 @@ router.get('/persons/:id/invoice-summary', (req: Request, res: Response) => {
       FROM client_persons cp
       JOIN clients c ON cp.client_id = c.id
       WHERE cp.person_id = ?
+    
+      LIMIT 1000
     `).all(person.id) as any[];
 
     // Get incidents this person is involved in
@@ -2305,6 +2347,8 @@ router.get('/persons/:id/invoice-summary', (req: Request, res: Response) => {
       LEFT JOIN clients c ON i.client_id = c.id
       WHERE ip.person_id = ?
       ORDER BY i.created_at DESC
+    
+      LIMIT 1000
     `).all(person.id) as any[];
 
     // Get invoices that reference incidents this person was involved in
@@ -2319,6 +2363,8 @@ router.get('/persons/:id/invoice-summary', (req: Request, res: Response) => {
       LEFT JOIN clients c ON inv.client_id = c.id
       WHERE ip.person_id = ?
       ORDER BY inv.created_at DESC
+    
+      LIMIT 1000
     `).all(person.id) as any[];
 
     res.json({
@@ -2334,7 +2380,7 @@ router.get('/persons/:id/invoice-summary', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Person invoice summary error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to person invoice summary', code: 'PERSON_INVOICE_SUMMARY_ERROR' });
   }
 });
 
@@ -2375,6 +2421,8 @@ router.get('/ncic-query', (req: Request, res: Response) => {
           const criminalHistory = db.prepare(`
             SELECT * FROM criminal_history WHERE person_id = ?
             ORDER BY offense_date DESC
+          
+            LIMIT 1000
           `).all(p.id);
 
           let warrants: any[] = [];
@@ -2382,6 +2430,8 @@ router.get('/ncic-query', (req: Request, res: Response) => {
             warrants = db.prepare(`
               SELECT * FROM warrants WHERE subject_person_id = ? AND status = 'active'
               ORDER BY issue_date DESC
+            
+              LIMIT 1000
             `).all(p.id);
           } catch { /* warrants table may not exist */ }
 
@@ -2429,6 +2479,8 @@ router.get('/ncic-query', (req: Request, res: Response) => {
           const criminalHistory = db.prepare(`
             SELECT * FROM criminal_history WHERE person_id = ?
             ORDER BY offense_date DESC
+          
+            LIMIT 1000
           `).all(p.id);
 
           let warrants: any[] = [];
@@ -2436,6 +2488,8 @@ router.get('/ncic-query', (req: Request, res: Response) => {
             warrants = db.prepare(`
               SELECT * FROM warrants WHERE subject_person_id = ? AND status = 'active'
               ORDER BY issue_date DESC
+            
+              LIMIT 1000
             `).all(p.id);
           } catch { /* warrants table may not exist */ }
 
@@ -2536,7 +2590,7 @@ router.get('/ncic-query', (req: Request, res: Response) => {
     }
   } catch (error: any) {
     console.error('NCIC query error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to ncic query', code: 'NCIC_QUERY_ERROR' });
   }
 });
 
@@ -2563,7 +2617,7 @@ router.get('/persons/duplicates', (req: Request, res: Response) => {
     res.json(duplicates);
   } catch (error: any) {
     console.error('Get duplicates error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get duplicates', code: 'GET_DUPLICATES_ERROR' });
   }
 });
 
@@ -2610,7 +2664,7 @@ router.post('/persons/merge', (req: Request, res: Response) => {
     res.json(result);
   } catch (error: any) {
     console.error('Merge persons error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to merge persons', code: 'MERGE_PERSONS_ERROR' });
   }
 });
 
@@ -2636,7 +2690,7 @@ router.get('/vehicles/plate-lookup', (req: Request, res: Response) => {
     res.json(vehicles);
   } catch (error: any) {
     console.error('Plate lookup error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to plate lookup', code: 'PLATE_LOOKUP_ERROR' });
   }
 });
 
@@ -2654,11 +2708,13 @@ router.get('/reports/approval-queue', (req: Request, res: Response) => {
       LEFT JOIN users u ON i.officer_id = u.id
       WHERE i.status = 'pending_review' AND i.archived_at IS NULL
       ORDER BY i.created_at ASC
+    
+      LIMIT 1000
     `).all();
     res.json(reports);
   } catch (error: any) {
     console.error('Approval queue error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to approval queue', code: 'APPROVAL_QUEUE_ERROR' });
   }
 });
 
@@ -2690,7 +2746,7 @@ router.post('/reports/:id/approve', (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (error: any) {
     console.error('Approve report error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to approve report', code: 'APPROVE_REPORT_ERROR' });
   }
 });
 
@@ -2722,7 +2778,7 @@ router.post('/reports/:id/return', (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (error: any) {
     console.error('Return report error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to return report', code: 'RETURN_REPORT_ERROR' });
   }
 });
 
@@ -2784,7 +2840,7 @@ router.get('/cases/:id/solvability', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Solvability score error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to solvability score', code: 'SOLVABILITY_SCORE_ERROR' });
   }
 });
 
@@ -2809,7 +2865,7 @@ router.get('/persons/alias-search', (req: Request, res: Response) => {
     res.json(results);
   } catch (error: any) {
     console.error('Alias search error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to alias search', code: 'ALIAS_SEARCH_ERROR' });
   }
 });
 
@@ -2851,7 +2907,7 @@ router.get('/vehicles/bolo-check', (req: Request, res: Response) => {
     res.json({ matches });
   } catch (error: any) {
     console.error('BOLO check error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to bolo check', code: 'BOLO_CHECK_ERROR' });
   }
 });
 
@@ -2879,7 +2935,7 @@ router.post('/persons/:id/photo', (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (error: any) {
     console.error('Photo upload error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to photo upload', code: 'PHOTO_UPLOAD_ERROR' });
   }
 });
 
@@ -2906,7 +2962,7 @@ router.get('/location-suggest', (req: Request, res: Response) => {
     res.json(locations);
   } catch (error: any) {
     console.error('Location suggest error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to location suggest', code: 'LOCATION_SUGGEST_ERROR' });
   }
 });
 
@@ -2940,7 +2996,7 @@ router.post('/cases/:id/assign', (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (error: any) {
     console.error('Assign case error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to assign case', code: 'ASSIGN_CASE_ERROR' });
   }
 });
 
@@ -2965,7 +3021,7 @@ router.get('/evidence/overdue', (req: Request, res: Response) => {
     res.json(overdue);
   } catch (error: any) {
     console.error('Evidence overdue error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to evidence overdue', code: 'EVIDENCE_OVERDUE_ERROR' });
   }
 });
 
@@ -3035,7 +3091,7 @@ router.get('/vehicles/:id/history', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Vehicle history error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to vehicle history', code: 'VEHICLE_HISTORY_ERROR' });
   }
 });
 
@@ -3138,7 +3194,7 @@ router.post('/vehicles/:id/insurance', (req: Request, res: Response) => {
     res.json({ success: true, message: 'Insurance information updated' });
   } catch (error: any) {
     console.error('Insurance verification error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to insurance verification', code: 'INSURANCE_VERIFICATION_ERROR' });
   }
 });
 
@@ -3163,12 +3219,16 @@ router.post('/vehicles/stolen-check', (req: Request, res: Response) => {
         localMatches = db.prepare(`
           SELECT * FROM vehicles_records
           WHERE plate_number = ? AND (flags LIKE '%stolen%' OR flags LIKE '%BOLO%' OR is_stolen = 1)
+        
+          LIMIT 1000
         `).all(plate_number) as any[];
       }
       if (vin && localMatches.length === 0) {
         localMatches = db.prepare(`
           SELECT * FROM vehicles_records
           WHERE vin = ? AND (flags LIKE '%stolen%' OR flags LIKE '%BOLO%' OR is_stolen = 1)
+        
+          LIMIT 1000
         `).all(vin) as any[];
       }
     } catch {
@@ -3177,6 +3237,8 @@ router.post('/vehicles/stolen-check', (req: Request, res: Response) => {
         localMatches = db.prepare(`
           SELECT * FROM vehicles_records
           WHERE plate_number = ? AND notes LIKE '%stolen%'
+        
+          LIMIT 1000
         `).all(plate_number) as any[];
       }
     }
@@ -3216,7 +3278,7 @@ router.post('/vehicles/stolen-check', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Stolen vehicle check error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to stolen vehicle check', code: 'STOLEN_VEHICLE_CHECK_ERROR' });
   }
 });
 
@@ -3255,7 +3317,7 @@ router.post('/vehicles/:id/link-person', (req: Request, res: Response) => {
     res.json({ success: true, vehicle_id: vehicle.id, person_id, person_name: `${person.first_name} ${person.last_name}` });
   } catch (error: any) {
     console.error('Vehicle-person link error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to vehicle-person link', code: 'VEHICLEPERSON_LINK_ERROR' });
   }
 });
 
@@ -3303,7 +3365,7 @@ router.get('/vehicles/auto-link-suggestions', (_req: Request, res: Response) => 
     res.json({ data: suggestions, total: suggestions.length });
   } catch (error: any) {
     console.error('Auto-link suggestions error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to auto-link suggestions', code: 'AUTOLINK_SUGGESTIONS_ERROR' });
   }
 });
 
@@ -3329,11 +3391,13 @@ router.get('/persons/:id/associates', (req: Request, res: Response) => {
       LEFT JOIN users u ON pa.created_by = u.id
       WHERE pa.associate_id = ?
       ORDER BY created_at DESC
+    
+      LIMIT 1000
     `).all(req.params.id, req.params.id);
     res.json(associates);
   } catch (error: any) {
     console.error('Get associates error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get associates', code: 'GET_ASSOCIATES_ERROR' });
   }
 });
 
@@ -3356,7 +3420,7 @@ router.post('/persons/:id/associates', (req: Request, res: Response) => {
     res.status(201).json({ success: true, id: result.lastInsertRowid });
   } catch (error: any) {
     console.error('Link associate error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to link associate', code: 'LINK_ASSOCIATE_ERROR' });
   }
 });
 
@@ -3368,7 +3432,7 @@ router.delete('/persons/:id/associates/:linkId', (req: Request, res: Response) =
     res.json({ success: true });
   } catch (error: any) {
     console.error('Remove associate error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to remove associate', code: 'REMOVE_ASSOCIATE_ERROR' });
   }
 });
 
@@ -3399,7 +3463,7 @@ router.put('/vehicles/:id/tow', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update tow info error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update tow info', code: 'UPDATE_TOW_INFO_ERROR' });
   }
 });
 
@@ -3425,7 +3489,7 @@ router.post('/evidence/:id/temperature', (req: Request, res: Response) => {
     res.status(201).json({ success: true, id: result.lastInsertRowid });
   } catch (error: any) {
     console.error('Log temperature error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to log temperature', code: 'LOG_TEMPERATURE_ERROR' });
   }
 });
 
@@ -3444,7 +3508,7 @@ router.get('/evidence/:id/temperature', (req: Request, res: Response) => {
     res.json(logs);
   } catch (error: any) {
     console.error('Get temperature logs error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get temperature logs', code: 'GET_TEMPERATURE_LOGS_ERROR' });
   }
 });
 

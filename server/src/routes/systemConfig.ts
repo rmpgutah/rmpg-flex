@@ -15,12 +15,14 @@ router.get('/config/:category', (req: Request, res: Response) => {
       SELECT * FROM system_config
       WHERE category = ? AND is_active = 1
       ORDER BY sort_order ASC
+    
+      LIMIT 1000
     `).all(String(req.params.category));
 
     res.json(items);
   } catch (error: any) {
     console.error('Get config error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get config', code: 'GET_CONFIG_ERROR' });
   }
 });
 
@@ -32,6 +34,8 @@ router.get('/config', (req: Request, res: Response) => {
       SELECT * FROM system_config
       WHERE is_active = 1
       ORDER BY category, sort_order ASC
+    
+      LIMIT 1000
     `).all();
 
     // Group by category
@@ -44,7 +48,7 @@ router.get('/config', (req: Request, res: Response) => {
     res.json(grouped);
   } catch (error: any) {
     console.error('Get all config error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get all config', code: 'GET_ALL_CONFIG_ERROR' });
   }
 });
 
@@ -87,7 +91,7 @@ router.post('/config', requireRole('admin', 'manager'), (req: Request, res: Resp
       return;
     }
     console.error('Create config error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create config', code: 'CREATE_CONFIG_ERROR' });
   }
 });
 
@@ -123,7 +127,7 @@ router.put('/config/:id', requireRole('admin', 'manager'), (req: Request, res: R
     res.json(updated);
   } catch (error: any) {
     console.error('Update config error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update config', code: 'UPDATE_CONFIG_ERROR' });
   }
 });
 
@@ -148,7 +152,7 @@ router.delete('/config/:id', requireRole('admin', 'manager'), (req: Request, res
     res.json({ message: 'Config item removed' });
   } catch (error: any) {
     console.error('Delete config error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete config', code: 'DELETE_CONFIG_ERROR' });
   }
 });
 

@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken } from '../middleware/auth';
 import { broadcast } from '../utils/websocket';
+import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
 
 const router = Router();
@@ -67,7 +68,7 @@ router.get('/', (req: Request, res: Response) => {
     });
   } catch (err: any) {
     console.error('[FieldInterviews] Error:', err?.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to retrieve field interviews', code: 'LIST_FI_ERROR' });
   }
 });
 
@@ -88,10 +89,11 @@ router.get('/map', (req: Request, res: Response) => {
       LIMIT 200
     `).all(days);
 
+    res.set('Cache-Control', 'private, max-age=60');
     res.json(rows);
   } catch (err: any) {
     console.error('[FieldInterviews] Error:', err?.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to retrieve map data', code: 'MAP_DATA_ERROR' });
   }
 });
 
@@ -113,11 +115,13 @@ router.get('/repeat-check', (req: Request, res: Response) => {
         AND created_at >= ?
         AND archived_at IS NULL
       ORDER BY created_at DESC
+    
+      LIMIT 1000
     `).all(searchName, searchName, thirtyDaysAgo) as any[];
     res.json({ count: rows.length, recent: rows.slice(0, 5) });
   } catch (err: any) {
     console.error('[FieldInterviews] Error:', err?.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to check repeat contacts', code: 'REPEAT_CHECK_ERROR' });
   }
 });
 
@@ -138,11 +142,11 @@ router.get('/:id', (req: Request, res: Response) => {
       LEFT JOIN persons p ON fi.person_id = p.id
       WHERE fi.id = ?
     `).get(id);
-    if (!row) return res.status(404).json({ error: 'Field interview not found' });
-    res.json(row);
+    if (!row) return res.status(404).json({ error: 'Field interview not found', code: 'NOT_FOUND' });
+    res.json({ data: row });
   } catch (err: any) {
     console.error('[FieldInterviews] Error:', err?.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'FETCH_ERROR' });
   }
 });
 
@@ -164,7 +168,23 @@ router.post('/', (req: Request, res: Response) => {
       associated_call_id, associated_incident_id,
     } = req.body;
 
-    if (!location) return res.status(400).json({ error: 'Location is required' });
+    if (!location) return res.status(400).json({ error: 'Location is required', code: 'MISSING_LOCATION' });
+
+    // Input sanitization
+    const cleanLocation = typeof location === 'string' ? location.trim() : location;
+    const cleanNarrative = typeof narrative === 'string' ? narrative.trim() : narrative;
+    const cleanFirstName = typeof subject_first_name === 'string' ? subject_first_name.trim() : subject_first_name;
+    const cleanLastName = typeof subject_last_name === 'string' ? subject_last_name.trim() : subject_last_name;
+
+    // Validate latitude/longitude if provided
+    if (latitude !== undefined && latitude !== null) {
+      const lat = parseFloat(latitude);
+      if (isNaN(lat) || lat < -90 || lat > 90) return res.status(400).json({ error: 'Invalid latitude', code: 'INVALID_LATITUDE' });
+    }
+    if (longitude !== undefined && longitude !== null) {
+      const lng = parseFloat(longitude);
+      if (isNaN(lng) || lng < -180 || lng > 180) return res.status(400).json({ error: 'Invalid longitude', code: 'INVALID_LONGITUDE' });
+    }
 
     const result = db.prepare(`
       INSERT INTO field_interviews (
@@ -189,11 +209,12 @@ router.post('/', (req: Request, res: Response) => {
     );
 
     const created = db.prepare('SELECT * FROM field_interviews WHERE id = ?').get(result.lastInsertRowid);
+    auditLog(req, 'CREATE', 'field_interview', result.lastInsertRowid as number, `Created field interview ${fi_number}`);
     broadcast('alerts', 'fi_created', created);
-    res.status(201).json(created);
+    res.status(201).json({ data: created });
   } catch (err: any) {
     console.error('[FieldInterviews] Error:', err?.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create field interview', code: 'CREATE_FI_ERROR' });
   }
 });
 
@@ -233,11 +254,12 @@ router.put('/:id', (req: Request, res: Response) => {
     db.prepare(`UPDATE field_interviews SET ${setClauses.join(', ')} WHERE id = ?`).run(...params);
 
     const updated = db.prepare('SELECT * FROM field_interviews WHERE id = ?').get(req.params.id);
+    auditLog(req, 'UPDATE', 'field_interview', id, `Updated field interview #${id}`);
     broadcast('alerts', 'fi_updated', updated);
-    res.json(updated);
+    res.json({ data: updated });
   } catch (err: any) {
     console.error('[FieldInterviews] Error:', err?.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update field interview', code: 'UPDATE_FI_ERROR' });
   }
 });
 
@@ -250,10 +272,12 @@ router.post('/:id/archive', (req: Request, res: Response) => {
     const existing = db.prepare('SELECT id FROM field_interviews WHERE id = ?').get(id);
     if (!existing) { res.status(404).json({ error: 'Field interview not found' }); return; }
     db.prepare(`UPDATE field_interviews SET status = 'archived', archived_at = ? WHERE id = ?`).run(localNow(), id);
+    auditLog(req, 'UPDATE', 'field_interview', id, `Archived field interview #${id}`);
+    broadcast('alerts', 'fi_archived', { id });
     res.json({ success: true });
   } catch (err: any) {
     console.error('[FieldInterviews] Error:', err?.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'ARCHIVE_ERROR' });
   }
 });
 
@@ -262,14 +286,16 @@ router.post('/:id/unarchive', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID' }); return; }
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
     const existing = db.prepare('SELECT id FROM field_interviews WHERE id = ?').get(id);
-    if (!existing) { res.status(404).json({ error: 'Field interview not found' }); return; }
+    if (!existing) { res.status(404).json({ error: 'Field interview not found', code: 'NOT_FOUND' }); return; }
     db.prepare(`UPDATE field_interviews SET status = 'active', archived_at = NULL WHERE id = ?`).run(id);
+    auditLog(req, 'UPDATE', 'field_interview', id, `Unarchived field interview #${id}`);
+    broadcast('alerts', 'fi_unarchived', { id });
     res.json({ success: true });
   } catch (err: any) {
     console.error('[FieldInterviews] Error:', err?.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unarchive field interview', code: 'UNARCHIVE_ERROR' });
   }
 });
 
@@ -282,10 +308,12 @@ router.delete('/:id', (req: Request, res: Response) => {
     const existing = db.prepare('SELECT id FROM field_interviews WHERE id = ?').get(id);
     if (!existing) { res.status(404).json({ error: 'Field interview not found' }); return; }
     db.prepare(`UPDATE field_interviews SET status = 'archived', archived_at = ? WHERE id = ?`).run(localNow(), id);
+    auditLog(req, 'DELETE', 'field_interview', id, `Soft-deleted field interview #${id}`);
+    broadcast('alerts', 'fi_deleted', { id });
     res.json({ success: true });
   } catch (err: any) {
     console.error('[FieldInterviews] Error:', err?.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'DELETE_ERROR' });
   }
 });
 
@@ -311,7 +339,7 @@ router.get('/map', (req: Request, res: Response) => {
 
     res.json(interviews);
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to retrieve map interviews', code: 'MAP_FI_ERROR' });
   }
 });
 
@@ -328,6 +356,7 @@ router.get('/repeat-check', (req: Request, res: Response) => {
       LEFT JOIN users u ON fi.officer_id = u.id
       WHERE fi.person_id = ?
       ORDER BY fi.date_time DESC
+      LIMIT 100
     `).all(person_id);
 
     res.json({
@@ -337,7 +366,7 @@ router.get('/repeat-check', (req: Request, res: Response) => {
       contacts,
     });
   } catch (error: any) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to check repeated contacts', code: 'REPEAT_CONTACT_ERROR' });
   }
 });
 

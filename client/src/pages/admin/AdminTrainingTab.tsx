@@ -37,6 +37,17 @@ interface Props {
   setError: (e: string | null) => void;
 }
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Props) {
   const { addToast } = useToast();
   const [stats, setStats] = useState<TrainingStats | null>(null);
@@ -211,7 +222,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
             const statusColor = o.overdue === 0 ? '#22c55e' : o.overdue <= 2 ? '#f59e0b' : '#ef4444';
             const statusLabel = o.overdue === 0 ? 'COMPLIANT' : `${o.overdue} OVERDUE`;
             return (
-              <tr key={o.user_id} className="border-b border-rmpg-800/30 hover:bg-white/[0.02]">
+              <tr key={o.user_id} className="border-b border-rmpg-800/30 hover:bg-surface-raised/30 transition-colors">
                 <td className="px-3 py-2 font-semibold text-white">{o.full_name}</td>
                 <td className="px-3 py-2 text-rmpg-400 font-mono">{o.badge_number || '—'}</td>
                 <td className="px-3 py-2 text-rmpg-400">{toDisplayLabel(o.role)}</td>

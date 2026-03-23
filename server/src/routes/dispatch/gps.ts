@@ -311,7 +311,7 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
     })();
   } catch (error: any) {
     console.error('[GPS] update error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update', code: 'GPS_UPDATE_ERROR' });
   }
 });
 
@@ -327,7 +327,7 @@ router.get('/gps/my-unit', requireRole('admin', 'manager', 'supervisor', 'office
     res.json(unit || null);
   } catch (error: any) {
     console.error('[GPS] get my unit error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get my unit', code: 'GPS_GET_MY_UNIT' });
   }
 });
 
@@ -530,6 +530,8 @@ router.get('/gps/dwell-times', requireRole('admin', 'manager', 'supervisor', 'of
       FROM units
       WHERE latitude IS NOT NULL AND longitude IS NOT NULL
         AND status != 'off_duty'
+    
+      LIMIT 1000
     `).all() as Array<{ id: number; call_sign: string; latitude: number; longitude: number; status: string }>;
 
     if (units.length === 0) {
@@ -564,6 +566,8 @@ router.get('/gps/dwell-times', requireRole('admin', 'manager', 'supervisor', 'of
       )
       WHERE rn <= 100
       ORDER BY unit_id, rn ASC
+    
+      LIMIT 1000
     `).all(...unitIds) as Array<{ unit_id: number; latitude: number; longitude: number; recorded_at: string }>;
 
     // Group breadcrumbs by unit_id
@@ -648,7 +652,7 @@ router.delete('/gps/breadcrumbs/cleanup', requireRole('admin'), (req: Request, r
     res.json({ deleted: result.changes });
   } catch (error: any) {
     console.error('[GPS] breadcrumb cleanup error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to breadcrumb cleanup', code: 'GPS_BREADCRUMB_CLEANUP_ERROR' });
   }
 });
 
@@ -674,7 +678,7 @@ router.get('/gps/units-with-trails', requireRole('admin', 'manager', 'supervisor
     res.json(units);
   } catch (error: any) {
     console.error('[GPS] units-with-trails error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to units-with-trails', code: 'GPS_UNITSWITHTRAILS_ERROR' });
   }
 });
 

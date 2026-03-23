@@ -291,7 +291,7 @@ function ReportApprovalQueue() {
     finally { setProcessing(null); }
   };
 
-  if (loading) return <div className="flex items-center gap-2 text-[10px] text-rmpg-500"><Loader2 className="w-3 h-3 animate-spin" /> Loading queue...</div>;
+  if (loading) return <div className="flex items-center gap-2 text-[10px] text-rmpg-500"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Loading queue...</div>;
   if (reports.length === 0) return <div className="text-[10px] text-rmpg-500 text-center py-4">No reports pending review</div>;
 
   return (
@@ -359,14 +359,14 @@ function DailyBriefingCard() {
           <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Daily Shift Briefing</h3>
         </div>
         <button type="button" onClick={loadBriefing} disabled={loading} className="toolbar-btn text-[9px]">
-          {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Generate'}
+          {loading ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : 'Generate'}
         </button>
       </div>
       {expanded && briefing && (
         <div className="p-4 space-y-3 text-xs">
           <div>
             <div className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-1.5">Previous Day Stats</div>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <div className="panel-beveled bg-surface-sunken p-2 text-center">
                 <div className="text-lg font-bold font-mono text-brand-400">{briefing.prevDayStats?.total_calls || 0}</div>
                 <div className="text-[8px] text-rmpg-500 uppercase">Calls</div>
@@ -458,7 +458,7 @@ function WeeklyDigestCard() {
           <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Weekly Activity Digest</h3>
         </div>
         <button type="button" onClick={loadDigest} disabled={loading} className="toolbar-btn text-[9px]">
-          {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Generate'}
+          {loading ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : 'Generate'}
         </button>
       </div>
       {expanded && digest && (
@@ -523,7 +523,7 @@ function CrimeTrendCard() {
 
   useEffect(() => { load(); }, []);
 
-  if (loading) return <div className="bg-surface-base panel-beveled p-4 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin text-brand-400" /> <span className="text-xs text-rmpg-400">Loading crime trends...</span></div>;
+  if (loading) return <div className="bg-surface-base panel-beveled p-4 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin text-brand-400" role="status" aria-label="Loading" /> <span className="text-xs text-rmpg-400">Loading crime trends...</span></div>;
   if (!data) return null;
 
   return (
@@ -596,7 +596,7 @@ function CitationRevenueCard() {
     apiFetch<any>('/reports/citation-revenue').then(setData).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="bg-surface-base panel-beveled p-4 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin text-brand-400" /> <span className="text-xs text-rmpg-400">Loading citation revenue...</span></div>;
+  if (loading) return <div className="bg-surface-base panel-beveled p-4 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin text-brand-400" role="status" aria-label="Loading" /> <span className="text-xs text-rmpg-400">Loading citation revenue...</span></div>;
   if (!data) return null;
 
   return (
@@ -606,7 +606,7 @@ function CitationRevenueCard() {
         <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Citation Revenue Report</h3>
       </div>
       <div className="p-4 space-y-3">
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {[
             { label: 'Total Fines', value: `$${(data.summary?.total_fines || 0).toLocaleString()}`, color: '#3b82f6' },
             { label: 'Collected', value: `$${(data.summary?.collected || 0).toLocaleString()}`, color: '#22c55e' },
@@ -761,6 +761,17 @@ function ReportSchedulesCard() {
   );
 }
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function ReportsPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
@@ -868,6 +879,9 @@ export default function ReportsPage() {
     exportToCSV(incidentsData, officerActivity, stats);
   };
 
+  // Set document title
+  useEffect(() => { document.title = 'Reports & Analytics \u2014 RMPG Flex'; }, []);
+
   return (
     <div className={`${isMobile ? 'p-3 space-y-3' : 'p-6 space-y-6'} animate-fade-in overflow-auto`}>
       {/* Portal Header */}
@@ -907,7 +921,7 @@ export default function ReportsPage() {
             <div className="flex items-center gap-2 ml-1 pl-2 border-l border-rmpg-700">
               <input
                 type="date"
-                className="input-dark text-xs px-2 py-1 font-mono"
+                className="input-dark text-xs px-2 py-1 font-mono min-h-[36px]"
                 value={customStartDate}
                 onChange={(e) => setCustomStartDate(e.target.value)}
                 style={{ colorScheme: 'dark' }}
@@ -915,7 +929,7 @@ export default function ReportsPage() {
               <span className="text-rmpg-400 text-[10px] uppercase font-bold tracking-wide">to</span>
               <input
                 type="date"
-                className="input-dark text-xs px-2 py-1 font-mono"
+                className="input-dark text-xs px-2 py-1 font-mono min-h-[36px]"
                 value={customEndDate}
                 onChange={(e) => setCustomEndDate(e.target.value)}
                 style={{ colorScheme: 'dark' }}
@@ -949,7 +963,7 @@ export default function ReportsPage() {
       {/* Loading State */}
       {loading ? (
         <div className="flex items-center justify-center h-96">
-          <Loader2 className="w-8 h-8 text-brand-400 animate-spin" />
+          <Loader2 className="w-8 h-8 text-brand-400 animate-spin" role="status" aria-label="Loading" />
         </div>
       ) : (
         <>
@@ -1313,7 +1327,7 @@ function PatrolTrackingCard() {
                 type="date"
                 value={startDate}
                 onChange={e => setStartDate(e.target.value)}
-                className="input-dark text-[10px] w-28 px-1.5 py-0.5"
+                className="input-dark text-[10px] w-28 px-1.5 py-0.5 min-h-[36px]"
               />
             </div>
             <div className="flex items-center gap-1.5">
@@ -1322,7 +1336,7 @@ function PatrolTrackingCard() {
                 type="date"
                 value={endDate}
                 onChange={e => setEndDate(e.target.value)}
-                className="input-dark text-[10px] w-28 px-1.5 py-0.5"
+                className="input-dark text-[10px] w-28 px-1.5 py-0.5 min-h-[36px]"
               />
             </div>
           </>
@@ -1343,7 +1357,7 @@ function PatrolTrackingCard() {
           disabled={generating}
           className="toolbar-btn-primary text-[10px] px-4 py-1.5 flex items-center gap-1.5 ml-auto"
         >
-          {generating ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
+          {generating ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <FileText className="w-3 h-3" />}
           {generating ? 'Generating...' : 'Export PDF'}
         </button>
       </div>

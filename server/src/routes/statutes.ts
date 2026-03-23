@@ -65,6 +65,8 @@ router.get('/', (req: Request, res: Response) => {
     // Get distinct subcategories for filtering
     const subcategories = db.prepare(`
       SELECT DISTINCT subcategory FROM utah_statutes WHERE is_active = 1 ORDER BY subcategory
+    
+      LIMIT 1000
     `).all() as { subcategory: string }[];
 
     res.json({
@@ -74,7 +76,7 @@ router.get('/', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('List statutes error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to list statutes', code: 'LIST_STATUTES_ERROR' });
   }
 });
 
@@ -112,7 +114,7 @@ router.get('/search', (req: Request, res: Response) => {
     res.json({ data: statutes });
   } catch (error: any) {
     console.error('Search statutes error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to search statutes', code: 'SEARCH_STATUTES_ERROR' });
   }
 });
 
@@ -128,7 +130,7 @@ router.get('/:id', (req: Request, res: Response) => {
     res.json(statute);
   } catch (error: any) {
     console.error('Get statute error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get statute', code: 'GET_STATUTE_ERROR' });
   }
 });
 
@@ -152,7 +154,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
     res.status(201).json(statute);
   } catch (error: any) {
     console.error('Create statute error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create statute', code: 'CREATE_STATUTE_ERROR' });
   }
 });
 
@@ -185,7 +187,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
     res.json(statute);
   } catch (error: any) {
     console.error('Update statute error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update statute', code: 'UPDATE_STATUTE_ERROR' });
   }
 });
 
@@ -197,7 +199,7 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete statute error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete statute', code: 'DELETE_STATUTE_ERROR' });
   }
 });
 
@@ -215,12 +217,14 @@ router.get('/entity/:type/:id', (req: Request, res: Response) => {
       JOIN utah_statutes s ON es.statute_id = s.id
       WHERE es.entity_type = ? AND es.entity_id = ?
       ORDER BY s.citation
+    
+      LIMIT 1000
     `).all(type, id);
 
     res.json({ data: links });
   } catch (error: any) {
     console.error('Get entity statutes error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get entity statutes', code: 'GET_ENTITY_STATUTES_ERROR' });
   }
 });
 
@@ -255,7 +259,7 @@ router.post('/entity', (req: Request, res: Response) => {
     res.status(201).json(link);
   } catch (error: any) {
     console.error('Link statute error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to link statute', code: 'LINK_STATUTE_ERROR' });
   }
 });
 
@@ -267,7 +271,7 @@ router.delete('/entity/:id', (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (error: any) {
     console.error('Unlink statute error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unlink statute', code: 'UNLINK_STATUTE_ERROR' });
   }
 });
 
@@ -431,6 +435,8 @@ router.get('/:id/amendments', (req: Request, res: Response) => {
       LEFT JOIN users u ON al.user_id = u.id
       WHERE al.entity_type = 'utah_statute' AND al.entity_id = ? AND al.action = 'statute_amendment'
       ORDER BY al.created_at DESC
+    
+      LIMIT 1000
     `).all(req.params.id) as any[];
 
     const parsed = amendments.map((a: any) => {
@@ -439,7 +445,7 @@ router.get('/:id/amendments', (req: Request, res: Response) => {
     });
 
     res.json({ data: parsed });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in statutes', code: 'STATUTES_ERROR' }); }
 });
 
 // ════════════════════════════════════════════════════════════
@@ -535,6 +541,8 @@ router.post('/compare', (req: Request, res: Response) => {
     const placeholders = statute_ids.map(() => '?').join(',');
     const statutes = db.prepare(`
       SELECT * FROM utah_statutes WHERE id IN (${placeholders})
+    
+      LIMIT 1000
     `).all(...statute_ids) as any[];
 
     if (statutes.length < 2) return res.status(404).json({ error: 'One or more statutes not found' });

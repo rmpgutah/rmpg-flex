@@ -167,6 +167,8 @@ router.get('/entity/:type/:id', authenticateToken, (req: Request, res: Response)
       LEFT JOIN users u ON a.uploaded_by = u.id
       WHERE a.entity_type = ? AND a.entity_id = ?
       ORDER BY a.created_at DESC
+    
+      LIMIT 1000
     `).all(String(req.params.type), parseInt(String(req.params.id), 10));
 
     // Enrich each attachment with an HMAC-signed access token (24h TTL)
@@ -178,7 +180,7 @@ router.get('/entity/:type/:id', authenticateToken, (req: Request, res: Response)
     res.json(enriched);
   } catch (error: any) {
     console.error('List attachments error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to list attachments', code: 'LIST_ATTACHMENTS_ERROR' });
   }
 });
 
@@ -199,7 +201,7 @@ router.get('/sign/:fileId', authenticateToken, (req: Request, res: Response) => 
     res.json({ sig, exp, file_id: req.params.fileId });
   } catch (error: any) {
     console.error('Sign file error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to sign file', code: 'SIGN_FILE_ERROR' });
   }
 });
 
@@ -389,7 +391,7 @@ router.put('/:fileId/link', (req: Request, res: Response) => {
     res.json(attachment);
   } catch (error: any) {
     console.error('Link attachment error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to link attachment', code: 'LINK_ATTACHMENT_ERROR' });
   }
 });
 
@@ -428,7 +430,7 @@ router.delete('/:fileId', (req: Request, res: Response) => {
     res.json({ message: 'File deleted' });
   } catch (error: any) {
     console.error('Delete attachment error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete attachment', code: 'DELETE_ATTACHMENT_ERROR' });
   }
 });
 

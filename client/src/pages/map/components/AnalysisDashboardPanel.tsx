@@ -122,20 +122,20 @@ export default function AnalysisDashboardPanel({
         <div className="flex items-center gap-1">
           <button type="button"
             onClick={onRefresh}
-            className="p-1 rounded hover:bg-white/5 transition-colors"
+            className="p-1 rounded hover:bg-surface-raised/50 transition-colors"
             title="Refresh analysis"
           >
             <RefreshCw
               size={12}
-              className={`text-gray-400 ${loading ? 'animate-spin' : ''}`}
+              className={`text-rmpg-400 ${loading ? 'animate-spin' : ''}`}
             />
           </button>
           <button type="button"
             onClick={onClose}
-            className="p-1 rounded hover:bg-white/5 transition-colors"
+            className="p-1 rounded hover:bg-surface-raised/50 transition-colors"
             title="Close panel"
           >
-            <X size={12} className="text-gray-400" />
+            <X size={12} className="text-rmpg-400" />
           </button>
         </div>
       </div>
@@ -145,11 +145,11 @@ export default function AnalysisDashboardPanel({
         {loading && !data ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 size={18} className="animate-spin text-purple-400" />
-            <span className="ml-2 text-[10px] text-gray-500 font-mono">Loading analysis...</span>
+            <span className="ml-2 text-[10px] text-rmpg-500 font-mono">Loading analysis...</span>
           </div>
         ) : !data ? (
           <div className="flex items-center justify-center py-12">
-            <span className="text-[10px] text-gray-600 font-mono">No data available</span>
+            <span className="text-[10px] text-rmpg-600 font-mono">No data available</span>
           </div>
         ) : (
           <div className="p-2 space-y-2">
@@ -169,7 +169,7 @@ export default function AnalysisDashboardPanel({
                 icon={<AlertTriangle size={10} className="text-amber-400" />}
                 title="Risk Convergence"
               >
-                <p className="text-[9px] text-gray-500 font-mono mb-1.5">
+                <p className="text-[9px] text-rmpg-500 font-mono mb-1.5">
                   Locations flagged as both safety zones and prediction hotspots
                 </p>
                 <div className="space-y-1">
@@ -177,7 +177,7 @@ export default function AnalysisDashboardPanel({
                     <button type="button"
                       key={i}
                       onClick={() => onNavigate(loc.latitude, loc.longitude)}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm hover:bg-white/5 transition-colors group"
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm hover:bg-surface-raised/50 transition-colors group"
                       style={{
                         background: '#0d1520',
                         borderLeft: `2px solid ${loc.safetyRisk === 'high' ? '#ef4444' : '#f59e0b'}`,
@@ -201,13 +201,13 @@ export default function AnalysisDashboardPanel({
                             Score: {loc.predictionScore}%
                           </span>
                         </div>
-                        <span className="text-[8px] text-gray-600 font-mono">
+                        <span className="text-[8px] text-rmpg-600 font-mono">
                           {loc.totalFlagged} flagged
                         </span>
                       </div>
                       <ChevronRight
                         size={10}
-                        className="text-gray-600 group-hover:text-purple-400 transition-colors"
+                        className="text-rmpg-600 group-hover:text-purple-400 transition-colors"
                       />
                     </button>
                   ))}
@@ -220,7 +220,7 @@ export default function AnalysisDashboardPanel({
                 icon={<AlertTriangle size={10} className="text-amber-400" />}
                 title="Risk Convergence"
               >
-                <p className="text-[9px] text-gray-600 font-mono italic">
+                <p className="text-[9px] text-rmpg-600 font-mono italic">
                   No convergence zones detected
                 </p>
               </SectionBlock>
@@ -241,7 +241,7 @@ export default function AnalysisDashboardPanel({
                     >
                       <div className="flex-1 min-w-0">
                         <span
-                          className="text-[9px] text-gray-300 font-mono block truncate"
+                          className="text-[9px] text-rmpg-300 font-mono block truncate"
                           title={addr.address}
                         >
                           {addr.address}
@@ -274,7 +274,7 @@ export default function AnalysisDashboardPanel({
                 icon={<MapPin size={10} className="text-orange-400" />}
                 title="Chronic Locations in Risk Zones"
               >
-                <p className="text-[9px] text-gray-600 font-mono italic">
+                <p className="text-[9px] text-rmpg-600 font-mono italic">
                   No chronic locations in risk zones
                 </p>
               </SectionBlock>
@@ -302,10 +302,10 @@ export default function AnalysisDashboardPanel({
                   {data.enforcement.effectivenessRate}% of enforcement in predicted areas
                 </p>
                 <div className="flex items-center gap-3">
-                  <span className="text-[8px] text-gray-500 font-mono">
+                  <span className="text-[8px] text-rmpg-500 font-mono">
                     Total: {data.enforcement.total30d}
                   </span>
-                  <span className="text-[8px] text-gray-500 font-mono">
+                  <span className="text-[8px] text-rmpg-500 font-mono">
                     In predicted: {data.enforcement.inPredictedAreas}
                   </span>
                 </div>
@@ -335,18 +335,18 @@ export default function AnalysisDashboardPanel({
                 </span>
                 <div className="flex items-center gap-3">
                   <div>
-                    <span className="text-[8px] text-gray-500 font-mono uppercase block">This week</span>
-                    <span className="text-[11px] text-gray-200 font-mono font-bold">
+                    <span className="text-[8px] text-rmpg-500 font-mono uppercase block">This week</span>
+                    <span className="text-[11px] text-rmpg-200 font-mono font-bold">
                       {data.shiftTrend.currentPeriodCalls}
                     </span>
-                    <span className="text-[8px] text-gray-600 font-mono ml-0.5">calls</span>
+                    <span className="text-[8px] text-rmpg-600 font-mono ml-0.5">calls</span>
                   </div>
                   <div>
-                    <span className="text-[8px] text-gray-500 font-mono uppercase block">Last week</span>
-                    <span className="text-[11px] text-gray-200 font-mono font-bold">
+                    <span className="text-[8px] text-rmpg-500 font-mono uppercase block">Last week</span>
+                    <span className="text-[11px] text-rmpg-200 font-mono font-bold">
                       {data.shiftTrend.previousPeriodCalls}
                     </span>
-                    <span className="text-[8px] text-gray-600 font-mono ml-0.5">calls</span>
+                    <span className="text-[8px] text-rmpg-600 font-mono ml-0.5">calls</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
@@ -356,7 +356,7 @@ export default function AnalysisDashboardPanel({
                       <span className="text-[9px] font-mono font-bold text-red-400">
                         +{data.shiftTrend.changePercent}%
                       </span>
-                      <span className="text-[8px] text-gray-600 font-mono ml-1">increase</span>
+                      <span className="text-[8px] text-rmpg-600 font-mono ml-1">increase</span>
                     </>
                   ) : data.shiftTrend.changePercent < 0 ? (
                     <>
@@ -364,10 +364,10 @@ export default function AnalysisDashboardPanel({
                       <span className="text-[9px] font-mono font-bold text-emerald-400">
                         {data.shiftTrend.changePercent}%
                       </span>
-                      <span className="text-[8px] text-gray-600 font-mono ml-1">decrease</span>
+                      <span className="text-[8px] text-rmpg-600 font-mono ml-1">decrease</span>
                     </>
                   ) : (
-                    <span className="text-[9px] font-mono text-gray-500">No change</span>
+                    <span className="text-[9px] font-mono text-rmpg-500">No change</span>
                   )}
                 </div>
               </div>
@@ -398,7 +398,7 @@ function MetricCell({
       <span className="text-[14px] font-mono font-bold leading-none" style={{ color }}>
         {value}
       </span>
-      <span className="text-[7px] font-mono uppercase tracking-widest text-gray-500 mt-1 text-center leading-tight">
+      <span className="text-[7px] font-mono uppercase tracking-widest text-rmpg-500 mt-1 text-center leading-tight">
         {label}
       </span>
     </div>

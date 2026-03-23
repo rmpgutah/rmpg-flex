@@ -4,7 +4,7 @@
 // chronological criminal history timeline.
 // ============================================================
 
-import React, { useState, useCallback } from 'react';
+import React, {useState, useCallback, useEffect} from 'react';
 import { Search, AlertTriangle, User, Shield, Calendar, MapPin, FileText, ChevronRight, Scale, List, Clock } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -39,6 +39,17 @@ interface HistoryEntry {
   officer_name?: string;
   location?: string;
 }
+
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
 
 export default function CriminalHistoryPage() {
   const isMobile = useIsMobile();
@@ -172,6 +183,9 @@ export default function CriminalHistoryPage() {
     }
   };
 
+  // Set document title
+  useEffect(() => { document.title = 'Criminal History \u2014 RMPG Flex'; }, []);
+
   return (
     <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
       {fetchError && (
@@ -183,7 +197,7 @@ export default function CriminalHistoryPage() {
       {!isMobile && <PanelTitleBar title="Criminal History" icon={Shield}>
         <div className="flex items-center gap-2">
           <select
-            className="select-dark text-[10px] w-24"
+            className="select-dark text-[10px] w-24 min-h-[36px]"
             value={searchType}
             onChange={(e) => setSearchType(e.target.value as any)}
           >
@@ -195,14 +209,14 @@ export default function CriminalHistoryPage() {
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
             <input
               type="text"
-              className="input-dark pl-7 text-[11px] w-64"
+              className="input-dark pl-7 text-[11px] w-64 min-h-[36px]"
               placeholder={searchType === 'name' ? 'Last, First...' : searchType === 'dob' ? 'YYYY-MM-DD...' : 'DL Number...'}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
             />
           </div>
-          <button type="button" onClick={handleSearch} disabled={loading} className="toolbar-btn toolbar-btn-primary">
+          <button type="button" onClick={handleSearch} disabled={loading} className="toolbar-btn toolbar-btn-primary print:hidden">
             {loading ? 'Searching...' : 'Search'}
           </button>
           <button type="button" onClick={() => openUtahCourts()} className="toolbar-btn" title="Search Utah Courts Xchange (opens in new tab)">
@@ -214,7 +228,7 @@ export default function CriminalHistoryPage() {
       {/* Mobile search bar */}
       {isMobile && (
         <div className="flex items-center gap-1.5 px-3 py-2 flex-shrink-0" style={{ background: '#0d1520', borderBottom: '1px solid #1e3048' }}>
-          <select className="select-dark text-[10px] w-16" value={searchType} onChange={(e) => setSearchType(e.target.value as any)}>
+          <select className="select-dark text-[10px] w-16 min-h-[36px]" value={searchType} onChange={(e) => setSearchType(e.target.value as any)}>
             <option value="name">Name</option>
             <option value="dob">DOB</option>
             <option value="dl">DL #</option>
@@ -223,7 +237,7 @@ export default function CriminalHistoryPage() {
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-400" />
             <input
               type="text"
-              className="input-dark pl-6 text-[10px] w-full"
+              className="input-dark pl-6 text-[10px] w-full min-h-[36px]"
               placeholder={searchType === 'name' ? 'Last, First...' : searchType === 'dob' ? 'YYYY-MM-DD...' : 'DL Number...'}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}

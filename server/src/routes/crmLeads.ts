@@ -93,7 +93,7 @@ router.get('/leads', requireRole('admin', 'manager', 'contract_manager'), (req: 
     res.json(rows);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -122,12 +122,14 @@ router.get('/leads/:id', validateParamIdMiddleware, requireRole('admin', 'manage
       LEFT JOIN users u ON u.id = a.created_by
       WHERE a.lead_id = ?
       ORDER BY a.created_at DESC
+    
+      LIMIT 1000
     `).all(id);
 
     res.json({ ...lead, activity });
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -216,7 +218,7 @@ router.post('/leads', requireRole('admin', 'manager', 'contract_manager'), (req:
       res.status(400).json({ error: err.message }); return;
     }
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -281,7 +283,7 @@ router.put('/leads/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     res.json(lead);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -304,7 +306,7 @@ router.delete('/leads/:id', validateParamIdMiddleware, requireRole('admin', 'man
     res.json({ success: true });
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -357,7 +359,7 @@ router.put('/leads/:id/stage', validateParamIdMiddleware, requireRole('admin', '
     res.json(lead);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -401,7 +403,7 @@ router.put('/leads/:id/assign', validateParamIdMiddleware, requireRole('admin', 
     res.json(lead);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -471,7 +473,7 @@ router.post('/leads/:id/convert', validateParamIdMiddleware, requireRole('admin'
     res.json({ success: true, client: client || null, lead_id: Number(id), client_id: clientId });
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -527,7 +529,7 @@ router.post('/leads/bulk-action', requireRole('admin', 'manager', 'contract_mana
     res.json({ success: true, updated });
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -546,7 +548,7 @@ router.get('/leads/pipeline-summary', requireRole('admin', 'manager', 'contract_
     res.json(rows);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -569,7 +571,7 @@ router.get('/lead-activity/:leadId', requireRole('admin', 'manager', 'contract_m
     res.json(rows);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -608,7 +610,7 @@ router.post('/lead-activity', requireRole('admin', 'manager', 'contract_manager'
     res.json(activity);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -620,7 +622,7 @@ router.get('/scrape-sources', requireRole('admin', 'manager', 'contract_manager'
     res.json(rows);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -655,7 +657,7 @@ router.put('/scrape-sources/:key', requireRole('admin', 'manager'), (req: Reques
     res.json(source);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -678,7 +680,7 @@ router.post('/scrape-sources/:key/poll-now', requireRole('admin', 'manager'), as
     res.json(result);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -704,7 +706,7 @@ router.get('/scrape-log', requireRole('admin', 'manager', 'contract_manager'), (
     res.json(rows);
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm leads', code: 'CRM_LEADS_ERROR' });
   }
 });
 
@@ -815,7 +817,7 @@ router.get('/leads/:id/score-breakdown', validateParamIdMiddleware, requireRole(
     });
   } catch (err: any) {
     console.error('Lead score breakdown error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to lead score breakdown', code: 'LEAD_SCORE_BREAKDOWN_ERROR' });
   }
 });
 
@@ -868,7 +870,7 @@ router.get('/pipeline-summary', requireRole('admin', 'manager', 'contract_manage
     res.json({ stages, conversions });
   } catch (err: any) {
     console.error('Pipeline summary error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to pipeline summary', code: 'PIPELINE_SUMMARY_ERROR' });
   }
 });
 
@@ -890,6 +892,8 @@ router.get('/leads/follow-ups', requireRole('admin', 'manager', 'contract_manage
         AND l.next_follow_up < ?
         AND l.pipeline_stage NOT IN ('won', 'lost', 'dismissed')
       ORDER BY l.next_follow_up ASC
+    
+      LIMIT 1000
     `).all(today);
 
     const todayFollowUps = db.prepare(`
@@ -899,6 +903,8 @@ router.get('/leads/follow-ups', requireRole('admin', 'manager', 'contract_manage
       WHERE l.next_follow_up = ?
         AND l.pipeline_stage NOT IN ('won', 'lost', 'dismissed')
       ORDER BY l.lead_score DESC
+    
+      LIMIT 1000
     `).all(today);
 
     const upcoming = db.prepare(`
@@ -909,12 +915,14 @@ router.get('/leads/follow-ups', requireRole('admin', 'manager', 'contract_manage
         AND l.next_follow_up <= date(?, '+7 days')
         AND l.pipeline_stage NOT IN ('won', 'lost', 'dismissed')
       ORDER BY l.next_follow_up ASC
+    
+      LIMIT 1000
     `).all(today, today);
 
     res.json({ overdue, today: todayFollowUps, upcoming });
   } catch (err: any) {
     console.error('Follow-ups error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to follow-ups', code: 'FOLLOWUPS_ERROR' });
   }
 });
 
@@ -945,7 +953,7 @@ router.put('/leads/:id/follow-up', validateParamIdMiddleware, requireRole('admin
     res.json({ success: true });
   } catch (err: any) {
     console.error('Set follow-up error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to set follow-up', code: 'SET_FOLLOWUP_ERROR' });
   }
 });
 
@@ -985,7 +993,7 @@ router.get('/leads/source-analytics', requireRole('admin', 'manager', 'contract_
     res.json({ data: enriched, period_days: parseInt(days as string, 10) });
   } catch (err: any) {
     console.error('Source analytics error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to source analytics', code: 'SOURCE_ANALYTICS_ERROR' });
   }
 });
 
@@ -1016,6 +1024,8 @@ router.get('/revenue-forecast', requireRole('admin', 'manager', 'contract_manage
       WHERE pipeline_stage NOT IN ('won', 'lost', 'dismissed')
         AND estimated_value IS NOT NULL AND estimated_value > 0
       ORDER BY estimated_value DESC
+    
+      LIMIT 1000
     `).all() as any[];
 
     let totalExpected = 0;
@@ -1065,7 +1075,7 @@ router.get('/revenue-forecast', requireRole('admin', 'manager', 'contract_manage
     });
   } catch (err: any) {
     console.error('Revenue forecast error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to revenue forecast', code: 'REVENUE_FORECAST_ERROR' });
   }
 });
 

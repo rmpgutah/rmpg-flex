@@ -94,7 +94,7 @@ router.get('/calls', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get calls error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get calls', code: 'GET_CALLS_ERROR' });
   }
 });
 
@@ -271,7 +271,7 @@ router.post('/calls', (req: Request, res: Response) => {
     res.status(201).json(call);
   } catch (error: any) {
     console.error('Create call error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create call', code: 'CREATE_CALL_ERROR' });
   }
 });
 
@@ -307,6 +307,8 @@ router.get('/calls/export', (req: Request, res: Response) => {
       FROM calls_for_service c
       ${whereClause}
       ORDER BY c.created_at DESC
+    
+      LIMIT 1000
     `).all(...params);
 
     sendCsv(res, 'calls_export.csv', [
@@ -324,7 +326,7 @@ router.get('/calls/export', (req: Request, res: Response) => {
     ], rows);
   } catch (error: any) {
     console.error('Export calls error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to export calls', code: 'EXPORT_CALLS_ERROR' });
   }
 });
 
@@ -354,7 +356,7 @@ router.get('/calls/check-duplicate', (req: Request, res: Response) => {
     res.json({ duplicates, count: duplicates.length });
   } catch (error: any) {
     console.error('Duplicate check error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to duplicate check', code: 'DUPLICATE_CHECK_ERROR' });
   }
 });
 
@@ -390,6 +392,8 @@ router.get('/calls/:id', (req: Request, res: Response) => {
           FROM units u
           LEFT JOIN users usr ON u.officer_id = usr.id
           WHERE u.id IN (${placeholders})
+        
+          LIMIT 1000
         `).all(...unitIds);
       }
     } catch { /* ignore parse errors */ }
@@ -398,6 +402,8 @@ router.get('/calls/:id', (req: Request, res: Response) => {
     const incidents = db.prepare(`
       SELECT id, incident_number, incident_type, status, created_at
       FROM incidents WHERE call_id = ?
+    
+      LIMIT 1000
     `).all(call.id);
 
     // Get activity log for this call
@@ -407,6 +413,8 @@ router.get('/calls/:id', (req: Request, res: Response) => {
       LEFT JOIN users u ON al.user_id = u.id
       WHERE al.entity_type = 'call' AND al.entity_id = ?
       ORDER BY al.created_at DESC
+    
+      LIMIT 1000
     `).all(call.id);
 
     res.json({
@@ -417,7 +425,7 @@ router.get('/calls/:id', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get call error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get call', code: 'GET_CALL_ERROR' });
   }
 });
 
@@ -625,7 +633,7 @@ router.put('/calls/:id', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update call error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update call', code: 'UPDATE_CALL_ERROR' });
   }
 });
 
@@ -685,7 +693,7 @@ router.post('/calls/:id/dispatch', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Dispatch error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to dispatch', code: 'DISPATCH_ERROR' });
   }
 });
 
@@ -750,7 +758,7 @@ router.post('/calls/:id/assign-unit', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Assign unit error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to assign unit', code: 'ASSIGN_UNIT_ERROR' });
   }
 });
 
@@ -809,7 +817,7 @@ router.post('/calls/:id/unassign-unit', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Unassign unit error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unassign unit', code: 'UNASSIGN_UNIT_ERROR' });
   }
 });
 
@@ -894,7 +902,7 @@ router.post('/calls/:id/status', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Status update error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to status update', code: 'STATUS_UPDATE_ERROR' });
   }
 });
 
@@ -974,7 +982,7 @@ router.post('/calls/:id/revert-status', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Revert status error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to revert status', code: 'REVERT_STATUS_ERROR' });
   }
 });
 
@@ -1016,7 +1024,7 @@ router.post('/calls/:id/hold', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Hold call error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to hold call', code: 'HOLD_CALL_ERROR' });
   }
 });
 
@@ -1053,7 +1061,7 @@ router.post('/calls/:id/resume', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Resume call error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to resume call', code: 'RESUME_CALL_ERROR' });
   }
 });
 
@@ -1099,7 +1107,7 @@ router.post('/calls/:id/promote-to-incident', requireRole('admin', 'manager', 's
     res.status(201).json(incident);
   } catch (error: any) {
     console.error('Promote to incident error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to promote to incident', code: 'PROMOTE_TO_INCIDENT_ERROR' });
   }
 });
 
@@ -1132,7 +1140,7 @@ router.post('/calls/:id/le-notification', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('LE notification error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to le notification', code: 'LE_NOTIFICATION_ERROR' });
   }
 });
 
@@ -1147,12 +1155,14 @@ router.get('/units', (req: Request, res: Response) => {
       LEFT JOIN users usr ON u.officer_id = usr.id
       LEFT JOIN calls_for_service c ON u.current_call_id = c.id
       ORDER BY u.call_sign
+    
+      LIMIT 1000
     `).all();
 
     res.json(units);
   } catch (error: any) {
     console.error('Get units error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get units', code: 'GET_UNITS_ERROR' });
   }
 });
 
@@ -1188,7 +1198,7 @@ router.post('/units', requireRole('admin', 'manager', 'dispatcher'), (req: Reque
     res.status(201).json(unit);
   } catch (error: any) {
     console.error('Create unit error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create unit', code: 'CREATE_UNIT_ERROR' });
   }
 });
 
@@ -1261,7 +1271,7 @@ router.put('/units/:id', requireRole('admin', 'manager', 'dispatcher'), (req: Re
     res.json(updated);
   } catch (error: any) {
     console.error('Update unit error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update unit', code: 'UPDATE_UNIT_ERROR' });
   }
 });
 
@@ -1291,7 +1301,7 @@ router.delete('/units/:id', requireRole('admin', 'manager'), (req: Request, res:
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete unit error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete unit', code: 'DELETE_UNIT_ERROR' });
   }
 });
 
@@ -1356,7 +1366,7 @@ router.put('/units/:id/status', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Unit status update error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unit status update', code: 'UNIT_STATUS_UPDATE_ERROR' });
   }
 });
 
@@ -1498,7 +1508,7 @@ router.post('/gps', (req: Request, res: Response) => {
     })();
   } catch (error: any) {
     console.error('GPS update error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to gps update', code: 'GPS_UPDATE_ERROR' });
   }
 });
 
@@ -1514,7 +1524,7 @@ router.get('/gps/my-unit', (req: Request, res: Response) => {
     res.json(unit || null);
   } catch (error: any) {
     console.error('Get my unit error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get my unit', code: 'GET_MY_UNIT_ERROR' });
   }
 });
 
@@ -1534,6 +1544,8 @@ router.get('/gps/trail/:unitId', (req: Request, res: Response) => {
       FROM gps_breadcrumbs
       WHERE unit_id = ? AND recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')
       ORDER BY recorded_at ASC
+    
+      LIMIT 1000
     `).all(unitId, hours) as any[];
 
     // ── Filter: accuracy gate + jump detection + stationary collapse ──
@@ -1581,7 +1593,7 @@ router.get('/gps/trail/:unitId', (req: Request, res: Response) => {
     res.json(filtered);
   } catch (error: any) {
     console.error('GPS trail error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to gps trail', code: 'GPS_TRAIL_ERROR' });
   }
 });
 
@@ -1616,6 +1628,8 @@ router.get('/gps/trails', (req: Request, res: Response) => {
       JOIN units u ON b.unit_id = u.id
       WHERE b.recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')
       ORDER BY b.unit_id, b.recorded_at ASC
+    
+      LIMIT 1000
     `).all(hours) as any[];
 
     // ── Group by unit, then filter each trail to remove starburst artifacts ──
@@ -1684,7 +1698,7 @@ router.get('/gps/trails', (req: Request, res: Response) => {
     res.json(Object.values(trails));
   } catch (error: any) {
     console.error('GPS trails error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to gps trails', code: 'GPS_TRAILS_ERROR' });
   }
 });
 
@@ -1729,6 +1743,8 @@ router.get('/gps/call-trail/:callId', (req: Request, res: Response) => {
         WHERE (current_call_id = ?)
            OR (unit_id IN (${placeholders}) AND recorded_at >= ? AND recorded_at <= ?)
         ORDER BY recorded_at ASC
+      
+        LIMIT 1000
       `).all(callId, ...unitIds, startTime, endTime) as any[];
     } else if (unitIds.length > 0) {
       // Active call — no end time, use current time
@@ -1739,6 +1755,8 @@ router.get('/gps/call-trail/:callId', (req: Request, res: Response) => {
         WHERE (current_call_id = ?)
            OR (unit_id IN (${placeholders}) AND recorded_at >= ?)
         ORDER BY recorded_at ASC
+      
+        LIMIT 1000
       `).all(callId, ...unitIds, startTime) as any[];
     } else {
       // No assigned units — only match by current_call_id
@@ -1747,6 +1765,8 @@ router.get('/gps/call-trail/:callId', (req: Request, res: Response) => {
         FROM gps_breadcrumbs
         WHERE current_call_id = ?
         ORDER BY recorded_at ASC
+      
+        LIMIT 1000
       `).all(callId) as any[];
     }
 
@@ -1840,7 +1860,7 @@ router.get('/gps/call-trail/:callId', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Call trail error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to call trail', code: 'CALL_TRAIL_ERROR' });
   }
 });
 
@@ -1857,7 +1877,7 @@ router.delete('/gps/breadcrumbs/cleanup', (req: Request, res: Response) => {
     res.json({ deleted: result.changes });
   } catch (error: any) {
     console.error('Breadcrumb cleanup error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to breadcrumb cleanup', code: 'BREADCRUMB_CLEANUP_ERROR' });
   }
 });
 
@@ -1885,7 +1905,7 @@ router.get('/heatmap', (req: Request, res: Response) => {
     res.json(points);
   } catch (error: any) {
     console.error('Heatmap error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to heatmap', code: 'HEATMAP_ERROR' });
   }
 });
 
@@ -1902,12 +1922,14 @@ router.get('/queue', (req: Request, res: Response) => {
       ORDER BY
         CASE c.priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 END,
         c.created_at ASC
+    
+      LIMIT 1000
     `).all();
 
     res.json(calls);
   } catch (error: any) {
     console.error('Get queue error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get queue', code: 'GET_QUEUE_ERROR' });
   }
 });
 
@@ -1950,6 +1972,7 @@ router.get('/stats', (req: Request, res: Response) => {
       WHERE onscene_at IS NOT NULL AND DATE(created_at) = DATE('now')
     `).get() as any;
 
+    res.set('Cache-Control', 'private, max-age=60');
     res.json({
       activeCalls: activeCalls.count,
       todayTotal: todayTotal.count,
@@ -1960,7 +1983,7 @@ router.get('/stats', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get stats error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get stats', code: 'GET_STATS_ERROR' });
   }
 });
 
@@ -2050,7 +2073,7 @@ router.post('/calls/:id/generate-incident', (req: Request, res: Response) => {
     res.status(201).json(incident);
   } catch (error: any) {
     console.error('Generate incident error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to generate incident', code: 'GENERATE_INCIDENT_ERROR' });
   }
 });
 
@@ -2116,7 +2139,7 @@ router.post('/calls/archive-bulk', (req: Request, res: Response) => {
     res.json({ archived_count: callsToArchive.length, message: `${callsToArchive.length} call(s) archived` });
   } catch (error: any) {
     console.error('Bulk archive error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to bulk archive', code: 'BULK_ARCHIVE_ERROR' });
   }
 });
 
@@ -2159,7 +2182,7 @@ router.post('/calls/:id/archive', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Archive call error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to archive call', code: 'ARCHIVE_CALL_ERROR' });
   }
 });
 
@@ -2190,7 +2213,7 @@ router.post('/calls/:id/unarchive', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Unarchive call error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unarchive call', code: 'UNARCHIVE_CALL_ERROR' });
   }
 });
 
@@ -2266,7 +2289,7 @@ router.put('/calls/:id/timeline/:entryId', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update timeline entry error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update timeline entry', code: 'UPDATE_TIMELINE_ENTRY_ERROR' });
   }
 });
 
@@ -2285,7 +2308,7 @@ router.delete('/calls/:id/timeline/:entryId', (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete timeline entry error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete timeline entry', code: 'DELETE_TIMELINE_ENTRY_ERROR' });
   }
 });
 
@@ -2315,7 +2338,7 @@ router.post('/calls/:id/timeline', (req: Request, res: Response) => {
     res.status(201).json(entry);
   } catch (error: any) {
     console.error('Add timeline entry error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to add timeline entry', code: 'ADD_TIMELINE_ENTRY_ERROR' });
   }
 });
 
@@ -2357,6 +2380,8 @@ router.get('/calls/:id/warnings', (req: Request, res: Response) => {
         JOIN persons p ON ip.person_id = p.id
         JOIN incidents i ON ip.incident_id = i.id
         WHERE i.call_id = ?
+      
+        LIMIT 1000
       `).all(call.id) as any[];
 
       for (const person of linkedPersons) {
@@ -2400,6 +2425,8 @@ router.get('/calls/:id/warnings', (req: Request, res: Response) => {
           JOIN incidents i ON ip.incident_id = i.id
           WHERE i.call_id = ?
         ))
+      
+        LIMIT 1000
       `).all(call.id) as any[];
 
       for (const warrant of activeWarrants) {
@@ -2439,7 +2466,7 @@ router.get('/calls/:id/warnings', (req: Request, res: Response) => {
     res.json(warnings);
   } catch (error: any) {
     console.error('Get warnings error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get warnings', code: 'GET_WARNINGS_ERROR' });
   }
 });
 
@@ -2568,7 +2595,7 @@ router.post('/panic', authenticateToken, async (req: Request, res: Response) => 
     });
   } catch (error: any) {
     console.error('Panic alert error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to panic alert', code: 'PANIC_ALERT_ERROR' });
   }
 });
 
@@ -2643,7 +2670,7 @@ router.get('/premise-history', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Premise history error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to premise history', code: 'PREMISE_HISTORY_ERROR' });
   }
 });
 
@@ -2694,6 +2721,8 @@ router.get('/safety-screen', (req: Request, res: Response) => {
         SELECT * FROM warrants
         WHERE status = 'active'
           AND subject_first_name LIKE ? AND subject_last_name LIKE ?
+      
+        LIMIT 1000
       `).all(`%${person.first_name}%`, `%${person.last_name}%`);
 
       const criminalHistory = db.prepare(`
@@ -2792,7 +2821,7 @@ router.get('/safety-screen', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Safety screen error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to safety screen', code: 'SAFETY_SCREEN_ERROR' });
   }
 });
 
@@ -2804,7 +2833,7 @@ router.get('/districts', (req: Request, res: Response) => {
     res.json(districts);
   } catch (error: any) {
     console.error('Districts list error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to districts list', code: 'DISTRICTS_LIST_ERROR' });
   }
 });
 
@@ -2839,7 +2868,7 @@ router.get('/districts/lookup', (req: Request, res: Response) => {
     res.json({ found: true, district });
   } catch (error: any) {
     console.error('District lookup error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to district lookup', code: 'DISTRICT_LOOKUP_ERROR' });
   }
 });
 
@@ -2887,7 +2916,7 @@ router.get('/districts/identify', (req: Request, res: Response) => {
     }
   } catch (error: any) {
     console.error('District identify error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to district identify', code: 'DISTRICT_IDENTIFY_ERROR' });
   }
 });
 
@@ -2941,7 +2970,7 @@ router.put('/calls/:id/mileage', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Mileage update error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to mileage update', code: 'MILEAGE_UPDATE_ERROR' });
   }
 });
 

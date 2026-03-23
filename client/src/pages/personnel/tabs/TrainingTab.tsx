@@ -2,7 +2,7 @@
 // RMPG Flex — Personnel: Training & Qualifications Tab
 // ============================================================
 
-import React, { useState, useMemo } from 'react';
+import React, {useState, useMemo, useEffect} from 'react';
 import {
   GraduationCap, Plus, CheckCircle, AlertTriangle, Clock, BookOpen,
   Loader2,
@@ -81,11 +81,14 @@ export default function TrainingTab({ training, requirements, officers, loading,
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center py-20">
-        <Loader2 className="w-5 h-5 text-brand-400 animate-spin" />
+        <Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" />
         <span className="ml-2 text-xs text-rmpg-400">Loading training records...</span>
       </div>
     );
   }
+
+  // Set document title
+  useEffect(() => { document.title = 'Personnel - Training \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">

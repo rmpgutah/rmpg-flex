@@ -113,6 +113,17 @@ function formatDate(d: string | null): string {
 
 // ── Component ───────────────────────────────────────────────
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function IpedPage() {
   const { addToast } = useToast();
 
@@ -321,6 +332,7 @@ export default function IpedPage() {
   };
 
   const handleRemoveHashSet = async (name: string) => {
+    if (!window.confirm(`Remove hash set "${name}"? This cannot be undone.`)) return;
     try {
       await apiFetch(`/iped/hash-sets/${encodeURIComponent(name)}`, { method: 'DELETE' });
       addToast(`Hash set "${name}" removed`, 'success');
@@ -333,6 +345,9 @@ export default function IpedPage() {
   const totalPages = Math.ceil(jobsTotal / 20) || 1;
 
   // ── Render ────────────────────────────────────────────────
+
+  // Set document title
+  useEffect(() => { document.title = 'IPED Digital Forensics \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="app-grid-bg h-full flex flex-col overflow-hidden">
@@ -396,7 +411,7 @@ export default function IpedPage() {
                 value={hashSearchQuery}
                 onChange={e => setHashSearchQuery(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleHashSearch()}
-                placeholder="Search MD5, SHA1, or SHA256 hash..."
+                placeholder="Search MD5, SHA1, or SHA256 hash..." aria-label="Search MD5, SHA1, or SHA256 hash..."
                 className="flex-1 px-2 py-1.5 text-xs bg-[#0d1520] border border-[#1e3048] text-white placeholder-rmpg-500 font-mono outline-none"
               />
               <button type="button" onClick={handleHashSearch} disabled={hashSearching || !hashSearchQuery.trim()}
@@ -794,7 +809,7 @@ export default function IpedPage() {
 
       {/* ── New Job Modal ────────────────────────────────── */}
       {showNewJob && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowNewJob(false)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowNewJob(false)}>
           <div className="card-glass rounded-sm w-full max-w-md mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e3048]">
               <div className="flex items-center gap-2">
@@ -891,7 +906,7 @@ export default function IpedPage() {
 
       {/* ── Import Hash Set Modal ────────────────────────── */}
       {showImportHashSet && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowImportHashSet(false)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowImportHashSet(false)}>
           <div className="card-glass rounded-sm w-full max-w-md mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e3048]">
               <div className="flex items-center gap-2">

@@ -171,7 +171,7 @@ router.post('/calls/:id/dispatch', validateParamIdMiddleware, requireRole('admin
     res.json(updated);
   } catch (error: any) {
     console.error('Dispatch error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to dispatch', code: 'DISPATCH_ERROR' });
   }
 });
 
@@ -269,7 +269,7 @@ router.post('/calls/:id/assign-unit', validateParamIdMiddleware, requireRole('ad
     res.json(updated);
   } catch (error: any) {
     console.error('Assign unit error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to assign unit', code: 'ASSIGN_UNIT_ERROR' });
   }
 });
 
@@ -343,7 +343,7 @@ router.post('/calls/:id/unassign-unit', validateParamIdMiddleware, requireRole('
     res.json(updated);
   } catch (error: any) {
     console.error('Unassign unit error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unassign unit', code: 'UNASSIGN_UNIT_ERROR' });
   }
 });
 
@@ -574,7 +574,7 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
     res.json(updated);
   } catch (error: any) {
     console.error('Status update error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to status update', code: 'STATUS_UPDATE_ERROR' });
   }
 });
 
@@ -670,7 +670,7 @@ router.post('/calls/:id/revert-status', validateParamIdMiddleware, requireRole('
     res.json(updated);
   } catch (error: any) {
     console.error('Revert status error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to revert status', code: 'REVERT_STATUS_ERROR' });
   }
 });
 
@@ -712,7 +712,7 @@ router.post('/calls/:id/hold', validateParamIdMiddleware, requireRole('admin', '
     res.json(updated);
   } catch (error: any) {
     console.error('Hold call error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to hold call', code: 'HOLD_CALL_ERROR' });
   }
 });
 
@@ -752,7 +752,7 @@ router.post('/calls/:id/resume', validateParamIdMiddleware, requireRole('admin',
     res.json(updated);
   } catch (error: any) {
     console.error('Resume call error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to resume call', code: 'RESUME_CALL_ERROR' });
   }
 });
 
@@ -804,7 +804,7 @@ router.post('/calls/:id/promote-to-incident', validateParamIdMiddleware, require
     res.status(201).json(incident);
   } catch (error: any) {
     console.error('Promote to incident error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to promote to incident', code: 'PROMOTE_TO_INCIDENT_ERROR' });
   }
 });
 
@@ -849,7 +849,7 @@ router.post('/calls/:id/le-notification', validateParamIdMiddleware, requireRole
     res.json(updated);
   } catch (error: any) {
     console.error('LE notification error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to le notification', code: 'LE_NOTIFICATION_ERROR' });
   }
 });
 
@@ -871,11 +871,13 @@ router.get('/calls/:id/persons', validateParamIdMiddleware, requireRole('admin',
       LEFT JOIN users u ON cp.added_by = u.id
       WHERE cp.call_id = ?
       ORDER BY cp.created_at ASC
+    
+      LIMIT 1000
     `).all(req.params.id);
     res.json(rows);
   } catch (error: any) {
     console.error('Get call persons error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get call persons', code: 'GET_CALL_PERSONS_ERROR' });
   }
 });
 
@@ -944,7 +946,7 @@ router.post('/calls/:id/persons', validateParamIdMiddleware, requireRole('admin'
     res.status(201).json(linked);
   } catch (error: any) {
     console.error('Link call person error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to link call person', code: 'LINK_CALL_PERSON_ERROR' });
   }
 });
 
@@ -981,7 +983,7 @@ router.put('/calls/:id/persons/:linkId', validateParamIdMiddleware, requireRole(
     res.json(updated);
   } catch (error: any) {
     console.error('Update call person error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update call person', code: 'UPDATE_CALL_PERSON_ERROR' });
   }
 });
 
@@ -1008,7 +1010,7 @@ router.delete('/calls/:id/persons/:linkId', validateParamIdMiddleware, requireRo
     res.json({ success: true });
   } catch (error: any) {
     console.error('Unlink call person error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unlink call person', code: 'UNLINK_CALL_PERSON_ERROR' });
   }
 });
 
@@ -1032,11 +1034,13 @@ router.get('/calls/:id/vehicles', validateParamIdMiddleware, requireRole('admin'
       LEFT JOIN users u ON cv.added_by = u.id
       WHERE cv.call_id = ?
       ORDER BY cv.created_at ASC
+    
+      LIMIT 1000
     `).all(req.params.id);
     res.json(rows);
   } catch (error: any) {
     console.error('Get call vehicles error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get call vehicles', code: 'GET_CALL_VEHICLES_ERROR' });
   }
 });
 
@@ -1084,7 +1088,7 @@ router.post('/calls/:id/vehicles', validateParamIdMiddleware, requireRole('admin
     res.status(201).json(linked);
   } catch (error: any) {
     console.error('Link call vehicle error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to link call vehicle', code: 'LINK_CALL_VEHICLE_ERROR' });
   }
 });
 
@@ -1123,7 +1127,7 @@ router.put('/calls/:id/vehicles/:linkId', validateParamIdMiddleware, requireRole
     res.json(updated);
   } catch (error: any) {
     console.error('Update call vehicle error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update call vehicle', code: 'UPDATE_CALL_VEHICLE_ERROR' });
   }
 });
 
@@ -1151,7 +1155,7 @@ router.delete('/calls/:id/vehicles/:linkId', validateParamIdMiddleware, requireR
     res.json({ success: true });
   } catch (error: any) {
     console.error('Unlink call vehicle error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unlink call vehicle', code: 'UNLINK_CALL_VEHICLE_ERROR' });
   }
 });
 
@@ -1320,7 +1324,7 @@ router.get('/calls/actions/export/csv', requireRole('admin', 'manager', 'supervi
     ], rows);
   } catch (error: any) {
     console.error('Export call actions error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to export call actions', code: 'EXPORT_CALL_ACTIONS_ERROR' });
   }
 });
 
@@ -1347,7 +1351,7 @@ router.post('/calls/:id/escalate', validateParamIdMiddleware, requireRole('admin
     res.json(updated);
   } catch (error: any) {
     console.error('Escalate priority error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to escalate priority', code: 'ESCALATE_PRIORITY_ERROR' });
   }
 });
 
@@ -1371,7 +1375,7 @@ router.get('/calls/check-duplicate', requireRole('admin', 'manager', 'supervisor
     res.json({ duplicates });
   } catch (error: any) {
     console.error('Check duplicate error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to check duplicate', code: 'CHECK_DUPLICATE_ERROR' });
   }
 });
 
@@ -1392,6 +1396,8 @@ router.post('/calls/:id/auto-assign', validateParamIdMiddleware, requireRole('ad
       SELECT u.id, u.call_sign, u.latitude, u.longitude
       FROM units u
       WHERE u.status = 'available' AND u.latitude IS NOT NULL AND u.longitude IS NOT NULL
+    
+      LIMIT 1000
     `).all() as any[];
 
     if (availableUnits.length === 0) {
@@ -1437,7 +1443,7 @@ router.post('/calls/:id/auto-assign', validateParamIdMiddleware, requireRole('ad
     res.json({ ...(updated || {}), auto_assigned_unit: nearest.call_sign, distance_miles: Math.round(minDist * 100) / 100 });
   } catch (error: any) {
     console.error('Auto-assign error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to auto-assign', code: 'AUTOASSIGN_ERROR' });
   }
 });
 
@@ -1457,7 +1463,7 @@ router.get('/disposition-stats', requireRole('admin', 'manager', 'supervisor', '
     res.json(stats);
   } catch (error: any) {
     console.error('Disposition stats error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to disposition stats', code: 'DISPOSITION_STATS_ERROR' });
   }
 });
 
@@ -1505,7 +1511,7 @@ router.post('/calls/:id/transfer', validateParamIdMiddleware, requireRole('admin
     res.json(updated);
   } catch (error: any) {
     console.error('Transfer call error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to transfer call', code: 'TRANSFER_CALL_ERROR' });
   }
 });
 
@@ -1554,7 +1560,7 @@ router.post('/calls/:id/broadcast-note', validateParamIdMiddleware, requireRole(
     res.json(updated);
   } catch (error: any) {
     console.error('Broadcast note error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to broadcast note', code: 'BROADCAST_NOTE_ERROR' });
   }
 });
 

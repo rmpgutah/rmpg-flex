@@ -124,3 +124,68 @@ export function formatRelativeTime(dateStr: string | null | undefined): string {
   if (diffDays < 7) return `${diffDays}d ago`;
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
+
+// ============================================================
+// Additional date utilities
+// ============================================================
+
+/**
+ * Format a date range as a readable string: "Jan 15 - Feb 20, 2026"
+ */
+export function formatDateRange(start: string | null | undefined, end: string | null | undefined): string {
+  if (!start && !end) return '';
+  if (start && !end) return `${formatDateLong(start)} - Present`;
+  if (!start && end) return `Until ${formatDateLong(end)}`;
+  const s = parseTimestamp(start);
+  const e = parseTimestamp(end);
+  if (s.getFullYear() === e.getFullYear()) {
+    return `${s.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${e.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+  }
+  return `${formatDateLong(start)} – ${formatDateLong(end)}`;
+}
+
+/**
+ * Get the number of days between two dates.
+ */
+export function daysBetween(start: string, end: string): number {
+  const s = parseTimestamp(start);
+  const e = parseTimestamp(end);
+  return Math.round((e.getTime() - s.getTime()) / 86400000);
+}
+
+/**
+ * Check if a date is within N days from now (useful for expiry warnings).
+ */
+export function isWithinDays(dateStr: string, days: number): boolean {
+  const d = parseTimestamp(dateStr);
+  const now = new Date();
+  const diffDays = (d.getTime() - now.getTime()) / 86400000;
+  return diffDays >= 0 && diffDays <= days;
+}
+
+/**
+ * Check if a date is in the past.
+ */
+export function isPast(dateStr: string | null | undefined): boolean {
+  if (!dateStr) return false;
+  return parseTimestamp(dateStr).getTime() < Date.now();
+}
+
+/**
+ * Get the start and end of today in local timezone.
+ */
+export function todayRange(): { start: string; end: string } {
+  const now = new Date();
+  const start = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}T00:00:00`;
+  const end = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}T23:59:59`;
+  return { start, end };
+}
+
+/**
+ * Format a timestamp for use in a datetime-local input.
+ */
+export function toDatetimeLocalValue(dateStr: string | null | undefined): string {
+  if (!dateStr) return '';
+  const d = parseTimestamp(dateStr);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}

@@ -340,6 +340,17 @@ function CoverageSourceCard({ source }: { source: ScraperSource }) {
 // Component
 // ============================================================
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function WarrantsPage() {
   const isMobile = useIsMobile();
   const { user } = useAuth();
@@ -859,6 +870,18 @@ export default function WarrantsPage() {
   // RENDER
   // ============================================================
 
+  // Set document title
+  useEffect(() => { document.title = 'Warrants \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setServeModalOpen(false); setFormOpen(false); setEditingWarrant(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="absolute inset-0 flex flex-col overflow-hidden bg-surface-deep">
       {/* ---- TITLE BAR ---- */}
@@ -889,7 +912,7 @@ export default function WarrantsPage() {
               title="Run warrant scan now"
             >
               {scanRunning
-                ? <><Loader2 className="w-3 h-3 animate-spin" /> Scanning...</>
+                ? <><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Scanning...</>
                 : <><PlayCircle className="w-3 h-3" /> Run Scan Now</>
               }
             </button>
@@ -974,7 +997,7 @@ export default function WarrantsPage() {
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-rmpg-500" />
               <input
                 type="text"
-                className="input-dark w-full pl-9 text-xs"
+                className="input-dark w-full pl-9 text-xs min-h-[36px]"
                 placeholder="Quick search warrants by name, number, or charge..."
                 value={dashSearch}
                 onChange={(e) => setDashSearch(e.target.value)}
@@ -996,25 +1019,25 @@ export default function WarrantsPage() {
             <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-3`}>
               <div className={`panel-inset p-3 rounded-sm text-center ${(dashStats?.activeWarrants || 0) > 0 ? 'bg-red-900/20 border border-red-900/40' : 'bg-surface-sunken'}`}>
                 <div className={`text-2xl font-bold font-mono tabular-nums ${(dashStats?.activeWarrants || 0) > 0 ? 'text-red-400' : 'text-white'}`}>
-                  {dashStatsLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : (dashStats?.activeWarrants ?? 0)}
+                  {dashStatsLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" role="status" aria-label="Loading" /> : (dashStats?.activeWarrants ?? 0)}
                 </div>
                 <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Active Warrants</div>
               </div>
               <div className={`panel-inset p-3 rounded-sm text-center ${(dashStats?.hitsToday || 0) > 0 ? 'bg-amber-900/20 border border-amber-900/40' : 'bg-surface-sunken'}`}>
                 <div className={`text-2xl font-bold font-mono tabular-nums ${(dashStats?.hitsToday || 0) > 0 ? 'text-amber-400' : 'text-white'}`}>
-                  {dashStatsLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : (dashStats?.hitsToday ?? 0)}
+                  {dashStatsLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" role="status" aria-label="Loading" /> : (dashStats?.hitsToday ?? 0)}
                 </div>
                 <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Hits Today</div>
               </div>
               <div className="panel-inset bg-surface-sunken p-3 rounded-sm text-center">
                 <div className="text-2xl font-bold font-mono tabular-nums text-white">
-                  {dashStatsLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : (dashStats?.personsFlagged ?? 0)}
+                  {dashStatsLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" role="status" aria-label="Loading" /> : (dashStats?.personsFlagged ?? 0)}
                 </div>
                 <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Persons Flagged</div>
               </div>
               <div className={`panel-inset p-3 rounded-sm text-center ${dashStats && dashStats.sourcesOnline < dashStats.sourcesTotal ? 'bg-red-900/10 border border-red-900/30' : 'bg-surface-sunken'}`}>
                 <div className={`text-2xl font-bold font-mono tabular-nums ${dashStats && dashStats.sourcesOnline >= dashStats.sourcesTotal ? 'text-green-400' : dashStats ? 'text-amber-400' : 'text-white'}`}>
-                  {dashStatsLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : dashStats ? `${dashStats.sourcesOnline}/${dashStats.sourcesTotal}` : '-'}
+                  {dashStatsLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" role="status" aria-label="Loading" /> : dashStats ? `${dashStats.sourcesOnline}/${dashStats.sourcesTotal}` : '-'}
                 </div>
                 <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Sources Online</div>
               </div>
@@ -1044,7 +1067,7 @@ export default function WarrantsPage() {
                       </button>
                     ))}
                     <select
-                      className="input-dark text-[9px] py-0 px-1 w-24 ml-1"
+                      className="input-dark text-[9px] py-0 px-1 w-24 ml-1 min-h-[36px]"
                       value={feedEventFilter}
                       onChange={(e) => setFeedEventFilter(e.target.value)}
                     >
@@ -1058,7 +1081,7 @@ export default function WarrantsPage() {
                 <div className="panel-inset bg-surface-sunken rounded-sm flex-1 max-h-[400px] overflow-auto">
                   {feedLoading ? (
                     <div className="flex items-center justify-center h-32 text-rmpg-400">
-                      <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading feed...
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" role="status" aria-label="Loading" /> Loading feed...
                     </div>
                   ) : filteredFeed.length === 0 ? (
                     <div className="flex items-center justify-center h-32 text-rmpg-500 text-xs">
@@ -1106,7 +1129,7 @@ export default function WarrantsPage() {
                 <div className="space-y-2 max-h-[400px] overflow-auto">
                   {priorityLoading ? (
                     <div className="panel-inset bg-surface-sunken rounded-sm flex items-center justify-center h-32 text-rmpg-400">
-                      <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading...
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" role="status" aria-label="Loading" /> Loading...
                     </div>
                   ) : priorityWarrants.length === 0 ? (
                     <div className="panel-inset bg-surface-sunken rounded-sm flex items-center justify-center h-32 text-rmpg-500 text-xs">
@@ -1173,7 +1196,7 @@ export default function WarrantsPage() {
                 <input
                   type="text"
                   className={`input-dark w-full pl-7 ${isMobile ? 'text-sm py-2.5' : 'text-xs'}`}
-                  placeholder="Search by name, warrant #, or charge..."
+                  placeholder="Search by name, warrant #, or charge..." aria-label="Search by name, warrant #, or charge..."
                   value={searchQuery}
                   onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
                   style={isMobile ? { minHeight: 44 } : undefined}
@@ -1246,7 +1269,7 @@ export default function WarrantsPage() {
             <div className="flex-1 overflow-auto">
               {loading ? (
                 <div className="flex items-center justify-center h-full text-rmpg-400">
-                  <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading warrants...
+                  <Loader2 className="w-5 h-5 animate-spin mr-2" role="status" aria-label="Loading" /> Loading warrants...
                 </div>
               ) : warrants.length === 0 ? (
                 <EmptyState
@@ -1633,7 +1656,7 @@ export default function WarrantsPage() {
             {/* Coverage Section */}
             {coverageLoading ? (
               <div className="flex items-center justify-center h-64 text-rmpg-400">
-                <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading coverage data...
+                <Loader2 className="w-5 h-5 animate-spin mr-2" role="status" aria-label="Loading" /> Loading coverage data...
               </div>
             ) : (() => {
               const byState = new Map<string, ScraperSource[]>();
@@ -1805,7 +1828,7 @@ export default function WarrantsPage() {
 
               {watchRunsLoading ? (
                 <div className="flex items-center justify-center h-32 text-rmpg-400">
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading scan history...
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" role="status" aria-label="Loading" /> Loading scan history...
                 </div>
               ) : watchRuns.length === 0 ? (
                 <div className="text-center py-6">
@@ -1824,7 +1847,7 @@ export default function WarrantsPage() {
                             : run.status === 'running' ? 'bg-blue-900/50 text-blue-400 border-blue-700/50'
                             : 'bg-red-900/50 text-red-400 border-red-700/50'
                         }`}>
-                          {run.status === 'running' && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
+                          {run.status === 'running' && <Loader2 className="w-2.5 h-2.5 animate-spin" role="status" aria-label="Loading" />}
                           <span className={`led-dot ${
                             run.status === 'completed' ? 'led-green' : run.status === 'running' ? 'led-blue animate-led-pulse' : 'led-red'
                           }`} />
@@ -1835,7 +1858,7 @@ export default function WarrantsPage() {
                         </span>
                       </div>
 
-                      <div className="grid grid-cols-4 gap-4 text-center">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
                         <div className="panel-beveled p-2">
                           <div className="text-[9px] text-rmpg-500 uppercase">Persons</div>
                           <div className="text-base font-bold font-mono text-white tabular-nums">{run.persons_checked}</div>
@@ -1897,7 +1920,7 @@ export default function WarrantsPage() {
 
             {personProfileLoading ? (
               <div className="flex-1 flex items-center justify-center text-rmpg-400">
-                <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading profile...
+                <Loader2 className="w-5 h-5 animate-spin mr-2" role="status" aria-label="Loading" /> Loading profile...
               </div>
             ) : personProfile ? (
               <div className="flex-1 overflow-auto p-4 space-y-4">
@@ -1935,7 +1958,7 @@ export default function WarrantsPage() {
                     disabled={checkingPerson}
                     className="toolbar-btn toolbar-btn-primary text-[9px] flex-1"
                   >
-                    {checkingPerson ? <Loader2 className="w-3 h-3 animate-spin" /> : <Radar className="w-3 h-3" />}
+                    {checkingPerson ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Radar className="w-3 h-3" />}
                     Run Check Now
                   </button>
                   <button type="button"
@@ -2037,7 +2060,7 @@ export default function WarrantsPage() {
 
       {/* FORM MODAL */}
       {formOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-labelledby={warrantFormTitleId}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-labelledby={warrantFormTitleId}>
           <div className={`panel-beveled ${isMobile ? 'w-full h-full' : 'w-[550px] max-h-[85vh]'} overflow-auto bg-surface-base`}>
             <div className="flex items-center justify-between p-4 border-b border-rmpg-600">
               <h2 id={warrantFormTitleId} className="text-sm font-bold text-white">{editingWarrant ? 'Edit Warrant' : 'New Warrant'}</h2>
@@ -2083,8 +2106,8 @@ export default function WarrantsPage() {
                   <>
                     <input
                       type="text"
-                      className="input-dark text-xs w-full"
-                      placeholder="Search persons by name..."
+                      className="input-dark text-xs w-full min-h-[36px]"
+                      placeholder="Search persons by name..." aria-label="Search persons by name..."
                       value={personSearch}
                       onChange={(e) => { setPersonSearch(e.target.value); setShowPersonDropdown(true); }}
                       onFocus={() => setShowPersonDropdown(true)}
@@ -2111,7 +2134,7 @@ export default function WarrantsPage() {
                       </div>
                     )}
                     {personSearchLoading && (
-                      <div className="absolute right-2 top-7"><Loader2 className="w-3 h-3 animate-spin text-rmpg-400" /></div>
+                      <div className="absolute right-2 top-7"><Loader2 className="w-3 h-3 animate-spin text-rmpg-400" role="status" aria-label="Loading" /></div>
                     )}
                   </>
                 )}
@@ -2131,7 +2154,7 @@ export default function WarrantsPage() {
                     }));
                   }}
                   onClear={() => setFormData(prev => ({ ...prev, statute_id: null, statute_citation: '' }))}
-                  placeholder="Search statute (e.g. 76-5-102 or assault)..."
+                  placeholder="Search statute (e.g. 76-5-102 or assault)..." aria-label="Search statute (e.g. 76-5-102 or assault)..."
                   showStateFilter
                 />
               </div>
@@ -2140,7 +2163,7 @@ export default function WarrantsPage() {
               <div>
                 <label className="field-label">Charge Description *</label>
                 <textarea
-                  className="input-dark text-xs w-full"
+                  className="input-dark text-xs w-full min-h-[36px]"
                   rows={3}
                   value={formData.charge_description}
                   onChange={(e) => setFormData(prev => ({ ...prev, charge_description: e.target.value }))}
@@ -2156,11 +2179,11 @@ export default function WarrantsPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Issuing Court</label>
-                  <input type="text" className="input-dark text-xs w-full" value={formData.issuing_court} onChange={(e) => setFormData(prev => ({ ...prev, issuing_court: e.target.value }))} placeholder="e.g. 3rd District Court" />
+                  <input type="text" className="input-dark text-xs w-full min-h-[36px]" value={formData.issuing_court} onChange={(e) => setFormData(prev => ({ ...prev, issuing_court: e.target.value }))} placeholder="e.g. 3rd District Court" />
                 </div>
                 <div>
                   <label className="field-label">Issuing Judge</label>
-                  <input type="text" className="input-dark text-xs w-full" value={formData.issuing_judge} onChange={(e) => setFormData(prev => ({ ...prev, issuing_judge: e.target.value }))} placeholder="e.g. Hon. Smith" />
+                  <input type="text" className="input-dark text-xs w-full min-h-[36px]" value={formData.issuing_judge} onChange={(e) => setFormData(prev => ({ ...prev, issuing_judge: e.target.value }))} placeholder="e.g. Hon. Smith" />
                 </div>
               </div>
 
@@ -2173,21 +2196,21 @@ export default function WarrantsPage() {
                 </div>
                 <div>
                   <label className="field-label">Expires</label>
-                  <input type="date" className="input-dark text-xs w-full" value={formData.expires_at} onChange={(e) => setFormData(prev => ({ ...prev, expires_at: e.target.value }))} />
+                  <input type="date" className="input-dark text-xs w-full min-h-[36px]" value={formData.expires_at} onChange={(e) => setFormData(prev => ({ ...prev, expires_at: e.target.value }))} />
                 </div>
               </div>
 
               {/* Notes */}
               <div>
                 <label className="field-label">Notes</label>
-                <textarea className="input-dark text-xs w-full" rows={2} value={formData.notes} onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))} placeholder="Additional notes..." />
+                <textarea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.notes} onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))} placeholder="Additional notes..." />
               </div>
 
               {/* Actions */}
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-600">
                 <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn text-xs">Cancel</button>
                 <button type="submit" disabled={submitting} className="toolbar-btn toolbar-btn-primary text-xs">
-                  {submitting ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                  {submitting ? <Loader2 className="w-3 h-3 animate-spin mr-1" role="status" aria-label="Loading" /> : null}
                   {editingWarrant ? 'Update Warrant' : 'Create Warrant'}
                 </button>
               </div>
@@ -2198,7 +2221,7 @@ export default function WarrantsPage() {
 
       {/* SERVE MODAL */}
       {serveModalOpen && selectedWarrant && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-labelledby={serveTitleId}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-labelledby={serveTitleId}>
           <div className={`panel-beveled ${isMobile ? 'w-full mx-4' : 'w-[400px]'} bg-surface-base`}>
             <div className="flex items-center justify-between p-4 border-b border-rmpg-600">
               <h2 id={serveTitleId} className="text-sm font-bold text-white">Serve Warrant</h2>
@@ -2212,7 +2235,7 @@ export default function WarrantsPage() {
                 <label className="field-label">Location Served (optional)</label>
                 <input
                   type="text"
-                  className="input-dark text-xs w-full"
+                  className="input-dark text-xs w-full min-h-[36px]"
                   value={serveLocation}
                   onChange={(e) => setServeLocation(e.target.value)}
                   placeholder="e.g. 123 Main St, Salt Lake City"
@@ -2221,7 +2244,7 @@ export default function WarrantsPage() {
               <div className="flex justify-end gap-2">
                 <button type="button" onClick={() => setServeModalOpen(false)} className="toolbar-btn text-xs">Cancel</button>
                 <button type="button" onClick={handleServe} disabled={serving} className="toolbar-btn toolbar-btn-primary text-xs">
-                  {serving ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <CheckCircle className="w-3 h-3 mr-1" />}
+                  {serving ? <Loader2 className="w-3 h-3 animate-spin mr-1" role="status" aria-label="Loading" /> : <CheckCircle className="w-3 h-3 mr-1" />}
                   Confirm Served
                 </button>
               </div>

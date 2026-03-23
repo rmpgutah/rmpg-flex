@@ -87,7 +87,7 @@ router.get('/proposals', requireRole('admin', 'manager', 'contract_manager'), (r
     res.json(rows);
   } catch (err: any) {
     console.error('CRM proposals error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm proposals', code: 'CRM_PROPOSALS_ERROR' });
   }
 });
 
@@ -119,7 +119,7 @@ router.get('/proposals/:id', validateParamIdMiddleware, requireRole('admin', 'ma
     res.json(proposal);
   } catch (err: any) {
     console.error('CRM proposals error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm proposals', code: 'CRM_PROPOSALS_ERROR' });
   }
 });
 
@@ -248,7 +248,7 @@ router.post('/proposals', requireRole('admin', 'manager', 'contract_manager'), (
       res.status(400).json({ error: err.message }); return;
     }
     console.error('CRM proposals error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm proposals', code: 'CRM_PROPOSALS_ERROR' });
   }
 });
 
@@ -307,7 +307,7 @@ router.put('/proposals/:id', validateParamIdMiddleware, requireRole('admin', 'ma
     res.json(proposal);
   } catch (err: any) {
     console.error('CRM proposals error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm proposals', code: 'CRM_PROPOSALS_ERROR' });
   }
 });
 
@@ -332,7 +332,7 @@ router.delete('/proposals/:id', validateParamIdMiddleware, requireRole('admin', 
     res.json({ success: true });
   } catch (err: any) {
     console.error('CRM proposals error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm proposals', code: 'CRM_PROPOSALS_ERROR' });
   }
 });
 
@@ -410,7 +410,7 @@ router.put('/proposals/:id/stage', validateParamIdMiddleware, requireRole('admin
     res.json(proposal);
   } catch (err: any) {
     console.error('CRM proposals error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm proposals', code: 'CRM_PROPOSALS_ERROR' });
   }
 });
 
@@ -422,7 +422,7 @@ router.get('/proposal-templates', requireRole('admin', 'manager', 'contract_mana
     res.json(rows);
   } catch (err: any) {
     console.error('CRM proposals error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm proposals', code: 'CRM_PROPOSALS_ERROR' });
   }
 });
 
@@ -468,7 +468,7 @@ router.post('/proposal-templates', requireRole('admin'), (req: Request, res: Res
     res.json(template);
   } catch (err: any) {
     console.error('CRM proposals error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm proposals', code: 'CRM_PROPOSALS_ERROR' });
   }
 });
 
@@ -515,7 +515,7 @@ router.put('/proposal-templates/:id', validateParamIdMiddleware, requireRole('ad
     res.json(template);
   } catch (err: any) {
     console.error('CRM proposals error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm proposals', code: 'CRM_PROPOSALS_ERROR' });
   }
 });
 
@@ -537,7 +537,7 @@ router.delete('/proposal-templates/:id', validateParamIdMiddleware, requireRole(
     res.json({ success: true });
   } catch (err: any) {
     console.error('CRM proposals error:', err?.message || err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm proposals', code: 'CRM_PROPOSALS_ERROR' });
   }
 });
 

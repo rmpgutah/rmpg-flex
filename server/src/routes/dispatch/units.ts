@@ -22,12 +22,14 @@ router.get('/units', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       LEFT JOIN users usr ON u.officer_id = usr.id
       LEFT JOIN calls_for_service c ON u.current_call_id = c.id
       ORDER BY u.call_sign
+    
+      LIMIT 1000
     `).all();
 
     res.json(units);
   } catch (error: any) {
     console.error('[Units] get units error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get units', code: 'UNITS_GET_UNITS_ERROR' });
   }
 });
 
@@ -64,7 +66,7 @@ router.post('/units', requireRole('admin', 'manager', 'dispatcher'), (req: Reque
     res.status(201).json(unit);
   } catch (error: any) {
     console.error('[Units] create unit error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create unit', code: 'UNITS_CREATE_UNIT_ERROR' });
   }
 });
 
@@ -142,7 +144,7 @@ router.put('/units/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     res.json(updated);
   } catch (error: any) {
     console.error('[Units] update unit error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update unit', code: 'UNITS_UPDATE_UNIT_ERROR' });
   }
 });
 
@@ -172,7 +174,7 @@ router.delete('/units/:id', validateParamIdMiddleware, requireRole('admin', 'man
     res.json({ success: true });
   } catch (error: any) {
     console.error('[Units] delete unit error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete unit', code: 'UNITS_DELETE_UNIT_ERROR' });
   }
 });
 
@@ -273,7 +275,7 @@ router.put('/units/:id/status', validateParamIdMiddleware, requireRole('admin', 
     res.json(updated);
   } catch (error: any) {
     console.error('[Units] status update error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to status update', code: 'UNITS_STATUS_UPDATE_ERROR' });
   }
 });
 

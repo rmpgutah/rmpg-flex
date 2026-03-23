@@ -37,6 +37,7 @@ router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       "SELECT COUNT(*) as count FROM sex_offender_registry WHERE next_verification_due IS NOT NULL AND next_verification_due <= DATE('now', '+30 days')"
     ).get() as any)?.count || 0;
 
+    res.set('Cache-Control', 'private, max-age=60');
     res.json({
       data: {
         total,
@@ -48,7 +49,7 @@ router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
     });
   } catch (error: any) {
     console.error('SOR stats error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to sor stats', code: 'SOR_STATS_ERROR' });
   }
 });
 
@@ -95,7 +96,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     });
   } catch (error: any) {
     console.error('SOR list error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to sor list', code: 'SOR_LIST_ERROR' });
   }
 });
 
@@ -251,7 +252,7 @@ router.put('/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 's
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) {
     console.error('SOR update error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to sor update', code: 'SOR_UPDATE_ERROR' });
   }
 });
 
@@ -305,7 +306,7 @@ router.put('/:id/verify', validateParamIdMiddleware, requireRole('admin', 'manag
     res.json({ data: { id: parseInt(req.params.id as string, 10), last_verification: now, next_verification_due: nextDueStr } });
   } catch (error: any) {
     console.error('SOR verify error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to sor verify', code: 'SOR_VERIFY_ERROR' });
   }
 });
 
@@ -374,7 +375,7 @@ router.post('/import', requireRole('admin'), (req: Request, res: Response) => {
     res.json({ data: { imported, skipped, total: records.length } });
   } catch (error: any) {
     console.error('SOR import error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to sor import', code: 'SOR_IMPORT_ERROR' });
   }
 });
 

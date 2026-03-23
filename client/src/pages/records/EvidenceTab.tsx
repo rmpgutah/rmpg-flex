@@ -197,8 +197,8 @@ export function EvidenceTabList({ state }: { state: EvidenceTabState }) {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
           <input
             type="text"
-            className="input-dark pl-9 w-full text-[11px]"
-            placeholder="Search by evidence #, description, serial #, incident..."
+            className="input-dark pl-9 w-full text-[11px] min-h-[36px]"
+            placeholder="Search by evidence #, description, serial #, incident..." aria-label="Search by evidence #, description, serial #, incident..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -388,7 +388,7 @@ function DigitalForensicsSection({ evidenceId }: { evidenceId: string }) {
 
   if (loading) return (
     <div className="flex items-center gap-2 text-[10px] text-rmpg-500 py-2">
-      <Loader2 className="w-3 h-3 animate-spin" /> Loading hash data...
+      <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Loading hash data...
     </div>
   );
 
@@ -401,7 +401,7 @@ function DigitalForensicsSection({ evidenceId }: { evidenceId: string }) {
           disabled={computing}
           className="toolbar-btn text-[10px] flex items-center gap-1 px-2.5 py-1 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
         >
-          {computing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Hash className="w-3 h-3" />}
+          {computing ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Hash className="w-3 h-3" />}
           {computing ? 'Computing...' : 'Compute Hashes'}
         </button>
         <span className="text-[9px] text-rmpg-500">{hashes.length} file(s) hashed</span>
@@ -611,7 +611,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
         {/* ── Chain of Custody ────────────────── */}
         <CollapsibleSection title={`Chain of Custody (${evidenceCustody.length})`} icon={Activity}>
           {loadingCustody ? (
-            <div className="flex items-center gap-2"><Loader2 className="w-3 h-3 animate-spin text-brand-400" /><span className="text-[11px] text-rmpg-400">Loading...</span></div>
+            <div className="flex items-center gap-2"><Loader2 className="w-3 h-3 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[11px] text-rmpg-400">Loading...</span></div>
           ) : evidenceCustody.length > 0 ? (
             <div className="relative">
               <div className="absolute left-3 top-0 bottom-0 w-px bg-rmpg-600" />
@@ -779,9 +779,32 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
 // Legacy default export
 // ════════════════════════════════════════════════════
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function EvidenceTab(props: EvidenceTabProps) {
   const state = useEvidenceTab(props);
   if (props.loadingEvidence) return null;
+  // Set document title
+  useEffect(() => { document.title = 'Records - Evidence \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setEvidenceModalOpen(false); setEvidenceCreateModalOpen(false); setEditingEvidence(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <>
       <div className={`${state.selectedEvidence ? 'w-[40%]' : 'w-full'} border-r border-rmpg-600 flex flex-col overflow-hidden transition-all`}>

@@ -183,6 +183,8 @@ router.get('/keys', requireRole('admin'), (req: Request, res: Response) => {
       SELECT id, name, key_prefix, is_active, scopes, last_used_at, request_count, created_at
       FROM integration_api_keys
       ORDER BY created_at DESC
+    
+      LIMIT 1000
     `).all() as any[];
 
     const mapped = keys.map((k: any) => ({

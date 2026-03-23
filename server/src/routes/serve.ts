@@ -177,6 +177,8 @@ router.post('/sync-from-sm', requireRole('admin', 'manager', 'supervisor'), (req
       LEFT JOIN serve_queue sq ON sq.sm_job_id = sm.id
       WHERE sq.id IS NULL
         AND COALESCE(sm.service_status, '') NOT IN ('Served', 'Canceled', 'On Hold')
+    
+      LIMIT 1000
     `).all() as any[];
 
     if (!unimported.length) {
@@ -853,6 +855,8 @@ router.get('/:id/gps-trail', validateParamIdMiddleware, requireRole(...WRITE_ROL
       LEFT JOIN users u ON sa.officer_id = u.id
       WHERE sa.serve_queue_id = ? AND sa.latitude IS NOT NULL AND sa.longitude IS NOT NULL
       ORDER BY sa.attempt_at ASC
+    
+      LIMIT 1000
     `).all(req.params.id);
     res.json(trail);
   } catch (err: any) {
@@ -877,6 +881,8 @@ router.get('/:id/affidavit', validateParamIdMiddleware, requireRole(...WRITE_ROL
       LEFT JOIN users u ON sa.officer_id = u.id
       WHERE sa.serve_queue_id = ?
       ORDER BY sa.attempt_number ASC
+    
+      LIMIT 1000
     `).all(req.params.id) as any[];
 
     const server = db.prepare('SELECT full_name, badge_number FROM users WHERE id = ?').get(job.officer_id) as any;
@@ -934,6 +940,8 @@ router.post('/auto-skip-trace', requireRole(...WRITE_ROLES), async (req: Request
       WHERE sq.status IN ('in_progress', 'failed')
         AND sq.attempt_count >= 3
         AND sq.id NOT IN (SELECT DISTINCT serve_queue_id FROM serve_skip_traces)
+    
+      LIMIT 1000
     `).all() as any[];
 
     const triggered: any[] = [];
@@ -998,6 +1006,8 @@ router.get('/deadlines', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Reques
       LEFT JOIN users u ON sq.officer_id = u.id
       WHERE sq.deadline IS NOT NULL AND sq.status NOT IN ('served', 'cancelled')
       ORDER BY sq.deadline ASC
+    
+      LIMIT 1000
     `).all() as any[];
 
     const overdue = rows.filter((r: any) => r.days_remaining < 0);
@@ -1253,6 +1263,8 @@ router.get('/priority-queue', requireRole(...WRITE_ROLES, 'dispatcher'), (req: R
         END ASC,
         CASE sq.priority WHEN 'rush' THEN 0 WHEN 'urgent' THEN 1 WHEN 'normal' THEN 2 WHEN 'low' THEN 3 ELSE 4 END ASC,
         sq.deadline ASC NULLS LAST
+    
+      LIMIT 1000
     `).all();
     res.json(rows);
   } catch (err: any) {
@@ -1286,6 +1298,8 @@ router.get('/route-map/:date', requireRole(...WRITE_ROLES, 'dispatcher'), (req: 
         AND (sq.serve_date = ? OR sq.status IN ('pending', 'in_progress'))
         AND sq.recipient_lat IS NOT NULL AND sq.recipient_lng IS NOT NULL
       ORDER BY sq.sort_order ASC, sq.priority DESC
+    
+      LIMIT 1000
     `).all(officerId, date);
 
     const route = db.prepare(`

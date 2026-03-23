@@ -133,6 +133,18 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
 
   if (loading && departments.length === 0) return <LoadingSpinner />;
 
+  // Set document title
+  useEffect(() => { document.title = 'Admin - Departments \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setEditing(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="p-4 space-y-3">
       {/* Header */}
@@ -149,8 +161,8 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search..."
-              className="input-dark text-[10px] pl-6 pr-2 py-1 w-40"
+              placeholder="Search..." aria-label="Search..."
+              className="input-dark text-[10px] pl-6 pr-2 py-1 w-40 min-h-[36px]"
             />
           </div>
           <button type="button" onClick={openNew} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
@@ -230,12 +242,12 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
             <div className="p-4 space-y-3">
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Name *</label>
-                <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="input-dark w-full text-xs" placeholder="e.g. Patrol Division" />
+                <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="input-dark w-full text-xs min-h-[36px]" placeholder="e.g. Patrol Division" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Code</label>
-                  <input type="text" value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))} className="input-dark w-full text-xs font-mono" placeholder="e.g. PAT" maxLength={10} />
+                  <input type="text" value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))} className="input-dark w-full text-xs font-mono min-h-[36px]" placeholder="e.g. PAT" maxLength={10} />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Parent Dept</label>
@@ -264,7 +276,7 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
             <div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-rmpg-700">
               <button type="button" onClick={() => setShowForm(false)} className="toolbar-btn text-[10px]">Cancel</button>
               <button type="button" onClick={handleSubmit} disabled={submitting} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
-                {submitting && <Loader2 className="w-3 h-3 animate-spin" />}
+                {submitting && <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />}
                 {editing ? 'Update' : 'Create'}
               </button>
             </div>

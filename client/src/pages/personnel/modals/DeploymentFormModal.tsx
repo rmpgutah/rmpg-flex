@@ -115,15 +115,15 @@ export default function DeploymentFormModal({
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div>
             <label className="field-label">Start Date <span className="text-red-400">*</span></label>
-            <input type="date" required value={form.start_date} onChange={e => set('start_date', e.target.value)} className="input-dark" />
+            <input type="date" required value={form.start_date} onChange={e => set('start_date', e.target.value)} className="input-dark min-h-[36px]" />
           </div>
           <div>
             <label className="field-label">End Date</label>
-            <input type="date" value={form.end_date} onChange={e => set('end_date', e.target.value)} className="input-dark" />
+            <input type="date" value={form.end_date} onChange={e => set('end_date', e.target.value)} className="input-dark min-h-[36px]" />
           </div>
           <div>
             <label className="field-label">Hours / Week</label>
-            <input type="number" min="0" max="168" value={form.hours_per_week} onChange={e => set('hours_per_week', e.target.value)} placeholder="40" className="input-dark" />
+            <input type="number" min="0" max="168" value={form.hours_per_week} onChange={e => set('hours_per_week', e.target.value)} placeholder="40" className="input-dark min-h-[36px]" />
           </div>
         </div>
       </div>

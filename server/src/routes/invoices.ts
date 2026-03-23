@@ -9,6 +9,8 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken } from '../middleware/auth';
+import { auditLog } from '../utils/auditLogger';
+import { broadcastAdminUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
 
 const router = Router();
@@ -144,7 +146,7 @@ router.get('/stats', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Invoice stats error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to invoice stats', code: 'INVOICE_STATS_ERROR' });
   }
 });
 
@@ -213,7 +215,7 @@ router.get('/', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Invoice list error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to invoice list', code: 'INVOICE_LIST_ERROR' });
   }
 });
 
@@ -244,12 +246,14 @@ router.get('/:id', (req: Request, res: Response) => {
       LEFT JOIN users u ON p.recorded_by = u.id
       WHERE p.invoice_id = ?
       ORDER BY p.payment_date DESC
+    
+      LIMIT 1000
     `).all(req.params.id);
 
     res.json({ data: { ...invoice, line_items, payments } });
   } catch (error: any) {
     console.error('Invoice detail error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to invoice detail', code: 'INVOICE_DETAIL_ERROR' });
   }
 });
 
@@ -300,7 +304,7 @@ router.post('/', (req: Request, res: Response) => {
     res.status(201).json({ data: invoice });
   } catch (error: any) {
     console.error('Invoice create error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to invoice create', code: 'INVOICE_CREATE_ERROR' });
   }
 });
 
@@ -357,6 +361,8 @@ router.post('/:id/generate', (req: Request, res: Response) => {
             AND te.clock_in >= ? AND te.clock_in <= ?
             AND te.status = 'completed'
           ORDER BY te.clock_in
+        
+          LIMIT 1000
         `).all(...propertyIds, invoice.period_start, invoice.period_end + 'T23:59:59') as any[];
 
         const rate = client.rate_per_hour || 0;
@@ -391,6 +397,8 @@ router.post('/:id/generate', (req: Request, res: Response) => {
           FROM calls_for_service c
           WHERE ${conditions.join(' AND ')}
           ORDER BY c.created_at
+        
+          LIMIT 1000
         `).all(...cfsParams) as any[];
 
         const rate = client.rate_per_cfs || 0;
@@ -422,6 +430,8 @@ router.post('/:id/generate', (req: Request, res: Response) => {
           FROM incidents inc
           WHERE ${conditions.join(' AND ')}
           ORDER BY inc.created_at
+        
+          LIMIT 1000
         `).all(...incParams) as any[];
 
         const rate = client.rate_per_incident || 0;
@@ -457,11 +467,15 @@ router.post('/:id/generate', (req: Request, res: Response) => {
         const linkedCallIds = db.prepare(`
           SELECT id FROM invoice_line_items
           WHERE invoice_id = ? AND linked_entity_type = 'call_for_service'
+        
+          LIMIT 1000
         `).all(invoice.id).map((r: any) => r.linked_entity_id || 0);
 
         const linkedIncIds = db.prepare(`
           SELECT id FROM invoice_line_items
           WHERE invoice_id = ? AND linked_entity_type = 'incident'
+        
+          LIMIT 1000
         `).all(invoice.id).map((r: any) => r.linked_entity_id || 0);
 
         if (linkedCallIds.length > 0 || linkedIncIds.length > 0) {
@@ -481,6 +495,8 @@ router.post('/:id/generate', (req: Request, res: Response) => {
             FROM citations cit
             WHERE (${citConditions.join(' OR ')})
               AND cit.status != 'voided'
+          
+            LIMIT 1000
           `).all(...citParams) as any[];
 
           for (const cit of citations) {
@@ -520,7 +536,7 @@ router.post('/:id/generate', (req: Request, res: Response) => {
     res.json({ data: { ...updated, line_items }, generated: count });
   } catch (error: any) {
     console.error('Invoice generate error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to invoice generate', code: 'INVOICE_GENERATE_ERROR' });
   }
 });
 
@@ -578,7 +594,7 @@ router.put('/:id', (req: Request, res: Response) => {
     res.json({ data: updated });
   } catch (error: any) {
     console.error('Invoice update error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to invoice update', code: 'INVOICE_UPDATE_ERROR' });
   }
 });
 
@@ -639,7 +655,7 @@ router.put('/:id/status', (req: Request, res: Response) => {
     res.json({ data: updated });
   } catch (error: any) {
     console.error('Invoice status error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to invoice status', code: 'INVOICE_STATUS_ERROR' });
   }
 });
 
@@ -677,7 +693,7 @@ router.post('/:id/line-items', (req: Request, res: Response) => {
     res.status(201).json({ data: item });
   } catch (error: any) {
     console.error('Add line item error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to add line item', code: 'ADD_LINE_ITEM_ERROR' });
   }
 });
 
@@ -715,7 +731,7 @@ router.put('/:id/line-items/:itemId', (req: Request, res: Response) => {
     res.json({ data: updated });
   } catch (error: any) {
     console.error('Update line item error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update line item', code: 'UPDATE_LINE_ITEM_ERROR' });
   }
 });
 
@@ -733,7 +749,7 @@ router.delete('/:id/line-items/:itemId', (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete line item error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete line item', code: 'DELETE_LINE_ITEM_ERROR' });
   }
 });
 
@@ -781,7 +797,7 @@ router.post('/:id/payments', (req: Request, res: Response) => {
     res.status(201).json({ data: payment });
   } catch (error: any) {
     console.error('Record payment error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to record payment', code: 'RECORD_PAYMENT_ERROR' });
   }
 });
 
@@ -816,7 +832,7 @@ router.delete('/:id/payments/:paymentId', (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete payment error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete payment', code: 'DELETE_PAYMENT_ERROR' });
   }
 });
 
@@ -845,6 +861,8 @@ router.get('/:id/pdf-data', (req: Request, res: Response) => {
       SELECT p.*, u.full_name as recorded_by_name
       FROM payments p LEFT JOIN users u ON p.recorded_by = u.id
       WHERE p.invoice_id = ? ORDER BY p.payment_date
+    
+      LIMIT 1000
     `).all(req.params.id);
 
     res.json({
@@ -854,7 +872,7 @@ router.get('/:id/pdf-data', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Invoice PDF data error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to invoice pdf data', code: 'INVOICE_PDF_DATA_ERROR' });
   }
 });
 
@@ -877,6 +895,8 @@ router.get('/:id/person-chain', (req: Request, res: Response) => {
         JOIN persons p ON cp.person_id = p.id
         WHERE cp.client_id = ?
         ORDER BY cp.is_primary DESC, p.last_name, p.first_name
+      
+        LIMIT 1000
       `).all(invoice.client_id);
     } catch { /* table might not exist */ }
 
@@ -884,6 +904,8 @@ router.get('/:id/person-chain', (req: Request, res: Response) => {
     const incidentLineItems = db.prepare(`
       SELECT linked_entity_id FROM invoice_line_items
       WHERE invoice_id = ? AND linked_entity_type = 'incident'
+    
+      LIMIT 1000
     `).all(invoice.id) as any[];
     const incidentIds = incidentLineItems.map((i: any) => i.linked_entity_id).filter(Boolean);
 
@@ -898,6 +920,8 @@ router.get('/:id/person-chain', (req: Request, res: Response) => {
             FROM incident_persons ip
             JOIN persons p ON ip.person_id = p.id
             WHERE ip.incident_id = ?
+          
+            LIMIT 1000
           `).all(incId);
         } catch { /* ignore */ }
       }
@@ -936,7 +960,7 @@ router.get('/:id/person-chain', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Invoice person-chain error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to invoice person-chain', code: 'INVOICE_PERSONCHAIN_ERROR' });
   }
 });
 

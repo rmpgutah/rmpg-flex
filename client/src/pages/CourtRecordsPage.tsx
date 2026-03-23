@@ -255,6 +255,18 @@ export default function CourtRecordsPage() {
     setExpandedId(prev => prev === id ? null : id);
   };
 
+  // Set document title
+  useEffect(() => { document.title = 'Court Records \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setShowCreateModal(false); setShowCreateModal(false); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="app-grid-bg h-full flex flex-col overflow-hidden">
       {/* ── Header Panel ── */}
@@ -275,7 +287,7 @@ export default function CourtRecordsPage() {
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
             <input
               type="text"
-              placeholder="Search event #, defendant, court..."
+              placeholder="Search event #, defendant, court..." aria-label="Search event #, defendant, court..."
               value={searchInput}
               onChange={e => setSearchInput(e.target.value)}
               onKeyDown={handleSearchKeyDown}
@@ -364,7 +376,7 @@ export default function CourtRecordsPage() {
       <div className="flex-1 overflow-auto mx-2 mt-2 mb-2 card-glass">
         {loading ? (
           <div className="flex items-center justify-center h-64 text-rmpg-400">
-            <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading court records...
+            <Loader2 className="w-5 h-5 animate-spin mr-2" role="status" aria-label="Loading" /> Loading court records...
           </div>
         ) : events.length === 0 ? (
           <EmptyState
@@ -540,7 +552,7 @@ export default function CourtRecordsPage() {
 
       {/* ── Create Court Event Modal ── */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowCreateModal(false)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowCreateModal(false)}>
           <div
             className="bg-[#141e2b] border border-[#1e3048] w-full max-w-lg mx-4 shadow-2xl animate-fadeIn"
             onClick={e => e.stopPropagation()}
@@ -693,7 +705,7 @@ export default function CourtRecordsPage() {
                   disabled={!formData.event_type || !formData.event_date || saving}
                   className="toolbar-btn toolbar-btn-primary text-[10px] disabled:opacity-40"
                 >
-                  {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+                  {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Plus className="w-3 h-3" />}
                   Create Event
                 </button>
               </div>
@@ -704,7 +716,7 @@ export default function CourtRecordsPage() {
 
       {/* ── Outcome Modal ── */}
       {showOutcomeModal !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowOutcomeModal(null)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowOutcomeModal(null)}>
           <div
             className="bg-[#141e2b] border border-[#1e3048] w-full max-w-md mx-4 shadow-2xl animate-fadeIn"
             onClick={e => e.stopPropagation()}
@@ -771,7 +783,7 @@ export default function CourtRecordsPage() {
                   disabled={!outcomeData.outcome || saving}
                   className="toolbar-btn toolbar-btn-primary text-[10px] disabled:opacity-40"
                 >
-                  {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
+                  {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <CheckCircle className="w-3 h-3" />}
                   Save Outcome
                 </button>
               </div>

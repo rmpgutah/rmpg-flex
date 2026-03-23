@@ -127,7 +127,7 @@ router.get('/', (req: Request, res: Response) => {
     res.json(users);
   } catch (error: any) {
     console.error('Get personnel error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get personnel', code: 'GET_PERSONNEL_ERROR' });
   }
 });
 
@@ -168,6 +168,8 @@ router.get('/:id', (req: Request, res: Response, next) => {
       FROM schedules s
       LEFT JOIN properties p ON s.property_id = p.id
       WHERE s.officer_id = ? AND s.shift_date = ?
+    
+      LIMIT 1000
     `).all(user.id, today);
 
     // Get active time entry
@@ -184,7 +186,7 @@ router.get('/:id', (req: Request, res: Response, next) => {
     });
   } catch (error: any) {
     console.error('Get user error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get user', code: 'GET_USER_ERROR' });
   }
 });
 
@@ -265,7 +267,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
     res.status(201).json(user);
   } catch (error: any) {
     console.error('Create user error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create user', code: 'CREATE_USER_ERROR' });
   }
 });
 
@@ -342,7 +344,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
     res.json(updated);
   } catch (error: any) {
     console.error('Update user error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update user', code: 'UPDATE_USER_ERROR' });
   }
 });
 
@@ -381,7 +383,7 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete user error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete user', code: 'DELETE_USER_ERROR' });
   }
 });
 
@@ -410,7 +412,7 @@ router.post('/:id/archive', requireRole('admin', 'manager'), (req: Request, res:
     res.json(updated);
   } catch (error: any) {
     console.error('Archive user error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to archive user', code: 'ARCHIVE_USER_ERROR' });
   }
 });
 
@@ -435,7 +437,7 @@ router.post('/:id/unarchive', requireRole('admin', 'manager'), (req: Request, re
     res.json(updated);
   } catch (error: any) {
     console.error('Unarchive user error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unarchive user', code: 'UNARCHIVE_USER_ERROR' });
   }
 });
 
@@ -487,7 +489,7 @@ router.get('/bodycam-videos/:videoId/stream', (req: Request, res: Response) => {
     }
   } catch (error: any) {
     console.error('Stream bodycam video error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to stream bodycam video', code: 'STREAM_BODYCAM_VIDEO_ERROR' });
   }
 });
 
@@ -533,6 +535,8 @@ router.get('/emergency-contacts', (req: Request, res: Response) => {
       SELECT id, full_name, badge_number, emergency_contact_name, emergency_contact_phone, emergency_contact_relationship
       FROM users WHERE status = 'active' AND archived_at IS NULL
       ORDER BY full_name
+    
+      LIMIT 1000
     `).all();
     res.json(users);
   } catch (error: any) {
@@ -601,6 +605,8 @@ router.get('/export/csv', requireRole('admin', 'manager'), (req: Request, res: R
         emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
         created_at
       FROM users WHERE archived_at IS NULL ORDER BY full_name
+    
+      LIMIT 1000
     `).all();
 
     // Build CSV manually
@@ -628,6 +634,8 @@ router.get('/certifications-matrix', (req: Request, res: Response) => {
       SELECT u.id, u.full_name, u.badge_number, u.certifications
       FROM users u WHERE u.status = 'active' AND u.archived_at IS NULL
       ORDER BY u.full_name
+    
+      LIMIT 1000
     `).all() as any[];
 
     const creds = db.prepare(`
@@ -635,6 +643,8 @@ router.get('/certifications-matrix', (req: Request, res: Response) => {
       FROM credentials c
       JOIN users u ON u.id = c.officer_id
       WHERE u.status = 'active'
+    
+      LIMIT 1000
     `).all() as any[];
 
     // Build a map: officer_id → list of credential types
@@ -667,6 +677,8 @@ router.get('/uniform-sizes', requireRole('admin', 'manager'), (req: Request, res
       SELECT id, full_name, badge_number, uniform_size
       FROM users WHERE status = 'active' AND archived_at IS NULL
       ORDER BY full_name
+    
+      LIMIT 1000
     `).all();
 
     // Size summary for ordering
@@ -693,6 +705,8 @@ router.get('/anniversaries', (req: Request, res: Response) => {
     const officers = db.prepare(`
       SELECT id, full_name, badge_number, hire_date
       FROM users WHERE status = 'active' AND archived_at IS NULL AND hire_date IS NOT NULL
+    
+      LIMIT 1000
     `).all() as any[];
 
     const today = new Date();
@@ -841,6 +855,8 @@ router.get('/response-times/:officerId', (req: Request, res: Response) => {
       FROM calls_for_service c
       WHERE c.assigned_unit_ids LIKE ? AND c.dispatched_at >= ? AND c.onscene_at IS NOT NULL
       ORDER BY c.dispatched_at DESC
+    
+      LIMIT 1000
     `).all(`%${unitRow.id}%`, thirtyDaysAgo) as any[];
 
     const times: any[] = [];
@@ -882,6 +898,8 @@ router.get('/compare', (req: Request, res: Response) => {
       SELECT id, full_name, badge_number, rank, role, department, status, hire_date,
         fitness_scores, commendations, certifications
       FROM users WHERE id IN (${placeholders})
+    
+      LIMIT 1000
     `).all(...idList) as any[];
 
     // Get credential counts
@@ -972,12 +990,14 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         LEFT JOIN properties p ON s.property_id = p.id
         ${whereClause}
         ORDER BY s.shift_date, s.start_time
+      
+        LIMIT 1000
       `).all(...params);
 
       res.json(schedules);
     } catch (error: any) {
       console.error('Get schedules error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to get schedules', code: 'GET_SCHEDULES_ERROR' });
     }
   });
 
@@ -1008,7 +1028,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.status(201).json(schedule);
     } catch (error: any) {
       console.error('Create schedule error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to create schedule', code: 'CREATE_SCHEDULE_ERROR' });
     }
   });
 
@@ -1061,7 +1081,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.status(201).json(entry);
     } catch (error: any) {
       console.error('Clock in error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to clock in', code: 'CLOCK_IN_ERROR' });
     }
   });
 
@@ -1126,7 +1146,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json(entry);
     } catch (error: any) {
       console.error('Clock out error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to clock out', code: 'CLOCK_OUT_ERROR' });
     }
   });
 
@@ -1166,7 +1186,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json(entry);
     } catch (error: any) {
       console.error('Start break error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to start break', code: 'START_BREAK_ERROR' });
     }
   });
 
@@ -1213,7 +1233,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json(entry);
     } catch (error: any) {
       console.error('End break error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to end break', code: 'END_BREAK_ERROR' });
     }
   });
 
@@ -1247,7 +1267,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json({ results, clocked_in: results.filter(r => r.success).length, skipped: results.filter(r => !r.success).length });
     } catch (error: any) {
       console.error('Batch clock-in error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to batch clock-in', code: 'BATCH_CLOCKIN_ERROR' });
     }
   });
 
@@ -1261,12 +1281,14 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         LEFT JOIN users u ON c.officer_id = u.id
         WHERE c.officer_id = ?
         ORDER BY c.credential_type
+      
+        LIMIT 1000
       `).all(req.params.officerId);
 
       res.json(credentials);
     } catch (error: any) {
       console.error('Get credentials error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to get credentials', code: 'GET_CREDENTIALS_ERROR' });
     }
   });
 
@@ -1315,7 +1337,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json(entries);
     } catch (error: any) {
       console.error('Get time entries error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to get time entries', code: 'GET_TIME_ENTRIES_ERROR' });
     }
   });
 
@@ -1372,7 +1394,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json(updated);
     } catch (error: any) {
       console.error('Edit time entry error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to edit time entry', code: 'EDIT_TIME_ENTRY_ERROR' });
     }
   });
 
@@ -1402,7 +1424,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json({ success: true, id: req.params.id });
     } catch (error: any) {
       console.error('Delete time entry error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to delete time entry', code: 'DELETE_TIME_ENTRY_ERROR' });
     }
   });
 
@@ -1416,7 +1438,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json(edits);
     } catch (error: any) {
       console.error('Get time entry history error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to get time entry history', code: 'GET_TIME_ENTRY_HISTORY' });
     }
   });
 
@@ -1429,12 +1451,14 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         FROM credentials c
         LEFT JOIN users u ON c.officer_id = u.id
         ORDER BY c.expiry_date ASC
+      
+        LIMIT 1000
       `).all();
 
       res.json(credentials);
     } catch (error: any) {
       console.error('Get all credentials error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to get all credentials', code: 'GET_ALL_CREDENTIALS_ERROR' });
     }
   });
 
@@ -1458,7 +1482,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.status(201).json(credential);
     } catch (error: any) {
       console.error('Create credential error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to create credential', code: 'CREATE_CREDENTIAL_ERROR' });
     }
   });
 
@@ -1498,7 +1522,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json(credential);
     } catch (error: any) {
       console.error('Update credential error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to update credential', code: 'UPDATE_CREDENTIAL_ERROR' });
     }
   });
 
@@ -1522,7 +1546,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json({ message: 'Credential deleted' });
     } catch (error: any) {
       console.error('Delete credential error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to delete credential', code: 'DELETE_CREDENTIAL_ERROR' });
     }
   });
 
@@ -1539,7 +1563,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json(updated);
     } catch (error: any) {
       console.error('Archive credential error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to archive credential', code: 'ARCHIVE_CREDENTIAL_ERROR' });
     }
   });
 
@@ -1555,7 +1579,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json(updated);
     } catch (error: any) {
       console.error('Unarchive credential error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to unarchive credential', code: 'UNARCHIVE_CREDENTIAL_ERROR' });
     }
   });
 
@@ -1577,7 +1601,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json(activity);
     } catch (error: any) {
       console.error('Get user activity error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to get user activity', code: 'GET_USER_ACTIVITY_ERROR' });
     }
   });
 
@@ -1595,7 +1619,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json({ message: 'Schedule deleted' });
     } catch (error: any) {
       console.error('Delete schedule error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to delete schedule', code: 'DELETE_SCHEDULE_ERROR' });
     }
   });
 
@@ -1636,7 +1660,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json(schedule);
     } catch (error: any) {
       console.error('Update schedule error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to update schedule', code: 'UPDATE_SCHEDULE_ERROR' });
     }
   });
 
@@ -1653,7 +1677,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json(updated);
     } catch (error: any) {
       console.error('Archive schedule error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to archive schedule', code: 'ARCHIVE_SCHEDULE_ERROR' });
     }
   });
 
@@ -1669,7 +1693,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json(updated);
     } catch (error: any) {
       console.error('Unarchive schedule error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to unarchive schedule', code: 'UNARCHIVE_SCHEDULE_ERROR' });
     }
   });
 
@@ -1684,11 +1708,13 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         FROM training_records t
         LEFT JOIN users u ON t.officer_id = u.id
         ORDER BY t.completed_date DESC, t.created_at DESC
+      
+        LIMIT 1000
       `).all();
       res.json(records);
     } catch (error: any) {
       console.error('Get training records error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to get training records', code: 'GET_TRAINING_RECORDS_ERROR' });
     }
   });
 
@@ -1704,7 +1730,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       })));
     } catch (error: any) {
       console.error('Get training requirements error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to get training requirements', code: 'GET_TRAINING_REQUIREMENTS_ERROR' });
     }
   });
 
@@ -1718,11 +1744,13 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         LEFT JOIN users u ON t.officer_id = u.id
         WHERE t.officer_id = ?
         ORDER BY t.completed_date DESC, t.created_at DESC
+      
+        LIMIT 1000
       `).all(req.params.officerId);
       res.json(records);
     } catch (error: any) {
       console.error('Get officer training error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to get officer training', code: 'GET_OFFICER_TRAINING_ERROR' });
     }
   });
 
@@ -1756,7 +1784,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.status(201).json(record);
     } catch (error: any) {
       console.error('Create training record error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to create training record', code: 'CREATE_TRAINING_RECORD_ERROR' });
     }
   });
 
@@ -1798,7 +1826,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json(record);
     } catch (error: any) {
       console.error('Update training record error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to update training record', code: 'UPDATE_TRAINING_RECORD_ERROR' });
     }
   });
 
@@ -1816,7 +1844,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json({ message: 'Training record deleted' });
     } catch (error: any) {
       console.error('Delete training record error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to delete training record', code: 'DELETE_TRAINING_RECORD_ERROR' });
     }
   });
 
@@ -1833,7 +1861,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json(updated);
     } catch (error: any) {
       console.error('Archive training record error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to archive training record', code: 'ARCHIVE_TRAINING_RECORD_ERROR' });
     }
   });
 
@@ -1849,7 +1877,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json(updated);
     } catch (error: any) {
       console.error('Unarchive training record error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to unarchive training record', code: 'UNARCHIVE_TRAINING_RECORD_ERROR' });
     }
   });
 
@@ -1873,6 +1901,8 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         WHERE (t.completed_date BETWEEN ? AND ?)
           OR (t.status = 'scheduled' AND t.completed_date BETWEEN ? AND ?)
         ORDER BY t.completed_date ASC
+      
+        LIMIT 1000
       `).all(startDate, endDate, startDate, endDate);
 
       // Group by date
@@ -1886,12 +1916,14 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       // Include upcoming requirements
       const requirements = db.prepare(`
         SELECT * FROM training_requirements WHERE is_mandatory = 1
+      
+        LIMIT 1000
       `).all();
 
       res.json({ calendar, requirements, month: m, year: y });
     } catch (error: any) {
       console.error('Training calendar error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to training calendar', code: 'TRAINING_CALENDAR_ERROR' });
     }
   });
 
@@ -1906,7 +1938,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       if (!record) { res.status(404).json({ error: 'Training record not found' }); return; }
       const attendance = JSON.parse(record.attendance || '[]');
       res.json({ data: attendance });
-    } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+    } catch (error: any) { res.status(500).json({ error: 'Server error in personnel', code: 'PERSONNEL_ERROR' }); }
   });
 
   parentRouter.put('/personnel/training/:id/attendance', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
@@ -1934,7 +1966,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json({ data: sanitized });
     } catch (error: any) {
       console.error('Training attendance error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to training attendance', code: 'TRAINING_ATTENDANCE_ERROR' });
     }
   });
 
@@ -1980,7 +2012,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       }
     } catch (error: any) {
       console.error('Training materials error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to training materials', code: 'TRAINING_MATERIALS_ERROR' });
     }
   });
 
@@ -2014,7 +2046,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.status(201).json(material);
     } catch (error: any) {
       console.error('Create training material error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to create training material', code: 'CREATE_TRAINING_MATERIAL_ERROR' });
     }
   });
 
@@ -2023,7 +2055,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const db = getDb();
       db.prepare('DELETE FROM training_materials WHERE id = ?').run(req.params.id);
       res.json({ success: true });
-    } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+    } catch (error: any) { res.status(500).json({ error: 'Server error in personnel', code: 'PERSONNEL_ERROR' }); }
   });
 
   // ════════════════════════════════════════════════════════
@@ -2065,7 +2097,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json({ data: assessments[assessments.length - 1] });
     } catch (error: any) {
       console.error('Training assessment error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to training assessment', code: 'TRAINING_ASSESSMENT_ERROR' });
     }
   });
 
@@ -2075,7 +2107,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const record = db.prepare('SELECT assessments FROM training_records WHERE id = ?').get(req.params.id) as any;
       if (!record) { res.status(404).json({ error: 'Training record not found' }); return; }
       res.json({ data: JSON.parse(record.assessments || '[]') });
-    } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+    } catch (error: any) { res.status(500).json({ error: 'Server error in personnel', code: 'PERSONNEL_ERROR' }); }
   });
 
   // ════════════════════════════════════════════════════════
@@ -2163,7 +2195,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       });
     } catch (error: any) {
       console.error('Training alerts error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to training alerts', code: 'TRAINING_ALERTS_ERROR' });
     }
   });
 
@@ -2191,12 +2223,14 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         LEFT JOIN clients c ON p.client_id = c.id
         ${whereClause}
         ORDER BY d.start_date DESC
+      
+        LIMIT 1000
       `).all(...params);
 
       res.json(deployments);
     } catch (error: any) {
       console.error('Get deployments error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to get deployments', code: 'GET_DEPLOYMENTS_ERROR' });
     }
   });
 
@@ -2212,11 +2246,13 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         LEFT JOIN clients c ON p.client_id = c.id
         WHERE d.officer_id = ?
         ORDER BY d.start_date DESC
+      
+        LIMIT 1000
       `).all(req.params.officerId);
       res.json(deployments);
     } catch (error: any) {
       console.error('Get officer deployments error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to get officer deployments', code: 'GET_OFFICER_DEPLOYMENTS_ERROR' });
     }
   });
 
@@ -2251,7 +2287,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.status(201).json(deployment);
     } catch (error: any) {
       console.error('Create deployment error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to create deployment', code: 'CREATE_DEPLOYMENT_ERROR' });
     }
   });
 
@@ -2295,7 +2331,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json(deployment);
     } catch (error: any) {
       console.error('Update deployment error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to update deployment', code: 'UPDATE_DEPLOYMENT_ERROR' });
     }
   });
 
@@ -2313,7 +2349,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json({ message: 'Deployment deleted' });
     } catch (error: any) {
       console.error('Delete deployment error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to delete deployment', code: 'DELETE_DEPLOYMENT_ERROR' });
     }
   });
 
@@ -2335,7 +2371,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json(updated);
     } catch (error: any) {
       console.error('Archive deployment error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to archive deployment', code: 'ARCHIVE_DEPLOYMENT_ERROR' });
     }
   });
 
@@ -2356,7 +2392,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json(updated);
     } catch (error: any) {
       console.error('Unarchive deployment error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to unarchive deployment', code: 'UNARCHIVE_DEPLOYMENT_ERROR' });
     }
   });
 
@@ -2386,12 +2422,14 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         LEFT JOIN users u ON e.officer_id = u.id
         ${whereClause}
         ORDER BY e.created_at DESC
+      
+        LIMIT 1000
       `).all(...params);
 
       res.json(equipment);
     } catch (error: any) {
       console.error('Get equipment error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to get equipment', code: 'GET_EQUIPMENT_ERROR' });
     }
   });
 
@@ -2401,12 +2439,14 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const db = getDb();
       const equipment = db.prepare(`
         SELECT * FROM officer_equipment WHERE officer_id = ? ORDER BY status, equipment_type
+      
+        LIMIT 1000
       `).all(req.params.id);
 
       res.json(equipment);
     } catch (error: any) {
       console.error('Get officer equipment error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to get officer equipment', code: 'GET_OFFICER_EQUIPMENT_ERROR' });
     }
   });
 
@@ -2442,7 +2482,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.status(201).json(equipment);
     } catch (error: any) {
       console.error('Create equipment error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to create equipment', code: 'CREATE_EQUIPMENT_ERROR' });
     }
   });
 
@@ -2484,7 +2524,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json(equipment);
     } catch (error: any) {
       console.error('Update equipment error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to update equipment', code: 'UPDATE_EQUIPMENT_ERROR' });
     }
   });
 
@@ -2508,7 +2548,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json({ message: 'Equipment record deleted' });
     } catch (error: any) {
       console.error('Delete equipment error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to delete equipment', code: 'DELETE_EQUIPMENT_ERROR' });
     }
   });
 
@@ -2603,12 +2643,14 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         LEFT JOIN users u ON c.officer_id = u.id
         ${whereClause}
         ORDER BY c.status, c.camera_id
+      
+        LIMIT 1000
       `).all(...params);
 
       res.json(cameras);
     } catch (error: any) {
       console.error('Get body cameras error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to get body cameras', code: 'GET_BODY_CAMERAS_ERROR' });
     }
   });
 
@@ -2618,11 +2660,13 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const db = getDb();
       const cameras = db.prepare(`
         SELECT * FROM body_cameras WHERE officer_id = ? ORDER BY status, camera_id
+      
+        LIMIT 1000
       `).all(req.params.id);
       res.json(cameras);
     } catch (error: any) {
       console.error('Get officer body cameras error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to get officer body cameras', code: 'GET_OFFICER_BODY_CAMERAS' });
     }
   });
 
@@ -2665,7 +2709,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         return;
       }
       console.error('Create body camera error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to create body camera', code: 'CREATE_BODY_CAMERA_ERROR' });
     }
   });
 
@@ -2707,7 +2751,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json(camera);
     } catch (error: any) {
       console.error('Update body camera error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to update body camera', code: 'UPDATE_BODY_CAMERA_ERROR' });
     }
   });
 
@@ -2735,7 +2779,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json({ message: 'Body camera and associated videos deleted' });
     } catch (error: any) {
       console.error('Delete body camera error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to delete body camera', code: 'DELETE_BODY_CAMERA_ERROR' });
     }
   });
 
@@ -2760,12 +2804,14 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         LEFT JOIN body_cameras c ON v.camera_id = c.id
         ${whereClause}
         ORDER BY v.created_at DESC
+      
+        LIMIT 1000
       `).all(...params);
 
       res.json(videos);
     } catch (error: any) {
       console.error('Get bodycam videos error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to get bodycam videos', code: 'GET_BODYCAM_VIDEOS_ERROR' });
     }
   });
 
@@ -2799,7 +2845,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json(results);
     } catch (error: any) {
       console.error('Bulk delete bodycam videos error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to bulk delete bodycam videos', code: 'BULK_DELETE_BODYCAM_VIDEOS' });
     }
   });
 
@@ -2831,7 +2877,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json({ updated: Math.min(videoIds.length, 100) });
     } catch (error: any) {
       console.error('Bulk update bodycam videos error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to bulk update bodycam videos', code: 'BULK_UPDATE_BODYCAM_VIDEOS' });
     }
   });
 
@@ -2869,7 +2915,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json(results);
     } catch (error: any) {
       console.error('Bulk delete body cameras error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to bulk delete body cameras', code: 'BULK_DELETE_BODY_CAMERAS' });
     }
   });
 
@@ -2883,11 +2929,13 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         LEFT JOIN body_cameras c ON v.camera_id = c.id
         WHERE v.officer_id = ?
         ORDER BY v.created_at DESC
+      
+        LIMIT 1000
       `).all(req.params.id);
       res.json(videos);
     } catch (error: any) {
       console.error('Get officer bodycam videos error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to get officer bodycam videos', code: 'GET_OFFICER_BODYCAM_VIDEOS' });
     }
   });
 
@@ -3029,7 +3077,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json(video);
     } catch (error: any) {
       console.error('Update bodycam video error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to update bodycam video', code: 'UPDATE_BODYCAM_VIDEO_ERROR' });
     }
   });
 
@@ -3053,7 +3101,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json({ message: 'Video deleted' });
     } catch (error: any) {
       console.error('Delete bodycam video error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to delete bodycam video', code: 'DELETE_BODYCAM_VIDEO_ERROR' });
     }
   });
 
@@ -3107,7 +3155,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       }
     } catch (error: any) {
       console.error('Stream bodycam video error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to stream bodycam video', code: 'STREAM_BODYCAM_VIDEO_ERROR' });
     }
   });
 
@@ -3137,7 +3185,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json(gaps);
     } catch (error: any) {
       console.error('Get coverage gaps error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to get coverage gaps', code: 'GET_COVERAGE_GAPS_ERROR' });
     }
   });
 
@@ -3275,7 +3323,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       });
     } catch (error: any) {
       console.error('Get personnel analytics error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Failed to get personnel analytics', code: 'GET_PERSONNEL_ANALYTICS_ERROR' });
     }
   });
 }

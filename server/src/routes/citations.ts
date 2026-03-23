@@ -9,6 +9,8 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken } from '../middleware/auth';
+import { auditLog } from '../utils/auditLogger';
+import { broadcastCitationUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
 
 const router = Router();
@@ -54,6 +56,7 @@ router.get('/stats', (req: Request, res: Response) => {
       WHERE violation_date = ? AND status != 'voided'
     `).get(today) as any;
 
+    res.set('Cache-Control', 'private, max-age=60');
     res.json({
       data: {
         by_status: {
@@ -72,7 +75,7 @@ router.get('/stats', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get citation stats error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to retrieve citation statistics', code: 'STATS_ERROR' });
   }
 });
 
@@ -99,7 +102,7 @@ router.get('/search', (req: Request, res: Response) => {
     res.json({ data: citations });
   } catch (error: any) {
     console.error('Search citations error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to search citations', code: 'SEARCH_ERROR' });
   }
 });
 
@@ -123,7 +126,7 @@ router.get('/person/:personId', (req: Request, res: Response) => {
     res.json({ data: citations });
   } catch (error: any) {
     console.error('Get person citations error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to retrieve person citations', code: 'PERSON_CITATIONS_ERROR' });
   }
 });
 
@@ -204,7 +207,7 @@ router.get('/', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get citations error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to retrieve citations', code: 'LIST_CITATIONS_ERROR' });
   }
 });
 
@@ -228,7 +231,7 @@ router.get('/:id', (req: Request, res: Response) => {
     res.json({ data: citation });
   } catch (error: any) {
     console.error('Get citation error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to retrieve citation', code: 'GET_CITATION_ERROR' });
   }
 });
 
@@ -267,8 +270,13 @@ router.post('/', (req: Request, res: Response) => {
       notes,
     } = req.body;
 
+    if (!violation_description?.trim()) {
+      res.status(400).json({ error: 'Violation description is required', code: 'MISSING_DESCRIPTION' });
+      return;
+    }
+
     if (!violation_date) {
-      res.status(400).json({ error: 'violation_date is required' });
+      res.status(400).json({ error: 'violation_date is required', code: 'MISSING_DATE' });
       return;
     }
 
@@ -347,10 +355,11 @@ router.post('/', (req: Request, res: Response) => {
     );
 
     const created = db.prepare('SELECT * FROM citations WHERE id = ?').get(result.lastInsertRowid);
+    broadcastCitationUpdate({ type: 'citation_created', id: result.lastInsertRowid, citation_number });
     res.status(201).json({ data: created });
   } catch (error: any) {
     console.error('Create citation error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create citation', code: 'CREATE_CITATION_ERROR' });
   }
 });
 
@@ -429,10 +438,11 @@ router.put('/:id', (req: Request, res: Response) => {
     );
 
     const updated = db.prepare('SELECT * FROM citations WHERE id = ?').get(req.params.id);
+    broadcastCitationUpdate({ type: 'citation_updated', id: parseInt(req.params.id) });
     res.json({ data: updated });
   } catch (error: any) {
     console.error('Update citation error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update citation', code: 'UPDATE_CITATION_ERROR' });
   }
 });
 
@@ -466,10 +476,11 @@ router.delete('/:id', (req: Request, res: Response) => {
       req.ip || 'unknown'
     );
 
+    broadcastCitationUpdate({ type: 'citation_voided', id: citation.id });
     res.json({ message: 'Citation voided', data: { id: citation.id, status: 'voided' } });
   } catch (error: any) {
     console.error('Void citation error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to void citation', code: 'VOID_CITATION_ERROR' });
   }
 });
 
@@ -517,7 +528,7 @@ router.get('/:id/payments', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get citation payments error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to retrieve citation payments', code: 'GET_PAYMENTS_ERROR' });
   }
 });
 
@@ -565,7 +576,7 @@ router.post('/:id/payments', (req: Request, res: Response) => {
     res.status(201).json({ data: { id: result.lastInsertRowid } });
   } catch (error: any) {
     console.error('Record citation payment error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to record payment', code: 'RECORD_PAYMENT_ERROR' });
   }
 });
 

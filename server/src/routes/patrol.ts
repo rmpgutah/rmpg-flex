@@ -2,6 +2,8 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { auditLog } from '../utils/auditLogger';
+import { broadcastPatrolUpdate } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
 import { localNow } from '../utils/timeUtils';
 
@@ -163,10 +165,11 @@ router.put('/checkpoints/:id', requireRole('admin', 'manager', 'supervisor'), (r
       WHERE pc.id = ?
     `).get(id);
 
-    res.json(updated);
+    broadcastPatrolUpdate({ type: 'checkpoint_updated', id: parseInt(id) });
+    res.json({ data: updated });
   } catch (error) {
     console.error('Error updating checkpoint:', error);
-    res.status(500).json({ error: 'Failed to update checkpoint' });
+    res.status(500).json({ error: 'Failed to update checkpoint', code: 'UPDATE_CHECKPOINT_ERROR' });
   }
 });
 
@@ -218,10 +221,11 @@ router.post('/checkpoints/:id/archive', requireRole('admin', 'manager', 'supervi
       req.user!.userId, checkpoint.id, `Archived checkpoint: ${checkpoint.name}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT pc.*, p.name as property_name FROM patrol_checkpoints pc LEFT JOIN properties p ON pc.property_id = p.id WHERE pc.id = ?').get(checkpoint.id);
-    res.json(updated);
+    broadcastPatrolUpdate({ type: 'checkpoint_archived', id: checkpoint.id });
+    res.json({ data: updated });
   } catch (error: any) {
     console.error('Archive checkpoint error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'ARCHIVE_CHECKPOINT_ERROR' });
   }
 });
 
@@ -243,7 +247,7 @@ router.post('/checkpoints/:id/unarchive', requireRole('admin', 'manager', 'super
     res.json(updated);
   } catch (error: any) {
     console.error('Unarchive checkpoint error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unarchive checkpoint', code: 'UNARCHIVE_CHECKPOINT_ERROR' });
   }
 });
 
@@ -314,10 +318,11 @@ router.post('/scan', (req: Request, res: Response) => {
       localNow()
     );
 
-    res.status(201).json({ ...(scan as any), checkpoint_name: checkpoint.name, status });
+    broadcastPatrolUpdate({ type: 'patrol_scan', checkpoint_id: checkpoint.id, checkpoint_name: checkpoint.name, status });
+    res.status(201).json({ data: { ...(scan as any), checkpoint_name: checkpoint.name, status } });
   } catch (error) {
     console.error('Error recording scan:', error);
-    res.status(500).json({ error: 'Failed to record scan' });
+    res.status(500).json({ error: 'Failed to record scan', code: 'SCAN_ERROR' });
   }
 });
 
@@ -357,6 +362,7 @@ router.get('/scans/export', (req: Request, res: Response) => {
       LEFT JOIN users u ON ps.officer_id = u.id
       ${whereClause}
       ORDER BY ps.scanned_at DESC
+      LIMIT 5000
     `).all(...params);
 
     sendCsv(res, 'patrol_scans_export.csv', [
@@ -368,7 +374,7 @@ router.get('/scans/export', (req: Request, res: Response) => {
     ], rows);
   } catch (error: any) {
     console.error('Export patrol scans error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to export patrol scans', code: 'EXPORT_PATROL_SCANS_ERROR' });
   }
 });
 
@@ -438,6 +444,8 @@ router.get('/compliance', (req: Request, res: Response) => {
       LEFT JOIN properties p ON pc.property_id = p.id
       WHERE pc.is_active = 1
       ORDER BY p.name, pc.name
+    
+      LIMIT 1000
     `).all() as any[];
 
     const compliance = checkpoints.map((checkpoint) => {
@@ -539,6 +547,8 @@ router.get('/optimize-route', (req: Request, res: Response) => {
       FROM patrol_checkpoints pc
       LEFT JOIN properties p ON pc.property_id = p.id
       ${where}
+    
+      LIMIT 1000
     `).all(...params) as any[];
 
     if (checkpoints.length === 0) {
@@ -611,6 +621,8 @@ router.get('/log/generate', (req: Request, res: Response) => {
       LEFT JOIN properties p ON pc.property_id = p.id
       WHERE ps.officer_id = ? AND DATE(ps.scanned_at) = ?
       ORDER BY ps.scanned_at ASC
+    
+      LIMIT 1000
     `).all(officerId, targetDate) as any[];
 
     // Calculate patrol stats
@@ -756,6 +768,8 @@ router.get('/coverage-heatmap', (req: Request, res: Response) => {
         AND pc.id NOT IN (
           SELECT DISTINCT checkpoint_id FROM patrol_scans WHERE scanned_at >= ?
         )
+    
+      LIMIT 1000
     `).all(cutoff);
 
     res.json({ heatmap_points: points, unpatrolled_checkpoints: unpatrolled, days: daysNum });
@@ -872,6 +886,8 @@ router.get('/exceptions', (req: Request, res: Response) => {
       LEFT JOIN users u ON ps.officer_id = u.id
       WHERE ps.status = 'late' AND ps.scanned_at >= ?
       ORDER BY ps.scanned_at DESC
+    
+      LIMIT 1000
     `).all(cutoff) as any[];
 
     // Missed checkpoints (active checkpoints with no scans in last interval)
@@ -924,6 +940,8 @@ router.get('/time-tracking', (req: Request, res: Response) => {
       LEFT JOIN properties p ON pc.property_id = p.id
       WHERE ps.officer_id = ? AND DATE(ps.scanned_at) = ?
       ORDER BY ps.scanned_at ASC
+    
+      LIMIT 1000
     `).all(officerId, targetDate) as any[];
 
     const segments: { from: string; to: string; from_time: string; to_time: string; duration_minutes: number }[] = [];
@@ -1030,6 +1048,8 @@ router.get('/shift-summary', (req: Request, res: Response) => {
       LEFT JOIN properties p ON pc.property_id = p.id
       WHERE ps.officer_id = ? AND DATE(ps.scanned_at) = ?
       ORDER BY ps.scanned_at ASC
+    
+      LIMIT 1000
     `).all(officerId, targetDate) as any[];
 
     const onTime = scans.filter((s: any) => s.status === 'on_time').length;
@@ -1039,6 +1059,8 @@ router.get('/shift-summary', (req: Request, res: Response) => {
     const incidents = db.prepare(`
       SELECT id, incident_number, incident_type, status
       FROM incidents WHERE officer_id = ? AND DATE(created_at) = ?
+    
+      LIMIT 1000
     `).all(officerId, targetDate) as any[];
 
     // Mileage from GPS breadcrumbs (rough calculation from distance between consecutive points)
@@ -1048,6 +1070,8 @@ router.get('/shift-summary', (req: Request, res: Response) => {
         SELECT latitude, longitude FROM gps_breadcrumbs
         WHERE officer_id = ? AND DATE(recorded_at) = ?
         ORDER BY recorded_at ASC
+      
+        LIMIT 1000
       `).all(officerId, targetDate) as any[];
 
       for (let i = 1; i < breadcrumbs.length; i++) {
@@ -1066,6 +1090,8 @@ router.get('/shift-summary', (req: Request, res: Response) => {
     try {
       breaks = db.prepare(`
         SELECT * FROM patrol_breaks WHERE officer_id = ? AND shift_date = ?
+      
+        LIMIT 1000
       `).all(officerId, targetDate) as any[];
     } catch { /* table may not exist */ }
 
@@ -1116,7 +1142,7 @@ router.get('/checkpoints/:id/instructions', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get instructions error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get instructions', code: 'GET_INSTRUCTIONS_ERROR' });
   }
 });
 
@@ -1141,7 +1167,7 @@ router.post('/breaks/start', (req: Request, res: Response) => {
     res.status(201).json({ id: result.lastInsertRowid, break_start: now });
   } catch (error: any) {
     console.error('Start break error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to start break', code: 'START_BREAK_ERROR' });
   }
 });
 
@@ -1164,7 +1190,7 @@ router.post('/breaks/end', (req: Request, res: Response) => {
     res.json({ success: true, duration_minutes: durationMinutes });
   } catch (error: any) {
     console.error('End break error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to end break', code: 'END_BREAK_ERROR' });
   }
 });
 
@@ -1182,12 +1208,14 @@ router.get('/breaks', (req: Request, res: Response) => {
       LEFT JOIN users u ON pb.officer_id = u.id
       WHERE pb.officer_id = ? AND pb.shift_date = ?
       ORDER BY pb.break_start ASC
+    
+      LIMIT 1000
     `).all(officerId, targetDate);
 
     res.json(breaks);
   } catch (error: any) {
     console.error('Get breaks error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get breaks', code: 'GET_BREAKS_ERROR' });
   }
 });
 
@@ -1211,6 +1239,8 @@ router.post('/proximity-check', (req: Request, res: Response) => {
         AND latitude IS NOT NULL AND longitude IS NOT NULL
         AND latitude BETWEEN ? AND ?
         AND longitude BETWEEN ? AND ?
+    
+      LIMIT 1000
     `).all(
       latitude - latDelta, latitude + latDelta,
       longitude - lngDelta, longitude + lngDelta
@@ -1219,7 +1249,7 @@ router.post('/proximity-check', (req: Request, res: Response) => {
     res.json({ nearby_calls: activeCalls, count: activeCalls.length });
   } catch (error: any) {
     console.error('Proximity check error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to proximity check', code: 'PROXIMITY_CHECK_ERROR' });
   }
 });
 
@@ -1265,7 +1295,7 @@ router.get('/efficiency', (req: Request, res: Response) => {
     res.json(efficiency);
   } catch (error: any) {
     console.error('Efficiency score error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to efficiency score', code: 'EFFICIENCY_SCORE_ERROR' });
   }
 });
 

@@ -48,6 +48,17 @@ type LinkEntityType = 'incident' | 'person' | 'case';
 
 // ── Component ────────────────────────────────────────────────
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function WebResearchPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
@@ -193,6 +204,7 @@ export default function WebResearchPage() {
 
   // ── Delete saved result ───────────────────────────────────
   const handleDelete = useCallback(async (id: number) => {
+    if (!window.confirm('Delete this saved research result?')) return;
     try {
       await apiFetch(`/web-research/results/${id}`, { method: 'DELETE' });
       setSavedResults(p => p.filter(r => r.id !== id));
@@ -251,6 +263,18 @@ export default function WebResearchPage() {
     : savedResults.filter(r => r.linked_entity_type === filterEntity);
 
   // ── Render ────────────────────────────────────────────────
+  // Set document title
+  useEffect(() => { document.title = 'Web Research \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setEditingNotesId(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
       {/* Header bar */}
@@ -321,8 +345,8 @@ export default function WebResearchPage() {
               >
                 <input
                   type="text"
-                  className="input-dark flex-1"
-                  placeholder="Search the web..."
+                  className="input-dark flex-1 min-h-[36px]"
+                  placeholder="Search the web..." aria-label="Search the web..."
                   value={query}
                   onChange={e => setQuery(e.target.value)}
                 />
@@ -332,7 +356,7 @@ export default function WebResearchPage() {
                   className="toolbar-btn toolbar-btn-primary flex items-center gap-1.5 px-4"
                 >
                   {searching ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" />
                   ) : (
                     <Search className="w-3.5 h-3.5" />
                   )}
@@ -344,7 +368,7 @@ export default function WebResearchPage() {
             {/* Searching indicator */}
             {searching && (
               <div className="panel-beveled bg-surface-base p-6 flex items-center justify-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin text-brand-400" />
+                <Loader2 className="w-4 h-4 animate-spin text-brand-400" role="status" aria-label="Loading" />
                 <span className="text-sm text-rmpg-300">Searching the web...</span>
               </div>
             )}
@@ -417,7 +441,7 @@ export default function WebResearchPage() {
                         onClick={() => handleScrape(result.url)}
                       >
                         {isScraping ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
+                          <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />
                         ) : (
                           <Eye className="w-3 h-3" />
                         )}
@@ -430,7 +454,7 @@ export default function WebResearchPage() {
                         onClick={() => handleSave(result, scraped ? 'scrape' : 'search')}
                       >
                         {isSaving ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
+                          <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />
                         ) : (
                           <Save className="w-3 h-3" />
                         )}
@@ -491,7 +515,7 @@ export default function WebResearchPage() {
 
             {loadingSaved && (
               <div className="panel-beveled bg-surface-base p-6 flex items-center justify-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin text-brand-400" />
+                <Loader2 className="w-4 h-4 animate-spin text-brand-400" role="status" aria-label="Loading" />
                 <span className="text-sm text-rmpg-300">Loading saved results...</span>
               </div>
             )}
@@ -579,7 +603,7 @@ export default function WebResearchPage() {
                 <div>
                   {editingNotesId === result.id ? (
                     <textarea
-                      className="input-dark w-full text-xs resize-none"
+                      className="input-dark w-full text-xs resize-none min-h-[36px]"
                       rows={2}
                       placeholder="Add notes..."
                       value={notesValue}
@@ -619,7 +643,7 @@ export default function WebResearchPage() {
 
       {/* Link Modal */}
       {linkModalResult && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setLinkModalResult(null)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setLinkModalResult(null)}>
           <div
             className="panel-beveled bg-surface-raised p-4 w-80 space-y-3"
             onClick={e => e.stopPropagation()}
@@ -652,7 +676,7 @@ export default function WebResearchPage() {
             {/* ID input */}
             <input
               type="number"
-              className="input-dark w-full"
+              className="input-dark w-full min-h-[36px]"
               placeholder={`${linkType.charAt(0).toUpperCase() + linkType.slice(1)} ID...`}
               value={linkId}
               onChange={e => setLinkId(e.target.value)}
@@ -673,7 +697,7 @@ export default function WebResearchPage() {
                 disabled={linking || !linkId.trim()}
                 onClick={handleLink}
               >
-                {linking ? <Loader2 className="w-3 h-3 animate-spin" /> : <Link2 className="w-3 h-3" />}
+                {linking ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Link2 className="w-3 h-3" />}
                 Link
               </button>
             </div>

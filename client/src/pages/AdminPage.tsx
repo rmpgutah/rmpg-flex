@@ -70,7 +70,7 @@ import AdminIntegrationsTab from './admin/AdminIntegrationsTab';
 
 const LoadingSpinner: React.FC = () => (
   <div className="flex items-center justify-center py-20">
-    <Loader2 className="w-6 h-6 text-brand-400 animate-spin" />
+    <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading" />
     <span className="ml-2 text-sm text-rmpg-300">Loading...</span>
   </div>
 );
@@ -671,6 +671,18 @@ export default function AdminPage() {
   // ============================================================
   // Render
   // ============================================================
+
+  // Set document title
+  useEffect(() => { document.title = 'Administration \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setUserModalOpen(false); setEditingUser(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   return (
     <div className="flex flex-col h-full animate-fade-in">

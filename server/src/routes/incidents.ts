@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { auditLog } from '../utils/auditLogger';
+import { broadcastIncidentUpdate } from '../utils/websocket';
 import { generateIncidentNumber } from '../utils/caseNumbers';
 import { sendCsv } from '../utils/csvExport';
 import { localNow } from '../utils/timeUtils';
@@ -85,7 +87,7 @@ router.get('/', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get incidents error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get incidents', code: 'GET_INCIDENTS_ERROR' });
   }
 });
 
@@ -158,7 +160,7 @@ router.get('/map', (req: Request, res: Response) => {
     res.json(rows);
   } catch (error: any) {
     console.error('Get incidents map error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get incidents map', code: 'GET_INCIDENTS_MAP_ERROR' });
   }
 });
 
@@ -190,6 +192,7 @@ router.get('/stats', (req: Request, res: Response) => {
         AND created_at < date('now', 'start of month')
     `).get() as any;
 
+    res.set('Cache-Control', 'private, max-age=60');
     res.json({
       byStatus,
       byType,
@@ -199,7 +202,7 @@ router.get('/stats', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get incident stats error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get incident stats', code: 'GET_INCIDENT_STATS_ERROR' });
   }
 });
 
@@ -261,7 +264,7 @@ router.get('/export', (req: Request, res: Response) => {
     ], rows);
   } catch (error: any) {
     console.error('Export incidents error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to export incidents', code: 'EXPORT_INCIDENTS_ERROR' });
   }
 });
 
@@ -291,6 +294,8 @@ router.get('/:id', (req: Request, res: Response) => {
     // Get evidence
     const evidence = db.prepare(`
       SELECT * FROM evidence WHERE incident_id = ?
+    
+      LIMIT 1000
     `).all(incident.id);
 
     // Get linked persons
@@ -302,6 +307,8 @@ router.get('/:id', (req: Request, res: Response) => {
       LEFT JOIN users u ON ip.added_by = u.id
       WHERE ip.incident_id = ?
       ORDER BY ip.created_at
+    
+      LIMIT 1000
     `).all(incident.id);
 
     // Get linked vehicles
@@ -315,6 +322,8 @@ router.get('/:id', (req: Request, res: Response) => {
       LEFT JOIN users u ON iv.added_by = u.id
       WHERE iv.incident_id = ?
       ORDER BY iv.created_at
+    
+      LIMIT 1000
     `).all(incident.id);
 
     // Get activity log
@@ -324,6 +333,8 @@ router.get('/:id', (req: Request, res: Response) => {
       LEFT JOIN users u ON al.user_id = u.id
       WHERE al.entity_type = 'incident' AND al.entity_id = ?
       ORDER BY al.created_at DESC
+    
+      LIMIT 1000
     `).all(incident.id);
 
     res.json({
@@ -335,7 +346,7 @@ router.get('/:id', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get incident error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get incident', code: 'GET_INCIDENT_ERROR' });
   }
 });
 
@@ -458,7 +469,7 @@ router.post('/', (req: Request, res: Response) => {
     res.status(201).json(incident);
   } catch (error: any) {
     console.error('Create incident error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create incident', code: 'CREATE_INCIDENT_ERROR' });
   }
 });
 
@@ -556,7 +567,7 @@ router.put('/:id', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update incident error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update incident', code: 'UPDATE_INCIDENT_ERROR' });
   }
 });
 
@@ -596,7 +607,7 @@ router.delete('/:id', (req: Request, res: Response) => {
     res.json({ message: 'Incident deleted' });
   } catch (error: any) {
     console.error('Delete incident error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete incident', code: 'DELETE_INCIDENT_ERROR' });
   }
 });
 
@@ -618,7 +629,7 @@ router.post('/:id/archive', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Archive incident error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to archive incident', code: 'ARCHIVE_INCIDENT_ERROR' });
   }
 });
 
@@ -636,7 +647,7 @@ router.post('/:id/unarchive', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Unarchive incident error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unarchive incident', code: 'UNARCHIVE_INCIDENT_ERROR' });
   }
 });
 
@@ -673,7 +684,7 @@ router.put('/:id/submit', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Submit incident error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to submit incident', code: 'SUBMIT_INCIDENT_ERROR' });
   }
 });
 
@@ -708,7 +719,7 @@ router.put('/:id/approve', requireRole('admin', 'manager', 'supervisor'), (req: 
     res.json(updated);
   } catch (error: any) {
     console.error('Approve incident error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to approve incident', code: 'APPROVE_INCIDENT_ERROR' });
   }
 });
 
@@ -743,7 +754,7 @@ router.put('/:id/return', requireRole('admin', 'manager', 'supervisor'), (req: R
     res.json(updated);
   } catch (error: any) {
     console.error('Return incident error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to return incident', code: 'RETURN_INCIDENT_ERROR' });
   }
 });
 
@@ -804,7 +815,7 @@ router.post('/:id/persons', (req: Request, res: Response) => {
     res.status(201).json(linked);
   } catch (error: any) {
     console.error('Link person error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to link person', code: 'LINK_PERSON_ERROR' });
   }
 });
 
@@ -846,7 +857,7 @@ router.put('/:id/persons/:personId', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update person link error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update person link', code: 'UPDATE_PERSON_LINK_ERROR' });
   }
 });
 
@@ -878,7 +889,7 @@ router.delete('/:id/persons/:personId', (req: Request, res: Response) => {
     res.json({ message: 'Person unlinked from incident' });
   } catch (error: any) {
     console.error('Unlink person error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unlink person', code: 'UNLINK_PERSON_ERROR' });
   }
 });
 
@@ -940,7 +951,7 @@ router.post('/:id/vehicles', (req: Request, res: Response) => {
     res.status(201).json(linked);
   } catch (error: any) {
     console.error('Link vehicle error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to link vehicle', code: 'LINK_VEHICLE_ERROR' });
   }
 });
 
@@ -984,7 +995,7 @@ router.put('/:id/vehicles/:vehicleId', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update vehicle link error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update vehicle link', code: 'UPDATE_VEHICLE_LINK_ERROR' });
   }
 });
 
@@ -1016,7 +1027,7 @@ router.delete('/:id/vehicles/:vehicleId', (req: Request, res: Response) => {
     res.json({ message: 'Vehicle unlinked from incident' });
   } catch (error: any) {
     console.error('Unlink vehicle error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unlink vehicle', code: 'UNLINK_VEHICLE_ERROR' });
   }
 });
 
@@ -1089,7 +1100,7 @@ router.post('/:id/evidence', (req: Request, res: Response) => {
     res.status(201).json(evidence);
   } catch (error: any) {
     console.error('Create evidence error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create evidence', code: 'CREATE_EVIDENCE_ERROR' });
   }
 });
 
@@ -1115,12 +1126,14 @@ router.get('/:id/supplements', (req: Request, res: Response) => {
       LEFT JOIN users a ON sr.approved_by = a.id
       WHERE sr.incident_id = ?
       ORDER BY sr.created_at DESC
+    
+      LIMIT 1000
     `).all(req.params.id);
 
     res.json(supplements);
   } catch (error: any) {
     console.error('List supplements error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to list supplements', code: 'LIST_SUPPLEMENTS_ERROR' });
   }
 });
 
@@ -1177,7 +1190,7 @@ router.post('/:id/supplements', (req: Request, res: Response) => {
     res.status(201).json(supplement);
   } catch (error: any) {
     console.error('Create supplement error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create supplement', code: 'CREATE_SUPPLEMENT_ERROR' });
   }
 });
 
@@ -1231,7 +1244,7 @@ router.put('/:incidentId/supplements/:supId', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update supplement error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update supplement', code: 'UPDATE_SUPPLEMENT_ERROR' });
   }
 });
 
@@ -1254,7 +1267,7 @@ router.delete('/:incidentId/supplements/:supId', (req: Request, res: Response) =
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete supplement error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete supplement', code: 'DELETE_SUPPLEMENT_ERROR' });
   }
 });
 

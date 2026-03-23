@@ -626,6 +626,8 @@ router.get('/imports/:forensicCaseId', (req: Request, res: Response) => {
     const caseId = parseInt(req.params.forensicCaseId as string);
     const rows = db.prepare(`
       SELECT * FROM iped_imports WHERE forensic_case_id = ? ORDER BY created_at DESC
+    
+      LIMIT 1000
     `).all(caseId);
     res.json({ data: rows });
   } catch (err: any) {
@@ -688,7 +690,7 @@ router.get('/hashes/search', (req: Request, res: Response) => {
     res.json({ results, total: results.length });
   } catch (error: any) {
     console.error('Hash search error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to hash search', code: 'HASH_SEARCH_ERROR' });
   }
 });
 

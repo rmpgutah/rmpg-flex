@@ -125,6 +125,17 @@ function invoiceStatusColor(s: string): string {
 // ════════════════════════════════════════════════════════
 // CRM PAGE
 // ════════════════════════════════════════════════════════
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function CrmPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
@@ -406,10 +417,22 @@ export default function CrmPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-6 h-6 text-brand-400 animate-spin" />
+        <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading" />
       </div>
     );
   }
+
+  // Set document title
+  useEffect(() => { document.title = 'CRM \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setShowTaskModal(false); setEditingTask(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   return (
     <div className="flex h-full">
@@ -471,7 +494,7 @@ export default function CrmPage() {
 
       {/* ── Task Modal ────────────────────────────────── */}
       {showTaskModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowTaskModal(false)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowTaskModal(false)}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
             <div className="panel-title-bar flex items-center justify-between">
               <span className="text-xs font-bold text-white">{editingTask ? 'Edit Task' : 'New Task'}</span>
@@ -480,18 +503,18 @@ export default function CrmPage() {
             <div className="p-4 space-y-3">
               <div>
                 <label className="field-label">Title</label>
-                <input className="input-dark w-full" value={taskForm.title || ''} onChange={e => setTaskForm(p => ({ ...p, title: e.target.value }))} />
+                <input className="input-dark w-full min-h-[36px]" value={taskForm.title || ''} onChange={e => setTaskForm(p => ({ ...p, title: e.target.value }))} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Type</label>
-                  <select className="input-dark w-full" value={taskForm.task_type || 'follow_up'} onChange={e => setTaskForm(p => ({ ...p, task_type: e.target.value as any }))}>
+                  <select className="input-dark w-full min-h-[36px]" value={taskForm.task_type || 'follow_up'} onChange={e => setTaskForm(p => ({ ...p, task_type: e.target.value as any }))}>
                     {TASK_TYPES.map(t => <option key={t} value={t}>{toDisplayLabel(t)}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="field-label">Priority</label>
-                  <select className="input-dark w-full" value={taskForm.priority || 'normal'} onChange={e => setTaskForm(p => ({ ...p, priority: e.target.value as any }))}>
+                  <select className="input-dark w-full min-h-[36px]" value={taskForm.priority || 'normal'} onChange={e => setTaskForm(p => ({ ...p, priority: e.target.value as any }))}>
                     {TASK_PRIORITIES.map(p => <option key={p} value={p}>{toDisplayLabel(p)}</option>)}
                   </select>
                 </div>
@@ -499,11 +522,11 @@ export default function CrmPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Due Date</label>
-                  <input type="date" className="input-dark w-full" value={taskForm.due_date || ''} onChange={e => setTaskForm(p => ({ ...p, due_date: e.target.value }))} />
+                  <input type="date" className="input-dark w-full min-h-[36px]" value={taskForm.due_date || ''} onChange={e => setTaskForm(p => ({ ...p, due_date: e.target.value }))} />
                 </div>
                 <div>
                   <label className="field-label">Assign To</label>
-                  <select className="input-dark w-full" value={taskForm.assigned_to || ''} onChange={e => setTaskForm(p => ({ ...p, assigned_to: e.target.value }))}>
+                  <select className="input-dark w-full min-h-[36px]" value={taskForm.assigned_to || ''} onChange={e => setTaskForm(p => ({ ...p, assigned_to: e.target.value }))}>
                     <option value="">Unassigned</option>
                     {officers.map(o => <option key={o.id} value={o.id}>{o.full_name}</option>)}
                   </select>
@@ -511,19 +534,19 @@ export default function CrmPage() {
               </div>
               <div>
                 <label className="field-label">Client</label>
-                <select className="input-dark w-full" value={String(taskForm.client_id || '')} onChange={e => setTaskForm(p => ({ ...p, client_id: e.target.value ? Number(e.target.value) as any : undefined }))}>
+                <select className="input-dark w-full min-h-[36px]" value={String(taskForm.client_id || '')} onChange={e => setTaskForm(p => ({ ...p, client_id: e.target.value ? Number(e.target.value) as any : undefined }))}>
                   <option value="">No client</option>
                   {clients.filter(c => c.is_active !== false).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div>
                 <label className="field-label">Description</label>
-                <textarea className="input-dark w-full" rows={3} value={taskForm.description || ''} onChange={e => setTaskForm(p => ({ ...p, description: e.target.value }))} />
+                <textarea className="input-dark w-full min-h-[36px]" rows={3} value={taskForm.description || ''} onChange={e => setTaskForm(p => ({ ...p, description: e.target.value }))} />
               </div>
               {editingTask && (
                 <div>
                   <label className="field-label">Status</label>
-                  <select className="input-dark w-full" value={taskForm.status || 'pending'} onChange={e => setTaskForm(p => ({ ...p, status: e.target.value as any }))}>
+                  <select className="input-dark w-full min-h-[36px]" value={taskForm.status || 'pending'} onChange={e => setTaskForm(p => ({ ...p, status: e.target.value as any }))}>
                     {TASK_STATUSES.map(s => <option key={s} value={s}>{toDisplayLabel(s)}</option>)}
                   </select>
                 </div>
@@ -531,7 +554,7 @@ export default function CrmPage() {
             </div>
             <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
               <button type="button" onClick={() => setShowTaskModal(false)} className="toolbar-btn">Cancel</button>
-              <button type="button" onClick={saveTask} className="toolbar-btn toolbar-btn-primary" disabled={!taskForm.title?.trim()}>
+              <button type="button" onClick={saveTask} className="toolbar-btn toolbar-btn-primary print:hidden" disabled={!taskForm.title?.trim()}>
                 <Save className="w-3 h-3" /> {editingTask ? 'Update' : 'Create'}
               </button>
             </div>
@@ -541,7 +564,7 @@ export default function CrmPage() {
 
       {/* ── Activity Log Modal ────────────────────────── */}
       {showActivityModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowActivityModal(false)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowActivityModal(false)}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
             <div className="panel-title-bar flex items-center justify-between">
               <span className="text-xs font-bold text-white">Log Activity</span>
@@ -550,29 +573,29 @@ export default function CrmPage() {
             <div className="p-4 space-y-3">
               <div>
                 <label className="field-label">Client</label>
-                <select className="input-dark w-full" value={activityForm.client_id} onChange={e => setActivityForm(p => ({ ...p, client_id: e.target.value }))}>
+                <select className="input-dark w-full min-h-[36px]" value={activityForm.client_id} onChange={e => setActivityForm(p => ({ ...p, client_id: e.target.value }))}>
                   <option value="">Select client...</option>
                   {clients.filter(c => c.is_active !== false).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div>
                 <label className="field-label">Type</label>
-                <select className="input-dark w-full" value={activityForm.activity_type} onChange={e => setActivityForm(p => ({ ...p, activity_type: e.target.value }))}>
+                <select className="input-dark w-full min-h-[36px]" value={activityForm.activity_type} onChange={e => setActivityForm(p => ({ ...p, activity_type: e.target.value }))}>
                   {ACTIVITY_TYPES.map(t => <option key={t} value={t}>{toDisplayLabel(t)}</option>)}
                 </select>
               </div>
               <div>
                 <label className="field-label">Subject</label>
-                <input className="input-dark w-full" value={activityForm.subject} onChange={e => setActivityForm(p => ({ ...p, subject: e.target.value }))} />
+                <input className="input-dark w-full min-h-[36px]" value={activityForm.subject} onChange={e => setActivityForm(p => ({ ...p, subject: e.target.value }))} />
               </div>
               <div>
                 <label className="field-label">Details</label>
-                <textarea className="input-dark w-full" rows={3} value={activityForm.details} onChange={e => setActivityForm(p => ({ ...p, details: e.target.value }))} />
+                <textarea className="input-dark w-full min-h-[36px]" rows={3} value={activityForm.details} onChange={e => setActivityForm(p => ({ ...p, details: e.target.value }))} />
               </div>
             </div>
             <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
               <button type="button" onClick={() => setShowActivityModal(false)} className="toolbar-btn">Cancel</button>
-              <button type="button" onClick={logActivity} className="toolbar-btn toolbar-btn-primary" disabled={!activityForm.client_id}>
+              <button type="button" onClick={logActivity} className="toolbar-btn toolbar-btn-primary print:hidden" disabled={!activityForm.client_id}>
                 <Save className="w-3 h-3" /> Log
               </button>
             </div>
@@ -620,7 +643,7 @@ export default function CrmPage() {
           <RmpgLogo height={16} iconOnly />
           <ExportButton exportUrl="/api/crm/export/csv" exportFilename="crm.csv" />
           <button type="button" onClick={() => fetchDashboard()} className="toolbar-btn"><RefreshCw className="w-3 h-3" /> Refresh</button>
-          <button type="button" onClick={() => { setActivityForm({ client_id: '', activity_type: 'note', subject: '', details: '' }); setShowActivityModal(true); }} className="toolbar-btn toolbar-btn-primary">
+          <button type="button" onClick={() => { setActivityForm({ client_id: '', activity_type: 'note', subject: '', details: '' }); setShowActivityModal(true); }} className="toolbar-btn toolbar-btn-primary print:hidden">
             <Plus className="w-3 h-3" /> Log Activity
           </button>
         </PanelTitleBar>
@@ -628,7 +651,7 @@ export default function CrmPage() {
         {stats && (
           <div className="p-4 space-y-4">
             {/* Stats Cards */}
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <StatCard icon={Building2} label="Active Clients" value={stats.active_clients} sub={`${stats.total_clients} total`} color="text-brand-400" />
               <StatCard icon={DollarSign} label="Outstanding" value={formatCurrency(stats.outstanding_revenue)} sub={`${stats.overdue_invoices} overdue`} color="text-amber-400" />
               <StatCard icon={TrendingUp} label="Invoiced MTD" value={formatCurrency(stats.total_invoiced_mtd)} sub={`${formatCurrency(stats.total_paid_mtd)} paid`} color="text-green-400" />
@@ -642,7 +665,7 @@ export default function CrmPage() {
                   <TrendingUp className="w-3.5 h-3.5 text-green-400" />
                   <span className="text-xs font-bold text-white">Revenue Forecast</span>
                 </div>
-                <div className="grid grid-cols-4 gap-3 text-center">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
                   <div><div className="text-lg font-bold text-green-400 font-mono">{formatCurrency(revenueForecast.won_revenue)}</div><div className="text-[9px] text-rmpg-400 uppercase">Won</div></div>
                   <div><div className="text-lg font-bold text-brand-300 font-mono">{formatCurrency(revenueForecast.total_expected)}</div><div className="text-[9px] text-rmpg-400 uppercase">Expected</div></div>
                   <div><div className="text-lg font-bold text-white font-mono">{formatCurrency(revenueForecast.total_pipeline)}</div><div className="text-[9px] text-rmpg-400 uppercase">Total Pipeline</div></div>
@@ -820,8 +843,8 @@ export default function CrmPage() {
         {/* Client List */}
         <div className="w-80 border-r border-rmpg-600 flex flex-col flex-shrink-0">
           <PanelTitleBar title="CLIENTS" icon={Building2}>
-            <input className="input-dark text-xs flex-1" style={{ maxWidth: 120 }} placeholder="Search..." value={clientSearch} onChange={e => setClientSearch(e.target.value)} />
-            <button type="button" onClick={() => { setEditingClient(null); setShowClientModal(true); }} className="toolbar-btn toolbar-btn-primary">
+            <input className="input-dark text-xs flex-1 min-h-[36px]" style={{ maxWidth: 120 }} placeholder="Search..." aria-label="Search..." value={clientSearch} onChange={e => setClientSearch(e.target.value)} />
+            <button type="button" onClick={() => { setEditingClient(null); setShowClientModal(true); }} className="toolbar-btn toolbar-btn-primary print:hidden">
               <Plus className="w-3 h-3" /> New
             </button>
           </PanelTitleBar>
@@ -980,7 +1003,7 @@ export default function CrmPage() {
     return (
       <div className="flex-1 overflow-y-auto">
         <PanelTitleBar title="PROPERTIES" icon={MapPin}>
-          <input className="input-dark text-xs" style={{ maxWidth: 200 }} placeholder="Search properties..." value={propertySearch} onChange={e => setPropertySearch(e.target.value)} />
+          <input className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 200 }} placeholder="Search properties..." aria-label="Search properties..." value={propertySearch} onChange={e => setPropertySearch(e.target.value)} />
         </PanelTitleBar>
         <div className="p-4">
           {filteredProperties.length === 0 ? (
@@ -1019,8 +1042,8 @@ export default function CrmPage() {
     return (
       <div className="flex-1 overflow-y-auto">
         <PanelTitleBar title="CONTACTS" icon={Users}>
-          <input className="input-dark text-xs" style={{ maxWidth: 200 }} placeholder="Search contacts..." value={contactSearch} onChange={e => setContactSearch(e.target.value)} />
-          <select className="input-dark text-xs" style={{ maxWidth: 140 }} value={contactRelationship} onChange={e => setContactRelationship(e.target.value)}>
+          <input className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 200 }} placeholder="Search contacts..." aria-label="Search contacts..." value={contactSearch} onChange={e => setContactSearch(e.target.value)} />
+          <select className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 140 }} value={contactRelationship} onChange={e => setContactRelationship(e.target.value)}>
             <option value="">All Relationships</option>
             {RELATIONSHIP_TYPES.map(r => <option key={r} value={r}>{toDisplayLabel(r)}</option>)}
           </select>
@@ -1072,7 +1095,7 @@ export default function CrmPage() {
     return (
       <div className="flex-1 overflow-y-auto">
         <PanelTitleBar title="INVOICES" icon={FileText}>
-          <select className="input-dark text-xs" style={{ maxWidth: 140 }} value={invoiceFilter} onChange={e => setInvoiceFilter(e.target.value)}>
+          <select className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 140 }} value={invoiceFilter} onChange={e => setInvoiceFilter(e.target.value)}>
             <option value="">All Statuses</option>
             <option value="draft">Draft</option>
             <option value="sent">Sent</option>
@@ -1129,7 +1152,7 @@ export default function CrmPage() {
     return (
       <div className="flex-1 overflow-y-auto">
         <PanelTitleBar title="TASKS" icon={CheckSquare}>
-          <select className="input-dark text-xs" style={{ maxWidth: 160 }} value={taskFilter} onChange={e => setTaskFilter(e.target.value)}>
+          <select className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 160 }} value={taskFilter} onChange={e => setTaskFilter(e.target.value)}>
             <option value="pending,in_progress">Active</option>
             <option value="">All</option>
             <option value="pending">Pending</option>
@@ -1137,7 +1160,7 @@ export default function CrmPage() {
             <option value="completed">Completed</option>
             <option value="cancelled">Cancelled</option>
           </select>
-          <button type="button" onClick={() => openNewTask()} className="toolbar-btn toolbar-btn-primary">
+          <button type="button" onClick={() => openNewTask()} className="toolbar-btn toolbar-btn-primary print:hidden">
             <Plus className="w-3 h-3" /> New Task
           </button>
         </PanelTitleBar>

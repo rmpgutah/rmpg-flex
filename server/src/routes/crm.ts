@@ -68,7 +68,7 @@ router.get('/dashboard', requireRole('admin', 'manager', 'contract_manager'), (_
     });
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 
@@ -90,7 +90,7 @@ router.get('/recent-activity', requireRole('admin', 'manager', 'contract_manager
     res.json(rows);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 
@@ -128,7 +128,7 @@ router.get('/tasks', requireRole('admin', 'manager', 'contract_manager'), (req: 
     res.json(db.prepare(sql).all(...params));
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 
@@ -170,7 +170,7 @@ router.post('/tasks', requireRole('admin', 'manager', 'contract_manager'), (req:
     res.json(task);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 
@@ -226,7 +226,7 @@ router.put('/tasks/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     res.json(task);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 
@@ -243,7 +243,7 @@ router.delete('/tasks/:id', validateParamIdMiddleware, requireRole('admin', 'man
     res.json({ success: true });
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 
@@ -266,7 +266,7 @@ router.get('/activity/:clientId', requireRole('admin', 'manager', 'contract_mana
     res.json(rows);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 
@@ -302,7 +302,7 @@ router.post('/activity', requireRole('admin', 'manager', 'contract_manager'), (r
     res.json(activity);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 
@@ -334,7 +334,7 @@ router.get('/contacts', requireRole('admin', 'manager', 'contract_manager'), (re
     res.json(db.prepare(sql).all(...params));
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 
@@ -357,12 +357,14 @@ router.get('/expiring-contracts', requireRole('admin', 'manager', 'contract_mana
         AND contract_end <= ?
         AND contract_end >= date('now')
       ORDER BY contract_end ASC
+    
+      LIMIT 1000
     `).all(future);
 
     res.json(rows);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 
@@ -387,7 +389,7 @@ router.get('/reports/revenue', requireRole('admin', 'manager', 'contract_manager
     res.json(rows);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 
@@ -417,7 +419,7 @@ router.get('/reports/pipeline', requireRole('admin', 'manager', 'contract_manage
     });
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 
@@ -440,7 +442,7 @@ router.get('/reports/retention', requireRole('admin', 'manager', 'contract_manag
     res.json(rows);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 
@@ -467,7 +469,7 @@ router.get('/reports/lead-source-roi', requireRole('admin', 'manager', 'contract
     res.json(result);
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 
@@ -513,7 +515,7 @@ router.get('/reports/metrics', requireRole('admin', 'manager', 'contract_manager
     });
   } catch (err: any) {
     console.error('CRM error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to crm', code: 'CRM_ERROR' });
   }
 });
 

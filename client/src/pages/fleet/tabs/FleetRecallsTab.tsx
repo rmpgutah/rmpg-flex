@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AlertOctagon, Plus, CheckCircle, Calendar } from 'lucide-react';
+import { AlertOctagon, Plus, CheckCircle, Calendar, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 
@@ -34,6 +34,7 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ vehicle_id: vehicleId || '', recall_number: '', manufacturer: '', description: '', severity: 'standard', remedy: '' });
+  const [submitting, setSubmitting] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -45,9 +46,19 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
 
   useEffect(() => { load(); }, [vehicleId]);
 
+  // Escape to close form
+  useEffect(() => {
+    if (!showForm) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowForm(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showForm]);
+
   const handleSubmit = async () => {
-    if (!form.recall_number || !form.description) { addToast('Recall number and description required', 'error'); return; }
-    try { await apiFetch('/fleet/recalls', { method: 'POST', body: JSON.stringify({ ...form, vehicle_id: Number(form.vehicle_id) }) }); addToast('Recall created', 'success'); setShowForm(false); load(); } catch { /* handled */ }
+    if (!form.recall_number.trim()) { addToast('Recall number is required', 'error'); return; }
+    if (!form.description.trim()) { addToast('Description is required', 'error'); return; }
+    setSubmitting(true);
+    try { await apiFetch('/fleet/recalls', { method: 'POST', body: JSON.stringify({ ...form, vehicle_id: Number(form.vehicle_id) }) }); addToast('Recall created', 'success'); setShowForm(false); load(); } catch { addToast('Failed to create recall', 'error'); } finally { setSubmitting(false); }
   };
 
   const updateStatus = async (id: number, status: string) => {
@@ -87,17 +98,17 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
       )}
 
       {loading ? (
-        <div className="text-center text-rmpg-400 py-4 text-xs">Loading...</div>
+        <div className="flex items-center justify-center gap-2 text-rmpg-400 py-4 text-xs"><Loader2 className="w-4 h-4 animate-spin" role="status" aria-label="Loading" /> Loading recalls...</div>
       ) : recalls.length === 0 ? (
         <div className="text-center text-green-400 py-4 text-xs"><CheckCircle className="w-4 h-4 inline mr-1" /> No active recalls</div>
       ) : (
         <div className="space-y-2">
           {recalls.map(r => (
-            <div key={r.id} className={`panel-inset p-2 ${r.status === 'open' ? 'border-l-2 border-l-red-500' : ''}`}>
+            <div key={r.id} className={`panel-inset p-2 hover:bg-surface-raised/30 transition-colors ${r.status === 'open' ? 'border-l-2 border-l-red-500' : ''}`}>
               <div className="flex items-start justify-between">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold uppercase ${STATUS_COLORS[r.status] || ''}`}>{r.status.replace(/_/g, ' ')}</span>
+                    <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${STATUS_COLORS[r.status] || ''}`}>{r.status.replace(/_/g, ' ')}</span>
                     <span className="text-[10px] text-white font-bold font-mono">{r.recall_number}</span>
                     {!vehicleId && <span className="text-[10px] text-rmpg-300">{r.vehicle_number} ({r.year} {r.make} {r.model})</span>}
                   </div>

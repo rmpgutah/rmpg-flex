@@ -199,7 +199,7 @@ router.get('/recently-viewed', (req: Request, res: Response) => {
     const user = db.prepare('SELECT recently_viewed FROM users WHERE id = ?').get(userId) as any;
     const items = JSON.parse(user?.recently_viewed || '[]');
     res.json({ data: items });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in userPreferences', code: 'USERPREFERENCES_ERROR' }); }
 });
 
 router.post('/recently-viewed', (req: Request, res: Response) => {
@@ -218,7 +218,7 @@ router.post('/recently-viewed', (req: Request, res: Response) => {
 
     db.prepare('UPDATE users SET recently_viewed = ? WHERE id = ?').run(JSON.stringify(items), userId);
     res.json({ data: items });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in userPreferences', code: 'USERPREFERENCES_ERROR' }); }
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -231,7 +231,7 @@ router.get('/favorites', (req: Request, res: Response) => {
     const user = db.prepare('SELECT favorites FROM users WHERE id = ?').get(userId) as any;
     const items = JSON.parse(user?.favorites || '[]');
     res.json({ data: items });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in userPreferences', code: 'USERPREFERENCES_ERROR' }); }
 });
 
 router.post('/favorites', (req: Request, res: Response) => {
@@ -250,7 +250,7 @@ router.post('/favorites', (req: Request, res: Response) => {
 
     db.prepare('UPDATE users SET favorites = ? WHERE id = ?').run(JSON.stringify(items), userId);
     res.json({ data: items });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in userPreferences', code: 'USERPREFERENCES_ERROR' }); }
 });
 
 router.delete('/favorites/:entity_type/:entity_id', (req: Request, res: Response) => {
@@ -262,7 +262,7 @@ router.delete('/favorites/:entity_type/:entity_id', (req: Request, res: Response
     items = items.filter((i: any) => !(i.entity_type === req.params.entity_type && String(i.entity_id) === req.params.entity_id));
     db.prepare('UPDATE users SET favorites = ? WHERE id = ?').run(JSON.stringify(items), userId);
     res.json({ data: items });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in userPreferences', code: 'USERPREFERENCES_ERROR' }); }
 });
 
 export default router;

@@ -9,6 +9,8 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken } from '../middleware/auth';
+import { auditLog } from '../utils/auditLogger';
+import { broadcastRecordUpdate } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
 
 const router = Router();
@@ -61,6 +63,7 @@ router.get('/stats', (_req: Request, res: Response) => {
     const totalAnalyses = (db.prepare(`SELECT COUNT(*) as cnt FROM forensic_analyses`).get() as any)?.cnt || 0;
     const pendingAnalyses = (db.prepare(`SELECT COUNT(*) as cnt FROM forensic_analyses WHERE status IN ('pending','in_progress')`).get() as any)?.cnt || 0;
 
+    res.set('Cache-Control', 'private, max-age=60');
     res.json({
       data: {
         by_status: Object.fromEntries(statusCounts.map(r => [r.status, r.count])),
@@ -74,7 +77,7 @@ router.get('/stats', (_req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Forensics stats error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to forensics stats', code: 'FORENSICS_STATS_ERROR' });
   }
 });
 
@@ -123,7 +126,7 @@ router.get('/', (req: Request, res: Response) => {
     res.json({ data: rows, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
   } catch (error: any) {
     console.error('Get forensic cases error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get forensic cases', code: 'GET_FORENSIC_CASES_ERROR' });
   }
 });
 
@@ -146,7 +149,7 @@ router.get('/:id', (req: Request, res: Response) => {
     res.json({ data: row });
   } catch (error: any) {
     console.error('Get forensic case error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get forensic case', code: 'GET_FORENSIC_CASE_ERROR' });
   }
 });
 
@@ -162,7 +165,15 @@ router.post('/', (req: Request, res: Response) => {
       linked_case_number, due_date, notes,
     } = req.body;
 
-    if (!title?.trim()) return res.status(400).json({ error: 'Title is required' });
+    if (!title?.trim()) return res.status(400).json({ error: 'Title is required', code: 'MISSING_TITLE' });
+
+    // Validate priority
+    const validPriorities = ['normal', 'rush', 'urgent'];
+    if (!validPriorities.includes(priority)) return res.status(400).json({ error: 'Invalid priority', code: 'INVALID_PRIORITY' });
+
+    // Input sanitization
+    const cleanTitle = typeof title === 'string' ? title.trim() : title;
+    const cleanDescription = typeof description === 'string' ? description.trim() : description;
 
     const lab_number = generateLabNumber();
     const now = localNow();
@@ -185,13 +196,15 @@ router.post('/', (req: Request, res: Response) => {
     );
 
     logActivity(result.lastInsertRowid as number, 'case_created', `Lab case ${lab_number} created`, user.id, user.full_name);
+    auditLog(req, 'CREATE', 'forensic_case', result.lastInsertRowid as number, `Created forensic case ${lab_number}`);
+    broadcastRecordUpdate({ type: 'forensic_case_created', id: result.lastInsertRowid, lab_number });
 
     const newCase = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json({ data: newCase });
   } catch (error: any) {
     console.error('Create forensic case error:', error);
     console.error('[Forensics] Error:', error?.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'CREATE_FORENSIC_ERROR' });
   }
 });
 
@@ -257,7 +270,7 @@ router.put('/:id', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Update forensic case error:', error);
     console.error('[Forensics] Error:', error?.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to [forensics]', code: 'FORENSICS_ERROR' });
   }
 });
 
@@ -271,7 +284,7 @@ router.delete('/:id', (req: Request, res: Response) => {
     res.json({ message: 'Forensic case deleted' });
   } catch (error: any) {
     console.error('Delete forensic case error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete forensic case', code: 'DELETE_FORENSIC_CASE_ERROR' });
   }
 });
 
@@ -285,11 +298,13 @@ router.get('/:caseId/exhibits', (req: Request, res: Response) => {
     const db = getDb();
     const rows = db.prepare(`
       SELECT * FROM forensic_exhibits WHERE forensic_case_id = ? ORDER BY exhibit_number
+    
+      LIMIT 1000
     `).all(req.params.caseId);
     res.json({ data: rows });
   } catch (error: any) {
     console.error('Get exhibits error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get exhibits', code: 'GET_EXHIBITS_ERROR' });
   }
 });
 
@@ -350,7 +365,7 @@ router.post('/:caseId/exhibits', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Create exhibit error:', error);
     console.error('[Forensics] Error:', error?.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to [forensics]', code: 'FORENSICS_ERROR' });
   }
 });
 
@@ -397,7 +412,7 @@ router.put('/:caseId/exhibits/:exhibitId', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Update exhibit error:', error);
     console.error('[Forensics] Error:', error?.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to [forensics]', code: 'FORENSICS_ERROR' });
   }
 });
 
@@ -413,7 +428,7 @@ router.delete('/:caseId/exhibits/:exhibitId', (req: Request, res: Response) => {
     res.json({ message: 'Exhibit deleted' });
   } catch (error: any) {
     console.error('Delete exhibit error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete exhibit', code: 'DELETE_EXHIBIT_ERROR' });
   }
 });
 
@@ -440,7 +455,7 @@ router.post('/:caseId/exhibits/:exhibitId/custody', (req: Request, res: Response
     res.json({ data: updated });
   } catch (error: any) {
     console.error('Custody update error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to custody update', code: 'CUSTODY_UPDATE_ERROR' });
   }
 });
 
@@ -459,11 +474,13 @@ router.get('/:caseId/analyses', (req: Request, res: Response) => {
       LEFT JOIN forensic_exhibits e ON a.exhibit_id = e.id
       WHERE a.forensic_case_id = ?
       ORDER BY a.created_at DESC
+    
+      LIMIT 1000
     `).all(req.params.caseId);
     res.json({ data: rows });
   } catch (error: any) {
     console.error('Get analyses error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get analyses', code: 'GET_ANALYSES_ERROR' });
   }
 });
 
@@ -507,7 +524,7 @@ router.post('/:caseId/analyses', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Create analysis error:', error);
     console.error('[Forensics] Error:', error?.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to [forensics]', code: 'FORENSICS_ERROR' });
   }
 });
 
@@ -563,7 +580,7 @@ router.put('/:caseId/analyses/:analysisId', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Update analysis error:', error);
     console.error('[Forensics] Error:', error?.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to [forensics]', code: 'FORENSICS_ERROR' });
   }
 });
 
@@ -579,7 +596,7 @@ router.delete('/:caseId/analyses/:analysisId', (req: Request, res: Response) => 
     res.json({ message: 'Analysis deleted' });
   } catch (error: any) {
     console.error('Delete analysis error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete analysis', code: 'DELETE_ANALYSIS_ERROR' });
   }
 });
 
@@ -592,11 +609,13 @@ router.get('/:caseId/activity', (req: Request, res: Response) => {
     const db = getDb();
     const rows = db.prepare(`
       SELECT * FROM forensic_activity_log WHERE forensic_case_id = ? ORDER BY performed_at DESC
+    
+      LIMIT 1000
     `).all(req.params.caseId);
     res.json({ data: rows });
   } catch (error: any) {
     console.error('Get activity log error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get activity log', code: 'GET_ACTIVITY_LOG_ERROR' });
   }
 });
 
@@ -610,11 +629,13 @@ router.get('/hash-sets', (_req: Request, res: Response) => {
     const db = getDb();
     const sets = db.prepare(`
       SELECT * FROM forensic_hash_sets ORDER BY created_at DESC
+    
+      LIMIT 1000
     `).all();
     res.json({ data: sets });
   } catch (error: any) {
     console.error('Get hash sets error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get hash sets', code: 'GET_HASH_SETS_ERROR' });
   }
 });
 
@@ -671,7 +692,7 @@ router.post('/hash-sets', (req: Request, res: Response) => {
     res.status(201).json({ data: created, hash_count: hashCount });
   } catch (error: any) {
     console.error('Create hash set error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create hash set', code: 'CREATE_HASH_SET_ERROR' });
   }
 });
 
@@ -690,7 +711,7 @@ router.delete('/hash-sets/:id', (req: Request, res: Response) => {
     res.json({ message: `Hash set "${existing.name}" deleted` });
   } catch (error: any) {
     console.error('Delete hash set error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete hash set', code: 'DELETE_HASH_SET_ERROR' });
   }
 });
 
@@ -714,6 +735,8 @@ router.post('/hash-sets/check', (req: Request, res: Response) => {
       FROM forensic_hash_entries e
       JOIN forensic_hash_sets s ON s.id = e.hash_set_id
       WHERE LOWER(e.hash_value) IN (${placeholders})
+    
+      LIMIT 1000
     `).all(...lowerHashes) as any[];
 
     // Group by hash value
@@ -733,7 +756,7 @@ router.post('/hash-sets/check', (req: Request, res: Response) => {
     res.json({ data: results, total_matches: matches.length });
   } catch (error: any) {
     console.error('Hash check error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to hash check', code: 'HASH_CHECK_ERROR' });
   }
 });
 
@@ -792,7 +815,7 @@ router.post('/:caseId/evidence-intake', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Evidence intake error:', error);
     console.error('[Forensics] Error:', error?.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to [forensics]', code: 'FORENSICS_ERROR' });
   }
 });
 
@@ -822,7 +845,7 @@ router.get('/queue/priority', (_req: Request, res: Response) => {
     res.json({ data: queue });
   } catch (error: any) {
     console.error('Lab queue error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to lab queue', code: 'LAB_QUEUE_ERROR' });
   }
 });
 
@@ -891,7 +914,7 @@ router.post('/:caseId/exhibits/:exhibitId/custody-transfer', (req: Request, res:
   } catch (error: any) {
     console.error('Custody transfer error:', error);
     console.error('[Forensics] Error:', error?.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to [forensics]', code: 'FORENSICS_ERROR' });
   }
 });
 
@@ -994,7 +1017,7 @@ router.post('/:caseId/generate-report', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Generate report error:', error);
     console.error('[Forensics] Error:', error?.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to [forensics]', code: 'FORENSICS_ERROR' });
   }
 });
 
@@ -1061,7 +1084,7 @@ router.get('/capacity/planning', (_req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Capacity planning error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to capacity planning', code: 'CAPACITY_PLANNING_ERROR' });
   }
 });
 
@@ -1075,11 +1098,13 @@ router.get('/:caseId/links', (req: Request, res: Response) => {
     const db = getDb();
     const links = db.prepare(`
       SELECT * FROM forensic_case_links WHERE case_id = ? ORDER BY created_at DESC
+    
+      LIMIT 1000
     `).all(req.params.caseId);
     res.json(links);
   } catch (error: any) {
     console.error('Forensic case links error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to forensic case links', code: 'FORENSIC_CASE_LINKS_ERROR' });
   }
 });
 
@@ -1099,7 +1124,7 @@ router.post('/:caseId/links', (req: Request, res: Response) => {
     res.status(201).json({ id: result.lastInsertRowid });
   } catch (error: any) {
     console.error('Forensic case add link error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to forensic case add link', code: 'FORENSIC_CASE_ADD_LINK' });
   }
 });
 
@@ -1109,6 +1134,8 @@ router.get('/:caseId/hashes', (req: Request, res: Response) => {
     const db = getDb();
     const hashes = db.prepare(`
       SELECT * FROM forensic_hash_results WHERE case_id = ? ORDER BY created_at DESC
+    
+      LIMIT 1000
     `).all(req.params.caseId);
 
     const stats = {
@@ -1120,7 +1147,7 @@ router.get('/:caseId/hashes', (req: Request, res: Response) => {
     res.json({ hashes, stats });
   } catch (error: any) {
     console.error('Forensic case hashes error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to forensic case hashes', code: 'FORENSIC_CASE_HASHES_ERROR' });
   }
 });
 

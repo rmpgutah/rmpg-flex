@@ -333,7 +333,7 @@ function PlateLookupPanel() {
           <div className="flex gap-1.5">
             <input
               type="text"
-              className="input-dark flex-1 text-[10px]"
+              className="input-dark flex-1 text-[10px] min-h-[36px]"
               placeholder="Plate number..."
               value={plate}
               onChange={(e) => setPlate(e.target.value.toUpperCase())}
@@ -341,7 +341,7 @@ function PlateLookupPanel() {
             />
             <input
               type="text"
-              className="input-dark text-[10px]"
+              className="input-dark text-[10px] min-h-[36px]"
               style={{ width: 40 }}
               placeholder="ST"
               maxLength={2}
@@ -406,8 +406,8 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
           <input
             type="text"
-            className="input-dark pl-9 w-full text-[11px]"
-            placeholder="Search by plate, make, model, VIN, owner..."
+            className="input-dark pl-9 w-full text-[11px] min-h-[36px]"
+            placeholder="Search by plate, make, model, VIN, owner..." aria-label="Search by plate, make, model, VIN, owner..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -715,7 +715,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         {/* ── Incident History ─────────────────── */}
         <CollapsibleSection title={`Incident History (${vehicleIncidents.length})`} icon={FileText}>
           {loadingVehicleIncidents ? (
-            <div className="flex items-center gap-2"><Loader2 className="w-3 h-3 animate-spin text-brand-400" /><span className="text-[11px] text-rmpg-400">Loading...</span></div>
+            <div className="flex items-center gap-2"><Loader2 className="w-3 h-3 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[11px] text-rmpg-400">Loading...</span></div>
           ) : vehicleIncidents.length > 0 ? (
             <div className="space-y-1">
               {vehicleIncidents.map((inc: any) => (
@@ -759,6 +759,18 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
 export default function VehiclesTab(props: VehiclesTabProps) {
   const state = useVehiclesTab(props);
   if (props.loadingVehicles) return null;
+  // Set document title
+  useEffect(() => { document.title = 'Records - Vehicles \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setVehicleModalOpen(false); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <>
       <div className={`${state.selectedVehicle ? 'w-[40%]' : 'w-full'} border-r border-rmpg-600 flex flex-col overflow-hidden transition-all`}>

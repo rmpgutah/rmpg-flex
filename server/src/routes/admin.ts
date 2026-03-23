@@ -22,7 +22,7 @@ router.get('/clients', (req: Request, res: Response) => {
     res.json(clients);
   } catch (error: any) {
     console.error('Get clients error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get clients', code: 'GET_CLIENTS_ERROR' });
   }
 });
 
@@ -41,7 +41,7 @@ router.get('/clients/:id', (req: Request, res: Response) => {
     res.json({ ...client, properties });
   } catch (error: any) {
     console.error('Get client error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get client', code: 'GET_CLIENT_ERROR' });
   }
 });
 
@@ -96,7 +96,7 @@ router.post('/clients', (req: Request, res: Response) => {
     res.status(201).json(client);
   } catch (error: any) {
     console.error('Create client error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create client', code: 'CREATE_CLIENT_ERROR' });
   }
 });
 
@@ -167,7 +167,7 @@ router.put('/clients/:id', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update client error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update client', code: 'UPDATE_CLIENT_ERROR' });
   }
 });
 
@@ -198,7 +198,7 @@ router.delete('/clients/:id', (req: Request, res: Response) => {
     res.json({ message: 'Client deleted' });
   } catch (error: any) {
     console.error('Delete client error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete client', code: 'DELETE_CLIENT_ERROR' });
   }
 });
 
@@ -221,7 +221,7 @@ router.post('/clients/:id/archive', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Archive client error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to archive client', code: 'ARCHIVE_CLIENT_ERROR' });
   }
 });
 
@@ -243,7 +243,7 @@ router.post('/clients/:id/unarchive', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Unarchive client error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unarchive client', code: 'UNARCHIVE_CLIENT_ERROR' });
   }
 });
 
@@ -260,11 +260,13 @@ router.get('/call-templates', (req: Request, res: Response) => {
       FROM call_templates ct
       LEFT JOIN users u ON ct.created_by = u.id
       ORDER BY ct.sort_order ASC, ct.name ASC
+    
+      LIMIT 1000
     `).all();
     res.json(templates);
   } catch (error: any) {
     console.error('Get call templates error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get call templates', code: 'GET_CALL_TEMPLATES_ERROR' });
   }
 });
 
@@ -301,7 +303,7 @@ router.post('/call-templates', (req: Request, res: Response) => {
     res.status(201).json(template);
   } catch (error: any) {
     console.error('Create call template error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create call template', code: 'CREATE_CALL_TEMPLATE_ERROR' });
   }
 });
 
@@ -335,7 +337,7 @@ router.put('/call-templates/:id', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update call template error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update call template', code: 'UPDATE_CALL_TEMPLATE_ERROR' });
   }
 });
 
@@ -359,7 +361,7 @@ router.delete('/call-templates/:id', (req: Request, res: Response) => {
     res.json({ message: 'Call template removed' });
   } catch (error: any) {
     console.error('Delete call template error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete call template', code: 'DELETE_CALL_TEMPLATE_ERROR' });
   }
 });
 
@@ -382,7 +384,7 @@ router.get('/system-settings', (req: Request, res: Response) => {
     res.json(settings);
   } catch (error: any) {
     console.error('Get system settings error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get system settings', code: 'GET_SYSTEM_SETTINGS_ERROR' });
   }
 });
 
@@ -437,7 +439,7 @@ router.put('/system-settings', (req: Request, res: Response) => {
     res.json(all);
   } catch (error: any) {
     console.error('Update system settings error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update system settings', code: 'UPDATE_SYSTEM_SETTINGS_ERROR' });
   }
 });
 
@@ -460,7 +462,7 @@ router.get('/clients/:id/incidents', (req: Request, res: Response) => {
     res.json(incidents);
   } catch (error: any) {
     console.error('Client incidents error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to client incidents', code: 'CLIENT_INCIDENTS_ERROR' });
   }
 });
 
@@ -482,7 +484,7 @@ router.get('/clients/:id/calls', (req: Request, res: Response) => {
     res.json(calls);
   } catch (error: any) {
     console.error('Client calls error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to client calls', code: 'CLIENT_CALLS_ERROR' });
   }
 });
 
@@ -543,7 +545,7 @@ router.get('/clients/:id/billing', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Client billing error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to client billing', code: 'CLIENT_BILLING_ERROR' });
   }
 });
 
@@ -564,7 +566,7 @@ router.get('/sessions', requireRole('admin', 'manager'), (req: Request, res: Res
     res.json(sessions);
   } catch (error: any) {
     console.error('Admin get sessions error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to admin get sessions', code: 'ADMIN_GET_SESSIONS_ERROR' });
   }
 });
 
@@ -575,7 +577,7 @@ router.delete('/sessions/:id', requireRole('admin', 'manager'), (req: Request, r
     res.json({ message: 'Session revoked' });
   } catch (error: any) {
     console.error('Admin revoke session error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to admin revoke session', code: 'ADMIN_REVOKE_SESSION_ERROR' });
   }
 });
 
@@ -606,7 +608,7 @@ router.get('/radio-channels', (req: Request, res: Response) => {
     res.json(channels);
   } catch (error: any) {
     console.error('Admin get radio channels error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to admin get radio channels', code: 'ADMIN_GET_RADIO_CHANNELS' });
   }
 });
 
@@ -650,7 +652,7 @@ router.post('/radio-channels', (req: Request, res: Response) => {
     res.status(201).json({ id, label, freq: freq || '0.000', sort_order: sortOrder, is_active: true });
   } catch (error: any) {
     console.error('Admin create radio channel error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to admin create radio channel', code: 'ADMIN_CREATE_RADIO_CHANNEL' });
   }
 });
 
@@ -701,7 +703,7 @@ router.put('/radio-channels/:key', (req: Request, res: Response) => {
     res.json({ id: key, label: meta.label, freq: meta.freq, is_active: is_active !== undefined ? !!is_active : true, sort_order });
   } catch (error: any) {
     console.error('Admin update radio channel error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to admin update radio channel', code: 'ADMIN_UPDATE_RADIO_CHANNEL' });
   }
 });
 
@@ -728,7 +730,7 @@ router.delete('/radio-channels/:key', (req: Request, res: Response) => {
     res.json({ message: 'Radio channel deleted' });
   } catch (error: any) {
     console.error('Admin delete radio channel error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to admin delete radio channel', code: 'ADMIN_DELETE_RADIO_CHANNEL' });
   }
 });
 
@@ -768,7 +770,7 @@ router.post('/radio-channels/seed', (req: Request, res: Response) => {
     res.json({ message: 'Seeded default radio channels', seeded: true, count: defaults.length });
   } catch (error: any) {
     console.error('Admin seed radio channels error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to admin seed radio channels', code: 'ADMIN_SEED_RADIO_CHANNELS' });
   }
 });
 
@@ -815,6 +817,8 @@ router.get('/account-stats', (req: Request, res: Response) => {
       FROM users
       WHERE (login_count IS NULL OR login_count = 0) AND status = 'active'
       ORDER BY created_at
+    
+      LIMIT 1000
     `).all();
 
     res.json({
@@ -825,7 +829,7 @@ router.get('/account-stats', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Admin account stats error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to admin account stats', code: 'ADMIN_ACCOUNT_STATS_ERROR' });
   }
 });
 
@@ -860,7 +864,7 @@ router.delete('/users/:id/totp', authenticateToken, requireRole('admin'), (req: 
     res.json({ message: `Two-factor authentication reset for ${target.username}` });
   } catch (error: any) {
     console.error('Admin TOTP reset error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to admin totp reset', code: 'ADMIN_TOTP_RESET_ERROR' });
   }
 });
 
@@ -895,7 +899,7 @@ router.put('/users/:id/totp-exempt', authenticateToken, requireRole('admin'), (r
     res.json({ message: `${target.username} is now ${value ? 'exempt from' : 'subject to'} mandatory 2FA`, totp_exempt: value });
   } catch (error: any) {
     console.error('Admin TOTP exempt toggle error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to admin totp exempt toggle', code: 'ADMIN_TOTP_EXEMPT_TOGGLE' });
   }
 });
 
@@ -923,7 +927,7 @@ router.get('/user-activity-heatmap', (req: Request, res: Response) => {
     res.json(rows);
   } catch (error: any) {
     console.error('User activity heatmap error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to user activity heatmap', code: 'USER_ACTIVITY_HEATMAP_ERROR' });
   }
 });
 
@@ -969,7 +973,7 @@ router.get('/audit/export', (req: Request, res: Response) => {
     res.send(csvRows.join('\n'));
   } catch (error: any) {
     console.error('Audit export error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to audit export', code: 'AUDIT_EXPORT_ERROR' });
   }
 });
 
@@ -991,7 +995,7 @@ router.get('/config-history', (req: Request, res: Response) => {
     `).all(limitNum);
 
     res.json(rows);
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in admin', code: 'ADMIN_ERROR' }); }
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -1033,7 +1037,7 @@ router.get('/api-stats', (req: Request, res: Response) => {
     `).all(cutoff);
 
     res.json({ data: { byAction, byUser, byHour } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in admin', code: 'ADMIN_ERROR' }); }
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -1068,7 +1072,7 @@ router.get('/backup-status', (req: Request, res: Response) => {
     } catch { /* ignore */ }
 
     res.json({ data: { dbSize, lastModified, backups, walSize: 0 } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in admin', code: 'ADMIN_ERROR' }); }
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -1092,7 +1096,7 @@ router.get('/error-logs', (req: Request, res: Response) => {
     `).all(limitNum);
 
     res.json(rows);
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in admin', code: 'ADMIN_ERROR' }); }
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -1111,9 +1115,11 @@ router.get('/announcements', (req: Request, res: Response) => {
       LEFT JOIN users u ON a.created_by = u.id
       ${where}
       ORDER BY a.created_at DESC
+    
+      LIMIT 1000
     `).all();
     res.json(rows);
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in admin', code: 'ADMIN_ERROR' }); }
 });
 
 router.post('/announcements', (req: Request, res: Response) => {
@@ -1129,7 +1135,7 @@ router.post('/announcements', (req: Request, res: Response) => {
 
     const row = db.prepare('SELECT * FROM system_announcements WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json({ data: row });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in admin', code: 'ADMIN_ERROR' }); }
 });
 
 router.put('/announcements/:id', (req: Request, res: Response) => {
@@ -1150,7 +1156,7 @@ router.put('/announcements/:id', (req: Request, res: Response) => {
     }
     const row = db.prepare('SELECT * FROM system_announcements WHERE id = ?').get(req.params.id);
     res.json({ data: row });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in admin', code: 'ADMIN_ERROR' }); }
 });
 
 router.delete('/announcements/:id', (req: Request, res: Response) => {
@@ -1158,7 +1164,7 @@ router.delete('/announcements/:id', (req: Request, res: Response) => {
     const db = getDb();
     db.prepare('DELETE FROM system_announcements WHERE id = ?').run(req.params.id);
     res.json({ success: true });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in admin', code: 'ADMIN_ERROR' }); }
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -1169,7 +1175,7 @@ router.get('/maintenance-mode', (req: Request, res: Response) => {
     const db = getDb();
     const row = db.prepare("SELECT config_value FROM system_config WHERE config_key = 'maintenance_mode'").get() as any;
     res.json({ enabled: row?.config_value === 'true', message: '' });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in admin', code: 'ADMIN_ERROR' }); }
 });
 
 router.put('/maintenance-mode', (req: Request, res: Response) => {
@@ -1199,7 +1205,7 @@ router.put('/maintenance-mode', (req: Request, res: Response) => {
       req.user!.userId, `Maintenance mode ${enabled ? 'enabled' : 'disabled'}`, req.ip || 'unknown');
 
     res.json({ enabled: !!enabled });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in admin', code: 'ADMIN_ERROR' }); }
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -1236,7 +1242,7 @@ router.post('/record-locks', (req: Request, res: Response) => {
     `).run(entity_type, entity_id, req.user!.userId, now, expiresAt, req.user!.userId, now, expiresAt);
 
     res.json({ data: { entity_type, entity_id, locked_by: req.user!.userId, expires_at: expiresAt } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in admin', code: 'ADMIN_ERROR' }); }
 });
 
 router.delete('/record-locks/:entity_type/:entity_id', (req: Request, res: Response) => {
@@ -1245,7 +1251,7 @@ router.delete('/record-locks/:entity_type/:entity_id', (req: Request, res: Respo
     db.prepare('DELETE FROM record_locks WHERE entity_type = ? AND entity_id = ? AND locked_by = ?')
       .run(req.params.entity_type, req.params.entity_id, req.user!.userId);
     res.json({ success: true });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in admin', code: 'ADMIN_ERROR' }); }
 });
 
 export default router;

@@ -323,7 +323,7 @@ export default function SexOffenderRegistryPage() {
             type="text"
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
-            placeholder="Search name or registry ID..."
+            placeholder="Search name or registry ID..." aria-label="Search name or registry ID..."
             className="w-full pl-7 pr-2 py-1 text-xs bg-[#0d1520] border border-rmpg-700 rounded-sm text-white placeholder-rmpg-600 focus:border-brand-500 focus:outline-none"
           />
         </div>
@@ -762,6 +762,18 @@ export default function SexOffenderRegistryPage() {
   // ============================================================
   // RENDER
   // ============================================================
+  // Set document title
+  useEffect(() => { document.title = 'Sex Offender Registry \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setShowAddModal(false); setEditingRecord(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="flex flex-col h-full" style={{ background: '#0d1520' }}>
       {/* Title Bar */}
@@ -820,7 +832,7 @@ export default function SexOffenderRegistryPage() {
 
       {/* ── Link Person Modal ──────────────────────────────── */}
       {showLinkPerson && selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowLinkPerson(false)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowLinkPerson(false)}>
           <div
             className="bg-surface-raised border border-rmpg-600 shadow-xl w-[440px] max-w-[95vw]"
             style={{ borderRadius: 2 }}
@@ -843,7 +855,7 @@ export default function SexOffenderRegistryPage() {
                 <input
                   value={linkSearch}
                   onChange={(e) => handleLinkPersonSearch(e.target.value)}
-                  placeholder="Search persons by name..."
+                  placeholder="Search persons by name..." aria-label="Search persons by name..."
                   className="w-full pl-7 pr-3 py-1.5 text-xs bg-surface-sunken border border-rmpg-600 text-white placeholder-rmpg-500"
                   style={{ borderRadius: 2 }}
                   autoFocus
@@ -965,7 +977,7 @@ function RecordFormModal({
   const set = (key: string, val: any) => setForm((f: any) => ({ ...f, [key]: val }));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={onClose}>
+    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={onClose}>
       <div
         className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-sm shadow-2xl"
         style={{ background: '#141e2b', border: '1px solid #2a3e58' }}
@@ -1012,13 +1024,13 @@ function RecordFormModal({
           </div>
 
           {/* Demographics */}
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <FormField label="DOB" type="date" value={form.dob} onChange={v => set('dob', v)} />
             <FormField label="Gender" value={form.gender} onChange={v => set('gender', v)} />
             <FormField label="Race" value={form.race} onChange={v => set('race', v)} />
             <FormField label="Conviction State" value={form.conviction_state} onChange={v => set('conviction_state', v)} />
           </div>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <FormField label="Height" value={form.height} onChange={v => set('height', v)} placeholder="5'10&quot;" />
             <FormField label="Weight" value={form.weight} onChange={v => set('weight', v)} placeholder="180 lbs" />
             <FormField label="Hair Color" value={form.hair_color} onChange={v => set('hair_color', v)} />
@@ -1129,7 +1141,7 @@ function ImportModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={onClose}>
+    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={onClose}>
       <div
         className="w-full max-w-xl max-h-[70vh] overflow-y-auto rounded-sm shadow-2xl"
         style={{ background: '#141e2b', border: '1px solid #2a3e58' }}

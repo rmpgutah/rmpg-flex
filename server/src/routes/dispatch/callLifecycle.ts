@@ -84,7 +84,7 @@ router.post('/calls/archive-bulk', requireRole('admin', 'manager', 'dispatcher')
     res.json({ archived_count: callsToArchive.length, message: `${callsToArchive.length} call(s) archived` });
   } catch (error: any) {
     console.error('[CallLifecycle] bulk archive error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to bulk archive', code: 'CALLLIFECYCLE_BULK_ARCHIVE_ERROR' });
   }
 });
 
@@ -133,7 +133,7 @@ router.post('/calls/:id/archive', validateParamIdMiddleware, requireRole('admin'
     res.json(updated);
   } catch (error: any) {
     console.error('[CallLifecycle] archive call error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to archive call', code: 'CALLLIFECYCLE_ARCHIVE_CALL_ERROR' });
   }
 });
 
@@ -166,7 +166,7 @@ router.post('/calls/:id/unarchive', validateParamIdMiddleware, requireRole('admi
     res.json(updated);
   } catch (error: any) {
     console.error('[CallLifecycle] unarchive call error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to unarchive call', code: 'CALLLIFECYCLE_UNARCHIVE_CALL_ERROR' });
   }
 });
 
@@ -374,7 +374,7 @@ router.post('/calls/:id/generate-incident', validateParamIdMiddleware, requireRo
     res.status(201).json(incident);
   } catch (error: any) {
     console.error('[CallLifecycle] generate incident error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to generate incident', code: 'CALLLIFECYCLE_GENERATE_INCIDENT_ERROR' });
   }
 });
 
@@ -421,7 +421,7 @@ router.put('/calls/:id/timeline/:entryId', validateParamIdMiddleware, requireRol
     res.json(updated);
   } catch (error: any) {
     console.error('[CallLifecycle] update timeline entry error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update timeline entry', code: 'CALLLIFECYCLE_UPDATE_TIMELINE_ENTRY' });
   }
 });
 
@@ -447,7 +447,7 @@ router.delete('/calls/:id/timeline/:entryId', validateParamIdMiddleware, require
     res.json({ success: true });
   } catch (error: any) {
     console.error('[CallLifecycle] delete timeline entry error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete timeline entry', code: 'CALLLIFECYCLE_DELETE_TIMELINE_ENTRY' });
   }
 });
 
@@ -499,7 +499,7 @@ router.post('/calls/:id/timeline', validateParamIdMiddleware, requireRole('admin
     res.status(201).json(entry);
   } catch (error: any) {
     console.error('[CallLifecycle] add timeline entry error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to add timeline entry', code: 'CALLLIFECYCLE_ADD_TIMELINE_ENTRY' });
   }
 });
 
@@ -541,6 +541,8 @@ router.get('/calls/:id/warnings', validateParamIdMiddleware, requireRole('admin'
         JOIN persons p ON ip.person_id = p.id
         JOIN incidents i ON ip.incident_id = i.id
         WHERE i.call_id = ?
+      
+        LIMIT 1000
       `).all(call.id) as any[];
 
       for (const person of linkedPersons) {
@@ -584,6 +586,8 @@ router.get('/calls/:id/warnings', validateParamIdMiddleware, requireRole('admin'
           JOIN incidents i ON ip.incident_id = i.id
           WHERE i.call_id = ?
         ))
+      
+        LIMIT 1000
       `).all(call.id) as any[];
 
       for (const warrant of activeWarrants) {
@@ -623,7 +627,7 @@ router.get('/calls/:id/warnings', validateParamIdMiddleware, requireRole('admin'
     res.json(warnings);
   } catch (error: any) {
     console.error('[CallLifecycle] get warnings error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get warnings', code: 'CALLLIFECYCLE_GET_WARNINGS_ERROR' });
   }
 });
 
@@ -677,7 +681,7 @@ router.put('/calls/:id/mileage', validateParamIdMiddleware, requireRole('admin',
     res.json(updated);
   } catch (error: any) {
     console.error('[CallLifecycle] mileage update error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to mileage update', code: 'CALLLIFECYCLE_MILEAGE_UPDATE_ERROR' });
   }
 });
 

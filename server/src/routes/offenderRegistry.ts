@@ -8,6 +8,8 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken } from '../middleware/auth';
+import { auditLog } from '../utils/auditLogger';
+import { broadcastAlert } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
 
 const router = Router();
@@ -32,6 +34,7 @@ router.get('/stats', (req: Request, res: Response) => {
       AND expiration_date <= DATE('now', '+30 days')
     `).get() as any;
 
+    res.set('Cache-Control', 'private, max-age=60');
     res.json({
       data: {
         by_type: Object.fromEntries(typeCounts.map(r => [r.alert_type, r.count])),
@@ -43,7 +46,7 @@ router.get('/stats', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get offender stats error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get offender stats', code: 'GET_OFFENDER_STATS_ERROR' });
   }
 });
 
@@ -89,7 +92,7 @@ router.get('/', (req: Request, res: Response) => {
     res.json({ data: rows, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
   } catch (error: any) {
     console.error('Get offender alerts error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get offender alerts', code: 'GET_OFFENDER_ALERTS_ERROR' });
   }
 });
 
@@ -103,9 +106,11 @@ router.get('/check/:personId', (req: Request, res: Response) => {
     const alerts = db.prepare(`
       SELECT * FROM offender_alerts WHERE person_id = ? AND status = 'active'
       ORDER BY CASE severity WHEN 'danger' THEN 0 WHEN 'warning' THEN 1 WHEN 'caution' THEN 2 ELSE 3 END
+    
+      LIMIT 1000
     `).all(personId);
     res.json({ data: alerts });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in offenderRegistry', code: 'OFFENDERREGISTRY_ERROR' }); }
 });
 
 // ─── GET /:id ────────────────────────────────────────────
@@ -122,7 +127,7 @@ router.get('/:id', (req: Request, res: Response) => {
     `).get(id);
     if (!row) return res.status(404).json({ error: 'Alert not found' });
     res.json({ data: row });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in offenderRegistry', code: 'OFFENDERREGISTRY_ERROR' }); }
 });
 
 // ─── POST / ──────────────────────────────────────────────
@@ -133,7 +138,18 @@ router.post('/', (req: Request, res: Response) => {
     const { person_id, alert_type, description, severity = 'caution',
       restricted_properties, restricted_zones, restriction_radius_ft,
       expiration_date, source_incident_id, source_citation_id, source_case_id, notes } = req.body;
-    if (!person_id || !alert_type || !description) return res.status(400).json({ error: 'Person, alert type, and description required' });
+    if (!person_id || !alert_type || !description) return res.status(400).json({ error: 'Person, alert type, and description required', code: 'MISSING_FIELDS' });
+
+    // Input sanitization
+    const cleanDescription = typeof description === 'string' ? description.trim() : description;
+
+    // Validate severity
+    const validSeverities = ['caution', 'warning', 'danger'];
+    if (!validSeverities.includes(severity)) return res.status(400).json({ error: 'Invalid severity', code: 'INVALID_SEVERITY' });
+
+    // Validate person_id is numeric
+    const parsedPersonId = parseInt(person_id, 10);
+    if (isNaN(parsedPersonId)) return res.status(400).json({ error: 'person_id must be a number', code: 'INVALID_PERSON_ID' });
 
     const result = db.prepare(`
       INSERT INTO offender_alerts (person_id, alert_type, status, description, severity,
@@ -151,10 +167,11 @@ router.post('/', (req: Request, res: Response) => {
       VALUES (?, 'create', 'offender_alert', ?, ?, ?)`).run(
       req.user!.userId, result.lastInsertRowid, JSON.stringify({ person_id, alert_type, severity }), now);
 
+    broadcastAlert({ type: 'offender_alert_created', person_id, alert_type, severity });
     res.status(201).json({ data: { id: result.lastInsertRowid } });
   } catch (error: any) {
     console.error('Create offender alert error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'CREATE_ALERT_ERROR' });
   }
 });
 
@@ -184,8 +201,9 @@ router.put('/:id', (req: Request, res: Response) => {
     }
     params.push(id);
     db.prepare(`UPDATE offender_alerts SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+    auditLog(req, 'UPDATE', 'offender_alert', id, `Updated offender alert #${id}`);
     res.json({ data: { id } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Internal server error', code: 'UPDATE_ALERT_ERROR' }); }
 });
 
 // ─── PUT /:id/clear ──────────────────────────────────────
@@ -203,7 +221,7 @@ router.put('/:id/clear', (req: Request, res: Response) => {
       VALUES (?, 'clear', 'offender_alert', ?, '{}', ?)`).run(req.user!.userId, id, now);
 
     res.json({ data: { id, status: 'cleared' } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in offenderRegistry', code: 'OFFENDERREGISTRY_ERROR' }); }
 });
 
 // ════════════════════════════════════════════════════════════
@@ -240,7 +258,7 @@ router.put('/:id/proximity-alert', (req: Request, res: Response) => {
     res.json({ data: { id: parseInt(req.params.id), alert_radius_ft, alert_enabled } });
   } catch (error: any) {
     console.error('Set proximity alert error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to set proximity alert', code: 'SET_PROXIMITY_ALERT_ERROR' });
   }
 });
 
@@ -278,7 +296,7 @@ router.post('/:id/schedule-check', (req: Request, res: Response) => {
     res.status(201).json({ data: checkData });
   } catch (error: any) {
     console.error('Schedule compliance check error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to schedule compliance check', code: 'SCHEDULE_COMPLIANCE_CHECK_ERROR' });
   }
 });
 
@@ -291,6 +309,8 @@ router.get('/:id/compliance-checks', (req: Request, res: Response) => {
       LEFT JOIN users u ON al.user_id = u.id
       WHERE al.entity_type = 'offender_alert' AND al.entity_id = ? AND al.action = 'compliance_check_scheduled'
       ORDER BY al.created_at DESC
+    
+      LIMIT 1000
     `).all(req.params.id) as any[];
 
     const parsed = checks.map((c: any) => {
@@ -299,7 +319,7 @@ router.get('/:id/compliance-checks', (req: Request, res: Response) => {
     });
 
     res.json({ data: parsed });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in offenderRegistry', code: 'OFFENDERREGISTRY_ERROR' }); }
 });
 
 // ════════════════════════════════════════════════════════════
@@ -336,7 +356,7 @@ router.post('/:id/contact', (req: Request, res: Response) => {
     res.status(201).json({ data: contactData });
   } catch (error: any) {
     console.error('Log offender contact error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to log offender contact', code: 'LOG_OFFENDER_CONTACT_ERROR' });
   }
 });
 
@@ -358,7 +378,7 @@ router.get('/:id/contacts', (req: Request, res: Response) => {
     });
 
     res.json({ data: parsed });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { res.status(500).json({ error: 'Server error in offenderRegistry', code: 'OFFENDERREGISTRY_ERROR' }); }
 });
 
 // ════════════════════════════════════════════════════════════
@@ -451,7 +471,7 @@ router.get('/:id/risk-score', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Risk assessment error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to risk assessment', code: 'RISK_ASSESSMENT_ERROR' });
   }
 });
 
@@ -471,6 +491,8 @@ router.get('/map/all', (req: Request, res: Response) => {
       LEFT JOIN persons p ON oa.person_id = p.id
       WHERE oa.status = 'active'
         AND (oa.alert_latitude IS NOT NULL OR p.latitude IS NOT NULL)
+    
+      LIMIT 1000
     `).all() as any[];
 
     // Also get alerts with known addresses from persons
@@ -482,6 +504,8 @@ router.get('/map/all', (req: Request, res: Response) => {
       FROM offender_alerts oa
       LEFT JOIN persons p ON oa.person_id = p.id
       WHERE oa.status = 'active' AND oa.alert_latitude IS NULL AND p.address IS NOT NULL AND p.address != ''
+    
+      LIMIT 1000
     `).all() as any[];
 
     res.json({
@@ -493,7 +517,7 @@ router.get('/map/all', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Map offenders error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to map offenders', code: 'MAP_OFFENDERS_ERROR' });
   }
 });
 

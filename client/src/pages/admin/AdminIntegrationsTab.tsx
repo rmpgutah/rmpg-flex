@@ -218,6 +218,18 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
 
   // ── Render ──
 
+  // Set document title
+  useEffect(() => { document.title = 'Admin - Integrations \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setShowCreateModal(false); setShowCreateModal(false); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <div className="space-y-6">
       {/* ── Connected Service: rmpgutahps.us ── */}
@@ -291,7 +303,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                   disabled={savingSvc || !svcApiKey.trim()}
                   className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm transition-colors disabled:opacity-50"
                 >
-                  {savingSvc ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  {savingSvc ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Save className="w-3.5 h-3.5" />}
                   Save
                 </button>
                 {svcConfigured && (
@@ -509,7 +521,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
 
       {/* ── Create Key Modal ── */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
           <div className="bg-surface-raised border border-[#1c2e42] rounded-sm shadow-xl w-full max-w-md mx-4">
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#1c2e42]">
               <h3 className="text-sm font-semibold text-rmpg-300">Create API Key</h3>
@@ -550,7 +562,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                       disabled={creating || !newKeyName.trim()}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm transition-colors disabled:opacity-50"
                     >
-                      {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                      {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Plus className="w-3.5 h-3.5" />}
                       Create
                     </button>
                   </div>

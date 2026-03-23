@@ -149,7 +149,7 @@ router.get('/status', (_req: Request, res: Response) => {
     res.json({ ...status, cachedMessages: cached?.count || 0 });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -160,7 +160,7 @@ router.get('/signature', (req: Request, res: Response) => {
     res.json({ signature: signature || '' });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -187,7 +187,7 @@ router.put('/signature', (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -201,7 +201,7 @@ router.get('/unread-count', (_req: Request, res: Response) => {
     res.json({ count: row?.count || 0 });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -236,7 +236,7 @@ router.get('/folders', async (req: Request, res: Response) => {
     }
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -253,7 +253,7 @@ router.get('/folders/:id/children', validateGraphId, async (req: Request, res: R
     res.json(result.value || []);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -278,7 +278,7 @@ router.post('/folders', async (req: Request, res: Response) => {
     res.json(folder);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -295,7 +295,7 @@ router.patch('/folders/:id', validateGraphId, async (req: Request, res: Response
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -309,7 +309,7 @@ router.delete('/folders/:id', validateGraphId, async (req: Request, res: Respons
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -431,7 +431,7 @@ router.get('/messages', async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -489,7 +489,7 @@ router.post('/messages/batch', async (req: Request, res: Response) => {
     res.json({ success, failed });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -524,7 +524,7 @@ router.post('/messages/mark-all-read', async (req: Request, res: Response) => {
     res.json({ success: true, marked: success });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -575,7 +575,7 @@ router.get('/messages/:id', validateGraphId, async (req: Request, res: Response)
     });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -600,7 +600,7 @@ router.get('/messages/:id/attachments', validateGraphId, async (req: Request, re
     })));
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -622,7 +622,7 @@ router.get('/messages/:id/attachments/:aid', validateGraphId, async (req: Reques
     res.send(content);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -698,7 +698,7 @@ router.post('/send', async (req: Request, res: Response) => {
     }
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -719,7 +719,7 @@ router.post('/messages/:id/reply', validateGraphId, async (req: Request, res: Re
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -740,7 +740,7 @@ router.post('/messages/:id/reply-all', validateGraphId, async (req: Request, res
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -774,7 +774,7 @@ router.post('/messages/:id/forward', validateGraphId, async (req: Request, res: 
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -806,7 +806,7 @@ router.patch('/messages/:id', validateGraphId, async (req: Request, res: Respons
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -830,7 +830,7 @@ router.delete('/messages/:id', validateGraphId, async (req: Request, res: Respon
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -854,7 +854,7 @@ router.post('/messages/:id/move', validateGraphId, async (req: Request, res: Res
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -871,11 +871,13 @@ router.get('/templates', (_req: Request, res: Response) => {
       FROM email_templates t
       LEFT JOIN users u ON t.created_by = u.id
       ORDER BY t.category, t.name
+    
+      LIMIT 1000
     `).all();
     res.json(templates);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -888,7 +890,7 @@ router.get('/templates/:id', validateParamIdMiddleware, (req: Request, res: Resp
     res.json(template);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -908,7 +910,7 @@ router.post('/templates', (req: Request, res: Response) => {
     res.json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -931,7 +933,7 @@ router.put('/templates/:id', validateParamIdMiddleware, (req: Request, res: Resp
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -948,7 +950,7 @@ router.delete('/templates/:id', validateParamIdMiddleware, requireRole('admin', 
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1007,7 +1009,7 @@ router.get('/contacts/search', (req: Request, res: Response) => {
     res.json(unique);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1038,7 +1040,7 @@ router.post('/link', (req: Request, res: Response) => {
     res.json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1059,11 +1061,13 @@ router.get('/links/:emailGraphId', (req: Request, res: Response) => {
       LEFT JOIN users u ON el.linked_by = u.id
       WHERE el.email_graph_id = ?
       ORDER BY el.created_at DESC
+    
+      LIMIT 1000
     `).all(String(req.params.emailGraphId));
     res.json(links);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1079,11 +1083,13 @@ router.get('/links/incident/:incidentId', (req: Request, res: Response) => {
       LEFT JOIN users u ON el.linked_by = u.id
       WHERE el.incident_id = ?
       ORDER BY ec.received_at DESC
+    
+      LIMIT 1000
     `).all(req.params.incidentId);
     res.json(links);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1095,7 +1101,7 @@ router.delete('/link/:id', validateParamIdMiddleware, requireRole('admin', 'mana
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1133,7 +1139,7 @@ router.post('/schedule', (req: Request, res: Response) => {
     res.json({ success: true, id: Number(result.lastInsertRowid) });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1148,11 +1154,13 @@ router.get('/scheduled', (req: Request, res: Response) => {
       LEFT JOIN users u ON se.created_by = u.id
       WHERE se.status = ? AND se.created_by = ?
       ORDER BY se.scheduled_at ASC
+    
+      LIMIT 1000
     `).all(String(status), req.user!.userId);
     res.json(rows);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1169,7 +1177,7 @@ router.delete('/scheduled/:id', validateParamIdMiddleware, (req: Request, res: R
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1195,7 +1203,7 @@ router.put('/admin/credentials', requireRole('admin'), (req: Request, res: Respo
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1220,7 +1228,7 @@ router.delete('/admin/credentials', requireRole('admin'), (req: Request, res: Re
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1243,7 +1251,7 @@ router.get('/admin/oauth/authorize', requireRole('admin'), (req: Request, res: R
     res.json({ url });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1259,7 +1267,7 @@ router.post('/admin/test-connection', requireRole('admin'), async (req: Request,
     });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1286,7 +1294,7 @@ router.put('/admin/enable', requireRole('admin'), (req: Request, res: Response) 
     res.json({ success: true, ...getStatus() });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1307,7 +1315,7 @@ router.put('/admin/smtp-settings', requireRole('admin'), (req: Request, res: Res
     res.json({ success: true });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1318,7 +1326,7 @@ router.post('/admin/sync-now', requireRole('admin'), async (req: Request, res: R
     res.json(result);
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1383,7 +1391,7 @@ router.get('/flagged', async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     console.error('Email route error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email route', code: 'EMAIL_ROUTE_ERROR' });
   }
 });
 
@@ -1426,7 +1434,7 @@ router.post('/categorize', (req: Request, res: Response) => {
     res.json({ messageId, categories });
   } catch (err: any) {
     console.error('Email categorize error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email categorize', code: 'EMAIL_CATEGORIZE_ERROR' });
   }
 });
 
@@ -1465,7 +1473,7 @@ router.post('/categorize/batch', (req: Request, res: Response) => {
     res.json({ processed: uncategorized.length, categorized });
   } catch (err: any) {
     console.error('Email batch categorize error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email batch categorize', code: 'EMAIL_BATCH_CATEGORIZE_ERROR' });
   }
 });
 
@@ -1577,7 +1585,7 @@ router.get('/threads', async (req: Request, res: Response) => {
     res.json({ threads: threadList, hasMore: Object.keys(threads).length > perPage });
   } catch (err: any) {
     console.error('Email threads error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email threads', code: 'EMAIL_THREADS_ERROR' });
   }
 });
 
@@ -1642,7 +1650,7 @@ router.get('/thread/:conversationId', async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     console.error('Email thread error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to email thread', code: 'EMAIL_THREAD_ERROR' });
   }
 });
 

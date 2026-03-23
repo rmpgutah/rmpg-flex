@@ -29,7 +29,7 @@ export default function AnalyticsTab({ analytics, loading }: Props) {
   if (loading || !analytics) {
     return (
       <div className="flex-1 flex items-center justify-center py-20">
-        <Loader2 className="w-5 h-5 text-brand-400 animate-spin" />
+        <Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" />
         <span className="ml-2 text-xs text-rmpg-400">Loading analytics...</span>
       </div>
     );

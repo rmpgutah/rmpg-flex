@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Activity, Award, Plus, TrendingUp, Star } from 'lucide-react';
+import { Activity, Award, Plus, TrendingUp, Star, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
+
+function fmtDate(d: string | null | undefined): string {
+  if (!d) return '';
+  try { return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d; }
+}
 
 interface FitnessScore {
   date: string;
@@ -29,6 +34,8 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
   const [showCommForm, setShowCommForm] = useState(false);
   const [fitnessForm, setFitnessForm] = useState({ date: new Date().toISOString().slice(0, 10), score: '', run_time: '', pushups: '', situps: '', notes: '' });
   const [commForm, setCommForm] = useState({ date: new Date().toISOString().slice(0, 10), type: 'commendation', description: '' });
+  const [submittingFitness, setSubmittingFitness] = useState(false);
+  const [submittingComm, setSubmittingComm] = useState(false);
 
   const loadFitness = async () => {
     try { const data = await apiFetch<any[]>(`/personnel/fitness/${officerId}`); setFitness(data); } catch { /* handled */ }
@@ -55,6 +62,9 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
     if (!commForm.description) { addToast('Description required', 'error'); return; }
     try { await apiFetch<any[]>(`/personnel/commendations/${officerId}`, { method: 'POST', body: JSON.stringify(commForm) }); addToast('Commendation added', 'success'); setShowCommForm(false); setCommForm({ date: new Date().toISOString().slice(0, 10), type: 'commendation', description: '' }); loadCommendations(); } catch { /* handled */ }
   };
+
+  // Set document title
+  useEffect(() => { document.title = 'Personnel - Fitness \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="space-y-4">

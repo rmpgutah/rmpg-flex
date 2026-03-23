@@ -321,6 +321,8 @@ router.get('/manual/:id', validateParamIdMiddleware, (req: Request, res: Respons
     const links = db.prepare(`
       SELECT linked_type, linked_id, match_type, match_confidence, created_at
       FROM arrest_cross_links WHERE arrest_record_id = ?
+    
+      LIMIT 1000
     `).all(id);
 
     res.json({ ...record, cross_links: links });
@@ -797,6 +799,8 @@ router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: R
              agency as arresting_officer, status
       FROM arrest_records
       ORDER BY booking_date DESC
+    
+      LIMIT 1000
     `).all() as any[];
 
     // Parse charges JSON to a readable string

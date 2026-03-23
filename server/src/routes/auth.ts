@@ -100,6 +100,8 @@ function createSession(userId: number, refreshToken: string, ip: string, userAge
   const activeSessions = db.prepare(`
     SELECT id FROM sessions WHERE user_id = ? AND is_active = 1
     ORDER BY last_used_at ASC
+  
+    LIMIT 1000
   `).all(userId) as { id: number }[];
 
   if (activeSessions.length >= config.session.maxPerUser) {
@@ -300,7 +302,7 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Login error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to login', code: 'LOGIN_ERROR' });
   }
 });
 
@@ -373,7 +375,7 @@ router.post('/refresh', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Refresh token error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to refresh token', code: 'REFRESH_TOKEN_ERROR' });
   }
 });
 
@@ -406,7 +408,7 @@ router.post('/logout', authenticateToken, (req: Request, res: Response) => {
     res.json({ message: 'Logged out successfully' });
   } catch (error: any) {
     console.error('Logout error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to logout', code: 'LOGOUT_ERROR' });
   }
 });
 
@@ -449,7 +451,7 @@ router.get('/me', authenticateToken, (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get user error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get user', code: 'GET_USER_ERROR' });
   }
 });
 
@@ -462,12 +464,14 @@ router.get('/sessions', authenticateToken, (req: Request, res: Response) => {
       FROM sessions
       WHERE user_id = ? AND is_active = 1
       ORDER BY last_used_at DESC
+    
+      LIMIT 1000
     `).all(req.user!.userId);
 
     res.json(sessions);
   } catch (error: any) {
     console.error('Get sessions error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get sessions', code: 'GET_SESSIONS_ERROR' });
   }
 });
 
@@ -487,7 +491,7 @@ router.delete('/sessions/:sessionId', authenticateToken, (req: Request, res: Res
     res.json({ message: 'Session revoked' });
   } catch (error: any) {
     console.error('Revoke session error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to revoke session', code: 'REVOKE_SESSION_ERROR' });
   }
 });
 
@@ -568,7 +572,7 @@ router.post('/change-password', authenticateToken, (req: Request, res: Response)
     res.json({ message: 'Password changed successfully. Please log in again.' });
   } catch (error: any) {
     console.error('Change password error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to change password', code: 'CHANGE_PASSWORD_ERROR' });
   }
 });
 
@@ -636,7 +640,7 @@ router.put('/profile', authenticateToken, (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update profile error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update profile', code: 'UPDATE_PROFILE_ERROR' });
   }
 });
 
@@ -650,7 +654,7 @@ router.get('/signature', authenticateToken, (req: Request, res: Response) => {
     res.json({ signature: row?.digital_signature || null });
   } catch (error: any) {
     console.error('Get signature error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to get signature', code: 'GET_SIGNATURE_ERROR' });
   }
 });
 
@@ -680,7 +684,7 @@ router.put('/signature', authenticateToken, (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (error: any) {
     console.error('Save signature error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to save signature', code: 'SAVE_SIGNATURE_ERROR' });
   }
 });
 
@@ -831,7 +835,7 @@ function verify2FAHandler(req: Request, res: Response) {
     });
   } catch (error: any) {
     console.error('2FA verification error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to 2fa verification', code: '2FA_VERIFICATION_ERROR' });
   }
 }
 
@@ -851,7 +855,7 @@ router.get('/totp/status', authenticateToken, (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('TOTP status error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to totp status', code: 'TOTP_STATUS_ERROR' });
   }
 });
 
@@ -897,7 +901,7 @@ router.post('/totp/setup', authenticateToken, async (req: Request, res: Response
     });
   } catch (error: any) {
     console.error('TOTP setup error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to totp setup', code: 'TOTP_SETUP_ERROR' });
   }
 });
 
@@ -942,7 +946,7 @@ router.post('/totp/verify-setup', authenticateToken, (req: Request, res: Respons
     res.json({ enabled: true, message: 'Two-factor authentication is now active.' });
   } catch (error: any) {
     console.error('TOTP verify-setup error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to totp verify-setup', code: 'TOTP_VERIFYSETUP_ERROR' });
   }
 });
 
@@ -956,7 +960,7 @@ router.get('/session-timeout', authenticateToken, (_req: Request, res: Response)
     });
   } catch (error: any) {
     console.error('Session timeout config error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to session timeout config', code: 'SESSION_TIMEOUT_CONFIG_ERROR' });
   }
 });
 
@@ -1009,7 +1013,7 @@ router.post('/admin/reset-all-2fa', authenticateToken, (req: Request, res: Respo
     });
   } catch (error: any) {
     console.error('Admin reset all 2FA error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to admin reset all 2fa', code: 'ADMIN_RESET_ALL_2FA' });
   }
 });
 
@@ -1055,7 +1059,7 @@ router.post('/totp/disable', authenticateToken, (req: Request, res: Response) =>
     res.json({ enabled: false, message: 'Two-factor authentication has been disabled.' });
   } catch (error: any) {
     console.error('TOTP disable error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to totp disable', code: 'TOTP_DISABLE_ERROR' });
   }
 });
 
@@ -1095,7 +1099,7 @@ router.post('/2fa/setup', authenticateToken, async (req: Request, res: Response)
     res.json({ qrCodeDataUri, manualKey: secret });
   } catch (error: any) {
     console.error('2FA setup error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to 2fa setup', code: '2FA_SETUP_ERROR' });
   }
 });
 
@@ -1126,7 +1130,7 @@ router.post('/2fa/setup/verify', authenticateToken, (req: Request, res: Response
     res.json({ success: true, backupCodes: backupResult.plain });
   } catch (error: any) {
     console.error('2FA verify setup error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to 2fa verify setup', code: '2FA_VERIFY_SETUP_ERROR' });
   }
 });
 
@@ -1148,7 +1152,7 @@ router.post('/2fa/backup-codes/regenerate', authenticateToken, (req: Request, re
     res.json({ backupCodes: backupResult.plain });
   } catch (error: any) {
     console.error('Regenerate backup codes error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to regenerate backup codes', code: 'REGENERATE_BACKUP_CODES_ERROR' });
   }
 });
 

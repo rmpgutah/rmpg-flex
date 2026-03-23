@@ -101,6 +101,17 @@ interface DashcamEvent {
   officer_name: string | null;
 }
 
+const timeAgo = (date: string) => {
+  const ms = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }: Props) {
   // Status
   const [status, setStatus] = useState<CpgStatus | null>(null);
@@ -437,6 +448,9 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
   const mappedUnitIds = new Set(mappings.map(m => m.unit_id));
   const availableUnits = units.filter(u => !mappedUnitIds.has(u.id));
 
+  // Set document title
+  useEffect(() => { document.title = 'Admin - GPS \u2014 RMPG Flex'; }, []);
+
   return (
     <div className="p-4 space-y-4">
       {/* Header */}
@@ -521,7 +535,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
             disabled={saving || !email.trim() || !password.trim() || !String(accountId).trim()}
             className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
           >
-            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+            {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <CheckCircle2 className="w-3 h-3" />}
             Save Credentials
           </button>
           {status?.configured && (
@@ -531,7 +545,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                 disabled={testing}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5"
               >
-                {testing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                {testing ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Zap className="w-3 h-3" />}
                 Test Connection
               </button>
               <button type="button"
@@ -539,7 +553,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                 disabled={discovering}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5"
               >
-                {discovering ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+                {discovering ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Search className="w-3 h-3" />}
                 Discover Accounts
               </button>
               <button type="button"
@@ -682,7 +696,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
               disabled={loadingDevices}
               className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5"
             >
-              {loadingDevices ? <Loader2 className="w-3 h-3 animate-spin" /> : <Truck className="w-3 h-3" />}
+              {loadingDevices ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Truck className="w-3 h-3" />}
               Load Devices
             </button>
           </div>
@@ -819,7 +833,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
               disabled={loadingDashcam}
               className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5"
             >
-              {loadingDashcam ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+              {loadingDashcam ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <RefreshCw className="w-3 h-3" />}
               Refresh
             </button>
           </div>
@@ -928,7 +942,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                          disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {syncing ? (
-                <Loader2 className="w-3 h-3 animate-spin" />
+                <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />
               ) : (
                 <Download className="w-3 h-3" />
               )}

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, Legend,
@@ -43,6 +43,9 @@ export default function FleetAnalyticsTab({ analytics, loading }: Props) {
   }
 
   const { maintenance_cost_trend, mileage_distribution, status_breakdown, fuel_economy_trend, fleet_summary } = analytics;
+
+  // Set document title
+  useEffect(() => { document.title = 'Fleet - Analytics \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
