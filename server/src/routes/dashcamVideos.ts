@@ -686,6 +686,233 @@ router.post('/webhook/clearpathgps', webhookUpload.single('video'), (req: Reques
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// UPGRADE 1: Automatic Incident Correlation
+// Links dashcam videos to calls/incidents by matching
+// time window and GPS proximity.
+// ════════════════════════════════════════════════════════════
+router.get('/:id/auto-correlate', validateParamIdMiddleware, authenticateToken, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const videoId = parseInt(String(req.params.id), 10);
+    if (isNaN(videoId)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
+
+    const video = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(videoId) as any;
+    if (!video) { res.status(404).json({ error: 'Video not found' }); return; }
+
+    const correlations: any[] = [];
+    const recordedAt = video.recorded_at || video.created_at;
+
+    if (recordedAt) {
+      // Find calls within +/- 30 minutes of the video recording time
+      const callsNearby = db.prepare(`
+        SELECT id, call_number, incident_type, status, location_address, latitude, longitude, created_at
+        FROM calls_for_service
+        WHERE ABS(CAST((julianday(created_at) - julianday(?)) * 24 * 60 AS INTEGER)) <= 30
+        ORDER BY ABS(julianday(created_at) - julianday(?))
+        LIMIT 10
+      `).all(recordedAt, recordedAt) as any[];
+
+      for (const call of callsNearby) {
+        let distance_km: number | null = null;
+        if (video.latitude && video.longitude && call.latitude && call.longitude) {
+          const R = 6371;
+          const dLat = (call.latitude - video.latitude) * Math.PI / 180;
+          const dLng = (call.longitude - video.longitude) * Math.PI / 180;
+          const a = Math.sin(dLat / 2) ** 2 + Math.cos(video.latitude * Math.PI / 180) * Math.cos(call.latitude * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+          distance_km = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 100) / 100;
+        }
+
+        correlations.push({
+          entity_type: 'call',
+          entity_id: call.id,
+          identifier: call.call_number,
+          type: call.incident_type,
+          location: call.location_address,
+          time: call.created_at,
+          distance_km,
+          confidence: distance_km !== null && distance_km < 0.5 ? 'high' : distance_km !== null && distance_km < 2 ? 'medium' : 'low',
+        });
+      }
+
+      // Find incidents in the same time window
+      const incidentsNearby = db.prepare(`
+        SELECT id, incident_number, incident_type, status, location_address, latitude, longitude, created_at
+        FROM incidents
+        WHERE ABS(CAST((julianday(created_at) - julianday(?)) * 24 * 60 AS INTEGER)) <= 30
+        ORDER BY ABS(julianday(created_at) - julianday(?))
+        LIMIT 10
+      `).all(recordedAt, recordedAt) as any[];
+
+      for (const inc of incidentsNearby) {
+        correlations.push({
+          entity_type: 'incident',
+          entity_id: inc.id,
+          identifier: inc.incident_number,
+          type: inc.incident_type,
+          location: inc.location_address,
+          time: inc.created_at,
+          distance_km: null,
+          confidence: 'medium',
+        });
+      }
+    }
+
+    // Sort by confidence (high first)
+    const order: Record<string, number> = { high: 0, medium: 1, low: 2 };
+    correlations.sort((a, b) => (order[a.confidence] || 2) - (order[b.confidence] || 2));
+
+    res.json({ video_id: videoId, correlations });
+  } catch (error: any) {
+    console.error('[DashcamVideos] auto-correlate error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to auto-correlate', code: 'DASHCAM_AUTOCORRELATE_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 2: Video Quality Monitoring
+// Returns video quality statistics (resolution proxy from file
+// size, missing metadata, corrupt files).
+// ════════════════════════════════════════════════════════════
+router.get('/quality/report', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    // Videos with missing critical metadata
+    const missingMetadata = db.prepare(`
+      SELECT id, title, recorded_at, created_at,
+        CASE
+          WHEN recorded_at IS NULL THEN 'missing_recorded_at'
+          WHEN duration_seconds IS NULL OR duration_seconds = 0 THEN 'missing_duration'
+          WHEN file_size IS NULL OR file_size = 0 THEN 'missing_file_size'
+          WHEN latitude IS NULL AND longitude IS NULL THEN 'missing_gps'
+          ELSE 'ok'
+        END as issue
+      FROM dashcam_videos
+      WHERE recorded_at IS NULL OR duration_seconds IS NULL OR duration_seconds = 0
+        OR file_size IS NULL OR file_size = 0
+      ORDER BY created_at DESC
+      LIMIT 50
+    `).all() as any[];
+
+    // Average file size per minute (quality proxy)
+    const qualityStats = db.prepare(`
+      SELECT
+        COUNT(*) as total_videos,
+        AVG(file_size) as avg_file_size,
+        AVG(CASE WHEN duration_seconds > 0 THEN file_size * 1.0 / duration_seconds ELSE NULL END) as avg_bytes_per_second,
+        MIN(file_size) as min_file_size,
+        MAX(file_size) as max_file_size,
+        SUM(file_size) as total_storage_bytes,
+        AVG(duration_seconds) as avg_duration_seconds
+      FROM dashcam_videos
+      WHERE file_size > 0
+    `).get() as any;
+
+    // Videos by source
+    const bySource = db.prepare(`
+      SELECT source, COUNT(*) as count, SUM(file_size) as total_bytes,
+        AVG(duration_seconds) as avg_duration
+      FROM dashcam_videos GROUP BY source
+    `).all() as any[];
+
+    // Very small files (potentially corrupt or incomplete)
+    const suspiciouslySmall = db.prepare(`
+      SELECT id, title, file_size, duration_seconds, created_at
+      FROM dashcam_videos
+      WHERE file_size > 0 AND file_size < 50000
+      ORDER BY created_at DESC LIMIT 20
+    `).all() as any[];
+
+    res.json({
+      total_videos: qualityStats?.total_videos || 0,
+      avg_file_size_mb: qualityStats?.avg_file_size ? Math.round(qualityStats.avg_file_size / 1024 / 1024 * 10) / 10 : 0,
+      avg_bitrate_kbps: qualityStats?.avg_bytes_per_second ? Math.round(qualityStats.avg_bytes_per_second * 8 / 1024) : 0,
+      total_storage_gb: qualityStats?.total_storage_bytes ? Math.round(qualityStats.total_storage_bytes / 1024 / 1024 / 1024 * 100) / 100 : 0,
+      missing_metadata: missingMetadata,
+      missing_metadata_count: missingMetadata.length,
+      suspiciously_small: suspiciouslySmall,
+      by_source: bySource,
+    });
+  } catch (error: any) {
+    console.error('[DashcamVideos] quality report error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to get quality report', code: 'DASHCAM_QUALITY_REPORT_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 3: Storage Usage Tracking
+// Returns storage usage breakdown by vehicle, unit, source,
+// and classification with trend data.
+// ════════════════════════════════════════════════════════════
+router.get('/storage/usage', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    // Total storage used
+    const total = db.prepare(`
+      SELECT COUNT(*) as count, COALESCE(SUM(file_size), 0) as total_bytes
+      FROM dashcam_videos
+    `).get() as any;
+
+    // By classification
+    const byClassification = db.prepare(`
+      SELECT classification, COUNT(*) as count, COALESCE(SUM(file_size), 0) as total_bytes
+      FROM dashcam_videos GROUP BY classification ORDER BY total_bytes DESC
+    `).all() as any[];
+
+    // By vehicle
+    const byVehicle = db.prepare(`
+      SELECT COALESCE(fv.vehicle_number, 'Unassigned') as vehicle,
+        COUNT(*) as count, COALESCE(SUM(v.file_size), 0) as total_bytes
+      FROM dashcam_videos v
+      LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
+      GROUP BY v.vehicle_id ORDER BY total_bytes DESC LIMIT 20
+    `).all() as any[];
+
+    // Monthly trend (last 12 months)
+    const monthlyTrend = db.prepare(`
+      SELECT strftime('%Y-%m', created_at) as month,
+        COUNT(*) as count, COALESCE(SUM(file_size), 0) as total_bytes
+      FROM dashcam_videos
+      WHERE created_at >= datetime('now', '-12 months')
+      GROUP BY month ORDER BY month
+    `).all() as any[];
+
+    // Disk usage check
+    let diskInfo: any = null;
+    try {
+      const stats = fs.statfsSync(DASHCAM_DIR);
+      diskInfo = {
+        total_gb: Math.round((stats.bsize * stats.blocks) / 1024 / 1024 / 1024 * 100) / 100,
+        free_gb: Math.round((stats.bsize * stats.bfree) / 1024 / 1024 / 1024 * 100) / 100,
+        used_pct: Math.round((1 - stats.bfree / stats.blocks) * 100),
+      };
+    } catch { /* statfs may not be available */ }
+
+    res.json({
+      total_videos: total.count,
+      total_storage_gb: Math.round(total.total_bytes / 1024 / 1024 / 1024 * 100) / 100,
+      by_classification: byClassification.map((c: any) => ({
+        ...c,
+        total_gb: Math.round(c.total_bytes / 1024 / 1024 / 1024 * 100) / 100,
+      })),
+      by_vehicle: byVehicle.map((v: any) => ({
+        ...v,
+        total_gb: Math.round(v.total_bytes / 1024 / 1024 / 1024 * 100) / 100,
+      })),
+      monthly_trend: monthlyTrend.map((m: any) => ({
+        ...m,
+        total_gb: Math.round(m.total_bytes / 1024 / 1024 / 1024 * 100) / 100,
+      })),
+      disk: diskInfo,
+    });
+  } catch (error: any) {
+    console.error('[DashcamVideos] storage usage error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to get storage usage', code: 'DASHCAM_STORAGE_USAGE_ERROR' });
+  }
+});
+
 // ─── CSV EXPORT ──────────────────────────────────────────
 
 // GET /api/fleet/dashcam-videos/export/csv — Export dashcam video metadata

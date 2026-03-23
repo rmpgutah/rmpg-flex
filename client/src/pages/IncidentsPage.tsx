@@ -683,6 +683,10 @@ export default function IncidentsPage() {
     under_review: incidents.filter(i => i.status === 'under_review').length,
     approved: incidents.filter(i => i.status === 'approved').length,
     returned: incidents.filter(i => i.status === 'returned').length,
+    // Upgrade: severity indicators
+    p1Count: incidents.filter(i => i.priority === 'P1').length,
+    weaponsInvolved: incidents.filter(i => (i as any).weapons_involved).length,
+    dvCount: incidents.filter(i => (i as any).domestic_violence).length,
   };
 
   // ============================================================
@@ -799,6 +803,23 @@ export default function IncidentsPage() {
               <div className="w-2 h-2 rounded-full bg-red-500" />
               <span className="text-rmpg-400">Returned:</span>
               <span className="text-red-400 font-bold">{incidentStats.returned}</span>
+            </div>
+          )}
+          {/* Upgrade: Severity indicators */}
+          {incidentStats.p1Count > 0 && (
+            <div className="flex items-center gap-1">
+              <Shield className="w-2.5 h-2.5 text-red-500" />
+              <span className="text-red-400 font-bold">{incidentStats.p1Count} P1</span>
+            </div>
+          )}
+          {incidentStats.weaponsInvolved > 0 && (
+            <div className="flex items-center gap-1">
+              <span className="text-red-300 font-bold">{incidentStats.weaponsInvolved} Armed</span>
+            </div>
+          )}
+          {incidentStats.dvCount > 0 && (
+            <div className="flex items-center gap-1">
+              <span className="text-orange-400 font-bold">{incidentStats.dvCount} DV</span>
             </div>
           )}
           <span className="ml-auto text-rmpg-500">

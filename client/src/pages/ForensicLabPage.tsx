@@ -272,7 +272,7 @@ export default function ForensicLabPage() {
   const [filterStatus, setFilterStatus] = useState('');
   const [filterType, setFilterType] = useState('');
   const [selectedCase, setSelectedCase] = useState<ForensicCase | null>(null);
-  const [detailTab, setDetailTab] = useState<'overview' | 'exhibits' | 'analyses' | 'timeline' | 'hashes' | 'links'>('overview');
+  const [detailTab, setDetailTab] = useState<'overview' | 'exhibits' | 'analyses' | 'timeline' | 'hashes' | 'links' | 'qc' | 'turnaround'>('overview');
   const [wizardStep, setWizardStep] = useState(0);
   const [wizardData, setWizardData] = useState<WizardData>(EMPTY_WIZARD);
   const [submitting, setSubmitting] = useState(false);
@@ -300,6 +300,55 @@ export default function ForensicLabPage() {
   // Custody log transfer modal
   const [showCustodyModal, setShowCustodyModal] = useState(false);
   const [custodyForm, setCustodyForm] = useState({ from_person: '', to_person: '', action: 'received' as CustodyEvent['action'], notes: '' });
+
+  // ── UPGRADE: Turnaround & QC ──
+  const [turnaroundData, setTurnaroundData] = useState<any>(null);
+  const [turnaroundLoading, setTurnaroundLoading] = useState(false);
+  const [backlogData, setBacklogData] = useState<any>(null);
+  const [backlogLoading, setBacklogLoading] = useState(false);
+  const [qcHistory, setQcHistory] = useState<any[]>([]);
+  const [qcLoading, setQcLoading] = useState(false);
+  const [qcForm, setQcForm] = useState({ check_type: 'peer_review', reviewer_notes: '', pass: true });
+  const [qcSubmitting, setQcSubmitting] = useState(false);
+  const [analysisTemplates, setAnalysisTemplates] = useState<any>(null);
+  const [showBacklogReport, setShowBacklogReport] = useState(false);
+
+  const fetchTurnaroundData = async () => {
+    setTurnaroundLoading(true);
+    try { const r = await apiFetch<any>('/forensics/turnaround-times'); setTurnaroundData(r?.data || null); }
+    catch { /* silent */ } finally { setTurnaroundLoading(false); }
+  };
+
+  const fetchBacklogData = async () => {
+    setBacklogLoading(true);
+    try { const r = await apiFetch<any>('/forensics/metrics/backlog'); setBacklogData(r?.data || null); }
+    catch { /* silent */ } finally { setBacklogLoading(false); }
+  };
+
+  const fetchQcHistory = async (caseId: number) => {
+    setQcLoading(true);
+    try { const r = await apiFetch<any>(`/forensics/${caseId}/qc-history`); setQcHistory(r?.data || []); }
+    catch { setQcHistory([]); } finally { setQcLoading(false); }
+  };
+
+  const fetchAnalysisTemplates = async () => {
+    try { const r = await apiFetch<any>('/forensics/analysis-templates'); setAnalysisTemplates(r?.data || null); }
+    catch { /* silent */ }
+  };
+
+  const handleQcSubmit = async () => {
+    if (!selectedCase) return;
+    setQcSubmitting(true);
+    try {
+      await apiFetch(`/forensics/${selectedCase.id}/qc-check`, {
+        method: 'POST', body: JSON.stringify(qcForm),
+      });
+      addToast(`QC check recorded: ${qcForm.pass ? 'PASS' : 'FAIL'}`, qcForm.pass ? 'success' : 'warning');
+      fetchQcHistory(selectedCase.id);
+      setQcForm({ check_type: 'peer_review', reviewer_notes: '', pass: true });
+    } catch (err: any) { addToast(err?.message || 'QC check failed', 'error'); }
+    finally { setQcSubmitting(false); }
+  };
 
   // ── Feature 27: Lab Queue ──
   const [labQueue, setLabQueue] = useState<any[]>([]);
@@ -779,9 +828,9 @@ export default function ForensicLabPage() {
 
         {/* Detail Tabs */}
         <div className="flex items-center border-b border-rmpg-700 bg-surface-sunken">
-          {(['overview', 'exhibits', 'analyses', 'timeline', 'links', 'hashes'] as const).map(tab => {
-            const icons = { overview: Eye, exhibits: Package, analyses: Beaker, timeline: Activity, links: Link2, hashes: Hash };
-            const labels = { overview: 'Overview', exhibits: `Exhibits (${selectedCase.exhibits?.length || 0})`, analyses: `Analyses (${selectedCase.analyses?.length || 0})`, timeline: 'Timeline', links: `Links (${caseLinks.length})`, hashes: 'Hashes' };
+          {(['overview', 'exhibits', 'analyses', 'timeline', 'links', 'hashes', 'qc', 'turnaround'] as const).map(tab => {
+            const icons = { overview: Eye, exhibits: Package, analyses: Beaker, timeline: Activity, links: Link2, hashes: Hash, qc: Shield, turnaround: Clock };
+            const labels = { overview: 'Overview', exhibits: `Exhibits (${selectedCase.exhibits?.length || 0})`, analyses: `Analyses (${selectedCase.analyses?.length || 0})`, timeline: 'Timeline', links: `Links (${caseLinks.length})`, hashes: 'Hashes', qc: 'QC', turnaround: 'Timing' };
             const Icon = icons[tab];
             return (
               <button type="button"
@@ -1367,6 +1416,137 @@ export default function ForensicLabPage() {
                 </div>
               )}
             </>
+          )}
+
+          {/* QC Tab */}
+          {detailTab === 'qc' && selectedCase && (
+            <div className="space-y-3">
+              <div className="panel-beveled bg-surface-sunken p-3">
+                <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-2">Record QC Check</div>
+                <div className="space-y-2">
+                  <select value={qcForm.check_type} onChange={e => setQcForm(f => ({ ...f, check_type: e.target.value }))}
+                    className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-white">
+                    <option value="peer_review">Peer Review</option>
+                    <option value="admin_review">Admin Review</option>
+                    <option value="technical_review">Technical Review</option>
+                    <option value="calibration_check">Calibration Check</option>
+                    <option value="blank_check">Blank Check</option>
+                    <option value="positive_control">Positive Control</option>
+                    <option value="negative_control">Negative Control</option>
+                  </select>
+                  <textarea value={qcForm.reviewer_notes} onChange={e => setQcForm(f => ({ ...f, reviewer_notes: e.target.value }))}
+                    className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-white h-16 resize-none"
+                    placeholder="Reviewer notes..." />
+                  <div className="flex items-center gap-4">
+                    <label className="flex items-center gap-1.5 text-xs text-green-400 cursor-pointer">
+                      <input type="radio" checked={qcForm.pass} onChange={() => setQcForm(f => ({ ...f, pass: true }))} className="accent-green-400" /> Pass
+                    </label>
+                    <label className="flex items-center gap-1.5 text-xs text-red-400 cursor-pointer">
+                      <input type="radio" checked={!qcForm.pass} onChange={() => setQcForm(f => ({ ...f, pass: false }))} className="accent-red-400" /> Fail
+                    </label>
+                  </div>
+                  <button type="button" onClick={handleQcSubmit} disabled={qcSubmitting}
+                    className="btn-primary w-full flex items-center justify-center gap-2 text-xs">
+                    {qcSubmitting ? <Loader2 size={12} className="animate-spin" /> : <Shield size={12} />}
+                    Record QC Check
+                  </button>
+                </div>
+              </div>
+              {/* QC History */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">QC History</span>
+                  <button type="button" onClick={() => fetchQcHistory(selectedCase.id)} className="text-[10px] text-brand-400 hover:text-brand-300">Refresh</button>
+                </div>
+                {qcLoading ? <div className="text-center py-4"><Loader2 size={16} className="animate-spin text-brand-400 mx-auto" /></div> : (
+                  qcHistory.length === 0 ? <div className="text-xs text-rmpg-500 text-center py-4">No QC checks recorded</div> : (
+                    <div className="space-y-1">
+                      {qcHistory.map((qc: any, i: number) => (
+                        <div key={i} className="panel-beveled p-2 text-[10px]">
+                          <div className="flex items-center gap-2">
+                            <span className={`font-bold ${qc.details?.includes('PASS') ? 'text-green-400' : 'text-red-400'}`}>
+                              {qc.details?.includes('PASS') ? 'PASS' : 'FAIL'}
+                            </span>
+                            <span className="text-rmpg-400">{qc.action}</span>
+                          </div>
+                          <div className="text-rmpg-500 mt-0.5">{qc.performed_by_name} — {qc.performed_at}</div>
+                          {qc.details && <div className="text-rmpg-300 mt-0.5 line-clamp-2">{qc.details}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  )
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Turnaround/Timing Tab */}
+          {detailTab === 'turnaround' && selectedCase && (
+            <div className="space-y-3">
+              <button type="button" onClick={fetchTurnaroundData} className="btn-primary text-xs flex items-center gap-2">
+                <Clock size={12} /> Load Turnaround Data
+              </button>
+              {turnaroundLoading ? <div className="text-center py-4"><Loader2 size={16} className="animate-spin text-brand-400 mx-auto" /></div> : turnaroundData && (
+                <div className="space-y-3">
+                  {turnaroundData.by_type?.length > 0 && (
+                    <div>
+                      <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">By Case Type</div>
+                      {turnaroundData.by_type.map((t: any) => (
+                        <div key={t.case_type} className="panel-beveled p-2 mb-1 flex items-center justify-between">
+                          <span className="text-xs text-rmpg-200">{t.case_type}</span>
+                          <span className="text-xs font-mono text-brand-400">{t.avg_days}d avg ({t.cases_completed} cases)</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {turnaroundData.overdue_cases?.length > 0 && (
+                    <div>
+                      <div className="text-[9px] text-red-400 uppercase font-bold tracking-wider mb-1">Overdue Cases ({turnaroundData.overdue_cases.length})</div>
+                      {turnaroundData.overdue_cases.slice(0, 5).map((c: any) => (
+                        <div key={c.id} className="panel-beveled p-2 mb-1 border-l-2 border-red-500">
+                          <div className="text-xs text-white">{c.lab_number} — {c.title}</div>
+                          <div className="text-[10px] text-red-400">{c.days_overdue} days overdue (Due: {c.due_date})</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {turnaroundData.analysis_turnaround?.length > 0 && (
+                    <div>
+                      <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">Analysis Turnaround</div>
+                      {turnaroundData.analysis_turnaround.map((a: any) => (
+                        <div key={a.analysis_type} className="flex justify-between text-[10px] py-0.5">
+                          <span className="text-rmpg-300">{a.analysis_type}</span>
+                          <span className="text-rmpg-400 font-mono">{a.avg_days}d avg ({a.completed})</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* Backlog Section */}
+              <div className="border-t border-rmpg-700 pt-3">
+                <button type="button" onClick={() => { setShowBacklogReport(!showBacklogReport); if (!backlogData) fetchBacklogData(); }}
+                  className="text-[10px] text-rmpg-400 uppercase tracking-wider font-bold hover:text-white">
+                  {showBacklogReport ? '▾' : '▸'} Backlog Report
+                </button>
+                {showBacklogReport && (
+                  backlogLoading ? <div className="text-center py-4"><Loader2 size={16} className="animate-spin text-brand-400 mx-auto" /></div> : backlogData && (
+                    <div className="space-y-2 mt-2">
+                      <div className="panel-beveled p-2">
+                        <div className="text-sm font-bold text-white">{backlogData.total_backlog}</div>
+                        <div className="text-[9px] text-rmpg-500">Total Active Cases | {backlogData.unassigned_cases} Unassigned | {backlogData.pending_analyses} Pending Analyses</div>
+                      </div>
+                      {backlogData.backlog_by_examiner?.map((e: any) => (
+                        <div key={e.examiner} className="flex justify-between text-[10px] py-0.5">
+                          <span className="text-rmpg-300">{e.examiner || 'Unassigned'}</span>
+                          <span className="text-rmpg-400 font-mono">{e.active_cases} cases ({e.avg_age_days}d avg)</span>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                )}
+              </div>
+            </div>
           )}
 
           {/* Links Tab */}

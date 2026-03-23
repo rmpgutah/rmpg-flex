@@ -788,6 +788,18 @@ export default function ReportsPage() {
   const [responseTimesData, setResponseTimesData] = useState<ResponseTimesData | null>(null);
   const [officerActivity, setOfficerActivity] = useState<OfficerActivityData[]>([]);
 
+  // Upgrade: Comparison data
+  const [comparisonData, setComparisonData] = useState<{
+    period: string;
+    calls: { current: number; previous: number; change: number };
+    incidents: { current: number; previous: number; change: number };
+    citations: { current: number; previous: number; change: number };
+    responseTime: { current: number | null; previous: number | null; change: number | null };
+  } | null>(null);
+
+  // Upgrade: Report schedules
+  const [reportSchedules, setReportSchedules] = useState<any[]>([]);
+
   // Fetch all data
   useEffect(() => {
     let cancelled = false;
@@ -823,6 +835,14 @@ export default function ReportsPage() {
         setIncidentsData(incidents);
         setResponseTimesData(responseTimes);
         setOfficerActivity(officers);
+
+        // Upgrade: Fetch comparison data and schedules in background
+        apiFetch<any>('/reports/comparison?period=week')
+          .then(data => { if (!cancelled && data) setComparisonData(data); })
+          .catch(() => { /* optional */ });
+        apiFetch<{ data: any[] }>('/reports/schedules')
+          .then(data => { if (!cancelled && data?.data) setReportSchedules(data.data); })
+          .catch(() => { /* optional */ });
       } catch (err) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : 'Failed to load reports data');
@@ -983,6 +1003,56 @@ export default function ReportsPage() {
               </div>
             ))}
           </div>
+
+          {/* Upgrade: Week-over-Week Comparison */}
+          {comparisonData && (
+            <div className="panel-beveled p-4 bg-surface-base">
+              <div className="flex items-center gap-2 mb-3">
+                <TrendingUp className="w-4 h-4 text-brand-blue" />
+                <span className="text-xs font-bold text-white uppercase">This Week vs Last Week</span>
+              </div>
+              <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-4 gap-3'}`}>
+                {[
+                  { label: 'Calls', ...comparisonData.calls },
+                  { label: 'Incidents', ...comparisonData.incidents },
+                  { label: 'Citations', ...comparisonData.citations },
+                  { label: 'Avg Response', current: comparisonData.responseTime.current, previous: comparisonData.responseTime.previous, change: comparisonData.responseTime.change },
+                ].map(item => (
+                  <div key={item.label} className="bg-surface-sunken p-3 text-center">
+                    <div className="text-lg font-bold text-white font-mono">{item.current ?? '-'}{item.label === 'Avg Response' && item.current != null ? 'm' : ''}</div>
+                    <div className="text-[9px] text-rmpg-400 uppercase">{item.label}</div>
+                    {item.change != null && (
+                      <div className={`text-[10px] font-bold mt-0.5 ${item.change > 0 ? (item.label === 'Avg Response' ? 'text-red-400' : 'text-green-400') : item.change < 0 ? (item.label === 'Avg Response' ? 'text-green-400' : 'text-amber-400') : 'text-rmpg-400'}`}>
+                        {item.change > 0 ? '+' : ''}{item.change}%
+                        <span className="text-rmpg-500 ml-1">vs prev {item.previous ?? '-'}</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Upgrade: Report Schedules */}
+          {reportSchedules.length > 0 && (
+            <div className="panel-beveled p-4 bg-surface-base">
+              <div className="flex items-center gap-2 mb-3">
+                <Calendar className="w-4 h-4 text-purple-400" />
+                <span className="text-xs font-bold text-white uppercase">Scheduled Reports</span>
+                <span className="ml-auto text-[9px] text-rmpg-500">{reportSchedules.length} active</span>
+              </div>
+              <div className="space-y-1.5">
+                {reportSchedules.slice(0, 5).map((s: any) => (
+                  <div key={s.id} className="flex items-center gap-2 text-xs text-rmpg-300 bg-surface-sunken px-3 py-1.5">
+                    <span className={`w-2 h-2 rounded-full ${s.enabled ? 'bg-green-500' : 'bg-rmpg-600'}`} />
+                    <span className="font-bold">{s.name}</span>
+                    <span className="text-rmpg-500">{s.frequency}</span>
+                    {s.time_of_day && <span className="text-rmpg-500">{s.time_of_day}</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Feature 27: Report Approval Queue */}
           <div className="panel-beveled p-4 bg-surface-base">

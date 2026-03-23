@@ -86,6 +86,10 @@ const AuditLogPage: React.FC = () => {
     search: ''
   });
 
+  // ═══ NEW: Compliance report + index stats ═══
+  const [complianceReport, setComplianceReport] = useState<any>(null);
+  const [indexStats, setIndexStats] = useState<{ total_entries: number; estimated_size_mb: number } | null>(null);
+
   // Memoized filter dropdown values — derived from logs, recalculated only when logs change
   const uniqueActions = useMemo(() => {
     const actions = new Set<string>();
@@ -167,6 +171,9 @@ const AuditLogPage: React.FC = () => {
   useEffect(() => {
     fetchLogs();
     fetchStats();
+    // Fetch new upgrade data
+    apiFetch<any>('/audit/compliance-report?days=30').then(d => { if (d) setComplianceReport(d); }).catch(() => {});
+    apiFetch<any>('/audit/index-stats').then(d => { if (d) setIndexStats({ total_entries: d.total_entries, estimated_size_mb: d.estimated_size_mb }); }).catch(() => {});
   }, [fetchLogs, fetchStats]);
 
   // Auto-refresh every 60 seconds
@@ -383,6 +390,47 @@ const AuditLogPage: React.FC = () => {
               )}
             </div>
           </div>
+
+          {/* ═══ NEW: Compliance + Index Stats Row ═══ */}
+          {(complianceReport || indexStats) && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
+              {complianceReport && (
+                <>
+                  <div className="panel-beveled p-3" style={{ background: '#0d1520' }}>
+                    <div className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1">Login Failure Rate</div>
+                    <div className={`text-xl font-bold font-mono ${complianceReport.login_stats?.failure_rate > 20 ? 'text-red-400' : 'text-green-400'}`}>
+                      {complianceReport.login_stats?.failure_rate ?? 0}%
+                    </div>
+                    <div className="text-[9px] text-rmpg-500 mt-0.5">
+                      {complianceReport.login_stats?.failed ?? 0} failed / {(complianceReport.login_stats?.successful ?? 0) + (complianceReport.login_stats?.failed ?? 0)} total
+                    </div>
+                  </div>
+                  <div className="panel-beveled p-3" style={{ background: '#0d1520' }}>
+                    <div className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1">Active Users (30d)</div>
+                    <div className="text-xl font-bold font-mono text-purple-400">
+                      {complianceReport.active_users ?? 0}
+                    </div>
+                  </div>
+                </>
+              )}
+              {indexStats && (
+                <>
+                  <div className="panel-beveled p-3" style={{ background: '#0d1520' }}>
+                    <div className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1">Total Log Entries</div>
+                    <div className="text-xl font-bold font-mono text-rmpg-200">
+                      {indexStats.total_entries.toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="panel-beveled p-3" style={{ background: '#0d1520' }}>
+                    <div className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1">Est. Log Size</div>
+                    <div className="text-xl font-bold font-mono text-rmpg-200">
+                      {indexStats.estimated_size_mb} MB
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         )}
       </div>
 

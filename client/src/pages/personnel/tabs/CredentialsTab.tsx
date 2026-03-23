@@ -113,6 +113,42 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
         ))}
       </div>
 
+      {/* 30/60/90 Day Expiration Breakdown */}
+      {(() => {
+        const now = Date.now();
+        const withExpiry = credentials.filter(c => c.expiry_date);
+        const expired = withExpiry.filter(c => new Date(c.expiry_date!).getTime() < now);
+        const in30 = withExpiry.filter(c => { const d = new Date(c.expiry_date!).getTime(); return d >= now && d <= now + 30*86400000; });
+        const in60 = withExpiry.filter(c => { const d = new Date(c.expiry_date!).getTime(); return d > now + 30*86400000 && d <= now + 60*86400000; });
+        const in90 = withExpiry.filter(c => { const d = new Date(c.expiry_date!).getTime(); return d > now + 60*86400000 && d <= now + 90*86400000; });
+        if (expired.length === 0 && in30.length === 0 && in60.length === 0 && in90.length === 0) return null;
+        return (
+          <div className="panel-beveled p-3 bg-surface-base border-l-2 border-l-amber-500">
+            <h3 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+              <ShieldAlert className="w-3 h-3 text-amber-400" /> Expiration Timeline
+            </h3>
+            <div className="grid grid-cols-4 gap-2">
+              <div className="text-center p-1.5 bg-red-900/20 rounded border border-red-800/30">
+                <div className="text-sm font-bold font-mono text-red-400">{expired.length}</div>
+                <div className="text-[7px] text-rmpg-500 uppercase">Expired</div>
+              </div>
+              <div className="text-center p-1.5 bg-red-900/10 rounded border border-red-800/20">
+                <div className="text-sm font-bold font-mono text-red-300">{in30.length}</div>
+                <div className="text-[7px] text-rmpg-500 uppercase">30 Days</div>
+              </div>
+              <div className="text-center p-1.5 bg-amber-900/10 rounded border border-amber-800/20">
+                <div className="text-sm font-bold font-mono text-amber-400">{in60.length}</div>
+                <div className="text-[7px] text-rmpg-500 uppercase">60 Days</div>
+              </div>
+              <div className="text-center p-1.5 bg-blue-900/10 rounded border border-blue-800/20">
+                <div className="text-sm font-bold font-mono text-blue-400">{in90.length}</div>
+                <div className="text-[7px] text-rmpg-500 uppercase">90 Days</div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Credentials Table */}
       <div className="panel-beveled overflow-x-auto bg-surface-sunken">
         <table className="table-dark w-full">

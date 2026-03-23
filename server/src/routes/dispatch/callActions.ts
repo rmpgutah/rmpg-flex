@@ -369,6 +369,29 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
       return;
     }
 
+    // Upgrade 58: Validate legal status transitions
+    const LEGAL_CALL_TRANSITIONS: Record<string, string[]> = {
+      pending:     ['dispatched', 'cancelled', 'on_hold'],
+      dispatched:  ['enroute', 'onscene', 'cleared', 'cancelled', 'on_hold', 'pending'],
+      enroute:     ['onscene', 'cleared', 'cancelled', 'on_hold', 'dispatched'],
+      onscene:     ['cleared', 'closed', 'cancelled', 'on_hold', 'enroute'],
+      cleared:     ['closed', 'archived', 'onscene'],
+      closed:      ['archived', 'cleared'],
+      cancelled:   ['archived', 'pending'],
+      on_hold:     ['pending', 'dispatched', 'enroute', 'onscene'],
+      archived:    ['closed'],
+    };
+    const allowed = LEGAL_CALL_TRANSITIONS[call.status] || [];
+    if (!allowed.includes(status)) {
+      res.status(400).json({
+        error: `Cannot transition from '${call.status}' to '${status}'`,
+        code: 'ILLEGAL_STATUS_TRANSITION',
+        current_status: call.status,
+        valid_transitions: allowed,
+      });
+      return;
+    }
+
     // ── Feature 4: Disposition required enforcement (ALL calls) ─────
     // All calls must have a disposition when closing (cleared/closed).
     if (['cleared', 'closed'].includes(status) && !disposition && !call.disposition) {
@@ -441,8 +464,9 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
     };
 
     const tsField = timestampField[status];
-    let updateQuery = `UPDATE calls_for_service SET status = ?`;
-    const updateParams: any[] = [status];
+    // Upgrade 59: Always track status_changed_at
+    let updateQuery = `UPDATE calls_for_service SET status = ?, status_changed_at = ?`;
+    const updateParams: any[] = [status, now];
 
     if (tsField) {
       updateQuery += `, ${tsField} = COALESCE(${tsField}, ?)`;
@@ -468,6 +492,37 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
       updateQuery += `, responding_vehicle_id = ?`;
       updateParams.push(responding_vehicle_id);
     }
+
+    // Upgrade 60: Calculate and store response_time_seconds when going onscene
+    if (status === 'onscene' && call.created_at) {
+      try {
+        const created = new Date(call.created_at);
+        const onsceneTime = new Date(now);
+        if (!isNaN(created.getTime()) && !isNaN(onsceneTime.getTime())) {
+          const diffSec = Math.round((onsceneTime.getTime() - created.getTime()) / 1000);
+          if (diffSec > 0 && diffSec < 43200) { // max 12 hours
+            updateQuery += `, response_time_seconds = ?`;
+            updateParams.push(diffSec);
+          }
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    // Upgrade 61: Store total_onscene_seconds when clearing (time spent on scene)
+    if (['cleared', 'closed'].includes(status) && call.onscene_at) {
+      try {
+        const onscene = new Date(call.onscene_at);
+        const clearTime = new Date(now);
+        if (!isNaN(onscene.getTime()) && !isNaN(clearTime.getTime())) {
+          const sceneSec = Math.round((clearTime.getTime() - onscene.getTime()) / 1000);
+          if (sceneSec > 0 && sceneSec < 86400) { // max 24 hours
+            updateQuery += `, onscene_duration_seconds = ?`;
+            updateParams.push(sceneSec);
+          }
+        }
+      } catch { /* non-fatal */ }
+    }
+
     updateQuery += ` WHERE id = ?`;
     updateParams.push(call.id);
 
@@ -897,6 +952,19 @@ router.post('/calls/:id/persons', validateParamIdMiddleware, requireRole('admin'
     const existing = db.prepare('SELECT id FROM call_persons WHERE call_id = ? AND person_id = ?').get(call.id, person_id) as any;
     if (existing) return res.status(409).json({ error: 'Person already linked to this call', code: 'PERSON_ALREADY_LINKED_TO' });
 
+    // Upgrade 62: Check if person is linked to other active calls (duplicate detection hint)
+    let otherCallLinks: any[] = [];
+    try {
+      otherCallLinks = db.prepare(`
+        SELECT cp.call_id, c.call_number, c.incident_type, c.status, cp.role
+        FROM call_persons cp
+        JOIN calls_for_service c ON cp.call_id = c.id
+        WHERE cp.person_id = ? AND cp.call_id != ?
+          AND c.status NOT IN ('cleared','closed','cancelled','archived')
+        LIMIT 5
+      `).all(person_id, call.id) as any[];
+    } catch { /* non-fatal */ }
+
     const result = db.prepare(`
       INSERT INTO call_persons (call_id, person_id, role, notes, added_by) VALUES (?, ?, ?, ?, ?)
     `).run(call.id, person_id, role, notes || null, req.user!.userId);
@@ -943,7 +1011,28 @@ router.post('/calls/:id/persons', validateParamIdMiddleware, requireRole('admin'
     }).catch(err => console.error('[Warrant Check] Async check failed:', err.message));
 
     broadcastDispatchUpdate({ action: 'call_person_linked', call_id: call.id, person: linked });
-    res.status(201).json(linked);
+
+    // Upgrade 63: Include duplicate detection hints and caution flags in response
+    const responseData: any = { ...linked as any };
+    if (otherCallLinks.length > 0) {
+      responseData._active_call_links = otherCallLinks;
+      responseData._warning = `Person is also linked to ${otherCallLinks.length} other active call(s)`;
+    }
+    // Upgrade 64: Check for caution flags on the person
+    if (person) {
+      const fullPerson = db.prepare('SELECT caution_flags, is_sex_offender, gang_affiliation, probation_parole, flags FROM persons WHERE id = ?').get(person_id) as any;
+      if (fullPerson) {
+        const alerts: string[] = [];
+        if (fullPerson.caution_flags) alerts.push(`CAUTION: ${fullPerson.caution_flags}`);
+        if (fullPerson.is_sex_offender) alerts.push('SEX OFFENDER');
+        if (fullPerson.gang_affiliation) alerts.push(`GANG: ${fullPerson.gang_affiliation}`);
+        if (fullPerson.probation_parole) alerts.push('PROBATION/PAROLE');
+        if (fullPerson.flags && String(fullPerson.flags).includes('ACTIVE_WARRANT')) alerts.push('ACTIVE WARRANT');
+        if (alerts.length > 0) responseData._safety_alerts = alerts;
+      }
+    }
+
+    res.status(201).json(responseData);
   } catch (error: any) {
     console.error('Link call person error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to link call person', code: 'LINK_CALL_PERSON_ERROR' });
@@ -1060,6 +1149,13 @@ router.post('/calls/:id/vehicles', validateParamIdMiddleware, requireRole('admin
     const existing = db.prepare('SELECT id FROM call_vehicles WHERE call_id = ? AND vehicle_id = ?').get(call.id, vehicle_id) as any;
     if (existing) return res.status(409).json({ error: 'Vehicle already linked to this call', code: 'VEHICLE_ALREADY_LINKED_TO' });
 
+    // Upgrade 65: Check if vehicle is reported stolen
+    const fullVehicle = db.prepare('SELECT stolen_status, stolen_date FROM vehicles_records WHERE id = ?').get(vehicle_id) as any;
+    let stolenAlert = false;
+    if (fullVehicle && fullVehicle.stolen_status && fullVehicle.stolen_status !== 'none' && fullVehicle.stolen_status !== '') {
+      stolenAlert = true;
+    }
+
     const result = db.prepare(`
       INSERT INTO call_vehicles (call_id, vehicle_id, role, notes, added_by) VALUES (?, ?, ?, ?, ?)
     `).run(call.id, vehicle_id, role, notes || null, req.user!.userId);
@@ -1085,7 +1181,22 @@ router.post('/calls/:id/vehicles', validateParamIdMiddleware, requireRole('admin
       req.ip || 'unknown');
 
     broadcastDispatchUpdate({ action: 'call_vehicle_linked', call_id: call.id, vehicle: linked });
-    res.status(201).json(linked);
+
+    // Upgrade 66: Include stolen vehicle alert in response
+    const responseData: any = { ...linked as any };
+    if (stolenAlert) {
+      responseData._stolen_alert = true;
+      responseData._warning = `STOLEN VEHICLE ALERT: ${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''} PLT:${vehicle.plate_number || 'N/A'} is reported stolen (${fullVehicle.stolen_status})`;
+
+      // Upgrade 67: Auto-add stolen vehicle activity log note
+      try {
+        db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+          VALUES (0, 'stolen_vehicle_alert', 'call', ?, ?, 'system')`).run(
+          call.id, `STOLEN VEHICLE: ${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''} PLT:${vehicle.plate_number || 'N/A'} linked to call ${call.call_number}`);
+      } catch { /* non-fatal */ }
+    }
+
+    res.status(201).json(responseData);
   } catch (error: any) {
     console.error('Link call vehicle error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to link call vehicle', code: 'LINK_CALL_VEHICLE_ERROR' });

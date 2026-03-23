@@ -11,6 +11,66 @@ import { broadcastDispatchUpdate } from '../../utils/websocket';
 import { createNotificationForRoles } from '../notifications';
 import { auditLog } from '../../utils/auditLogger';
 
+// ── Upgrade 1: Priority score calculation ──
+// Higher scores = more urgent. Used for sorting the dispatch queue.
+function calculatePriorityScore(priority: string, incidentType: string, flags: {
+  weapons_involved?: any; domestic_violence?: any; injuries_reported?: any;
+  felony_in_progress?: any; officer_safety_caution?: any; mental_health_crisis?: any;
+}): number {
+  const priorityBase: Record<string, number> = { P1: 400, P2: 300, P3: 200, P4: 100 };
+  let score = priorityBase[priority] || 100;
+
+  // Upgrade 2: Incident type severity bonuses
+  const highSeverityTypes = new Set([
+    'shooting', 'shots_fired', 'officer_assist', 'armed_robbery', 'barricade',
+    'hostage', 'pursuit', 'active_shooter', 'bomb_threat', 'kidnapping',
+  ]);
+  const medSeverityTypes = new Set([
+    'assault', 'robbery', 'domestic_dispute', 'burglary', 'dui_dwi',
+    'medical_emergency', 'overdose', 'fire', 'hazmat',
+  ]);
+  const itype = (incidentType || '').toLowerCase();
+  if (highSeverityTypes.has(itype)) score += 80;
+  else if (medSeverityTypes.has(itype)) score += 40;
+
+  // Upgrade 3: Flag-based score modifiers
+  if (flags.weapons_involved && flags.weapons_involved !== 'None' && flags.weapons_involved !== '') score += 60;
+  if (flags.domestic_violence) score += 30;
+  if (flags.injuries_reported) score += 40;
+  if (flags.felony_in_progress) score += 50;
+  if (flags.officer_safety_caution) score += 35;
+  if (flags.mental_health_crisis) score += 20;
+
+  return score;
+}
+
+// ── Upgrade 4: Address normalization for duplicate detection ──
+function normalizeAddress(addr: string): string {
+  return addr
+    .toUpperCase()
+    .replace(/\s+/g, ' ')
+    .replace(/\bST\b/g, 'STREET')
+    .replace(/\bAVE\b/g, 'AVENUE')
+    .replace(/\bBLVD\b/g, 'BOULEVARD')
+    .replace(/\bDR\b/g, 'DRIVE')
+    .replace(/\bLN\b/g, 'LANE')
+    .replace(/\bCT\b/g, 'COURT')
+    .replace(/\bPL\b/g, 'PLACE')
+    .replace(/\bRD\b/g, 'ROAD')
+    .replace(/\bN\b/g, 'NORTH')
+    .replace(/\bS\b/g, 'SOUTH')
+    .replace(/\bE\b/g, 'EAST')
+    .replace(/\bW\b/g, 'WEST')
+    .replace(/[.,#]/g, '')
+    .trim();
+}
+
+// ── Upgrade 5: Estimated response time based on priority ──
+function estimatedResponseMinutes(priority: string): number {
+  const estimates: Record<string, number> = { P1: 5, P2: 10, P3: 20, P4: 45 };
+  return estimates[priority] || 30;
+}
+
 
 // ── PSO Service Window helpers (shared with callActions.ts) ──
 type ServiceWindow = 'early_morning' | 'daytime' | 'evening';
@@ -137,7 +197,7 @@ router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       ORDER BY
         ${archived === 'true'
           ? 'c.call_number DESC'
-          : "CASE c.priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 END, c.created_at DESC"
+          : "COALESCE(c.priority_score, CASE c.priority WHEN 'P1' THEN 400 WHEN 'P2' THEN 300 WHEN 'P3' THEN 200 WHEN 'P4' THEN 100 END) DESC, c.created_at DESC"
         }
       LIMIT ? OFFSET ?
     `).all(...params, limitNum, offset);
@@ -204,6 +264,31 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
 
     if (!incident_type || !priority || !location_address) {
       res.status(400).json({ error: 'incident_type, priority, and location_address are required', code: 'MISSING_FIELDS' });
+      return;
+    }
+
+    // Upgrade 6: Validate location_address minimum length
+    if (String(location_address).trim().length < 3) {
+      res.status(400).json({ error: 'location_address must be at least 3 characters', code: 'ADDRESS_TOO_SHORT' });
+      return;
+    }
+
+    // Upgrade 7: Validate incident_type is not empty after trim
+    if (!String(incident_type).trim()) {
+      res.status(400).json({ error: 'incident_type cannot be blank', code: 'INCIDENT_TYPE_BLANK' });
+      return;
+    }
+
+    // Upgrade 8: Validate caller_phone format if provided
+    if (caller_phone && !/^[\d\s\-\+\(\)\.]{7,20}$/.test(String(caller_phone))) {
+      res.status(400).json({ error: 'Invalid caller phone format', code: 'INVALID_CALLER_PHONE' });
+      return;
+    }
+
+    // Upgrade 9: Validate source enum if provided
+    const VALID_SOURCES = ['phone', 'radio', 'walk_in', 'online', 'alarm', 'officer_initiated', 'panic', 'dispatch', 'email', 'app', 'other'];
+    if (source && !VALID_SOURCES.includes(source)) {
+      res.status(400).json({ error: `Invalid source. Must be one of: ${VALID_SOURCES.join(', ')}`, code: 'INVALID_SOURCE' });
       return;
     }
 
@@ -327,6 +412,37 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       }
     }
 
+    // Upgrade 10: Calculate priority score for queue sorting
+    const priorityScore = calculatePriorityScore(normalizedPriority, normalizedIncidentType, {
+      weapons_involved, domestic_violence, injuries_reported,
+      felony_in_progress, officer_safety_caution, mental_health_crisis,
+    });
+
+    // Upgrade 11: Duplicate call detection — warn if open call at same address within last hour
+    let duplicateWarning: { call_number: string; incident_type: string; created_at: string } | null = null;
+    try {
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const normalizedAddr = normalizeAddress(String(location_address));
+      const nearbyCall = db.prepare(`
+        SELECT call_number, incident_type, created_at, location_address
+        FROM calls_for_service
+        WHERE status NOT IN ('cleared','closed','cancelled','archived')
+          AND created_at >= ?
+        ORDER BY created_at DESC
+        LIMIT 50
+      `).all(oneHourAgo) as any[];
+      // Check if any nearby call matches normalized address
+      for (const nc of nearbyCall) {
+        if (normalizeAddress(nc.location_address || '') === normalizedAddr) {
+          duplicateWarning = { call_number: nc.call_number, incident_type: nc.incident_type, created_at: nc.created_at };
+          break;
+        }
+      }
+    } catch { /* non-fatal */ }
+
+    // Upgrade 12: Estimated response time based on priority
+    const estResponseMinutes = estimatedResponseMinutes(normalizedPriority);
+
     // Transaction: insert call + activity log atomically
     const createCallTx = db.transaction(() => {
       // Use named parameters to guarantee column/value alignment
@@ -409,6 +525,8 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         process_served_address: process_served_address || null,
         contract_id: contract_id || null,
         client_id: resolvedClientId,
+        priority_score: priorityScore,
+        received_at: customCreatedAt || localNow(),
         created_at: customCreatedAt || localNow(),
         dispatched_at: dispatched_at || null,
         enroute_at: enroute_at || null,
@@ -480,7 +598,16 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       );
     }
 
-    res.status(201).json(call);
+    // Upgrade 13: Include duplicate warning and estimated response time in response
+    const response: any = { ...call, estimated_response_minutes: estResponseMinutes };
+    if (duplicateWarning) {
+      response._duplicate_warning = {
+        message: `Possible duplicate: active call ${duplicateWarning.call_number} (${duplicateWarning.incident_type}) at same address created at ${duplicateWarning.created_at}`,
+        existing_call: duplicateWarning,
+      };
+    }
+
+    res.status(201).json(response);
   } catch (error: any) {
     console.error('Create call error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to create call', code: 'CREATE_CALL_ERROR' });
@@ -755,6 +882,35 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
       }
     }
 
+    // Upgrade 14: Validate status transitions — prevent illegal backward transitions
+    if (status !== undefined) {
+      const VALID_CALL_STATUSES = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived', 'on_hold'];
+      if (!VALID_CALL_STATUSES.includes(status)) {
+        res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_CALL_STATUSES.join(', ')}`, code: 'INVALID_STATUS' });
+        return;
+      }
+      // Prevent backward transitions from terminal states via direct PUT
+      const TERMINAL_STATUSES = ['archived'];
+      if (TERMINAL_STATUSES.includes(call.status) && status !== 'closed') {
+        res.status(400).json({
+          error: `Cannot change status from '${call.status}' to '${status}' via update. Use the unarchive endpoint instead.`,
+          code: 'INVALID_STATUS_TRANSITION',
+        });
+        return;
+      }
+    }
+
+    // Upgrade 15: Track status_changed_at on every status change
+    if (status !== undefined && status !== call.status) {
+      // Will be added to updates below
+    }
+
+    // Upgrade 16: Validate location_address if being updated
+    if (location_address !== undefined && String(location_address).trim().length < 3) {
+      res.status(400).json({ error: 'location_address must be at least 3 characters', code: 'ADDRESS_TOO_SHORT' });
+      return;
+    }
+
     // Build dynamic SET clause so we only update provided fields
     const updates: string[] = [];
     const params: any[] = [];
@@ -864,6 +1020,28 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     addField('process_service_result', process_service_result);
     addField('client_id', resolvedUpdateClientId);
 
+    // Upgrade 17: Track status_changed_at on every status change
+    if (status !== undefined && status !== call.status) {
+      updates.push('status_changed_at = ?');
+      params.push(localNow());
+    }
+
+    // Upgrade 18: Recalculate priority_score when priority or flags change
+    const effectivePriority = (priority !== undefined ? String(priority).toUpperCase() : call.priority) || 'P3';
+    const effectiveType = (incident_type !== undefined ? incident_type : call.incident_type) || '';
+    const updatedScore = calculatePriorityScore(effectivePriority, effectiveType, {
+      weapons_involved: weapons_involved !== undefined ? weapons_involved : call.weapons_involved,
+      domestic_violence: domestic_violence !== undefined ? domestic_violence : call.domestic_violence,
+      injuries_reported: injuries_reported !== undefined ? injuries_reported : call.injuries_reported,
+      felony_in_progress: felony_in_progress !== undefined ? felony_in_progress : call.felony_in_progress,
+      officer_safety_caution: officer_safety_caution !== undefined ? officer_safety_caution : call.officer_safety_caution,
+      mental_health_crisis: mental_health_crisis !== undefined ? mental_health_crisis : call.mental_health_crisis,
+    });
+    if (updatedScore !== (call.priority_score || 0)) {
+      updates.push('priority_score = ?');
+      params.push(updatedScore);
+    }
+
     if (updates.length === 0) {
       res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
       return;
@@ -874,11 +1052,12 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     params.push(req.params.id);
     db.prepare(`UPDATE calls_for_service SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
-    // Activity log for call update
+    // Upgrade 19: Detailed activity log showing what changed
+    const changedFields = updates.filter(u => !u.includes('updated_at') && !u.includes('priority_score') && !u.includes('status_changed_at')).map(u => u.split(' = ')[0]);
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'call_updated', 'call', ?, ?, ?)
-    `).run(req.user!.userId, req.params.id, `Updated call ${call.call_number}: ${updates.map(u => u.split(' = ')[0]).join(', ')}`, req.ip || 'unknown');
+    `).run(req.user!.userId, req.params.id, `Updated call ${call.call_number}: ${changedFields.join(', ')} (${changedFields.length} field(s))`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
 
@@ -1151,6 +1330,422 @@ router.put('/shift-handoff', requireRole('admin', 'manager', 'supervisor', 'disp
   } catch (error: any) {
     console.error('Save shift handoff error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to save shift handoff', code: 'SAVE_SHIFT_HANDOFF_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Upgrade 20: POST /api/dispatch/calls/bulk-status — Bulk status update
+// ═══════════════════════════════════════════════════════════
+router.post('/calls/bulk-status', requireRole('admin', 'manager', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { call_ids, status, disposition } = req.body;
+
+    if (!call_ids || !Array.isArray(call_ids) || call_ids.length === 0) {
+      res.status(400).json({ error: 'call_ids array is required', code: 'CALLIDS_REQUIRED' });
+      return;
+    }
+    if (call_ids.length > 200) {
+      res.status(400).json({ error: 'Cannot update more than 200 calls at once', code: 'TOO_MANY_CALLS' });
+      return;
+    }
+    if (!status) {
+      res.status(400).json({ error: 'status is required', code: 'STATUS_REQUIRED' });
+      return;
+    }
+
+    const validStatuses = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled'];
+    if (!validStatuses.includes(status)) {
+      res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}`, code: 'INVALID_STATUS' });
+      return;
+    }
+
+    // Upgrade 21: Disposition required for clearing/closing in bulk
+    if (['cleared', 'closed'].includes(status) && !disposition) {
+      res.status(400).json({ error: 'Disposition is required when clearing or closing calls', code: 'DISPOSITION_REQUIRED' });
+      return;
+    }
+
+    const now = localNow();
+    const timestampField: Record<string, string> = {
+      dispatched: 'dispatched_at', enroute: 'enroute_at', onscene: 'onscene_at',
+      cleared: 'cleared_at', closed: 'closed_at',
+    };
+    const tsField = timestampField[status];
+
+    let updatedCount = 0;
+    const bulkTx = db.transaction(() => {
+      for (const callId of call_ids) {
+        const id = parseInt(String(callId), 10);
+        if (isNaN(id) || id < 1) continue;
+
+        const call = db.prepare('SELECT id, call_number, status FROM calls_for_service WHERE id = ?').get(id) as any;
+        if (!call || call.status === 'archived') continue;
+
+        let updateSql = `UPDATE calls_for_service SET status = ?, status_changed_at = ?, updated_at = ?`;
+        const updateParams: any[] = [status, now, now];
+
+        if (tsField) {
+          updateSql += `, ${tsField} = COALESCE(${tsField}, ?)`;
+          updateParams.push(now);
+        }
+        if (disposition) {
+          updateSql += `, disposition = ?`;
+          updateParams.push(disposition);
+        }
+        updateSql += ` WHERE id = ?`;
+        updateParams.push(id);
+
+        db.prepare(updateSql).run(...updateParams);
+
+        // Upgrade 22: Free units when bulk-clearing/closing
+        if (['cleared', 'closed', 'cancelled'].includes(status)) {
+          const fullCall = db.prepare('SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?').get(id) as any;
+          let unitIds: number[] = [];
+          try { unitIds = JSON.parse(fullCall?.assigned_unit_ids || '[]'); } catch { /* ignore */ }
+          for (const unitId of unitIds) {
+            db.prepare(`UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ? AND current_call_id = ?`)
+              .run(now, unitId, id);
+          }
+        }
+
+        updatedCount++;
+      }
+
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'bulk_status_update', 'call', 0, ?, ?)`).run(
+        req.user!.userId, `Bulk status update: ${updatedCount} call(s) set to ${status}`, req.ip || 'unknown');
+    });
+    bulkTx();
+
+    broadcastDispatchUpdate({ action: 'calls_bulk_updated', count: updatedCount, status });
+    res.json({ updated_count: updatedCount, status });
+  } catch (error: any) {
+    console.error('Bulk status update error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to bulk update', code: 'BULK_STATUS_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Upgrade 23: GET /api/dispatch/calls/search — Full-text search
+// ═══════════════════════════════════════════════════════════
+router.get('/calls/search', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { q, limit: limitStr = '25' } = req.query;
+
+    if (!q || typeof q !== 'string' || q.trim().length < 2) {
+      res.status(400).json({ error: 'Search query must be at least 2 characters', code: 'QUERY_TOO_SHORT' });
+      return;
+    }
+
+    const searchLimit = Math.min(100, Math.max(1, parseInt(limitStr as string, 10) || 25));
+    const term = `%${escapeLike(String(q).trim())}%`;
+
+    // Upgrade 24: Search across call_number, location_address, narrative/notes, caller info, description, disposition
+    const results = db.prepare(`
+      SELECT c.id, c.call_number, c.incident_type, c.priority, c.status, c.location_address,
+        c.caller_name, c.description, c.disposition, c.created_at, c.notes,
+        c.priority_score
+      FROM calls_for_service c
+      WHERE c.call_number LIKE ? ESCAPE '\\'
+         OR c.location_address LIKE ? ESCAPE '\\'
+         OR c.description LIKE ? ESCAPE '\\'
+         OR c.notes LIKE ? ESCAPE '\\'
+         OR c.caller_name LIKE ? ESCAPE '\\'
+         OR c.caller_phone LIKE ? ESCAPE '\\'
+         OR c.disposition LIKE ? ESCAPE '\\'
+         OR c.case_number LIKE ? ESCAPE '\\'
+         OR c.subject_description LIKE ? ESCAPE '\\'
+         OR c.vehicle_description LIKE ? ESCAPE '\\'
+      ORDER BY c.created_at DESC
+      LIMIT ?
+    `).all(term, term, term, term, term, term, term, term, term, term, searchLimit) as any[];
+
+    // Upgrade 25: Highlight which field matched
+    const enriched = results.map(r => {
+      const matchedFields: string[] = [];
+      const qLower = String(q).trim().toLowerCase();
+      if (r.call_number && r.call_number.toLowerCase().includes(qLower)) matchedFields.push('call_number');
+      if (r.location_address && r.location_address.toLowerCase().includes(qLower)) matchedFields.push('location_address');
+      if (r.description && r.description.toLowerCase().includes(qLower)) matchedFields.push('description');
+      if (r.notes && r.notes.toLowerCase().includes(qLower)) matchedFields.push('notes');
+      if (r.caller_name && r.caller_name.toLowerCase().includes(qLower)) matchedFields.push('caller_name');
+      if (r.disposition && r.disposition.toLowerCase().includes(qLower)) matchedFields.push('disposition');
+      return { ...r, _matched_fields: matchedFields };
+    });
+
+    res.json({ results: enriched, count: enriched.length, query: q });
+  } catch (error: any) {
+    console.error('Call search error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to search calls', code: 'SEARCH_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Upgrade 26: GET /api/dispatch/calls/stats/response-times — Response time analytics
+// ═══════════════════════════════════════════════════════════
+router.get('/calls/stats/response-times', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+    // Upgrade 27: Average response time by priority
+    const byPriority = db.prepare(`
+      SELECT priority,
+        COUNT(*) as call_count,
+        ROUND(AVG((julianday(onscene_at) - julianday(created_at)) * 24 * 60), 1) as avg_response_min,
+        ROUND(MIN((julianday(onscene_at) - julianday(created_at)) * 24 * 60), 1) as min_response_min,
+        ROUND(MAX((julianday(onscene_at) - julianday(created_at)) * 24 * 60), 1) as max_response_min
+      FROM calls_for_service
+      WHERE onscene_at IS NOT NULL AND created_at >= ?
+        AND (julianday(onscene_at) - julianday(created_at)) * 24 * 60 > 0
+        AND (julianday(onscene_at) - julianday(created_at)) * 24 * 60 < 720
+      GROUP BY priority
+      ORDER BY priority
+    `).all(cutoff);
+
+    // Upgrade 28: Average response time by incident type (top 15)
+    const byType = db.prepare(`
+      SELECT incident_type,
+        COUNT(*) as call_count,
+        ROUND(AVG((julianday(onscene_at) - julianday(created_at)) * 24 * 60), 1) as avg_response_min
+      FROM calls_for_service
+      WHERE onscene_at IS NOT NULL AND created_at >= ?
+        AND (julianday(onscene_at) - julianday(created_at)) * 24 * 60 > 0
+        AND (julianday(onscene_at) - julianday(created_at)) * 24 * 60 < 720
+      GROUP BY incident_type
+      ORDER BY call_count DESC
+      LIMIT 15
+    `).all(cutoff);
+
+    // Upgrade 29: Overall average
+    const overall = db.prepare(`
+      SELECT
+        COUNT(*) as total_calls,
+        ROUND(AVG((julianday(onscene_at) - julianday(created_at)) * 24 * 60), 1) as avg_response_min,
+        ROUND(AVG((julianday(dispatched_at) - julianday(created_at)) * 24 * 60), 1) as avg_dispatch_delay_min,
+        ROUND(AVG((julianday(onscene_at) - julianday(dispatched_at)) * 24 * 60), 1) as avg_travel_time_min
+      FROM calls_for_service
+      WHERE onscene_at IS NOT NULL AND created_at >= ?
+        AND (julianday(onscene_at) - julianday(created_at)) * 24 * 60 > 0
+        AND (julianday(onscene_at) - julianday(created_at)) * 24 * 60 < 720
+    `).get(cutoff) as any;
+
+    // Upgrade 30: Response time trend by day
+    const dailyTrend = db.prepare(`
+      SELECT DATE(created_at) as date,
+        COUNT(*) as call_count,
+        ROUND(AVG((julianday(onscene_at) - julianday(created_at)) * 24 * 60), 1) as avg_response_min
+      FROM calls_for_service
+      WHERE onscene_at IS NOT NULL AND created_at >= ?
+        AND (julianday(onscene_at) - julianday(created_at)) * 24 * 60 > 0
+        AND (julianday(onscene_at) - julianday(created_at)) * 24 * 60 < 720
+      GROUP BY DATE(created_at)
+      ORDER BY date
+    `).all(cutoff);
+
+    res.json({
+      period_days: days,
+      overall: overall || {},
+      by_priority: byPriority,
+      by_type: byType,
+      daily_trend: dailyTrend,
+    });
+  } catch (error: any) {
+    console.error('Response time stats error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to get response time stats', code: 'RESPONSE_TIME_STATS_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Upgrade 31: GET /api/dispatch/calls/stats/by-hour — Calls by hour distribution
+// ═══════════════════════════════════════════════════════════
+router.get('/calls/stats/by-hour', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+    const byHour = db.prepare(`
+      SELECT CAST(strftime('%H', created_at) AS INTEGER) as hour,
+        COUNT(*) as call_count,
+        SUM(CASE WHEN priority = 'P1' THEN 1 ELSE 0 END) as p1_count,
+        SUM(CASE WHEN priority = 'P2' THEN 1 ELSE 0 END) as p2_count
+      FROM calls_for_service
+      WHERE created_at >= ?
+      GROUP BY hour
+      ORDER BY hour
+    `).all(cutoff);
+
+    // Upgrade 32: Calls by day of week
+    const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const byDay = db.prepare(`
+      SELECT CAST(strftime('%w', created_at) AS INTEGER) as dow,
+        COUNT(*) as call_count
+      FROM calls_for_service
+      WHERE created_at >= ?
+      GROUP BY dow
+      ORDER BY dow
+    `).all(cutoff) as any[];
+
+    const byDayNamed = byDay.map(d => ({ day: DAY_NAMES[d.dow], dow: d.dow, call_count: d.call_count }));
+
+    // Upgrade 33: Calls by type distribution
+    const byType = db.prepare(`
+      SELECT incident_type, COUNT(*) as call_count
+      FROM calls_for_service
+      WHERE created_at >= ? AND incident_type IS NOT NULL AND incident_type != ''
+      GROUP BY incident_type
+      ORDER BY call_count DESC
+      LIMIT 25
+    `).all(cutoff);
+
+    // Upgrade 34: Calls by source
+    const bySource = db.prepare(`
+      SELECT source, COUNT(*) as call_count
+      FROM calls_for_service
+      WHERE created_at >= ? AND source IS NOT NULL AND source != ''
+      GROUP BY source
+      ORDER BY call_count DESC
+    `).all(cutoff);
+
+    res.json({
+      period_days: days,
+      by_hour: byHour,
+      by_day: byDayNamed,
+      by_type: byType,
+      by_source: bySource,
+    });
+  } catch (error: any) {
+    console.error('Calls by hour stats error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to get hourly stats', code: 'HOURLY_STATS_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Upgrade 35: GET /api/dispatch/calls/stats/summary — Quick summary stats
+// ═══════════════════════════════════════════════════════════
+router.get('/calls/stats/summary', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+
+    // Upgrade 36: Active calls count by status
+    const activeCounts = db.prepare(`
+      SELECT status, COUNT(*) as count
+      FROM calls_for_service
+      WHERE status IN ('pending', 'dispatched', 'enroute', 'onscene', 'on_hold')
+      GROUP BY status
+    `).all();
+
+    // Upgrade 37: Today's call volume
+    const todayVolume = db.prepare(`
+      SELECT COUNT(*) as total,
+        SUM(CASE WHEN priority = 'P1' THEN 1 ELSE 0 END) as p1,
+        SUM(CASE WHEN priority = 'P2' THEN 1 ELSE 0 END) as p2,
+        SUM(CASE WHEN status IN ('cleared', 'closed') THEN 1 ELSE 0 END) as resolved,
+        SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled
+      FROM calls_for_service
+      WHERE DATE(created_at) = DATE('now', 'localtime')
+    `).get() as any;
+
+    // Upgrade 38: Average time calls stay pending (queue wait time)
+    const avgQueueWait = db.prepare(`
+      SELECT ROUND(AVG((julianday(dispatched_at) - julianday(created_at)) * 24 * 60), 1) as avg_wait_min
+      FROM calls_for_service
+      WHERE dispatched_at IS NOT NULL AND DATE(created_at) = DATE('now', 'localtime')
+        AND (julianday(dispatched_at) - julianday(created_at)) * 24 * 60 > 0
+        AND (julianday(dispatched_at) - julianday(created_at)) * 24 * 60 < 720
+    `).get() as any;
+
+    // Upgrade 39: Oldest pending call age in minutes
+    const oldestPending = db.prepare(`
+      SELECT call_number, created_at,
+        ROUND((julianday('now', 'localtime') - julianday(created_at)) * 24 * 60, 0) as age_minutes
+      FROM calls_for_service
+      WHERE status = 'pending'
+      ORDER BY created_at ASC
+      LIMIT 1
+    `).get() as any;
+
+    // Upgrade 40: Available unit count
+    const availableUnits = db.prepare(`
+      SELECT COUNT(*) as count FROM units WHERE status = 'available'
+    `).get() as any;
+
+    res.json({
+      active_by_status: activeCounts,
+      today: todayVolume || {},
+      avg_queue_wait_min: avgQueueWait?.avg_wait_min || null,
+      oldest_pending: oldestPending || null,
+      available_units: availableUnits?.count || 0,
+      generated_at: now,
+    });
+  } catch (error: any) {
+    console.error('Call summary stats error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to get summary stats', code: 'SUMMARY_STATS_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Upgrade 41: GET /api/dispatch/calls/:id/notes-analysis — Note/narrative analysis
+// ═══════════════════════════════════════════════════════════
+router.get('/calls/:id/notes-analysis', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT id, notes, description, narrative FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) {
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
+      return;
+    }
+
+    // Upgrade 42: Word count and note count
+    let noteCount = 0;
+    let totalWordCount = 0;
+    let latestNote: any = null;
+    let earliestNote: any = null;
+
+    if (call.notes) {
+      try {
+        const parsed = JSON.parse(call.notes);
+        if (Array.isArray(parsed)) {
+          noteCount = parsed.length;
+          for (const n of parsed) {
+            const text = String(n.text || '');
+            totalWordCount += text.split(/\s+/).filter(Boolean).length;
+          }
+          if (parsed.length > 0) {
+            latestNote = parsed[parsed.length - 1];
+            earliestNote = parsed[0];
+          }
+        }
+      } catch { /* not JSON array */ }
+    }
+
+    // Upgrade 43: Description and narrative word counts
+    const descriptionWordCount = (call.description || '').split(/\s+/).filter(Boolean).length;
+    const narrativeWordCount = (call.narrative || '').split(/\s+/).filter(Boolean).length;
+
+    // Upgrade 44: Timeline entry count
+    const timelineCount = db.prepare(
+      "SELECT COUNT(*) as count FROM activity_log WHERE entity_type = 'call' AND entity_id = ?"
+    ).get(call.id) as any;
+
+    res.json({
+      note_count: noteCount,
+      notes_word_count: totalWordCount,
+      description_word_count: descriptionWordCount,
+      narrative_word_count: narrativeWordCount,
+      total_word_count: totalWordCount + descriptionWordCount + narrativeWordCount,
+      timeline_entry_count: timelineCount?.count || 0,
+      latest_note: latestNote,
+      earliest_note: earliestNote,
+    });
+  } catch (error: any) {
+    console.error('Notes analysis error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to analyze notes', code: 'NOTES_ANALYSIS_ERROR' });
   }
 });
 

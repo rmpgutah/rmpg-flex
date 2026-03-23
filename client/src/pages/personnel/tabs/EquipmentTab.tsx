@@ -4,8 +4,9 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Package, Plus, Edit3, Trash2, AlertTriangle, Box,
+  Package, Plus, Edit3, Trash2, AlertTriangle, Box, ClipboardList, ArrowRightLeft,
 } from 'lucide-react';
+import { apiFetch } from '../../../hooks/useApi';
 import type { OfficerEquipment, EquipmentType } from '../../../types';
 import { EQUIPMENT_STATUS_COLORS, EQUIPMENT_CONDITION_COLORS } from '../utils/personnelConstants';
 
@@ -37,6 +38,12 @@ interface Props {
 
 export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipment, onDeleteEquipment }: Props) {
   const [typeFilter, setTypeFilter] = useState<EquipmentType | 'all'>('all');
+  const [checkoutLog, setCheckoutLog] = useState<any[]>([]);
+  const [showCheckoutLog, setShowCheckoutLog] = useState(false);
+
+  useEffect(() => {
+    apiFetch('/api/personnel/equipment-log?days=30').then(r => r.ok ? r.json() : []).then(d => Array.isArray(d) ? setCheckoutLog(d) : setCheckoutLog([]));
+  }, []);
 
   const stats = useMemo(() => {
     const issued = equipment.filter((e) => e.status === 'issued').length;
@@ -143,6 +150,29 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
             {t.label}
           </button>
         ))}
+      </div>
+
+      {/* Checkout/Return Log */}
+      <div className="panel-beveled p-3 bg-surface-base">
+        <button type="button" onClick={() => setShowCheckoutLog(!showCheckoutLog)}
+          className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider flex items-center gap-1.5 w-full">
+          <ArrowRightLeft className="w-3 h-3" /> Equipment Checkout Log ({checkoutLog.length})
+          <span className="ml-auto text-[8px] text-rmpg-500">{showCheckoutLog ? 'Hide' : 'Show'}</span>
+        </button>
+        {showCheckoutLog && checkoutLog.length > 0 && (
+          <div className="mt-2 space-y-0.5 max-h-[200px] overflow-y-auto">
+            {checkoutLog.slice(0, 20).map((log: any) => (
+              <div key={log.id} className="flex items-center justify-between px-2 py-1 bg-surface-sunken rounded text-[9px]">
+                <span className="text-rmpg-300">{log.officer_name || '-'}</span>
+                <span className={`font-bold ${log.action === 'checkout' ? 'text-green-400' : log.action === 'return' ? 'text-blue-400' : 'text-amber-400'}`}>
+                  {log.action?.toUpperCase()}
+                </span>
+                <span className="text-rmpg-200">{log.equipment_name}</span>
+                <span className="text-rmpg-500 font-mono">{log.created_at?.slice(0, 10)}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Equipment Table */}

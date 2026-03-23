@@ -245,4 +245,270 @@ router.delete('/:id', (req: Request, res: Response) => {
   }
 });
 
+// ── Upgrade 9: Notification categories ──────────────────────────
+router.get('/categories', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const categories = db.prepare(`
+      SELECT type as category, COUNT(*) as total,
+        SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) as unread
+      FROM notifications
+      WHERE user_id = ?
+      GROUP BY type
+      ORDER BY unread DESC, total DESC
+    `).all(req.user!.userId);
+
+    res.json({ data: categories });
+  } catch (error: any) {
+    console.error('Notification categories error:', error);
+    res.status(500).json({ error: 'Failed to get categories', code: 'GET_CATEGORIES_ERROR' });
+  }
+});
+
+// ── Upgrade 10: Snooze / remind later ───────────────────────────
+router.put('/:id/snooze', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid notification ID', code: 'INVALID_NOTIFICATION_ID' }); return; }
+
+    const { snooze_until } = req.body;
+    if (!snooze_until) {
+      res.status(400).json({ error: 'snooze_until is required (ISO timestamp)', code: 'SNOOZE_UNTIL_REQUIRED' });
+      return;
+    }
+
+    // Verify ownership
+    const notification = db.prepare(
+      'SELECT * FROM notifications WHERE id = ? AND user_id = ?'
+    ).get(id, req.user!.userId) as any;
+    if (!notification) {
+      res.status(404).json({ error: 'Notification not found', code: 'NOTIFICATION_NOT_FOUND' });
+      return;
+    }
+
+    db.prepare('UPDATE notifications SET snoozed_until = ?, is_read = 1 WHERE id = ?')
+      .run(snooze_until, id);
+
+    res.json({ message: 'Notification snoozed', snoozed_until: snooze_until });
+  } catch (error: any) {
+    console.error('Snooze notification error:', error);
+    res.status(500).json({ error: 'Failed to snooze notification', code: 'SNOOZE_NOTIFICATION_ERROR' });
+  }
+});
+
+// ── Upgrade 11: Get snoozed notifications that are now due ──────
+router.get('/snoozed-due', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+
+    const due = db.prepare(`
+      SELECT * FROM notifications
+      WHERE user_id = ? AND snoozed_until IS NOT NULL AND snoozed_until <= ?
+      ORDER BY snoozed_until ASC
+    `).all(req.user!.userId, now);
+
+    // Clear snooze for due notifications and mark as unread
+    if ((due as any[]).length > 0) {
+      const ids = (due as any[]).map((n: any) => n.id);
+      db.prepare(`
+        UPDATE notifications SET snoozed_until = NULL, is_read = 0
+        WHERE id IN (${ids.map(() => '?').join(',')})
+      `).run(...ids);
+    }
+
+    res.json({ data: due, count: (due as any[]).length });
+  } catch (error: any) {
+    console.error('Snoozed due error:', error);
+    res.status(500).json({ error: 'Failed to get snoozed notifications', code: 'GET_SNOOZED_ERROR' });
+  }
+});
+
+// ── Upgrade 12: Notification preferences per user ───────────────
+router.get('/preferences', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const prefs = db.prepare(
+      "SELECT config_value FROM system_config WHERE config_key = ? AND category = 'notification_preferences'"
+    ).get(`notif_prefs_${req.user!.userId}`) as any;
+
+    const defaults = {
+      dispatch_updates: true,
+      incident_updates: true,
+      bolo_alerts: true,
+      system_alerts: true,
+      message_notifications: true,
+      shift_reminders: true,
+      report_notifications: true,
+      email_digest: false,
+      sound_enabled: true,
+      desktop_notifications: true,
+      quiet_hours_start: null as string | null,
+      quiet_hours_end: null as string | null,
+    };
+
+    if (prefs?.config_value) {
+      try {
+        const saved = JSON.parse(prefs.config_value);
+        res.json({ ...defaults, ...saved });
+      } catch {
+        res.json(defaults);
+      }
+    } else {
+      res.json(defaults);
+    }
+  } catch (error: any) {
+    console.error('Get notification preferences error:', error);
+    res.status(500).json({ error: 'Failed to get preferences', code: 'GET_PREFERENCES_ERROR' });
+  }
+});
+
+router.put('/preferences', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const key = `notif_prefs_${req.user!.userId}`;
+    const value = JSON.stringify(req.body);
+
+    // Upsert
+    db.prepare(
+      "DELETE FROM system_config WHERE config_key = ? AND category = 'notification_preferences'"
+    ).run(key);
+    db.prepare(`
+      INSERT INTO system_config (config_key, config_value, category, sort_order, created_at, updated_at)
+      VALUES (?, ?, 'notification_preferences', 0, ?, ?)
+    `).run(key, value, now, now);
+
+    res.json({ message: 'Preferences saved', preferences: req.body });
+  } catch (error: any) {
+    console.error('Save notification preferences error:', error);
+    res.status(500).json({ error: 'Failed to save preferences', code: 'SAVE_PREFERENCES_ERROR' });
+  }
+});
+
+// ── Upgrade 13: Critical alert escalation ───────────────────────
+router.post('/escalate', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { notification_id, escalate_to_roles } = req.body;
+
+    if (!notification_id) {
+      res.status(400).json({ error: 'notification_id required', code: 'NOTIFICATION_ID_REQUIRED' });
+      return;
+    }
+
+    const notification = db.prepare('SELECT * FROM notifications WHERE id = ?').get(notification_id) as any;
+    if (!notification) {
+      res.status(404).json({ error: 'Notification not found', code: 'NOTIFICATION_NOT_FOUND' });
+      return;
+    }
+
+    const roles = escalate_to_roles || ['admin', 'manager', 'supervisor'];
+    const placeholders = roles.map(() => '?').join(',');
+    const users = db.prepare(
+      `SELECT id FROM users WHERE role IN (${placeholders}) AND status = 'active' AND id != ?`
+    ).all(...roles, req.user!.userId) as { id: number }[];
+
+    const now = localNow();
+    let created = 0;
+    for (const user of users) {
+      createNotification(
+        user.id,
+        'escalation',
+        `ESCALATED: ${notification.title}`,
+        `Escalated by ${req.user!.fullName}: ${notification.body || notification.title}`,
+        notification.entity_type,
+        notification.entity_id,
+        'critical'
+      );
+      created++;
+    }
+
+    res.json({ message: 'Notification escalated', recipients: created });
+  } catch (error: any) {
+    console.error('Escalate notification error:', error);
+    res.status(500).json({ error: 'Failed to escalate notification', code: 'ESCALATE_NOTIFICATION_ERROR' });
+  }
+});
+
+// ── Upgrade 14: Notification statistics ─────────────────────────
+router.get('/stats', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    const byType = db.prepare(`
+      SELECT type, COUNT(*) as total,
+        SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) as unread
+      FROM notifications WHERE user_id = ?
+      GROUP BY type ORDER BY total DESC
+    `).all(req.user!.userId);
+
+    const byPriority = db.prepare(`
+      SELECT priority, COUNT(*) as total,
+        SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) as unread
+      FROM notifications WHERE user_id = ?
+      GROUP BY priority
+    `).all(req.user!.userId);
+
+    const recent7Days = db.prepare(`
+      SELECT DATE(created_at) as date, COUNT(*) as count
+      FROM notifications WHERE user_id = ? AND created_at >= datetime('now', '-7 days')
+      GROUP BY date ORDER BY date
+    `).all(req.user!.userId);
+
+    const totalUnread = db.prepare(`
+      SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 0
+    `).get(req.user!.userId) as any;
+
+    const totalSnoozed = db.prepare(`
+      SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND snoozed_until IS NOT NULL AND snoozed_until > ?
+    `).get(req.user!.userId, localNow()) as any;
+
+    res.json({
+      byType,
+      byPriority,
+      recent7Days,
+      totalUnread: totalUnread?.count || 0,
+      totalSnoozed: totalSnoozed?.count || 0,
+    });
+  } catch (error: any) {
+    console.error('Notification stats error:', error);
+    res.status(500).json({ error: 'Failed to get notification stats', code: 'NOTIFICATION_STATS_ERROR' });
+  }
+});
+
+// ── Upgrade 15: Bulk delete old notifications ───────────────────
+router.post('/cleanup', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { days_old = 30 } = req.body;
+
+    const result = db.prepare(`
+      DELETE FROM notifications
+      WHERE user_id = ? AND is_read = 1 AND created_at <= datetime('now', '-' || ? || ' days')
+    `).run(req.user!.userId, days_old);
+
+    res.json({ deleted: result.changes });
+  } catch (error: any) {
+    console.error('Cleanup notifications error:', error);
+    res.status(500).json({ error: 'Failed to cleanup notifications', code: 'CLEANUP_NOTIFICATIONS_ERROR' });
+  }
+});
+
+// ── Upgrade 16: Delete all read notifications ───────────────────
+router.post('/delete-read', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const result = db.prepare(`
+      DELETE FROM notifications WHERE user_id = ? AND is_read = 1
+    `).run(req.user!.userId);
+
+    res.json({ deleted: result.changes });
+  } catch (error: any) {
+    console.error('Delete read error:', error);
+    res.status(500).json({ error: 'Failed to delete read notifications', code: 'DELETE_READ_ERROR' });
+  }
+});
+
 export default router;

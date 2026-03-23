@@ -1595,6 +1595,357 @@ router.put('/evidence/:id/approve-release', (req: Request, res: Response) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// EVIDENCE UPGRADE: Chain of Custody Gap Validation
+// ════════════════════════════════════════════════════════════
+
+router.get('/evidence/:id/custody-validation', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
+    if (!evidence) return res.status(404).json({ error: 'Evidence not found', code: 'EVIDENCE_NOT_FOUND' });
+
+    let chain: any[] = [];
+    try { chain = JSON.parse(evidence.chain_of_custody || '[]'); } catch { /* ignore */ }
+
+    const gaps: { index: number; gap_hours: number; from_action: string; to_action: string; from_time: string; to_time: string }[] = [];
+    const warnings: string[] = [];
+
+    for (let i = 1; i < chain.length; i++) {
+      const prev = chain[i - 1];
+      const curr = chain[i];
+      if (prev.timestamp && curr.timestamp) {
+        const gapMs = new Date(curr.timestamp).getTime() - new Date(prev.timestamp).getTime();
+        const gapHours = gapMs / (1000 * 60 * 60);
+        if (gapHours > 24) {
+          gaps.push({
+            index: i,
+            gap_hours: Math.round(gapHours * 10) / 10,
+            from_action: prev.action || 'unknown',
+            to_action: curr.action || 'unknown',
+            from_time: prev.timestamp,
+            to_time: curr.timestamp,
+          });
+        }
+      }
+    }
+
+    // Check for missing fields
+    for (let i = 0; i < chain.length; i++) {
+      const entry = chain[i];
+      if (!entry.user_id && !entry.by) warnings.push(`Entry ${i + 1}: Missing responsible party`);
+      if (!entry.timestamp && !entry.at) warnings.push(`Entry ${i + 1}: Missing timestamp`);
+      if (!entry.action) warnings.push(`Entry ${i + 1}: Missing action type`);
+    }
+
+    // Check for check-out without check-in
+    const checkOuts = chain.filter((e: any) => e.action === 'check_out');
+    const checkIns = chain.filter((e: any) => e.action === 'check_in');
+    if (checkOuts.length > checkIns.length) {
+      warnings.push('Evidence is currently checked out — not returned to storage');
+    }
+
+    const isValid = gaps.length === 0 && warnings.length === 0;
+    res.json({
+      data: {
+        evidence_id: evidence.id,
+        chain_length: chain.length,
+        is_valid: isValid,
+        gaps,
+        warnings,
+        current_status: evidence.status,
+        current_location: evidence.storage_location,
+      },
+    });
+  } catch (error: any) {
+    console.error('Evidence custody validation error:', error);
+    res.status(500).json({ error: 'Failed to validate custody chain', code: 'CUSTODY_VALIDATION_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// EVIDENCE UPGRADE: Location Tracking (Room/Shelf/Bin)
+// ════════════════════════════════════════════════════════════
+
+router.put('/evidence/:id/location', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
+    if (!evidence) return res.status(404).json({ error: 'Evidence not found', code: 'EVIDENCE_NOT_FOUND' });
+
+    const { room, shelf, bin, storage_location, temp_required, notes } = req.body;
+    if (!storage_location && !room) return res.status(400).json({ error: 'storage_location or room required', code: 'LOCATION_REQUIRED' });
+
+    const now = localNow();
+    const locationDetail = JSON.stringify({
+      room: room || null,
+      shelf: shelf || null,
+      bin: bin || null,
+      temp_required: temp_required || null,
+      moved_by: req.user!.userId,
+      moved_at: now,
+      notes: notes || null,
+    });
+
+    const fullLocation = storage_location || [room, shelf, bin].filter(Boolean).join(' / ');
+
+    // Update chain of custody with transfer
+    let chain: any[] = [];
+    try { chain = JSON.parse(evidence.chain_of_custody || '[]'); } catch { /* ignore */ }
+    const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
+    chain.push({
+      action: 'location_update',
+      timestamp: now,
+      user_id: req.user!.userId,
+      user_name: user?.full_name || '',
+      from_location: evidence.storage_location || null,
+      to_location: fullLocation,
+      notes: notes || null,
+    });
+
+    db.prepare(`UPDATE evidence SET storage_location = ?, location_detail = ?, chain_of_custody = ?, updated_at = ? WHERE id = ?`)
+      .run(fullLocation, locationDetail, JSON.stringify(chain), now, evidence.id);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'evidence_location_update', 'evidence', ?, ?, ?)`).run(
+      req.user!.userId, evidence.id, JSON.stringify({ from: evidence.storage_location, to: fullLocation }), now);
+
+    res.json({ data: { id: evidence.id, storage_location: fullLocation, location_detail: JSON.parse(locationDetail) } });
+  } catch (error: any) {
+    console.error('Evidence location update error:', error);
+    res.status(500).json({ error: 'Failed to update evidence location', code: 'EVIDENCE_LOCATION_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// EVIDENCE UPGRADE: Check-Out / Check-In Workflow
+// ════════════════════════════════════════════════════════════
+
+router.post('/evidence/:id/checkout', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
+    if (!evidence) return res.status(404).json({ error: 'Evidence not found', code: 'EVIDENCE_NOT_FOUND' });
+    if (evidence.checked_out_by) return res.status(400).json({ error: 'Evidence is already checked out', code: 'ALREADY_CHECKED_OUT' });
+
+    const { reason, expected_return_date } = req.body;
+    if (!reason) return res.status(400).json({ error: 'Checkout reason is required', code: 'CHECKOUT_REASON_REQUIRED' });
+
+    const now = localNow();
+    const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
+
+    let chain: any[] = [];
+    try { chain = JSON.parse(evidence.chain_of_custody || '[]'); } catch { /* ignore */ }
+    chain.push({
+      action: 'check_out',
+      timestamp: now,
+      user_id: req.user!.userId,
+      user_name: user?.full_name || '',
+      reason,
+      expected_return: expected_return_date || null,
+    });
+
+    db.prepare(`UPDATE evidence SET checked_out_by = ?, checked_out_at = ?, checkout_reason = ?,
+      expected_return_date = ?, chain_of_custody = ?, status = 'checked_out', updated_at = ? WHERE id = ?`)
+      .run(req.user!.userId, now, reason, expected_return_date || null, JSON.stringify(chain), now, evidence.id);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'evidence_checkout', 'evidence', ?, ?, ?)`).run(
+      req.user!.userId, evidence.id, JSON.stringify({ reason, expected_return_date }), now);
+
+    broadcastRecordUpdate({ type: 'evidence_checked_out', id: evidence.id });
+    res.json({ data: { id: evidence.id, status: 'checked_out', checked_out_by: req.user!.userId } });
+  } catch (error: any) {
+    console.error('Evidence checkout error:', error);
+    res.status(500).json({ error: 'Failed to check out evidence', code: 'EVIDENCE_CHECKOUT_ERROR' });
+  }
+});
+
+router.post('/evidence/:id/checkin', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
+    if (!evidence) return res.status(404).json({ error: 'Evidence not found', code: 'EVIDENCE_NOT_FOUND' });
+    if (!evidence.checked_out_by) return res.status(400).json({ error: 'Evidence is not checked out', code: 'NOT_CHECKED_OUT' });
+
+    const { condition_on_return, storage_location, notes } = req.body;
+    const now = localNow();
+    const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
+
+    let chain: any[] = [];
+    try { chain = JSON.parse(evidence.chain_of_custody || '[]'); } catch { /* ignore */ }
+    chain.push({
+      action: 'check_in',
+      timestamp: now,
+      user_id: req.user!.userId,
+      user_name: user?.full_name || '',
+      condition_on_return: condition_on_return || null,
+      notes: notes || null,
+    });
+
+    db.prepare(`UPDATE evidence SET checked_out_by = NULL, checked_out_at = NULL, checkout_reason = NULL,
+      expected_return_date = NULL, condition_on_return = ?, storage_location = COALESCE(?, storage_location),
+      chain_of_custody = ?, status = 'in_storage', updated_at = ? WHERE id = ?`)
+      .run(condition_on_return || null, storage_location || null, JSON.stringify(chain), now, evidence.id);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'evidence_checkin', 'evidence', ?, ?, ?)`).run(
+      req.user!.userId, evidence.id, JSON.stringify({ condition_on_return }), now);
+
+    broadcastRecordUpdate({ type: 'evidence_checked_in', id: evidence.id });
+    res.json({ data: { id: evidence.id, status: 'in_storage' } });
+  } catch (error: any) {
+    console.error('Evidence checkin error:', error);
+    res.status(500).json({ error: 'Failed to check in evidence', code: 'EVIDENCE_CHECKIN_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// EVIDENCE UPGRADE: Disposition Tracking
+// ════════════════════════════════════════════════════════════
+
+router.put('/evidence/:id/disposition', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
+    if (!evidence) return res.status(404).json({ error: 'Evidence not found', code: 'EVIDENCE_NOT_FOUND' });
+
+    const { disposition, disposition_method, disposition_authorized_by, disposition_notes } = req.body;
+    const validDispositions = ['pending', 'return_to_owner', 'destroy', 'auction', 'forfeit', 'retain', 'transfer_to_agency'];
+    if (!disposition || !validDispositions.includes(disposition))
+      return res.status(400).json({ error: 'Valid disposition required', code: 'INVALID_DISPOSITION' });
+
+    const now = localNow();
+    const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
+
+    let chain: any[] = [];
+    try { chain = JSON.parse(evidence.chain_of_custody || '[]'); } catch { /* ignore */ }
+    chain.push({
+      action: 'disposition',
+      timestamp: now,
+      user_id: req.user!.userId,
+      user_name: user?.full_name || '',
+      disposition,
+      disposition_method: disposition_method || null,
+      notes: disposition_notes || null,
+    });
+
+    db.prepare(`UPDATE evidence SET disposal_method = ?, disposal_date = ?, disposal_authorized_by = ?,
+      notes = COALESCE(?, notes), chain_of_custody = ?, status = 'disposed', updated_at = ? WHERE id = ?`)
+      .run(disposition_method || disposition, now, disposition_authorized_by || user?.full_name || '',
+        disposition_notes || null, JSON.stringify(chain), now, evidence.id);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'evidence_disposition', 'evidence', ?, ?, ?)`).run(
+      req.user!.userId, evidence.id, JSON.stringify({ disposition, disposition_method }), now);
+
+    broadcastRecordUpdate({ type: 'evidence_disposed', id: evidence.id });
+    res.json({ data: { id: evidence.id, status: 'disposed', disposition } });
+  } catch (error: any) {
+    console.error('Evidence disposition error:', error);
+    res.status(500).json({ error: 'Failed to update evidence disposition', code: 'EVIDENCE_DISPOSITION_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// EVIDENCE UPGRADE: Aging Report
+// ════════════════════════════════════════════════════════════
+
+router.get('/evidence/aging-report', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = new Date();
+
+    const aging = db.prepare(`
+      SELECT
+        CASE
+          WHEN JULIANDAY('now') - JULIANDAY(e.created_at) <= 30 THEN '0-30 days'
+          WHEN JULIANDAY('now') - JULIANDAY(e.created_at) <= 90 THEN '31-90 days'
+          WHEN JULIANDAY('now') - JULIANDAY(e.created_at) <= 180 THEN '91-180 days'
+          WHEN JULIANDAY('now') - JULIANDAY(e.created_at) <= 365 THEN '181-365 days'
+          ELSE '365+ days'
+        END as age_range,
+        COUNT(*) as count,
+        SUM(CASE WHEN e.status = 'in_storage' THEN 1 ELSE 0 END) as in_storage,
+        SUM(CASE WHEN e.status = 'checked_out' THEN 1 ELSE 0 END) as checked_out
+      FROM evidence e
+      WHERE e.archived_at IS NULL AND e.status NOT IN ('released', 'disposed')
+      GROUP BY age_range
+    `).all();
+
+    const overdueCheckouts = db.prepare(`
+      SELECT e.id, e.description, e.evidence_type, e.checked_out_by, e.checked_out_at,
+        e.expected_return_date, u.full_name as checked_out_by_name,
+        CAST(JULIANDAY('now') - JULIANDAY(e.expected_return_date) AS INTEGER) as days_overdue
+      FROM evidence e
+      LEFT JOIN users u ON e.checked_out_by = u.id
+      WHERE e.expected_return_date IS NOT NULL AND e.expected_return_date < DATE('now')
+        AND e.checked_out_by IS NOT NULL
+      ORDER BY days_overdue DESC
+      LIMIT 50
+    `).all();
+
+    const pendingDispositions = db.prepare(`
+      SELECT COUNT(*) as count FROM evidence
+      WHERE status IN ('received', 'in_storage') AND archived_at IS NULL
+        AND created_at < datetime('now', '-365 days')
+    `).get() as any;
+
+    res.json({
+      data: {
+        aging_breakdown: aging,
+        overdue_checkouts: overdueCheckouts,
+        items_needing_disposition: pendingDispositions?.count || 0,
+      },
+    });
+  } catch (error: any) {
+    console.error('Evidence aging report error:', error);
+    res.status(500).json({ error: 'Failed to generate evidence aging report', code: 'EVIDENCE_AGING_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// EVIDENCE UPGRADE: Cross-Link Evidence to Cases/Incidents
+// ════════════════════════════════════════════════════════════
+
+router.get('/evidence/:id/linked-records', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
+    if (!evidence) return res.status(404).json({ error: 'Evidence not found', code: 'EVIDENCE_NOT_FOUND' });
+
+    const links: any = { incident: null, cases: [], citations: [], forensic_cases: [] };
+
+    if (evidence.incident_id) {
+      links.incident = db.prepare('SELECT id, incident_number, incident_type, status FROM incidents WHERE id = ?').get(evidence.incident_id);
+    }
+
+    // Find forensic cases linked to this evidence
+    const forensicLinks = db.prepare(`
+      SELECT fc.id, fc.lab_number, fc.title, fc.status, fc.case_type
+      FROM forensic_cases fc
+      WHERE fc.linked_incident_id = ? OR fc.linked_case_id IN (
+        SELECT id FROM cases WHERE incident_id = ?
+      )
+      LIMIT 20
+    `).all(evidence.incident_id || 0, evidence.incident_id || 0);
+    links.forensic_cases = forensicLinks;
+
+    // Find cases linked to same incident
+    if (evidence.incident_id) {
+      const cases = db.prepare(`
+        SELECT id, case_number, case_type, status FROM cases WHERE incident_id = ? LIMIT 20
+      `).all(evidence.incident_id);
+      links.cases = cases;
+    }
+
+    res.json({ data: links });
+  } catch (error: any) {
+    console.error('Evidence linked records error:', error);
+    res.status(500).json({ error: 'Failed to get linked records', code: 'EVIDENCE_LINKS_ERROR' });
+  }
+});
+
 // PUT /api/records/properties/:id - Update property
 router.put('/properties/:id', (req: Request, res: Response) => {
   try {
@@ -3510,6 +3861,242 @@ router.get('/evidence/:id/temperature', (req: Request, res: Response) => {
     console.error('Get temperature logs error:', error);
     res.status(500).json({ error: 'Failed to get temperature logs', code: 'GET_TEMPERATURE_LOGS_ERROR' });
   }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 1: Person Alias Tracking
+// ════════════════════════════════════════════════════════════
+try { const db = getDb(); db.exec(`CREATE TABLE IF NOT EXISTS person_aliases (id INTEGER PRIMARY KEY AUTOINCREMENT, person_id INTEGER NOT NULL REFERENCES persons(id) ON DELETE CASCADE, alias_name TEXT NOT NULL, alias_type TEXT DEFAULT 'aka', notes TEXT, created_by INTEGER, created_at TEXT NOT NULL)`); } catch { /* already exists */ }
+
+router.get('/persons/:id/aliases', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const person = db.prepare('SELECT id FROM persons WHERE id = ?').get(req.params.id);
+    if (!person) { res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }); return; }
+    const aliases = db.prepare('SELECT pa.*, u.full_name as created_by_name FROM person_aliases pa LEFT JOIN users u ON pa.created_by = u.id WHERE pa.person_id = ? ORDER BY pa.created_at DESC').all(req.params.id);
+    res.json({ data: aliases });
+  } catch (error: any) { console.error('Get aliases error:', error); res.status(500).json({ error: 'Failed to get aliases', code: 'GET_ALIASES_ERROR' }); }
+});
+
+router.post('/persons/:id/aliases', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const person = db.prepare('SELECT id FROM persons WHERE id = ?').get(req.params.id);
+    if (!person) { res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }); return; }
+    const { alias_name, alias_type, notes } = req.body;
+    if (!alias_name?.trim()) { res.status(400).json({ error: 'alias_name is required', code: 'MISSING_ALIAS_NAME' }); return; }
+    const now = localNow();
+    const result = db.prepare('INSERT INTO person_aliases (person_id, alias_name, alias_type, notes, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(req.params.id, alias_name.trim(), alias_type || 'aka', notes || null, req.user!.userId, now);
+    auditLog(req, 'CREATE', 'person_alias', Number(result.lastInsertRowid), `Added alias "${alias_name}" to person #${req.params.id}`);
+    res.status(201).json({ data: { id: result.lastInsertRowid, alias_name, alias_type: alias_type || 'aka' } });
+  } catch (error: any) { console.error('Create alias error:', error); res.status(500).json({ error: 'Failed to create alias', code: 'CREATE_ALIAS_ERROR' }); }
+});
+
+router.delete('/persons/:id/aliases/:aliasId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const alias = db.prepare('SELECT * FROM person_aliases WHERE id = ? AND person_id = ?').get(req.params.aliasId, req.params.id) as any;
+    if (!alias) { res.status(404).json({ error: 'Alias not found', code: 'ALIAS_NOT_FOUND' }); return; }
+    db.prepare('DELETE FROM person_aliases WHERE id = ?').run(req.params.aliasId);
+    auditLog(req, 'DELETE', 'person_alias', parseInt(req.params.aliasId), `Removed alias "${alias.alias_name}" from person #${req.params.id}`);
+    res.json({ success: true });
+  } catch (error: any) { console.error('Delete alias error:', error); res.status(500).json({ error: 'Failed to delete alias', code: 'DELETE_ALIAS_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 2: Known Associates
+// ════════════════════════════════════════════════════════════
+try { const db = getDb(); db.exec(`CREATE TABLE IF NOT EXISTS person_associates (id INTEGER PRIMARY KEY AUTOINCREMENT, person_id INTEGER NOT NULL REFERENCES persons(id) ON DELETE CASCADE, associate_person_id INTEGER REFERENCES persons(id) ON DELETE SET NULL, associate_name TEXT NOT NULL, relationship_type TEXT DEFAULT 'associate', notes TEXT, created_by INTEGER, created_at TEXT NOT NULL)`); } catch { /* already exists */ }
+
+router.get('/persons/:id/associates', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const person = db.prepare('SELECT id FROM persons WHERE id = ?').get(req.params.id);
+    if (!person) { res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }); return; }
+    const associates = db.prepare(`SELECT pa.*, p.first_name as assoc_first, p.last_name as assoc_last, p.photo_url as assoc_photo, p.dob as assoc_dob, p.flags as assoc_flags FROM person_associates pa LEFT JOIN persons p ON pa.associate_person_id = p.id WHERE pa.person_id = ? ORDER BY pa.created_at DESC`).all(req.params.id);
+    const reverseAssociates = db.prepare(`SELECT pa.*, p.first_name as owner_first, p.last_name as owner_last, p.photo_url as owner_photo FROM person_associates pa LEFT JOIN persons p ON pa.person_id = p.id WHERE pa.associate_person_id = ? ORDER BY pa.created_at DESC`).all(req.params.id);
+    res.json({ data: { associates, reverse_associates: reverseAssociates } });
+  } catch (error: any) { console.error('Get associates error:', error); res.status(500).json({ error: 'Failed to get associates', code: 'GET_ASSOCIATES_ERROR' }); }
+});
+
+router.post('/persons/:id/associates', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const person = db.prepare('SELECT id FROM persons WHERE id = ?').get(req.params.id);
+    if (!person) { res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }); return; }
+    const { associate_person_id, associate_name, relationship_type, notes } = req.body;
+    if (!associate_name?.trim() && !associate_person_id) { res.status(400).json({ error: 'associate_name or associate_person_id required', code: 'MISSING_ASSOCIATE' }); return; }
+    let name = associate_name || '';
+    if (associate_person_id && !name) { const ap = db.prepare('SELECT first_name, last_name FROM persons WHERE id = ?').get(associate_person_id) as any; if (ap) name = `${ap.first_name} ${ap.last_name}`; }
+    const now = localNow();
+    const result = db.prepare('INSERT INTO person_associates (person_id, associate_person_id, associate_name, relationship_type, notes, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(req.params.id, associate_person_id || null, name, relationship_type || 'associate', notes || null, req.user!.userId, now);
+    auditLog(req, 'CREATE', 'person_associate', Number(result.lastInsertRowid), `Added associate "${name}" to person #${req.params.id}`);
+    res.status(201).json({ data: { id: result.lastInsertRowid } });
+  } catch (error: any) { console.error('Create associate error:', error); res.status(500).json({ error: 'Failed to create associate', code: 'CREATE_ASSOCIATE_ERROR' }); }
+});
+
+router.delete('/persons/:id/associates/:assocId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const assoc = db.prepare('SELECT * FROM person_associates WHERE id = ? AND person_id = ?').get(req.params.assocId, req.params.id) as any;
+    if (!assoc) { res.status(404).json({ error: 'Associate not found', code: 'ASSOCIATE_NOT_FOUND' }); return; }
+    db.prepare('DELETE FROM person_associates WHERE id = ?').run(req.params.assocId);
+    auditLog(req, 'DELETE', 'person_associate', parseInt(req.params.assocId), `Removed associate from person #${req.params.id}`);
+    res.json({ success: true });
+  } catch (error: any) { console.error('Delete associate error:', error); res.status(500).json({ error: 'Failed to delete associate', code: 'DELETE_ASSOCIATE_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 3: Last Known Address Tracking
+// ════════════════════════════════════════════════════════════
+try { const db = getDb(); db.exec(`CREATE TABLE IF NOT EXISTS person_address_history (id INTEGER PRIMARY KEY AUTOINCREMENT, person_id INTEGER NOT NULL REFERENCES persons(id) ON DELETE CASCADE, address TEXT NOT NULL, city TEXT, state TEXT, zip TEXT, address_type TEXT DEFAULT 'residential', source TEXT DEFAULT 'manual', verified INTEGER DEFAULT 0, effective_from TEXT, effective_to TEXT, created_by INTEGER, created_at TEXT NOT NULL)`); } catch { /* already exists */ }
+
+router.get('/persons/:id/addresses', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const person = db.prepare('SELECT id FROM persons WHERE id = ?').get(req.params.id);
+    if (!person) { res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }); return; }
+    const addresses = db.prepare('SELECT pah.*, u.full_name as created_by_name FROM person_address_history pah LEFT JOIN users u ON pah.created_by = u.id WHERE pah.person_id = ? ORDER BY pah.effective_from DESC, pah.created_at DESC').all(req.params.id);
+    res.json({ data: addresses });
+  } catch (error: any) { console.error('Get address history error:', error); res.status(500).json({ error: 'Failed to get address history', code: 'GET_ADDRESS_HISTORY_ERROR' }); }
+});
+
+router.post('/persons/:id/addresses', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const person = db.prepare('SELECT id FROM persons WHERE id = ?').get(req.params.id);
+    if (!person) { res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }); return; }
+    const { address, city, state, zip, address_type, source, effective_from } = req.body;
+    if (!address?.trim()) { res.status(400).json({ error: 'address is required', code: 'MISSING_ADDRESS' }); return; }
+    const now = localNow();
+    if (!req.body.effective_to) { db.prepare('UPDATE person_address_history SET effective_to = ? WHERE person_id = ? AND effective_to IS NULL').run(now, req.params.id); }
+    const result = db.prepare('INSERT INTO person_address_history (person_id, address, city, state, zip, address_type, source, effective_from, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(req.params.id, address.trim(), city || null, state || null, zip || null, address_type || 'residential', source || 'manual', effective_from || now, req.user!.userId, now);
+    db.prepare('UPDATE persons SET address = ?, city = ?, state = ?, zip = ?, updated_at = ? WHERE id = ?').run(address.trim(), city || null, state || null, zip || null, now, req.params.id);
+    auditLog(req, 'CREATE', 'person_address', Number(result.lastInsertRowid), `Added address "${address}" to person #${req.params.id}`);
+    res.status(201).json({ data: { id: result.lastInsertRowid } });
+  } catch (error: any) { console.error('Create address error:', error); res.status(500).json({ error: 'Failed to add address', code: 'CREATE_ADDRESS_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 4: Data Completeness Scoring
+// ════════════════════════════════════════════════════════════
+router.get('/persons/:id/completeness', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
+    if (!person) { res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }); return; }
+    const fieldGroups: Record<string, { fields: string[]; weight: number }> = {
+      identity: { fields: ['first_name', 'last_name', 'dob', 'gender', 'race'], weight: 30 },
+      physical: { fields: ['height', 'weight', 'hair_color', 'eye_color'], weight: 15 },
+      contact: { fields: ['address', 'phone', 'email'], weight: 20 },
+      identification: { fields: ['dl_number', 'dl_state'], weight: 15 },
+      description: { fields: ['scars_marks_tattoos', 'photo_url'], weight: 10 },
+      supplemental: { fields: ['employer', 'emergency_contact_name', 'emergency_contact_phone'], weight: 10 },
+    };
+    const breakdown: Record<string, { filled: number; total: number; score: number }> = {};
+    let totalScore = 0;
+    for (const [group, config] of Object.entries(fieldGroups)) {
+      const filled = config.fields.filter(f => person[f] != null && String(person[f]).trim() !== '').length;
+      const groupScore = Math.round((filled / config.fields.length) * config.weight);
+      breakdown[group] = { filled, total: config.fields.length, score: groupScore };
+      totalScore += groupScore;
+    }
+    const missingCritical = ['first_name', 'last_name', 'dob', 'address', 'phone', 'dl_number'].filter(f => !person[f] || String(person[f]).trim() === '');
+    res.json({ data: { person_id: person.id, overall_score: totalScore, max_score: 100, grade: totalScore >= 80 ? 'A' : totalScore >= 60 ? 'B' : totalScore >= 40 ? 'C' : totalScore >= 20 ? 'D' : 'F', breakdown, missing_critical: missingCritical } });
+  } catch (error: any) { console.error('Get completeness error:', error); res.status(500).json({ error: 'Failed to get completeness', code: 'GET_COMPLETENESS_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 5: Cross-Entity Search
+// ════════════════════════════════════════════════════════════
+router.get('/cross-search', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { q, entities } = req.query;
+    if (!q || (q as string).length < 2) { res.status(400).json({ error: 'Search query must be at least 2 characters', code: 'SEARCH_QUERY_TOO_SHORT' }); return; }
+    const searchTerm = `%${q}%`;
+    const entityList = entities ? (entities as string).split(',') : ['persons', 'citations', 'warrants', 'field_interviews', 'trespass_orders'];
+    const results: Record<string, any[]> = {};
+    if (entityList.includes('persons')) { results.persons = db.prepare(`SELECT id, first_name, last_name, dob, address, phone, photo_url, 'person' as entity_type FROM persons WHERE (first_name || ' ' || last_name) LIKE ? OR address LIKE ? OR phone LIKE ? OR email LIKE ? OR alias_nickname LIKE ? ORDER BY last_name, first_name LIMIT 15`).all(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm); }
+    if (entityList.includes('citations')) { results.citations = db.prepare(`SELECT id, citation_number, person_name, violation_description, status, violation_date, 'citation' as entity_type FROM citations WHERE citation_number LIKE ? OR person_name LIKE ? OR violation_description LIKE ? OR statute_citation LIKE ? ORDER BY created_at DESC LIMIT 15`).all(searchTerm, searchTerm, searchTerm, searchTerm); }
+    if (entityList.includes('warrants')) { try { results.warrants = db.prepare(`SELECT w.id, w.warrant_number, w.charge_description, w.status, w.type, (p.first_name || ' ' || p.last_name) as subject_name, 'warrant' as entity_type FROM warrants w LEFT JOIN persons p ON w.subject_person_id = p.id WHERE w.warrant_number LIKE ? OR w.charge_description LIKE ? OR (p.first_name || ' ' || p.last_name) LIKE ? ORDER BY w.created_at DESC LIMIT 15`).all(searchTerm, searchTerm, searchTerm); } catch { results.warrants = []; } }
+    if (entityList.includes('field_interviews')) { try { results.field_interviews = db.prepare(`SELECT id, fi_number, subject_first_name, subject_last_name, location, contact_reason, status, 'field_interview' as entity_type FROM field_interviews WHERE fi_number LIKE ? OR (subject_first_name || ' ' || subject_last_name) LIKE ? OR location LIKE ? OR narrative LIKE ? ORDER BY created_at DESC LIMIT 15`).all(searchTerm, searchTerm, searchTerm, searchTerm); } catch { results.field_interviews = []; } }
+    if (entityList.includes('trespass_orders')) { try { results.trespass_orders = db.prepare(`SELECT id, order_number, subject_first_name, subject_last_name, property_name, location, status, 'trespass_order' as entity_type FROM trespass_orders WHERE order_number LIKE ? OR (subject_first_name || ' ' || subject_last_name) LIKE ? OR property_name LIKE ? OR location LIKE ? ORDER BY created_at DESC LIMIT 15`).all(searchTerm, searchTerm, searchTerm, searchTerm); } catch { results.trespass_orders = []; } }
+    let aliasHits: any[] = [];
+    try { aliasHits = db.prepare(`SELECT pa.person_id, pa.alias_name, p.first_name, p.last_name, 'alias_match' as match_type FROM person_aliases pa JOIN persons p ON pa.person_id = p.id WHERE pa.alias_name LIKE ? LIMIT 10`).all(searchTerm); } catch { /* table may not exist */ }
+    const totalResults = Object.values(results).reduce((sum, arr) => sum + arr.length, 0) + aliasHits.length;
+    res.json({ data: results, alias_matches: aliasHits, total_results: totalResults, query: q });
+  } catch (error: any) { console.error('Cross-entity search error:', error); res.status(500).json({ error: 'Failed to search', code: 'CROSS_SEARCH_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 6: Recent Searches Tracking
+// ════════════════════════════════════════════════════════════
+try { const db = getDb(); db.exec(`CREATE TABLE IF NOT EXISTS recent_searches (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, query TEXT NOT NULL, entity_types TEXT, result_count INTEGER DEFAULT 0, created_at TEXT NOT NULL)`); } catch { /* already exists */ }
+
+router.post('/recent-searches', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { query, entity_types, result_count } = req.body;
+    if (!query?.trim()) { res.status(400).json({ error: 'query is required', code: 'MISSING_QUERY' }); return; }
+    const now = localNow();
+    const last = db.prepare('SELECT query FROM recent_searches WHERE user_id = ? ORDER BY created_at DESC LIMIT 1').get(req.user!.userId) as any;
+    if (last?.query === query.trim()) { res.json({ success: true, deduplicated: true }); return; }
+    db.prepare('INSERT INTO recent_searches (user_id, query, entity_types, result_count, created_at) VALUES (?, ?, ?, ?, ?)').run(req.user!.userId, query.trim(), entity_types || null, result_count || 0, now);
+    db.prepare('DELETE FROM recent_searches WHERE user_id = ? AND id NOT IN (SELECT id FROM recent_searches WHERE user_id = ? ORDER BY created_at DESC LIMIT 50)').run(req.user!.userId, req.user!.userId);
+    res.json({ success: true });
+  } catch (error: any) { console.error('Save recent search error:', error); res.status(500).json({ error: 'Failed to save search', code: 'SAVE_SEARCH_ERROR' }); }
+});
+
+router.get('/recent-searches', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const searches = db.prepare('SELECT * FROM recent_searches WHERE user_id = ? ORDER BY created_at DESC LIMIT 20').all(req.user!.userId);
+    res.json({ data: searches });
+  } catch (error: any) { console.error('Get recent searches error:', error); res.status(500).json({ error: 'Failed to get searches', code: 'GET_SEARCHES_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 7: Persons Stats Dashboard
+// ════════════════════════════════════════════════════════════
+router.get('/persons/stats/overview', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const totalPersons = (db.prepare('SELECT COUNT(*) as count FROM persons WHERE archived_at IS NULL').get() as any).count;
+    const totalVehicles = (db.prepare('SELECT COUNT(*) as count FROM vehicles_records WHERE archived_at IS NULL').get() as any).count;
+    let withWarrants = 0;
+    try { withWarrants = (db.prepare("SELECT COUNT(DISTINCT subject_person_id) as count FROM warrants WHERE status = 'active' AND subject_person_id IS NOT NULL").get() as any).count; } catch { /* warrants may not exist */ }
+    let withCitations = 0;
+    try { withCitations = (db.prepare("SELECT COUNT(DISTINCT person_id) as count FROM citations WHERE status != 'voided' AND person_id IS NOT NULL").get() as any).count; } catch { /* citations may not exist */ }
+    const recentlyAdded = (db.prepare("SELECT COUNT(*) as count FROM persons WHERE created_at >= datetime('now', '-7 days', 'localtime')").get() as any).count;
+    const withPhotos = (db.prepare('SELECT COUNT(*) as count FROM persons WHERE photo_url IS NOT NULL AND photo_url != "" AND archived_at IS NULL').get() as any).count;
+    let watchlistHits = 0;
+    try { watchlistHits = (db.prepare('SELECT COUNT(*) as count FROM persons WHERE watchlist_match IS NOT NULL AND archived_at IS NULL').get() as any).count; } catch { /* column may not exist */ }
+    res.json({ data: { total_persons: totalPersons, total_vehicles: totalVehicles, with_active_warrants: withWarrants, with_citations: withCitations, recently_added_7d: recentlyAdded, with_photos: withPhotos, photo_rate: totalPersons > 0 ? Math.round((withPhotos / totalPersons) * 100) : 0, watchlist_hits: watchlistHits } });
+  } catch (error: any) { console.error('Get persons stats error:', error); res.status(500).json({ error: 'Failed to get stats', code: 'GET_PERSONS_STATS_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 8: Bulk Data Completeness Stats
+// ════════════════════════════════════════════════════════════
+router.get('/persons/stats/completeness', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const persons = db.prepare(`SELECT id, first_name, last_name, dob, gender, race, height, weight, hair_color, eye_color, address, phone, email, dl_number, dl_state, scars_marks_tattoos, photo_url, employer, emergency_contact_name, emergency_contact_phone FROM persons WHERE archived_at IS NULL LIMIT 5000`).all() as any[];
+    const criticalFields = ['first_name', 'last_name', 'dob', 'address', 'phone', 'dl_number'];
+    const allFields = ['first_name', 'last_name', 'dob', 'gender', 'race', 'height', 'weight', 'hair_color', 'eye_color', 'address', 'phone', 'email', 'dl_number', 'dl_state', 'scars_marks_tattoos', 'photo_url', 'employer', 'emergency_contact_name', 'emergency_contact_phone'];
+    const totalPersons = persons.length;
+    let avgScore = 0;
+    const incomplete: { id: number; name: string; score: number; missing: string[] }[] = [];
+    for (const p of persons) {
+      const filled = allFields.filter(f => p[f] != null && String(p[f]).trim() !== '').length;
+      const score = Math.round((filled / allFields.length) * 100);
+      avgScore += score;
+      if (score < 50) { incomplete.push({ id: p.id, name: `${p.first_name} ${p.last_name}`, score, missing: criticalFields.filter(f => !p[f] || String(p[f]).trim() === '') }); }
+    }
+    incomplete.sort((a, b) => a.score - b.score);
+    res.json({ data: { total_persons: totalPersons, avg_completeness: totalPersons > 0 ? Math.round(avgScore / totalPersons) : 0, incomplete_count: incomplete.length, most_incomplete: incomplete.slice(0, 20) } });
+  } catch (error: any) { console.error('Get completeness stats error:', error); res.status(500).json({ error: 'Failed to get completeness stats', code: 'GET_COMPLETENESS_STATS_ERROR' }); }
 });
 
 export default router;

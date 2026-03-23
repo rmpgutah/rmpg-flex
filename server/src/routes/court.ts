@@ -731,4 +731,280 @@ router.post('/events/:id/clone', (req: Request, res: Response) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// UPGRADE: 7-Day Court Date Reminders
+// ════════════════════════════════════════════════════════════
+
+router.post('/events/generate-7day-reminders', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = new Date();
+    const sevenDaysOut = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const sevenDayStr = `${sevenDaysOut.getFullYear()}-${String(sevenDaysOut.getMonth() + 1).padStart(2, '0')}-${String(sevenDaysOut.getDate()).padStart(2, '0')}`;
+
+    const events = db.prepare(`
+      SELECT * FROM court_events
+      WHERE event_date = ? AND status = 'scheduled'
+      LIMIT 500
+    `).all(sevenDayStr) as any[];
+
+    let notificationsCreated = 0;
+    for (const evt of events) {
+      const officers = JSON.parse(evt.officers_required || '[]');
+      for (const officerId of officers) {
+        const id = typeof officerId === 'number' ? officerId : parseInt(officerId, 10);
+        if (isNaN(id)) continue;
+
+        const existing = db.prepare(
+          "SELECT id FROM notifications WHERE user_id = ? AND entity_type = 'court_event' AND entity_id = ? AND type = 'court_7day_reminder'"
+        ).get(id, evt.id);
+        if (existing) continue;
+
+        createNotification(
+          id,
+          'court_7day_reminder',
+          `Court in 7 Days: ${evt.event_number}`,
+          `You have a ${evt.event_type || 'court event'} in 7 days (${evt.event_date}) at ${evt.event_time || 'TBD'}${evt.court_name ? ` — ${evt.court_name}` : ''}. Defendant: ${evt.defendant_name || 'N/A'}. Prepare your testimony and materials.`,
+          'court_event',
+          evt.id,
+          'normal'
+        );
+        notificationsCreated++;
+      }
+    }
+
+    res.json({ reminders_sent: notificationsCreated, events_in_7_days: events.length });
+  } catch (error: any) {
+    console.error('7-day court reminders error:', error);
+    res.status(500).json({ error: 'Failed to generate 7-day reminders', code: 'COURT_7DAY_REMINDERS_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE: Verdict/Outcome Recording with Detail
+// ════════════════════════════════════════════════════════════
+
+router.put('/events/:id/verdict', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid event ID', code: 'INVALID_EVENT_ID' });
+
+    const existing = db.prepare('SELECT * FROM court_events WHERE id = ?').get(id) as any;
+    if (!existing) return res.status(404).json({ error: 'Court event not found', code: 'COURT_EVENT_NOT_FOUND' });
+
+    const { verdict, verdict_date, sentence_type, sentence_details, probation_length,
+      jail_time, fine_amount, restitution_amount, community_service_hours,
+      appeal_deadline, notes } = req.body;
+
+    const validVerdicts = ['guilty', 'not_guilty', 'dismissed', 'nolle_prosequi', 'plea_deal',
+      'deferred_adjudication', 'mistrial', 'acquitted', 'no_contest'];
+    if (!verdict || !validVerdicts.includes(verdict))
+      return res.status(400).json({ error: 'Valid verdict required', code: 'INVALID_VERDICT' });
+
+    const now = localNow();
+    const verdictData = JSON.stringify({
+      verdict,
+      verdict_date: verdict_date || localToday(),
+      sentence_type: sentence_type || null,
+      sentence_details: sentence_details || null,
+      probation_length: probation_length || null,
+      jail_time: jail_time || null,
+      fine_amount: fine_amount || null,
+      restitution_amount: restitution_amount || null,
+      community_service_hours: community_service_hours || null,
+      appeal_deadline: appeal_deadline || null,
+      recorded_by: req.user!.userId,
+      recorded_at: now,
+    });
+
+    db.prepare(`UPDATE court_events SET outcome = ?, sentence = ?, fine_amount = ?,
+      verdict_data = ?, status = 'completed', updated_at = ? WHERE id = ?`)
+      .run(verdict, sentence_details || sentence_type || null, fine_amount || null,
+        verdictData, now, id);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'verdict', 'court_event', ?, ?, ?)`).run(
+      req.user!.userId, id, JSON.stringify({ verdict, sentence_type }), now);
+
+    broadcastRecordUpdate({ type: 'court_verdict', id, verdict });
+    res.json({ data: { id, verdict, status: 'completed' } });
+  } catch (error: any) {
+    console.error('Court verdict error:', error);
+    res.status(500).json({ error: 'Failed to record verdict', code: 'COURT_VERDICT_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE: Officer Subpoena Tracking
+// ════════════════════════════════════════════════════════════
+
+router.post('/subpoenas', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const { officer_id, court_event_id, court_case_number, court_name,
+      hearing_date, hearing_time, served_date, served_method, notes } = req.body;
+
+    if (!officer_id || !hearing_date) return res.status(400).json({ error: 'officer_id and hearing_date required', code: 'MISSING_SUBPOENA_FIELDS' });
+
+    // Store as court event of type 'subpoena'
+    const event_number = nextEventNumber();
+    const result = db.prepare(`
+      INSERT INTO court_events (event_number, event_type, status, event_date, event_time,
+        court_name, court_case_number, officers_required,
+        subpoena_served_date, subpoena_served_method,
+        notes, created_by, created_at, updated_at)
+      VALUES (?, 'subpoena', 'scheduled', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(event_number, hearing_date, hearing_time || null,
+      court_name || null, court_case_number || null,
+      JSON.stringify([officer_id]),
+      served_date || null, served_method || null,
+      notes || null, req.user!.userId, now, now);
+
+    // Notify the officer
+    createNotification(
+      officer_id,
+      'subpoena_received',
+      `Subpoena Received: ${event_number}`,
+      `You have been subpoenaed for ${hearing_date}${court_name ? ` at ${court_name}` : ''}. Case: ${court_case_number || 'N/A'}`,
+      'court_event',
+      result.lastInsertRowid as number,
+      'high'
+    );
+
+    broadcastRecordUpdate({ type: 'subpoena_created', id: result.lastInsertRowid, event_number });
+    res.status(201).json({ data: { id: result.lastInsertRowid, event_number } });
+  } catch (error: any) {
+    console.error('Create subpoena error:', error);
+    res.status(500).json({ error: 'Failed to create subpoena', code: 'CREATE_SUBPOENA_ERROR' });
+  }
+});
+
+// List officer subpoenas
+router.get('/subpoenas/officer/:officerId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const officerId = parseInt(req.params.officerId, 10);
+    if (isNaN(officerId)) return res.status(400).json({ error: 'Invalid officer ID', code: 'INVALID_OFFICER_ID' });
+
+    const rows = db.prepare(`
+      SELECT e.*, u.full_name as officer_name
+      FROM court_events e
+      LEFT JOIN users u ON ? = u.id
+      WHERE e.event_type = 'subpoena' AND e.officers_required LIKE ?
+        AND e.status IN ('scheduled', 'continued')
+      ORDER BY e.event_date ASC
+      LIMIT 100
+    `).all(officerId, `%${officerId}%`);
+
+    res.json({ data: rows });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to get officer subpoenas', code: 'OFFICER_SUBPOENAS_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE: Court Appearance Compliance Rate
+// ════════════════════════════════════════════════════════════
+
+router.get('/compliance-rate', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { months = '12' } = req.query;
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - parseInt(months as string, 10));
+    const cutoffStr = cutoff.toISOString().split('T')[0];
+
+    // Officer appearance compliance
+    const officerCompliance = db.prepare(`
+      SELECT
+        u.id as officer_id,
+        u.full_name as officer_name,
+        COUNT(DISTINCT e.id) as total_events,
+        SUM(CASE WHEN json_extract(e.officer_confirmations, '$.' || u.id || '.confirmed') = 1 THEN 1 ELSE 0 END) as confirmed,
+        SUM(CASE WHEN e.status = 'completed' THEN 1 ELSE 0 END) as completed
+      FROM users u
+      CROSS JOIN court_events e
+      WHERE e.event_date >= ? AND e.officers_required LIKE '%' || u.id || '%'
+      GROUP BY u.id
+      HAVING total_events > 0
+      ORDER BY total_events DESC
+    `).all(cutoffStr) as any[];
+
+    // Overall stats
+    const overall = db.prepare(`
+      SELECT
+        COUNT(*) as total_events,
+        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+        SUM(CASE WHEN status = 'missed' OR status = 'no_show' THEN 1 ELSE 0 END) as missed,
+        SUM(CASE WHEN status = 'continued' THEN 1 ELSE 0 END) as continued,
+        SUM(continuance_count) as total_continuances
+      FROM court_events WHERE event_date >= ?
+    `).get(cutoffStr) as any;
+
+    const complianceRate = overall.total_events > 0
+      ? Math.round((overall.completed / overall.total_events) * 100) : 0;
+
+    res.json({
+      data: {
+        overall: { ...overall, compliance_rate: complianceRate },
+        by_officer: officerCompliance.map((o: any) => ({
+          ...o,
+          compliance_rate: o.total_events > 0 ? Math.round((o.confirmed / o.total_events) * 100) : 0,
+        })),
+        period_months: parseInt(months as string, 10),
+      },
+    });
+  } catch (error: any) {
+    console.error('Court compliance rate error:', error);
+    res.status(500).json({ error: 'Failed to get compliance rate', code: 'COMPLIANCE_RATE_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE: Link Court Records to Citations/Arrests
+// ════════════════════════════════════════════════════════════
+
+router.get('/events/:id/linked-records', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const evt = db.prepare('SELECT * FROM court_events WHERE id = ?').get(req.params.id) as any;
+    if (!evt) return res.status(404).json({ error: 'Court event not found', code: 'COURT_EVENT_NOT_FOUND' });
+
+    const links: any = { citation: null, incident: null, case_record: null, arrests: [], related_events: [] };
+
+    if (evt.citation_id) {
+      links.citation = db.prepare('SELECT id, citation_number, violation, person_name, status FROM citations WHERE id = ?').get(evt.citation_id);
+    }
+    if (evt.incident_id) {
+      links.incident = db.prepare('SELECT id, incident_number, incident_type, status FROM incidents WHERE id = ?').get(evt.incident_id);
+    }
+    if (evt.case_id) {
+      links.case_record = db.prepare('SELECT id, case_number, case_type, status FROM cases WHERE id = ?').get(evt.case_id);
+    }
+
+    // Find arrests with matching defendant name
+    if (evt.defendant_name) {
+      links.arrests = db.prepare(`
+        SELECT id, full_name, booking_date, charges, status FROM arrest_records
+        WHERE full_name LIKE ? OR last_name LIKE ? LIMIT 10
+      `).all(`%${evt.defendant_name}%`, `%${evt.defendant_name}%`);
+    }
+
+    // Related court events (same case number)
+    if (evt.court_case_number) {
+      links.related_events = db.prepare(`
+        SELECT id, event_number, event_type, event_date, status, outcome
+        FROM court_events WHERE court_case_number = ? AND id != ? ORDER BY event_date ASC LIMIT 20
+      `).all(evt.court_case_number, evt.id);
+    }
+
+    res.json({ data: links });
+  } catch (error: any) {
+    console.error('Court linked records error:', error);
+    res.status(500).json({ error: 'Failed to get linked records', code: 'COURT_LINKS_ERROR' });
+  }
+});
+
 export default router;

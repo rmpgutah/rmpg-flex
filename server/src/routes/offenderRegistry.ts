@@ -523,4 +523,240 @@ router.get('/map/all', (req: Request, res: Response) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// UPGRADE: Address Verification Scheduling
+// ════════════════════════════════════════════════════════════
+
+router.post('/:id/schedule-verification', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const alert = db.prepare('SELECT * FROM offender_alerts WHERE id = ?').get(req.params.id) as any;
+    if (!alert) return res.status(404).json({ error: 'Alert not found', code: 'ALERT_NOT_FOUND' });
+
+    const { verification_date, verification_type, assigned_officer_id, address_to_verify, notes } = req.body;
+    if (!verification_date) return res.status(400).json({ error: 'verification_date required', code: 'VERIFICATION_DATE_REQUIRED' });
+
+    const now = localNow();
+    const verificationData = {
+      offender_alert_id: parseInt(req.params.id),
+      person_id: alert.person_id,
+      verification_type: verification_type || 'address_verification',
+      scheduled_date: verification_date,
+      assigned_officer_id: assigned_officer_id || req.user!.userId,
+      address_to_verify: address_to_verify || null,
+      status: 'scheduled',
+      notes: notes || '',
+    };
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, 'address_verification_scheduled', 'offender_alert', ?, ?, ?)`).run(
+      req.user!.userId, req.params.id, JSON.stringify(verificationData), now);
+
+    res.status(201).json({ data: verificationData });
+  } catch (error: any) {
+    console.error('Schedule verification error:', error);
+    res.status(500).json({ error: 'Failed to schedule verification', code: 'SCHEDULE_VERIFICATION_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE: Compliance Check Logging with Results
+// ════════════════════════════════════════════════════════════
+
+router.post('/:id/compliance-result', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const alert = db.prepare('SELECT * FROM offender_alerts WHERE id = ?').get(req.params.id) as any;
+    if (!alert) return res.status(404).json({ error: 'Alert not found', code: 'ALERT_NOT_FOUND' });
+
+    const { check_type, result, address_verified, address_current, resident_confirmed,
+      gps_lat, gps_lng, photos_taken, officer_notes } = req.body;
+
+    const validResults = ['compliant', 'non_compliant', 'unable_to_verify', 'absconded', 'moved'];
+    if (!result || !validResults.includes(result))
+      return res.status(400).json({ error: 'Valid result required', code: 'INVALID_RESULT' });
+
+    const now = localNow();
+    const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
+
+    const complianceData = {
+      offender_alert_id: parseInt(req.params.id),
+      person_id: alert.person_id,
+      check_type: check_type || 'address_verification',
+      result,
+      address_verified: address_verified || null,
+      address_current: address_current !== undefined ? address_current : null,
+      resident_confirmed: resident_confirmed !== undefined ? resident_confirmed : null,
+      gps_lat: gps_lat || null,
+      gps_lng: gps_lng || null,
+      photos_taken: photos_taken || 0,
+      officer_id: req.user!.userId,
+      officer_name: user?.full_name || '',
+      officer_notes: officer_notes || '',
+      checked_at: now,
+    };
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'compliance_check_completed', 'offender_alert', ?, ?, ?, ?)`).run(
+      req.user!.userId, req.params.id, JSON.stringify(complianceData), req.ip || 'unknown', now);
+
+    // Update last compliance check date on alert
+    db.prepare(`UPDATE offender_alerts SET last_compliance_check = ?, last_compliance_result = ?, updated_at = ? WHERE id = ?`)
+      .run(now, result, now, req.params.id);
+
+    // If non-compliant or absconded, escalate severity
+    if (['non_compliant', 'absconded'].includes(result) && alert.severity !== 'danger') {
+      const newSeverity = result === 'absconded' ? 'danger' : 'warning';
+      db.prepare(`UPDATE offender_alerts SET severity = ?, updated_at = ? WHERE id = ?`)
+        .run(newSeverity, now, req.params.id);
+      broadcastAlert({ type: 'offender_compliance_failure', person_id: alert.person_id, result, severity: newSeverity });
+    }
+
+    res.status(201).json({ data: complianceData });
+  } catch (error: any) {
+    console.error('Compliance result error:', error);
+    res.status(500).json({ error: 'Failed to record compliance result', code: 'COMPLIANCE_RESULT_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE: Registration Expiration Alerts
+// ════════════════════════════════════════════════════════════
+
+router.get('/expiring-registrations', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { days = '30' } = req.query;
+    const daysAhead = parseInt(days as string, 10) || 30;
+
+    const expiring = db.prepare(`
+      SELECT oa.*, p.first_name, p.last_name, p.address, p.city, p.state,
+        p.first_name || ' ' || p.last_name as person_name,
+        CAST(JULIANDAY(oa.expiration_date) - JULIANDAY('now') AS INTEGER) as days_until_expiry
+      FROM offender_alerts oa
+      LEFT JOIN persons p ON oa.person_id = p.id
+      WHERE oa.status = 'active' AND oa.expiration_date IS NOT NULL
+        AND oa.expiration_date <= DATE('now', '+' || ? || ' days')
+      ORDER BY oa.expiration_date ASC
+      LIMIT 100
+    `).all(String(daysAhead));
+
+    const alreadyExpired = db.prepare(`
+      SELECT oa.*, p.first_name, p.last_name,
+        p.first_name || ' ' || p.last_name as person_name,
+        CAST(JULIANDAY('now') - JULIANDAY(oa.expiration_date) AS INTEGER) as days_expired
+      FROM offender_alerts oa
+      LEFT JOIN persons p ON oa.person_id = p.id
+      WHERE oa.status = 'active' AND oa.expiration_date IS NOT NULL
+        AND oa.expiration_date < DATE('now')
+      ORDER BY oa.expiration_date ASC
+      LIMIT 100
+    `).all();
+
+    res.json({
+      data: {
+        expiring_soon: expiring,
+        already_expired: alreadyExpired,
+        expiring_count: expiring.length,
+        expired_count: alreadyExpired.length,
+        days_ahead: daysAhead,
+      },
+    });
+  } catch (error: any) {
+    console.error('Expiring registrations error:', error);
+    res.status(500).json({ error: 'Failed to get expiring registrations', code: 'EXPIRING_REGISTRATIONS_ERROR' });
+  }
+});
+
+// Generate expiration notifications
+router.post('/generate-expiration-alerts', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+
+    // Find alerts expiring in next 30 days that haven't been notified
+    const expiring = db.prepare(`
+      SELECT oa.id, oa.person_id, oa.alert_type, oa.expiration_date,
+        p.first_name || ' ' || p.last_name as person_name
+      FROM offender_alerts oa
+      LEFT JOIN persons p ON oa.person_id = p.id
+      WHERE oa.status = 'active' AND oa.expiration_date IS NOT NULL
+        AND oa.expiration_date <= DATE('now', '+30 days')
+        AND oa.expiration_date > DATE('now')
+        AND oa.expiration_notified IS NULL
+      LIMIT 200
+    `).all() as any[];
+
+    let notified = 0;
+    for (const alert of expiring) {
+      // Notify all supervisors
+      const supervisors = db.prepare(`SELECT id FROM users WHERE role IN ('admin', 'manager', 'supervisor') AND status = 'active'`).all() as any[];
+      for (const sup of supervisors) {
+        try {
+          db.prepare(`INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, created_at)
+            VALUES ('system', 'normal', ?, ?, 'offender_alert', ?, ?, ?)`).run(
+            `Registration Expiring: ${alert.person_name || 'Unknown'}`,
+            `${alert.alert_type} registration for ${alert.person_name || 'Unknown'} expires on ${alert.expiration_date}`,
+            alert.id, sup.id, now
+          );
+        } catch { /* notification table may not exist */ }
+      }
+      db.prepare(`UPDATE offender_alerts SET expiration_notified = ? WHERE id = ?`).run(now, alert.id);
+      notified++;
+    }
+
+    res.json({ alerts_notified: notified });
+  } catch (error: any) {
+    console.error('Generate expiration alerts error:', error);
+    res.status(500).json({ error: 'Failed to generate expiration alerts', code: 'EXPIRATION_ALERTS_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE: Compliance History Summary
+// ════════════════════════════════════════════════════════════
+
+router.get('/:id/compliance-summary', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const alert = db.prepare('SELECT * FROM offender_alerts WHERE id = ?').get(req.params.id) as any;
+    if (!alert) return res.status(404).json({ error: 'Alert not found', code: 'ALERT_NOT_FOUND' });
+
+    const allChecks = db.prepare(`
+      SELECT al.details, al.created_at, u.full_name as officer_name
+      FROM activity_log al
+      LEFT JOIN users u ON al.user_id = u.id
+      WHERE al.entity_type = 'offender_alert' AND al.entity_id = ?
+        AND al.action IN ('compliance_check_completed', 'compliance_check_scheduled', 'offender_contact', 'address_verification_scheduled')
+      ORDER BY al.created_at DESC
+      LIMIT 200
+    `).all(req.params.id) as any[];
+
+    const parsed = allChecks.map((c: any) => {
+      try { return { ...JSON.parse(c.details), created_at: c.created_at, officer_name: c.officer_name }; }
+      catch { return { raw: c.details, created_at: c.created_at, officer_name: c.officer_name }; }
+    });
+
+    const compliant = parsed.filter((p: any) => p.result === 'compliant').length;
+    const nonCompliant = parsed.filter((p: any) => p.result === 'non_compliant').length;
+    const total = parsed.filter((p: any) => p.result).length;
+
+    res.json({
+      data: {
+        alert_id: parseInt(req.params.id),
+        checks: parsed,
+        total_checks: total,
+        compliant_count: compliant,
+        non_compliant_count: nonCompliant,
+        compliance_rate: total > 0 ? Math.round((compliant / total) * 100) : 0,
+        last_check: alert.last_compliance_check || null,
+        last_result: alert.last_compliance_result || null,
+      },
+    });
+  } catch (error: any) {
+    console.error('Compliance summary error:', error);
+    res.status(500).json({ error: 'Failed to get compliance summary', code: 'COMPLIANCE_SUMMARY_ERROR' });
+  }
+});
+
 export default router;

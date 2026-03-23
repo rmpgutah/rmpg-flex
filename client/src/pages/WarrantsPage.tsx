@@ -1405,6 +1405,13 @@ export default function WarrantsPage() {
                         {formatDate(w.created_at)}{w.offense_level ? ` \u2022 ${w.offense_level}` : ''}
                         {w.source ? ` \u2022 ${w.source}` : ''}
                       </div>
+                      {/* UPGRADE 42: Expiration warning highlight */}
+                      {w.expires_at && w.status === 'active' && (() => {
+                        const daysLeft = Math.ceil((new Date(w.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                        if (daysLeft < 0) return <div className="text-[9px] text-red-400 font-bold mt-0.5 flex items-center gap-1"><AlertTriangle size={9} /> EXPIRED {Math.abs(daysLeft)}d ago</div>;
+                        if (daysLeft <= 30) return <div className="text-[9px] text-amber-400 font-bold mt-0.5 flex items-center gap-1"><Clock size={9} /> Expires in {daysLeft}d</div>;
+                        return null;
+                      })()}
                     </button>
                   ))}
                 </div>
