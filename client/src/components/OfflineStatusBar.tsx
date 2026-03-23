@@ -119,7 +119,7 @@ export default function OfflineStatusBar() {
               • {syncQueueDepth} pending sync
             </span>
           )}
-          <button
+          <button type="button"
             onClick={triggerSync}
             className="ml-2 px-2 py-0.5 text-[10px] transition-colors"
             style={{
@@ -151,7 +151,7 @@ export default function OfflineStatusBar() {
         >
           <WifiOff className="w-3.5 h-3.5" />
           <span>Offline — Read-only mode</span>
-          <button
+          <button type="button"
             onClick={() => setPinModalOpen(true)}
             className="ml-2 px-2 py-0.5 text-[10px] transition-colors"
             style={{

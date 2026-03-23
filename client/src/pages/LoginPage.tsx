@@ -771,7 +771,7 @@ export default function LoginPage() {
                     'BEGIN SETUP'
                   )}
                 </button>
-                <button
+                <button type="button"
                   onClick={handleBack}
                   className="w-full flex items-center justify-center gap-1 py-1.5 text-[9px] uppercase tracking-wider"
                   style={{ color: '#5a6e80', background: 'transparent', border: 'none' }}

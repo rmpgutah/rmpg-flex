@@ -138,7 +138,7 @@ export default function OfficerFormModal({
               </div>
               <div>
                 <label className="field-label">Password <span className="text-red-400">*</span></label>
-                <input type="password" required value={form.password} onChange={e => set('password', e.target.value)} placeholder="Initial password" className="input-dark" />
+                <input type="password" autoComplete="new-password" required value={form.password} onChange={e => set('password', e.target.value)} placeholder="Initial password" className="input-dark" />
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

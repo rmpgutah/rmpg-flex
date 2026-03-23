@@ -164,7 +164,7 @@ export default function TrainingPage() {
       {fetchError && (
         <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
           <span>⚠ {fetchError}</span>
-          <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
         </div>
       )}
       {/* Header */}
@@ -179,11 +179,11 @@ export default function TrainingPage() {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={fetchData} className="toolbar-btn p-1.5" title="Refresh">
+          <button type="button" onClick={fetchData} className="toolbar-btn p-1.5" title="Refresh">
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
           {isAdmin && (
-            <button
+            <button type="button"
               onClick={() => { setEditRecord(null); setShowRecordModal(true); }}
               className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1"
             >
@@ -197,7 +197,7 @@ export default function TrainingPage() {
       {/* Tab Navigation */}
       <div className="panel-inset mx-3 mt-3 p-1 flex items-center gap-1 flex-shrink-0">
         {TABS.map(({ key, label, icon: Icon }) => (
-          <button
+          <button type="button"
             key={key}
             onClick={() => setActiveTab(key)}
             className={`text-[10px] px-3 py-1.5 flex items-center gap-1.5 transition-colors ${
@@ -818,10 +818,10 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
                   {isAdmin && (
                     <td className="py-1.5 px-2 text-center">
                       <div className="flex items-center justify-center gap-1">
-                        <button onClick={() => onEdit(record)} className="toolbar-btn p-1" title="Edit">
+                        <button type="button" onClick={() => onEdit(record)} className="toolbar-btn p-1" title="Edit">
                           <Edit2 className="w-3 h-3" />
                         </button>
-                        <button onClick={() => onDelete(record.id)} className="toolbar-btn p-1 text-red-400 hover:text-red-300" title="Delete">
+                        <button type="button" onClick={() => onDelete(record.id)} className="toolbar-btn p-1 text-red-400 hover:text-red-300" title="Delete">
                           <Trash2 className="w-3 h-3" />
                         </button>
                       </div>
@@ -854,7 +854,7 @@ function RequirementsTab({ requirements, records, officers, isAdmin, onAdd, onEd
           {requirements.length} Training Requirements
         </span>
         {isAdmin && (
-          <button onClick={onAdd} className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1">
+          <button type="button" onClick={onAdd} className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1">
             <Plus className="w-3 h-3" />
             Add Requirement
           </button>
@@ -893,10 +893,10 @@ function RequirementsTab({ requirements, records, officers, isAdmin, onAdd, onEd
                   </div>
                   {isAdmin && (
                     <div className="flex items-center gap-1">
-                      <button onClick={() => onEdit(req)} className="toolbar-btn p-1" title="Edit">
+                      <button type="button" onClick={() => onEdit(req)} className="toolbar-btn p-1" title="Edit">
                         <Edit2 className="w-3 h-3" />
                       </button>
-                      <button onClick={() => onDelete(req.id)} className="toolbar-btn p-1 text-red-400" title="Delete">
+                      <button type="button" onClick={() => onDelete(req.id)} className="toolbar-btn p-1 text-red-400" title="Delete">
                         <Trash2 className="w-3 h-3" />
                       </button>
                     </div>
@@ -1007,9 +1007,9 @@ function CalendarTab({ records, requirements }: {
     <div className="p-4 space-y-3">
       {/* Month navigation */}
       <div className="flex items-center justify-between">
-        <button onClick={prevMonth} className="toolbar-btn text-[10px] px-3 py-1">← Prev</button>
+        <button type="button" onClick={prevMonth} className="toolbar-btn text-[10px] px-3 py-1">← Prev</button>
         <span className="text-sm font-bold text-rmpg-100">{monthName}</span>
-        <button onClick={nextMonth} className="toolbar-btn text-[10px] px-3 py-1">Next →</button>
+        <button type="button" onClick={nextMonth} className="toolbar-btn text-[10px] px-3 py-1">Next →</button>
       </div>
 
       {/* Calendar grid */}
@@ -1154,13 +1154,13 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
       <div className="panel-beveled bg-surface-base w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-3 border-b border-rmpg-700">
           <h2 className="text-sm font-bold text-rmpg-100">
             {isEdit ? 'Edit Training Record' : 'Add Training Record'}
           </h2>
-          <button onClick={onClose} className="toolbar-btn p-1"><X className="w-4 h-4" /></button>
+          <button type="button" onClick={onClose} className="toolbar-btn p-1" aria-label="Close" title="Close"><X className="w-4 h-4" /></button>
         </div>
 
         <div className="p-4 space-y-3">
@@ -1313,8 +1313,8 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
         </div>
 
         <div className="flex items-center justify-end gap-2 p-3 border-t border-rmpg-700">
-          <button onClick={onClose} className="toolbar-btn text-[10px] px-4 py-1.5">Cancel</button>
-          <button
+          <button type="button" onClick={onClose} className="toolbar-btn text-[10px] px-4 py-1.5">Cancel</button>
+          <button type="button"
             onClick={handleSubmit}
             disabled={!form.officer_id || !form.course_name}
             className="toolbar-btn-primary text-[10px] px-4 py-1.5"
@@ -1365,13 +1365,13 @@ function RequirementModal({ requirement, onSave, onClose }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
       <div className="panel-beveled bg-surface-base w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-3 border-b border-rmpg-700">
           <h2 className="text-sm font-bold text-rmpg-100">
             {isEdit ? 'Edit Requirement' : 'Add Training Requirement'}
           </h2>
-          <button onClick={onClose} className="toolbar-btn p-1"><X className="w-4 h-4" /></button>
+          <button type="button" onClick={onClose} className="toolbar-btn p-1" aria-label="Close" title="Close"><X className="w-4 h-4" /></button>
         </div>
 
         <div className="p-4 space-y-3">
@@ -1421,7 +1421,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
             <label className="field-label mb-1 block">Required for Roles</label>
             <div className="flex flex-wrap gap-1.5">
               {ROLES.map(role => (
-                <button
+                <button type="button"
                   key={role}
                   onClick={() => toggleRole(role)}
                   className={`text-[10px] px-2 py-1 capitalize ${
@@ -1475,8 +1475,8 @@ function RequirementModal({ requirement, onSave, onClose }: {
         </div>
 
         <div className="flex items-center justify-end gap-2 p-3 border-t border-rmpg-700">
-          <button onClick={onClose} className="toolbar-btn text-[10px] px-4 py-1.5">Cancel</button>
-          <button
+          <button type="button" onClick={onClose} className="toolbar-btn text-[10px] px-4 py-1.5">Cancel</button>
+          <button type="button"
             onClick={handleSubmit}
             disabled={!form.course_name}
             className="toolbar-btn-primary text-[10px] px-4 py-1.5"

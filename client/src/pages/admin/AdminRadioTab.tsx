@@ -199,14 +199,14 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
           <span className="text-[10px] text-rmpg-400">
             {activeCount} active / {channels.length} total
           </span>
-          <button
+          <button type="button"
             onClick={fetchChannels}
             className="p-1.5 text-rmpg-400 hover:text-brand-400 transition-colors"
             title="Refresh"
           >
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
-          <button
+          <button type="button"
             onClick={() => setShowAdd(!showAdd)}
             className="flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white text-[10px] font-bold uppercase tracking-wider transition-colors"
           >
@@ -253,7 +253,7 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
             </div>
           </div>
           <div className="flex items-center gap-2 pt-1">
-            <button
+            <button type="button"
               onClick={handleAdd}
               disabled={!newId.trim() || !newLabel.trim() || saving}
               className="flex items-center gap-1 px-3 py-1.5 bg-green-700 hover:bg-green-600 disabled:opacity-50 text-white text-[10px] font-bold uppercase tracking-wider transition-colors"
@@ -261,7 +261,7 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
               {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
               Create
             </button>
-            <button
+            <button type="button"
               onClick={() => setShowAdd(false)}
               className="px-3 py-1.5 text-rmpg-400 hover:text-rmpg-200 text-[10px] font-bold uppercase tracking-wider transition-colors"
             >
@@ -290,14 +290,14 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
                 {/* Order */}
                 <td className="px-3 py-2">
                   <div className="flex items-center gap-0.5">
-                    <button
+                    <button type="button"
                       onClick={() => handleMove(ch, 'up')}
                       disabled={idx === 0}
                       className="p-0.5 text-rmpg-500 hover:text-rmpg-200 disabled:opacity-30 transition-colors"
                     >
                       <ArrowUp className="w-3 h-3" />
                     </button>
-                    <button
+                    <button type="button"
                       onClick={() => handleMove(ch, 'down')}
                       disabled={idx === channels.length - 1}
                       className="p-0.5 text-rmpg-500 hover:text-rmpg-200 disabled:opacity-30 transition-colors"
@@ -346,7 +346,7 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
 
                 {/* Status */}
                 <td className="px-3 py-2 text-center">
-                  <button
+                  <button type="button"
                     onClick={() => handleToggle(ch)}
                     className="inline-flex items-center gap-1 transition-colors"
                     title={ch.is_active ? 'Click to disable' : 'Click to enable'}
@@ -370,7 +370,7 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
                   <div className="flex items-center justify-end gap-1">
                     {editingId === ch.id ? (
                       <>
-                        <button
+                        <button type="button"
                           onClick={saveEdit}
                           disabled={saving}
                           className="p-1 text-green-400 hover:text-green-300 transition-colors"
@@ -378,24 +378,23 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
                         >
                           {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                         </button>
-                        <button
+                        <button type="button"
                           onClick={cancelEdit}
                           className="p-1 text-rmpg-400 hover:text-rmpg-200 transition-colors"
-                          title="Cancel"
-                        >
+                          title="Cancel">
                           <X className="w-3.5 h-3.5" />
                         </button>
                       </>
                     ) : (
                       <>
-                        <button
+                        <button type="button"
                           onClick={() => startEdit(ch)}
                           className="p-1 text-rmpg-400 hover:text-brand-400 transition-colors"
                           title="Edit"
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
-                        <button
+                        <button type="button"
                           onClick={() => handleDelete(ch)}
                           className="p-1 text-rmpg-500 hover:text-red-400 transition-colors"
                           title="Delete"

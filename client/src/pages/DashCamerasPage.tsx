@@ -242,7 +242,7 @@ export default function DashCamerasPage() {
           </div>
           <p className="text-xs text-rmpg-400">No dash camera videos found</p>
           {canManage && (
-            <button onClick={() => setShowUpload(true)}
+            <button type="button" onClick={() => setShowUpload(true)}
               className="mt-3 toolbar-btn-primary text-[10px] px-4 py-1.5 inline-flex items-center gap-1.5">
               <Plus className="w-3 h-3" /> Upload Video
             </button>
@@ -415,10 +415,10 @@ export default function DashCamerasPage() {
         style={{ background: 'linear-gradient(180deg, #1e3048, #1a2636)', borderBottom: '1px solid #141e2b' }}>
         <Video className="w-3 h-3 text-cyan-400 flex-shrink-0" />
         <span className="text-[10px] font-semibold text-rmpg-200 truncate flex-1">{selectedVideo.title}</span>
-        <button onClick={() => setPlayingVideo(selectedVideo)} className="toolbar-btn p-1" title="Full screen player with HUD">
+        <button type="button" onClick={() => setPlayingVideo(selectedVideo)} className="toolbar-btn p-1" title="Full screen player with HUD">
           <Maximize2 className="w-3 h-3" />
         </button>
-        <button onClick={() => setSelectedVideo(null)} className="toolbar-btn p-1" title="Close panel">
+        <button type="button" onClick={() => setSelectedVideo(null)} className="toolbar-btn p-1" title="Close panel">
           <X className="w-3 h-3" />
         </button>
       </div>
@@ -586,7 +586,7 @@ export default function DashCamerasPage() {
             </h4>
             <div className="flex flex-wrap gap-1.5">
               {(['routine', 'evidence', 'flagged', 'restricted'] as const).map(cls => (
-                <button key={cls}
+                <button type="button" key={cls}
                   onClick={() => handleQuickClassify(selectedVideo.id, cls)}
                   className={`text-[9px] px-2.5 py-1 capitalize ${
                     selectedVideo.classification === cls ? 'toolbar-btn-primary' : 'toolbar-btn'
@@ -596,16 +596,16 @@ export default function DashCamerasPage() {
               ))}
             </div>
             <div className="flex gap-1.5 mt-2">
-              <button onClick={() => setEditingVideo(selectedVideo)}
+              <button type="button" onClick={() => setEditingVideo(selectedVideo)}
                 className="toolbar-btn text-[9px] px-2.5 py-1 flex items-center gap-1">
                 <Edit2 className="w-3 h-3" /> Edit
               </button>
-              <button onClick={() => setLinkingVideo(selectedVideo)}
+              <button type="button" onClick={() => setLinkingVideo(selectedVideo)}
                 className="toolbar-btn text-[9px] px-2.5 py-1 flex items-center gap-1">
                 <Link2 className="w-3 h-3" /> Link Case
               </button>
               {isAdmin && (
-                <button onClick={() => handleDelete(selectedVideo.id)}
+                <button type="button" onClick={() => handleDelete(selectedVideo.id)}
                   className="toolbar-btn text-[9px] px-2.5 py-1 flex items-center gap-1 text-red-400 hover:text-red-300">
                   <Trash2 className="w-3 h-3" /> Delete
                 </button>
@@ -636,11 +636,11 @@ export default function DashCamerasPage() {
 
         {/* View toggle */}
         <div className="flex items-center">
-          <button onClick={() => setViewMode('gallery')} title="Gallery view"
+          <button type="button" onClick={() => setViewMode('gallery')} title="Gallery view"
             className={`p-1 ${viewMode === 'gallery' ? 'toolbar-btn-primary' : 'toolbar-btn'}`}>
             <Grid className="w-3 h-3" />
           </button>
-          <button onClick={() => setViewMode('list')} title="List view"
+          <button type="button" onClick={() => setViewMode('list')} title="List view"
             className={`p-1 ${viewMode === 'list' ? 'toolbar-btn-primary' : 'toolbar-btn'}`}>
             <List className="w-3 h-3" />
           </button>
@@ -650,7 +650,7 @@ export default function DashCamerasPage() {
         <PrintButton />
         <ExportButton exportUrl="/fleet/dashcam-videos?limit=5000&format=csv" exportFilename="dashcam-videos.csv" />
         {canManage && (
-          <button onClick={() => setShowUpload(true)}
+          <button type="button" onClick={() => setShowUpload(true)}
             className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
             <Upload className="w-3 h-3" /> Upload
           </button>
@@ -728,7 +728,7 @@ export default function DashCamerasPage() {
           { key: 'outside', label: 'FRONT' },
           { key: 'inside', label: 'REAR' },
         ] as const).map(ch => (
-          <button key={ch.key}
+          <button type="button" key={ch.key}
             onClick={() => { setChannelFilter(ch.key); setPage(0); }}
             className={`text-[10px] px-2 py-1 ${channelFilter === ch.key ? 'toolbar-btn-primary' : 'toolbar-btn'}`}>
             {ch.label}
@@ -756,7 +756,7 @@ export default function DashCamerasPage() {
         {/* Classification */}
         <Filter className="w-3 h-3 text-rmpg-500 flex-shrink-0" />
         {['all', 'routine', 'evidence', 'flagged', 'restricted'].map(f => (
-          <button key={f}
+          <button type="button" key={f}
             onClick={() => { setClassFilter(f); setPage(0); }}
             className={`text-[10px] px-2 py-1 capitalize ${classFilter === f ? 'toolbar-btn-primary' : 'toolbar-btn'}`}>
             {f}
@@ -771,7 +771,7 @@ export default function DashCamerasPage() {
           { key: 'upload', label: 'Manual' },
           { key: 'clearpathgps', label: 'CPG' },
         ].map(f => (
-          <button key={f.key}
+          <button type="button" key={f.key}
             onClick={() => { setSourceFilter(f.key); setPage(0); }}
             className={`text-[10px] px-2 py-1 ${sourceFilter === f.key ? 'toolbar-btn-primary' : 'toolbar-btn'}`}>
             {f.label}
@@ -801,12 +801,12 @@ export default function DashCamerasPage() {
             Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total}
           </span>
           <div className="flex items-center gap-1">
-            <button disabled={page === 0} onClick={() => setPage(p => p - 1)}
+            <button type="button" disabled={page === 0} onClick={() => setPage(p => p - 1)}
               className="toolbar-btn p-1 disabled:opacity-30">
               <ChevronLeft className="w-3.5 h-3.5" />
             </button>
             <span className="text-[10px] text-rmpg-400 font-mono px-2">{page + 1} / {totalPages}</span>
-            <button disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}
+            <button type="button" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}
               className="toolbar-btn p-1 disabled:opacity-30">
               <ChevronRight className="w-3.5 h-3.5" />
             </button>

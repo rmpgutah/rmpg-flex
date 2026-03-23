@@ -96,7 +96,7 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
           <Package className="w-4 h-4 text-brand-400" />
           <h2 className="text-sm font-bold text-rmpg-200 uppercase tracking-wider">Equipment</h2>
         </div>
-        <button onClick={onAddEquipment} className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
+        <button type="button" onClick={onAddEquipment} className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
           <Plus className="w-3 h-3" />
           Issue Equipment
         </button>
@@ -130,7 +130,7 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
       {/* Type Filter */}
       <div className="panel-inset p-2 flex items-center gap-1.5 flex-wrap">
         {EQUIPMENT_TYPES.map((t) => (
-          <button
+          <button type="button"
             key={t.value}
             onClick={() => setTypeFilter(t.value)}
             className={`text-[10px] px-2.5 py-1 ${
@@ -212,14 +212,14 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
                   </td>
                   <td className="text-center">
                     <div className="flex items-center justify-center gap-1">
-                      <button
+                      <button type="button"
                         onClick={() => onEditEquipment(eq)}
                         className="toolbar-btn p-1"
                         title="Edit equipment"
                       >
                         <Edit3 className="w-3 h-3" />
                       </button>
-                      <button
+                      <button type="button"
                         onClick={() => onDeleteEquipment(eq.id)}
                         className="toolbar-btn toolbar-btn-danger p-1"
                         title="Delete equipment"

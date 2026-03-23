@@ -67,10 +67,10 @@ export function useWeatherOverlay(): UseWeatherOverlayResult {
           setData(weather);
           setError(null);
         }
-      } catch (e: any) {
+      } catch (e) {
         // Degrade gracefully — keep stale cache if available
         if (!cancelled) {
-          setError(e.message || 'Weather unavailable');
+          setError(e instanceof Error ? e.message : 'Weather unavailable');
           if (cachedWeather) setData(cachedWeather);
         }
       } finally {

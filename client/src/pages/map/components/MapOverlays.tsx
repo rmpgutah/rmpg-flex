@@ -159,7 +159,7 @@ export default function MapOverlays({
             <span style={{ fontSize: 10, color: '#3b82f6', fontWeight: 900, letterSpacing: '0.05em' }}>
               {activeRoute.unitCallSign} → {activeRoute.callNumber}
             </span>
-            <button
+            <button type="button"
               onClick={clearRoute}
               style={{ background: 'none', border: 'none', color: '#5a6e80', cursor: 'pointer', fontSize: 12, padding: '0 0 0 8px' }}
               aria-label="Clear route"
@@ -195,7 +195,7 @@ export default function MapOverlays({
               border: '1px solid #1e3048',
             }}
           >
-            <button
+            <button type="button"
               onClick={() => {
                 const map = mapInstanceRef.current;
                 if (map) map.setZoom((map.getZoom() || 12) + 1);
@@ -207,7 +207,7 @@ export default function MapOverlays({
             >
               <Plus className="w-5 h-5 text-white/80" />
             </button>
-            <button
+            <button type="button"
               onClick={() => {
                 const map = mapInstanceRef.current;
                 if (map) map.setZoom((map.getZoom() || 12) - 1);
@@ -222,7 +222,7 @@ export default function MapOverlays({
           </div>
         )}
         {gps.isTracking && gps.latitude != null && gps.longitude != null && (
-          <button
+          <button type="button"
             onClick={() => {
               if (gps.latitude != null && gps.longitude != null) {
                 mapInstanceRef.current?.panTo({ lat: gps.latitude, lng: gps.longitude });
@@ -249,7 +249,7 @@ export default function MapOverlays({
           onScreenshot={onScreenshot}
           onPrint={onPrint}
         />
-        <button
+        <button type="button"
           onClick={() => {
             mapInstanceRef.current?.panTo({ lat: 40.7608, lng: -111.8910 });
             mapInstanceRef.current?.setZoom(12);

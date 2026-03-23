@@ -116,7 +116,7 @@ export default function FormModal({
             {/* Decorative window buttons */}
             <button type="button" className="toolbar-btn" style={{ padding: '1px 4px', fontSize: '9px' }} tabIndex={-1}>_</button>
             <button type="button" className="toolbar-btn" style={{ padding: '1px 4px', fontSize: '9px' }} tabIndex={-1}>□</button>
-            <button
+            <button type="button"
               onClick={guardedClose}
               className="toolbar-btn"
               style={{ padding: '1px 4px' }}

@@ -866,12 +866,12 @@ export default function WarrantsPage() {
         <RmpgLogo height={16} iconOnly />
         <span className="toolbar-separator" />
         {activeTab === 'warrants' && !showArchived && (
-          <button onClick={openNewForm} className="toolbar-btn toolbar-btn-primary text-[9px]">
+          <button type="button" onClick={openNewForm} className="toolbar-btn toolbar-btn-primary text-[9px]">
             <Plus className="w-3 h-3" /> New Warrant
           </button>
         )}
         {activeTab === 'warrants' && (
-          <button
+          <button type="button"
             onClick={() => { setShowArchived(!showArchived); setPage(1); }}
             className={`toolbar-btn text-[9px] ${showArchived ? 'text-amber-400' : ''}`}
             title={showArchived ? 'Show active warrants' : 'Show archived warrants'}
@@ -882,7 +882,7 @@ export default function WarrantsPage() {
         )}
         {activeTab === 'sources' && isAdminOrManager && (
           <>
-            <button
+            <button type="button"
               onClick={handleTriggerScan}
               disabled={scanRunning}
               className="toolbar-btn toolbar-btn-primary text-[9px]"
@@ -893,7 +893,7 @@ export default function WarrantsPage() {
                 : <><PlayCircle className="w-3 h-3" /> Run Scan Now</>
               }
             </button>
-            <button onClick={() => { fetchCoverage(); fetchWatchRuns(); }} className="toolbar-btn text-[9px]" title="Refresh">
+            <button type="button" onClick={() => { fetchCoverage(); fetchWatchRuns(); }} className="toolbar-btn text-[9px]" title="Refresh">
               <RotateCcw className="w-3 h-3" />
             </button>
           </>
@@ -910,7 +910,7 @@ export default function WarrantsPage() {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
           return (
-            <button
+            <button type="button"
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`tab-bar-item ${isActive ? 'active' : ''}`}
@@ -986,7 +986,7 @@ export default function WarrantsPage() {
                 }}
               />
               {dashSearch && (
-                <button onClick={() => setDashSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white">
+                <button type="button" onClick={() => setDashSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white">
                   <X className="w-3.5 h-3.5" />
                 </button>
               )}
@@ -1031,7 +1031,7 @@ export default function WarrantsPage() {
                   </h2>
                   <div className="flex gap-1 ml-auto">
                     {FEED_RANGES.map(r => (
-                      <button
+                      <button type="button"
                         key={r}
                         onClick={() => setFeedRange(r)}
                         className={`px-1.5 py-0.5 text-[9px] font-bold rounded-sm border transition-colors ${
@@ -1069,7 +1069,7 @@ export default function WarrantsPage() {
                       {filteredFeed.map(entry => (
                         <div key={entry.id} className="flex items-center gap-2 px-3 py-2 hover:bg-surface-raised/50 transition-colors">
                           <span className="text-[9px] text-rmpg-500 font-mono shrink-0 w-14">{relativeTime(entry.created_at)}</span>
-                          <button
+                          <button type="button"
                             onClick={() => entry.person_id && openPersonProfile(entry.person_id)}
                             className="text-xs font-medium text-brand-300 hover:text-brand-200 transition-colors truncate"
                             title="View person profile"
@@ -1220,7 +1220,7 @@ export default function WarrantsPage() {
             {error && (
               <div className="px-3 py-2 bg-red-900/30 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2">
                 <AlertTriangle className="w-3 h-3" /> {error}
-                <button onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
+                <button type="button" onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
               </div>
             )}
 
@@ -1235,10 +1235,10 @@ export default function WarrantsPage() {
                   <option value="quashed">Quashed</option>
                   <option value="expired">Expired</option>
                 </select>
-                <button onClick={handleBatchUpdate} disabled={!batchStatus || batchSubmitting} className="toolbar-btn-primary text-[10px] px-2 py-0.5 disabled:opacity-50">
+                <button type="button" onClick={handleBatchUpdate} disabled={!batchStatus || batchSubmitting} className="toolbar-btn-primary text-[10px] px-2 py-0.5 disabled:opacity-50">
                   {batchSubmitting ? 'Updating...' : 'Apply'}
                 </button>
-                <button onClick={() => setBatchSelected(new Set())} className="toolbar-btn text-[10px] px-2 py-0.5">Clear</button>
+                <button type="button" onClick={() => setBatchSelected(new Set())} className="toolbar-btn text-[10px] px-2 py-0.5">Clear</button>
               </div>
             )}
 
@@ -1258,7 +1258,7 @@ export default function WarrantsPage() {
               ) : isMobile ? (
                 <div>
                   {warrants.map((w) => (
-                    <button
+                    <button type="button"
                       key={w.id}
                       onClick={() => fetchWarrantDetail(w.id)}
                       className={`w-full text-left px-3 py-3 border-b border-rmpg-800 transition-colors hover:bg-surface-raised ${selectedWarrant?.id === w.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'border-l-2 border-l-transparent'}`}
@@ -1327,7 +1327,7 @@ export default function WarrantsPage() {
                             {w.subject_photo_url ? (
                               <img src={w.subject_photo_url} alt="" className="w-6 h-6 rounded-sm object-cover border border-rmpg-600" />
                             ) : null}
-                            <button
+                            <button type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 if (w.subject_person_id) openPersonProfile(w.subject_person_id);
@@ -1368,8 +1368,8 @@ export default function WarrantsPage() {
                   Page {page} of {totalPages} ({totalCount} results)
                 </span>
                 <div className="flex gap-1">
-                  <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1} className="toolbar-btn text-[9px]">Prev</button>
-                  <button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page >= totalPages} className="toolbar-btn text-[9px]">Next</button>
+                  <button type="button" onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1} className="toolbar-btn text-[9px]">Prev</button>
+                  <button type="button" onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page >= totalPages} className="toolbar-btn text-[9px]">Next</button>
                 </div>
               </div>
             )}
@@ -1382,30 +1382,30 @@ export default function WarrantsPage() {
               <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Warrant Detail</span>
               <span className="flex-1" />
               {isMobile && selectedWarrant && (
-                <button onClick={() => setSelectedWarrant(null)} className="toolbar-btn text-[9px]" style={isMobile ? { minHeight: 44 } : undefined}>&larr; Back</button>
+                <button type="button" onClick={() => setSelectedWarrant(null)} className="toolbar-btn text-[9px]" style={isMobile ? { minHeight: 44 } : undefined}>&larr; Back</button>
               )}
               <PrintRecordButton recordType="warrant" recordData={selectedWarrant} identifier={selectedWarrant?.warrant_number} entityType="warrant" entityId={selectedWarrant?.id} label="Print" />
               {selectedWarrant && !selectedWarrant.archived_at && (
                 <>
                   {selectedWarrant.status === 'active' && (
                     <>
-                      <button onClick={() => { setServeLocation(''); setServeModalOpen(true); }} className="toolbar-btn toolbar-btn-primary text-[9px]" style={isMobile ? { minHeight: 48 } : undefined}>
+                      <button type="button" onClick={() => { setServeLocation(''); setServeModalOpen(true); }} className="toolbar-btn toolbar-btn-primary text-[9px]" style={isMobile ? { minHeight: 48 } : undefined}>
                         <CheckCircle className="w-3 h-3" /> Serve
                       </button>
-                      <button onClick={() => openEditForm(selectedWarrant)} className="toolbar-btn text-[9px]" style={isMobile ? { minHeight: 48 } : undefined}>
+                      <button type="button" onClick={() => openEditForm(selectedWarrant)} className="toolbar-btn text-[9px]" style={isMobile ? { minHeight: 48 } : undefined}>
                         <Edit className="w-3 h-3" /> Edit
                       </button>
-                      <button onClick={() => handleUpdateStatus(selectedWarrant.id, 'recalled')} className="toolbar-btn text-[9px] text-amber-400" style={isMobile ? { minHeight: 48 } : undefined}>
+                      <button type="button" onClick={() => handleUpdateStatus(selectedWarrant.id, 'recalled')} className="toolbar-btn text-[9px] text-amber-400" style={isMobile ? { minHeight: 48 } : undefined}>
                         <XCircle className="w-3 h-3" /> Recall
                       </button>
                     </>
                   )}
                   {selectedWarrant.status !== 'active' && (
                     <>
-                      <button onClick={() => handleArchive(selectedWarrant.id)} className="toolbar-btn text-[9px]" title="Archive this warrant" style={isMobile ? { minHeight: 48 } : undefined}>
+                      <button type="button" onClick={() => handleArchive(selectedWarrant.id)} className="toolbar-btn text-[9px]" title="Archive this warrant" style={isMobile ? { minHeight: 48 } : undefined}>
                         <Archive className="w-3 h-3" /> Archive
                       </button>
-                      <button onClick={() => setDeletingWarrant(selectedWarrant)} className="toolbar-btn text-[9px] text-red-400" title="Permanently delete" style={isMobile ? { minHeight: 48 } : undefined}>
+                      <button type="button" onClick={() => setDeletingWarrant(selectedWarrant)} className="toolbar-btn text-[9px] text-red-400" title="Permanently delete" style={isMobile ? { minHeight: 48 } : undefined}>
                         <Trash2 className="w-3 h-3" /> Delete
                       </button>
                     </>
@@ -1413,7 +1413,7 @@ export default function WarrantsPage() {
                 </>
               )}
               {selectedWarrant?.archived_at && (
-                <button onClick={() => handleUnarchive(selectedWarrant.id)} className="toolbar-btn text-[9px] text-amber-400" style={isMobile ? { minHeight: 48 } : undefined}>
+                <button type="button" onClick={() => handleUnarchive(selectedWarrant.id)} className="toolbar-btn text-[9px] text-amber-400" style={isMobile ? { minHeight: 48 } : undefined}>
                   <RotateCcw className="w-3 h-3" /> Unarchive
                 </button>
               )}
@@ -1890,7 +1890,7 @@ export default function WarrantsPage() {
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
                 <User className="w-4 h-4 text-brand-400" /> Person Warrant Profile
               </h2>
-              <button onClick={() => setPersonProfileOpen(false)} className="text-rmpg-400 hover:text-white">
+              <button type="button" onClick={() => setPersonProfileOpen(false)} className="text-rmpg-400 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -1930,7 +1930,7 @@ export default function WarrantsPage() {
 
                 {/* Quick actions */}
                 <div className="flex gap-2">
-                  <button
+                  <button type="button"
                     onClick={() => handleRunCheck(personProfile.person.id)}
                     disabled={checkingPerson}
                     className="toolbar-btn toolbar-btn-primary text-[9px] flex-1"
@@ -1938,7 +1938,7 @@ export default function WarrantsPage() {
                     {checkingPerson ? <Loader2 className="w-3 h-3 animate-spin" /> : <Radar className="w-3 h-3" />}
                     Run Check Now
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => {
                       setPersonProfileOpen(false);
                       setFormData(prev => ({
@@ -2041,7 +2041,7 @@ export default function WarrantsPage() {
           <div className={`panel-beveled ${isMobile ? 'w-full h-full' : 'w-[550px] max-h-[85vh]'} overflow-auto bg-surface-base`}>
             <div className="flex items-center justify-between p-4 border-b border-rmpg-600">
               <h2 id={warrantFormTitleId} className="text-sm font-bold text-white">{editingWarrant ? 'Edit Warrant' : 'New Warrant'}</h2>
-              <button onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+              <button type="button" onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-4 space-y-4">
               {/* Type + Offense Level */}
@@ -2202,7 +2202,7 @@ export default function WarrantsPage() {
           <div className={`panel-beveled ${isMobile ? 'w-full mx-4' : 'w-[400px]'} bg-surface-base`}>
             <div className="flex items-center justify-between p-4 border-b border-rmpg-600">
               <h2 id={serveTitleId} className="text-sm font-bold text-white">Serve Warrant</h2>
-              <button onClick={() => setServeModalOpen(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+              <button type="button" onClick={() => setServeModalOpen(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4 space-y-4">
               <p className="text-xs text-rmpg-300">
@@ -2219,8 +2219,8 @@ export default function WarrantsPage() {
                 />
               </div>
               <div className="flex justify-end gap-2">
-                <button onClick={() => setServeModalOpen(false)} className="toolbar-btn text-xs">Cancel</button>
-                <button onClick={handleServe} disabled={serving} className="toolbar-btn toolbar-btn-primary text-xs">
+                <button type="button" onClick={() => setServeModalOpen(false)} className="toolbar-btn text-xs">Cancel</button>
+                <button type="button" onClick={handleServe} disabled={serving} className="toolbar-btn toolbar-btn-primary text-xs">
                   {serving ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <CheckCircle className="w-3 h-3 mr-1" />}
                   Confirm Served
                 </button>
@@ -2232,7 +2232,7 @@ export default function WarrantsPage() {
 
       {/* MOBILE FAB */}
       {isMobile && activeTab === 'warrants' && !selectedWarrant && !showArchived && !formOpen && (
-        <button onClick={openNewForm} className="mobile-fab" aria-label="New Warrant">
+        <button type="button" onClick={openNewForm} className="mobile-fab" aria-label="New Warrant">
           <Plus className="w-6 h-6" />
         </button>
       )}

@@ -250,7 +250,7 @@ export default function UserFormModal({
             </div>
             <div>
               <label className={labelCls}>Password <span className="text-red-400">*</span></label>
-              <input type="password" required value={form.password} onChange={e => set('password', e.target.value)} placeholder="Initial password" className={inputCls} />
+              <input type="password" autoComplete="new-password" required value={form.password} onChange={e => set('password', e.target.value)} placeholder="Initial password" className={inputCls} />
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -484,7 +484,7 @@ export default function UserFormModal({
         <div className="space-y-4">
           <div>
             <label className={labelCls}>Password {!isEdit && <span className="text-red-400">*</span>}</label>
-            <input type="password" value={form.password} onChange={e => set('password', e.target.value)} required={!isEdit} placeholder={isEdit ? '(leave blank to keep)' : 'Enter password'} className={inputCls} />
+            <input type="password" autoComplete="new-password" value={form.password} onChange={e => set('password', e.target.value)} required={!isEdit} placeholder={isEdit ? '(leave blank to keep)' : 'Enter password'} className={inputCls} />
           </div>
           <div>
             <label className={labelCls}>Certifications</label>

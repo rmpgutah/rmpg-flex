@@ -293,7 +293,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
             Mini-Map
           </span>
           <div style={{ display: 'flex', gap: 2, pointerEvents: 'auto' }}>
-            <button
+            <button type="button"
               onClick={() => navigate('/map')}
               className="text-rmpg-400 hover:text-white"
               style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
@@ -302,7 +302,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
               <Maximize2 style={{ width: 10, height: 10 }} />
             </button>
             {onClose && (
-              <button
+              <button type="button"
                 onClick={onClose}
                 className="text-rmpg-400 hover:text-white"
                 style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
@@ -355,7 +355,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           Mini-Map
         </span>
         <div style={{ display: 'flex', gap: 2, pointerEvents: 'auto' }}>
-          <button
+          <button type="button"
             onClick={() => navigate('/map')}
             className="text-rmpg-400 hover:text-white"
             style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
@@ -364,7 +364,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
             <Maximize2 style={{ width: 10, height: 10 }} />
           </button>
           {onClose && (
-            <button
+            <button type="button"
               onClick={onClose}
               className="text-rmpg-400 hover:text-white"
               style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}

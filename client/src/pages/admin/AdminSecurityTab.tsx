@@ -150,7 +150,7 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
   if (loading) return <LoadingSpinner />;
 
   const ToggleButton = ({ toggleKey, label, description }: { toggleKey: keyof SecurityConfig; label: string; description?: string }) => (
-    <button
+    <button type="button"
       onClick={() => toggleBool(toggleKey)}
       className={`flex items-center gap-3 w-full p-3 border transition-colors text-left ${
         config[toggleKey] === '1'
@@ -183,7 +183,7 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
             <p className="text-[10px] text-rmpg-400">Password requirements, two-factor authentication, IP binding, lockout, sessions & audit</p>
           </div>
         </div>
-        <button
+        <button type="button"
           onClick={saveConfig}
           disabled={!dirty || saving}
           className={`toolbar-btn ${dirty ? 'toolbar-btn-primary' : 'toolbar-btn'} flex items-center gap-1.5`}
@@ -399,7 +399,7 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
       {dirty && (
         <div className="sticky bottom-0 bg-rmpg-950/90 backdrop-blur-sm border-t border-rmpg-700 p-3 flex items-center justify-between -mx-4 px-4">
           <span className="text-[10px] text-amber-400">You have unsaved changes</span>
-          <button onClick={saveConfig} disabled={saving} className="toolbar-btn toolbar-btn-primary flex items-center gap-1.5">
+          <button type="button" onClick={saveConfig} disabled={saving} className="toolbar-btn toolbar-btn-primary flex items-center gap-1.5">
             {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
             {saving ? 'Saving...' : 'Save All Changes'}
           </button>

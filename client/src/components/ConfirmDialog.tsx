@@ -91,7 +91,7 @@ export default function ConfirmDialog({
             <HeaderIcon className={`w-4 h-4 ${iconColor}`} />
             <h2 id={titleId} className="text-xs font-bold text-white uppercase tracking-wider">{title}</h2>
           </div>
-          <button onClick={onClose} className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-white transition-colors" aria-label="Close dialog">
+          <button type="button" onClick={onClose} className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-white transition-colors" aria-label="Close dialog">
             <X className="w-4 h-4" />
           </button>
         </div>

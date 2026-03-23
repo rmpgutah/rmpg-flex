@@ -161,7 +161,7 @@ export default function ReviewFormModal({
           <h2 className="text-sm font-semibold text-white">
             {editReview ? 'Edit Performance Review' : 'New Performance Review'}
           </h2>
-          <button
+          <button type="button"
             onClick={onClose}
             className="text-rmpg-400 hover:text-white transition-colors"
           >

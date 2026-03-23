@@ -178,7 +178,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
             OPERATIONAL
           </span>
           {h.version && (
-            <button
+            <button type="button"
               onClick={() => setShowChangelog(!showChangelog)}
               className="ml-3 flex items-center gap-1 px-2 py-0.5 rounded-sm border border-brand-600/40 bg-brand-950/30 text-brand-400 text-[10px] font-mono font-bold hover:bg-brand-900/40 transition-colors"
             >
@@ -191,7 +191,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
           <span className="text-[10px] text-rmpg-500">
             Last refresh: {lastRefresh.toLocaleTimeString()}
           </span>
-          <button
+          <button type="button"
             onClick={fetchHealth}
             disabled={loading}
             className="toolbar-btn text-[10px] flex items-center gap-1"
@@ -212,7 +212,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
           <div className="space-y-1 max-h-64 overflow-y-auto">
             {changelog.changelog.map((entry) => (
               <div key={entry.version} className="border border-rmpg-700/50 rounded-sm overflow-hidden">
-                <button
+                <button type="button"
                   onClick={() => toggleVersion(entry.version)}
                   className="w-full flex items-center gap-2 px-2 py-1.5 text-left hover:bg-surface-sunken transition-colors"
                 >
@@ -753,7 +753,7 @@ function MaintenanceModeToggle() {
           <AlertTriangle className={`w-3.5 h-3.5 ${enabled ? 'text-amber-400' : 'text-rmpg-500'}`} />
           Maintenance Mode
         </div>
-        <button
+        <button type="button"
           onClick={toggle}
           disabled={saving}
           className={`px-3 py-1 text-[10px] font-bold border ${

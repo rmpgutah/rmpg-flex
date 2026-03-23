@@ -126,13 +126,13 @@ export default function StatuteAnalyticsPage() {
       {fetchError && (
         <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
           <span>⚠ {fetchError}</span>
-          <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
         </div>
       )}
       {!isMobile && <PanelTitleBar title="Statute Analytics" icon={BarChart3}>
         <div className="flex items-center gap-2">
           {[30, 60, 90, 180, 365].map(d => (
-            <button
+            <button type="button"
               key={d}
               onClick={() => setDays(d)}
               className={`px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors ${
@@ -142,10 +142,10 @@ export default function StatuteAnalyticsPage() {
               {d}d
             </button>
           ))}
-          <button onClick={handleLoadTopCharged} className="toolbar-btn" title="Top Charged">
+          <button type="button" onClick={handleLoadTopCharged} className="toolbar-btn" title="Top Charged">
             <BarChart3 className="w-3.5 h-3.5" />
           </button>
-          <button onClick={fetchData} className="toolbar-btn" title="Refresh">
+          <button type="button" onClick={fetchData} className="toolbar-btn" title="Refresh">
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -157,7 +157,7 @@ export default function StatuteAnalyticsPage() {
         <input type="text" placeholder="Penalty lookup — enter statute (e.g. 76-5-102)" className="input-dark text-xs flex-1 max-w-xs"
           value={penaltySearch} onChange={e => setPenaltySearch(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handlePenaltyLookup()} />
-        <button onClick={handlePenaltyLookup} className="toolbar-btn text-[10px]">Lookup</button>
+        <button type="button" onClick={handlePenaltyLookup} className="toolbar-btn text-[10px]">Lookup</button>
         {penaltyResult && (
           <div className="flex items-center gap-2 text-[10px] ml-2">
             <span className="text-white font-bold">{penaltyResult.citation}</span>
@@ -165,7 +165,7 @@ export default function StatuteAnalyticsPage() {
             <span className="text-amber-400">{penaltyResult.offense_level?.replace(/_/g, ' ')}</span>
             <span className="text-rmpg-400">Jail: {penaltyResult.penalty_range?.jail_max}</span>
             <span className="text-rmpg-400">Fine: {penaltyResult.penalty_range?.fine_max}</span>
-            <button onClick={() => setPenaltyResult(null)} className="text-rmpg-500 hover:text-rmpg-300 ml-1">x</button>
+            <button type="button" onClick={() => setPenaltyResult(null)} className="text-rmpg-500 hover:text-rmpg-300 ml-1">x</button>
           </div>
         )}
       </div>
@@ -175,7 +175,7 @@ export default function StatuteAnalyticsPage() {
         <div className="px-3 py-2 border-b border-blue-700/50 bg-blue-900/10 text-xs flex-shrink-0">
           <div className="flex justify-between items-center mb-1">
             <span className="text-blue-400 font-bold text-[10px] uppercase">Top {topCharged.length} Most Charged Statutes</span>
-            <button onClick={() => setTopCharged([])} className="text-blue-500 hover:text-blue-300 text-[10px]">Close</button>
+            <button type="button" onClick={() => setTopCharged([])} className="text-blue-500 hover:text-blue-300 text-[10px]">Close</button>
           </div>
           <div className="max-h-40 overflow-y-auto space-y-0.5">
             {topCharged.map((s, i) => (
@@ -194,7 +194,7 @@ export default function StatuteAnalyticsPage() {
       {isMobile && (
         <div className="flex items-center gap-1 px-3 py-2 overflow-x-auto flex-shrink-0" style={{ background: '#0f1a28', borderBottom: '1px solid #1e3048' }}>
           {[30, 60, 90, 180, 365].map(d => (
-            <button
+            <button type="button"
               key={d}
               onClick={() => setDays(d)}
               className={`px-2 py-1 text-[9px] font-bold uppercase tracking-wider shrink-0 transition-colors ${

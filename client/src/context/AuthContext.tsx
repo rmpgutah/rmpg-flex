@@ -203,13 +203,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 }, backoff);
                 return;
               }
-            } catch { /* fall through to logout */ }
+            } catch (err) { console.warn('[Auth] Token refresh retry failed:', err); /* fall through to logout */ }
           }
           clearTokens();
           setToken(null);
           setUser(null);
         }
-      } catch {
+      } catch (err) {
+        console.warn('[Auth] Token refresh failed, retrying with backoff:', err);
         // Network/timeout error — retry with exponential backoff (1s, 2s, 4s, ... max 30s)
         refreshFailCountRef.current++;
         const backoff = Math.min(Math.pow(2, refreshFailCountRef.current) * 1000, 30000);
@@ -307,7 +308,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setToken(null);
           setUser(null);
         }
-      } catch {
+      } catch (err) {
+        console.warn('[Auth] Initial auth check failed:', err);
         if (gen !== generationRef.current) return; // stale
 
         // API not available — attempt offline auth via Electron local cache
@@ -319,7 +321,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               setUser(cachedUser);
               return; // loaded from local DB — skip mock
             }
-          } catch { /* fall through to mock */ }
+          } catch (err) { console.warn('[Auth] Cached user fetch failed:', err); /* fall through to mock */ }
         }
 
         // Fallback mock user for pure-browser development ONLY
@@ -576,7 +578,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               time: data.lastLoginAt,
               ip: data.lastLoginIp || '',
             }));
-          } catch { /* ignore */ }
+          } catch (err) { console.warn('[Auth] Session storage write failed:', err); }
         }
 
         // Store username for offline auth lookup
@@ -869,7 +871,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const data = await res.json();
         setUser(data.user || data);
       }
-    } catch { /* silent — stale data is acceptable */ }
+    } catch (err) { console.warn('[Auth] User refresh failed:', err); }
   }, []);
 
   // ─── Session idle timeout (CJIS compliance) ────────

@@ -131,6 +131,8 @@ router.get('/', (req: Request, res: Response) => {
 router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid forensic case ID' }); return; }
     const row = db.prepare(`
       SELECT fc.*,
         u.full_name as lead_examiner_name,
@@ -139,7 +141,7 @@ router.get('/:id', (req: Request, res: Response) => {
       LEFT JOIN users u ON fc.lead_examiner_id = u.id
       LEFT JOIN users cb ON fc.created_by = cb.id
       WHERE fc.id = ?
-    `).get(req.params.id);
+    `).get(id);
     if (!row) return res.status(404).json({ error: 'Forensic case not found' });
     res.json({ data: row });
   } catch (error: any) {
@@ -188,7 +190,8 @@ router.post('/', (req: Request, res: Response) => {
     res.status(201).json({ data: newCase });
   } catch (error: any) {
     console.error('Create forensic case error:', error);
-    res.status(500).json({ error: error.message || 'Internal server error' });
+    console.error('[Forensics] Error:', error?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -253,7 +256,8 @@ router.put('/:id', (req: Request, res: Response) => {
     res.json({ data: updated });
   } catch (error: any) {
     console.error('Update forensic case error:', error);
-    res.status(500).json({ error: error.message || 'Internal server error' });
+    console.error('[Forensics] Error:', error?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -345,7 +349,8 @@ router.post('/:caseId/exhibits', (req: Request, res: Response) => {
     res.status(201).json({ data: newExhibit });
   } catch (error: any) {
     console.error('Create exhibit error:', error);
-    res.status(500).json({ error: error.message || 'Internal server error' });
+    console.error('[Forensics] Error:', error?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -391,7 +396,8 @@ router.put('/:caseId/exhibits/:exhibitId', (req: Request, res: Response) => {
     res.json({ data: updated });
   } catch (error: any) {
     console.error('Update exhibit error:', error);
-    res.status(500).json({ error: error.message || 'Internal server error' });
+    console.error('[Forensics] Error:', error?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -500,7 +506,8 @@ router.post('/:caseId/analyses', (req: Request, res: Response) => {
     res.status(201).json({ data: newAnalysis });
   } catch (error: any) {
     console.error('Create analysis error:', error);
-    res.status(500).json({ error: error.message || 'Internal server error' });
+    console.error('[Forensics] Error:', error?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -555,7 +562,8 @@ router.put('/:caseId/analyses/:analysisId', (req: Request, res: Response) => {
     res.json({ data: updated });
   } catch (error: any) {
     console.error('Update analysis error:', error);
-    res.status(500).json({ error: error.message || 'Internal server error' });
+    console.error('[Forensics] Error:', error?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -783,7 +791,8 @@ router.post('/:caseId/evidence-intake', (req: Request, res: Response) => {
     res.status(201).json({ data: exhibit });
   } catch (error: any) {
     console.error('Evidence intake error:', error);
-    res.status(500).json({ error: error.message || 'Internal server error' });
+    console.error('[Forensics] Error:', error?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -881,7 +890,8 @@ router.post('/:caseId/exhibits/:exhibitId/custody-transfer', (req: Request, res:
     res.status(201).json({ data: transferData });
   } catch (error: any) {
     console.error('Custody transfer error:', error);
-    res.status(500).json({ error: error.message || 'Internal server error' });
+    console.error('[Forensics] Error:', error?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -983,7 +993,8 @@ router.post('/:caseId/generate-report', (req: Request, res: Response) => {
     res.json({ data: report });
   } catch (error: any) {
     console.error('Generate report error:', error);
-    res.status(500).json({ error: error.message || 'Internal server error' });
+    console.error('[Forensics] Error:', error?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

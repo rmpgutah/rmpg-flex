@@ -101,7 +101,7 @@ function ExtraConfigEditor({
   return (
     <tr className="border-b border-rmpg-700/20">
       <td colSpan={9} className="px-2 py-0">
-        <button
+        <button type="button"
           onClick={() => setExpanded(!expanded)}
           className="flex items-center gap-1 text-[10px] text-brand-400 hover:text-brand-300 py-1"
         >
@@ -121,7 +121,7 @@ function ExtraConfigEditor({
             {jsonError && (
               <div className="text-[10px] text-red-400">{jsonError}</div>
             )}
-            <button
+            <button type="button"
               onClick={() => {
                 validateJson(value);
                 if (!jsonError) {
@@ -265,7 +265,7 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
             </span>
           )}
         </div>
-        <button onClick={onClose} className="text-rmpg-400 hover:text-white">
+        <button type="button" onClick={onClose} className="text-rmpg-400 hover:text-white" aria-label="Close" title="Close">
           <X className="w-3.5 h-3.5" />
         </button>
       </div>
@@ -299,7 +299,7 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
                   <td className="px-2 py-1.5 text-center">
                     <div className="flex items-center justify-center gap-1">
                       <ScraperTypeBadge type={src.scraper_type} />
-                      <button
+                      <button type="button"
                         onClick={() => handleScraperTypeToggle(src.source_key, src.scraper_type)}
                         className="text-rmpg-500 hover:text-brand-400 ml-0.5"
                         title={`Switch to ${src.scraper_type === 'firecrawl' ? 'legacy' : 'firecrawl'}`}
@@ -309,7 +309,7 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
                     </div>
                   </td>
                   <td className="px-2 py-1.5 text-center">
-                    <button
+                    <button type="button"
                       onClick={() => handleToggle(src.source_key, !src.is_enabled)}
                       className={`${src.is_enabled ? 'text-green-400' : 'text-rmpg-500'}`}
                     >
@@ -326,7 +326,7 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
                   <td className="px-2 py-1.5 text-[10px] text-rmpg-300 text-right font-mono">{src.total_leads_imported}</td>
                   <td className="px-2 py-1.5 text-[10px] text-rmpg-400 text-right font-mono">{Math.round(src.poll_interval_seconds / 3600)}h</td>
                   <td className="px-2 py-1.5 text-center">
-                    <button
+                    <button type="button"
                       onClick={() => handlePollNow(src.source_key)}
                       disabled={pollingKey === src.source_key}
                       className="bg-brand-600/20 hover:bg-brand-600/30 text-brand-400 text-[10px] font-bold px-2 py-0.5 rounded-sm border border-brand-700/50 disabled:opacity-40"

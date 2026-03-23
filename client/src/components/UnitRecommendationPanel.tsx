@@ -49,7 +49,7 @@ export default function UnitRecommendationPanel({
           <span className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">No Units Available</span>
         </div>
         {onCreateUnit && (
-          <button
+          <button type="button"
             onClick={(e) => { e.stopPropagation(); onCreateUnit(); }}
             className="flex items-center gap-1 px-3 py-2 text-[10px] text-brand-400 hover:text-brand-300 font-bold w-full"
           >
@@ -134,7 +134,7 @@ export default function UnitRecommendationPanel({
               )}
 
               {/* Assign button */}
-              <button
+              <button type="button"
                 onClick={(e) => { e.stopPropagation(); onAssign(item.unit.id); }}
                 className={`unit-rec-assign-btn ${isTopPick ? 'unit-rec-assign-top' : ''}`}
                 title={`Assign ${item.unit.call_sign}`}
@@ -150,7 +150,7 @@ export default function UnitRecommendationPanel({
       {/* Footer */}
       {onCreateUnit && (
         <div className="unit-rec-footer">
-          <button
+          <button type="button"
             onClick={(e) => { e.stopPropagation(); onCreateUnit(); }}
             className="flex items-center gap-1 text-[10px] text-amber-500 hover:text-amber-400 font-bold"
           >

@@ -190,7 +190,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
       <div className="flex-shrink-0 p-2 border-t border-rmpg-700/50" style={{ background: '#0d1520' }}>
         <div className="flex items-center gap-1 mb-1">
           {(['dispatch', 'broadcast'] as const).map(ch => (
-            <button
+            <button type="button"
               key={ch}
               onClick={() => setComposeChannel(ch)}
               className="text-[8px] font-bold uppercase px-1.5 py-0.5 transition-colors"
@@ -222,7 +222,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
             placeholder="Type message..."
             className="flex-1 bg-surface-base border border-rmpg-600 text-white text-[10px] px-2 py-1 focus:border-green-500 focus:outline-none"
           />
-          <button
+          <button type="button"
             onClick={handleSend}
             disabled={!composeText.trim()}
             className="px-3 py-1 text-[9px] font-bold uppercase bg-green-900/50 text-green-400 border border-green-700/50 hover:bg-green-800/50 disabled:opacity-40"
@@ -515,7 +515,7 @@ export default function MdtPage() {
         >
           <AlertTriangle style={{ width: 12, height: 12, flexShrink: 0 }} />
           <span className="flex-1">{errorToast}</span>
-          <button onClick={() => setErrorToast(null)} className="text-red-400 hover:text-white">
+          <button type="button" onClick={() => setErrorToast(null)} className="text-red-400 hover:text-white">
             <X style={{ width: 10, height: 10 }} />
           </button>
         </div>
@@ -547,7 +547,7 @@ export default function MdtPage() {
 
         {/* Quick status buttons + actions */}
         <div className={`flex items-center gap-1 ${isMobile ? 'overflow-x-auto' : ''}`}>
-          <button
+          <button type="button"
             onClick={() => setShowFiForm(!showFiForm)}
             className={`px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors border mr-0.5 ${
               showFiForm ? 'border-purple-500 text-purple-400 bg-purple-900/20' : 'border-rmpg-600 text-rmpg-400 hover:text-white hover:border-purple-500'
@@ -556,7 +556,7 @@ export default function MdtPage() {
           >
             FI
           </button>
-          <button
+          <button type="button"
             onClick={handleGenerateShiftReport}
             disabled={generatingReport}
             className="px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors border border-rmpg-600 text-rmpg-400 hover:text-white hover:border-brand-500 mr-1"
@@ -565,7 +565,7 @@ export default function MdtPage() {
             {generatingReport ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" /> : <FileText style={{ width: 10, height: 10 }} />}
           </button>
           {UNIT_STATUSES.map(({ label, status, color }) => (
-            <button
+            <button type="button"
               key={status}
               onClick={() => handleUnitStatus(status)}
               disabled={!myUnit}
@@ -620,7 +620,7 @@ export default function MdtPage() {
                 value={fiData.narrative}
                 onChange={(e) => setFiData(prev => ({ ...prev, narrative: e.target.value }))}
               />
-              <button
+              <button type="button"
                 onClick={handleSubmitFi}
                 disabled={!fiData.subject_name.trim() || fiSubmitting}
                 className="px-2 py-1 text-[9px] font-bold uppercase bg-purple-700 text-white border border-purple-600 hover:bg-purple-600 disabled:opacity-40"
@@ -671,7 +671,7 @@ export default function MdtPage() {
           {/* Tabs */}
           <div className="flex border-b border-rmpg-700/50 flex-shrink-0 overflow-x-auto" style={{ background: '#0d1520' }}>
             {(['my-calls', 'pending', 'messages', 'ncic'] as const).map(tab => (
-              <button
+              <button type="button"
                 key={tab}
                 onClick={() => setActiveTab(tab)}
                 className="flex-1 px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider transition-colors whitespace-nowrap"
@@ -757,7 +757,7 @@ export default function MdtPage() {
                           {call.priority}
                         </span>
                       </div>
-                      <button
+                      <button type="button"
                         onClick={(e) => { e.stopPropagation(); handleSelfDispatch(call.id); }}
                         disabled={dispatchingCallId === call.id}
                         className="flex items-center gap-1 px-2 py-0.5 text-[8px] font-bold uppercase bg-green-900/50 text-green-400 border border-green-700/50 hover:bg-green-800/50 disabled:opacity-40 transition-colors"
@@ -811,7 +811,7 @@ export default function MdtPage() {
               >
                 <div>
                   {isMobile && (
-                    <button
+                    <button type="button"
                       onClick={() => setSelectedCall(null)}
                       className="text-rmpg-400 hover:text-white text-[10px] font-bold uppercase tracking-wider mb-1"
                     >
@@ -838,7 +838,7 @@ export default function MdtPage() {
                 {/* Action buttons */}
                 <div className="flex items-center gap-1">
                   {selectedCall.status === 'dispatched' && (
-                    <button
+                    <button type="button"
                       onClick={() => handleCallStatus(selectedCall.id, 'enroute')}
                       className="flex items-center gap-1 px-3 py-1.5 text-[9px] font-bold uppercase bg-blue-900/50 text-blue-400 border border-blue-700/50 hover:bg-blue-800/50 transition-colors"
                     >
@@ -846,7 +846,7 @@ export default function MdtPage() {
                     </button>
                   )}
                   {selectedCall.status === 'enroute' && (
-                    <button
+                    <button type="button"
                       onClick={() => handleCallStatus(selectedCall.id, 'onscene')}
                       className="flex items-center gap-1 px-3 py-1.5 text-[9px] font-bold uppercase bg-purple-900/50 text-purple-400 border border-purple-700/50 hover:bg-purple-800/50 transition-colors"
                     >
@@ -854,7 +854,7 @@ export default function MdtPage() {
                     </button>
                   )}
                   {selectedCall.status === 'onscene' && (
-                    <button
+                    <button type="button"
                       onClick={() => handleCallStatus(selectedCall.id, 'cleared')}
                       className="flex items-center gap-1 px-3 py-1.5 text-[9px] font-bold uppercase bg-rmpg-700/50 text-rmpg-300 border border-rmpg-600/50 hover:bg-rmpg-600/50 transition-colors"
                     >
@@ -862,7 +862,7 @@ export default function MdtPage() {
                     </button>
                   )}
                   {selectedCall.status === 'pending' && myUnit && (
-                    <button
+                    <button type="button"
                       onClick={() => handleSelfDispatch(selectedCall.id)}
                       disabled={!!dispatchingCallId}
                       className="flex items-center gap-1 px-3 py-1.5 text-[9px] font-bold uppercase bg-green-900/50 text-green-400 border border-green-700/50 hover:bg-green-800/50 disabled:opacity-40 transition-colors"
@@ -923,7 +923,7 @@ export default function MdtPage() {
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Subject Description</div>
-                      <button
+                      <button type="button"
                         onClick={() => { setNcicQuery({ type: 'person', query: selectedCall.subject_description || '' }); setActiveTab('ncic'); }}
                         className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-cyan-900/40 text-cyan-400 border border-cyan-700/50 hover:bg-cyan-800/50 transition-colors"
                         title="Run NCIC person query"
@@ -938,7 +938,7 @@ export default function MdtPage() {
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Vehicle Description</div>
-                      <button
+                      <button type="button"
                         onClick={() => { setNcicQuery({ type: 'vehicle', query: selectedCall.vehicle_description || '' }); setActiveTab('ncic'); }}
                         className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-cyan-900/40 text-cyan-400 border border-cyan-700/50 hover:bg-cyan-800/50 transition-colors"
                         title="Run NCIC vehicle query"

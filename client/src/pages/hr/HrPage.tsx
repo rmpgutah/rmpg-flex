@@ -71,12 +71,14 @@ export default function HRPage() {
       <PanelTitleBar icon={UserCog} title="HR Console" />
 
       {/* Tab bar */}
-      <div className="flex items-center border-b border-[#1e3048] bg-[#0d1520] px-2">
+      <div className="flex items-center border-b border-[#1e3048] bg-[#0d1520] px-2" role="tablist" aria-label="HR Console tabs">
         {HR_TABS.map(tab => {
           const Icon = tab.icon;
           return (
-            <button
+            <button type="button"
               key={tab.key}
+              role="tab"
+              aria-selected={activeTab === tab.key}
               onClick={() => setActiveTab(tab.key)}
               className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors border-b-2 ${
                 activeTab === tab.key
@@ -84,7 +86,7 @@ export default function HRPage() {
                   : 'text-rmpg-400 border-transparent hover:text-rmpg-200'
               }`}
             >
-              <Icon size={14} />
+              <Icon size={14} aria-hidden="true" />
               {tab.label}
             </button>
           );

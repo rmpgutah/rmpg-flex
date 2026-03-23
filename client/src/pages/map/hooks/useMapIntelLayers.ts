@@ -299,7 +299,7 @@ export function useMapIntelLayers(
                     dataCache.current[layer] = records;
                     if (enabledLayers[layer]) renderLayer(layer, records);
                   })
-                  .catch(() => { /* retry exhausted */ });
+                  .catch((retryErr) => { console.warn(`[useMapIntelLayers] Retry for ${layer} also failed:`, retryErr); });
               }
             }, 5000);
           }

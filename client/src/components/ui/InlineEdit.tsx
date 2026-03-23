@@ -108,10 +108,10 @@ export default function InlineEdit({
           disabled={saving}
         />
       )}
-      <button onClick={handleSave} disabled={saving} className="p-0.5 text-green-400 hover:text-green-300">
+      <button type="button" onClick={handleSave} disabled={saving} className="p-0.5 text-green-400 hover:text-green-300">
         <Check className="w-3 h-3" />
       </button>
-      <button onClick={handleCancel} disabled={saving} className="p-0.5 text-red-400 hover:text-red-300">
+      <button type="button" onClick={handleCancel} disabled={saving} className="p-0.5 text-red-400 hover:text-red-300" aria-label="Close" title="Close">
         <X className="w-3 h-3" />
       </button>
     </div>

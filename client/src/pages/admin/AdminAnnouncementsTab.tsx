@@ -195,7 +195,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
               className="input-dark text-[10px] pl-6 pr-2 py-1 w-40"
             />
           </div>
-          <button onClick={openNew} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
+          <button type="button" onClick={openNew} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
             <Plus className="w-3 h-3" />
             New Announcement
           </button>
@@ -239,13 +239,13 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <button onClick={() => toggleActive(a)} className="toolbar-btn p-1" title={a.is_active ? 'Deactivate' : 'Activate'}>
+                  <button type="button" onClick={() => toggleActive(a)} className="toolbar-btn p-1" title={a.is_active ? 'Deactivate' : 'Activate'}>
                     {a.is_active ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                   </button>
-                  <button onClick={() => openEdit(a)} className="toolbar-btn p-1" title="Edit">
+                  <button type="button" onClick={() => openEdit(a)} className="toolbar-btn p-1" title="Edit">
                     <Edit2 className="w-3 h-3" />
                   </button>
-                  <button onClick={() => setDeleteId(a.id)} className="toolbar-btn p-1 text-red-400 hover:text-red-300" title="Delete">
+                  <button type="button" onClick={() => setDeleteId(a.id)} className="toolbar-btn p-1 text-red-400 hover:text-red-300" title="Delete">
                     <Trash2 className="w-3 h-3" />
                   </button>
                 </div>
@@ -263,7 +263,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
               <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">
                 {editing ? 'Edit Announcement' : 'New Announcement'}
               </h3>
-              <button onClick={() => setShowForm(false)} className="text-rmpg-400 hover:text-white">
+              <button type="button" onClick={() => setShowForm(false)} className="text-rmpg-400 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -341,7 +341,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
                 </label>
                 <div className="flex flex-wrap gap-1.5">
                   {ROLES.map((role) => (
-                    <button
+                    <button type="button"
                       key={role}
                       onClick={() => toggleRole(role)}
                       className={`text-[10px] px-2 py-0.5 rounded-sm border transition-colors ${
@@ -357,8 +357,8 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
               </div>
             </div>
             <div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-rmpg-700">
-              <button onClick={() => setShowForm(false)} className="toolbar-btn text-[10px]">Cancel</button>
-              <button onClick={handleSubmit} disabled={submitting} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
+              <button type="button" onClick={() => setShowForm(false)} className="toolbar-btn text-[10px]">Cancel</button>
+              <button type="button" onClick={handleSubmit} disabled={submitting} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
                 {submitting && <Loader2 className="w-3 h-3 animate-spin" />}
                 {editing ? 'Update' : 'Create'}
               </button>

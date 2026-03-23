@@ -159,8 +159,7 @@ export default function StatuteLookup({
             type="button"
             onClick={onClear}
             className="p-0.5 text-rmpg-400 hover:text-red-400 transition-colors"
-            title="Remove statute"
-          >
+            title="Remove statute">
             <X className="w-3.5 h-3.5" />
           </button>
         )}

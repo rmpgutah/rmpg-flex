@@ -77,7 +77,7 @@ export default function GrievancesTab() {
             <option value="all">All Statuses</option>
             {Object.keys(STATUS_COLORS).map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
           </select>
-          <button onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> File Grievance</button>
+          <button type="button" onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> File Grievance</button>
         </div>
       </div>
 
@@ -114,8 +114,8 @@ export default function GrievancesTab() {
             <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="input-field w-full text-xs" rows={4} placeholder="Detailed description of the grievance..." />
           </div>
           <div className="flex gap-2">
-            <button onClick={handleSubmit} className="toolbar-btn toolbar-btn-success text-xs">Submit Grievance</button>
-            <button onClick={() => setShowForm(false)} className="toolbar-btn text-xs">Cancel</button>
+            <button type="button" onClick={handleSubmit} className="toolbar-btn toolbar-btn-success text-xs">Submit Grievance</button>
+            <button type="button" onClick={() => setShowForm(false)} className="toolbar-btn text-xs">Cancel</button>
           </div>
         </div>
       )}
@@ -146,10 +146,10 @@ export default function GrievancesTab() {
                 </div>
                 {isManager && g.status !== 'resolved' && g.status !== 'dismissed' && (
                   <div className="flex gap-1">
-                    {g.status === 'filed' && <button onClick={() => updateStatus(g.id, 'under_review')} className="toolbar-btn text-[9px]">Review</button>}
-                    {g.status === 'under_review' && <button onClick={() => updateStatus(g.id, 'investigation')} className="toolbar-btn text-[9px]">Investigate</button>}
-                    <button onClick={() => updateStatus(g.id, 'resolved')} className="toolbar-btn toolbar-btn-success text-[9px]"><CheckCircle className="w-3 h-3" /></button>
-                    <button onClick={() => updateStatus(g.id, 'dismissed')} className="toolbar-btn toolbar-btn-danger text-[9px]">Dismiss</button>
+                    {g.status === 'filed' && <button type="button" onClick={() => updateStatus(g.id, 'under_review')} className="toolbar-btn text-[9px]">Review</button>}
+                    {g.status === 'under_review' && <button type="button" onClick={() => updateStatus(g.id, 'investigation')} className="toolbar-btn text-[9px]">Investigate</button>}
+                    <button type="button" onClick={() => updateStatus(g.id, 'resolved')} className="toolbar-btn toolbar-btn-success text-[9px]"><CheckCircle className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => updateStatus(g.id, 'dismissed')} className="toolbar-btn toolbar-btn-danger text-[9px]">Dismiss</button>
                   </div>
                 )}
               </div>

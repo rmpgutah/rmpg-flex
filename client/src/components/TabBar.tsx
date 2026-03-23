@@ -26,11 +26,11 @@ export default function TabBar({
   className = '',
 }: TabBarProps) {
   return (
-    <div className={`tab-bar ${className}`}>
+    <div className={`tab-bar ${className}`} role="tablist">
       {tabs.map((tab) => {
         const Icon = tab.icon;
         return (
-          <button
+          <button type="button"
             key={tab.id}
             role="tab"
             aria-selected={activeTab === tab.id}

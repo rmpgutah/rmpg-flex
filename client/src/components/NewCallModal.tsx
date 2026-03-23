@@ -391,10 +391,9 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               )}
             </button>
           </div>
-          <button
+          <button type="button"
             onClick={handleClose}
-            className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-white transition-colors"
-          >
+            className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-white transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -404,7 +403,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           <div className="flex items-center gap-2 px-4 py-2 bg-amber-900/30 border-b border-amber-700/30">
             <History className="w-3.5 h-3.5 text-amber-400" />
             <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">Restored pending draft</span>
-            <button onClick={discardDraft} className="ml-auto text-[9px] text-rmpg-400 hover:text-white transition-colors uppercase tracking-wider font-bold">
+            <button type="button" onClick={discardDraft} className="ml-auto text-[9px] text-rmpg-400 hover:text-white transition-colors uppercase tracking-wider font-bold">
               Discard
             </button>
           </div>
@@ -816,7 +815,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               {showPersonDropdown && personSearchResults.length > 0 && (
                 <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded-sm shadow-lg">
                   {personSearchResults.map((p: any) => (
-                    <button key={p.id} className="w-full text-left px-2 py-1.5 text-xs text-rmpg-200 hover:bg-brand-500/20 border-b border-rmpg-700 last:border-0" onClick={() => {
+                    <button type="button" key={p.id} className="w-full text-left px-2 py-1.5 text-xs text-rmpg-200 hover:bg-brand-500/20 border-b border-rmpg-700 last:border-0" onClick={() => {
                       const desc = `${p.last_name || ''}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '').replace(/,\s*$/, '') + (p.dob ? ` DOB:${p.dob}` : '');
                       update('subject_description', desc);
                       setShowPersonDropdown(false);
@@ -835,7 +834,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               {showVehicleDropdown && vehicleSearchResults.length > 0 && (
                 <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded-sm shadow-lg">
                   {vehicleSearchResults.map((v: any) => (
-                    <button key={v.id} className="w-full text-left px-2 py-1.5 text-xs text-rmpg-200 hover:bg-brand-500/20 border-b border-rmpg-700 last:border-0" onClick={() => {
+                    <button type="button" key={v.id} className="w-full text-left px-2 py-1.5 text-xs text-rmpg-200 hover:bg-brand-500/20 border-b border-rmpg-700 last:border-0" onClick={() => {
                       const desc = [v.color, v.year, v.make, v.model].filter(Boolean).join(' ') + (v.plate_number ? ` PLT:${v.plate_number}` : '') + (v.plate_state ? `/${v.plate_state}` : '');
                       update('vehicle_description', desc);
                       setShowVehicleDropdown(false);

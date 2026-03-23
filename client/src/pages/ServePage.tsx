@@ -565,7 +565,7 @@ export default function ServePage() {
       {fetchError && (
         <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
           <span>⚠ {fetchError}</span>
-          <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
         </div>
       )}
       {/* ─── Header Bar ────────────────────────────────────────────── */}
@@ -588,7 +588,7 @@ export default function ServePage() {
 
         {/* Action buttons */}
         <div className="flex items-center gap-1.5">
-          <button
+          <button type="button"
             onClick={() => setRoutePlannerOpen(true)}
             className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-blue-400 bg-blue-900/20 hover:bg-blue-900/40 border border-blue-700/40 rounded-sm transition-colors"
             title="Plan Route"
@@ -596,7 +596,7 @@ export default function ServePage() {
             <Route size={12} />
             {!isMobile && 'Plan Route'}
           </button>
-          <button
+          <button type="button"
             onClick={handleSyncFromSM}
             disabled={syncing}
             className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-cyan-400 bg-cyan-900/20 hover:bg-cyan-900/40 border border-cyan-700/40 rounded-sm transition-colors disabled:opacity-40"
@@ -605,7 +605,7 @@ export default function ServePage() {
             {syncing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
             {!isMobile && 'Sync from SM'}
           </button>
-          <button
+          <button type="button"
             onClick={openCreate}
             className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-green-400 bg-green-900/20 hover:bg-green-900/40 border border-green-700/40 rounded-sm transition-colors"
             title="Add Job"
@@ -622,7 +622,7 @@ export default function ServePage() {
         {TABS.map(tab => {
           const Icon = tab === 'Queue' ? List : tab === 'Map' ? MapIcon : BarChart3;
           return (
-            <button
+            <button type="button"
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={`flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-colors border-b-2 ${
@@ -646,7 +646,7 @@ export default function ServePage() {
             {/* Filter buttons */}
             <div className="flex items-center gap-1.5 px-3 py-2 border-b border-[#1e3048] overflow-x-auto">
               {STATUS_FILTERS.map(f => (
-                <button
+                <button type="button"
                   key={f.value}
                   onClick={() => setStatusFilter(f.value)}
                   className={`px-2.5 py-1 text-[11px] font-medium rounded-sm border transition-colors whitespace-nowrap ${
@@ -664,7 +664,7 @@ export default function ServePage() {
                 </button>
               ))}
               {/* Feature 1: Priority Sort Toggle */}
-              <button
+              <button type="button"
                 onClick={() => setSortByUrgency(prev => !prev)}
                 className={`px-2.5 py-1 text-[11px] font-medium rounded-sm border transition-colors whitespace-nowrap ml-auto ${
                   sortByUrgency
@@ -746,7 +746,7 @@ export default function ServePage() {
 
             {/* Navigate to Next button */}
             {mapReady && jobs.some(j => j.status === 'pending' || j.status === 'in_progress') && (
-              <button
+              <button type="button"
                 onClick={handleNavigateToNext}
                 className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-sm shadow-lg border border-blue-500 transition-colors"
               >
@@ -863,10 +863,10 @@ export default function ServePage() {
 
             {/* Feature 12: Deadline Tracking + Feature 14: Success Rates */}
             <div className="flex gap-2">
-              <button onClick={handleLoadDeadlines} className="toolbar-btn toolbar-btn-primary text-xs px-3 py-1.5">
+              <button type="button" onClick={handleLoadDeadlines} className="toolbar-btn toolbar-btn-primary text-xs px-3 py-1.5">
                 <Calendar className="w-3.5 h-3.5" /> Deadline Tracker
               </button>
-              <button onClick={handleLoadSuccessRates} className="toolbar-btn text-xs px-3 py-1.5">
+              <button type="button" onClick={handleLoadSuccessRates} className="toolbar-btn text-xs px-3 py-1.5">
                 <BarChart3 className="w-3.5 h-3.5" /> Success Rates
               </button>
             </div>
@@ -876,7 +876,7 @@ export default function ServePage() {
               <div className="p-3 bg-[#141e2b] border border-[#1e3048] rounded-sm space-y-2">
                 <div className="flex justify-between items-center">
                   <div className="text-[10px] text-rmpg-400 uppercase font-semibold">Deadline Tracker ({deadlines.total} active)</div>
-                  <button onClick={() => setDeadlines(null)} className="text-rmpg-500 hover:text-rmpg-300 text-xs">Close</button>
+                  <button type="button" onClick={() => setDeadlines(null)} className="text-rmpg-500 hover:text-rmpg-300 text-xs">Close</button>
                 </div>
                 {deadlines.overdue?.length > 0 && (
                   <div>
@@ -910,7 +910,7 @@ export default function ServePage() {
               <div className="p-3 bg-[#141e2b] border border-[#1e3048] rounded-sm space-y-2">
                 <div className="flex justify-between items-center">
                   <div className="text-[10px] text-rmpg-400 uppercase font-semibold">Success Rates ({successRates.period_days}d)</div>
-                  <button onClick={() => setSuccessRates(null)} className="text-rmpg-500 hover:text-rmpg-300 text-xs">Close</button>
+                  <button type="button" onClick={() => setSuccessRates(null)} className="text-rmpg-500 hover:text-rmpg-300 text-xs">Close</button>
                 </div>
                 <div className="grid grid-cols-4 gap-2 text-center">
                   <div><div className="text-lg font-bold text-green-400">{successRates.overall?.success_rate}%</div><div className="text-[9px] text-rmpg-400">Overall</div></div>

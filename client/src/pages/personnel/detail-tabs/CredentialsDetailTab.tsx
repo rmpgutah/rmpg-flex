@@ -53,7 +53,7 @@ export default function CredentialsDetailTab({
           <Award className="w-3 h-3" />
           Credentials
         </h3>
-        <button
+        <button type="button"
           onClick={() => onAddCredential(officerId)}
           className="toolbar-btn toolbar-btn-primary flex items-center gap-1 text-[10px]"
         >
@@ -100,14 +100,14 @@ export default function CredentialsDetailTab({
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
-                    <button
+                    <button type="button"
                       onClick={() => onEditCredential(cred)}
                       className="toolbar-btn p-1"
                       title="Edit credential"
                     >
                       <Edit2 className="w-3 h-3" />
                     </button>
-                    <button
+                    <button type="button"
                       onClick={() => onDeleteCredential(cred.id)}
                       className="toolbar-btn toolbar-btn-danger p-1"
                       title="Delete credential"

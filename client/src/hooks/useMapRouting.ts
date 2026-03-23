@@ -157,8 +157,8 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
 
         setActiveRoute(info);
         return info;
-      } catch {
-        // Silent — don't break the UI if directions fail
+      } catch (err) {
+        console.warn('[useMapRouting] Directions query failed:', err);
         return null;
       } finally {
         setRouteLoading(false);

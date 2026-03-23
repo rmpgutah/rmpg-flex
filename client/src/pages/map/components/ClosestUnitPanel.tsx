@@ -83,7 +83,7 @@ export default function ClosestUnitPanel({
         >
           Closest Units
         </span>
-        <button
+        <button type="button"
           onClick={onClose}
           aria-label="Close closest units panel"
           className="p-0.5 hover:bg-white/10 transition-colors"
@@ -228,7 +228,7 @@ export default function ClosestUnitPanel({
                       Dispatched
                     </span>
                   ) : (
-                    <button
+                    <button type="button"
                       onClick={() => handleDispatch(unit.id)}
                       disabled={isDispatching}
                       aria-label={`Dispatch unit ${unit.call_sign}`}

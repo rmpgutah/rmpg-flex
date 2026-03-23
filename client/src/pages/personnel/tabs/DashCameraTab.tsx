@@ -157,7 +157,7 @@ export default function DashCameraTab({
           <PrintButton />
           <ExportButton exportUrl="/clearpathgps/dashcam-events/export?format=csv" exportFilename="dashcam-events.csv" />
           {onRefresh && (
-            <button onClick={onRefresh} disabled={loading} className="toolbar-btn text-[10px] px-3 py-1.5 flex items-center gap-1.5">
+            <button type="button" onClick={onRefresh} disabled={loading} className="toolbar-btn text-[10px] px-3 py-1.5 flex items-center gap-1.5">
               {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
               Refresh
             </button>
@@ -190,7 +190,7 @@ export default function DashCameraTab({
 
       {/* ── Sub-Tabs (Devices / Events) ── */}
       <div className="flex items-center gap-0 border-b border-rmpg-700">
-        <button
+        <button type="button"
           onClick={() => setSubTab('devices')}
           className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-4 py-2 border-b-2 transition-colors ${
             subTab === 'devices'
@@ -201,7 +201,7 @@ export default function DashCameraTab({
           <Cpu className="w-3 h-3" />
           Devices ({deviceMappings.length})
         </button>
-        <button
+        <button type="button"
           onClick={() => setSubTab('events')}
           className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-4 py-2 border-b-2 transition-colors ${
             subTab === 'events'
@@ -235,7 +235,7 @@ export default function DashCameraTab({
           <>
             <div className="h-4 w-px bg-rmpg-700" />
             {EVENT_TYPE_FILTERS.map(f => (
-              <button
+              <button type="button"
                 key={f.value}
                 onClick={() => setEventTypeFilter(f.value)}
                 className={`text-[10px] px-2.5 py-1 ${

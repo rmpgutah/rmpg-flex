@@ -20,6 +20,7 @@ router.get('/checkpoints', (req: Request, res: Response) => {
       FROM patrol_checkpoints pc
       LEFT JOIN properties p ON pc.property_id = p.id
       ORDER BY pc.created_at DESC
+      LIMIT 1000
     `).all();
 
     res.json(checkpoints);
@@ -33,6 +34,11 @@ router.get('/checkpoints', (req: Request, res: Response) => {
 router.get('/checkpoints/property/:propertyId', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const propertyId = parseInt(req.params.propertyId, 10);
+    if (isNaN(propertyId)) {
+      res.status(400).json({ error: 'Invalid property ID' });
+      return;
+    }
     const checkpoints = db.prepare(`
       SELECT
         pc.*,
@@ -41,7 +47,8 @@ router.get('/checkpoints/property/:propertyId', (req: Request, res: Response) =>
       LEFT JOIN properties p ON pc.property_id = p.id
       WHERE pc.property_id = ?
       ORDER BY pc.name
-    `).all(req.params.propertyId);
+      LIMIT 500
+    `).all(propertyId);
 
     res.json(checkpoints);
   } catch (error) {

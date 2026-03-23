@@ -285,7 +285,7 @@ export default function WebIntelPanel() {
           </div>
           <div className="flex flex-wrap gap-1.5">
             {savedSearches.map(s => (
-              <button
+              <button type="button"
                 key={s.id}
                 onClick={() => handleSearch(s.query)}
                 className="px-2 py-0.5 text-[10px] font-mono bg-brand-600/20 text-brand-400 border border-brand-700/40 rounded-full hover:bg-brand-600/30 transition-colors truncate max-w-[180px]"
@@ -301,7 +301,7 @@ export default function WebIntelPanel() {
       {/* Recent History (collapsible) */}
       {searchHistory.length > 0 && (
         <div className="panel-beveled bg-surface-base">
-          <button
+          <button type="button"
             className="w-full flex items-center gap-2 px-3 py-2 text-left"
             onClick={() => setHistoryExpanded(p => !p)}
           >
@@ -312,7 +312,7 @@ export default function WebIntelPanel() {
           {historyExpanded && (
             <div className="px-3 pb-2 space-y-1">
               {searchHistory.map(h => (
-                <button
+                <button type="button"
                   key={h.id}
                   onClick={() => handleSearch(h.query)}
                   className="w-full flex items-center gap-2 px-2 py-1 text-left hover:bg-rmpg-700/20 rounded-sm transition-colors"
@@ -405,7 +405,7 @@ export default function WebIntelPanel() {
           <span className="text-[10px] font-semibold text-rmpg-400 uppercase tracking-wider">
             {results.length} Result{results.length !== 1 ? 's' : ''}
           </span>
-          <button
+          <button type="button"
             className="toolbar-btn toolbar-btn-primary flex items-center gap-1.5 px-3 text-xs"
             disabled={bulkImporting}
             onClick={handleBulkImport}
@@ -475,7 +475,7 @@ export default function WebIntelPanel() {
 
                 {/* Action buttons */}
                 <div className="flex items-center gap-2 pt-1">
-                  <button
+                  <button type="button"
                     className="toolbar-btn flex items-center gap-1 px-2 text-xs"
                     disabled={isImporting}
                     onClick={() =>
@@ -493,7 +493,7 @@ export default function WebIntelPanel() {
                     Import
                   </button>
 
-                  <button
+                  <button type="button"
                     className="toolbar-btn flex items-center gap-1 px-2 text-xs"
                     disabled={isScraping}
                     onClick={() => handleScrape(result.url)}
@@ -507,7 +507,7 @@ export default function WebIntelPanel() {
                   </button>
 
                   {extracted && (
-                    <button
+                    <button type="button"
                       className="toolbar-btn flex items-center gap-1 px-2 text-xs ml-auto"
                       onClick={() => setExpandedMap(p => ({ ...p, [result.url]: !isExpanded }))}
                     >
@@ -601,7 +601,7 @@ export default function WebIntelPanel() {
                   )}
 
                   {/* Import as Lead button */}
-                  <button
+                  <button type="button"
                     className="toolbar-btn toolbar-btn-primary flex items-center gap-1.5 px-3 text-xs mt-2"
                     disabled={isImporting}
                     onClick={() => handleImport(extracted as Record<string, unknown>, result.url)}

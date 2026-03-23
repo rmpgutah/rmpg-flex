@@ -83,7 +83,9 @@ router.get('/violations', (req: Request, res: Response) => {
 router.get('/violations/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const row = db.prepare('SELECT * FROM code_violations WHERE id = ?').get(req.params.id);
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid violation ID' }); return; }
+    const row = db.prepare('SELECT * FROM code_violations WHERE id = ?').get(id);
     if (!row) return res.status(404).json({ error: 'Violation not found' });
     res.json({ data: row });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
@@ -189,7 +191,9 @@ router.get('/tows', (req: Request, res: Response) => {
 router.get('/tows/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const row = db.prepare('SELECT * FROM vehicle_tows WHERE id = ?').get(req.params.id);
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid tow ID' }); return; }
+    const row = db.prepare('SELECT * FROM vehicle_tows WHERE id = ?').get(id);
     if (!row) return res.status(404).json({ error: 'Tow not found' });
     res.json({ data: row });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }

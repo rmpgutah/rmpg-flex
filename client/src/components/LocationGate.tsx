@@ -42,7 +42,7 @@ export default function LocationGate({ permissionDenied, onRetry, connectionType
           <strong style={{ color: '#ef4444' }}>Location disabled</strong>
           {' — '}GPS tracking is not active. Enable location access in your browser or device settings for full functionality.
         </span>
-        <button
+        <button type="button"
           onClick={onRetry}
           style={{
             padding: '3px 10px',
@@ -59,7 +59,7 @@ export default function LocationGate({ permissionDenied, onRetry, connectionType
         >
           Retry
         </button>
-        <button
+        <button type="button"
           onClick={() => setDismissed(true)}
           style={{
             background: 'none',
@@ -94,7 +94,7 @@ export default function LocationGate({ permissionDenied, onRetry, connectionType
         <span style={{ color: '#8a9aaa', flex: 1 }}>
           Tracking via <strong style={{ color: '#3b82f6' }}>WiFi positioning</strong> — accuracy may be reduced
         </span>
-        <button
+        <button type="button"
           onClick={() => setWifiDismissed(true)}
           style={{
             background: 'none',

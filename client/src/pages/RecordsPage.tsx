@@ -351,7 +351,7 @@ export default function RecordsPage() {
           <>
             <ExportButton exportUrl={`/records/persons/export?format=csv&archived=${showArchived}`} exportFilename="persons_export.csv" />
             {!showArchived && (
-              <button className="toolbar-btn toolbar-btn-primary" onClick={() => setNewPersonTrigger(t => t + 1)}>
+              <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={() => setNewPersonTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
                 New Person
               </button>
@@ -362,7 +362,7 @@ export default function RecordsPage() {
           <>
             <ExportButton exportUrl={`/records/vehicles/export?format=csv&archived=${showArchived}`} exportFilename="vehicles_export.csv" />
             {!showArchived && (
-              <button className="toolbar-btn toolbar-btn-primary" onClick={() => setNewVehicleTrigger(t => t + 1)}>
+              <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={() => setNewVehicleTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
                 New Vehicle
               </button>
@@ -372,7 +372,7 @@ export default function RecordsPage() {
         {activeTab === 'properties' && (
           <>
             {!showArchived && (
-              <button className="toolbar-btn toolbar-btn-primary" onClick={() => setNewPropertyTrigger(t => t + 1)}>
+              <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={() => setNewPropertyTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
                 New Property
               </button>
@@ -383,7 +383,7 @@ export default function RecordsPage() {
           <>
             <ExportButton exportUrl={`/records/evidence/export?format=csv&archived=${showArchived}`} exportFilename="evidence_export.csv" />
             {!showArchived && (
-              <button className="toolbar-btn toolbar-btn-primary" onClick={() => setNewEvidenceTrigger(t => t + 1)}>
+              <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={() => setNewEvidenceTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
                 New Evidence
               </button>
@@ -397,7 +397,7 @@ export default function RecordsPage() {
         {tabs.map((tab) => {
           const Icon = tab.icon;
           return (
-            <button
+            <button type="button"
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`
@@ -415,7 +415,7 @@ export default function RecordsPage() {
           );
         })}
         {/* Archive Toggle */}
-        <button
+        <button type="button"
           onClick={() => setShowArchived(!showArchived)}
           className={`ml-auto flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors border whitespace-nowrap ${
             showArchived
@@ -486,7 +486,7 @@ export default function RecordsPage() {
       {error && (
         <div className="px-3 py-2 bg-red-900/40 border-b border-red-700/50 text-red-300 text-xs flex items-center">
           {error}
-          <button onClick={() => setError(null)} className="ml-2 underline text-red-400 hover:text-red-300">dismiss</button>
+          <button type="button" onClick={() => setError(null)} className="ml-2 underline text-red-400 hover:text-red-300">dismiss</button>
         </div>
       )}
 
@@ -496,7 +496,7 @@ export default function RecordsPage() {
           <Archive className="w-3 h-3 text-amber-400" />
           <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">Archives Mode</span>
           <span className="text-[10px] text-amber-400/70">Read-only</span>
-          <button onClick={() => setShowArchived(false)} className="ml-auto text-[9px] text-amber-400 hover:text-amber-300 underline">
+          <button type="button" onClick={() => setShowArchived(false)} className="ml-auto text-[9px] text-amber-400 hover:text-amber-300 underline">
             Exit
           </button>
         </div>
@@ -545,7 +545,7 @@ export default function RecordsPage() {
             title="Print record"
           />
         )}
-        <button onClick={closeSelection} className="toolbar-btn" title="Close detail">
+        <button type="button" onClick={closeSelection} className="toolbar-btn" title="Close detail" aria-label="Close">
           <X className="w-3.5 h-3.5" />
         </button>
       </PanelTitleBar>

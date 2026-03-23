@@ -73,12 +73,13 @@ export default function SearchInput({
         onChange={handleChange}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
+        aria-label={placeholder}
+        autoComplete="off"
         autoFocus={autoFocus}
         className="w-full pl-8 pr-7 py-1.5 text-xs bg-surface-sunken border border-rmpg-600 text-rmpg-200 placeholder-rmpg-500 focus:outline-none focus:border-brand-600 transition-colors"
       />
       {localValue && (
-        <button
-          type="button"
+        <button type="button"
           onClick={handleClear}
           className="absolute right-1.5 p-0.5 text-rmpg-500 hover:text-rmpg-300 transition-colors"
           aria-label="Clear search"

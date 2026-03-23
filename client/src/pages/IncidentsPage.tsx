@@ -690,7 +690,7 @@ export default function IncidentsPage() {
           exportFilename="incidents_export.csv"
         />
         <PrintButton />
-        <button
+        <button type="button"
           onClick={() => setShowArchived(!showArchived)}
           className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors border ${
             showArchived
@@ -703,7 +703,7 @@ export default function IncidentsPage() {
         </button>
         {!showArchived && (
           <>
-            <button
+            <button type="button"
               onClick={() => setUofFilter(!uofFilter)}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors border ${
                 uofFilter
@@ -714,7 +714,7 @@ export default function IncidentsPage() {
               <Shield className="w-3 h-3" />
               UoF
             </button>
-            <button
+            <button type="button"
               className="toolbar-btn"
               style={{ color: '#f87171', borderColor: '#991b1b' }}
               onClick={() => {
@@ -726,7 +726,7 @@ export default function IncidentsPage() {
               <Shield className="w-3.5 h-3.5" />
               New UoF Report
             </button>
-            <button
+            <button type="button"
               className="toolbar-btn toolbar-btn-primary"
               onClick={() => {
                 setEditingIncident(undefined);
@@ -744,7 +744,7 @@ export default function IncidentsPage() {
         <div className="px-4 py-1.5 bg-amber-900/20 border-b border-amber-700/40 flex items-center gap-2 flex-shrink-0">
           <Archive className="w-3 h-3 text-amber-400" />
           <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">Showing archived incidents (read-only)</span>
-          <button onClick={() => setShowArchived(false)} className="ml-auto text-[10px] text-amber-400 hover:text-amber-300 underline">Exit Archives</button>
+          <button type="button" onClick={() => setShowArchived(false)} className="ml-auto text-[10px] text-amber-400 hover:text-amber-300 underline">Exit Archives</button>
         </div>
       )}
       <div className="px-4 py-2 border-b border-rmpg-600 flex-shrink-0">
@@ -812,7 +812,7 @@ export default function IncidentsPage() {
         ) : error ? (
           <div className="flex flex-col items-center justify-center h-full gap-3">
             <p className="text-sm text-red-400">{error}</p>
-            <button onClick={() => fetchIncidents()} className="toolbar-btn">
+            <button type="button" onClick={() => fetchIncidents()} className="toolbar-btn">
               Retry
             </button>
           </div>
@@ -1099,7 +1099,7 @@ export default function IncidentsPage() {
       <PanelTitleBar title={selectedIncident.incident_number} icon={FileText} className="flex-shrink-0" titleClassName="text-green-400 font-mono">
         <StatusBadge status={selectedIncident.priority} type="priority" size="sm" />
         <StatusBadge status={selectedIncident.status} type="incident_status" size="sm" />
-        <button
+        <button type="button"
           onClick={() => openIncidentWindow(selectedIncident.id)}
           className="toolbar-btn"
           title="Open in new window"
@@ -1130,7 +1130,7 @@ export default function IncidentsPage() {
               await downloadPdfReport(reportType, pdfData);
             }}
           />
-        <button
+        <button type="button"
           onClick={() => {
             setSelectedIncident(null);
             setIsEditing(false);
@@ -1189,7 +1189,7 @@ export default function IncidentsPage() {
           <div className="mb-3 px-3 py-2 bg-surface-sunken border border-rmpg-700">
             <label className="field-label" style={{ fontSize: '10px', letterSpacing: '0.05em' }}>SOURCE CALL</label>
             <div className="flex items-center gap-3 mt-0.5">
-              <button
+              <button type="button"
                 onClick={() => navigate('/dispatch')}
                 className="font-mono text-green-400 text-sm hover:text-green-300 hover:underline transition-colors"
               >
@@ -1221,7 +1221,7 @@ export default function IncidentsPage() {
             <div>
               <label className="field-label">Linked Call:</label>
               {selectedIncident.call_number ? (
-                <button
+                <button type="button"
                   onClick={() => navigate('/dispatch')}
                   className="text-sm text-brand-300 hover:text-brand-200 hover:underline transition-colors font-mono"
                 >
@@ -1426,7 +1426,7 @@ export default function IncidentsPage() {
           defaultOpen
           actions={
             ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status) ? (
-              <button onClick={() => setShowLinkPersonModal(true)} className="toolbar-btn toolbar-btn-primary">
+              <button type="button" onClick={() => setShowLinkPersonModal(true)} className="toolbar-btn toolbar-btn-primary">
                 <Plus className="w-3 h-3" /> Link
               </button>
             ) : undefined
@@ -1453,7 +1453,7 @@ export default function IncidentsPage() {
                       ))}
                     </div>
                     {['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status) && (
-                      <button
+                      <button type="button"
                         onClick={() => handleUnlinkPerson(lp.person_id)}
                         className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-900/30 text-rmpg-400 hover:text-red-400 transition-all"
                         title="Unlink person"
@@ -1478,7 +1478,7 @@ export default function IncidentsPage() {
           defaultOpen
           actions={
             ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status) ? (
-              <button onClick={() => setShowLinkVehicleModal(true)} className="toolbar-btn toolbar-btn-primary">
+              <button type="button" onClick={() => setShowLinkVehicleModal(true)} className="toolbar-btn toolbar-btn-primary">
                 <Plus className="w-3 h-3" /> Link
               </button>
             ) : undefined
@@ -1503,7 +1503,7 @@ export default function IncidentsPage() {
                     )}
                   </div>
                   {['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status) && (
-                    <button
+                    <button type="button"
                       onClick={() => handleUnlinkVehicle(lv.vehicle_id)}
                       className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-900/30 text-rmpg-400 hover:text-red-400 transition-all"
                       title="Unlink vehicle"
@@ -1527,7 +1527,7 @@ export default function IncidentsPage() {
           defaultOpen
           actions={
             ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status) ? (
-              <button onClick={() => setShowEvidenceModal(true)} className="toolbar-btn toolbar-btn-primary">
+              <button type="button" onClick={() => setShowEvidenceModal(true)} className="toolbar-btn toolbar-btn-primary">
                 <Plus className="w-3 h-3" /> Add
               </button>
             ) : undefined
@@ -1550,7 +1550,7 @@ export default function IncidentsPage() {
                       </span>
                       <span className="text-xs text-white font-mono font-bold">{ev.evidence_number}</span>
                       <span className="text-xs text-rmpg-300 flex-1 truncate">{ev.description}</span>
-                      <button
+                      <button type="button"
                         className="toolbar-btn"
                         style={{ fontSize: '10px', padding: '2px 6px' }}
                         onClick={() => {
@@ -1575,7 +1575,7 @@ export default function IncidentsPage() {
                     {/* Chain of Custody */}
                     {custodyChain.length > 0 && (
                       <div className="mt-1.5">
-                        <button
+                        <button type="button"
                           onClick={() => setExpandedCustody((prev) => {
                             const next = new Set(prev);
                             if (next.has(String(ev.id))) next.delete(String(ev.id));
@@ -1624,7 +1624,7 @@ export default function IncidentsPage() {
           count={detailSupplements.length}
           defaultOpen={false}
           actions={
-            <button
+            <button type="button"
               className="toolbar-btn toolbar-btn-primary"
               onClick={() => setShowSupplementModal(true)}
             >
@@ -1703,14 +1703,14 @@ export default function IncidentsPage() {
                     <div className="flex items-center gap-2 mt-2 ml-9">
                       {sup.status === 'draft' && (
                         <>
-                          <button onClick={() => handleSubmitSupplement(String(sup.id))} className="toolbar-btn text-[9px]" style={{ padding: '2px 8px' }}>
+                          <button type="button" onClick={() => handleSubmitSupplement(String(sup.id))} className="toolbar-btn text-[9px]" style={{ padding: '2px 8px' }}>
                             <ChevronRight className="w-2.5 h-2.5 inline -ml-0.5 mr-0.5" />Submit for Review
                           </button>
-                          <button onClick={() => handleDeleteSupplement(String(sup.id))} className="toolbar-btn toolbar-btn-danger text-[9px]" style={{ padding: '2px 8px' }}>Delete Draft</button>
+                          <button type="button" onClick={() => handleDeleteSupplement(String(sup.id))} className="toolbar-btn toolbar-btn-danger text-[9px]" style={{ padding: '2px 8px' }}>Delete Draft</button>
                         </>
                       )}
                       {sup.status === 'submitted' && (
-                        <button onClick={() => handleApproveSupplement(String(sup.id))} className="toolbar-btn toolbar-btn-success text-[9px]" style={{ padding: '2px 8px' }}>
+                        <button type="button" onClick={() => handleApproveSupplement(String(sup.id))} className="toolbar-btn toolbar-btn-success text-[9px]" style={{ padding: '2px 8px' }}>
                           <Shield className="w-2.5 h-2.5 inline -ml-0.5 mr-0.5" />Approve
                         </button>
                       )}
@@ -1750,7 +1750,7 @@ export default function IncidentsPage() {
           <>
             {(isAdmin || ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status)) && (
               <>
-                <button
+                <button type="button"
                   onClick={() => {
                     setEditingIncident(selectedIncident);
                     setShowFormModal(true);
@@ -1759,13 +1759,13 @@ export default function IncidentsPage() {
                 >
                   Edit Report
                 </button>
-                <button onClick={() => setIsEditing(true)} className="toolbar-btn">
+                <button type="button" onClick={() => setIsEditing(true)} className="toolbar-btn">
                   Edit Narrative
                 </button>
               </>
             )}
             {(isAdmin || selectedIncident.status === 'draft') && (
-              <button
+              <button type="button"
                 onClick={() => setDeleteTarget(selectedIncident)}
                 className="toolbar-btn toolbar-btn-danger"
               >
@@ -1774,14 +1774,14 @@ export default function IncidentsPage() {
             )}
             {(selectedIncident.status === 'submitted' || selectedIncident.status === 'under_review') && (
               <>
-                <button
+                <button type="button"
                   className="toolbar-btn toolbar-btn-success"
                   onClick={handleApprove}
                   disabled={isSubmitting}
                 >
                   <CheckCircle className="w-3.5 h-3.5" /> Approve
                 </button>
-                <button
+                <button type="button"
                   className="toolbar-btn toolbar-btn-danger"
                   onClick={handleReturn}
                   disabled={isSubmitting}
@@ -1792,7 +1792,7 @@ export default function IncidentsPage() {
             )}
             {/* Archive / Unarchive */}
             {!showArchived && ['approved', 'closed'].includes(selectedIncident.status) && (
-              <button
+              <button type="button"
                 onClick={() => handleArchiveIncident(selectedIncident)}
                 className="toolbar-btn"
                 title="Archive this incident"
@@ -1801,7 +1801,7 @@ export default function IncidentsPage() {
               </button>
             )}
             {showArchived && (
-              <button
+              <button type="button"
                 onClick={() => handleUnarchiveIncident(selectedIncident)}
                 className="toolbar-btn toolbar-btn-primary"
                 title="Unarchive this incident"
@@ -1812,7 +1812,7 @@ export default function IncidentsPage() {
           </>
         ) : (
           <>
-            <button
+            <button type="button"
               className="toolbar-btn toolbar-btn-primary"
               onClick={handleSaveDraft}
               disabled={isSubmitting}
@@ -1825,7 +1825,7 @@ export default function IncidentsPage() {
               {selectedIncident && ['submitted', 'approved'].includes(selectedIncident.status) ? 'Save Changes' : 'Save Draft'}
             </button>
             {selectedIncident && ['draft', 'returned'].includes(selectedIncident.status) && (
-              <button
+              <button type="button"
                 className="toolbar-btn toolbar-btn-success"
                 onClick={handleSubmitForReview}
                 disabled={isSubmitting}
@@ -1833,7 +1833,7 @@ export default function IncidentsPage() {
                 Submit for Review
               </button>
             )}
-            <button onClick={() => setIsEditing(false)} className="toolbar-btn">
+            <button type="button" onClick={() => setIsEditing(false)} className="toolbar-btn">
               Cancel
             </button>
           </>
@@ -1931,7 +1931,7 @@ export default function IncidentsPage() {
         saveLabel={selectedIncident && ['submitted', 'approved'].includes(selectedIncident.status) ? 'Save Changes' : 'Save Draft'}
         extraActions={
           selectedIncident && ['draft', 'returned'].includes(selectedIncident.status) ? (
-            <button
+            <button type="button"
               className="toolbar-btn toolbar-btn-success"
               onClick={handleSubmitForReview}
               disabled={isSubmitting}
@@ -1960,7 +1960,7 @@ export default function IncidentsPage() {
 
       {/* Custody Transfer Modal */}
       {custodyTransfer && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setCustodyTransfer(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setCustodyTransfer(null)}>
           <div
             className="bg-surface-raised border border-rmpg-600 shadow-xl w-[400px] max-w-[95vw]"
             style={{ borderRadius: 2 }}
@@ -1970,7 +1970,7 @@ export default function IncidentsPage() {
               <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">
                 Custody Action — {custodyTransfer.evidenceNumber}
               </h3>
-              <button onClick={() => setCustodyTransfer(null)} className="text-rmpg-400 hover:text-white">
+              <button type="button" onClick={() => setCustodyTransfer(null)} className="text-rmpg-400 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -2026,13 +2026,13 @@ export default function IncidentsPage() {
               </div>
             </div>
             <div className={`px-4 py-2.5 border-t border-rmpg-600 flex ${isMobile ? 'flex-col' : 'justify-end'} gap-2`}>
-              <button
+              <button type="button"
                 onClick={() => setCustodyTransfer(null)}
                 className={`toolbar-btn ${isMobile ? 'w-full min-h-[48px] text-sm justify-center' : 'px-3 py-1.5 text-[11px]'}`}
               >
                 Cancel
               </button>
-              <button
+              <button type="button"
                 onClick={handleCustodyTransfer}
                 disabled={custodySubmitting}
                 className={`toolbar-btn toolbar-btn-primary ${isMobile ? 'w-full min-h-[48px] text-sm justify-center' : 'px-3 py-1.5 text-[11px]'} flex items-center gap-1`}

@@ -70,14 +70,14 @@ export default function SafetyZonesPanel({
           )}
         </div>
         <div className="flex items-center gap-1">
-          <button
+          <button type="button"
             onClick={onRefresh}
             className="toolbar-btn p-1"
             title="Refresh"
           >
             <RefreshCw size={11} className={`text-rmpg-400 ${loading ? 'animate-spin' : ''}`} />
           </button>
-          <button
+          <button type="button"
             onClick={onClose}
             className="toolbar-btn p-1"
             title="Close"
@@ -93,7 +93,7 @@ export default function SafetyZonesPanel({
         <div className="flex items-center gap-1">
           <span className="text-[7px] text-rmpg-500 uppercase font-bold w-8">Range:</span>
           {[30, 60, 90, 180, 365].map((d) => (
-            <button
+            <button type="button"
               key={d}
               onClick={() => onDaysChange(d)}
               className={`px-1.5 py-0.5 text-[7px] font-mono font-bold rounded-sm transition-colors ${
@@ -167,7 +167,7 @@ export default function SafetyZonesPanel({
                 const lastDate = zone.last_incident ? new Date(zone.last_incident).toLocaleDateString() : null;
 
                 return (
-                  <button
+                  <button type="button"
                     key={`${zone.latitude}-${zone.longitude}-${idx}`}
                     onClick={() => onNavigate(zone.latitude, zone.longitude)}
                     className="w-full text-left rounded-sm px-2 py-1.5 transition-colors hover:brightness-125"

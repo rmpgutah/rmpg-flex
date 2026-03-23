@@ -177,7 +177,7 @@ export default function MobileDetailView({
 
           {/* Back button + title */}
           <div className="flex items-center gap-1 min-w-0 flex-1">
-            <button
+            <button type="button"
               onClick={onClose}
               className="flex items-center justify-center w-10 h-10"
               style={{ color: '#b0bcc8' }}
@@ -201,7 +201,7 @@ export default function MobileDetailView({
           {/* Actions overflow (⋮) */}
           {actions && actions.length > 0 && (
             <div className="relative">
-              <button
+              <button type="button"
                 onClick={() => setMenuOpen((v) => !v)}
                 className="flex items-center justify-center w-10 h-10"
                 style={{ color: '#b0bcc8' }}
@@ -229,7 +229,7 @@ export default function MobileDetailView({
                     {actions.map((action, i) => {
                       const Icon = action.icon;
                       return (
-                        <button
+                        <button type="button"
                           key={i}
                           onClick={() => {
                             setMenuOpen(false);

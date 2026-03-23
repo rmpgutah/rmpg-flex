@@ -176,7 +176,7 @@ export default function CadCommandLine({ context, onAction }: CadCommandLineProp
       {suggestions.length > 0 && (
         <div className="cad-command-suggestions">
           {suggestions.map(s => (
-            <button
+            <button type="button"
               key={s}
               className="cad-suggestion"
               onMouseDown={(e) => { e.preventDefault(); setInput(s + ' '); setSuggestions([]); inputRef.current?.focus(); }}

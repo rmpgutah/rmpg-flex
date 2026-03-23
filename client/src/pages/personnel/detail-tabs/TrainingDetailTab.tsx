@@ -109,7 +109,7 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
           <GraduationCap className="w-3.5 h-3.5 text-brand-400" />
           Training Records
         </h3>
-        <button
+        <button type="button"
           onClick={() => onAddTraining(officerId)}
           className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1"
         >

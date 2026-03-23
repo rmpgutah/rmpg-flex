@@ -67,7 +67,9 @@ router.get('/', (req: Request, res: Response) => {
 router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const row = db.prepare('SELECT * FROM daily_activity_reports WHERE id = ?').get(req.params.id);
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID' }); return; }
+    const row = db.prepare('SELECT * FROM daily_activity_reports WHERE id = ?').get(id);
     if (!row) return res.status(404).json({ error: 'DAR not found' });
     res.json({ data: row });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
@@ -254,6 +256,10 @@ router.post('/', (req: Request, res: Response) => {
 router.put('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID' }); return; }
+    const existing = db.prepare('SELECT id FROM daily_activity_reports WHERE id = ?').get(id);
+    if (!existing) { res.status(404).json({ error: 'DAR not found' }); return; }
     const now = localNow();
     const fields = ['activities_narrative', 'notable_events', 'equipment_issues',
       'safety_concerns', 'recommendations', 'post_assignment', 'shift_start', 'shift_end'];
@@ -267,9 +273,9 @@ router.put('/:id', (req: Request, res: Response) => {
     for (const f of jsonFields) {
       if (req.body[f] !== undefined) { updates.push(`${f} = ?`); params.push(JSON.stringify(req.body[f])); }
     }
-    params.push(req.params.id);
+    params.push(id);
     db.prepare(`UPDATE daily_activity_reports SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    res.json({ data: { id: parseInt(req.params.id) } });
+    res.json({ data: { id } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -277,14 +283,18 @@ router.put('/:id', (req: Request, res: Response) => {
 router.put('/:id/submit', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid DAR ID' }); return; }
+    const existing = db.prepare('SELECT id, status FROM daily_activity_reports WHERE id = ?').get(id) as any;
+    if (!existing) { res.status(404).json({ error: 'DAR not found' }); return; }
     const now = localNow();
     db.prepare('UPDATE daily_activity_reports SET status = ?, submitted_at = ?, updated_at = ? WHERE id = ?')
-      .run('submitted', now, now, req.params.id);
+      .run('submitted', now, now, id);
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
-      VALUES (?, 'submit', 'dar', ?, '{}', ?)`).run(req.user!.userId, req.params.id, now);
+      VALUES (?, 'submit', 'dar', ?, '{}', ?)`).run(req.user!.userId, id, now);
 
-    res.json({ data: { id: parseInt(req.params.id), status: 'submitted' } });
+    res.json({ data: { id, status: 'submitted' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 

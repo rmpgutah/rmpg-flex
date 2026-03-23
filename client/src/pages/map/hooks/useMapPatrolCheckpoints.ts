@@ -244,7 +244,8 @@ export function useMapPatrolCheckpoints(
         renderCheckpoints(records);
         setLoading(false);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.warn('[useMapPatrolCheckpoints] Checkpoints fetch failed:', err);
         setLoading(false);
       });
   }, [enabled, renderCheckpoints]);

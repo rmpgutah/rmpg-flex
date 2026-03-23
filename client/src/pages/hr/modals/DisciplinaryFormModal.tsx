@@ -133,7 +133,7 @@ export default function DisciplinaryFormModal({
               {isEditing ? 'Edit' : 'New'} {isCommendation ? 'Commendation' : 'Disciplinary Record'}
             </h2>
           </div>
-          <button onClick={onClose} disabled={submitting} className="text-rmpg-400 hover:text-white">
+          <button type="button" onClick={onClose} disabled={submitting} className="text-rmpg-400 hover:text-white">
             <X size={16} />
           </button>
         </div>

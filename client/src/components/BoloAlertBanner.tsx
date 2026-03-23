@@ -112,7 +112,7 @@ export default function BoloAlertBanner({ address, subject, vehicle, onViewBolo 
                 <span className="text-red-400 font-bold font-mono">{bolo.bolo_number}</span>
                 <span className="text-white font-semibold truncate">{bolo.title}</span>
                 {onViewBolo && (
-                  <button
+                  <button type="button"
                     onClick={() => onViewBolo(bolo.id)}
                     className="text-rmpg-500 hover:text-red-400 flex-shrink-0"
                     title="View BOLO"

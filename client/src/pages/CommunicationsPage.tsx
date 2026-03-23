@@ -680,16 +680,16 @@ export default function CommunicationsPage() {
                 style={{ minWidth: '120px', maxWidth: '180px' }}
               />
               {searchQuery && (
-                <button onClick={() => setSearchQuery('')} className="text-rmpg-500 hover:text-white">
+                <button type="button" onClick={() => setSearchQuery('')} className="text-rmpg-500 hover:text-white">
                   <X className="w-3 h-3" />
                 </button>
               )}
             </div>
-            <button onClick={() => setShowCompose(true)} className="toolbar-btn toolbar-btn-primary">
+            <button type="button" onClick={() => setShowCompose(true)} className="toolbar-btn toolbar-btn-primary">
               <Plus className="w-3.5 h-3.5" /> Compose
             </button>
             {/* Feature 30: Emergency broadcast button */}
-            <button
+            <button type="button"
               onClick={async () => {
                 const msg = prompt('Emergency broadcast message to ALL units:');
                 if (!msg) return;
@@ -709,7 +709,7 @@ export default function CommunicationsPage() {
           </>
         )}
         {activePanel === 'bolos' && (
-          <button onClick={() => setShowNewBOLO(!showNewBOLO)} className="toolbar-btn toolbar-btn-danger">
+          <button type="button" onClick={() => setShowNewBOLO(!showNewBOLO)} className="toolbar-btn toolbar-btn-danger">
             <Plus className="w-3.5 h-3.5" /> New BOLO
           </button>
         )}
@@ -723,7 +723,7 @@ export default function CommunicationsPage() {
           {panels.map((panel) => {
             const Icon = panel.icon;
             return (
-              <button
+              <button type="button"
                 key={panel.id}
                 onClick={() => { setActivePanel(panel.id); setSelectedThreadId(null); }}
                 className={`
@@ -779,7 +779,7 @@ export default function CommunicationsPage() {
       {error && (
         <div className="mx-4 mt-2 px-3 py-2 bg-red-900/40 border border-red-700/50 text-red-300 text-xs flex items-center justify-between">
           <span>{error}</span>
-          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-300">
+          <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300">
             <X className="w-3 h-3" />
           </button>
         </div>
@@ -802,7 +802,7 @@ export default function CommunicationsPage() {
                     <div className="flex flex-col items-center justify-center py-20 text-rmpg-400">
                       <Inbox className="w-8 h-8 mb-2" />
                       <p className="text-sm">{searchQuery ? 'No matching conversations' : 'No messages'}</p>
-                      <button onClick={() => setShowCompose(true)} className="toolbar-btn toolbar-btn-primary mt-3">
+                      <button type="button" onClick={() => setShowCompose(true)} className="toolbar-btn toolbar-btn-primary mt-3">
                         <Plus className="w-3.5 h-3.5" /> Compose Message
                       </button>
                     </div>
@@ -871,7 +871,7 @@ export default function CommunicationsPage() {
                   <div className={`${isMobile ? 'w-full' : 'flex-1'} flex flex-col overflow-hidden animate-slide-in-right`}>
                     {/* Thread header */}
                     <div className="flex items-center gap-3 px-4 py-2.5 border-b border-rmpg-600 flex-shrink-0" style={{ background: '#0d1520' }}>
-                      <button
+                      <button type="button"
                         onClick={() => setSelectedThreadId(null)}
                         className="p-1 hover:bg-rmpg-700 text-rmpg-400 transition-colors"
                         title="Back to inbox"
@@ -893,7 +893,7 @@ export default function CommunicationsPage() {
                           {selectedThread.highestPriority.toUpperCase()}
                         </span>
                       )}
-                      <button onClick={() => setSelectedThreadId(null)} className="p-1 hover:bg-rmpg-700 text-rmpg-400">
+                      <button type="button" onClick={() => setSelectedThreadId(null)} className="p-1 hover:bg-rmpg-700 text-rmpg-400">
                         <X className="w-4 h-4" />
                       </button>
                     </div>
@@ -934,7 +934,7 @@ export default function CommunicationsPage() {
                                 <div className="flex items-center gap-2">
                                   <span className="text-[10px] text-rmpg-500 font-mono">{formatDateTime(msg.created_at)}</span>
                                   {msg.from_user_id === currentUserId && (
-                                    <button
+                                    <button type="button"
                                       onClick={(e) => { e.stopPropagation(); handleDeleteMessage(msg.id); }}
                                       className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-900/30 text-rmpg-500 hover:text-red-400 transition-all"
                                       title="Delete message"
@@ -952,7 +952,7 @@ export default function CommunicationsPage() {
                               {/* Feature 16: Acknowledge button for broadcast messages */}
                               {msg.is_broadcast && msg.from_user_id !== currentUserId && (
                                 <div className="pl-8 mt-2 flex items-center gap-2">
-                                  <button
+                                  <button type="button"
                                     onClick={async (e) => {
                                       e.stopPropagation();
                                       try {
@@ -1004,7 +1004,7 @@ export default function CommunicationsPage() {
                           disabled={replySending}
                         />
                         <div className="flex flex-col gap-1">
-                          <button
+                          <button type="button"
                             className="toolbar-btn toolbar-btn-primary h-full"
                             onClick={handleReply}
                             disabled={replySending || !replyText.trim()}
@@ -1158,18 +1158,18 @@ export default function CommunicationsPage() {
                   </div>
                   {bolo.status === 'active' && (
                     <div className="flex items-center gap-2 mt-3 pt-3 border-t border-rmpg-600">
-                      <button className="toolbar-btn" onClick={() => handleResolveBOLO(bolo.id)} disabled={resolvingId === bolo.id}>
+                      <button type="button" className="toolbar-btn" onClick={() => handleResolveBOLO(bolo.id)} disabled={resolvingId === bolo.id}>
                         {resolvingId === bolo.id && <Loader2 className="w-3 h-3 animate-spin" />} Mark Resolved
                       </button>
-                      <button className="toolbar-btn text-amber-400" onClick={() => handleArchiveBOLO(bolo.id)}>
+                      <button type="button" className="toolbar-btn text-amber-400" onClick={() => handleArchiveBOLO(bolo.id)}>
                         <Archive className="w-3 h-3" /> Archive
                       </button>
-                      <button className="toolbar-btn text-red-400" onClick={() => setCancelTarget(bolo)}>Cancel BOLO</button>
+                      <button type="button" className="toolbar-btn text-red-400" onClick={() => setCancelTarget(bolo)}>Cancel BOLO</button>
                     </div>
                   )}
                   {bolo.status !== 'active' && (
                     <div className="flex items-center gap-2 mt-3 pt-3 border-t border-rmpg-600">
-                      <button className="toolbar-btn text-green-400" onClick={() => handleUnarchiveBOLO(bolo.id)}>
+                      <button type="button" className="toolbar-btn text-green-400" onClick={() => handleUnarchiveBOLO(bolo.id)}>
                         <RotateCcw className="w-3 h-3" /> Unarchive
                       </button>
                     </div>
@@ -1199,7 +1199,7 @@ export default function CommunicationsPage() {
                     <ActivityFeed entries={activities} maxHeight="100%" showDate />
                     {activities.length < activitiesTotal && (
                       <div className="flex justify-center py-3 border-t border-rmpg-700/50">
-                        <button onClick={loadMoreActivity} disabled={activitiesLoadingMore} className="toolbar-btn">
+                        <button type="button" onClick={loadMoreActivity} disabled={activitiesLoadingMore} className="toolbar-btn">
                           {activitiesLoadingMore ? (
                             <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading...</>
                           ) : (

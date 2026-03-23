@@ -109,7 +109,7 @@ export const KeyboardShortcuts: React.FC = () => {
             <Keyboard className="w-4 h-4 text-brand-400" />
             <h2 className="text-sm font-bold text-white uppercase tracking-wider">Keyboard Shortcuts</h2>
           </div>
-          <button
+          <button type="button"
             onClick={() => setIsOpen(false)}
             className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-white transition-colors"
           >

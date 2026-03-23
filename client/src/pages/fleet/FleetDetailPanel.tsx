@@ -148,7 +148,7 @@ function FleetPrintMenu({ detail, fuelLogs, maintenance }: {
 
   return (
     <div className="relative" ref={ref}>
-      <button className="toolbar-btn" onClick={() => setOpen(!open)}>
+      <button type="button" className="toolbar-btn" onClick={() => setOpen(!open)}>
         <Printer className="w-3 h-3" /> Print <ChevronDown className="w-2.5 h-2.5" />
       </button>
       {open && (
@@ -257,14 +257,14 @@ export default function FleetDetailPanel({
           <FleetPrintMenu detail={detail} fuelLogs={fuelLogs} maintenance={maintenance} />
           {!isArchived && (
             <>
-              <button className="toolbar-btn" onClick={onEditVehicle}>
+              <button type="button" className="toolbar-btn" onClick={onEditVehicle}>
                 <Settings className="w-3 h-3" /> Edit
               </button>
-              <button className="toolbar-btn toolbar-btn-primary" onClick={onLogMaintenance}>
+              <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={onLogMaintenance}>
                 <Wrench className="w-3 h-3" /> Maintenance
               </button>
               {detail.status === 'retired' && (
-                <button className="toolbar-btn text-amber-400 hover:text-amber-300" onClick={onArchiveVehicle} title="Archive this retired vehicle">
+                <button type="button" className="toolbar-btn text-amber-400 hover:text-amber-300" onClick={onArchiveVehicle} title="Archive this retired vehicle">
                   <Archive className="w-3 h-3" /> Archive
                 </button>
               )}
@@ -272,18 +272,17 @@ export default function FleetDetailPanel({
           )}
           {isArchived && (
             <>
-              <button className="toolbar-btn text-green-400 hover:text-green-300" onClick={onUnarchiveVehicle} title="Unarchive this vehicle">
+              <button type="button" className="toolbar-btn text-green-400 hover:text-green-300" onClick={onUnarchiveVehicle} title="Unarchive this vehicle">
                 <RotateCcw className="w-3 h-3" /> Unarchive
               </button>
-              <button className="toolbar-btn text-red-400 hover:text-red-300" onClick={onDeleteVehicle} title="Permanently delete this vehicle">
+              <button type="button" className="toolbar-btn text-red-400 hover:text-red-300" onClick={onDeleteVehicle} title="Permanently delete this vehicle">
                 <Trash2 className="w-3 h-3" /> Delete
               </button>
             </>
           )}
-          <button
+          <button type="button"
             className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors"
-            onClick={onClose}
-          >
+            onClick={onClose}>
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -294,7 +293,7 @@ export default function FleetDetailPanel({
         {TABS.map(({ key, label, icon: Icon }) => {
           const isActive = activeTab === key;
           return (
-          <button
+          <button type="button"
             key={key}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-[9px] uppercase font-bold tracking-wider transition-colors border-b-2 ${
               isActive

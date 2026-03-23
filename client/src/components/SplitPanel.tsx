@@ -124,7 +124,7 @@ export default function SplitPanel({
               borderBottom: '1px solid #141e2b',
             }}
           >
-            <button
+            <button type="button"
               onClick={() => setMobileTab('left')}
               className="flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-center transition-colors"
               style={{
@@ -135,7 +135,7 @@ export default function SplitPanel({
             >
               {leftLabel}
             </button>
-            <button
+            <button type="button"
               onClick={() => setMobileTab('right')}
               className="flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-center transition-colors"
               style={{

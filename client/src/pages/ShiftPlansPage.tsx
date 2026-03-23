@@ -131,7 +131,7 @@ export default function ShiftPlansPage() {
       >
         <div className="flex items-center gap-3">
           <Calendar style={{ width: 14, height: 14, color: '#3b82f6' }} />
-          <button
+          <button type="button"
             onClick={() => navigateDate(-1)}
             className="text-[10px] text-rmpg-400 hover:text-white px-1"
           >
@@ -143,14 +143,14 @@ export default function ShiftPlansPage() {
             onChange={(e) => setSelectedDate(e.target.value)}
             className="bg-transparent text-white text-[11px] font-mono border border-rmpg-600 px-2 py-0.5 focus:border-blue-500 focus:outline-none"
           />
-          <button
+          <button type="button"
             onClick={() => navigateDate(1)}
             className="text-[10px] text-rmpg-400 hover:text-white px-1"
           >
             ▶
           </button>
           <span className="text-[11px] font-semibold text-rmpg-300">{formatDate(selectedDate)}</span>
-          <button
+          <button type="button"
             onClick={() => setSelectedDate(todayStr())}
             className="text-[9px] text-blue-400 hover:text-blue-300 uppercase font-bold tracking-wider"
           >
@@ -178,7 +178,7 @@ export default function ShiftPlansPage() {
           )}
 
           <ExportButton exportUrl="/api/shift-plans/export/csv" exportFilename="shift-plans.csv" />
-          <button
+          <button type="button"
             onClick={() => setShowCreateForm(true)}
             className="flex items-center gap-1 px-3 py-1 text-[9px] font-bold uppercase tracking-wider bg-blue-900/50 text-blue-400 border border-blue-700/50 hover:bg-blue-800/50 transition-colors"
           >
@@ -201,7 +201,7 @@ export default function ShiftPlansPage() {
             <div className="p-3 border-b border-rmpg-700/50" style={{ background: 'rgba(59,130,246,0.06)' }}>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[10px] font-bold text-blue-400 uppercase">New Shift Plan</span>
-                <button onClick={() => setShowCreateForm(false)} className="text-rmpg-500 hover:text-white">
+                <button type="button" onClick={() => setShowCreateForm(false)} className="text-rmpg-500 hover:text-white">
                   <X style={{ width: 10, height: 10 }} />
                 </button>
               </div>
@@ -216,7 +216,7 @@ export default function ShiftPlansPage() {
               />
               <div className="flex items-center gap-2 mb-2">
                 {(Object.entries(SHIFT_TYPES) as [ShiftType, typeof SHIFT_TYPES[ShiftType]][]).map(([key, val]) => (
-                  <button
+                  <button type="button"
                     key={key}
                     onClick={() => setNewPlanShift(key)}
                     className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider"
@@ -230,7 +230,7 @@ export default function ShiftPlansPage() {
                   </button>
                 ))}
               </div>
-              <button
+              <button type="button"
                 onClick={handleCreate}
                 disabled={!newPlanName.trim()}
                 className="w-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider bg-blue-900/50 text-blue-400 border border-blue-700/50 hover:bg-blue-800/50 transition-colors disabled:opacity-40"
@@ -247,7 +247,7 @@ export default function ShiftPlansPage() {
                 <div className="text-center">
                   <Calendar className="w-8 h-8 mx-auto mb-2 text-rmpg-600" />
                   <p>No shift plans for this date</p>
-                  <button
+                  <button type="button"
                     onClick={() => setShowCreateForm(true)}
                     className="text-blue-400 hover:text-blue-300 text-[10px] mt-2"
                   >
@@ -299,7 +299,7 @@ export default function ShiftPlansPage() {
               >
                 <div>
                   {isMobile && (
-                    <button
+                    <button type="button"
                       onClick={() => sp.setActivePlanId(null)}
                       className="text-rmpg-400 hover:text-white text-[10px] font-bold uppercase tracking-wider mb-1"
                     >
@@ -320,7 +320,7 @@ export default function ShiftPlansPage() {
 
                 <div className={`flex items-center gap-1 ${isMobile ? 'overflow-x-auto' : ''}`}>
                   {sp.activePlan.status === 'draft' && (
-                    <button
+                    <button type="button"
                       onClick={() => sp.updatePlanStatus(sp.activePlan!.id, 'active')}
                       className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase bg-green-900/50 text-green-400 border border-green-700/50 hover:bg-green-800/50"
                     >
@@ -328,21 +328,21 @@ export default function ShiftPlansPage() {
                     </button>
                   )}
                   {sp.activePlan.status === 'active' && (
-                    <button
+                    <button type="button"
                       onClick={() => sp.updatePlanStatus(sp.activePlan!.id, 'completed')}
                       className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase bg-blue-900/50 text-blue-400 border border-blue-700/50 hover:bg-blue-800/50"
                     >
                       <CheckCircle style={{ width: 9, height: 9 }} /> Complete
                     </button>
                   )}
-                  <button
+                  <button type="button"
                     onClick={() => handleSave(sp.activePlan!.id)}
                     className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase bg-brand-900/50 text-brand-400 border border-brand-700/50 hover:bg-brand-800/50"
                     title="Save to server"
                   >
                     <Save style={{ width: 9, height: 9 }} /> Save
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => handleDuplicate(sp.activePlan!.id)}
                     className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase text-rmpg-400 border border-rmpg-600 hover:text-white hover:border-rmpg-400"
                     title="Duplicate for next day"
@@ -350,7 +350,7 @@ export default function ShiftPlansPage() {
                     <Copy style={{ width: 9, height: 9 }} /> Duplicate
                   </button>
                   {sp.activePlan.status !== 'archived' && (
-                    <button
+                    <button type="button"
                       onClick={() => sp.updatePlanStatus(sp.activePlan!.id, 'archived')}
                       className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase text-rmpg-500 border border-rmpg-600 hover:text-amber-400 hover:border-amber-600"
                       title="Archive"
@@ -358,7 +358,7 @@ export default function ShiftPlansPage() {
                       <Archive style={{ width: 9, height: 9 }} />
                     </button>
                   )}
-                  <button
+                  <button type="button"
                     onClick={() => { if (confirm('Delete this shift plan?')) sp.deletePlan(sp.activePlan!.id); }}
                     className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase text-rmpg-500 border border-rmpg-600 hover:text-red-400 hover:border-red-600"
                     title="Delete"
@@ -375,7 +375,7 @@ export default function ShiftPlansPage() {
                 >
                   <span>Area Assignments ({sp.activePlan.assignments.length})</span>
                   {sp.activePlan.assignments.length > 0 && (
-                    <button
+                    <button type="button"
                       onClick={() => { if (confirm('Remove all assignments?')) sp.removeAllAssignments(); }}
                       className="text-red-500 hover:text-red-400"
                     >
@@ -450,7 +450,7 @@ export default function ShiftPlansPage() {
                           </td>
                           <td className="px-4 py-2 text-rmpg-400 truncate max-w-[120px]">{a.notes || '—'}</td>
                           <td className="px-4 py-2 text-right">
-                            <button
+                            <button type="button"
                               onClick={() => sp.removeAssignment(a.id)}
                               className="text-rmpg-600 hover:text-red-400 transition-colors"
                               title="Remove assignment"

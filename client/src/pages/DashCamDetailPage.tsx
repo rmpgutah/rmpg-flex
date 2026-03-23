@@ -218,7 +218,7 @@ function HudSection({ title, icon: Icon, children, defaultOpen = false, isOpen, 
 
   return (
     <div>
-      <button onClick={toggle} className="hud-section-header w-full">
+      <button type="button" onClick={toggle} className="hud-section-header w-full">
         <Icon className="w-3.5 h-3.5" style={{ flexShrink: 0 }} />
         <span className="flex-1 text-left">{title}</span>
         {open
@@ -637,7 +637,7 @@ export default function DashCamDetailPage() {
         <div className="text-center">
           <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-2" />
           <p className="text-xs text-rmpg-400 mb-3">{error || 'Video not found'}</p>
-          <button onClick={() => navigate('/dash-cameras')}
+          <button type="button" onClick={() => navigate('/dash-cameras')}
             className="toolbar-btn text-[10px] px-4 py-1.5 inline-flex items-center gap-1">
             <ChevronLeft className="w-3 h-3" /> Back to Gallery
           </button>
@@ -703,7 +703,7 @@ export default function DashCamDetailPage() {
             )}
 
             {/* Info panel toggle */}
-            <button onClick={() => setPanelOpen(p => !p)}
+            <button type="button" onClick={() => setPanelOpen(p => !p)}
               className="text-rmpg-400 hover:text-white transition-colors p-0.5" title="Toggle panel (I)">
               <Info className="w-4 h-4" />
             </button>
@@ -761,31 +761,31 @@ export default function DashCamDetailPage() {
         {/* ── Playback Controls ── */}
         <div className="hud-controls">
           {/* Prev video */}
-          <button onClick={() => neighbors?.prev && navigate(`/dash-cameras/${neighbors.prev}`)}
+          <button type="button" onClick={() => neighbors?.prev && navigate(`/dash-cameras/${neighbors.prev}`)}
             disabled={!neighbors?.prev} title="Previous video"
             style={{ opacity: neighbors?.prev ? 1 : 0.3 }}>
             <ChevronLeft className="w-4 h-4" />
           </button>
 
           {/* Skip back */}
-          <button onClick={() => skip(-10)} title="Back 10s (Left arrow)">
+          <button type="button" onClick={() => skip(-10)} title="Back 10s (Left arrow)">
             <SkipBack className="w-4 h-4" />
           </button>
 
           {/* Play/Pause */}
-          <button onClick={togglePlayPause} title="Play/Pause (Space)">
+          <button type="button" onClick={togglePlayPause} title="Play/Pause (Space)">
             {isPlaying
               ? <Pause className="w-5 h-5" />
               : <Play className="w-5 h-5" />}
           </button>
 
           {/* Skip forward */}
-          <button onClick={() => skip(10)} title="Forward 10s (Right arrow)">
+          <button type="button" onClick={() => skip(10)} title="Forward 10s (Right arrow)">
             <SkipForward className="w-4 h-4" />
           </button>
 
           {/* Next video */}
-          <button onClick={() => neighbors?.next && navigate(`/dash-cameras/${neighbors.next}`)}
+          <button type="button" onClick={() => neighbors?.next && navigate(`/dash-cameras/${neighbors.next}`)}
             disabled={!neighbors?.next} title="Next video"
             style={{ opacity: neighbors?.next ? 1 : 0.3 }}>
             <ChevronRight className="w-4 h-4" />
@@ -803,7 +803,7 @@ export default function DashCamDetailPage() {
           <div className="w-px h-4 bg-white/10 mx-1" />
 
           {/* Volume */}
-          <button onClick={toggleMute} title="Mute/Unmute">
+          <button type="button" onClick={toggleMute} title="Mute/Unmute">
             {isMuted || volume === 0
               ? <VolumeX className="w-4 h-4" />
               : <Volume2 className="w-4 h-4" />}
@@ -820,7 +820,7 @@ export default function DashCamDetailPage() {
 
           {/* Playback speed */}
           {[0.5, 1, 1.5, 2].map(rate => (
-            <button key={rate}
+            <button type="button" key={rate}
               onClick={() => setSpeed(rate)}
               className={playbackRate === rate ? 'active' : ''}
               title={`${rate}x speed`}>
@@ -831,7 +831,7 @@ export default function DashCamDetailPage() {
           <div className="flex-1" />
 
           {/* Fullscreen */}
-          <button onClick={toggleFullscreen} title="Fullscreen (F)">
+          <button type="button" onClick={toggleFullscreen} title="Fullscreen (F)">
             {isFullscreen
               ? <Minimize2 className="w-4 h-4" />
               : <Maximize2 className="w-4 h-4" />}
@@ -1018,7 +1018,7 @@ export default function DashCamDetailPage() {
                     {canManage && (
                       <div className="flex gap-0.5 ml-1">
                         {(['routine', 'evidence', 'flagged', 'restricted'] as const).map(cls => (
-                          <button key={cls} onClick={() => handleClassify(cls)} disabled={classifying}
+                          <button type="button" key={cls} onClick={() => handleClassify(cls)} disabled={classifying}
                             className={`text-[8px] px-1 py-0.5 capitalize rounded-sm ${
                               video.classification === cls
                                 ? 'bg-brand-500/30 text-brand-300'
@@ -1067,7 +1067,7 @@ export default function DashCamDetailPage() {
               {otherLinks.length > 0 ? (
                 <div className="space-y-1">
                   {otherLinks.map((link: any) => (
-                    <button key={`${link.entity_type}-${link.entity_id}`}
+                    <button type="button" key={`${link.entity_type}-${link.entity_id}`}
                       className="flex items-center gap-2 text-[10px] w-full text-left hover:bg-white/5 px-1 py-0.5 rounded-sm"
                       onClick={() => {
                         if (link.entity_type === 'warrant') navigate(`/warrants/${link.entity_id}`);
@@ -1093,14 +1093,14 @@ export default function DashCamDetailPage() {
             </div>
 
             {canManage && (
-              <button onClick={handleBurn}
+              <button type="button" onClick={handleBurn}
                 disabled={video.burn_status === 'processing' || video.burn_status === 'pending'}
                 className="toolbar-btn text-[10px] w-full py-1.5 flex items-center justify-center gap-1.5 disabled:opacity-30">
                 <Flame className="w-3.5 h-3.5" /> Burn HUD Overlay
               </button>
             )}
 
-            <button onClick={() => {
+            <button type="button" onClick={() => {
               navigator.clipboard.writeText(window.location.href);
               setLinkCopied(true);
               setTimeout(() => setLinkCopied(false), 2000);
@@ -1123,7 +1123,7 @@ export default function DashCamDetailPage() {
             )}
 
             {canManage && (
-              <button onClick={() => setEditingVideo(video)}
+              <button type="button" onClick={() => setEditingVideo(video)}
                 className="toolbar-btn text-[10px] w-full py-1.5 flex items-center justify-center gap-1.5">
                 <Edit2 className="w-3.5 h-3.5" /> Edit Details
               </button>
@@ -1132,12 +1132,12 @@ export default function DashCamDetailPage() {
             {/* Navigation */}
             {neighbors && (
               <div className="flex gap-1.5 pt-1">
-                <button disabled={!neighbors.prev}
+                <button type="button" disabled={!neighbors.prev}
                   onClick={() => neighbors.prev && navigate(`/dash-cameras/${neighbors.prev}`)}
                   className="toolbar-btn text-[10px] flex-1 py-1 flex items-center justify-center gap-1 disabled:opacity-30">
                   <ChevronLeft className="w-3 h-3" /> Prev
                 </button>
-                <button disabled={!neighbors.next}
+                <button type="button" disabled={!neighbors.next}
                   onClick={() => neighbors.next && navigate(`/dash-cameras/${neighbors.next}`)}
                   className="toolbar-btn text-[10px] flex-1 py-1 flex items-center justify-center gap-1 disabled:opacity-30">
                   Next <ChevronRight className="w-3 h-3" />

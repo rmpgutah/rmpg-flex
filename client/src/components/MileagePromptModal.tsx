@@ -30,7 +30,7 @@ export default function MileagePromptModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70" role="dialog" aria-modal="true">
       <div
         className="w-[340px] border rounded-sm"
         style={{
@@ -49,7 +49,7 @@ export default function MileagePromptModal({
           <span className="text-xs font-bold text-white">
             {mode === 'starting' ? 'Starting Mileage' : 'Ending Mileage'} — {callNumber}
           </span>
-          <button onClick={onCancel} className="text-rmpg-400 hover:text-white">
+          <button type="button" onClick={onCancel} className="text-rmpg-400 hover:text-white" aria-label="Close" title="Close">
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -110,8 +110,8 @@ export default function MileagePromptModal({
           className="flex justify-end gap-2 px-4 py-2 border-t"
           style={{ borderColor: 'var(--color-rmpg-600, #2a3a4e)' }}
         >
-          <button onClick={onCancel} className="toolbar-btn text-xs px-3 py-1">Cancel</button>
-          <button
+          <button type="button" onClick={onCancel} className="toolbar-btn text-xs px-3 py-1">Cancel</button>
+          <button type="button"
             onClick={handleSubmit}
             disabled={!mileage || isNaN(parseFloat(mileage))}
             className="toolbar-btn toolbar-btn-primary text-xs px-3 py-1"

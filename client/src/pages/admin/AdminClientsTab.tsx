@@ -226,7 +226,7 @@ export default function AdminClientsTab({
       <div className={`${selectedClient ? 'w-[35%]' : 'w-full'} border-r border-rmpg-600 flex flex-col overflow-hidden transition-all`}>
         <div className="px-4 py-3 flex items-center justify-between border-b border-rmpg-600 flex-shrink-0">
           <span className="text-xs text-rmpg-300 font-bold uppercase tracking-wider">{clients.length} Clients</span>
-          <button className="toolbar-btn toolbar-btn-primary" onClick={openAddClient}>
+          <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={openAddClient}>
             <Plus className="w-3.5 h-3.5" /> Add Client
           </button>
         </div>
@@ -261,7 +261,7 @@ export default function AdminClientsTab({
                       {client.is_active ? 'Active' : 'Inactive'}
                     </span>
                     <div className="flex items-center gap-1">
-                      <button
+                      <button type="button"
                         onClick={(e) => { e.stopPropagation(); openEditClient(client); }}
                         className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors"
                         title="Edit"
@@ -269,7 +269,7 @@ export default function AdminClientsTab({
                         <Edit className="w-3 h-3" />
                       </button>
                       {!(client as any).archived_at ? (
-                        <button
+                        <button type="button"
                           onClick={(e) => { e.stopPropagation(); handleArchiveClient(client.id); }}
                           className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-amber-400 transition-colors"
                           title="Archive"
@@ -277,7 +277,7 @@ export default function AdminClientsTab({
                           <Archive className="w-3 h-3" />
                         </button>
                       ) : (
-                        <button
+                        <button type="button"
                           onClick={(e) => { e.stopPropagation(); handleUnarchiveClient(client.id); }}
                           className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-green-400 transition-colors"
                           title="Unarchive"
@@ -285,7 +285,7 @@ export default function AdminClientsTab({
                           <RotateCcw className="w-3 h-3" />
                         </button>
                       )}
-                      <button
+                      <button type="button"
                         onClick={(e) => { e.stopPropagation(); openDeleteClient(client); }}
                         className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400 transition-colors"
                         title="Delete"
@@ -323,10 +323,10 @@ export default function AdminClientsTab({
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <button onClick={() => openEditClient(selectedClient)} className="toolbar-btn">
+                <button type="button" onClick={() => openEditClient(selectedClient)} className="toolbar-btn">
                   <Edit className="w-3.5 h-3.5" /> Edit
                 </button>
-                <button onClick={() => setSelectedClient(null)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors">
+                <button type="button" onClick={() => setSelectedClient(null)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors">
                   <XCircle className="w-4 h-4" />
                 </button>
               </div>
@@ -344,7 +344,7 @@ export default function AdminClientsTab({
               { id: 'notes' as const, label: 'Notes' },
               { id: 'invoices' as const, label: 'Invoices' },
             ]).map((tab) => (
-              <button
+              <button type="button"
                 key={tab.id}
                 onClick={() => setClientDetailTab(tab.id)}
                 className={`px-3 py-1.5 text-[10px] font-medium transition-colors ${
@@ -549,7 +549,7 @@ export default function AdminClientsTab({
                     <div><span className="text-rmpg-400">Total Paid:</span> <span className="text-green-400 font-bold ml-1">${(clientBilling?.total_paid || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></div>
                     <div><span className="text-rmpg-400">Outstanding:</span> <span className="text-amber-400 font-bold ml-1">${(clientBilling?.outstanding_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></div>
                   </div>
-                  <button onClick={() => setClientDetailTab('invoices')} className="toolbar-btn text-brand-400 hover:text-brand-300">
+                  <button type="button" onClick={() => setClientDetailTab('invoices')} className="toolbar-btn text-brand-400 hover:text-brand-300">
                     <FileText className="w-3.5 h-3.5" /> <span className="text-[10px]">View Invoices</span>
                   </button>
                 </div>

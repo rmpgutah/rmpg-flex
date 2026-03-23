@@ -236,8 +236,11 @@ export function useMapFleetVehicles(
         }
         setLoading(false);
       })
-      .catch(() => {
-        if (!cancelled) setLoading(false);
+      .catch((err) => {
+        if (!cancelled) {
+          console.warn('[useMapFleetVehicles] Fleet data fetch failed:', err);
+          setLoading(false);
+        }
       });
   }, [enabled, renderMarkers]);
 

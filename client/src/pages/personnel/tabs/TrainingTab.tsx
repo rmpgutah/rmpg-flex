@@ -116,7 +116,7 @@ export default function TrainingTab({ training, requirements, officers, loading,
       {/* Header & Filters */}
       <div className="flex items-center justify-between">
         <div className="panel-inset p-2 flex items-center gap-1.5 flex-wrap">
-          <button
+          <button type="button"
             onClick={() => setCategoryFilter('all')}
             className={`text-[10px] px-2.5 py-1 ${
               categoryFilter === 'all' ? 'toolbar-btn-primary' : 'toolbar-btn'
@@ -125,7 +125,7 @@ export default function TrainingTab({ training, requirements, officers, loading,
             All
           </button>
           {CATEGORIES.map((cat) => (
-            <button
+            <button type="button"
               key={cat}
               onClick={() => setCategoryFilter(cat)}
               className={`text-[10px] px-2.5 py-1 capitalize ${
@@ -136,7 +136,7 @@ export default function TrainingTab({ training, requirements, officers, loading,
             </button>
           ))}
         </div>
-        <button onClick={onAddTraining} className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1">
+        <button type="button" onClick={onAddTraining} className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1">
           <Plus className="w-3 h-3" />
           Add Training
         </button>

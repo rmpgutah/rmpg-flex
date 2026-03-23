@@ -1002,11 +1002,10 @@ export default function DashCamUploadWizard({
             <Upload className="w-4 h-4 text-brand-400" />
             <h2 className="text-sm font-bold text-rmpg-100">Upload Dash Camera Videos</h2>
           </div>
-          <button
+          <button type="button"
             onClick={handleClose}
             disabled={isUploading}
-            className="toolbar-btn p-1 disabled:opacity-30"
-          >
+            className="toolbar-btn p-1 disabled:opacity-30">
             <X className="w-4 h-4" />
           </button>
         </div>

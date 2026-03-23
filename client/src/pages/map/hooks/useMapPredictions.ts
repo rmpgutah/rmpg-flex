@@ -55,7 +55,6 @@ export function useMapPredictions(
         if (cancelled) return;
         // Handle both { hotspots: [...] } and [...] response formats
         const list = Array.isArray(data) ? data : (data?.hotspots || []);
-        console.log(`[Predictions] Fetched ${list.length} hotspots`);
         setHotspots(list);
         setLoading(false);
       })

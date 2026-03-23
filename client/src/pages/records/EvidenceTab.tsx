@@ -203,7 +203,7 @@ export function EvidenceTabList({ state }: { state: EvidenceTabState }) {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
           {searchQuery && (
-            <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white">
+            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white">
               <X className="w-3 h-3" />
             </button>
           )}
@@ -273,17 +273,17 @@ export function EvidenceTabList({ state }: { state: EvidenceTabState }) {
                   )}
                   <div className="flex items-center gap-1">
                     {!showArchived && (
-                      <button onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: 'evidence', id: ev.id, label: ev.evidence_number }); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400 transition-colors" title="Delete">
+                      <button type="button" onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: 'evidence', id: ev.id, label: ev.evidence_number }); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400 transition-colors" title="Delete">
                         <Trash2 className="w-3 h-3" />
                       </button>
                     )}
                     {!showArchived && (
-                      <button onClick={(e) => { e.stopPropagation(); handleArchive('evidence', ev.id); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-amber-400 transition-colors" title="Archive">
+                      <button type="button" onClick={(e) => { e.stopPropagation(); handleArchive('evidence', ev.id); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-amber-400 transition-colors" title="Archive">
                         <Archive className="w-3 h-3" />
                       </button>
                     )}
                     {showArchived && (
-                      <button onClick={(e) => { e.stopPropagation(); handleUnarchive('evidence', ev.id); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-green-400 transition-colors" title="Unarchive">
+                      <button type="button" onClick={(e) => { e.stopPropagation(); handleUnarchive('evidence', ev.id); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-green-400 transition-colors" title="Unarchive">
                         <RotateCcw className="w-3 h-3" />
                       </button>
                     )}
@@ -396,7 +396,7 @@ function DigitalForensicsSection({ evidenceId }: { evidenceId: string }) {
     <div className="space-y-2">
       {/* Action bar */}
       <div className="flex items-center gap-2">
-        <button
+        <button type="button"
           onClick={handleComputeHashes}
           disabled={computing}
           className="toolbar-btn text-[10px] flex items-center gap-1 px-2.5 py-1 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
@@ -442,7 +442,7 @@ function DigitalForensicsSection({ evidenceId }: { evidenceId: string }) {
                   <div className="flex items-center gap-1">
                     <span className="text-rmpg-500 w-12 shrink-0">MD5:</span>
                     <span className="text-rmpg-300 font-mono truncate">{h.md5}</span>
-                    <button onClick={() => copyToClipboard(h.md5!, `md5-${h.id}`)} className="shrink-0 text-rmpg-600 hover:text-rmpg-300">
+                    <button type="button" onClick={() => copyToClipboard(h.md5!, `md5-${h.id}`)} className="shrink-0 text-rmpg-600 hover:text-rmpg-300">
                       {copiedField === `md5-${h.id}` ? <CheckCircle2 className="w-2.5 h-2.5 text-green-400" /> : <Copy className="w-2.5 h-2.5" />}
                     </button>
                   </div>
@@ -451,7 +451,7 @@ function DigitalForensicsSection({ evidenceId }: { evidenceId: string }) {
                   <div className="flex items-center gap-1">
                     <span className="text-rmpg-500 w-12 shrink-0">SHA-256:</span>
                     <span className="text-rmpg-300 font-mono truncate">{h.sha256.slice(0, 24)}...</span>
-                    <button onClick={() => copyToClipboard(h.sha256!, `sha256-${h.id}`)} className="shrink-0 text-rmpg-600 hover:text-rmpg-300">
+                    <button type="button" onClick={() => copyToClipboard(h.sha256!, `sha256-${h.id}`)} className="shrink-0 text-rmpg-600 hover:text-rmpg-300">
                       {copiedField === `sha256-${h.id}` ? <CheckCircle2 className="w-2.5 h-2.5 text-green-400" /> : <Copy className="w-2.5 h-2.5" />}
                     </button>
                   </div>
@@ -697,7 +697,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
               <div className="text-xs font-mono font-bold text-rmpg-200">{selectedEvidence.evidence_number}</div>
               <div className="text-[9px] text-rmpg-500 mt-1">{selectedEvidence.description?.slice(0, 50)}</div>
             </div>
-            <button
+            <button type="button"
               onClick={() => {
                 const printWindow = window.open('', '_blank', 'width=400,height=400');
                 if (printWindow) {

@@ -114,8 +114,9 @@ export function useMapGeofences(
           setLoading(false);
         }
       })
-      .catch(() => {
+      .catch((err) => {
         if (!cancelled) {
+          console.warn('[useMapGeofences] Geofences fetch failed:', err);
           setGeofences([]);
           setLoading(false);
         }

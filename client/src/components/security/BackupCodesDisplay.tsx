@@ -87,14 +87,14 @@ export default function BackupCodesDisplay({ codes, onAcknowledge }: Props) {
 
       {/* Action buttons */}
       <div className="flex gap-2">
-        <button
+        <button type="button"
           onClick={handleCopy}
           className="toolbar-btn flex-1 flex items-center justify-center gap-1.5 h-8 text-[10px] uppercase tracking-wider"
         >
           {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
           {copied ? 'Copied' : 'Copy All'}
         </button>
-        <button
+        <button type="button"
           onClick={handleDownload}
           className="toolbar-btn flex-1 flex items-center justify-center gap-1.5 h-8 text-[10px] uppercase tracking-wider"
         >
@@ -117,7 +117,7 @@ export default function BackupCodesDisplay({ codes, onAcknowledge }: Props) {
           </span>
         </label>
 
-        <button
+        <button type="button"
           onClick={onAcknowledge}
           disabled={!acknowledged}
           className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"

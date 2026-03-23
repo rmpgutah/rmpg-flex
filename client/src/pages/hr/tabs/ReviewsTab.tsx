@@ -348,7 +348,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
                       placeholder="Optional comments before acknowledging..."
                       className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm px-2.5 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none resize-y"
                     />
-                    <button
+                    <button type="button"
                       onClick={() => handleAcknowledge(review.id)}
                       disabled={ackLoading === review.id}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-600/80 hover:bg-green-600 text-white rounded-sm transition-colors disabled:opacity-50"
@@ -487,7 +487,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
         <div className="flex-1" />
 
         <ExportButton exportUrl="/api/hr/reviews/export/csv" exportFilename="reviews.csv" />
-        <button
+        <button type="button"
           onClick={() => {
             setEditReview(null);
             setModalOpen(true);
@@ -552,7 +552,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
               {/* Actions */}
               <div className="flex items-center gap-1 shrink-0">
                 {(review.status === 'draft' || review.status === 'submitted') && (
-                  <button
+                  <button type="button"
                     onClick={() => {
                       setEditReview(review);
                       setModalOpen(true);
@@ -564,7 +564,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
                   </button>
                 )}
                 {userRole === 'admin' && review.status === 'draft' && (
-                  <button
+                  <button type="button"
                     onClick={() => handleDelete(review.id)}
                     className="p-1.5 text-rmpg-400 hover:text-red-400 transition-colors"
                     title="Delete"

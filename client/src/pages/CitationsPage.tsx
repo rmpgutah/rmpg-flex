@@ -638,11 +638,11 @@ export default function CitationsPage() {
             />
           </div>
           <div className={`flex items-center gap-2 ${isMobile ? 'w-full' : ''}`}>
-            <button onClick={handleNewCitation} className={`toolbar-btn toolbar-btn-primary ${isMobile ? 'flex-1 justify-center' : ''}`} title="New Citation" style={isMobile ? { minHeight: 48 } : undefined}>
+            <button type="button" onClick={handleNewCitation} className={`toolbar-btn toolbar-btn-primary ${isMobile ? 'flex-1 justify-center' : ''}`} title="New Citation" style={isMobile ? { minHeight: 48 } : undefined}>
               <Plus size={isMobile ? 16 : 12} /> New
             </button>
             <ExportButton exportUrl="/api/citations/export/csv" exportFilename="citations.csv" />
-            <button onClick={() => { fetchCitations(); fetchStats(); }} className="text-rmpg-400 hover:text-rmpg-200 p-1 transition-colors" title="Refresh" style={isMobile ? { minHeight: 48, minWidth: 48 } : undefined}>
+            <button type="button" onClick={() => { fetchCitations(); fetchStats(); }} className="text-rmpg-400 hover:text-rmpg-200 p-1 transition-colors" title="Refresh" style={isMobile ? { minHeight: 48, minWidth: 48 } : undefined}>
               <RefreshCw size={isMobile ? 18 : 14} />
             </button>
           </div>
@@ -679,7 +679,7 @@ export default function CitationsPage() {
           </div>
         ) : (
           citations.map(c => (
-            <button
+            <button type="button"
               key={c.id}
               onClick={() => handleSelectCitation(c)}
               className={`w-full text-left px-3 ${isMobile ? 'py-3' : 'py-2'} border-b border-rmpg-700/50 hover:bg-rmpg-700/20 transition-colors ${
@@ -712,11 +712,11 @@ export default function CitationsPage() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className={`flex items-center justify-between px-3 py-2 border-t border-rmpg-700 ${isMobile ? 'text-xs' : 'text-[10px]'} text-rmpg-400`}>
-          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} className="hover:text-rmpg-200 disabled:opacity-30" style={isMobile ? { minHeight: 48, minWidth: 48 } : undefined}>
+          <button type="button" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} className="hover:text-rmpg-200 disabled:opacity-30" style={isMobile ? { minHeight: 48, minWidth: 48 } : undefined}>
             Prev
           </button>
           <span>Page {page} of {totalPages}</span>
-          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="hover:text-rmpg-200 disabled:opacity-30" style={isMobile ? { minHeight: 48, minWidth: 48 } : undefined}>
+          <button type="button" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="hover:text-rmpg-200 disabled:opacity-30" style={isMobile ? { minHeight: 48, minWidth: 48 } : undefined}>
             Next
           </button>
         </div>
@@ -779,11 +779,11 @@ export default function CitationsPage() {
               entityId={c.id}
               iconOnly
             />
-            <button onClick={() => handleEditCitation(c)} className="toolbar-btn text-[10px]">
+            <button type="button" onClick={() => handleEditCitation(c)} className="toolbar-btn text-[10px]">
               <FileText size={12} /> Edit
             </button>
             {c.status !== 'voided' && (
-              <button onClick={() => handleVoid(c)} className="toolbar-btn text-[10px] text-red-400 hover:text-red-300">
+              <button type="button" onClick={() => handleVoid(c)} className="toolbar-btn text-[10px] text-red-400 hover:text-red-300">
                 <Ban size={12} /> Void
               </button>
             )}
@@ -843,7 +843,7 @@ export default function CitationsPage() {
                   </div>
                 )}
                 {!showPaymentForm ? (
-                  <button onClick={() => setShowPaymentForm(true)} className="toolbar-btn text-[10px] mt-1">
+                  <button type="button" onClick={() => setShowPaymentForm(true)} className="toolbar-btn text-[10px] mt-1">
                     <Plus size={10} /> Record Payment
                   </button>
                 ) : (
@@ -863,10 +863,10 @@ export default function CitationsPage() {
                         <input className="input-dark text-xs w-full" value={paymentForm.reference_number} onChange={e => setPaymentForm(p => ({ ...p, reference_number: e.target.value }))} /></div>
                     </div>
                     <div className="flex gap-2">
-                      <button onClick={handleRecordPayment} disabled={paymentSubmitting || !paymentForm.amount} className="toolbar-btn-primary text-[10px] px-3 py-1">
+                      <button type="button" onClick={handleRecordPayment} disabled={paymentSubmitting || !paymentForm.amount} className="toolbar-btn-primary text-[10px] px-3 py-1">
                         {paymentSubmitting ? 'Saving...' : 'Save Payment'}
                       </button>
-                      <button onClick={() => setShowPaymentForm(false)} className="toolbar-btn text-[10px]">Cancel</button>
+                      <button type="button" onClick={() => setShowPaymentForm(false)} className="toolbar-btn text-[10px]">Cancel</button>
                     </div>
                   </div>
                 )}
@@ -972,7 +972,7 @@ export default function CitationsPage() {
         <h2 className="text-xs font-bold uppercase tracking-wider text-rmpg-300">
           {isEdit ? `Edit Citation ${selectedCitation?.citation_number || ''}` : 'New Citation / Summons'}
         </h2>
-        <button onClick={handleCancelForm} className="text-rmpg-400 hover:text-rmpg-200 transition-colors">
+        <button type="button" onClick={handleCancelForm} className="text-rmpg-400 hover:text-rmpg-200 transition-colors">
           <X size={18} />
         </button>
       </div>
@@ -1095,7 +1095,7 @@ export default function CitationsPage() {
                 />
                 {personSearching && <Loader2 size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-rmpg-400 animate-spin" />}
                 {form.person_id && (
-                  <button onClick={clearPerson} className="absolute right-3 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-rmpg-200">
+                  <button type="button" onClick={clearPerson} className="absolute right-3 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-rmpg-200">
                     <X size={12} />
                   </button>
                 )}
@@ -1103,7 +1103,7 @@ export default function CitationsPage() {
               {showPersonDropdown && personResults.length > 0 && (
                 <div className="absolute z-50 mt-1 w-full bg-rmpg-800 border border-rmpg-600 shadow-xl max-h-48 overflow-y-auto">
                   {personResults.map((p: any) => (
-                    <button
+                    <button type="button"
                       key={p.id}
                       onClick={() => selectPerson(p)}
                       className="w-full text-left px-3 py-2 text-xs hover:bg-rmpg-700/50 border-b border-rmpg-700/50 last:border-b-0 transition-colors"
@@ -1290,7 +1290,7 @@ export default function CitationsPage() {
 
       {/* Footer */}
       <div className={`flex items-center ${isMobile ? 'flex-col gap-2' : 'justify-end gap-3'} px-4 py-3 border-t border-rmpg-700`}>
-        <button
+        <button type="button"
           onClick={handleSave}
           disabled={saving}
           className={`toolbar-btn toolbar-btn-primary disabled:opacity-50 disabled:cursor-not-allowed ${isMobile ? 'w-full justify-center' : ''}`}
@@ -1302,7 +1302,7 @@ export default function CitationsPage() {
             <><Check size={14} /> {isEdit ? 'Save Changes' : 'Create Citation'}</>
           )}
         </button>
-        <button onClick={handleCancelForm} className={`px-4 py-2 text-xs font-bold uppercase text-rmpg-300 hover:text-rmpg-100 transition-colors ${isMobile ? 'w-full text-center' : ''}`} style={isMobile ? { minHeight: 48 } : undefined}>
+        <button type="button" onClick={handleCancelForm} className={`px-4 py-2 text-xs font-bold uppercase text-rmpg-300 hover:text-rmpg-100 transition-colors ${isMobile ? 'w-full text-center' : ''}`} style={isMobile ? { minHeight: 48 } : undefined}>
           Cancel
         </button>
       </div>
@@ -1333,7 +1333,7 @@ export default function CitationsPage() {
         <p className="text-xs text-center text-rmpg-500 mb-6 max-w-xs">
           Select a citation from the list to view details, or create a new one.
         </p>
-        <button onClick={handleNewCitation} className="toolbar-btn toolbar-btn-primary">
+        <button type="button" onClick={handleNewCitation} className="toolbar-btn toolbar-btn-primary">
           <Plus size={14} /> New Citation
         </button>
       </div>
@@ -1375,7 +1375,7 @@ export default function CitationsPage() {
           <div className={`flex-1 panel-beveled bg-surface-base border border-rmpg-700 overflow-hidden flex flex-col ${isMobile && !showListOnMobile ? '' : ''}`}>
             {isMobile && selectedCitation && mode === 'list' && (
               <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700">
-                <button onClick={() => setSelectedCitation(null)} className="toolbar-btn text-[10px]">← Back</button>
+                <button type="button" onClick={() => setSelectedCitation(null)} className="toolbar-btn text-[10px]">← Back</button>
                 <span className="text-xs text-rmpg-400 font-mono">{selectedCitation.citation_number}</span>
               </div>
             )}
@@ -1386,7 +1386,7 @@ export default function CitationsPage() {
 
       {/* Mobile FAB for new citation */}
       {isMobile && !selectedCitation && mode === 'list' && (
-        <button onClick={handleNewCitation} className="mobile-fab" aria-label="New Citation">
+        <button type="button" onClick={handleNewCitation} className="mobile-fab" aria-label="New Citation">
           <Plus size={24} />
         </button>
       )}

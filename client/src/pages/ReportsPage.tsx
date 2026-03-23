@@ -312,14 +312,14 @@ function ReportApprovalQueue() {
             {r.narrative && <div className="text-[9px] text-rmpg-500 mt-0.5 truncate max-w-[300px]">{r.narrative.slice(0, 100)}</div>}
           </div>
           <div className="flex gap-1.5 flex-shrink-0">
-            <button
+            <button type="button"
               onClick={() => handleApprove(String(r.id))}
               disabled={processing === String(r.id)}
               className="toolbar-btn text-[9px] bg-green-900/30 text-green-400 border-green-700/30 hover:bg-green-800/40"
             >
               Approve
             </button>
-            <button
+            <button type="button"
               onClick={() => handleReturn(String(r.id))}
               disabled={processing === String(r.id)}
               className="toolbar-btn text-[9px] bg-red-900/30 text-red-400 border-red-700/30 hover:bg-red-800/40"
@@ -358,7 +358,7 @@ function DailyBriefingCard() {
           <FileText className="w-3.5 h-3.5 text-green-400" />
           <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Daily Shift Briefing</h3>
         </div>
-        <button onClick={loadBriefing} disabled={loading} className="toolbar-btn text-[9px]">
+        <button type="button" onClick={loadBriefing} disabled={loading} className="toolbar-btn text-[9px]">
           {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Generate'}
         </button>
       </div>
@@ -457,7 +457,7 @@ function WeeklyDigestCard() {
           <Calendar className="w-3.5 h-3.5 text-purple-400" />
           <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Weekly Activity Digest</h3>
         </div>
-        <button onClick={loadDigest} disabled={loading} className="toolbar-btn text-[9px]">
+        <button type="button" onClick={loadDigest} disabled={loading} className="toolbar-btn text-[9px]">
           {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Generate'}
         </button>
       </div>
@@ -924,13 +924,13 @@ export default function ReportsPage() {
           )}
         </div>
         <PrintButton />
-        <button
+        <button type="button"
           className="toolbar-btn"
           onClick={() => navigate('/reports/custom')}
         >
           <Database className="w-3.5 h-3.5" /> Custom Builder
         </button>
-        <button
+        <button type="button"
           className="toolbar-btn"
           onClick={handleExport}
           disabled={loading || !incidentsData}
@@ -1259,13 +1259,13 @@ function PatrolTrackingCard() {
       <div className="flex items-center gap-3 flex-wrap mb-2">
         {/* Mode toggle */}
         <div className="flex items-center gap-1 bg-rmpg-800 rounded-sm p-0.5">
-          <button
+          <button type="button"
             onClick={() => setMode('hours')}
             className={`text-[9px] px-2 py-0.5 rounded-sm font-bold uppercase ${mode === 'hours' ? 'bg-brand-500/20 text-brand-400' : 'text-rmpg-500 hover:text-rmpg-300'}`}
           >
             Quick
           </button>
-          <button
+          <button type="button"
             onClick={() => setMode('range')}
             className={`text-[9px] px-2 py-0.5 rounded-sm font-bold uppercase ${mode === 'range' ? 'bg-brand-500/20 text-brand-400' : 'text-rmpg-500 hover:text-rmpg-300'}`}
           >
@@ -1338,7 +1338,7 @@ function PatrolTrackingCard() {
           Include roads
         </label>
 
-        <button
+        <button type="button"
           onClick={handleGenerate}
           disabled={generating}
           className="toolbar-btn-primary text-[10px] px-4 py-1.5 flex items-center gap-1.5 ml-auto"

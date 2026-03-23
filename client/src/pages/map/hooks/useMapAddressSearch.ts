@@ -51,8 +51,7 @@ export function useMapAddressSearch({ mapInstanceRef, createMarker, removeMarker
         addressMarkerRef.current = null;
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [removeMarker]);
 
   const handleAddressSearch = useCallback((query: string) => {
     setAddressSearch(query);

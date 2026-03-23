@@ -45,8 +45,8 @@ router.get('/', (req: Request, res: Response) => {
       where += ' AND fi.archived_at IS NULL';
     }
 
-    const pageNum = parseInt(page as string, 10);
-    const perPage = parseInt(per_page as string, 10);
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 50));
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare(`SELECT COUNT(*) as total FROM field_interviews fi ${where}`).get(...params) as any;
@@ -66,7 +66,8 @@ router.get('/', (req: Request, res: Response) => {
       pagination: { page: pageNum, per_page: perPage, total: countRow.total, totalPages: Math.ceil(countRow.total / perPage) },
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('[FieldInterviews] Error:', err?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -89,7 +90,8 @@ router.get('/map', (req: Request, res: Response) => {
 
     res.json(rows);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('[FieldInterviews] Error:', err?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -114,7 +116,8 @@ router.get('/repeat-check', (req: Request, res: Response) => {
     `).all(searchName, searchName, thirtyDaysAgo) as any[];
     res.json({ count: rows.length, recent: rows.slice(0, 5) });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('[FieldInterviews] Error:', err?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -122,6 +125,11 @@ router.get('/repeat-check', (req: Request, res: Response) => {
 router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      res.status(400).json({ error: 'Invalid field interview ID' });
+      return;
+    }
     const row = db.prepare(`
       SELECT fi.*, u.full_name as officer_display_name,
         p.first_name as linked_person_first, p.last_name as linked_person_last
@@ -129,11 +137,12 @@ router.get('/:id', (req: Request, res: Response) => {
       LEFT JOIN users u ON fi.officer_id = u.id
       LEFT JOIN persons p ON fi.person_id = p.id
       WHERE fi.id = ?
-    `).get(req.params.id);
+    `).get(id);
     if (!row) return res.status(404).json({ error: 'Field interview not found' });
     res.json(row);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('[FieldInterviews] Error:', err?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -183,7 +192,8 @@ router.post('/', (req: Request, res: Response) => {
     broadcast('alerts', 'fi_created', created);
     res.status(201).json(created);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('[FieldInterviews] Error:', err?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -191,7 +201,12 @@ router.post('/', (req: Request, res: Response) => {
 router.put('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const existing = db.prepare('SELECT id FROM field_interviews WHERE id = ?').get(req.params.id);
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      res.status(400).json({ error: 'Invalid field interview ID' });
+      return;
+    }
+    const existing = db.prepare('SELECT id FROM field_interviews WHERE id = ?').get(id);
     if (!existing) return res.status(404).json({ error: 'Field interview not found' });
 
     const fields = [
@@ -221,7 +236,8 @@ router.put('/:id', (req: Request, res: Response) => {
     broadcast('alerts', 'fi_updated', updated);
     res.json(updated);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('[FieldInterviews] Error:', err?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -229,10 +245,15 @@ router.put('/:id', (req: Request, res: Response) => {
 router.post('/:id/archive', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    db.prepare(`UPDATE field_interviews SET status = 'archived', archived_at = ? WHERE id = ?`).run(localNow(), req.params.id);
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID' }); return; }
+    const existing = db.prepare('SELECT id FROM field_interviews WHERE id = ?').get(id);
+    if (!existing) { res.status(404).json({ error: 'Field interview not found' }); return; }
+    db.prepare(`UPDATE field_interviews SET status = 'archived', archived_at = ? WHERE id = ?`).run(localNow(), id);
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('[FieldInterviews] Error:', err?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -240,10 +261,15 @@ router.post('/:id/archive', (req: Request, res: Response) => {
 router.post('/:id/unarchive', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    db.prepare(`UPDATE field_interviews SET status = 'active', archived_at = NULL WHERE id = ?`).run(req.params.id);
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID' }); return; }
+    const existing = db.prepare('SELECT id FROM field_interviews WHERE id = ?').get(id);
+    if (!existing) { res.status(404).json({ error: 'Field interview not found' }); return; }
+    db.prepare(`UPDATE field_interviews SET status = 'active', archived_at = NULL WHERE id = ?`).run(id);
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('[FieldInterviews] Error:', err?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -251,10 +277,15 @@ router.post('/:id/unarchive', (req: Request, res: Response) => {
 router.delete('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    db.prepare(`UPDATE field_interviews SET status = 'archived', archived_at = ? WHERE id = ?`).run(localNow(), req.params.id);
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID' }); return; }
+    const existing = db.prepare('SELECT id FROM field_interviews WHERE id = ?').get(id);
+    if (!existing) { res.status(404).json({ error: 'Field interview not found' }); return; }
+    db.prepare(`UPDATE field_interviews SET status = 'archived', archived_at = ? WHERE id = ?`).run(localNow(), id);
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('[FieldInterviews] Error:', err?.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

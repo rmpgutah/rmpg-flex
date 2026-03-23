@@ -214,8 +214,8 @@ export function useMapAlerts(
         osc.stop(time + dur);
         time += dur + pattern.gaps[i] / 1000;
       }
-    } catch {
-      // Audio not available — silently fail
+    } catch (err) {
+      console.warn('[useMapAlerts] Audio playback failed:', err);
     }
   }, []);
 

@@ -177,7 +177,7 @@ export default function CriminalHistoryPage() {
       {fetchError && (
         <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
           <span>⚠ {fetchError}</span>
-          <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
         </div>
       )}
       {!isMobile && <PanelTitleBar title="Criminal History" icon={Shield}>
@@ -202,10 +202,10 @@ export default function CriminalHistoryPage() {
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
             />
           </div>
-          <button onClick={handleSearch} disabled={loading} className="toolbar-btn toolbar-btn-primary">
+          <button type="button" onClick={handleSearch} disabled={loading} className="toolbar-btn toolbar-btn-primary">
             {loading ? 'Searching...' : 'Search'}
           </button>
-          <button onClick={() => openUtahCourts()} className="toolbar-btn" title="Search Utah Courts Xchange (opens in new tab)">
+          <button type="button" onClick={() => openUtahCourts()} className="toolbar-btn" title="Search Utah Courts Xchange (opens in new tab)">
             <Scale className="w-3 h-3" /> Utah Courts
           </button>
         </div>
@@ -230,7 +230,7 @@ export default function CriminalHistoryPage() {
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
             />
           </div>
-          <button onClick={handleSearch} disabled={loading} className="toolbar-btn toolbar-btn-primary text-[9px] px-2">
+          <button type="button" onClick={handleSearch} disabled={loading} className="toolbar-btn toolbar-btn-primary text-[9px] px-2">
             {loading ? '...' : 'Go'}
           </button>
         </div>
@@ -248,7 +248,7 @@ export default function CriminalHistoryPage() {
             </div>
           )}
           {persons.map(p => (
-            <button
+            <button type="button"
               key={p.id}
               onClick={() => selectPerson(p)}
               className={`w-full text-left px-3 py-2 border-b border-rmpg-800/30 hover:bg-rmpg-800/20 transition-colors ${
@@ -287,7 +287,7 @@ export default function CriminalHistoryPage() {
             <div className={`${isMobile ? 'p-3 space-y-3' : 'p-4 space-y-4'}`}>
               {/* Mobile back button */}
               {isMobile && (
-                <button onClick={() => { setSelectedPerson(null); setHistory([]); }}
+                <button type="button" onClick={() => { setSelectedPerson(null); setHistory([]); }}
                   className="text-rmpg-400 hover:text-white text-[10px] font-bold uppercase tracking-wider">
                   ◀ Back to Results
                 </button>
@@ -314,7 +314,7 @@ export default function CriminalHistoryPage() {
                   <div className="text-right space-y-1">
                     <span className="text-[9px] text-rmpg-500 uppercase font-bold">Record ID</span>
                     <p className="text-sm font-mono text-brand-400 font-bold">{selectedPerson.id}</p>
-                    <button
+                    <button type="button"
                       onClick={() => openUtahCourts(selectedPerson)}
                       className="toolbar-btn text-[9px] gap-1"
                       title="Search Utah Courts Xchange for this person"
@@ -349,11 +349,11 @@ export default function CriminalHistoryPage() {
                     Criminal History — {history.length} records
                   </h3>
                   <div className="flex gap-1">
-                    <button onClick={() => setViewMode('table')}
+                    <button type="button" onClick={() => setViewMode('table')}
                       className={`text-[9px] px-2 py-0.5 border ${viewMode === 'table' ? 'bg-brand-900/30 text-brand-300 border-brand-600/50' : 'text-rmpg-500 border-rmpg-700 hover:text-rmpg-300'}`}>
                       <List className="w-3 h-3 inline mr-0.5" />Table
                     </button>
-                    <button onClick={() => setViewMode('timeline')}
+                    <button type="button" onClick={() => setViewMode('timeline')}
                       className={`text-[9px] px-2 py-0.5 border ${viewMode === 'timeline' ? 'bg-brand-900/30 text-brand-300 border-brand-600/50' : 'text-rmpg-500 border-rmpg-700 hover:text-rmpg-300'}`}>
                       <Clock className="w-3 h-3 inline mr-0.5" />Timeline
                     </button>
@@ -405,7 +405,7 @@ export default function CriminalHistoryPage() {
                             {entry.date ? new Date(entry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Unknown date'}
                           </div>
                           {/* Card */}
-                          <button onClick={() => setExpandedEntry(isExpanded ? null : `${entry.type}-${entry.id}`)}
+                          <button type="button" onClick={() => setExpandedEntry(isExpanded ? null : `${entry.type}-${entry.id}`)}
                             className={`w-full text-left p-2.5 border transition-colors ${isExpanded ? 'bg-rmpg-800/60 border-rmpg-600' : 'bg-surface-sunken border-rmpg-800/50 hover:bg-rmpg-800/30'}`}>
                             <div className="flex items-center gap-2">
                               {typeIcon(entry.type)}

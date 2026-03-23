@@ -143,7 +143,7 @@ function SeedSelector({ onSelect, loading }: {
           className="flex-1 bg-transparent text-rmpg-200 text-[11px] focus:outline-none placeholder:text-rmpg-600 min-w-0"
         />
         {query && (
-          <button onClick={() => { setQuery(''); setResults([]); setShowDropdown(false); }}
+          <button type="button" onClick={() => { setQuery(''); setResults([]); setShowDropdown(false); }}
             className="text-rmpg-500 hover:text-rmpg-300">
             <X className="w-3 h-3" />
           </button>
@@ -155,7 +155,7 @@ function SeedSelector({ onSelect, loading }: {
           {results.map((r, idx) => {
             const Icon = NODE_ICONS[r.type] || Package;
             return (
-              <button
+              <button type="button"
                 key={`${r.type}-${r.id}-${idx}`}
                 onClick={() => {
                   onSelect(r.type, r.id, r.label);
@@ -481,10 +481,10 @@ function GraphPanel({ graph, selectedNodeId, onSelectNode, depth, onDepthChange,
         {/* Depth control */}
         <div className="flex items-center gap-1.5">
           <span className="text-[9px] text-rmpg-500 uppercase tracking-wider">Depth</span>
-          <button onClick={() => onDepthChange(Math.max(1, depth - 1))} disabled={depth <= 1}
+          <button type="button" onClick={() => onDepthChange(Math.max(1, depth - 1))} disabled={depth <= 1}
             className="toolbar-btn p-0.5 disabled:opacity-30"><Minus className="w-3 h-3" /></button>
           <span className="text-[10px] text-rmpg-200 font-bold w-3 text-center">{depth}</span>
-          <button onClick={() => onDepthChange(Math.min(3, depth + 1))} disabled={depth >= 3}
+          <button type="button" onClick={() => onDepthChange(Math.min(3, depth + 1))} disabled={depth >= 3}
             className="toolbar-btn p-0.5 disabled:opacity-30"><Plus className="w-3 h-3" /></button>
         </div>
 
@@ -495,7 +495,7 @@ function GraphPanel({ graph, selectedNodeId, onSelectNode, depth, onDepthChange,
           {ALL_TYPES.map(t => {
             const active = typeFilter.has(t);
             return (
-              <button key={t} onClick={() => onToggleTypeFilter(t)}
+              <button type="button" key={t} onClick={() => onToggleTypeFilter(t)}
                 className={`flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[9px] transition-colors border ${
                   active ? 'border-rmpg-500 bg-rmpg-800/40' : 'border-transparent opacity-40 hover:opacity-70'
                 }`}
@@ -510,12 +510,12 @@ function GraphPanel({ graph, selectedNodeId, onSelectNode, depth, onDepthChange,
         <div className="flex-1" />
 
         {/* Graph controls */}
-        <button onClick={() => setShowLegend(v => !v)}
+        <button type="button" onClick={() => setShowLegend(v => !v)}
           className={`toolbar-btn p-1 ${showLegend ? 'text-brand-400' : 'text-rmpg-500'}`}
           title={showLegend ? 'Hide legend' : 'Show legend'}>
           {showLegend ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
         </button>
-        <button onClick={() => graphRef.current?.zoomToFit(400, 40)}
+        <button type="button" onClick={() => graphRef.current?.zoomToFit(400, 40)}
           className="toolbar-btn p-1" title="Fit to view">
           <Maximize2 className="w-3 h-3" />
         </button>
@@ -702,7 +702,7 @@ function DetailPanel({ node, edges, allNodes, onExpandNode }: {
             <div className="text-[11px] font-bold text-rmpg-100 truncate">{node.label}</div>
             <div className="text-[9px] uppercase tracking-wider" style={{ color }}>{TYPE_LABELS[node.type]}</div>
           </div>
-          <button
+          <button type="button"
             onClick={() => onExpandNode(node.type, node.entityId, node.label)}
             className="toolbar-btn text-[9px] px-2 py-1 flex items-center gap-1"
             title="Re-center graph on this entity"
@@ -738,7 +738,7 @@ function DetailPanel({ node, edges, allNodes, onExpandNode }: {
 
           return (
             <div key={type} className="panel-beveled bg-surface-sunken overflow-hidden">
-              <button
+              <button type="button"
                 onClick={() => setCollapsed(prev => ({ ...prev, [type]: !prev[type] }))}
                 className="w-full flex items-center gap-2 px-2.5 py-1.5 hover:bg-rmpg-800/20 transition-colors"
               >
@@ -751,7 +751,7 @@ function DetailPanel({ node, edges, allNodes, onExpandNode }: {
               {!isCollapsed && (
                 <div className="border-t border-rmpg-700">
                   {items.map(({ edge, otherNode }, idx) => (
-                    <button
+                    <button type="button"
                       key={idx}
                       onClick={() => onExpandNode(otherNode.type, otherNode.entityId, otherNode.label)}
                       className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-rmpg-800/30 text-left transition-colors"
@@ -878,7 +878,7 @@ export default function ForensicsPage() {
       {error && (
         <div className="shrink-0 px-4 py-1.5 bg-red-950/30 border-b border-red-800/40 flex items-center justify-between">
           <span className="text-[10px] text-red-400">{error}</span>
-          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-300 text-[10px]">dismiss</button>
+          <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300 text-[10px]">dismiss</button>
         </div>
       )}
 

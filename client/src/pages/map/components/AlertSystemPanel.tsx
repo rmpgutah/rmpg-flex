@@ -98,7 +98,7 @@ export default function AlertSystemPanel({
             </span>
           )}
         </div>
-        <button
+        <button type="button"
           onClick={onClose}
           className="text-rmpg-400 hover:text-white transition-colors p-0.5"
           title="Close"
@@ -158,7 +158,7 @@ export default function AlertSystemPanel({
 
                     <div className="flex items-center gap-1">
                       {!alert.acknowledged && (
-                        <button
+                        <button type="button"
                           onClick={() => onAcknowledge(alert.id)}
                           className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-sm text-[8px] font-mono uppercase tracking-wider transition-colors"
                           style={{
@@ -172,7 +172,7 @@ export default function AlertSystemPanel({
                           ACK
                         </button>
                       )}
-                      <button
+                      <button type="button"
                         onClick={() => onClear(alert.id)}
                         className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-sm text-[8px] font-mono uppercase tracking-wider transition-colors"
                         style={{
@@ -195,7 +195,7 @@ export default function AlertSystemPanel({
 
       {/* Alert History */}
       <div className="px-2.5 py-1.5 border-t border-rmpg-700">
-        <button
+        <button type="button"
           onClick={() => setHistoryExpanded(!historyExpanded)}
           className="flex items-center gap-1 w-full text-left"
         >
@@ -252,7 +252,7 @@ export default function AlertSystemPanel({
       {/* Clear All */}
       {(activeAlerts.length > 0 || alertHistory.length > 0) && (
         <div className="px-2.5 py-1.5 border-t border-rmpg-700">
-          <button
+          <button type="button"
             onClick={onClearAll}
             className="flex items-center justify-center gap-1 w-full px-2 py-1 rounded-sm text-[9px] font-mono uppercase tracking-wider transition-colors"
             style={{

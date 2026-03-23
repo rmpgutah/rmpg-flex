@@ -154,8 +154,9 @@ export function useMapRepeatAddresses(
           setLoading(false);
         }
       })
-      .catch(() => {
+      .catch((err) => {
         if (!cancelled) {
+          console.warn('[useMapRepeatAddresses] Repeat addresses fetch failed:', err);
           setAddresses([]);
           setLoading(false);
         }

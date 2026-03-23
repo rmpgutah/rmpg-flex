@@ -253,7 +253,7 @@ export default function CompetitorMonitorPanel() {
       {/* Header */}
       <div className="panel-beveled bg-surface-base">
         <PanelTitleBar title="COMPETITOR MONITOR" icon={Eye}>
-          <button
+          <button type="button"
             className="toolbar-btn flex items-center gap-1 px-2 text-xs ml-auto"
             onClick={() => setShowAddForm(p => !p)}
           >
@@ -315,7 +315,7 @@ export default function CompetitorMonitorPanel() {
             </select>
           </div>
           <div className="flex items-center gap-2 pt-1">
-            <button
+            <button type="button"
               className="toolbar-btn toolbar-btn-primary flex items-center gap-1.5 px-3 text-xs"
               disabled={adding || !addUrl.trim()}
               onClick={handleAdd}
@@ -323,7 +323,7 @@ export default function CompetitorMonitorPanel() {
               {adding ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
               Add Monitor
             </button>
-            <button
+            <button type="button"
               className="toolbar-btn flex items-center gap-1 px-2 text-xs"
               onClick={() => { setShowAddForm(false); setAddUrl(''); setAddLabel(''); }}
             >
@@ -390,7 +390,7 @@ export default function CompetitorMonitorPanel() {
 
                   {/* Actions */}
                   <div className="flex items-center gap-1 ml-auto shrink-0" onClick={e => e.stopPropagation()}>
-                    <button
+                    <button type="button"
                       className="toolbar-btn flex items-center px-1.5 py-0.5"
                       disabled={isChecking}
                       onClick={() => handleCheckNow(m.id)}
@@ -402,7 +402,7 @@ export default function CompetitorMonitorPanel() {
                         <RefreshCw className="w-3 h-3" />
                       )}
                     </button>
-                    <button
+                    <button type="button"
                       className="toolbar-btn flex items-center px-1.5 py-0.5 text-red-400 hover:text-red-300"
                       disabled={isDeleting}
                       onClick={() => handleDelete(m.id)}
@@ -451,7 +451,7 @@ export default function CompetitorMonitorPanel() {
                                 </div>
                               </div>
                               {!c.acknowledged && (
-                                <button
+                                <button type="button"
                                   className="toolbar-btn flex items-center gap-1 px-2 py-0.5 text-[10px] shrink-0"
                                   onClick={() => handleAcknowledge(c.id, m.id)}
                                 >

@@ -295,7 +295,7 @@ function CopyBtn({ value, label, copied, copy }: {
   copied: string | null; copy: (t: string, l: string) => void;
 }) {
   return (
-    <button
+    <button type="button"
       onClick={(e) => { e.stopPropagation(); copy(value, label); }}
       className="p-0.5 rounded-sm hover:bg-white/10 text-[#8899aa] hover:text-white transition-colors"
       title={`Copy ${label}`}
@@ -324,7 +324,7 @@ function DossierSection({ title, icon: Icon, count, defaultOpen, children }: {
   const Chevron = open ? ChevronDown : ChevronRight;
   return (
     <div className="border border-[#1e2d40] rounded-sm overflow-hidden">
-      <button
+      <button type="button"
         onClick={() => setOpen(!open)}
         className="w-full flex items-center gap-2 px-3 py-2 bg-[#1a2636] hover:bg-[#1e2d40] transition-colors text-left"
       >
@@ -804,7 +804,7 @@ export default function SkipTracerV2Page() {
         const Icon = tab.icon;
         const isActive = activeTab === tab.id;
         return (
-          <button
+          <button type="button"
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={`flex items-center gap-1.5 px-4 py-2 text-[11px] font-bold uppercase tracking-wider border-b-2 transition-colors whitespace-nowrap ${
@@ -860,12 +860,12 @@ export default function SkipTracerV2Page() {
                 >
                   {inputType}
                 </span>
-                <button onClick={() => setQuery('')} className="absolute right-10 top-1/2 -translate-y-1/2 p-0.5 text-[#556677] hover:text-white">
+                <button type="button" onClick={() => setQuery('')} className="absolute right-10 top-1/2 -translate-y-1/2 p-0.5 text-[#556677] hover:text-white">
                   <X size={12} />
                 </button>
               </>
             )}
-            <button
+            <button type="button"
               onClick={() => handleSearch()}
               disabled={loading || (!query.trim() && !Object.values(advancedFields).some(v => v.trim()))}
               className="absolute right-1 top-1/2 -translate-y-1/2 px-2.5 py-1.5 bg-[#1a5a9e] hover:bg-[#1e6ab8] disabled:opacity-40 rounded-sm text-[10px] font-bold text-white transition-colors"
@@ -873,7 +873,7 @@ export default function SkipTracerV2Page() {
               {loading ? <Loader2 size={12} className="animate-spin" /> : 'GO'}
             </button>
           </div>
-          <button
+          <button type="button"
             onClick={() => setBatchOpen(!batchOpen)}
             className={`px-2 py-2 rounded-sm text-[10px] font-bold transition-colors flex items-center gap-1 ${
               batchOpen ? 'bg-[#1a5a9e] text-white' : 'bg-[#1a2636] text-[#8899aa] hover:text-white hover:bg-[#1e2d40] border border-[#1e2d40]'
@@ -899,7 +899,7 @@ export default function SkipTracerV2Page() {
               <span className="text-[9px] text-[#556677] font-mono">
                 {batchText.split('\n').filter(l => l.trim()).length} name(s)
               </span>
-              <button
+              <button type="button"
                 onClick={handleBatchSearch}
                 disabled={loading || !batchText.trim()}
                 className="px-3 py-1.5 bg-[#1a5a9e] hover:bg-[#1e6ab8] disabled:opacity-40 rounded-sm text-[10px] font-bold text-white transition-colors flex items-center gap-1.5"
@@ -922,7 +922,7 @@ export default function SkipTracerV2Page() {
 
         {/* Advanced search toggle */}
         <div className="flex items-center gap-3">
-          <button
+          <button type="button"
             onClick={() => setAdvancedOpen(!advancedOpen)}
             className="flex items-center gap-1 text-[9px] text-[#556677] hover:text-[#8899aa] uppercase tracking-wider"
           >
@@ -962,7 +962,7 @@ export default function SkipTracerV2Page() {
             const isActive = selectedCategories.has(cat);
             const color = categoryColor(cat);
             return (
-              <button
+              <button type="button"
                 key={cat}
                 onClick={() => toggleCategory(cat)}
                 className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm border transition-colors"
@@ -977,7 +977,7 @@ export default function SkipTracerV2Page() {
             );
           })}
           {selectedCategories.size > 0 && (
-            <button
+            <button type="button"
               onClick={() => setSelectedCategories(new Set())}
               className="text-[8px] text-[#556677] hover:text-white uppercase tracking-wider px-1 py-0.5"
             >
@@ -1010,7 +1010,7 @@ export default function SkipTracerV2Page() {
           <div className="p-3 border border-red-900/50 rounded-sm bg-red-950/30 text-red-300 text-[11px] flex items-center gap-2">
             <AlertTriangle size={14} className="flex-shrink-0" />
             <span className="flex-1">{error}</span>
-            <button onClick={() => handleSearch()} className="text-red-400 hover:text-red-300"><RefreshCw size={12} /></button>
+            <button type="button" onClick={() => handleSearch()} className="text-red-400 hover:text-red-300"><RefreshCw size={12} /></button>
           </div>
         )}
 
@@ -1022,7 +1022,7 @@ export default function SkipTracerV2Page() {
             </div>
             <div className="flex flex-wrap gap-2 justify-center">
               {['John Smith', '801-555-1234', 'Salt Lake City, UT'].map(ex => (
-                <button
+                <button type="button"
                   key={ex}
                   onClick={() => setQuery(ex)}
                   className="text-[9px] text-[#1a5a9e] hover:text-[#60a5fa] bg-[#1a5a9e]/10 px-2 py-0.5 rounded-sm"
@@ -1056,7 +1056,7 @@ export default function SkipTracerV2Page() {
           ].reduce((a, b) => a + b, 0);
 
           return (
-            <button
+            <button type="button"
               key={profile.id}
               onClick={() => setSelected(profile)}
               className={`w-full text-left p-2.5 border rounded-sm transition-all ${
@@ -1150,7 +1150,7 @@ export default function SkipTracerV2Page() {
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 {/* Export PDF from search */}
-                <button
+                <button type="button"
                   onClick={handleExportFromSearch}
                   disabled={exporting}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0d1520] hover:bg-[#1e2d40] border border-[#1e2d40] rounded-sm text-[10px] font-bold text-[#8899aa] hover:text-white transition-colors"
@@ -1162,7 +1162,7 @@ export default function SkipTracerV2Page() {
 
                 {/* Link to Incident/Case */}
                 <div className="relative" ref={linkDropdownRef}>
-                  <button
+                  <button type="button"
                     onClick={() => setLinkDropdownOpen(!linkDropdownOpen)}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-[10px] font-bold transition-colors border ${
                       linkDropdownOpen
@@ -1179,7 +1179,7 @@ export default function SkipTracerV2Page() {
                       <div className="text-[9px] font-bold text-[#8899aa] uppercase tracking-wider">Link to Record</div>
                       <div className="flex gap-1">
                         {(['incident', 'case'] as const).map(t => (
-                          <button
+                          <button type="button"
                             key={t}
                             onClick={() => setLinkType(t)}
                             className={`flex-1 text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-sm transition-colors ${
@@ -1198,7 +1198,7 @@ export default function SkipTracerV2Page() {
                         className="w-full px-2 py-1.5 bg-[#0d1520] border border-[#1e2d40] rounded-sm text-[11px] text-white font-mono placeholder-[#445566] focus:outline-none focus:border-[#1a5a9e]"
                         onKeyDown={e => e.key === 'Enter' && handleLinkDossier()}
                       />
-                      <button
+                      <button type="button"
                         onClick={handleLinkDossier}
                         disabled={linkSaving || !linkValue.trim()}
                         className="w-full px-2 py-1.5 bg-[#1a5a9e] hover:bg-[#1e6ab8] disabled:opacity-40 rounded-sm text-[10px] font-bold text-white transition-colors flex items-center justify-center gap-1.5"
@@ -1210,7 +1210,7 @@ export default function SkipTracerV2Page() {
                   )}
                 </div>
 
-                <button
+                <button type="button"
                   onClick={handleSaveDossier}
                   disabled={saving}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1a5a9e] hover:bg-[#1e6ab8] disabled:opacity-50 rounded-sm text-[10px] font-bold text-white transition-colors"
@@ -1405,7 +1405,7 @@ export default function SkipTracerV2Page() {
                 {selected.associates!.map((a, i) => (
                   <tr key={`assoc-${a.name}-${i}`} className="hover:bg-white/5">
                     <td className="px-2 py-1.5">
-                      <button onClick={() => searchAssociate(a.name)} className="text-[#60a5fa] hover:underline font-mono flex items-center gap-1">
+                      <button type="button" onClick={() => searchAssociate(a.name)} className="text-[#60a5fa] hover:underline font-mono flex items-center gap-1">
                         {a.name} <Search size={9} className="text-[#445566]" />
                       </button>
                     </td>
@@ -1660,7 +1660,7 @@ export default function SkipTracerV2Page() {
         <h2 className="text-[14px] font-bold text-white flex items-center gap-2">
           <Bookmark size={16} className="text-[#1a5a9e]" /> Saved Dossiers
         </h2>
-        <button onClick={loadDossiers} className="text-[#556677] hover:text-white p-1"><RefreshCw size={14} /></button>
+        <button type="button" onClick={loadDossiers} className="text-[#556677] hover:text-white p-1"><RefreshCw size={14} /></button>
       </div>
 
       <div className="relative mb-3">
@@ -1691,10 +1691,10 @@ export default function SkipTracerV2Page() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button onClick={() => openDossier(d)} className="p-1.5 text-[#556677] hover:text-white hover:bg-white/5 rounded-sm" title="View">
+                  <button type="button" onClick={() => openDossier(d)} className="p-1.5 text-[#556677] hover:text-white hover:bg-white/5 rounded-sm" title="View">
                     <Eye size={13} />
                   </button>
-                  <button onClick={() => handleExportPdf(d.id)} className="p-1.5 text-[#556677] hover:text-white hover:bg-white/5 rounded-sm" title="Export PDF">
+                  <button type="button" onClick={() => handleExportPdf(d.id)} className="p-1.5 text-[#556677] hover:text-white hover:bg-white/5 rounded-sm" title="Export PDF">
                     <Download size={13} />
                   </button>
                 </div>
@@ -1714,7 +1714,7 @@ export default function SkipTracerV2Page() {
         <h2 className="text-[14px] font-bold text-white flex items-center gap-2">
           <History size={16} className="text-[#1a5a9e]" /> Search History
         </h2>
-        <button onClick={loadHistory} className="text-[#556677] hover:text-white p-1"><RefreshCw size={14} /></button>
+        <button type="button" onClick={loadHistory} className="text-[#556677] hover:text-white p-1"><RefreshCw size={14} /></button>
       </div>
 
       {historyLoading ? (
@@ -1753,7 +1753,7 @@ export default function SkipTracerV2Page() {
                       {h.searcher_name && <span>&middot; {h.searcher_name}</span>}
                     </div>
                   </div>
-                  <button onClick={() => rerunSearch(h)} className="p-1.5 text-[#556677] hover:text-[#60a5fa] hover:bg-white/5 rounded-sm" title="Re-run">
+                  <button type="button" onClick={() => rerunSearch(h)} className="p-1.5 text-[#556677] hover:text-[#60a5fa] hover:bg-white/5 rounded-sm" title="Re-run">
                     <RefreshCw size={13} />
                   </button>
                 </div>
@@ -1773,7 +1773,7 @@ export default function SkipTracerV2Page() {
         <h2 className="text-[14px] font-bold text-white flex items-center gap-2">
           <Database size={16} className="text-[#1a5a9e]" /> Data Sources ({sources.length})
         </h2>
-        <button onClick={loadSources} disabled={sourcesLoading} className="text-[#556677] hover:text-white p-1">
+        <button type="button" onClick={loadSources} disabled={sourcesLoading} className="text-[#556677] hover:text-white p-1">
           <RefreshCw size={14} className={sourcesLoading ? 'animate-spin' : ''} />
         </button>
       </div>
@@ -1832,7 +1832,7 @@ export default function SkipTracerV2Page() {
         <h2 className="text-[14px] font-bold text-white flex items-center gap-2">
           <BarChart3 size={16} className="text-[#1a5a9e]" /> Usage Statistics
         </h2>
-        <button onClick={loadStats} disabled={statsLoading} className="text-[#556677] hover:text-white p-1">
+        <button type="button" onClick={loadStats} disabled={statsLoading} className="text-[#556677] hover:text-white p-1">
           <RefreshCw size={14} className={statsLoading ? 'animate-spin' : ''} />
         </button>
       </div>

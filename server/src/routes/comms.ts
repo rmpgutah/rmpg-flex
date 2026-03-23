@@ -89,7 +89,7 @@ router.get('/messages', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { channel, unreadOnly, thread_id, limit = '50' } = req.query;
-    const limitNum = parseInt(limit as string, 10);
+    const limitNum = Math.min(500, Math.max(1, parseInt(limit as string, 10) || 50));
 
     let whereClause = 'WHERE (m.to_user_id = ? OR m.to_user_id IS NULL OR m.from_user_id = ?)';
     const params: any[] = [req.user!.userId, req.user!.userId];
@@ -141,11 +141,13 @@ router.get('/messages', (req: Request, res: Response) => {
 router.put('/messages/:id/read', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid message ID' }); return; }
     const now = localNow();
 
     db.prepare(`
       UPDATE messages SET read_at = ? WHERE id = ? AND to_user_id = ? AND read_at IS NULL
-    `).run(now, req.params.id, req.user!.userId);
+    `).run(now, id, req.user!.userId);
 
     res.json({ message: 'Marked as read' });
   } catch (error: any) {
@@ -175,7 +177,9 @@ router.post('/messages/mark-all-read', (req: Request, res: Response) => {
 router.delete('/messages/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(req.params.id) as any;
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid message ID' }); return; }
+    const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(id) as any;
     if (!message) { res.status(404).json({ error: 'Message not found' }); return; }
 
     // Only sender or admin can delete
@@ -184,8 +188,8 @@ router.delete('/messages/:id', (req: Request, res: Response) => {
       return;
     }
 
-    db.prepare('DELETE FROM messages WHERE id = ?').run(req.params.id);
-    res.json({ success: true, id: req.params.id });
+    db.prepare('DELETE FROM messages WHERE id = ?').run(id);
+    res.json({ success: true, id });
   } catch (error: any) {
     console.error('Delete message error:', error);
     res.status(500).json({ error: 'Internal server error' });

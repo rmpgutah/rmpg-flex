@@ -110,6 +110,8 @@ export default function DataTable<T>({
                   }`}
                   style={col.width ? { width: col.width } : undefined}
                   onClick={isSortable ? () => onSort!(col.key) : undefined}
+                  aria-sort={isActive ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+                  scope="col"
                 >
                   <span className="inline-flex items-center">
                     {col.label}

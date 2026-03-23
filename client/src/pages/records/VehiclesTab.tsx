@@ -320,7 +320,7 @@ function PlateLookupPanel() {
 
   return (
     <div className="border-b border-rmpg-600">
-      <button
+      <button type="button"
         onClick={() => setExpanded(!expanded)}
         className="w-full px-3 py-1.5 flex items-center gap-2 text-[10px] text-rmpg-400 hover:text-rmpg-200 hover:bg-rmpg-700/30 transition-colors"
       >
@@ -348,7 +348,7 @@ function PlateLookupPanel() {
               value={plateState}
               onChange={(e) => setPlateState(e.target.value.toUpperCase())}
             />
-            <button onClick={handleLookup} className="toolbar-btn text-[9px]" disabled={loading || plate.trim().length < 2}>
+            <button type="button" onClick={handleLookup} className="toolbar-btn text-[9px]" disabled={loading || plate.trim().length < 2}>
               {loading ? '...' : 'Search'}
             </button>
           </div>
@@ -412,7 +412,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
           {searchQuery && (
-            <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white">
+            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white">
               <X className="w-3 h-3" />
             </button>
           )}
@@ -488,25 +488,25 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
                 )}
                 <div className="flex items-center gap-1">
                   {!showArchived && (
-                    <button onClick={(e) => { e.stopPropagation(); openEditVehicle(v); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors" title="Edit">
+                    <button type="button" onClick={(e) => { e.stopPropagation(); openEditVehicle(v); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors" title="Edit">
                       <Pencil className="w-3 h-3" />
                     </button>
                   )}
-                  <button onClick={(e) => { e.stopPropagation(); openRecordWindow('vehicle', v.id); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors" title="Open in Window">
+                  <button type="button" onClick={(e) => { e.stopPropagation(); openRecordWindow('vehicle', v.id); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors" title="Open in Window">
                     <ExternalLink className="w-3 h-3" />
                   </button>
                   {!showArchived && (
-                    <button onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: 'vehicle', id: v.id, label: `${v.license_plate} ${v.make} ${v.model}` }); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400 transition-colors" title="Delete">
+                    <button type="button" onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: 'vehicle', id: v.id, label: `${v.license_plate} ${v.make} ${v.model}` }); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400 transition-colors" title="Delete">
                       <Trash2 className="w-3 h-3" />
                     </button>
                   )}
                   {!showArchived && (
-                    <button onClick={(e) => { e.stopPropagation(); handleArchive('vehicles', v.id); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-amber-400 transition-colors" title="Archive">
+                    <button type="button" onClick={(e) => { e.stopPropagation(); handleArchive('vehicles', v.id); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-amber-400 transition-colors" title="Archive">
                       <Archive className="w-3 h-3" />
                     </button>
                   )}
                   {showArchived && (
-                    <button onClick={(e) => { e.stopPropagation(); handleUnarchive('vehicles', v.id); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-green-400 transition-colors" title="Unarchive">
+                    <button type="button" onClick={(e) => { e.stopPropagation(); handleUnarchive('vehicles', v.id); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-green-400 transition-colors" title="Unarchive">
                       <RotateCcw className="w-3 h-3" />
                     </button>
                   )}
@@ -578,10 +578,10 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         </div>
         {/* Feature 41+44 Action Buttons */}
         <div className="flex gap-1 mt-1">
-          <button onClick={() => handleLoadHistory(selectedVehicle.id)} className="text-[9px] px-2 py-0.5 bg-blue-900/30 border border-blue-700/50 text-blue-400 hover:bg-blue-900/50">
+          <button type="button" onClick={() => handleLoadHistory(selectedVehicle.id)} className="text-[9px] px-2 py-0.5 bg-blue-900/30 border border-blue-700/50 text-blue-400 hover:bg-blue-900/50">
             <FileText style={{ width: 10, height: 10, display: 'inline' }} /> History Report
           </button>
-          <button onClick={handleStolenCheck} className="text-[9px] px-2 py-0.5 bg-red-900/30 border border-red-700/50 text-red-400 hover:bg-red-900/50">
+          <button type="button" onClick={handleStolenCheck} className="text-[9px] px-2 py-0.5 bg-red-900/30 border border-red-700/50 text-red-400 hover:bg-red-900/50">
             <Shield style={{ width: 10, height: 10, display: 'inline' }} /> Stolen Check
           </button>
         </div>
@@ -589,7 +589,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         {stolenCheckResult && (
           <div className={`mt-1 p-1.5 text-[10px] border ${stolenCheckResult.status === 'HIT' ? 'bg-red-900/30 border-red-700/50 text-red-300' : 'bg-green-900/30 border-green-700/50 text-green-300'}`}>
             <span className="font-bold">{stolenCheckResult.status}</span> — {stolenCheckResult.message}
-            <button onClick={() => setStolenCheckResult(null)} className="ml-2 text-rmpg-500">x</button>
+            <button type="button" onClick={() => setStolenCheckResult(null)} className="ml-2 text-rmpg-500">x</button>
           </div>
         )}
         {/* Feature 41: History Panel */}
@@ -597,7 +597,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
           <div className="mt-1 p-1.5 text-[10px] bg-blue-900/10 border border-blue-700/30">
             <div className="flex justify-between">
               <span className="text-blue-400 font-bold">Vehicle History ({vehicleHistory.total_records} records)</span>
-              <button onClick={() => setVehicleHistory(null)} className="text-rmpg-500">x</button>
+              <button type="button" onClick={() => setVehicleHistory(null)} className="text-rmpg-500">x</button>
             </div>
             {vehicleHistory.incidents?.length > 0 && <div className="text-rmpg-400 mt-0.5">{vehicleHistory.incidents.length} incidents</div>}
             {vehicleHistory.citations?.length > 0 && <div className="text-rmpg-400">{vehicleHistory.citations.length} citations</div>}

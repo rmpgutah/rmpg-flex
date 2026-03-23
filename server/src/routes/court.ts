@@ -111,11 +111,13 @@ router.get('/calendar', (req: Request, res: Response) => {
 router.get('/events/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid event ID' }); return; }
     const row = db.prepare(`
       SELECT e.*, p.first_name || ' ' || p.last_name as defendant_full_name
       FROM court_events e LEFT JOIN persons p ON e.defendant_person_id = p.id
       WHERE e.id = ?
-    `).get(req.params.id);
+    `).get(id);
     if (!row) return res.status(404).json({ error: 'Court event not found' });
     res.json({ data: row });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
@@ -226,19 +228,32 @@ router.put('/events/:id', (req: Request, res: Response) => {
 router.put('/events/:id/outcome', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid event ID' }); return; }
+    const existing = db.prepare('SELECT id FROM court_events WHERE id = ?').get(id);
+    if (!existing) { res.status(404).json({ error: 'Court event not found' }); return; }
     const now = localNow();
     const { outcome, sentence, fine_amount, notes } = req.body;
     if (!outcome) return res.status(400).json({ error: 'Outcome is required' });
 
+    // Validate fine_amount if provided
+    if (fine_amount !== undefined && fine_amount !== null) {
+      const fineNum = parseFloat(fine_amount);
+      if (isNaN(fineNum) || fineNum < 0) {
+        res.status(400).json({ error: 'fine_amount must be a non-negative number' });
+        return;
+      }
+    }
+
     db.prepare(`
       UPDATE court_events SET outcome = ?, sentence = ?, fine_amount = ?, notes = ?,
         status = 'completed', updated_at = ? WHERE id = ?
-    `).run(outcome, sentence || null, fine_amount || null, notes || null, now, req.params.id);
+    `).run(outcome, sentence || null, fine_amount || null, notes || null, now, id);
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
-      VALUES (?, 'outcome', 'court_event', ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ outcome }), now);
+      VALUES (?, 'outcome', 'court_event', ?, ?, ?)`).run(req.user!.userId, id, JSON.stringify({ outcome }), now);
 
-    res.json({ data: { id: parseInt(req.params.id), outcome } });
+    res.json({ data: { id, outcome } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 

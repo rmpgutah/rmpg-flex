@@ -256,7 +256,7 @@ export default function ProposalsTab() {
           ))}
         </select>
         <div className="flex-1" />
-        <button
+        <button type="button"
           onClick={() => setShowCreateModal(true)}
           className="bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold px-3 py-1.5 rounded-sm flex items-center gap-1"
         >
@@ -337,14 +337,14 @@ export default function ProposalsTab() {
               </div>
               <div className="flex items-center gap-1">
                 {selectedProposal.stage === 'draft' && (
-                  <button
+                  <button type="button"
                     onClick={() => { setEditMode(!editMode); setEditForm(selectedProposal); }}
                     className={`text-xs p-1 rounded-sm ${editMode ? 'text-brand-400' : 'text-rmpg-400 hover:text-white'}`}
                   >
                     <Edit3 className="w-3.5 h-3.5" />
                   </button>
                 )}
-                <button onClick={() => setSelectedProposal(null)} className="text-rmpg-400 hover:text-white">
+                <button type="button" onClick={() => setSelectedProposal(null)} className="text-rmpg-400 hover:text-white">
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -354,21 +354,21 @@ export default function ProposalsTab() {
               {/* Stage action buttons */}
               <div className="flex gap-1.5 flex-wrap">
                 {selectedProposal.stage === 'draft' && (
-                  <button onClick={() => handleStageChange(selectedProposal.id, 'sent')} className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-xs font-bold px-2 py-1 rounded-sm border border-blue-700/50 flex items-center gap-1">
+                  <button type="button" onClick={() => handleStageChange(selectedProposal.id, 'sent')} className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-xs font-bold px-2 py-1 rounded-sm border border-blue-700/50 flex items-center gap-1">
                     <Send className="w-3 h-3" /> Send
                   </button>
                 )}
                 {selectedProposal.stage === 'sent' && (
-                  <button onClick={() => handleStageChange(selectedProposal.id, 'viewed')} className="bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 text-xs font-bold px-2 py-1 rounded-sm border border-purple-700/50 flex items-center gap-1">
+                  <button type="button" onClick={() => handleStageChange(selectedProposal.id, 'viewed')} className="bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 text-xs font-bold px-2 py-1 rounded-sm border border-purple-700/50 flex items-center gap-1">
                     <Eye className="w-3 h-3" /> Mark Viewed
                   </button>
                 )}
                 {(selectedProposal.stage === 'sent' || selectedProposal.stage === 'viewed') && (
                   <>
-                    <button onClick={() => handleStageChange(selectedProposal.id, 'accepted')} className="bg-green-600/20 hover:bg-green-600/30 text-green-400 text-xs font-bold px-2 py-1 rounded-sm border border-green-700/50 flex items-center gap-1">
+                    <button type="button" onClick={() => handleStageChange(selectedProposal.id, 'accepted')} className="bg-green-600/20 hover:bg-green-600/30 text-green-400 text-xs font-bold px-2 py-1 rounded-sm border border-green-700/50 flex items-center gap-1">
                       <CheckCircle className="w-3 h-3" /> Accept
                     </button>
-                    <button onClick={() => handleStageChange(selectedProposal.id, 'rejected')} className="bg-red-600/20 hover:bg-red-600/30 text-red-400 text-xs font-bold px-2 py-1 rounded-sm border border-red-700/50 flex items-center gap-1">
+                    <button type="button" onClick={() => handleStageChange(selectedProposal.id, 'rejected')} className="bg-red-600/20 hover:bg-red-600/30 text-red-400 text-xs font-bold px-2 py-1 rounded-sm border border-red-700/50 flex items-center gap-1">
                       <XCircle className="w-3 h-3" /> Reject
                     </button>
                   </>
@@ -563,7 +563,7 @@ export default function ProposalsTab() {
               {/* Save edits button */}
               {editMode && (
                 <div className="flex justify-end pt-1">
-                  <button
+                  <button type="button"
                     onClick={handleSaveEdits}
                     disabled={saving}
                     className="bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white text-xs font-bold px-3 py-1.5 rounded-sm flex items-center gap-1"
@@ -579,10 +579,10 @@ export default function ProposalsTab() {
 
       {/* ── Create Proposal Modal ────────────────────── */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowCreateModal(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowCreateModal(false)}>
           <div className="bg-[#141e2b] border border-rmpg-700 rounded-sm w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <PanelTitleBar title="New Proposal" icon={FileText}>
-              <button onClick={() => setShowCreateModal(false)} className="text-rmpg-400 hover:text-white">
+              <button type="button" onClick={() => setShowCreateModal(false)} className="text-rmpg-400 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
             </PanelTitleBar>

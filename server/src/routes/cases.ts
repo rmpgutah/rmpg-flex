@@ -88,11 +88,13 @@ router.get('/', (req: Request, res: Response) => {
 router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid case ID' }); return; }
     const row = db.prepare(`
       SELECT c.*, u.full_name as lead_investigator_name
       FROM cases c LEFT JOIN users u ON c.lead_investigator_id = u.id
       WHERE c.id = ?
-    `).get(req.params.id);
+    `).get(id);
     if (!row) return res.status(404).json({ error: 'Case not found' });
     res.json({ data: row });
   } catch (error: any) {
@@ -150,8 +152,10 @@ router.post('/', (req: Request, res: Response) => {
 router.put('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid case ID' }); return; }
     const now = localNow();
-    const existing = db.prepare('SELECT * FROM cases WHERE id = ?').get(req.params.id) as any;
+    const existing = db.prepare('SELECT * FROM cases WHERE id = ?').get(id) as any;
     if (!existing) return res.status(404).json({ error: 'Case not found' });
 
     const fields = ['title', 'case_type', 'priority', 'summary', 'narrative', 'disposition',
@@ -168,13 +172,13 @@ router.put('/:id', (req: Request, res: Response) => {
       }
     }
 
-    params.push(req.params.id);
+    params.push(id);
     db.prepare(`UPDATE cases SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
-      VALUES (?, 'update', 'case', ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ fields: Object.keys(req.body) }), now);
+      VALUES (?, 'update', 'case', ?, ?, ?)`).run(req.user!.userId, id, JSON.stringify({ fields: Object.keys(req.body) }), now);
 
-    res.json({ data: { id: parseInt(req.params.id) } });
+    res.json({ data: { id } });
   } catch (error: any) {
     console.error('Update case error:', error);
     res.status(500).json({ error: 'Internal server error' });

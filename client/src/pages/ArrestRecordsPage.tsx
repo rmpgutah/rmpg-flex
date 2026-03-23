@@ -473,7 +473,7 @@ export default function ArrestRecordsPage() {
         <div className="px-3 py-2 bg-red-900/30 border-b border-red-700 text-red-400 text-xs flex items-center gap-2">
           <AlertTriangle className="w-3 h-3 shrink-0" />
           <span className="flex-1">{error}</span>
-          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-300">
+          <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300">
             <X className="w-3 h-3" />
           </button>
         </div>
@@ -540,7 +540,7 @@ export default function ArrestRecordsPage() {
             className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] pl-7 pr-8 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
           />
           {searchTerm && (
-            <button onClick={() => setSearchTerm('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300">
+            <button type="button" onClick={() => setSearchTerm('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300">
               <X className="w-3 h-3" />
             </button>
           )}
@@ -585,17 +585,17 @@ export default function ArrestRecordsPage() {
 
         {/* Action buttons */}
         <div className="flex items-center gap-1">
-          <button onClick={openNew} className="toolbar-btn toolbar-btn-primary text-[9px] flex items-center gap-1 px-2 py-1">
+          <button type="button" onClick={openNew} className="toolbar-btn toolbar-btn-primary text-[9px] flex items-center gap-1 px-2 py-1">
             <Plus className="w-3 h-3" /> New Booking
           </button>
           <ExportButton exportUrl="/api/arrests/export/csv" exportFilename="arrests.csv" />
-          <button onClick={() => exportCsv(sortedRecords)} className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1">
+          <button type="button" onClick={() => exportCsv(sortedRecords)} className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1">
             <Download className="w-3 h-3" /> CSV
           </button>
-          <button onClick={cycleSort} className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1" title={`Sort: ${sortConfig.label}`}>
+          <button type="button" onClick={cycleSort} className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1" title={`Sort: ${sortConfig.label}`}>
             <ArrowUpDown className="w-3 h-3" /> {sortConfig.label}
           </button>
-          <button
+          <button type="button"
             onClick={() => { fetchStats(); fetchRecords(recordsPage); }}
             className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1 ml-auto"
           >
@@ -662,7 +662,7 @@ export default function ArrestRecordsPage() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between px-3 py-1.5 border-t border-rmpg-700/30 text-[9px]">
-          <button
+          <button type="button"
             disabled={recordsPage <= 1}
             onClick={() => setRecordsPage(p => p - 1)}
             className="text-rmpg-400 hover:text-rmpg-200 disabled:opacity-30 px-2 py-0.5"
@@ -672,7 +672,7 @@ export default function ArrestRecordsPage() {
           <span className="text-rmpg-500">
             {recordsPage} / {totalPages}
           </span>
-          <button
+          <button type="button"
             disabled={recordsPage >= totalPages}
             onClick={() => setRecordsPage(p => p + 1)}
             className="text-rmpg-400 hover:text-rmpg-200 disabled:opacity-30 px-2 py-0.5"
@@ -713,10 +713,10 @@ export default function ArrestRecordsPage() {
 
           {isManual && (
             <div className="flex items-center gap-1.5 mt-2">
-              <button onClick={() => openEdit(rec)} className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1">
+              <button type="button" onClick={() => openEdit(rec)} className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1">
                 <Pencil className="w-3 h-3" /> Edit
               </button>
-              <button
+              <button type="button"
                 onClick={() => setDeleteConfirm(rec.id)}
                 className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1 text-red-400 hover:text-red-300"
               >
@@ -801,7 +801,7 @@ export default function ArrestRecordsPage() {
                 <Link2 className="w-3 h-3 text-brand-400" />
                 <span className="text-brand-300 font-bold">{rec.linked_person.name}</span>
                 <span className="text-rmpg-500">(ID: {rec.linked_person.id})</span>
-                <button
+                <button type="button"
                   onClick={() => handleUnlinkPerson(rec.id)}
                   className="text-[8px] text-red-400 hover:text-red-300 flex items-center gap-0.5 ml-2"
                 >
@@ -829,7 +829,7 @@ export default function ArrestRecordsPage() {
                 {personResults.length > 0 && (
                   <div className="space-y-0.5 max-h-[120px] overflow-y-auto">
                     {personResults.map(p => (
-                      <button
+                      <button type="button"
                         key={p.id}
                         onClick={() => handleLinkPerson(rec.id, p.id)}
                         disabled={linkingPerson}
@@ -842,7 +842,7 @@ export default function ArrestRecordsPage() {
                     ))}
                   </div>
                 )}
-                <button
+                <button type="button"
                   onClick={() => { setLinkingId(null); setPersonSearch(''); setPersonResults([]); }}
                   className="text-[8px] text-rmpg-500 hover:text-rmpg-300"
                 >
@@ -850,7 +850,7 @@ export default function ArrestRecordsPage() {
                 </button>
               </div>
             ) : (
-              <button
+              <button type="button"
                 onClick={() => setLinkingId(rec.id)}
                 className="text-[9px] text-brand-400 hover:text-brand-300 flex items-center gap-1"
               >
@@ -956,10 +956,10 @@ export default function ArrestRecordsPage() {
                 Are you sure you want to permanently delete this booking record? This action cannot be undone.
               </p>
               <div className="flex items-center justify-end gap-3 mt-5">
-                <button onClick={() => setDeleteConfirm(null)} className="toolbar-btn">
+                <button type="button" onClick={() => setDeleteConfirm(null)} className="toolbar-btn">
                   Cancel
                 </button>
-                <button
+                <button type="button"
                   onClick={() => handleDelete(deleteConfirm)}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide border shadow-sm bg-red-700 hover:bg-red-600 border-red-500 text-white transition-colors"
                 >

@@ -120,7 +120,7 @@ export default function AnalysisDashboardPanel({
           </span>
         </div>
         <div className="flex items-center gap-1">
-          <button
+          <button type="button"
             onClick={onRefresh}
             className="p-1 rounded hover:bg-white/5 transition-colors"
             title="Refresh analysis"
@@ -130,7 +130,7 @@ export default function AnalysisDashboardPanel({
               className={`text-gray-400 ${loading ? 'animate-spin' : ''}`}
             />
           </button>
-          <button
+          <button type="button"
             onClick={onClose}
             className="p-1 rounded hover:bg-white/5 transition-colors"
             title="Close panel"
@@ -174,7 +174,7 @@ export default function AnalysisDashboardPanel({
                 </p>
                 <div className="space-y-1">
                   {data.overlapZones.locations.map((loc, i) => (
-                    <button
+                    <button type="button"
                       key={i}
                       onClick={() => onNavigate(loc.latitude, loc.longitude)}
                       className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm hover:bg-white/5 transition-colors group"

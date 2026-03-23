@@ -81,7 +81,7 @@ function ErrorBanner({ error, setError }: { error: string | null; setError: (e: 
     <div className="mx-4 mt-3 flex items-center gap-2 px-3 py-2 bg-red-900/30 border border-red-700/50 text-red-400 text-xs">
       <AlertCircle className="w-4 h-4 shrink-0" />
       {error}
-      <button onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300">
+      <button type="button" onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300">
         <XCircle className="w-3.5 h-3.5" />
       </button>
     </div>
@@ -704,7 +704,7 @@ export default function AdminPage() {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             return (
-              <button
+              <button type="button"
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold whitespace-nowrap shrink-0 transition-colors"
@@ -746,7 +746,7 @@ export default function AdminPage() {
                   const Icon = tab.icon;
                   const isActive = activeTab === tab.id;
                   return (
-                    <button
+                    <button type="button"
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id)}
                       className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[11px] transition-colors"

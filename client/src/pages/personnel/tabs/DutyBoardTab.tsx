@@ -76,7 +76,7 @@ export default function DutyBoardTab({ officers, timeEntries, credentials, onOff
         </div>
         <div className="panel-inset p-2 flex items-center gap-2">
           {FILTER_BUTTONS.map((btn) => (
-            <button
+            <button type="button"
               key={btn.value}
               onClick={() => setDutyFilter(btn.value)}
               className={`toolbar-btn text-[10px] px-2.5 py-1 ${
@@ -110,7 +110,7 @@ export default function DutyBoardTab({ officers, timeEntries, credentials, onOff
             const alertCount = credAlertMap.get(officer.id) || 0;
 
             return (
-              <button
+              <button type="button"
                 key={officer.id}
                 onClick={() => onOfficerClick(officer)}
                 className={`panel-beveled p-3 text-left transition-all hover:brightness-110 border-l-2 border-t-2 ${

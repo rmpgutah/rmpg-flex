@@ -65,7 +65,7 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
           <AlertOctagon className="w-3.5 h-3.5 text-red-400" /> Recall Alerts
           {openCount > 0 && <span className="ml-1 px-1.5 py-0.5 bg-red-900/50 text-red-400 text-[9px] font-bold">{openCount} OPEN</span>}
         </h3>
-        <button onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-[9px]"><Plus className="w-3 h-3" /> Add Recall</button>
+        <button type="button" onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-[9px]"><Plus className="w-3 h-3" /> Add Recall</button>
       </div>
 
       {showForm && (
@@ -80,8 +80,8 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
           <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="input-field w-full text-xs" rows={2} placeholder="Description..." />
           <input value={form.remedy} onChange={e => setForm(f => ({ ...f, remedy: e.target.value }))} className="input-field w-full text-xs" placeholder="Remedy..." />
           <div className="flex gap-2">
-            <button onClick={handleSubmit} className="toolbar-btn toolbar-btn-success text-[9px]">Save</button>
-            <button onClick={() => setShowForm(false)} className="toolbar-btn text-[9px]">Cancel</button>
+            <button type="button" onClick={handleSubmit} className="toolbar-btn toolbar-btn-success text-[9px]">Save</button>
+            <button type="button" onClick={() => setShowForm(false)} className="toolbar-btn text-[9px]">Cancel</button>
           </div>
         </div>
       )}
@@ -107,8 +107,8 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
                 </div>
                 {r.status !== 'completed' && r.status !== 'not_applicable' && (
                   <div className="flex gap-1">
-                    {r.status === 'open' && <button onClick={() => updateStatus(r.id, 'scheduled')} className="toolbar-btn text-[9px]"><Calendar className="w-3 h-3" /> Schedule</button>}
-                    <button onClick={() => updateStatus(r.id, 'completed')} className="toolbar-btn toolbar-btn-success text-[9px]"><CheckCircle className="w-3 h-3" /></button>
+                    {r.status === 'open' && <button type="button" onClick={() => updateStatus(r.id, 'scheduled')} className="toolbar-btn text-[9px]"><Calendar className="w-3 h-3" /> Schedule</button>}
+                    <button type="button" onClick={() => updateStatus(r.id, 'completed')} className="toolbar-btn toolbar-btn-success text-[9px]"><CheckCircle className="w-3 h-3" /></button>
                   </div>
                 )}
               </div>

@@ -61,7 +61,6 @@ export function useMapSafetyZones(
         if (cancelled) return;
         // Handle both { zones: [...] } and [...] response formats
         const zoneList = Array.isArray(data) ? data : (data?.zones || []);
-        console.log(`[SafetyZones] Fetched ${zoneList.length} zones (${days}d)`);
         setZones(zoneList);
         setLoading(false);
       })

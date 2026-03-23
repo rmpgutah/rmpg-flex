@@ -98,13 +98,13 @@ export default function ScheduleTab({ officers, schedules, weekMonday, onWeekCha
           <h2 className="text-sm font-bold text-rmpg-200 uppercase tracking-wider">Schedule</h2>
         </div>
         <div className="panel-beveled p-2 flex items-center gap-1.5">
-          <button onClick={handlePrevWeek} className="toolbar-btn p-1">
+          <button type="button" onClick={handlePrevWeek} className="toolbar-btn p-1">
             <ChevronLeft className="w-3.5 h-3.5" />
           </button>
           <span className="text-xs font-semibold text-rmpg-300 min-w-[180px] text-center">
             {formatWeekLabel(weekMonday)}
           </span>
-          <button onClick={handleNextWeek} className="toolbar-btn p-1">
+          <button type="button" onClick={handleNextWeek} className="toolbar-btn p-1">
             <ChevronRight className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -113,7 +113,7 @@ export default function ScheduleTab({ officers, schedules, weekMonday, onWeekCha
 
       {/* Today link */}
       <div className="text-center -mt-1">
-        <button onClick={handleToday} className="toolbar-btn text-brand-400 text-[10px] px-2 py-0.5">
+        <button type="button" onClick={handleToday} className="toolbar-btn text-brand-400 text-[10px] px-2 py-0.5">
           Today
         </button>
       </div>
@@ -212,7 +212,7 @@ export default function ScheduleTab({ officers, schedules, weekMonday, onWeekCha
 
       {/* Add Schedule Button */}
       <div className="flex justify-end">
-        <button onClick={onAddSchedule} className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
+        <button type="button" onClick={onAddSchedule} className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
           <Plus className="w-3 h-3" />
           Add Schedule
         </button>

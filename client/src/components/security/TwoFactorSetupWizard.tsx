@@ -143,11 +143,11 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
 
           <div className="flex gap-2 pt-2">
             {onCancel && (
-              <button onClick={onCancel} className="toolbar-btn flex-1 h-8 text-[10px] uppercase tracking-wider">
+              <button type="button" onClick={onCancel} className="toolbar-btn flex-1 h-8 text-[10px] uppercase tracking-wider">
                 Cancel
               </button>
             )}
-            <button
+            <button type="button"
               onClick={startSetup}
               disabled={loading}
               className="toolbar-btn toolbar-btn-primary flex-1 h-8 text-white text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5"
@@ -174,7 +174,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
           </div>
 
           {/* Manual key toggle */}
-          <button
+          <button type="button"
             onClick={() => setShowManual(!showManual)}
             className="text-[10px] flex items-center gap-1 mx-auto"
             style={{ color: '#4a90c4' }}
@@ -191,13 +191,13 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
               <span className="flex-1 tracking-widest text-center" style={{ color: '#e5e7eb' }}>
                 {manualKey}
               </span>
-              <button onClick={copyManualKey} className="toolbar-btn p-1">
+              <button type="button" onClick={copyManualKey} className="toolbar-btn p-1">
                 {keyCopied ? <Check className="w-3 h-3" style={{ color: '#22c55e' }} /> : <Copy className="w-3 h-3" />}
               </button>
             </div>
           )}
 
-          <button
+          <button type="button"
             onClick={() => setStep('verify')}
             className="toolbar-btn toolbar-btn-primary w-full h-8 text-white text-[10px] font-bold uppercase tracking-wider"
           >
@@ -235,13 +235,13 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
           )}
 
           <div className="flex gap-2">
-            <button
+            <button type="button"
               onClick={() => { setStep('scan'); setError(''); }}
               className="toolbar-btn flex-1 h-8 text-[10px] uppercase tracking-wider"
             >
               Back
             </button>
-            <button
+            <button type="button"
               onClick={confirmSetup}
               disabled={verifyCode.length !== 6 || loading}
               className="toolbar-btn toolbar-btn-primary flex-1 h-8 text-white text-[10px] font-bold uppercase tracking-wider disabled:opacity-50 flex items-center justify-center gap-1.5"

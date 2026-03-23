@@ -277,7 +277,7 @@ export default function WebResearchPage() {
 
       {/* Tab bar */}
       <div className="flex border-b border-rmpg-700" style={{ background: '#0f1923' }}>
-        <button
+        <button type="button"
           className={`px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
             activeTab === 'search'
               ? 'text-brand-400 border-b-2 border-brand-400'
@@ -288,7 +288,7 @@ export default function WebResearchPage() {
           <Search className="w-3 h-3 inline mr-1.5 -mt-0.5" />
           Search
         </button>
-        <button
+        <button type="button"
           className={`px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
             activeTab === 'saved'
               ? 'text-brand-400 border-b-2 border-brand-400'
@@ -411,7 +411,7 @@ export default function WebResearchPage() {
 
                     {/* Action buttons */}
                     <div className="flex items-center gap-2 pt-1">
-                      <button
+                      <button type="button"
                         className="toolbar-btn flex items-center gap-1 px-2 text-xs"
                         disabled={isScraping}
                         onClick={() => handleScrape(result.url)}
@@ -424,7 +424,7 @@ export default function WebResearchPage() {
                         Deep Scrape
                       </button>
 
-                      <button
+                      <button type="button"
                         className="toolbar-btn flex items-center gap-1 px-2 text-xs"
                         disabled={isSaving}
                         onClick={() => handleSave(result, scraped ? 'scrape' : 'search')}
@@ -438,7 +438,7 @@ export default function WebResearchPage() {
                       </button>
 
                       {scraped && (
-                        <button
+                        <button type="button"
                           className="toolbar-btn flex items-center gap-1 px-2 text-xs ml-auto"
                           onClick={() => setExpandedMap(p => ({ ...p, [result.url]: !isExpanded }))}
                         >
@@ -475,7 +475,7 @@ export default function WebResearchPage() {
             <div className="panel-beveled bg-surface-base p-2 flex items-center gap-2 flex-wrap">
               <span className="text-[10px] text-rmpg-400 uppercase tracking-wider font-semibold">Filter:</span>
               {['all', 'incident', 'person', 'case', 'unlinked'].map(f => (
-                <button
+                <button type="button"
                   key={f}
                   className={`px-2 py-0.5 text-[10px] font-mono rounded-sm transition-colors ${
                     filterEntity === f
@@ -553,7 +553,7 @@ export default function WebResearchPage() {
 
                   {/* Actions */}
                   <div className="flex items-center gap-1 shrink-0">
-                    <button
+                    <button type="button"
                       className="toolbar-btn flex items-center gap-1 px-2 text-xs"
                       title="Link to entity"
                       onClick={() => {
@@ -565,7 +565,7 @@ export default function WebResearchPage() {
                       <Link2 className="w-3 h-3" />
                       Link
                     </button>
-                    <button
+                    <button type="button"
                       className="toolbar-btn flex items-center px-1.5 text-xs text-red-400 hover:text-red-300"
                       title="Delete"
                       onClick={() => handleDelete(result.id)}
@@ -588,7 +588,7 @@ export default function WebResearchPage() {
                       autoFocus
                     />
                   ) : (
-                    <button
+                    <button type="button"
                       className="w-full text-left text-xs text-rmpg-400 hover:text-rmpg-200 px-2 py-1 rounded-sm hover:bg-rmpg-700/20 transition-colors"
                       onClick={() => {
                         setEditingNotesId(result.id);
@@ -619,7 +619,7 @@ export default function WebResearchPage() {
 
       {/* Link Modal */}
       {linkModalResult && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setLinkModalResult(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setLinkModalResult(null)}>
           <div
             className="panel-beveled bg-surface-raised p-4 w-80 space-y-3"
             onClick={e => e.stopPropagation()}
@@ -635,7 +635,7 @@ export default function WebResearchPage() {
             {/* Entity type selector */}
             <div className="flex gap-1">
               {(['incident', 'person', 'case'] as LinkEntityType[]).map(t => (
-                <button
+                <button type="button"
                   key={t}
                   className={`flex-1 px-2 py-1 text-xs font-mono rounded-sm transition-colors ${
                     linkType === t
@@ -662,13 +662,13 @@ export default function WebResearchPage() {
 
             {/* Actions */}
             <div className="flex justify-end gap-2">
-              <button
+              <button type="button"
                 className="toolbar-btn px-3 text-xs"
                 onClick={() => setLinkModalResult(null)}
               >
                 Cancel
               </button>
-              <button
+              <button type="button"
                 className="toolbar-btn toolbar-btn-primary flex items-center gap-1 px-3 text-xs"
                 disabled={linking || !linkId.trim()}
                 onClick={handleLink}

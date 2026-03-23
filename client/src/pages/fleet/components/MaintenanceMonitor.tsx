@@ -132,7 +132,7 @@ export default function MaintenanceMonitor({ onSelectVehicle }: Props) {
             {overdue.map(v => {
               const days = daysUntil(v.next_service_due);
               return (
-                <button
+                <button type="button"
                   key={v.id}
                   onClick={() => onSelectVehicle(v.id)}
                   className="w-full flex items-center gap-2 px-2 py-1.5 bg-red-900/20 border border-red-800/30 hover:bg-red-900/40 transition-colors text-left"
@@ -163,7 +163,7 @@ export default function MaintenanceMonitor({ onSelectVehicle }: Props) {
             {dueSoon.map(v => {
               const days = daysUntil(v.next_service_due);
               return (
-                <button
+                <button type="button"
                   key={v.id}
                   onClick={() => onSelectVehicle(v.id)}
                   className="w-full flex items-center gap-2 px-2 py-1.5 bg-amber-900/15 border border-amber-800/30 hover:bg-amber-900/30 transition-colors text-left"
@@ -194,7 +194,7 @@ export default function MaintenanceMonitor({ onSelectVehicle }: Props) {
             {upcoming.slice(0, 5).map(v => {
               const days = daysUntil(v.next_service_due);
               return (
-                <button
+                <button type="button"
                   key={v.id}
                   onClick={() => onSelectVehicle(v.id)}
                   className="w-full flex items-center gap-2 px-2 py-1.5 bg-surface-sunken border border-rmpg-700 hover:bg-rmpg-700 transition-colors text-left"

@@ -361,19 +361,19 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
           <div className="ml-auto flex items-center gap-1">
             {!showArchived && (
               <>
-                <button onClick={() => openEditProperty(selectedProperty)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors" title="Edit">
+                <button type="button" onClick={() => openEditProperty(selectedProperty)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors" title="Edit">
                   <Pencil className="w-3 h-3" />
                 </button>
-                <button onClick={() => setDeleteTarget({ type: 'property', id: selectedProperty.id, label: selectedProperty.name })} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-red-400 transition-colors" title="Delete">
+                <button type="button" onClick={() => setDeleteTarget({ type: 'property', id: selectedProperty.id, label: selectedProperty.name })} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-red-400 transition-colors" title="Delete">
                   <Trash2 className="w-3 h-3" />
                 </button>
-                <button onClick={() => handleArchive('properties', selectedProperty.id)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-amber-400 transition-colors" title="Archive">
+                <button type="button" onClick={() => handleArchive('properties', selectedProperty.id)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-amber-400 transition-colors" title="Archive">
                   <Archive className="w-3 h-3" />
                 </button>
               </>
             )}
             {showArchived && (
-              <button onClick={() => handleUnarchive('properties', selectedProperty.id)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-green-400 transition-colors" title="Unarchive">
+              <button type="button" onClick={() => handleUnarchive('properties', selectedProperty.id)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-green-400 transition-colors" title="Unarchive">
                 <RotateCcw className="w-3 h-3" />
               </button>
             )}

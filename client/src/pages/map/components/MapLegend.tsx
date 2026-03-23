@@ -35,7 +35,7 @@ export default function MapLegend({ layers, showBreadcrumbs, breadcrumbColorMode
 
   if (!expanded) {
     return (
-      <button
+      <button type="button"
         onClick={() => setExpanded(true)}
         className="flex items-center justify-center backdrop-blur-md shadow-xl transition-colors hover:brightness-125"
         style={{
@@ -74,7 +74,7 @@ export default function MapLegend({ layers, showBreadcrumbs, breadcrumbColorMode
       {/* Header */}
       <div className="flex items-center justify-between px-2.5 py-1.5" style={{ borderBottom: '1px solid #1e3048' }}>
         <span className="text-[9px] font-mono font-black tracking-wider text-rmpg-300 uppercase">Legend</span>
-        <button onClick={() => setExpanded(false)} aria-expanded={expanded} className="text-rmpg-400 hover:text-white transition-colors p-0.5">
+        <button type="button" onClick={() => setExpanded(false)} aria-expanded={expanded} className="text-rmpg-400 hover:text-white transition-colors p-0.5">
           <ChevronDown className="w-3 h-3" />
         </button>
       </div>

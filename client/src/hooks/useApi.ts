@@ -264,8 +264,8 @@ async function tryRefreshToken(): Promise<string | null> {
       localStorage.removeItem('rmpg_session_id');
       window.location.href = '/login';
       return null;
-    } catch {
-      // Network error during refresh — can't recover online, but offline mode may work
+    } catch (err) {
+      console.warn('[useApi] Token refresh network error:', err);
       return null;
     } finally {
       _refreshPromise = null;

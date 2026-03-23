@@ -170,7 +170,7 @@ export default function MobileCardList<T>({
               style={{ minHeight: 40 }}
             />
             {searchValue && (
-              <button
+              <button type="button"
                 onClick={() => handleSearch('')}
                 className="text-rmpg-400 hover:text-rmpg-200"
               >

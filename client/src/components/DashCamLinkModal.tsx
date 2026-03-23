@@ -98,7 +98,7 @@ export default function DashCamLinkModal({ isOpen, onClose, videoId, videoTitle,
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={onClose}>
       <div
         className="w-full max-w-lg mx-4 panel-beveled bg-surface-base animate-fade-in"
         onClick={e => e.stopPropagation()}
@@ -107,10 +107,9 @@ export default function DashCamLinkModal({ isOpen, onClose, videoId, videoTitle,
         <div className="panel-title-bar flex items-center gap-2">
           <Link2 className="w-3 h-3" style={{ color: '#1a5a9e' }} />
           <span>LINK VIDEO TO RECORDS</span>
-          <button
+          <button type="button"
             onClick={onClose}
-            className="ml-auto hover:bg-white/10 p-0.5 transition-colors"
-          >
+            className="ml-auto hover:bg-white/10 p-0.5 transition-colors">
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -209,7 +208,7 @@ export default function DashCamLinkModal({ isOpen, onClose, videoId, videoTitle,
                         </div>
                       </div>
                       {canManage && (
-                        <button
+                        <button type="button"
                           onClick={() => handleRemove(link.id)}
                           className="toolbar-btn p-1 text-red-400 hover:text-red-300"
                           title="Remove link"

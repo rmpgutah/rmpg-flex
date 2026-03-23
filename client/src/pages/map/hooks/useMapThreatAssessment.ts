@@ -259,8 +259,11 @@ export function useMapThreatAssessment(
           setCurrentAssessment(data);
           renderAssessment(data);
         }
-      } catch {
-        if (!controller.signal.aborted) setCurrentAssessment(null);
+      } catch (err) {
+        if (!controller.signal.aborted) {
+          console.warn('[useMapThreatAssessment] Assessment fetch failed:', err);
+          setCurrentAssessment(null);
+        }
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
@@ -282,7 +285,8 @@ export function useMapThreatAssessment(
           setApproachRoutes(data);
           renderApproachRoutes(data);
         }
-      } catch {
+      } catch (err) {
+        console.warn('[useMapThreatAssessment] Approach routes fetch failed:', err);
         setApproachRoutes(null);
       } finally {
         setLoading(false);

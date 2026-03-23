@@ -522,7 +522,7 @@ export default function ServeRoutePlanner({
   const fuelCost = totalDistance * IRS_MILEAGE_RATE;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" role="dialog" aria-modal="true">
       <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm w-full h-full max-w-[1400px] max-h-[95vh] flex flex-col shadow-2xl">
         {/* ─── Header ─────────────────────────────────────────────── */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#1e3048] bg-[#0d1520]">
@@ -534,13 +534,13 @@ export default function ServeRoutePlanner({
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <button
+            <button type="button"
               onClick={handleApplyAndClose}
               className="px-3 py-1 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-sm border border-blue-500 transition-colors"
             >
               Apply Route
             </button>
-            <button
+            <button type="button"
               onClick={onClose}
               className="p-1 text-rmpg-500 hover:text-white transition-colors"
             >
@@ -556,21 +556,21 @@ export default function ServeRoutePlanner({
             {/* Controls */}
             <div className="flex items-center justify-between px-3 py-2 border-b border-[#1e3048]">
               <div className="flex items-center gap-2">
-                <button
+                <button type="button"
                   onClick={selectAll}
                   className="text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
                 >
                   Select All
                 </button>
                 <span className="text-rmpg-600">|</span>
-                <button
+                <button type="button"
                   onClick={deselectAll}
                   className="text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
                 >
                   Deselect All
                 </button>
               </div>
-              <button
+              <button type="button"
                 onClick={optimizeRoute}
                 disabled={optimizing || selectedCount < 2}
                 className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-500 disabled:bg-rmpg-700 disabled:text-rmpg-500 rounded-sm border border-emerald-500 disabled:border-rmpg-600 transition-colors"
@@ -605,7 +605,7 @@ export default function ServeRoutePlanner({
                     }`}
                   >
                     {/* Checkbox */}
-                    <button onClick={() => toggleStop(idx)} className="shrink-0 text-rmpg-400 hover:text-white">
+                    <button type="button" onClick={() => toggleStop(idx)} className="shrink-0 text-rmpg-400 hover:text-white">
                       {stop.selected ? (
                         <CheckSquare size={14} className="text-blue-400" />
                       ) : (
@@ -637,14 +637,14 @@ export default function ServeRoutePlanner({
 
                     {/* Reorder Buttons */}
                     <div className="shrink-0 flex flex-col gap-0.5">
-                      <button
+                      <button type="button"
                         onClick={() => moveStop(idx, -1)}
                         disabled={idx === 0}
                         className="p-0.5 text-rmpg-500 hover:text-white disabled:text-rmpg-700 transition-colors"
                       >
                         <ChevronUp size={12} />
                       </button>
-                      <button
+                      <button type="button"
                         onClick={() => moveStop(idx, 1)}
                         disabled={idx === stops.length - 1}
                         className="p-0.5 text-rmpg-500 hover:text-white disabled:text-rmpg-700 transition-colors"

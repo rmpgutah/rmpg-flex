@@ -62,7 +62,7 @@ export default function FleetFuelCardsTab() {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-xs font-bold text-white flex items-center gap-1"><CreditCard className="w-3.5 h-3.5" /> Fuel Cards</h3>
-        <button onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-[9px]"><Plus className="w-3 h-3" /> Add Card</button>
+        <button type="button" onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-[9px]"><Plus className="w-3 h-3" /> Add Card</button>
       </div>
 
       {/* Summary */}
@@ -88,8 +88,8 @@ export default function FleetFuelCardsTab() {
             <input type="date" value={form.expiry_date} onChange={e => setForm(f => ({ ...f, expiry_date: e.target.value }))} className="input-field text-xs" />
           </div>
           <div className="flex gap-2">
-            <button onClick={handleSubmit} className="toolbar-btn toolbar-btn-success text-[9px]">Save</button>
-            <button onClick={() => setShowForm(false)} className="toolbar-btn text-[9px]">Cancel</button>
+            <button type="button" onClick={handleSubmit} className="toolbar-btn toolbar-btn-success text-[9px]">Save</button>
+            <button type="button" onClick={() => setShowForm(false)} className="toolbar-btn text-[9px]">Cancel</button>
           </div>
         </div>
       )}
@@ -120,10 +120,10 @@ export default function FleetFuelCardsTab() {
                 <td className="text-right text-rmpg-400">{c.expiry_date || '-'}</td>
                 <td className="text-right">
                   {c.status === 'active' && (
-                    <button onClick={() => updateCard(c.id, { status: 'suspended' })} className="toolbar-btn text-[9px]">Suspend</button>
+                    <button type="button" onClick={() => updateCard(c.id, { status: 'suspended' })} className="toolbar-btn text-[9px]">Suspend</button>
                   )}
                   {c.status === 'suspended' && (
-                    <button onClick={() => updateCard(c.id, { status: 'active' })} className="toolbar-btn toolbar-btn-success text-[9px]">Activate</button>
+                    <button type="button" onClick={() => updateCard(c.id, { status: 'active' })} className="toolbar-btn toolbar-btn-success text-[9px]">Activate</button>
                   )}
                 </td>
               </tr>

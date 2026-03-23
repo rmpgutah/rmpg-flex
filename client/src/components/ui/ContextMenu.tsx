@@ -69,7 +69,7 @@ export default function ContextMenu({ items, children, disabled }: ContextMenuPr
             item.separator ? (
               <div key={i} className="border-t border-[#1e3048] my-1" />
             ) : (
-              <button
+              <button type="button"
                 key={i}
                 onClick={() => handleClick(item)}
                 disabled={item.disabled}

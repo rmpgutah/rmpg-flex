@@ -128,10 +128,9 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
               Quick PSO Client Request
             </h2>
           </div>
-          <button
+          <button type="button"
             onClick={onClose}
-            className="p-1 hover:bg-purple-800/40 text-purple-300 hover:text-white transition-colors"
-          >
+            className="p-1 hover:bg-purple-800/40 text-purple-300 hover:text-white transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>

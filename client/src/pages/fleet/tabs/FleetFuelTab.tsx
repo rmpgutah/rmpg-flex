@@ -57,7 +57,7 @@ export default function FleetFuelTab({ fuelLogs, summary, onAddFuel, onEditFuel,
         <h3 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider flex items-center gap-1.5">
           <Fuel className="w-3 h-3" /> Fuel Log ({fuelLogs.length})
         </h3>
-        <button className="toolbar-btn toolbar-btn-primary" onClick={onAddFuel}>
+        <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={onAddFuel}>
           <Plus className="w-3 h-3" /> Add Fuel Log
         </button>
       </div>
@@ -72,7 +72,7 @@ export default function FleetFuelTab({ fuelLogs, summary, onAddFuel, onEditFuel,
           <p className="text-[9px] text-rmpg-600 mt-1 max-w-[260px] mx-auto">
             Track fuel consumption, cost per gallon, and station visits to monitor fleet fuel efficiency.
           </p>
-          <button className="toolbar-btn toolbar-btn-primary mt-3" onClick={onAddFuel}>
+          <button type="button" className="toolbar-btn toolbar-btn-primary mt-3" onClick={onAddFuel}>
             <Plus className="w-3 h-3" /> Log First Entry
           </button>
         </div>
@@ -132,7 +132,7 @@ export default function FleetFuelTab({ fuelLogs, summary, onAddFuel, onEditFuel,
                 {(onEditFuel || onDeleteFuel) && (
                   <div className="flex-shrink-0 flex items-center gap-1">
                     {onEditFuel && (
-                      <button
+                      <button type="button"
                         className="p-1 text-rmpg-500 hover:text-brand-400 hover:bg-rmpg-700 rounded-sm transition-colors"
                         onClick={(e) => { e.stopPropagation(); onEditFuel(log); }}
                         title="Edit fuel log"
@@ -141,7 +141,7 @@ export default function FleetFuelTab({ fuelLogs, summary, onAddFuel, onEditFuel,
                       </button>
                     )}
                     {onDeleteFuel && (
-                      <button
+                      <button type="button"
                         className="p-1 text-rmpg-500 hover:text-red-400 hover:bg-red-900/20 rounded-sm transition-colors"
                         onClick={(e) => { e.stopPropagation(); onDeleteFuel(log); }}
                         title="Delete fuel log"

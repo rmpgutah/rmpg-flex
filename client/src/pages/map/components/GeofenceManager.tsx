@@ -146,7 +146,7 @@ export default function GeofenceManager({
           </span>
         </div>
         {onClose && (
-          <button
+          <button type="button"
             onClick={onClose}
             className="toolbar-btn p-1"
             aria-label="Close"
@@ -159,7 +159,7 @@ export default function GeofenceManager({
 
       {/* Draw button */}
       <div className="px-2 pt-2">
-        <button
+        <button type="button"
           onClick={onDraw}
           className={`toolbar-btn flex items-center gap-1.5 px-3 py-1.5 text-xs w-full justify-center ${
             drawingMode ? 'toolbar-btn-primary' : ''
@@ -216,7 +216,7 @@ export default function GeofenceManager({
               }}
             >
               {/* Collapsed header row — click to expand */}
-              <button
+              <button type="button"
                 onClick={() => toggleExpand(fence.id)}
                 className="flex items-center justify-between w-full px-2 py-1.5 text-left"
                 title={expanded ? 'Collapse' : 'Expand details'}
@@ -296,7 +296,7 @@ export default function GeofenceManager({
 
                   {/* Actions */}
                   <div className="flex items-center gap-1">
-                    <button
+                    <button type="button"
                       onClick={() => onToggle(fence.id)}
                       className="toolbar-btn flex-1 py-1 text-[10px]"
                       title={isActive ? 'Deactivate zone' : 'Activate zone'}
@@ -304,7 +304,7 @@ export default function GeofenceManager({
                       {isActive ? 'Active' : 'Inactive'}
                     </button>
                     {onNavigate && centroid && (
-                      <button
+                      <button type="button"
                         onClick={() => onNavigate(centroid.lat, centroid.lng)}
                         className="toolbar-btn p-1 text-blue-400 hover:text-blue-300"
                         title="Navigate to zone"
@@ -312,7 +312,7 @@ export default function GeofenceManager({
                         <Navigation size={12} />
                       </button>
                     )}
-                    <button
+                    <button type="button"
                       onClick={() => { if (window.confirm('Delete this geofence?')) onDelete(fence.id); }}
                       className="toolbar-btn p-1 text-red-400 hover:text-red-300"
                       title="Delete zone"

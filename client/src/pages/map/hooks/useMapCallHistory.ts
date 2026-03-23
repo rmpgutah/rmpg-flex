@@ -194,8 +194,9 @@ export function useMapCallHistory(opts: UseMapCallHistoryOptions): UseMapCallHis
         renderMarkers(arr);
         setLoading(false);
       })
-      .catch(() => {
+      .catch((err) => {
         if (cancelled) return;
+        console.warn('[useMapCallHistory] History fetch failed:', err);
         setCalls([]);
         clearMarkers();
         setLoading(false);

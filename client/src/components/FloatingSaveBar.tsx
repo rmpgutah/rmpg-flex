@@ -38,7 +38,7 @@ export default function FloatingSaveBar({
         </span>
       </div>
 
-      <button
+      <button type="button"
         onClick={onSave}
         disabled={isSaving}
         className="toolbar-btn toolbar-btn-primary"
@@ -54,7 +54,7 @@ export default function FloatingSaveBar({
 
       {extraActions}
 
-      <button
+      <button type="button"
         onClick={onCancel}
         disabled={isSaving}
         className="toolbar-btn"

@@ -212,7 +212,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
   // ── Render ────────────────────────────────────────────────
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95" role="dialog" aria-modal="true" onClick={onClose}>
       <div
         ref={containerRef}
         className={`bg-black overflow-hidden ${isFullscreen ? 'w-full h-full' : 'w-[960px] max-h-[92vh]'}`}
@@ -237,19 +237,19 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
             )}
           </div>
           <div className="flex items-center gap-1">
-            <button onClick={() => setHudVisible(!hudVisible)} className="toolbar-btn h-5 flex items-center gap-1">
+            <button type="button" onClick={() => setHudVisible(!hudVisible)} className="toolbar-btn h-5 flex items-center gap-1">
               <span className={`led-dot ${hudVisible ? 'led-green' : 'led-off'}`} style={{ width: 5, height: 5 }} />
               <span className="text-[8px]">HUD</span>
             </button>
             {onEditVideo && (
-              <button onClick={() => onEditVideo(video)} className="toolbar-btn h-5 px-1">
+              <button type="button" onClick={() => onEditVideo(video)} className="toolbar-btn h-5 px-1">
                 <Edit2 className="w-3 h-3" />
               </button>
             )}
-            <button onClick={toggleFullscreen} className="toolbar-btn h-5 px-1">
+            <button type="button" onClick={toggleFullscreen} className="toolbar-btn h-5 px-1">
               {isFullscreen ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
             </button>
-            <button onClick={onClose} className="toolbar-btn h-5 px-1">
+            <button type="button" onClick={onClose} className="toolbar-btn h-5 px-1" aria-label="Close" title="Close">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>

@@ -132,7 +132,7 @@ export default function LoginHistoryTable() {
             Page {page} of {totalPages} ({total} entries)
           </span>
           <div className="flex gap-1">
-            <button
+            <button type="button"
               onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
               disabled={offset === 0}
               className="toolbar-btn text-[9px] disabled:opacity-30"
@@ -140,7 +140,7 @@ export default function LoginHistoryTable() {
               <ChevronLeft className="w-3 h-3" />
               Prev
             </button>
-            <button
+            <button type="button"
               onClick={() => setOffset(offset + PAGE_SIZE)}
               disabled={page >= totalPages}
               className="toolbar-btn text-[9px] disabled:opacity-30"

@@ -47,8 +47,8 @@ router.get('/', (req: Request, res: Response) => {
       whereClause += ' AND w.archived_at IS NULL';
     }
 
-    const pageNum = parseInt(page as string, 10);
-    const perPageNum = parseInt(per_page as string, 10);
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const perPageNum = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 50));
     const offset = (pageNum - 1) * perPageNum;
 
     const countRow = db.prepare(`
@@ -131,7 +131,11 @@ router.get('/export', requireRole('dispatcher', 'supervisor', 'admin', 'manager'
 router.get('/check/:personId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { personId } = req.params;
+    const personId = parseInt(req.params.personId, 10);
+    if (isNaN(personId)) {
+      res.status(400).json({ error: 'Invalid person ID' });
+      return;
+    }
 
     const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(personId) as any;
     if (!person) {
@@ -167,6 +171,15 @@ router.put('/batch-update', requireRole('admin', 'manager', 'supervisor'), (req:
     const validStatuses = ['active', 'served', 'recalled', 'expired', 'quashed'];
     if (!Array.isArray(ids) || ids.length === 0) {
       res.status(400).json({ error: 'ids array is required' });
+      return;
+    }
+    if (ids.length > 100) {
+      res.status(400).json({ error: 'Maximum 100 warrants per batch operation' });
+      return;
+    }
+    // Validate all IDs are numbers
+    if (!ids.every((id: any) => typeof id === 'number' && Number.isFinite(id))) {
+      res.status(400).json({ error: 'All IDs must be valid numbers' });
       return;
     }
     if (!status || !validStatuses.includes(status)) {

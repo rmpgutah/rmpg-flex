@@ -303,7 +303,7 @@ export default function ServeAttemptModal({
             ) : gps.error ? (
               <div className="bg-red-900/30 border border-red-700 rounded-sm p-3 text-sm text-red-300">
                 <p>GPS Error: {gps.error}</p>
-                <button
+                <button type="button"
                   onClick={acquireGps}
                   className="mt-2 px-3 py-1 text-xs bg-red-800 hover:bg-red-700 text-red-200 rounded-sm"
                 >
@@ -348,7 +348,7 @@ export default function ServeAttemptModal({
             )}
 
             <div className="flex justify-end pt-2">
-              <button
+              <button type="button"
                 onClick={() => setStep(1)}
                 disabled={gps.loading}
                 className="px-4 py-2 text-sm font-semibold bg-brand-700 hover:bg-brand-600 text-white rounded-sm disabled:opacity-40 transition-colors"
@@ -368,7 +368,7 @@ export default function ServeAttemptModal({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {typeCards.map((card) => (
                 <div key={card.type} className="relative group">
-                  <button
+                  <button type="button"
                     disabled={card.disabled}
                     onClick={() => {
                       setAttemptType(card.type);
@@ -418,13 +418,13 @@ export default function ServeAttemptModal({
             )}
 
             <div className="flex justify-between pt-2">
-              <button
+              <button type="button"
                 onClick={() => setStep(0)}
                 className="px-4 py-2 text-sm font-semibold bg-rmpg-700 hover:bg-rmpg-600 text-rmpg-200 rounded-sm transition-colors"
               >
                 Back
               </button>
-              <button
+              <button type="button"
                 onClick={() => setStep(2)}
                 disabled={!attemptType || (attemptType === 'failed' && !failedReason)}
                 className="px-4 py-2 text-sm font-semibold bg-brand-700 hover:bg-brand-600 text-white rounded-sm disabled:opacity-40 transition-colors"
@@ -473,7 +473,7 @@ export default function ServeAttemptModal({
                   {photos.map((photo) => (
                     <div key={photo.id} className="relative w-16 h-16 rounded-sm border border-rmpg-600 overflow-hidden group">
                       <img src={photo.url} alt="Attempt photo" className="w-full h-full object-cover" />
-                      <button
+                      <button type="button"
                         onClick={() => removePhoto(photo.id)}
                         className="absolute top-0.5 right-0.5 w-4 h-4 bg-red-700 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                       >
@@ -590,13 +590,13 @@ export default function ServeAttemptModal({
             </div>
 
             <div className="flex justify-between pt-2">
-              <button
+              <button type="button"
                 onClick={() => setStep(1)}
                 className="px-4 py-2 text-sm font-semibold bg-rmpg-700 hover:bg-rmpg-600 text-rmpg-200 rounded-sm transition-colors"
               >
                 Back
               </button>
-              <button
+              <button type="button"
                 onClick={() => setStep(3)}
                 disabled={attemptType === 'substitute' && !personServedName.trim()}
                 className="px-4 py-2 text-sm font-semibold bg-brand-700 hover:bg-brand-600 text-white rounded-sm disabled:opacity-40 transition-colors"
@@ -624,7 +624,7 @@ export default function ServeAttemptModal({
                       Due Diligence Complete -- 3 attempts recorded
                     </p>
                     {onGenerateAffidavit && (
-                      <button
+                      <button type="button"
                         onClick={() => onGenerateAffidavit(job.id)}
                         className="px-4 py-2 text-sm font-semibold bg-green-700 hover:bg-green-600 text-white rounded-sm transition-colors"
                       >
@@ -633,7 +633,7 @@ export default function ServeAttemptModal({
                     )}
                   </div>
                 )}
-                <button
+                <button type="button"
                   onClick={onClose}
                   className="px-4 py-2 text-sm font-semibold bg-rmpg-700 hover:bg-rmpg-600 text-rmpg-200 rounded-sm transition-colors"
                 >
@@ -712,13 +712,13 @@ export default function ServeAttemptModal({
                 />
 
                 <div className="flex justify-between pt-2">
-                  <button
+                  <button type="button"
                     onClick={() => setStep(2)}
                     className="px-4 py-2 text-sm font-semibold bg-rmpg-700 hover:bg-rmpg-600 text-rmpg-200 rounded-sm transition-colors"
                   >
                     Back
                   </button>
-                  <button
+                  <button type="button"
                     onClick={handleSubmit}
                     disabled={submitting}
                     className="px-4 py-2 text-sm font-semibold bg-green-700 hover:bg-green-600 text-white rounded-sm disabled:opacity-40 transition-colors flex items-center gap-2"
@@ -740,17 +740,16 @@ export default function ServeAttemptModal({
   // ─── Modal Shell ───────────────────────────────────────────────────
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
       <div className="bg-[#141e2b] panel-beveled rounded-sm w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-600">
           <h2 className="text-sm font-bold text-rmpg-100">
             Document Service Attempt — {job.recipient_name}
           </h2>
-          <button
+          <button type="button"
             onClick={onClose}
-            className="text-rmpg-400 hover:text-rmpg-200 transition-colors"
-          >
+            className="text-rmpg-400 hover:text-rmpg-200 transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>

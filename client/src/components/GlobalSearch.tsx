@@ -340,6 +340,9 @@ export const GlobalSearch: React.FC = () => {
     <div
       className="fixed inset-0 z-[9999] flex items-start justify-center pt-[20vh] bg-black/70 backdrop-blur-sm"
       onClick={handleClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Global search"
     >
       <div
         className="bg-surface-base border border-rmpg-600 shadow-2xl w-full max-w-2xl max-h-[60vh] flex flex-col"
@@ -359,6 +362,8 @@ export const GlobalSearch: React.FC = () => {
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Search persons, vehicles, incidents, warrants, personnel..."
+            aria-label="Search all records"
+            autoComplete="off"
             className="flex-1 bg-transparent text-sm text-white placeholder-rmpg-500 outline-none"
           />
           <div className="flex items-center gap-2 text-xs text-rmpg-400">
@@ -366,7 +371,7 @@ export const GlobalSearch: React.FC = () => {
               <Command className="w-3 h-3 inline" />
               K
             </kbd>
-            <button onClick={handleClose} className="hover:text-rmpg-200">
+            <button type="button" onClick={handleClose} className="hover:text-rmpg-200" aria-label="Close search" title="Close search">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -441,7 +446,7 @@ const ResultItem: React.FC<ResultItemProps> = ({ result, isSelected, onClick }) 
   const Icon = config.icon;
 
   return (
-    <button
+    <button type="button"
       className={`
         w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors
         ${isSelected ? 'bg-rmpg-700' : 'hover:bg-rmpg-800'}

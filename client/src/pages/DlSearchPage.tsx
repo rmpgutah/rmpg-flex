@@ -179,10 +179,10 @@ export default function DlSearchPage() {
       </select>
       <input className="input-dark text-[10px] w-28" type="date" placeholder="DOB" value={dob}
         onChange={(e) => setDob(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
-      <button onClick={handleSearch} disabled={loading} className="toolbar-btn toolbar-btn-primary text-[10px]">
+      <button type="button" onClick={handleSearch} disabled={loading} className="toolbar-btn toolbar-btn-primary text-[10px]">
         {loading ? 'Searching...' : 'Search'}
       </button>
-      <button onClick={() => setShowManualEntry(true)} className="toolbar-btn text-[10px]">
+      <button type="button" onClick={() => setShowManualEntry(true)} className="toolbar-btn text-[10px]">
         <Plus className="w-3 h-3" /> Manual Entry
       </button>
     </div>
@@ -193,7 +193,7 @@ export default function DlSearchPage() {
       {fetchError && (
         <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
           <span>⚠ {fetchError}</span>
-          <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
         </div>
       )}
       {!isMobile && <PanelTitleBar title="DL Search" icon={CreditCard}>{searchControls}</PanelTitleBar>}
@@ -214,7 +214,7 @@ export default function DlSearchPage() {
               <option value="">State</option>
               {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
-            <button onClick={handleSearch} disabled={loading} className="toolbar-btn toolbar-btn-primary text-[9px] px-2">
+            <button type="button" onClick={handleSearch} disabled={loading} className="toolbar-btn toolbar-btn-primary text-[9px] px-2">
               {loading ? '...' : 'Go'}
             </button>
           </div>
@@ -242,7 +242,7 @@ export default function DlSearchPage() {
             </div>
           )}
           {!loading && results.map((r, idx) => (
-            <button
+            <button type="button"
               key={`${r.dl_number}-${r.dl_state}-${idx}`}
               onClick={() => setSelected(r)}
               className={`w-full text-left px-3 py-2 border-b border-rmpg-800/30 hover:bg-rmpg-800/20 transition-colors ${
@@ -279,7 +279,7 @@ export default function DlSearchPage() {
             <div className={`${isMobile ? 'p-3 space-y-3' : 'p-4 space-y-4'}`}>
               {/* Mobile back button */}
               {isMobile && (
-                <button onClick={() => setSelected(null)}
+                <button type="button" onClick={() => setSelected(null)}
                   className="text-rmpg-400 hover:text-white text-[10px] font-bold uppercase tracking-wider">
                   ◀ Back to Results
                 </button>

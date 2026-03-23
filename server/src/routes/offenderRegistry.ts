@@ -98,10 +98,12 @@ router.get('/', (req: Request, res: Response) => {
 router.get('/check/:personId', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const personId = parseInt(req.params.personId, 10);
+    if (isNaN(personId)) { res.status(400).json({ error: 'Invalid person ID' }); return; }
     const alerts = db.prepare(`
       SELECT * FROM offender_alerts WHERE person_id = ? AND status = 'active'
       ORDER BY CASE severity WHEN 'danger' THEN 0 WHEN 'warning' THEN 1 WHEN 'caution' THEN 2 ELSE 3 END
-    `).all(req.params.personId);
+    `).all(personId);
     res.json({ data: alerts });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -110,12 +112,14 @@ router.get('/check/:personId', (req: Request, res: Response) => {
 router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid alert ID' }); return; }
     const row = db.prepare(`
       SELECT oa.*, p.first_name, p.last_name, p.dob, p.photo_url,
         p.first_name || ' ' || p.last_name as person_name
       FROM offender_alerts oa LEFT JOIN persons p ON oa.person_id = p.id
       WHERE oa.id = ?
-    `).get(req.params.id);
+    `).get(id);
     if (!row) return res.status(404).json({ error: 'Alert not found' });
     res.json({ data: row });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
@@ -158,6 +162,10 @@ router.post('/', (req: Request, res: Response) => {
 router.put('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid alert ID' }); return; }
+    const existing = db.prepare('SELECT id FROM offender_alerts WHERE id = ?').get(id);
+    if (!existing) { res.status(404).json({ error: 'Alert not found' }); return; }
     const now = localNow();
     const fields = ['alert_type', 'description', 'severity', 'restriction_radius_ft',
       'expiration_date', 'notes'];
@@ -174,9 +182,9 @@ router.put('/:id', (req: Request, res: Response) => {
       updates.push('restricted_zones = ?');
       params.push(JSON.stringify(req.body.restricted_zones));
     }
-    params.push(req.params.id);
+    params.push(id);
     db.prepare(`UPDATE offender_alerts SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    res.json({ data: { id: parseInt(req.params.id) } });
+    res.json({ data: { id } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -184,13 +192,17 @@ router.put('/:id', (req: Request, res: Response) => {
 router.put('/:id/clear', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid alert ID' }); return; }
+    const existing = db.prepare('SELECT id FROM offender_alerts WHERE id = ?').get(id);
+    if (!existing) { res.status(404).json({ error: 'Alert not found' }); return; }
     const now = localNow();
-    db.prepare('UPDATE offender_alerts SET status = ?, updated_at = ? WHERE id = ?').run('cleared', now, req.params.id);
+    db.prepare('UPDATE offender_alerts SET status = ?, updated_at = ? WHERE id = ?').run('cleared', now, id);
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
-      VALUES (?, 'clear', 'offender_alert', ?, '{}', ?)`).run(req.user!.userId, req.params.id, now);
+      VALUES (?, 'clear', 'offender_alert', ?, '{}', ?)`).run(req.user!.userId, id, now);
 
-    res.json({ data: { id: parseInt(req.params.id), status: 'cleared' } });
+    res.json({ data: { id, status: 'cleared' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 

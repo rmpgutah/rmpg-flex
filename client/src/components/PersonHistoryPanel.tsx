@@ -259,7 +259,7 @@ export default function PersonHistoryPanel({
     onToggle: () => void;
     critical?: boolean;
   }) => (
-    <button
+    <button type="button"
       onClick={onToggle}
       className={`w-full flex items-center gap-1.5 text-left py-1 group ${
         critical ? 'text-red-400' : 'text-rmpg-400'
@@ -523,7 +523,7 @@ export default function PersonHistoryPanel({
   return (
     <div className="panel-beveled bg-surface-base overflow-hidden">
       {/* Panel Header */}
-      <button
+      <button type="button"
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center justify-between p-3 hover:bg-rmpg-700/20 transition-colors"
       >

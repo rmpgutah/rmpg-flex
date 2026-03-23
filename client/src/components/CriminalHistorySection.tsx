@@ -201,7 +201,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
     <div className="panel-beveled bg-surface-base overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between p-3">
-        <button
+        <button type="button"
           onClick={() => setExpanded(!expanded)}
           className="flex items-center gap-1.5 hover:text-rmpg-200 transition-colors"
         >
@@ -229,7 +229,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
               )}
             </div>
           )}
-          <button
+          <button type="button"
             onClick={() => {
               setEditingId(null);
               setForm({ ...EMPTY_FORM });
@@ -253,7 +253,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                 <span className="text-[10px] text-brand-400 uppercase font-bold tracking-wider">
                   {editingId ? 'Edit Record' : 'Add Criminal Record'}
                 </span>
-                <button onClick={() => { setShowForm(false); setEditingId(null); }} className="text-rmpg-400 hover:text-white">
+                <button type="button" onClick={() => { setShowForm(false); setEditingId(null); }} className="text-rmpg-400 hover:text-white">
                   <X className="w-3 h-3" />
                 </button>
               </div>
@@ -399,8 +399,8 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
               </div>
 
               <div className="flex justify-end gap-2 pt-1">
-                <button onClick={() => { setShowForm(false); setEditingId(null); }} className="toolbar-btn text-[10px]">Cancel</button>
-                <button
+                <button type="button" onClick={() => { setShowForm(false); setEditingId(null); }} className="toolbar-btn text-[10px]">Cancel</button>
+                <button type="button"
                   onClick={handleSave}
                   disabled={saving || !form.offense.trim()}
                   className="toolbar-btn toolbar-btn-primary text-[10px]"
@@ -455,10 +455,10 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                     )}
                     <span className="text-white font-semibold text-[11px] flex-1">{rec.offense}</span>
                     <span className="text-rmpg-400 text-[10px]">{formatDate(rec.offense_date)}</span>
-                    <button onClick={() => handleEdit(rec)} className="p-0.5 text-rmpg-400 hover:text-brand-400" title="Edit">
+                    <button type="button" onClick={() => handleEdit(rec)} className="p-0.5 text-rmpg-400 hover:text-brand-400" title="Edit">
                       <Pencil className="w-3 h-3" />
                     </button>
-                    <button onClick={() => handleDelete(rec.id)} className="p-0.5 text-rmpg-400 hover:text-red-400" title="Delete">
+                    <button type="button" onClick={() => handleDelete(rec.id)} className="p-0.5 text-rmpg-400 hover:text-red-400" title="Delete">
                       <Trash2 className="w-3 h-3" />
                     </button>
                   </div>

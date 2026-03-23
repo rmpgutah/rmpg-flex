@@ -118,7 +118,7 @@ function PersonnelPrintMenu({ officer, credentials, training, equipment, bodyCam
 
   return (
     <div className="relative" ref={ref}>
-      <button className="toolbar-btn" onClick={() => setOpen(!open)}>
+      <button type="button" className="toolbar-btn" onClick={() => setOpen(!open)}>
         <Printer className="w-3 h-3" /> Print <ChevronDown className="w-2.5 h-2.5" />
       </button>
       {open && (
@@ -166,7 +166,7 @@ function DutyToggle({ officerId, currentStatus }: { officerId: string; currentSt
   }, [officerId, isOnDuty]);
 
   return (
-    <button
+    <button type="button"
       onClick={handleToggle}
       disabled={toggling}
       className={`flex items-center gap-1.5 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider transition-all border ${
@@ -295,7 +295,7 @@ export default function PersonnelDetailPanel({
           </div>
 
           {/* Close button */}
-          <button onClick={onClose} className="toolbar-btn p-1" title="Close">
+          <button type="button" onClick={onClose} className="toolbar-btn p-1" title="Close" aria-label="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -327,21 +327,21 @@ export default function PersonnelDetailPanel({
           {isActive ? (
             <>
               {isClockedIn && (
-                <button onClick={() => onStartBreak(officer.id)} className="toolbar-btn text-[9px]">
+                <button type="button" onClick={() => onStartBreak(officer.id)} className="toolbar-btn text-[9px]">
                   <Coffee className="w-3 h-3" /> Break
                 </button>
               )}
               {isOnBreak && (
-                <button onClick={() => onEndBreak(officer.id)} className="toolbar-btn toolbar-btn-success text-[9px]">
+                <button type="button" onClick={() => onEndBreak(officer.id)} className="toolbar-btn toolbar-btn-success text-[9px]">
                   <Zap className="w-3 h-3" /> End Break
                 </button>
               )}
-              <button onClick={() => onClockOut(officer.id)} className="toolbar-btn toolbar-btn-danger text-[9px]">
+              <button type="button" onClick={() => onClockOut(officer.id)} className="toolbar-btn toolbar-btn-danger text-[9px]">
                 <LogOut className="w-3 h-3" /> Clock Out
               </button>
             </>
           ) : (
-            <button onClick={() => onClockIn(officer.id)} className="toolbar-btn toolbar-btn-success text-[9px]">
+            <button type="button" onClick={() => onClockIn(officer.id)} className="toolbar-btn toolbar-btn-success text-[9px]">
               <LogIn className="w-3 h-3" /> Clock In
             </button>
           )}
@@ -364,22 +364,22 @@ export default function PersonnelDetailPanel({
             />
             {!isArchived && (
               <>
-                <button onClick={onEditOfficer} className="toolbar-btn text-[9px]" title="Edit officer">
+                <button type="button" onClick={onEditOfficer} className="toolbar-btn text-[9px]" title="Edit officer">
                   <Pencil className="w-3 h-3" /> Edit
                 </button>
                 <span className="toolbar-separator" />
                 {officer.termination_date && (
-                  <button onClick={() => onArchiveOfficer(officer.id)} className="toolbar-btn text-[9px] text-amber-400" title="Archive terminated officer">
+                  <button type="button" onClick={() => onArchiveOfficer(officer.id)} className="toolbar-btn text-[9px] text-amber-400" title="Archive terminated officer">
                     <Archive className="w-3 h-3" />
                   </button>
                 )}
-                <button onClick={onDeleteOfficer} className="toolbar-btn toolbar-btn-danger text-[9px]" title="Terminate officer">
+                <button type="button" onClick={onDeleteOfficer} className="toolbar-btn toolbar-btn-danger text-[9px]" title="Terminate officer">
                   <Trash2 className="w-3 h-3" />
                 </button>
               </>
             )}
             {isArchived && (
-              <button onClick={() => onUnarchiveOfficer(officer.id)} className="toolbar-btn toolbar-btn-success text-[9px]" title="Unarchive officer">
+              <button type="button" onClick={() => onUnarchiveOfficer(officer.id)} className="toolbar-btn toolbar-btn-success text-[9px]" title="Unarchive officer">
                 <RotateCcw className="w-3 h-3" /> Restore
               </button>
             )}
@@ -420,7 +420,7 @@ export default function PersonnelDetailPanel({
         {DETAIL_TABS.map(({ id, label, icon: Icon }) => {
           const alertBadge = id === 'credentials' && hasCredAlert;
           return (
-            <button
+            <button type="button"
               key={id}
               className={`tab-bar-item ${activeTab === id ? 'active' : ''}`}
               onClick={() => onTabChange(id)}

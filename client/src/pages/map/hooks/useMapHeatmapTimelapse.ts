@@ -104,8 +104,9 @@ export function useMapHeatmapTimelapse(
           setLoading(false);
         }
       })
-      .catch(() => {
+      .catch((err) => {
         if (!cancelled) {
+          console.warn('[useMapHeatmapTimelapse] Timelapse data fetch failed:', err);
           setSlices([]);
           setLoading(false);
         }

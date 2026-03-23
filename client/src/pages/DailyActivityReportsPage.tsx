@@ -185,13 +185,13 @@ export default function DailyActivityReportsPage() {
       {fetchError && (
         <div className="absolute left-0 right-0 z-10 mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
           <span>⚠ {fetchError}</span>
-          <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
         </div>
       )}
       {/* ── Left Panel ── */}
       <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[380px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Daily Activity Reports" icon={ClipboardCheck}>
-          <button onClick={() => { setCreateFormOpen(true); setAutoPopulateData(null); }} className="toolbar-btn toolbar-btn-primary">
+          <button type="button" onClick={() => { setCreateFormOpen(true); setAutoPopulateData(null); }} className="toolbar-btn toolbar-btn-primary">
             <Plus style={{ width: 11, height: 11 }} /> New
           </button>
           <span className="text-[9px] font-mono text-rmpg-500">{totalCount}</span>
@@ -220,7 +220,7 @@ export default function DailyActivityReportsPage() {
             <div className="text-center py-8 text-rmpg-500 text-xs">No DARs found</div>
           ) : (
             dars.map(dar => (
-              <button
+              <button type="button"
                 key={dar.id}
                 onClick={() => { setSelected(dar); setEditing(false); }}
                 className={`w-full text-left px-3 py-2 border-b border-rmpg-800 transition-colors ${
@@ -250,9 +250,9 @@ export default function DailyActivityReportsPage() {
 
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-3 py-1.5 border-t border-rmpg-700 bg-surface-base">
-            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="text-[10px] text-rmpg-400 disabled:opacity-30">← Prev</button>
+            <button type="button" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="text-[10px] text-rmpg-400 disabled:opacity-30">← Prev</button>
             <span className="text-[9px] font-mono text-rmpg-500">Page {page}/{totalPages}</span>
-            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="text-[10px] text-rmpg-400 disabled:opacity-30">Next →</button>
+            <button type="button" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="text-[10px] text-rmpg-400 disabled:opacity-30">Next →</button>
           </div>
         )}
       </div>
@@ -263,16 +263,16 @@ export default function DailyActivityReportsPage() {
           <>
             <PanelTitleBar title={`${selected.dar_number} — ${selected.shift_date ? new Date(selected.shift_date).toLocaleDateString() : ''}`} icon={ClipboardCheck}>
               {selected.status === 'draft' && (
-                <button onClick={handleSubmit} className="toolbar-btn toolbar-btn-primary">
+                <button type="button" onClick={handleSubmit} className="toolbar-btn toolbar-btn-primary">
                   <Send style={{ width: 11, height: 11 }} /> Submit
                 </button>
               )}
               {selected.status === 'submitted' && isAdmin && (
                 <>
-                  <button onClick={handleApprove} className="toolbar-btn" style={{ color: '#22c55e' }}>
+                  <button type="button" onClick={handleApprove} className="toolbar-btn" style={{ color: '#22c55e' }}>
                     <CheckCircle style={{ width: 11, height: 11 }} /> Approve
                   </button>
-                  <button onClick={handleReturn} className="toolbar-btn" style={{ color: '#ef4444' }}>
+                  <button type="button" onClick={handleReturn} className="toolbar-btn" style={{ color: '#ef4444' }}>
                     <RotateCcw style={{ width: 11, height: 11 }} /> Return
                   </button>
                 </>
@@ -327,7 +327,7 @@ export default function DailyActivityReportsPage() {
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[9px] font-mono text-rmpg-500 uppercase">Narrative / Summary</span>
                   {(selected.status === 'draft' || selected.status === 'returned') && (
-                    <button
+                    <button type="button"
                       onClick={() => {
                         if (editing) handleSaveNarrative();
                         else {
@@ -388,10 +388,10 @@ export default function DailyActivityReportsPage() {
 
       {/* ── New DAR Modal ── */}
       {createFormOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="New Daily Activity Report" icon={Plus}>
-              <button onClick={() => setCreateFormOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
+              <button type="button" onClick={() => setCreateFormOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div>
@@ -410,7 +410,7 @@ export default function DailyActivityReportsPage() {
               </div>
 
               {/* Auto-populate button */}
-              <button onClick={handleAutoPopulate} disabled={autoPopLoading} className="w-full toolbar-btn justify-center py-2">
+              <button type="button" onClick={handleAutoPopulate} disabled={autoPopLoading} className="w-full toolbar-btn justify-center py-2">
                 {autoPopLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap style={{ width: 12, height: 12 }} />}
                 Auto-Populate from System Data
               </button>
@@ -448,8 +448,8 @@ export default function DailyActivityReportsPage() {
               )}
 
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
-                <button onClick={() => setCreateFormOpen(false)} className="toolbar-btn">Cancel</button>
-                <button onClick={handleCreate} disabled={submitting} className="toolbar-btn toolbar-btn-primary">
+                <button type="button" onClick={() => setCreateFormOpen(false)} className="toolbar-btn">Cancel</button>
+                <button type="button" onClick={handleCreate} disabled={submitting} className="toolbar-btn toolbar-btn-primary">
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />}
                   Create DAR
                 </button>

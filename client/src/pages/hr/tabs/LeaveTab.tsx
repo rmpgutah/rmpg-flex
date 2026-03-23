@@ -282,7 +282,7 @@ export default function LeaveTab() {
         {/* Request Time Off Button */}
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium text-white">My Requests</h3>
-          <button
+          <button type="button"
             onClick={() => { setEditRequest(null); setModalOpen(true); }}
             className="toolbar-btn toolbar-btn-primary flex items-center gap-1.5"
           >
@@ -327,14 +327,14 @@ export default function LeaveTab() {
                     <td className="px-3 py-2 text-right">
                       {req.status === 'pending' && (
                         <div className="flex items-center justify-end gap-1">
-                          <button
+                          <button type="button"
                             onClick={() => { setEditRequest(req); setModalOpen(true); }}
                             className="toolbar-btn text-xs"
                             title="Edit"
                           >
                             Edit
                           </button>
-                          <button
+                          <button type="button"
                             onClick={() => handleCancel(req.id)}
                             className="toolbar-btn text-xs text-red-400 hover:text-red-300"
                             title="Cancel request"
@@ -410,7 +410,7 @@ export default function LeaveTab() {
                     onChange={e => setReviewNotes(prev => ({ ...prev, [req.id]: e.target.value }))}
                     className="flex-1 bg-[#0d1520] border border-[#1e3048] text-white text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
                   />
-                  <button
+                  <button type="button"
                     onClick={() => handleApprove(req.id)}
                     className="toolbar-btn flex items-center gap-1 text-xs"
                     style={{ color: '#22c55e', borderColor: '#22c55e44' }}
@@ -418,7 +418,7 @@ export default function LeaveTab() {
                     <Check size={12} />
                     Approve
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => handleDeny(req.id)}
                     className="toolbar-btn flex items-center gap-1 text-xs"
                     style={{ color: '#ef4444', borderColor: '#ef444444' }}
@@ -482,7 +482,7 @@ export default function LeaveTab() {
             All Leave Requests
           </h3>
           <ExportButton exportUrl="/api/hr/leave/export/csv" exportFilename="leave-requests.csv" />
-          <button
+          <button type="button"
             onClick={() => { setEditRequest(null); setModalOpen(true); }}
             className="toolbar-btn toolbar-btn-primary flex items-center gap-1.5"
           >
@@ -525,7 +525,7 @@ export default function LeaveTab() {
             ))}
           </select>
           {(filterOfficer || filterStatus || filterType) && (
-            <button
+            <button type="button"
               onClick={() => { setFilterOfficer(''); setFilterStatus(''); setFilterType(''); }}
               className="toolbar-btn text-xs text-rmpg-400 hover:text-white flex items-center gap-1"
             >
@@ -572,7 +572,7 @@ export default function LeaveTab() {
                     <td className="px-3 py-2 text-rmpg-400">{formatDateTime(req.created_at)}</td>
                     <td className="px-3 py-2 text-right">
                       {req.status === 'pending' && String(req.officer_id) === String(userId) && (
-                        <button
+                        <button type="button"
                           onClick={() => handleCancel(req.id)}
                           className="toolbar-btn text-xs text-red-400 hover:text-red-300"
                           title="Cancel request"

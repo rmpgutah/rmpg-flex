@@ -311,13 +311,14 @@ export default function NotificationCenter({ className = '' }: NotificationCente
   return (
     <div className={`relative ${className}`}>
       {/* Bell Button */}
-      <button
+      <button type="button"
         ref={buttonRef}
         onClick={toggleDropdown}
         className="toolbar-btn relative"
         title="Notifications"
+        aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
       >
-        <Bell className="w-4 h-4" />
+        <Bell className="w-4 h-4" aria-hidden="true" />
         {unreadCount > 0 && (
           <span
             className="absolute flex items-center justify-center"
@@ -363,7 +364,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
             <div className="ml-auto flex items-center gap-1">
               {/* Type Filter */}
               <div className="relative">
-                <button
+                <button type="button"
                   onClick={() => setShowFilter(!showFilter)}
                   className="toolbar-btn flex items-center gap-1"
                   title="Filter by type"
@@ -380,7 +381,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                     style={{ minWidth: 140 }}
                   >
                     {['all', 'dispatch', 'warrant', 'bolo', 'message', 'system', 'credential_expiry', 'patrol_missed'].map((type) => (
-                      <button
+                      <button type="button"
                         key={type}
                         onClick={() => { setFilterType(type); setShowFilter(false); }}
                         className={`block w-full text-left px-3 py-1.5 text-[10px] hover:bg-rmpg-700/50 transition-colors ${
@@ -394,7 +395,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                 )}
               </div>
               {unreadCount > 0 && (
-                <button
+                <button type="button"
                   onClick={handleMarkAllRead}
                   className="toolbar-btn flex items-center gap-1"
                   title="Mark All Read"
@@ -444,6 +445,9 @@ export default function NotificationCenter({ className = '' }: NotificationCente
               return (
                 <div
                   key={notification.id}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleNotificationClick(notification); } }}
                   onClick={() => handleNotificationClick(notification)}
                   className="flex items-start gap-2 border-b border-rmpg-700/50 cursor-pointer transition-colors hover:bg-rmpg-800/60"
                   style={{
@@ -507,7 +511,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                   </div>
 
                   {/* Dismiss Button */}
-                  <button
+                  <button type="button"
                     onClick={(e) => handleDismiss(notification.id, e)}
                     className="toolbar-btn flex-shrink-0 opacity-0 hover:opacity-100 transition-opacity"
                     style={{
@@ -524,7 +528,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
 
             {/* Load More */}
             {hasMore && notifications.length > 0 && (
-              <button
+              <button type="button"
                 onClick={handleLoadMore}
                 disabled={loadingMore}
                 className="w-full py-2 text-center text-[10px] text-brand-400 hover:bg-rmpg-700/30 transition-colors font-bold uppercase tracking-wider"

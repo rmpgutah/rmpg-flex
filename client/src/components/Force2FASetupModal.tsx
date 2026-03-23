@@ -129,7 +129,7 @@ export default function Force2FASetupModal() {
               <div>4. Save your backup recovery codes</div>
             </div>
 
-            <button
+            <button type="button"
               onClick={handleStartSetup}
               disabled={busy}
               className="btn-primary w-full justify-center"
@@ -138,7 +138,7 @@ export default function Force2FASetupModal() {
               {busy ? 'Setting up...' : 'Begin 2FA Setup'}
             </button>
 
-            <button
+            <button type="button"
               onClick={handleDefer}
               className="w-full flex items-center justify-center gap-2 py-2 text-[10px] uppercase tracking-wider font-bold transition-colors"
               style={{ color: '#5a6e80', background: 'transparent', border: 'none' }}
@@ -233,14 +233,14 @@ export default function Force2FASetupModal() {
             </p>
 
             <div className="flex gap-2">
-              <button onClick={handleCopyBackupCodes} className="btn-secondary flex-1 justify-center">
+              <button type="button" onClick={handleCopyBackupCodes} className="btn-secondary flex-1 justify-center">
                 {copiedBackups ? (
                   <><Check style={{ width: 12, height: 12 }} /> Copied!</>
                 ) : (
                   <><Copy style={{ width: 12, height: 12 }} /> Copy Codes</>
                 )}
               </button>
-              <button onClick={handleDone} className="btn-primary flex-1 justify-center">
+              <button type="button" onClick={handleDone} className="btn-primary flex-1 justify-center">
                 <Check style={{ width: 12, height: 12 }} /> I've Saved My Codes
               </button>
             </div>

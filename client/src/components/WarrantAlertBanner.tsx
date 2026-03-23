@@ -52,14 +52,14 @@ export default function WarrantAlertBanner({ alerts, onDismiss, onViewCall }: Pr
           </div>
           <div className="flex flex-col gap-1 shrink-0">
             {onViewCall && alert.callId != null && (
-              <button
+              <button type="button"
                 onClick={() => onViewCall(alert.callId!)}
                 className="text-xs underline opacity-75 hover:opacity-100 flex items-center gap-1"
               >
                 <ExternalLink className="w-3 h-3" /> View
               </button>
             )}
-            <button onClick={() => onDismiss(alert.id)} className="text-xs opacity-60 hover:opacity-100">
+            <button type="button" onClick={() => onDismiss(alert.id)} className="text-xs opacity-60 hover:opacity-100">
               <X className="w-3 h-3" />
             </button>
           </div>

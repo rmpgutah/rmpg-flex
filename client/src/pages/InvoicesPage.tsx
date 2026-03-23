@@ -514,7 +514,7 @@ export default function InvoicesPage() {
         <h2 className="text-sm font-bold text-white flex items-center gap-2">
           <Plus size={14} className="text-brand-400" /> New Invoice
         </h2>
-        <button onClick={() => { setMode('list'); setSaveError(''); }} className="text-rmpg-400 hover:text-white text-xs">Cancel</button>
+        <button type="button" onClick={() => { setMode('list'); setSaveError(''); }} className="text-rmpg-400 hover:text-white text-xs">Cancel</button>
       </div>
 
       {saveError && (
@@ -592,7 +592,7 @@ export default function InvoicesPage() {
           />
         </div>
 
-        <button
+        <button type="button"
           onClick={handleCreate}
           disabled={saving}
           className="w-full flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold py-2 px-4 rounded-sm disabled:opacity-50 transition-colors"
@@ -626,7 +626,7 @@ export default function InvoicesPage() {
           <div>
             <div className="flex items-center gap-2">
               {isMobile && (
-                <button onClick={backToList} className="text-rmpg-400 hover:text-white mr-1">
+                <button type="button" onClick={backToList} className="text-rmpg-400 hover:text-white mr-1">
                   <ChevronLeft size={16} />
                 </button>
               )}
@@ -635,7 +635,7 @@ export default function InvoicesPage() {
             </div>
             <p className="text-xs text-rmpg-400 mt-0.5">{inv.client_name}</p>
           </div>
-          <button onClick={backToList} className="text-rmpg-500 hover:text-white text-xs hidden md:block">
+          <button type="button" onClick={backToList} className="text-rmpg-500 hover:text-white text-xs hidden md:block">
             <X size={14} />
           </button>
         </div>
@@ -644,7 +644,7 @@ export default function InvoicesPage() {
         {canEdit && statusActions.length > 0 && (
           <div className="flex items-center gap-2 flex-wrap">
             {statusActions.map(a => (
-              <button
+              <button type="button"
                 key={a.status}
                 onClick={() => handleStatusChange(inv.id, a.status)}
                 disabled={actionLoading === `status-${inv.id}`}
@@ -655,7 +655,7 @@ export default function InvoicesPage() {
               </button>
             ))}
             {inv.status === 'draft' && (
-              <button
+              <button type="button"
                 onClick={() => handleGenerate(inv.id)}
                 disabled={actionLoading === `generate-${inv.id}`}
                 className="flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-300 bg-amber-900/40 hover:bg-amber-900/60 border border-amber-700/50 rounded-sm transition-colors disabled:opacity-50"
@@ -708,7 +708,7 @@ export default function InvoicesPage() {
           <div className="flex items-center justify-between mb-2">
             <div className="text-[10px] uppercase tracking-wider text-brand-400 font-bold">Line Items ({inv.line_items?.length || 0})</div>
             {canEdit && inv.status === 'draft' && (
-              <button
+              <button type="button"
                 onClick={() => setShowLineItemForm(!showLineItemForm)}
                 className="flex items-center gap-1 text-[10px] text-brand-400 hover:text-brand-300"
               >
@@ -756,14 +756,14 @@ export default function InvoicesPage() {
                 />
               </div>
               <div className="flex items-center gap-2">
-                <button
+                <button type="button"
                   onClick={handleAddLineItem}
                   disabled={lineItemSaving}
                   className="flex-1 flex items-center justify-center gap-1 bg-brand-600 hover:bg-brand-500 text-white text-[10px] font-bold py-1 rounded-sm disabled:opacity-50"
                 >
                   {lineItemSaving ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />} Add Item
                 </button>
-                <button onClick={() => setShowLineItemForm(false)} className="text-rmpg-500 hover:text-white text-[10px]">Cancel</button>
+                <button type="button" onClick={() => setShowLineItemForm(false)} className="text-rmpg-500 hover:text-white text-[10px]">Cancel</button>
               </div>
             </div>
           )}
@@ -796,7 +796,7 @@ export default function InvoicesPage() {
                       </td>
                       {canEdit && inv.status === 'draft' && (
                         <td className="py-1 pl-1">
-                          <button
+                          <button type="button"
                             onClick={() => handleDeleteLineItem(item.id)}
                             disabled={actionLoading === `delitem-${item.id}`}
                             className="text-rmpg-600 hover:text-red-400 transition-colors"
@@ -820,7 +820,7 @@ export default function InvoicesPage() {
           <div className="flex items-center justify-between mb-2">
             <div className="text-[10px] uppercase tracking-wider text-brand-400 font-bold">Payments ({inv.payments?.length || 0})</div>
             {canEdit && inv.status !== 'draft' && inv.status !== 'void' && inv.status !== 'cancelled' && (
-              <button
+              <button type="button"
                 onClick={() => setShowPaymentForm(!showPaymentForm)}
                 className="flex items-center gap-1 text-[10px] text-green-400 hover:text-green-300"
               >
@@ -887,14 +887,14 @@ export default function InvoicesPage() {
                 className="w-full bg-[#141e2b] border border-[#1e3048] rounded-sm px-2 py-1 text-xs text-white"
               />
               <div className="flex items-center gap-2">
-                <button
+                <button type="button"
                   onClick={handleAddPayment}
                   disabled={paymentSaving}
                   className="flex-1 flex items-center justify-center gap-1 bg-green-700 hover:bg-green-600 text-white text-[10px] font-bold py-1 rounded-sm disabled:opacity-50"
                 >
                   {paymentSaving ? <Loader2 size={10} className="animate-spin" /> : <CreditCard size={10} />} Record Payment
                 </button>
-                <button onClick={() => setShowPaymentForm(false)} className="text-rmpg-500 hover:text-white text-[10px]">Cancel</button>
+                <button type="button" onClick={() => setShowPaymentForm(false)} className="text-rmpg-500 hover:text-white text-[10px]">Cancel</button>
               </div>
             </div>
           )}
@@ -917,7 +917,7 @@ export default function InvoicesPage() {
                   <div className="flex items-center gap-2">
                     <span className="text-rmpg-600 text-[10px]">{pay.recorded_by_name}</span>
                     {canEdit && (
-                      <button
+                      <button type="button"
                         onClick={() => handleDeletePayment(pay.id)}
                         disabled={actionLoading === `delpay-${pay.id}`}
                         className="text-rmpg-600 hover:text-red-400 transition-colors"
@@ -1012,7 +1012,7 @@ export default function InvoicesPage() {
                   />
                 </div>
                 {canEdit && (
-                  <button
+                  <button type="button"
                     onClick={() => setMode('create')}
                     className="flex items-center gap-1 bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold px-3 py-1.5 rounded-sm"
                   >
@@ -1084,11 +1084,11 @@ export default function InvoicesPage() {
         </div>
         <StatsBar />
         <div className="flex items-center gap-2">
-          <button onClick={() => { fetchInvoices(); fetchStats(); }} className="text-rmpg-400 hover:text-white p-1" title="Refresh">
+          <button type="button" onClick={() => { fetchInvoices(); fetchStats(); }} className="text-rmpg-400 hover:text-white p-1" title="Refresh">
             <RefreshCw size={12} />
           </button>
           {canEdit && (
-            <button
+            <button type="button"
               onClick={() => { setMode('create'); setSelectedInvoice(null); }}
               className="flex items-center gap-1 bg-brand-600 hover:bg-brand-500 text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-sm transition-colors"
             >
@@ -1141,7 +1141,7 @@ export default function InvoicesPage() {
           className="bg-[#141e2b] border border-[#1e3048] rounded-sm px-2 py-1 text-[11px] text-white focus:outline-none"
         />
         {(filterStatus || filterClientId || dateFrom || dateTo || searchQuery) && (
-          <button
+          <button type="button"
             onClick={() => { setFilterStatus(''); setFilterClientId(''); setDateFrom(''); setDateTo(''); setSearchQuery(''); setPage(1); }}
             className="text-rmpg-500 hover:text-white text-[10px] flex items-center gap-0.5"
           >
@@ -1154,7 +1154,7 @@ export default function InvoicesPage() {
       {error && (
         <div className="px-3 py-1.5 bg-red-900/30 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2">
           <AlertTriangle size={12} /> {error}
-          <button onClick={() => setError('')} className="ml-auto text-red-400 hover:text-white"><X size={12} /></button>
+          <button type="button" onClick={() => setError('')} className="ml-auto text-red-400 hover:text-white"><X size={12} /></button>
         </div>
       )}
 
@@ -1195,14 +1195,14 @@ export default function InvoicesPage() {
             <div className="flex items-center justify-between px-3 py-1 border-t border-[#1e3048] text-[10px] text-rmpg-500 flex-shrink-0">
               <span>Page {page} of {totalPages}</span>
               <div className="flex items-center gap-1">
-                <button
+                <button type="button"
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={page <= 1}
                   className="p-0.5 hover:text-white disabled:opacity-30"
                 >
                   <ChevronLeft size={12} />
                 </button>
-                <button
+                <button type="button"
                   onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                   disabled={page >= totalPages}
                   className="p-0.5 hover:text-white disabled:opacity-30"

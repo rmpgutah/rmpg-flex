@@ -25,7 +25,7 @@ export default function ErrorRetry({
           </div>
         </div>
         <p className="text-xs text-red-400 mb-4 leading-relaxed">{message}</p>
-        <button
+        <button type="button"
           onClick={onRetry}
           disabled={retrying}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-red-900/30 hover:bg-red-900/50 border border-red-700/40 text-red-300 hover:text-red-200 transition-colors disabled:opacity-50"

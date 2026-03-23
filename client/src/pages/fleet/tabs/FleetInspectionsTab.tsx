@@ -92,7 +92,7 @@ export default function FleetInspectionsTab({ inspections, onNewInspection, onEd
             </span>
           )}
         </h3>
-        <button className="toolbar-btn toolbar-btn-primary" onClick={onNewInspection}>
+        <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={onNewInspection}>
           <Plus className="w-3 h-3" /> New Inspection
         </button>
       </div>
@@ -107,7 +107,7 @@ export default function FleetInspectionsTab({ inspections, onNewInspection, onEd
           <p className="text-[9px] text-rmpg-600 mt-1 max-w-[260px] mx-auto">
             Perform pre-trip, post-trip, monthly, or annual inspections to maintain compliance and track vehicle condition.
           </p>
-          <button className="toolbar-btn toolbar-btn-primary mt-3" onClick={onNewInspection}>
+          <button type="button" className="toolbar-btn toolbar-btn-primary mt-3" onClick={onNewInspection}>
             <Plus className="w-3 h-3" /> Start First Inspection
           </button>
         </div>
@@ -154,7 +154,7 @@ export default function FleetInspectionsTab({ inspections, onNewInspection, onEd
                   {(onEditInspection || onDeleteInspection) && (
                     <div className="flex items-center gap-1 mr-1">
                       {onEditInspection && (
-                        <button
+                        <button type="button"
                           className="p-1 text-rmpg-500 hover:text-brand-400 hover:bg-rmpg-700 rounded-sm transition-colors"
                           onClick={(e) => { e.stopPropagation(); onEditInspection(insp); }}
                           title="Edit inspection"
@@ -163,7 +163,7 @@ export default function FleetInspectionsTab({ inspections, onNewInspection, onEd
                         </button>
                       )}
                       {onDeleteInspection && (
-                        <button
+                        <button type="button"
                           className="p-1 text-rmpg-500 hover:text-red-400 hover:bg-red-900/20 rounded-sm transition-colors"
                           onClick={(e) => { e.stopPropagation(); onDeleteInspection(insp); }}
                           title="Delete inspection"

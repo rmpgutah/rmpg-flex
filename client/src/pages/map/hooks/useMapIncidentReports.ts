@@ -182,8 +182,9 @@ export function useMapIncidentReports(opts: UseMapIncidentReportsOptions): UseMa
         renderMarkers(arr);
         setLoading(false);
       })
-      .catch(() => {
+      .catch((err) => {
         if (cancelled) return;
+        console.warn('[useMapIncidentReports] Incident fetch failed:', err);
         setIncidents([]);
         clearMarkers();
         setLoading(false);

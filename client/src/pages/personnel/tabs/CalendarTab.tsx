@@ -71,9 +71,9 @@ export default function CalendarTab() {
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-bold text-white flex items-center gap-2"><Calendar className="w-4 h-4" /> Schedule Calendar</h2>
         <div className="flex items-center gap-2">
-          <button onClick={prevMonth} className="toolbar-btn p-1"><ChevronLeft className="w-3.5 h-3.5" /></button>
+          <button type="button" onClick={prevMonth} className="toolbar-btn p-1"><ChevronLeft className="w-3.5 h-3.5" /></button>
           <span className="text-xs text-white font-bold w-36 text-center">{MONTHS[month - 1]} {year}</span>
-          <button onClick={nextMonth} className="toolbar-btn p-1"><ChevronRight className="w-3.5 h-3.5" /></button>
+          <button type="button" onClick={nextMonth} className="toolbar-btn p-1"><ChevronRight className="w-3.5 h-3.5" /></button>
         </div>
       </div>
 

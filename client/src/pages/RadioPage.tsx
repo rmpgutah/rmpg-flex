@@ -355,7 +355,7 @@ export default function RadioPage() {
                   </span>
                   {/* Call button — only show for other users, not ourselves */}
                   {!isMe && !isInCall && (
-                    <button
+                    <button type="button"
                       onClick={() => startCall(u.userId)}
                       className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 p-0.5 text-blue-400 hover:text-blue-300"
                       title={`Call ${u.fullName || u.username}`}
@@ -380,7 +380,7 @@ export default function RadioPage() {
           }}
         >
           <div className="flex items-center gap-1">
-            <button
+            <button type="button"
               onClick={() => setShowHistory(false)}
               className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-mono font-bold tracking-wider transition-colors"
               style={{
@@ -390,7 +390,7 @@ export default function RadioPage() {
             >
               <Radio style={{ width: 10, height: 10 }} /> LIVE
             </button>
-            <button
+            <button type="button"
               onClick={() => setShowHistory(true)}
               className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-mono font-bold tracking-wider transition-colors"
               style={{
@@ -402,7 +402,7 @@ export default function RadioPage() {
             </button>
           </div>
           {showHistory && (
-            <button
+            <button type="button"
               onClick={exportHistoryCsv}
               className="text-[8px] text-rmpg-500 hover:text-white flex items-center gap-0.5"
               title="Export CSV"
@@ -516,7 +516,7 @@ export default function RadioPage() {
                     )}
                   </div>
                   {entry.audio_file && (
-                    <button
+                    <button type="button"
                       onClick={() => togglePlayback(entry.id)}
                       className="flex-shrink-0 mt-px p-0.5 rounded-sm hover:bg-rmpg-800 transition-colors"
                       title={playingId === entry.id ? 'Stop playback' : 'Play recording'}
@@ -612,7 +612,7 @@ export default function RadioPage() {
               </div>
             )}
           </div>
-          <button
+          <button type="button"
             onClick={dismissPage}
             className="text-[9px] font-mono text-blue-400 hover:text-white px-2 py-0.5"
             style={{ border: '1px solid #3b82f680' }}
@@ -643,7 +643,7 @@ export default function RadioPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            <button
+            <button type="button"
               onClick={toggleMute}
               className="flex items-center gap-1 px-2 py-1 text-[10px] font-mono font-bold transition-colors"
               style={{
@@ -655,7 +655,7 @@ export default function RadioPage() {
               {callMuted ? <VolumeX style={{ width: 12, height: 12 }} /> : <Mic style={{ width: 12, height: 12 }} />}
               {callMuted ? 'UNMUTE' : 'MUTE'}
             </button>
-            <button
+            <button type="button"
               onClick={endCall}
               className="flex items-center gap-1 px-2 py-1 text-[10px] font-mono font-bold text-red-400 hover:text-red-300 transition-colors"
               style={{ border: '1px solid #ef4444', background: 'rgba(239, 68, 68, 0.1)' }}
@@ -681,7 +681,7 @@ export default function RadioPage() {
           <span className="text-xs font-mono text-blue-300">
             Calling <strong>{ringingTarget.name}</strong>...
           </span>
-          <button
+          <button type="button"
             onClick={endCall}
             className="ml-auto text-[10px] font-mono text-red-400 hover:text-red-300 px-2 py-0.5"
             style={{ border: '1px solid #ef4444' }}
@@ -712,7 +712,7 @@ export default function RadioPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            <button
+            <button type="button"
               onClick={() => acceptCall(incomingCall.callId)}
               className="flex items-center gap-1 px-3 py-1.5 text-xs font-mono font-bold text-white transition-colors"
               style={{
@@ -723,7 +723,7 @@ export default function RadioPage() {
               <Phone style={{ width: 14, height: 14 }} />
               ACCEPT
             </button>
-            <button
+            <button type="button"
               onClick={() => declineCall(incomingCall.callId)}
               className="flex items-center gap-1 px-3 py-1.5 text-xs font-mono font-bold text-white transition-colors"
               style={{
@@ -775,7 +775,7 @@ export default function RadioPage() {
             {/* Channel group presets */}
             <div className="flex items-center justify-center gap-1 mb-4">
               {CHANNEL_GROUPS.map(g => (
-                <button
+                <button type="button"
                   key={g.label}
                   onClick={() => handleGroupChange(g.label)}
                   className="px-3 py-1 text-[10px] font-mono font-bold uppercase tracking-wider transition-all border"
@@ -793,7 +793,7 @@ export default function RadioPage() {
             {/* Channel grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {filteredChannels.map((ch) => (
-                <button
+                <button type="button"
                   key={ch.id}
                   onClick={() => joinChannel(ch.id)}
                   disabled={!isConnected}
@@ -845,7 +845,7 @@ export default function RadioPage() {
               {RADIO_CHANNELS.map((ch) => {
                 const isActive = ch.id === currentChannel;
                 return (
-                  <button
+                  <button type="button"
                     key={ch.id}
                     onClick={() => {
                       if (!isActive) joinChannel(ch.id);
@@ -869,7 +869,7 @@ export default function RadioPage() {
 
             {/* Right — leave + scan buttons */}
             <div className="flex items-center gap-1 ml-2">
-              <button
+              <button type="button"
                 onClick={leaveChannel}
                 className="flex items-center gap-1 px-2 py-1 text-[10px] font-mono font-bold text-rmpg-400 hover:text-red-400 transition-colors"
                 style={{ border: '1px solid #2a3e58' }}
@@ -877,7 +877,7 @@ export default function RadioPage() {
                 LEAVE
               </button>
               {/* Scan toggle */}
-              <button
+              <button type="button"
                 onClick={() => {
                   if (scanActive) {
                     stopScan();
@@ -975,7 +975,7 @@ export default function RadioPage() {
               </div>
 
               {/* PTT Button */}
-              <button
+              <button type="button"
                 ref={pttRef}
                 onMouseDown={() => startTransmit()}
                 onMouseUp={() => stopTransmit()}
@@ -1090,7 +1090,7 @@ export default function RadioPage() {
 
               {/* Floating sidebar toggle on mobile */}
               {isMobile && currentChannel && (
-                <button
+                <button type="button"
                   onClick={() => setShowMobileSidebar(true)}
                   className="absolute bottom-4 right-4 flex items-center gap-1 px-3 py-2 text-[10px] font-mono font-bold z-30"
                   style={{
@@ -1114,7 +1114,7 @@ export default function RadioPage() {
                 >
                   <div className="flex items-center justify-between px-3 py-2" style={{ borderBottom: '1px solid #1e3048' }}>
                     <span className="text-[10px] font-mono font-bold text-rmpg-400 tracking-wider">CHANNEL INFO</span>
-                    <button
+                    <button type="button"
                       onClick={() => setShowMobileSidebar(false)}
                       className="text-[10px] font-mono text-rmpg-400 hover:text-white px-2 py-1"
                       style={{ border: '1px solid #2a3e58' }}

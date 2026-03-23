@@ -168,7 +168,7 @@ export default function AndroidUpdateChecker() {
               Update Available
             </span>
           </div>
-          <button
+          <button type="button"
             onClick={() => setDismissed(true)}
             className="p-1 text-rmpg-400 hover:text-white hover:bg-rmpg-700 transition-colors"
             aria-label="Dismiss"
@@ -208,7 +208,7 @@ export default function AndroidUpdateChecker() {
           )}
 
           {/* Download button */}
-          <button
+          <button type="button"
             onClick={handleDownload}
             disabled={downloading}
             className="w-full flex items-center justify-center gap-2 py-3 px-4 font-bold text-sm uppercase tracking-wider transition-all"
@@ -235,7 +235,7 @@ export default function AndroidUpdateChecker() {
           </button>
 
           {/* Dismiss */}
-          <button
+          <button type="button"
             onClick={() => setDismissed(true)}
             className="w-full text-center text-xs text-rmpg-400 hover:text-rmpg-200 py-1 transition-colors"
           >

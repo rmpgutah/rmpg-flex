@@ -126,7 +126,7 @@ export function useShiftPlanning() {
       setOfficers(activeOfficers);
       setUnits(unitData as UnitOption[]);
     } catch (err) {
-      console.error('[ShiftPlanning] Failed to fetch personnel:', err);
+      console.warn('[useShiftPlanning] Failed to fetch personnel:', err);
     }
   }, []);
 
@@ -315,7 +315,7 @@ export function useShiftPlanning() {
         body: JSON.stringify(plan),
       });
     } catch (err) {
-      console.error('[ShiftPlanning] Save to server failed:', err);
+      console.warn('[useShiftPlanning] Save to server failed:', err);
       throw err;
     }
   }, []);
@@ -331,8 +331,8 @@ export function useShiftPlanning() {
           return [...data, ...localOnly];
         });
       }
-    } catch {
-      // Server endpoint might not exist yet — use localStorage fallback
+    } catch (err) {
+      console.warn('[useShiftPlanning] Server plans fetch failed, using localStorage fallback:', err);
     }
   }, []);
 

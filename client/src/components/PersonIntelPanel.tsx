@@ -201,7 +201,7 @@ export default function PersonIntelPanel() {
             />
           </div>
           <div className="flex items-end">
-            <button
+            <button type="button"
               onClick={search}
               disabled={loading || !firstName.trim() || !lastName.trim()}
               className="btn-primary w-full flex items-center justify-center gap-2 h-[34px]"
@@ -237,7 +237,7 @@ export default function PersonIntelPanel() {
                 return (
                   <div key={result.utahPersonId} className="bg-surface-raised border border-rmpg-600 rounded-sm overflow-hidden">
                     {/* Card header */}
-                    <button
+                    <button type="button"
                       onClick={() => toggleCard(result.utahPersonId)}
                       className="w-full flex items-center gap-3 px-4 py-3 hover:bg-rmpg-700/30 transition-colors text-left"
                     >
@@ -305,7 +305,7 @@ export default function PersonIntelPanel() {
                                       {isIngested ? (
                                         <span className="text-green-400 text-[9px] flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Ingested</span>
                                       ) : (
-                                        <button
+                                        <button type="button"
                                           onClick={() => ingestWarrant(w, result)}
                                           disabled={isIngesting}
                                           className="text-[9px] text-brand-400 hover:text-brand-300 flex items-center gap-1"
@@ -405,7 +405,7 @@ export default function PersonIntelPanel() {
             onChange={(e) => setAliasQuery(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') searchAliases(); }}
           />
-          <button onClick={searchAliases} disabled={aliasLoading || aliasQuery.trim().length < 2} className="toolbar-btn text-[10px]">
+          <button type="button" onClick={searchAliases} disabled={aliasLoading || aliasQuery.trim().length < 2} className="toolbar-btn text-[10px]">
             {aliasLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
             Search
           </button>
@@ -427,7 +427,7 @@ export default function PersonIntelPanel() {
       <div className="mt-4 pt-4 border-t border-rmpg-600">
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-bold text-rmpg-300 uppercase">Duplicate Detection</span>
-          <button
+          <button type="button"
             onClick={() => { setShowDuplicates(!showDuplicates); if (!showDuplicates) fetchDuplicates(); }}
             className="toolbar-btn text-[9px]"
           >
@@ -455,14 +455,14 @@ export default function PersonIntelPanel() {
                     {d.dob2 && <span className="text-rmpg-500 ml-1">({d.dob2})</span>}
                   </div>
                   <div className="flex gap-2 mt-2">
-                    <button
+                    <button type="button"
                       onClick={() => handleMerge(d.id1, d.id2)}
                       disabled={merging}
                       className="toolbar-btn text-[8px] bg-green-900/30 text-green-400 border-green-700/30"
                     >
                       Keep #{d.id1}, Merge #{d.id2}
                     </button>
-                    <button
+                    <button type="button"
                       onClick={() => handleMerge(d.id2, d.id1)}
                       disabled={merging}
                       className="toolbar-btn text-[8px] bg-blue-900/30 text-blue-400 border-blue-700/30"

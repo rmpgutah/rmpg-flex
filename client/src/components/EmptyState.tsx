@@ -23,7 +23,7 @@ export default function EmptyState({ icon: Icon, title, description, action, cla
         <p className="text-xs text-rmpg-500 max-w-xs">{description}</p>
       )}
       {action && (
-        <button
+        <button type="button"
           onClick={action.onClick}
           className="mt-4 toolbar-btn toolbar-btn-primary text-xs"
         >

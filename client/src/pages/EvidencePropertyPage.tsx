@@ -299,7 +299,7 @@ export default function EvidencePropertyPage() {
       {/* ── Left Panel: Evidence List ── */}
       <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[420px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Evidence / Property Room" icon={Package}>
-          <button
+          <button type="button"
             onClick={() => setNewEvidenceOpen(true)}
             className="toolbar-btn toolbar-btn-primary"
           >
@@ -311,7 +311,7 @@ export default function EvidencePropertyPage() {
         {fetchError && (
           <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
             <span>⚠ {fetchError}</span>
-            <button onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+            <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
           </div>
         )}
 
@@ -356,7 +356,7 @@ export default function EvidencePropertyPage() {
           {/* Status filter chips */}
           <div className="flex gap-1 flex-wrap">
             {STATUS_OPTIONS.map(opt => (
-              <button
+              <button type="button"
                 key={opt.value}
                 onClick={() => { setFilterStatus(opt.value); setPage(1); }}
                 className={`text-[9px] px-2 py-0.5 transition-colors ${
@@ -381,13 +381,13 @@ export default function EvidencePropertyPage() {
             <div className="flex flex-col items-center justify-center py-12 text-rmpg-500">
               <Package className="w-8 h-8 mb-2 text-rmpg-600" />
               <p className="text-xs">No evidence items found</p>
-              <button onClick={() => setNewEvidenceOpen(true)} className="toolbar-btn text-[10px] mt-3 text-brand-400">
+              <button type="button" onClick={() => setNewEvidenceOpen(true)} className="toolbar-btn text-[10px] mt-3 text-brand-400">
                 <Plus style={{ width: 10, height: 10 }} /> Create Evidence Item
               </button>
             </div>
           ) : (
             items.map(item => (
-              <button
+              <button type="button"
                 key={item.id}
                 onClick={() => { setSelected(item); setDetailTab('info'); }}
                 className={`w-full text-left px-3 py-2.5 border-b border-rmpg-800/60 transition-colors ${
@@ -431,13 +431,13 @@ export default function EvidencePropertyPage() {
         {/* Pagination */}
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-3 py-1.5 border-t border-rmpg-700 bg-surface-base">
-            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="text-[10px] text-rmpg-400 disabled:opacity-30 hover:text-white transition-colors">
+            <button type="button" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="text-[10px] text-rmpg-400 disabled:opacity-30 hover:text-white transition-colors">
               ← Prev
             </button>
             <span className="text-[9px] font-mono text-rmpg-500">
               Page {page} / {totalPages} &bull; {totalCount} items
             </span>
-            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="text-[10px] text-rmpg-400 disabled:opacity-30 hover:text-white transition-colors">
+            <button type="button" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="text-[10px] text-rmpg-400 disabled:opacity-30 hover:text-white transition-colors">
               Next →
             </button>
           </div>
@@ -449,7 +449,7 @@ export default function EvidencePropertyPage() {
         {selected ? (
           <>
             <PanelTitleBar title={selected.evidence_number || `Evidence #${selected.id}`} icon={Box}>
-              <button
+              <button type="button"
                 onClick={() => { setChainAction('check_in'); setChainLocation(''); setChainNotes(''); setChainModalOpen(true); }}
                 className="toolbar-btn toolbar-btn-primary"
               >
@@ -467,7 +467,7 @@ export default function EvidencePropertyPage() {
               ]).map(tab => {
                 const Icon = tab.icon;
                 return (
-                  <button
+                  <button type="button"
                     key={tab.id}
                     onClick={() => setDetailTab(tab.id)}
                     className={`flex items-center gap-1.5 px-4 py-2 text-[10px] font-bold uppercase tracking-wider transition-colors ${
@@ -563,11 +563,11 @@ export default function EvidencePropertyPage() {
                         </div>
                         {selected.release_reason && <div className="text-[10px] text-rmpg-400">Reason: {selected.release_reason}</div>}
                         <div className="flex gap-1">
-                          <button onClick={() => handleApproveRelease('approve')} disabled={releaseSubmitting}
+                          <button type="button" onClick={() => handleApproveRelease('approve')} disabled={releaseSubmitting}
                             className="toolbar-btn text-green-400 border-green-700/50 hover:bg-green-900/30">
                             <CheckCircle style={{ width: 11, height: 11 }} /> Approve Release
                           </button>
-                          <button onClick={() => handleApproveRelease('deny')} disabled={releaseSubmitting}
+                          <button type="button" onClick={() => handleApproveRelease('deny')} disabled={releaseSubmitting}
                             className="toolbar-btn text-red-400 border-red-700/50 hover:bg-red-900/30">
                             <X style={{ width: 11, height: 11 }} /> Deny
                           </button>
@@ -581,7 +581,7 @@ export default function EvidencePropertyPage() {
                     ) : selected.status !== 'released' && selected.status !== 'disposed' ? (
                       <div>
                         {!releaseOpen ? (
-                          <button onClick={() => setReleaseOpen(true)} className="toolbar-btn text-[10px]">
+                          <button type="button" onClick={() => setReleaseOpen(true)} className="toolbar-btn text-[10px]">
                             <PackageOpen style={{ width: 10, height: 10 }} /> Request Release
                           </button>
                         ) : (
@@ -591,11 +591,11 @@ export default function EvidencePropertyPage() {
                             <textarea value={releaseReason} onChange={e => setReleaseReason(e.target.value)} placeholder="Reason for release..."
                               rows={2} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
                             <div className="flex gap-1">
-                              <button onClick={handleRequestRelease} disabled={releaseSubmitting || !releaseReason.trim()} className="toolbar-btn toolbar-btn-primary">
+                              <button type="button" onClick={handleRequestRelease} disabled={releaseSubmitting || !releaseReason.trim()} className="toolbar-btn toolbar-btn-primary">
                                 {releaseSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle style={{ width: 11, height: 11 }} />}
                                 Submit Request
                               </button>
-                              <button onClick={() => setReleaseOpen(false)} className="toolbar-btn">Cancel</button>
+                              <button type="button" onClick={() => setReleaseOpen(false)} className="toolbar-btn">Cancel</button>
                             </div>
                           </div>
                         )}
@@ -614,7 +614,7 @@ export default function EvidencePropertyPage() {
                     <div className="flex flex-col items-center justify-center py-12 text-rmpg-500">
                       <ArrowRightLeft className="w-8 h-8 mb-2 text-rmpg-600" />
                       <p className="text-xs">No chain of custody entries yet</p>
-                      <button
+                      <button type="button"
                         onClick={() => { setChainAction('check_in'); setChainLocation(''); setChainNotes(''); setChainModalOpen(true); }}
                         className="toolbar-btn text-[10px] mt-3 text-brand-400"
                       >
@@ -711,7 +711,7 @@ export default function EvidencePropertyPage() {
                               </span>
                             </div>
                           </div>
-                          <button
+                          <button type="button"
                             onClick={() => setPlayingVideo(vid)}
                             className="toolbar-btn toolbar-btn-primary px-2.5 py-1.5 flex items-center gap-1"
                           >
@@ -738,14 +738,14 @@ export default function EvidencePropertyPage() {
 
       {/* ── Chain of Custody Action Modal ── */}
       {chainModalOpen && selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setChainModalOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" role="dialog" aria-modal="true" onClick={() => setChainModalOpen(false)}>
           <div className="bg-surface-base border border-rmpg-700 rounded-sm shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700 bg-surface-raised">
               <div className="flex items-center gap-2">
                 <ArrowRightLeft className="w-4 h-4 text-brand-400" />
                 <h2 className="text-sm font-bold text-rmpg-100">Record Chain of Custody Action</h2>
               </div>
-              <button onClick={() => setChainModalOpen(false)} className="toolbar-btn p-1">
+              <button type="button" onClick={() => setChainModalOpen(false)} className="toolbar-btn p-1">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -787,8 +787,8 @@ export default function EvidencePropertyPage() {
               </div>
 
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
-                <button onClick={() => setChainModalOpen(false)} className="toolbar-btn text-xs px-4 py-1.5">Cancel</button>
-                <button onClick={handleChainAction} disabled={chainSubmitting} className="toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5">
+                <button type="button" onClick={() => setChainModalOpen(false)} className="toolbar-btn text-xs px-4 py-1.5">Cancel</button>
+                <button type="button" onClick={handleChainAction} disabled={chainSubmitting} className="toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5">
                   {chainSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 11, height: 11 }} />}
                   Record Action
                 </button>
@@ -800,14 +800,14 @@ export default function EvidencePropertyPage() {
 
       {/* ── New Evidence Modal ── */}
       {newEvidenceOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setNewEvidenceOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" role="dialog" aria-modal="true" onClick={() => setNewEvidenceOpen(false)}>
           <div className="bg-surface-base border border-rmpg-700 rounded-sm shadow-xl w-full max-w-lg mx-4 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700 bg-surface-raised">
               <div className="flex items-center gap-2">
                 <Plus className="w-4 h-4 text-brand-400" />
                 <h2 className="text-sm font-bold text-rmpg-100">New Evidence Item</h2>
               </div>
-              <button onClick={() => setNewEvidenceOpen(false)} className="toolbar-btn p-1">
+              <button type="button" onClick={() => setNewEvidenceOpen(false)} className="toolbar-btn p-1">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -935,8 +935,8 @@ export default function EvidencePropertyPage() {
               </div>
 
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
-                <button onClick={() => setNewEvidenceOpen(false)} className="toolbar-btn text-xs px-4 py-1.5">Cancel</button>
-                <button
+                <button type="button" onClick={() => setNewEvidenceOpen(false)} className="toolbar-btn text-xs px-4 py-1.5">Cancel</button>
+                <button type="button"
                   onClick={handleCreateEvidence}
                   disabled={newEvidenceSubmitting || !newEvidence.description || !newEvidence.evidence_type}
                   className="toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5"

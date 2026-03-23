@@ -65,8 +65,9 @@ export function useMapEnforcementClusters(
           setLoading(false);
         }
       })
-      .catch(() => {
+      .catch((err) => {
         if (!cancelled) {
+          console.warn('[useMapEnforcementClusters] Enforcement data fetch failed:', err);
           setClusters([]);
           setLoading(false);
         }

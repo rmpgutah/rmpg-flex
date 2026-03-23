@@ -197,8 +197,11 @@ export function useMapFieldInterviews(
         renderMarkers(records);
         setLoading(false);
       })
-      .catch(() => {
-        if (!cancelled) setLoading(false);
+      .catch((err) => {
+        if (!cancelled) {
+          console.warn('[useMapFieldInterviews] Field interviews fetch failed:', err);
+          setLoading(false);
+        }
       });
 
     return () => { cancelled = true; };

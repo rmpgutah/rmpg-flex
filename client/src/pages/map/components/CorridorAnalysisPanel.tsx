@@ -68,7 +68,7 @@ export default function CorridorAnalysisPanel({
             Corridor Analysis
           </span>
         </div>
-        <button
+        <button type="button"
           onClick={onClose}
           className="p-0.5 rounded-sm hover:bg-rmpg-700/50 text-rmpg-400 hover:text-rmpg-200 transition-colors"
         >
@@ -85,7 +85,7 @@ export default function CorridorAnalysisPanel({
           </h3>
 
           <div className="flex gap-1.5">
-            <button
+            <button type="button"
               onClick={onAnalyzeCorridor}
               disabled={loading}
               className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-sm text-[9px] font-mono font-medium bg-blue-600/20 border border-blue-500/30 text-blue-300 hover:bg-blue-600/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
@@ -94,7 +94,7 @@ export default function CorridorAnalysisPanel({
               Analyze Route
             </button>
             {corridorData && (
-              <button
+              <button type="button"
                 onClick={onClearCorridor}
                 className="px-2 py-1.5 rounded-sm text-[9px] font-mono font-medium bg-rmpg-700/40 border border-rmpg-700 text-rmpg-400 hover:bg-rmpg-700/60 transition-colors"
               >
@@ -194,7 +194,7 @@ export default function CorridorAnalysisPanel({
                 placeholder="0-360°"
               />
             </div>
-            <button
+            <button type="button"
               onClick={handlePursuitProject}
               disabled={loading}
               className="flex items-center gap-1 px-2 py-1.5 rounded-sm text-[9px] font-mono font-medium bg-amber-600/20 border border-amber-500/30 text-amber-300 hover:bg-amber-600/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
@@ -209,7 +209,7 @@ export default function CorridorAnalysisPanel({
               <span className="text-[9px] font-mono text-rmpg-400">
                 HDG {pursuitProjection.heading}° from {pursuitProjection.lat.toFixed(4)}, {pursuitProjection.lng.toFixed(4)}
               </span>
-              <button
+              <button type="button"
                 onClick={onClearPursuit}
                 className="px-1.5 py-0.5 rounded-sm text-[9px] font-mono text-rmpg-400 bg-rmpg-700/40 border border-rmpg-700 hover:bg-rmpg-700/60 transition-colors"
               >
@@ -230,7 +230,7 @@ export default function CorridorAnalysisPanel({
           </h3>
 
           <div className="flex gap-1.5">
-            <button
+            <button type="button"
               onClick={onShowEscapeRoutes}
               disabled={loading}
               className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-sm text-[9px] font-mono font-medium bg-emerald-600/20 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-600/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
@@ -238,7 +238,7 @@ export default function CorridorAnalysisPanel({
               {loading ? <Loader2 size={10} className="animate-spin" /> : <Zap size={10} />}
               Show Escape Routes
             </button>
-            <button
+            <button type="button"
               onClick={onClearEscapeRoutes}
               className="px-2 py-1.5 rounded-sm text-[9px] font-mono font-medium bg-rmpg-700/40 border border-rmpg-700 text-rmpg-400 hover:bg-rmpg-700/60 transition-colors"
             >

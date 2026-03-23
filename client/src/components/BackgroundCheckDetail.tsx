@@ -63,7 +63,7 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
   } catch { /* */ }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={onClose}>
       <div
         className="bg-surface-base border border-rmpg-700 rounded-sm shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col"
         onClick={e => e.stopPropagation()}
@@ -79,7 +79,7 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
               CONFIDENTIAL
             </span>
           </div>
-          <button onClick={onClose} className="text-rmpg-500 hover:text-rmpg-300">
+          <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-rmpg-300" aria-label="Close" title="Close">
             <X className="w-4 h-4" />
           </button>
         </div>

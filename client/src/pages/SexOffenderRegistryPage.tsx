@@ -368,7 +368,7 @@ export default function SexOffenderRegistryPage() {
               const status = STATUS_CONFIG[r.registration_status] || STATUS_CONFIG.compliant;
               const isSelected = selected?.id === r.id;
               return (
-                <button
+                <button type="button"
                   key={r.id}
                   onClick={() => setSelected(r)}
                   className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-rmpg-800/30"
@@ -439,18 +439,18 @@ export default function SexOffenderRegistryPage() {
         >
           <span>{(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalRecords)} of {totalRecords}</span>
           <div className="flex items-center gap-1">
-            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+            <button type="button" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
               className="toolbar-btn p-0.5 disabled:opacity-30"><ChevronLeft size={12} /></button>
             {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
               const p = page <= 3 ? i + 1 : page + i - 2;
               if (p < 1 || p > totalPages) return null;
               return (
-                <button key={p} onClick={() => setPage(p)}
+                <button type="button" key={p} onClick={() => setPage(p)}
                   className={`px-1.5 py-0.5 rounded-sm text-[10px] ${p === page ? 'bg-brand-500/30 text-brand-300 font-bold' : 'hover:bg-rmpg-800 text-rmpg-400'}`}
                 >{p}</button>
               );
             })}
-            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+            <button type="button" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
               className="toolbar-btn p-0.5 disabled:opacity-30"><ChevronRight size={12} /></button>
           </div>
         </div>
@@ -464,7 +464,7 @@ export default function SexOffenderRegistryPage() {
   const rightPanel = selected ? (
     <div className="h-full overflow-y-auto" style={{ background: '#0d1520' }}>
       {/* Close button */}
-      <button
+      <button type="button"
         onClick={() => setSelected(null)}
         className="absolute top-2 right-2 z-10 toolbar-btn p-1"
         title="Close"
@@ -640,7 +640,7 @@ export default function SexOffenderRegistryPage() {
           <Field label="Expires" value={formatDate(selected.expiration_date)} />
         </div>
         <div className="flex gap-2 mt-3">
-          <button
+          <button type="button"
             onClick={() => handleVerify(selected)}
             disabled={verifying}
             className="toolbar-btn px-3 py-1 text-[11px] flex items-center gap-1"
@@ -649,7 +649,7 @@ export default function SexOffenderRegistryPage() {
             {verifying ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />}
             Verify Compliant
           </button>
-          <button
+          <button type="button"
             onClick={() => handleVerify(selected, 'non_compliant')}
             disabled={verifying}
             className="toolbar-btn px-3 py-1 text-[11px] flex items-center gap-1"
@@ -734,13 +734,13 @@ export default function SexOffenderRegistryPage() {
 
       {/* Quick Actions */}
       <div className="p-3 flex gap-2 flex-wrap" style={{ borderTop: '1px solid #1e3048' }}>
-        <button
+        <button type="button"
           onClick={() => { setEditingRecord(selected); setShowAddModal(true); }}
           className="toolbar-btn px-3 py-1.5 text-[11px] flex items-center gap-1.5"
         >
           <Edit2 size={11} /> Edit Entry
         </button>
-        <button
+        <button type="button"
           className="toolbar-btn px-3 py-1.5 text-[11px] flex items-center gap-1.5"
           onClick={() => { setShowLinkPerson(true); setLinkSearch(''); setLinkResults([]); }}
         >
@@ -770,13 +770,13 @@ export default function SexOffenderRegistryPage() {
         icon={ShieldAlert}
       >
         <div className="flex items-center gap-2">
-          <button
+          <button type="button"
             onClick={() => { setEditingRecord(null); setShowAddModal(true); }}
             className="toolbar-btn px-2.5 py-1 text-[11px] flex items-center gap-1.5"
           >
             <Plus size={12} /> Add Entry
           </button>
-          <button
+          <button type="button"
             onClick={() => setShowImportModal(true)}
             className="toolbar-btn px-2.5 py-1 text-[11px] flex items-center gap-1.5"
           >
@@ -820,7 +820,7 @@ export default function SexOffenderRegistryPage() {
 
       {/* ── Link Person Modal ──────────────────────────────── */}
       {showLinkPerson && selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowLinkPerson(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowLinkPerson(false)}>
           <div
             className="bg-surface-raised border border-rmpg-600 shadow-xl w-[440px] max-w-[95vw]"
             style={{ borderRadius: 2 }}
@@ -830,7 +830,7 @@ export default function SexOffenderRegistryPage() {
               <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">
                 Link to Person Record
               </h3>
-              <button onClick={() => setShowLinkPerson(false)} className="text-rmpg-400 hover:text-white">
+              <button type="button" onClick={() => setShowLinkPerson(false)} className="text-rmpg-400 hover:text-white">
                 <X size={14} />
               </button>
             </div>
@@ -857,7 +857,7 @@ export default function SexOffenderRegistryPage() {
               {linkResults.length > 0 && (
                 <div className="max-h-48 overflow-y-auto space-y-1">
                   {linkResults.map((p: any) => (
-                    <button
+                    <button type="button"
                       key={p.id}
                       onClick={() => handleLinkPerson(p.id)}
                       disabled={linkSubmitting}
@@ -965,7 +965,7 @@ function RecordFormModal({
   const set = (key: string, val: any) => setForm((f: any) => ({ ...f, [key]: val }));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={onClose}>
       <div
         className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-sm shadow-2xl"
         style={{ background: '#141e2b', border: '1px solid #2a3e58' }}
@@ -976,7 +976,7 @@ function RecordFormModal({
             <ShieldAlert size={14} className="text-red-400" />
             {record ? 'Edit Registry Entry' : 'New Registry Entry'}
           </h2>
-          <button onClick={onClose} className="toolbar-btn p-1"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="toolbar-btn p-1"><X size={14} /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
           {/* Name */}
@@ -1129,7 +1129,7 @@ function ImportModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={onClose}>
       <div
         className="w-full max-w-xl max-h-[70vh] overflow-y-auto rounded-sm shadow-2xl"
         style={{ background: '#141e2b', border: '1px solid #2a3e58' }}
@@ -1139,7 +1139,7 @@ function ImportModal({
           <h2 className="text-sm font-bold text-white flex items-center gap-2">
             <Upload size={14} /> Import Records
           </h2>
-          <button onClick={onClose} className="toolbar-btn p-1"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="toolbar-btn p-1"><X size={14} /></button>
         </div>
         <div className="p-4 space-y-3">
           <p className="text-[11px] text-rmpg-400">
@@ -1159,10 +1159,10 @@ function ImportModal({
             </div>
           )}
           <div className="flex justify-end gap-2">
-            <button onClick={handleParse} className="toolbar-btn px-3 py-1.5 text-[11px]">
+            <button type="button" onClick={handleParse} className="toolbar-btn px-3 py-1.5 text-[11px]">
               Parse JSON
             </button>
-            <button
+            <button type="button"
               onClick={() => parsed && onImport(parsed)}
               disabled={!parsed}
               className="px-3 py-1.5 text-[11px] font-bold rounded-sm disabled:opacity-40"

@@ -894,13 +894,13 @@ export default function PersonnelPage() {
               onChange={e => setSearchQuery(e.target.value)}
             />
             {searchQuery && (
-              <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white">
+              <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white">
                 <X className="w-3 h-3" />
               </button>
             )}
           </div>
           <ExportButton exportUrl="/api/personnel/export/csv" exportFilename="personnel.csv" />
-          <button
+          <button type="button"
             onClick={() => { setOfficerEditData(undefined); setOfficerModalMode('create'); setModal('new_officer'); }}
             className="toolbar-btn toolbar-btn-primary flex items-center gap-1 whitespace-nowrap"
           >
@@ -1044,7 +1044,7 @@ export default function PersonnelPage() {
       <PanelTitleBar title={showArchived ? 'PERSONNEL MANAGEMENT — ARCHIVES' : 'PERSONNEL MANAGEMENT'} icon={showArchived ? Archive : Users}>
         <RmpgLogo height={16} iconOnly />
         <span className="toolbar-separator" />
-        <button
+        <button type="button"
           className={`toolbar-btn ${showArchived ? 'text-amber-400 border-amber-600/50' : ''}`}
           onClick={() => { setShowArchived(!showArchived); setSelectedOfficer(null); }}
         >
@@ -1100,7 +1100,7 @@ export default function PersonnelPage() {
           const alert = tab.id === 'credentials' && expiringCreds > 0;
           const isActive = activeTab === tab.id;
           return (
-            <button
+            <button type="button"
               key={tab.id}
               onClick={() => { setActiveTab(tab.id); if (tab.id !== 'roster') setSelectedOfficer(null); }}
               className={`tab-bar-item ${isActive ? 'active' : ''}`}
@@ -1135,7 +1135,7 @@ export default function PersonnelPage() {
             <div className="text-center">
               <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto mb-2" />
               <p className="text-sm text-rmpg-300">{error}</p>
-              <button onClick={() => fetchCoreData()} className="toolbar-btn mt-3">Retry</button>
+              <button type="button" onClick={() => fetchCoreData()} className="toolbar-btn mt-3">Retry</button>
             </div>
           </div>
         )}
