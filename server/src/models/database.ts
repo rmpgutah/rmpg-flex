@@ -3234,6 +3234,9 @@ function migrateSchema(): void {
   addCol('offender_alerts', 'alert_address', 'TEXT');
   addCol('offender_alerts', 'alert_enabled', 'INTEGER DEFAULT 1');
 
+  // Forensic cases — linked incident
+  addCol('forensic_cases', 'linked_incident_id', 'INTEGER');
+
   // Feature 26: Evidence intake extended fields
   addCol('forensic_exhibits', 'condition_on_receipt', 'TEXT');
   addCol('forensic_exhibits', 'packaging_type', 'TEXT');
