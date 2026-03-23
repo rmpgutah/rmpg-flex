@@ -123,6 +123,8 @@ import CallHistoryPanel from './components/CallHistoryPanel';
 import IncidentReportsPanel from './components/IncidentReportsPanel';
 import SafetyZonesPanel from './components/SafetyZonesPanel';
 import TacticalSummaryPanel from './components/TacticalSummaryPanel';
+import AdvancedHeatmapPanel from './components/AdvancedHeatmapPanel';
+import WeatherPanel from './components/WeatherPanel';
 
 // ============================================================
 // Constants
@@ -4311,20 +4313,64 @@ export default function MapPage() {
           />
         )}
 
-        {/* ── Environment Info Bar (top of map) ── */}
-        {showEnvironmentInfo && (
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-3 py-1.5 panel-beveled bg-surface-base text-[10px]">
-            <span className={`font-bold ${environment?.lighting === 'darkness' ? 'text-blue-400' : environment?.lighting === 'twilight' ? 'text-amber-400' : 'text-green-400'}`}>
-              {(environment?.lighting || 'unknown').toUpperCase()}
-            </span>
-            {environment?.sunriseSunset && (
-              <span className="text-rmpg-400 font-mono">{environment.sunriseSunset?.minutesToNextTransition}min to {environment.sunriseSunset?.nextTransition}</span>
-            )}
-            {environment?.icyRoad && <span className="text-blue-400 font-bold">ICY ROADS</span>}
-            {environment?.schoolZoneActive && <span className="text-amber-400 font-bold">SCHOOL ZONE</span>}
-            {environment?.windCondition && environment.windCondition.speed > 30 && (
-              <span className="text-amber-400">WIND {Math.round(environment.windCondition.speed)}mph</span>
-            )}
+        {/* ── Weather / Environment Panel ── */}
+        {!isMobile && showEnvironmentInfo && (
+          <div className="absolute top-2 z-30" style={{ right: showThreatAssessment || showSafetyDashboard ? 320 : 8, maxWidth: 320 }}>
+            <WeatherPanel
+              lighting={environment?.lighting || 'daylight'}
+              sunriseSunset={environment?.sunriseSunset || null}
+              lowVisibility={environment?.lowVisibility || false}
+              weatherHazards={environment?.weatherHazards || { freezing: false, highWind: false, rain: false, snow: false, description: '' }}
+              icyRoad={environment?.icyRoad || false}
+              windCondition={environment?.windCondition || null}
+              visibilityRange={environment?.visibilityRange || 10000}
+              schoolZoneActive={environment?.schoolZoneActive || false}
+              loading={environment?.loading || false}
+              onRefresh={() => environment?.refresh?.()}
+              onClose={() => setShowEnvironmentInfo(false)}
+            />
+          </div>
+        )}
+
+        {/* ── Advanced Heatmap Panel ── */}
+        {!isMobile && advancedHeatmapEnabled && showHeatmap && (
+          <div className="absolute top-2 z-30" style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52, maxWidth: 400 }}>
+            <AdvancedHeatmapPanel
+              mode={advHeatmapMode}
+              onModeChange={setAdvHeatmapMode}
+              hourRange={advHeatmapHourRange}
+              onHourRangeChange={setAdvHeatmapHourRange}
+              dayFilter={advHeatmapDayFilter}
+              onDayFilterChange={setAdvHeatmapDayFilter}
+              colorScheme={advHeatmapColorScheme}
+              onColorSchemeChange={setAdvHeatmapColorScheme}
+              opacity={advHeatmapOpacity}
+              onOpacityChange={setAdvHeatmapOpacity}
+              radius={advHeatmapRadius}
+              onRadiusChange={setAdvHeatmapRadius}
+              resolution={advHeatmapResolution}
+              onResolutionChange={setAdvHeatmapResolution}
+              showClusters={advHeatmapShowClusters}
+              onShowClustersChange={setAdvHeatmapShowClusters}
+              clusterCount={advancedHeatmap.clusters?.length ?? 0}
+              types={advHeatmapTypes}
+              onTypesChange={setAdvHeatmapTypes}
+              availableTypes={heatmapTypes}
+              comparisonDays={advHeatmapComparisonDays}
+              onComparisonDaysChange={setAdvHeatmapComparisonDays}
+              temporalHour={advancedHeatmap.temporalHour}
+              temporalPlaying={advancedHeatmap.temporalPlaying}
+              temporalSpeed={advancedHeatmap.temporalSpeed}
+              onTemporalHourChange={advancedHeatmap.setTemporalHour}
+              onTemporalPlayingChange={advancedHeatmap.setTemporalPlaying}
+              onTemporalSpeedChange={advancedHeatmap.setTemporalSpeed}
+              stats={advancedHeatmap.stats}
+              pointCount={advancedHeatmap.pointCount}
+              comparisonPointCount={advancedHeatmap.comparisonPointCount}
+              loading={advancedHeatmap.loading}
+              onRefresh={() => advancedHeatmap.refreshHeatmap()}
+              onClose={() => setAdvancedHeatmapEnabled(false)}
+            />
           </div>
         )}
 
