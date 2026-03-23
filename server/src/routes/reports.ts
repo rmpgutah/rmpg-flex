@@ -878,6 +878,57 @@ router.get('/crime-analysis', (req: Request, res: Response) => {
   }
 });
 
+// ─── GET /crime-analysis/export ──────────────────────────────
+// Export crime analysis incident-type breakdown as CSV
+router.get('/crime-analysis/export', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { days, start_date, end_date } = req.query;
+
+    let whereClause: string;
+    let params: any[];
+
+    if (start_date && end_date) {
+      whereClause = `created_at >= ? AND created_at <= ? AND status != 'draft'`;
+      params = [start_date as string, end_date as string];
+    } else {
+      const daysNum = Math.max(1, Math.min(365, parseInt(days as string, 10) || 90));
+      whereClause = `created_at >= DATE('now', ?) AND status != 'draft'`;
+      params = [`-${daysNum} days`];
+    }
+
+    const rows = db.prepare(`
+      SELECT incident_type, COUNT(*) as count
+      FROM incidents WHERE ${whereClause}
+      GROUP BY incident_type ORDER BY count DESC
+    `).all(...params) as { incident_type: string; count: number }[];
+
+    const total = rows.reduce((s, r) => s + r.count, 0);
+    const data = rows.map(r => ({
+      incident_type: r.incident_type || 'Unknown',
+      count: r.count,
+      percentage: total > 0 ? Math.round((r.count / total) * 10000) / 100 : 0,
+    }));
+
+    const headers = ['incident_type', 'count', 'percentage'];
+    const csvRows = [headers.join(',')];
+    for (const row of data) {
+      csvRows.push([
+        `"${(row.incident_type).replace(/"/g, '""')}"`,
+        row.count,
+        row.percentage,
+      ].join(','));
+    }
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="crime-analysis_${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(csvRows.join('\r\n'));
+  } catch (error: any) {
+    console.error('Crime analysis export error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─────────────────────────────────────────────────────────────
 // GET /api/reports/patrol-tracking — Patrol Tracking Report
 //

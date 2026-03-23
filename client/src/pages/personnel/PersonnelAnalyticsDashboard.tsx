@@ -1,7 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
-  Users, UserCheck, Clock, Award, AlertTriangle, TrendingUp, GraduationCap, Loader2,
+  Users, UserCheck, Clock, Award, AlertTriangle, TrendingUp, GraduationCap,
 } from 'lucide-react';
+import {
+  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area,
+} from 'recharts';
 import type { Credential, TimeEntry, TrainingRecord } from '../../types';
 import type { OfficerWithStatus } from './utils/personnelMappers';
 import { ROLE_COLORS } from './utils/personnelConstants';
@@ -14,6 +17,22 @@ interface Props {
   training: TrainingRecord[];
 }
 
+const ROLE_HEX: Record<string, string> = {
+  admin: '#ef4444', manager: '#f59e0b', supervisor: '#3b82f6',
+  officer: '#22c55e', dispatcher: '#a855f7', contract_manager: '#06b6d4',
+};
+
+const ChartTooltip = ({ active, payload }: any) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div style={{ background: '#0d1520', border: '1px solid #1e2a3a', padding: '6px 10px', borderRadius: 2 }}>
+      <div style={{ color: '#e5e7eb', fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold' }}>
+        {payload[0].name}: {payload[0].value}
+      </div>
+    </div>
+  );
+};
+
 export default function PersonnelAnalyticsDashboard({ officers, credentials, timeEntries, training }: Props) {
   const onDuty = officers.filter(o => o.status === 'on_duty').length;
   const clockedIn = timeEntries.filter(t => t.status === 'clocked_in').length;
@@ -24,12 +43,49 @@ export default function PersonnelAnalyticsDashboard({ officers, credentials, tim
   const credCompliance = credentials.length > 0 ? Math.round((validCreds / credentials.length) * 100) : 100;
   const completedTraining = training.filter(t => t.status === 'completed').length;
   const overdueTraining = training.filter(t => t.status === 'overdue').length;
+  const pendingTraining = training.length - completedTraining - overdueTraining;
 
-  // Role distribution
+  // Role distribution for PieChart
   const roleCounts = officers.reduce((acc, o) => {
     acc[o.role] = (acc[o.role] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
+
+  const roleData = useMemo(() =>
+    Object.entries(roleCounts).sort(([, a], [, b]) => b - a).map(([role, count]) => ({
+      name: role, value: count,
+    })), [officers]);
+
+  const credPieData = useMemo(() => [
+    { name: 'Valid', value: validCreds, color: '#22c55e' },
+    { name: 'Expiring', value: expiringCreds, color: '#f59e0b' },
+    { name: 'Expired', value: expiredCreds, color: '#ef4444' },
+  ].filter(d => d.value > 0), [validCreds, expiringCreds, expiredCreds]);
+
+  const trainingBarData = useMemo(() => [
+    { name: 'Completed', value: completedTraining, fill: '#22c55e' },
+    { name: 'Overdue', value: overdueTraining, fill: '#ef4444' },
+    { name: 'Pending', value: Math.max(0, pendingTraining), fill: '#6b7280' },
+  ], [completedTraining, overdueTraining, pendingTraining]);
+
+  // Hours by day for AreaChart (last 7 days)
+  const hoursByDay = useMemo(() => {
+    const days: Record<string, number> = {};
+    const now = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now); d.setDate(d.getDate() - i);
+      days[d.toISOString().slice(0, 10)] = 0;
+    }
+    timeEntries.forEach(t => {
+      const date = (t.clock_in || '').slice(0, 10);
+      if (date in days) days[date] += t.total_hours || 0;
+    });
+    return Object.entries(days).map(([date, hours]) => ({
+      date: date.slice(5), hours: Math.round(hours * 10) / 10,
+    }));
+  }, [timeEntries]);
+
+  const hasHoursData = hoursByDay.some(d => d.hours > 0);
 
   return (
     <div className="flex-1 overflow-auto p-4 space-y-4">
@@ -62,7 +118,7 @@ export default function PersonnelAnalyticsDashboard({ officers, credentials, tim
         </div>
       </div>
 
-      {/* Credential Health */}
+      {/* Credential Health — compliance bar + pie chart */}
       <div className="panel-beveled p-4 bg-surface-base">
         <h4 className="field-label text-brand-400 mb-3 flex items-center gap-1.5">
           <Award className="w-3 h-3" /> Credential Compliance
@@ -82,6 +138,18 @@ export default function PersonnelAnalyticsDashboard({ officers, credentials, tim
               />
             </div>
           </div>
+          {credPieData.length > 0 && (
+            <div className="w-[90px] h-[90px] flex-shrink-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={credPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={25} outerRadius={40} strokeWidth={0}>
+                    {credPieData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                  </Pie>
+                  <Tooltip content={<ChartTooltip />} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="panel-inset p-2 text-center">
@@ -99,49 +167,90 @@ export default function PersonnelAnalyticsDashboard({ officers, credentials, tim
         </div>
       </div>
 
-      {/* Role Distribution */}
+      {/* Role Distribution — Donut PieChart */}
       <div className="panel-beveled p-4 bg-surface-base">
         <h4 className="field-label text-brand-400 mb-3 flex items-center gap-1.5">
           <Users className="w-3 h-3" /> Role Distribution
         </h4>
-        <div className="space-y-2">
-          {Object.entries(roleCounts).sort(([, a], [, b]) => b - a).map(([role, count]) => (
-            <div key={role} className="flex items-center gap-3">
-              <span className={`inline-flex items-center px-2 py-0.5 text-[9px] font-bold uppercase min-w-[80px] justify-center ${ROLE_COLORS[role] || ROLE_COLORS.officer}`}>
-                {role}
-              </span>
-              <div className="flex-1 h-1.5 bg-rmpg-700 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-brand-500 rounded-full"
-                  style={{ width: `${officers.length > 0 ? (count / officers.length) * 100 : 0}%` }}
-                />
-              </div>
-              <span className="text-xs font-mono text-rmpg-200 w-6 text-right">{count}</span>
+        {roleData.length > 0 ? (
+          <div className="flex items-center gap-4">
+            <div className="w-[140px] h-[140px] flex-shrink-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={roleData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={70} strokeWidth={0} paddingAngle={2}>
+                    {roleData.map((d, i) => <Cell key={i} fill={ROLE_HEX[d.name] || '#6b7280'} />)}
+                  </Pie>
+                  <Tooltip content={<ChartTooltip />} />
+                </PieChart>
+              </ResponsiveContainer>
             </div>
-          ))}
-        </div>
+            <div className="flex-1 space-y-1.5">
+              {roleData.map(d => (
+                <div key={d.name} className="flex items-center gap-2 text-xs">
+                  <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: ROLE_HEX[d.name] || '#6b7280' }} />
+                  <span className="text-rmpg-200 capitalize flex-1">{d.name.replace('_', ' ')}</span>
+                  <span className="font-mono text-white">{d.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs text-rmpg-500 text-center py-4">No personnel data</p>
+        )}
       </div>
 
-      {/* Training Overview */}
+      {/* Training Status — BarChart */}
       <div className="panel-beveled p-4 bg-surface-base">
         <h4 className="field-label text-brand-400 mb-3 flex items-center gap-1.5">
           <GraduationCap className="w-3 h-3" /> Training Status
         </h4>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="panel-inset p-2 text-center">
-            <p className="text-lg font-bold text-white font-mono">{training.length}</p>
-            <p className="field-label">Total Records</p>
+        {training.length > 0 ? (
+          <div className="h-[120px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={trainingBarData} layout="vertical" margin={{ left: 60, right: 10, top: 0, bottom: 0 }}>
+                <XAxis type="number" tick={{ fill: '#9ca3af', fontSize: 9, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
+                <YAxis type="category" dataKey="name" tick={{ fill: '#d1d5db', fontSize: 10 }} axisLine={false} tickLine={false} width={55} />
+                <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
+                <Bar dataKey="value" radius={[0, 2, 2, 0]}>
+                  {trainingBarData.map((d, i) => <Cell key={i} fill={d.fill} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
           </div>
-          <div className="panel-inset p-2 text-center">
-            <p className="text-lg font-bold text-green-400 font-mono">{completedTraining}</p>
-            <p className="field-label">Completed</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="panel-inset p-2 text-center">
+              <p className="text-lg font-bold text-white font-mono">0</p>
+              <p className="field-label">Total Records</p>
+            </div>
           </div>
-          <div className="panel-inset p-2 text-center">
-            <p className="text-lg font-bold text-red-400 font-mono">{overdueTraining}</p>
-            <p className="field-label">Overdue</p>
+        )}
+      </div>
+
+      {/* Hours Distribution — AreaChart (last 7 days) */}
+      {hasHoursData && (
+        <div className="panel-beveled p-4 bg-surface-base">
+          <h4 className="field-label text-brand-400 mb-3 flex items-center gap-1.5">
+            <Clock className="w-3 h-3" /> Hours — Last 7 Days
+          </h4>
+          <div className="h-[120px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={hoursByDay} margin={{ left: 0, right: 0, top: 4, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="hoursGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="date" tick={{ fill: '#9ca3af', fontSize: 9, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: '#9ca3af', fontSize: 9, fontFamily: 'monospace' }} axisLine={false} tickLine={false} width={30} />
+                <Tooltip content={<ChartTooltip />} />
+                <Area type="monotone" dataKey="hours" name="Hours" stroke="#3b82f6" fill="url(#hoursGrad)" strokeWidth={2} />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Credential Alerts */}
       {(expiredCreds > 0 || expiringCreds > 0) && (
