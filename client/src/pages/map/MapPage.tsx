@@ -114,6 +114,11 @@ import { useMapTactical } from './hooks/useMapTactical';
 import { useMapAlerts, type SafetyAlertType } from './hooks/useMapAlerts';
 import SafetyDashboardPanel from './components/SafetyDashboardPanel';
 import SafetyAlertModal from './components/SafetyAlertModal';
+import ThreatAssessmentPanel from './components/ThreatAssessmentPanel';
+import TacticalToolsPanel from './components/TacticalToolsPanel';
+import PerimeterToolsPanel from './components/PerimeterToolsPanel';
+import CorridorAnalysisPanel from './components/CorridorAnalysisPanel';
+import AlertSystemPanel from './components/AlertSystemPanel';
 
 // ============================================================
 // Constants
@@ -4316,6 +4321,134 @@ export default function MapPage() {
             {environment?.windCondition && environment.windCondition.speed > 30 && (
               <span className="text-amber-400">WIND {Math.round(environment.windCondition.speed)}mph</span>
             )}
+          </div>
+        )}
+
+        {/* ── Threat Assessment Panel ── */}
+        {!isMobile && showThreatAssessment && (
+          <div className="absolute top-2 right-2 z-30" style={{ maxWidth: 300, top: showSafetyDashboard ? 340 : 8 }}>
+            <ThreatAssessmentPanel
+              assessment={threatAssessment.currentAssessment}
+              approachRoutes={threatAssessment.approachRoutes}
+              loading={threatAssessment.loading}
+              onAssessCenter={() => {
+                const c = mapInstanceRef.current?.getCenter();
+                if (c) threatAssessment.assessLocation(c.lat(), c.lng());
+              }}
+              onGetApproachRoutes={() => {
+                const c = mapInstanceRef.current?.getCenter();
+                if (c) threatAssessment.getApproachRoutes(c.lat(), c.lng());
+              }}
+              onClear={() => threatAssessment.clearAssessment()}
+              onClose={() => setShowThreatAssessment(false)}
+            />
+          </div>
+        )}
+
+        {/* ── Tactical Tools Panel ── */}
+        {!isMobile && showTacticalTools && (
+          <div className="absolute top-2 z-30" style={{ right: showThreatAssessment ? 320 : 8, maxWidth: 280 }}>
+            <TacticalToolsPanel
+              rallyPoint={tactical.rallyPoint}
+              entryPoints={tactical.entryPoints}
+              crowdDensity={(() => {
+                const c = mapInstanceRef.current?.getCenter();
+                return c ? tactical.estimateCrowdDensity(c.lat(), c.lng()) : 'Low (<50)';
+              })()}
+              onSetRallyPoint={() => {
+                const c = mapInstanceRef.current?.getCenter();
+                if (c) tactical.setRallyPoint(c.lat(), c.lng(), 'Rally Point');
+              }}
+              onClearRallyPoint={() => tactical.clearRallyPoint()}
+              onShowCommandRings={() => {
+                const c = mapInstanceRef.current?.getCenter();
+                if (c) tactical.showCommandRings(c.lat(), c.lng());
+              }}
+              onClearCommandRings={() => tactical.clearCommandRings()}
+              onShowK9Radius={() => {
+                const c = mapInstanceRef.current?.getCenter();
+                if (c) tactical.showK9Radius(c.lat(), c.lng());
+              }}
+              onClearK9Radius={() => tactical.clearK9Radius()}
+              onShowHospitals={() => tactical.showHospitals()}
+              onShowFireStations={() => tactical.showFireStations()}
+              onHideEmergencyServices={() => tactical.hideEmergencyServices()}
+              onAddEntryPoint={(label) => {
+                const c = mapInstanceRef.current?.getCenter();
+                if (c) tactical.addEntryPoint(c.lat(), c.lng(), label);
+              }}
+              onClearEntryPoints={() => tactical.clearEntryPoints()}
+              onClose={() => setShowTacticalTools(false)}
+            />
+          </div>
+        )}
+
+        {/* ── Perimeter Tools Panel ── */}
+        {!isMobile && showPerimeterTools && (
+          <div className="absolute bottom-12 right-2 z-30" style={{ maxWidth: 280 }}>
+            <PerimeterToolsPanel
+              perimeterData={{
+                quadrants: { NE: 0, NW: 0, SE: 0, SW: 0 },
+                gaps: perimeter.coverageGaps.map((g, i) => `Gap ${i + 1}: ${g.lat.toFixed(4)}, ${g.lng.toFixed(4)}`),
+                staging_suggestion: perimeter.stagingSuggestion ? { ...perimeter.stagingSuggestion, reason: 'Optimal staging based on unit positions' } : null,
+              }}
+              isDrawingContainment={false}
+              containmentVertices={perimeter.containmentPolygon.length}
+              hvtVisible={false}
+              loading={perimeter.loading}
+              onAnalyzeCoverage={() => {
+                const c = mapInstanceRef.current?.getCenter();
+                if (c) perimeter.showPerimeter(c.lat(), c.lng());
+              }}
+              onStartContainment={() => perimeter.startContainment()}
+              onClearContainment={() => perimeter.endContainment()}
+              onToggleHVTs={() => {
+                const c = mapInstanceRef.current?.getCenter();
+                if (c) perimeter.showPerimeter(c.lat(), c.lng());
+              }}
+              onClose={() => setShowPerimeterTools(false)}
+            />
+          </div>
+        )}
+
+        {/* ── Corridor Analysis Panel ── */}
+        {!isMobile && showCorridorAnalysis && (
+          <div className="absolute bottom-12 z-30" style={{ right: showPerimeterTools ? 300 : 8, maxWidth: 280 }}>
+            <CorridorAnalysisPanel
+              corridorData={corridor.corridorData}
+              pursuitProjection={corridor.pursuitProjection}
+              loading={corridor.loading}
+              onAnalyzeCorridor={() => {
+                const c = mapInstanceRef.current?.getCenter();
+                if (c) corridor.analyzeCorridor(c.lat() - 0.01, c.lng() - 0.01, c.lat() + 0.01, c.lng() + 0.01);
+              }}
+              onShowPursuitProjection={(heading) => {
+                const c = mapInstanceRef.current?.getCenter();
+                if (c) corridor.showPursuitProjection(c.lat(), c.lng(), heading);
+              }}
+              onClearPursuit={() => corridor.clearPursuit()}
+              onShowEscapeRoutes={() => {
+                const c = mapInstanceRef.current?.getCenter();
+                if (c) corridor.showEscapeRoutes(c.lat(), c.lng());
+              }}
+              onClearEscapeRoutes={() => corridor.clearEscapeRoutes()}
+              onClearCorridor={() => corridor.clearCorridor()}
+              onClose={() => setShowCorridorAnalysis(false)}
+            />
+          </div>
+        )}
+
+        {/* ── Alert System Panel ── */}
+        {!isMobile && showAlertSystem && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30" style={{ maxWidth: 320, top: showEnvironmentInfo ? 48 : 8 }}>
+            <AlertSystemPanel
+              activeAlerts={alerts.activeAlerts}
+              alertHistory={alerts.alertHistory}
+              onAcknowledge={(id) => alerts.acknowledgeAlert(id)}
+              onClear={(id) => alerts.clearAlert(id)}
+              onClearAll={() => alerts.clearAllAlerts()}
+              onClose={() => setShowAlertSystem(false)}
+            />
           </div>
         )}
 
