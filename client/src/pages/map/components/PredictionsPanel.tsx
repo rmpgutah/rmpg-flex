@@ -38,6 +38,7 @@ export default function PredictionsPanel({
           <button
             onClick={onClose}
             className="toolbar-btn p-1"
+            aria-label="Close predictions panel"
             title="Close"
           >
             <span className="text-rmpg-400 text-xs">&times;</span>
@@ -115,7 +116,7 @@ export default function PredictionsPanel({
 
               {/* Navigate button */}
               <button
-                onClick={() => onNavigate(hs.latitude, hs.longitude)}
+                onClick={() => { if (hs.latitude != null && hs.longitude != null) onNavigate(hs.latitude, hs.longitude); }}
                 className="toolbar-btn flex items-center gap-1.5 px-2 py-1 text-[10px] w-full justify-center"
                 title="Center map on this hotspot"
               >

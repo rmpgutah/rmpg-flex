@@ -27,6 +27,8 @@ export default function MeasurementOverlay({
 
   return (
     <div
+      role="status"
+      aria-live="polite"
       className="absolute bottom-10 left-1/2 -translate-x-1/2 z-[1001] flex items-center gap-3 px-4 py-2.5 shadow-2xl"
       style={{
         background: 'rgba(13, 21, 32, 0.95)',

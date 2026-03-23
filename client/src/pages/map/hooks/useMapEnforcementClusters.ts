@@ -159,7 +159,10 @@ export function useMapEnforcementClusters(
     });
 
     return () => {
-      circlesRef.current.forEach((c) => c.setMap(null));
+      circlesRef.current.forEach((c) => {
+        google.maps.event.clearInstanceListeners(c);
+        c.setMap(null);
+      });
       circlesRef.current = [];
     };
   }, [map, enabled, clusters, type]);

@@ -83,6 +83,8 @@ export default function MapScaleBar({ mapInstance }: MapScaleBarProps) {
 
   return (
     <div
+      role="img"
+      aria-label={`Map scale: ${label}`}
       className="backdrop-blur-md shadow-lg"
       style={{
         borderRadius: 2,

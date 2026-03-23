@@ -72,9 +72,10 @@ export function useMapScreenshot(
       if (!resp.ok) return null;
 
       const blob = await resp.blob();
-      return new Promise<string>((resolve) => {
+      return new Promise<string | null>((resolve) => {
         const reader = new FileReader();
         reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = () => resolve(null);
         reader.readAsDataURL(blob);
       });
     } catch (err) {
@@ -108,12 +109,14 @@ export function useMapScreenshot(
       const name = filename || `map-export_${ts}${coords}${zStr}.png`;
 
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
+      const objectUrl = URL.createObjectURL(blob);
+      a.href = objectUrl;
       a.download = name;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(a.href);
+      // Delay revokeObjectURL to ensure the browser has finished initiating the download
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
       return true;
     } catch (err) {
       console.error('[useMapScreenshot] download failed:', err);

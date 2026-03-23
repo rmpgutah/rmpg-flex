@@ -36,6 +36,7 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
 
   return (
     <div
+      aria-label="Compass rose"
       className="backdrop-blur-md shadow-xl"
       style={{
         width: 44,
@@ -49,6 +50,8 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
       }}
     >
       <svg
+        role="img"
+        aria-label="Compass pointing north"
         width="36"
         height="36"
         viewBox="0 0 36 36"

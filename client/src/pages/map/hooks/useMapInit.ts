@@ -36,6 +36,7 @@ export interface UseMapInitResult {
 export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
+  // NOTE: typed as any[] because markers can be AdvancedMarkerElement or OverlayView instances
   const markersRef = useRef<any[]>([]);
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
   const useAdvancedMarkersRef = useRef(false);
@@ -251,6 +252,9 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
       if (dismissObserver) dismissObserver.disconnect();
       if (tileMonitorCleanupRef.current) { tileMonitorCleanupRef.current(); tileMonitorCleanupRef.current = null; }
       if (offlineTileCleanupRef.current) { offlineTileCleanupRef.current(); offlineTileCleanupRef.current = null; }
+      // Remove injected style element to prevent DOM leaks across re-mounts
+      const hideStyle = document.getElementById('__rmpg_hide_gm_dialog__');
+      if (hideStyle) hideStyle.remove();
       if (mapInstanceRef.current) unregisterMapInstance(mapInstanceRef.current);
       markersRef.current.forEach((m) => {
         if (m && typeof m.remove === 'function') m.remove();

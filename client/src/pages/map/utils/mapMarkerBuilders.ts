@@ -205,7 +205,7 @@ export function buildIncidentReportMarkerContent(status: string): HTMLElement {
 }
 
 // ── Self-Position Marker (pulsing "you are here") ────────────
-// NOTE: Uses innerHTML with developer-controlled template strings only (no user input).
+// NOTE: Uses createElement DOM API only (no innerHTML). All values are developer-controlled.
 
 export function buildSelfPositionMarker(accuracy: number | null, heading: number | null): HTMLElement {
   const el = document.createElement('div');
@@ -251,6 +251,7 @@ let _OverlayMarkerClass: (new (opts: {
 
 export function getOverlayMarkerClass() {
   if (_OverlayMarkerClass) return _OverlayMarkerClass;
+  if (typeof google === 'undefined' || !google.maps?.OverlayView) return null;
 
   _OverlayMarkerClass = class extends google.maps.OverlayView implements OverlayMarker {
     private position: google.maps.LatLng;

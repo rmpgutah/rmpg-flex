@@ -74,6 +74,7 @@ export default function GeofenceManager({
           <button
             onClick={onClose}
             className="toolbar-btn p-1"
+            aria-label="Close"
             title="Close"
           >
             <span className="text-rmpg-400 text-xs">&times;</span>
@@ -88,6 +89,7 @@ export default function GeofenceManager({
           className={`toolbar-btn flex items-center gap-1.5 px-3 py-1.5 text-xs w-full justify-center ${
             drawingMode ? 'toolbar-btn-primary' : ''
           }`}
+          aria-label={drawingMode ? 'Stop drawing' : 'Draw geofence'}
           title={drawingMode ? 'Drawing mode active — click map to add vertices, double-click to finish' : 'Draw a new geofence zone'}
         >
           {drawingMode ? (

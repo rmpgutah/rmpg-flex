@@ -35,7 +35,7 @@ export function useMapHeatmap({ mapInstanceRef, mapLoaded }: UseMapHeatmapParams
     let cancelled = false;
     apiFetch<{ incident_type: string; count: number }[]>('/dispatch/heatmap/types')
       .then((data) => { if (!cancelled) setHeatmapTypes(data || []); })
-      .catch((err) => { console.warn('[MapPage] fetch heatmap types failed:', err); });
+      .catch((err) => { if (!cancelled) console.warn('[MapPage] fetch heatmap types failed:', err); });
     return () => { cancelled = true; };
   }, [showHeatmap]);
 
@@ -93,7 +93,9 @@ export function useMapHeatmap({ mapInstanceRef, mapLoaded }: UseMapHeatmapParams
         heatmapLayerRef.current = null;
       }
     };
-  }, [showHeatmap, heatmapData, heatmapMode, mapLoaded, mapInstanceRef]);
+  // mapInstanceRef excluded from deps — refs are stable, including it is misleading
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showHeatmap, heatmapData, heatmapMode, mapLoaded]);
 
   return {
     showHeatmap,

@@ -81,11 +81,11 @@ interface MapLayersPanelProps {
   districtSections: { id: string; name: string }[];
   beatDistrictMap: Map<string, Map<string, BeatDistrictEntry>> | undefined;
 
-  // Shift planning
-  shiftPlanning: any;
+  // Shift planning (complex nested state from useShiftPlanning hook)
+  shiftPlanning: any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-  // Event planning
-  eventPlanning: any;
+  // Event planning (complex nested state from useEventPlanning hook)
+  eventPlanning: any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
   // Traffic layer (optional — wired up when traffic layer feature is enabled)
   showTraffic?: boolean;
@@ -455,10 +455,10 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                   setExportingPdf(true);
                   try {
                     const data = await apiFetch<any>(`/reports/patrol-tracking?hours=${breadcrumbHours}&geocode=true`);
-                    if (!data?.trails?.length) { alert('No tracking data for this period.'); return; }
+                    if (!data?.trails?.length) { addToast('No tracking data for this period.', 'warning'); return; }
                     await generatePatrolTrackingPdf(data);
                   } catch (err: any) {
-                    alert(err?.message || 'Failed to export PDF');
+                    addToast(err?.message || 'Failed to export PDF', 'error');
                   } finally { setExportingPdf(false); }
                 }}
                 disabled={exportingPdf}
@@ -512,7 +512,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                     style={{ borderRadius: 2 }}
                   >
                     <option value="">Replay trail...</option>
-                    {playbackTrails.map((t: any) => (
+                    {playbackTrails.map((t: { unit_id: string; call_sign: string; points: { length: number } }) => (
                       <option key={t.unit_id} value={t.unit_id}>
                         {t.call_sign} ({t.points.length} pts)
                       </option>

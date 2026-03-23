@@ -92,7 +92,10 @@ export function useMapIncidentReports(opts: UseMapIncidentReportsOptions): UseMa
   // ── Clear markers ───────────────────────────────────────
 
   const clearMarkers = useCallback(() => {
-    markersRef.current.forEach((m) => { m.map = null; });
+    markersRef.current.forEach((m) => {
+      if (window.google?.maps?.event) google.maps.event.clearInstanceListeners(m);
+      m.map = null;
+    });
     markersRef.current = [];
   }, []);
 
@@ -169,19 +172,26 @@ export function useMapIncidentReports(opts: UseMapIncidentReportsOptions): UseMa
     if (statuses.length > 0) params.set('status', statuses.join(','));
     if (types.length > 0) params.set('types', types.join(','));
 
+    let cancelled = false;
     setLoading(true);
     apiFetch<MapIncidentReport[]>(`/incidents/map?${params.toString()}`)
       .then((data) => {
+        if (cancelled) return;
         const arr = Array.isArray(data) ? data : [];
         setIncidents(arr);
         renderMarkers(arr);
         setLoading(false);
       })
       .catch(() => {
+        if (cancelled) return;
         setIncidents([]);
         clearMarkers();
         setLoading(false);
       });
+
+    return () => { cancelled = true; };
+  // Memoize join strings to stabilize dependency references
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, enabled, days, statuses.join(','), types.join(','), clearMarkers, renderMarkers]);
 
   // ── Cleanup on unmount ──────────────────────────────────

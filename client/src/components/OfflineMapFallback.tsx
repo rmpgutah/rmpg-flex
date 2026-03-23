@@ -536,7 +536,7 @@ export default function OfflineMapFallback({
   }
 
   return (
-    <div className={`relative w-full h-full ${className}`} style={{ background: '#060c14' }}>
+    <div role="application" aria-label="Offline map fallback" className={`relative w-full h-full ${className}`} style={{ background: '#060c14' }}>
       {/* Leaflet map container */}
       <div ref={containerRef} className="absolute inset-0 z-0" />
 

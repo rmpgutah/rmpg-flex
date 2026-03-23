@@ -105,6 +105,7 @@ export default function MapMobileSheet({
               <button
                 key={key}
                 onClick={() => toggleLayer(key)}
+                aria-label={`Toggle ${label} layer`}
                 className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
                 style={{
                   background: layers[key] ? 'rgba(34,197,94,0.08)' : '#141e2b',
@@ -212,11 +213,13 @@ export default function MapMobileSheet({
                   map.setZoom(16);
                 }
               }}
+              disabled={!gps?.latitude}
               className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
               style={{
                 background: '#141e2b',
                 border: '1px solid #1e3048',
                 minHeight: 44,
+                opacity: !gps?.latitude ? 0.5 : 1,
               }}
             >
               <Navigation2 style={{ width: 16, height: 16 }} className="text-green-400" />

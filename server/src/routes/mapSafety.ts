@@ -152,8 +152,11 @@ router.get(
       const bb = boundingBox(lat, lng, 500);
 
       // --- Calls within 500m in last 180 days ---
-      const cutoff180 = new Date(Date.now() - 180 * 86_400_000).toISOString();
-      const cutoff90 = new Date(Date.now() - 90 * 86_400_000).toISOString();
+      // Use SQLite datetime for consistent Mountain Time comparison
+      const cutoff180 = db.prepare(`SELECT datetime('now','localtime','-180 days') as v`).get() as any;
+      const cutoff90 = db.prepare(`SELECT datetime('now','localtime','-90 days') as v`).get() as any;
+      const cutoff180Val = cutoff180?.v;
+      const cutoff90Val = cutoff90?.v;
 
       const nearbyCalls = db.prepare(`
         SELECT latitude, longitude, weapons_involved, domestic_violence, injuries_reported,
@@ -162,8 +165,8 @@ router.get(
         WHERE latitude IS NOT NULL AND longitude IS NOT NULL
           AND latitude BETWEEN ? AND ?
           AND longitude BETWEEN ? AND ?
-          AND created_at >= ?
-      `).all(bb.minLat, bb.maxLat, bb.minLng, bb.maxLng, cutoff180) as any[];
+          AND created_at >= datetime('now','localtime','-180 days')
+      `).all(bb.minLat, bb.maxLat, bb.minLng, bb.maxLng) as any[];
 
       // Filter to actual 500m radius and separate 90-day window
       let weaponCalls90 = 0;
@@ -176,7 +179,7 @@ router.get(
         const dist = haversineMeters(lat, lng, call.latitude, call.longitude);
         if (dist > 500) continue;
 
-        const within90 = call.created_at >= cutoff90;
+        const within90 = call.created_at >= cutoff90Val;
 
         if (call.weapons_involved && within90) {
           weaponCalls90++;
@@ -233,12 +236,13 @@ router.get(
         recommendations.push(`${activeWarrantsNearby} active warrant(s) within 500m — verify subjects on scene`);
       }
 
-      // --- Prior officer-involved incidents ---
+      // --- Prior officer-involved incidents (within 365 days) ---
       const officerIncidents = db.prepare(`
         SELECT COUNT(*) as cnt FROM calls_for_service
         WHERE latitude IS NOT NULL AND longitude IS NOT NULL
           AND latitude BETWEEN ? AND ?
           AND longitude BETWEEN ? AND ?
+          AND created_at >= datetime('now','localtime','-365 days')
           AND (incident_type LIKE '%officer%assault%' OR incident_type LIKE '%assault%officer%'
                OR incident_type LIKE '%resist%' OR incident_type LIKE '%obstruct%')
       `).get(bb.minLat, bb.maxLat, bb.minLng, bb.maxLng) as any;
@@ -314,12 +318,18 @@ router.get(
         LIMIT 20
       `).all(bb.minLat, bb.maxLat, bb.minLng, bb.maxLng) as any[];
 
-      // Find flagged persons nearby
+      // Find flagged persons nearby — use bounding box from nearby calls to limit scope
       const nearbyPersons = db.prepare(`
-        SELECT id, first_name, last_name, caution_flags FROM persons
-        WHERE caution_flags IS NOT NULL AND caution_flags != ''
-        LIMIT 100
-      `).all() as any[];
+        SELECT DISTINCT p.id, p.first_name, p.last_name, p.caution_flags
+        FROM persons p
+        JOIN call_persons cp ON cp.person_id = p.id
+        JOIN calls_for_service c ON c.id = cp.call_id
+        WHERE p.caution_flags IS NOT NULL AND p.caution_flags != ''
+          AND c.latitude IS NOT NULL AND c.longitude IS NOT NULL
+          AND c.latitude BETWEEN ? AND ?
+          AND c.longitude BETWEEN ? AND ?
+        LIMIT 50
+      `).all(bb.minLat, bb.maxLat, bb.minLng, bb.maxLng) as any[];
 
       // Aggregate threat direction — where did the most dangerous calls come from?
       const bbWide = boundingBox(lat, lng, 500);
@@ -499,16 +509,23 @@ router.get(
       const db = getDb();
       const callSign = req.params.callSign;
 
-      // Get today's breadcrumbs
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-      const todayISO = todayStart.toISOString();
+      // Look up unit_id for this call_sign to query by indexed column
+      const unitRow = db.prepare('SELECT id FROM units WHERE call_sign = ?').get(callSign) as any;
+      if (!unitRow) {
+        res.json({
+          call_sign: callSign,
+          high_risk_minutes: 0, moderate_risk_minutes: 0, safe_minutes: 0,
+          longest_exposure_minutes: 0, current_zone: 'safe', breadcrumb_count: 0,
+        });
+        return;
+      }
 
+      // Get today's breadcrumbs using recorded_at (actual GPS timestamp) and SQLite localtime
       const breadcrumbs = db.prepare(`
-        SELECT latitude, longitude, speed, created_at FROM gps_breadcrumbs
-        WHERE call_sign = ? AND created_at >= ?
-        ORDER BY created_at ASC
-      `).all(callSign, todayISO) as any[];
+        SELECT latitude, longitude, speed, recorded_at FROM gps_breadcrumbs
+        WHERE unit_id = ? AND recorded_at >= datetime('now','localtime','start of day')
+        ORDER BY recorded_at ASC
+      `).all(unitRow.id) as any[];
 
       if (breadcrumbs.length === 0) {
         res.json({
@@ -524,14 +541,13 @@ router.get(
       }
 
       // Load recent high-risk areas — locations with weapon/DV/injury calls in 90 days
-      const cutoff90 = new Date(Date.now() - 90 * 86_400_000).toISOString();
       const dangerousAreas = db.prepare(`
         SELECT latitude, longitude, weapons_involved, domestic_violence, injuries_reported
         FROM calls_for_service
         WHERE ((weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0' AND weapons_involved != 'None') OR domestic_violence = 1 OR injuries_reported = 1)
           AND latitude IS NOT NULL AND longitude IS NOT NULL
-          AND created_at >= ?
-      `).all(cutoff90) as any[];
+          AND created_at >= datetime('now','localtime','-90 days')
+      `).all() as any[];
 
       let highRiskMs = 0;
       let moderateRiskMs = 0;
@@ -547,8 +563,8 @@ router.get(
         // Time delta to next breadcrumb (or 60s if last)
         let deltaMs = 60_000;
         if (i < breadcrumbs.length - 1) {
-          const next = new Date(breadcrumbs[i + 1].created_at).getTime();
-          const curr = new Date(bc.created_at).getTime();
+          const next = new Date(breadcrumbs[i + 1].recorded_at).getTime();
+          const curr = new Date(bc.recorded_at).getTime();
           deltaMs = Math.min(next - curr, 300_000); // Cap at 5 min gap
         }
 
@@ -676,31 +692,29 @@ router.get(
   (req: Request, res: Response) => {
     try {
       const db = getDb();
-      const now = new Date();
-      const mt = new Date(now.toLocaleString('en-US', { timeZone: 'America/Denver' }));
-      const hour = mt.getHours();
+      const { hour } = mountainHour();
 
-      // Determine shift
+      // Determine shift and build SQLite-compatible shift start expression
       let shift_name: string;
-      let shiftStart: Date;
+      let shiftStartExpr: string;
       if (hour >= 6 && hour < 14) {
         shift_name = 'Day Shift (06:00-14:00)';
-        shiftStart = new Date(mt);
-        shiftStart.setHours(6, 0, 0, 0);
+        // Today at 06:00 localtime
+        shiftStartExpr = `datetime(date('now','localtime') || ' 06:00:00')`;
       } else if (hour >= 14 && hour < 22) {
         shift_name = 'Swing Shift (14:00-22:00)';
-        shiftStart = new Date(mt);
-        shiftStart.setHours(14, 0, 0, 0);
+        // Today at 14:00 localtime
+        shiftStartExpr = `datetime(date('now','localtime') || ' 14:00:00')`;
       } else {
         shift_name = 'Graveyard Shift (22:00-06:00)';
-        shiftStart = new Date(mt);
         if (hour < 6) {
-          shiftStart.setDate(shiftStart.getDate() - 1);
+          // Yesterday at 22:00 localtime
+          shiftStartExpr = `datetime(date('now','localtime','-1 day') || ' 22:00:00')`;
+        } else {
+          // Today at 22:00 localtime
+          shiftStartExpr = `datetime(date('now','localtime') || ' 22:00:00')`;
         }
-        shiftStart.setHours(22, 0, 0, 0);
       }
-
-      const shiftISO = shiftStart.toISOString();
 
       const stats = db.prepare(`
         SELECT
@@ -710,21 +724,20 @@ router.get(
           SUM(CASE WHEN injuries_reported = 1 THEN 1 ELSE 0 END) as injury_calls,
           SUM(CASE WHEN drugs_involved = 1 THEN 1 ELSE 0 END) as drug_calls
         FROM calls_for_service
-        WHERE created_at >= ?
-      `).get(shiftISO) as any;
+        WHERE created_at >= ${shiftStartExpr}
+      `).get() as any;
 
       const warrantCount = db.prepare(`
         SELECT COUNT(*) as cnt FROM warrants WHERE status = 'active'
       `).get() as any;
 
       // Check officers currently in risk zones
-      const cutoff90 = new Date(Date.now() - 90 * 86_400_000).toISOString();
-      const dangerousAreas = db.prepare(`
+      const dangerousAreasShift = db.prepare(`
         SELECT latitude, longitude FROM calls_for_service
         WHERE weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0' AND weapons_involved != 'None'
           AND latitude IS NOT NULL AND longitude IS NOT NULL
-          AND created_at >= ?
-      `).all(cutoff90) as any[];
+          AND created_at >= datetime('now','localtime','-90 days')
+      `).all() as any[];
 
       const activeUnits = db.prepare(`
         SELECT call_sign, latitude, longitude FROM units
@@ -734,7 +747,7 @@ router.get(
 
       let officers_in_risk_zones = 0;
       for (const unit of activeUnits) {
-        for (const area of dangerousAreas) {
+        for (const area of dangerousAreasShift) {
           if (haversineMeters(unit.latitude, unit.longitude, area.latitude, area.longitude) <= 300) {
             officers_in_risk_zones++;
             break;
@@ -742,19 +755,19 @@ router.get(
         }
       }
 
-      // Trend — compare this shift to average of last 7 same-type shifts
-      const daysAgo7 = new Date(Date.now() - 7 * 86_400_000).toISOString();
+      // Trend — compare this shift to average of last 7 days' same-type shifts
+      // 7 days * 3 shifts per day = 21 shift periods for proper per-shift average
       const prevStats = db.prepare(`
         SELECT COUNT(*) as cnt FROM calls_for_service
         WHERE ((weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0' AND weapons_involved != 'None') OR domestic_violence = 1 OR injuries_reported = 1)
-          AND created_at >= ?
-      `).get(daysAgo7) as any;
+          AND created_at >= datetime('now','localtime','-7 days')
+      `).get() as any;
 
       const currentFlagged = (stats.weapon_calls || 0) + (stats.dv_calls || 0) + (stats.injury_calls || 0);
-      const avgDaily = (prevStats.cnt || 0) / 7;
+      const avgPerShift = (prevStats.cnt || 0) / 21;
       let trend: 'increasing' | 'stable' | 'decreasing';
-      if (currentFlagged > avgDaily * 1.3) trend = 'increasing';
-      else if (currentFlagged < avgDaily * 0.7) trend = 'decreasing';
+      if (currentFlagged > avgPerShift * 1.3) trend = 'increasing';
+      else if (currentFlagged < avgPerShift * 0.7) trend = 'decreasing';
       else trend = 'stable';
 
       const alerts: string[] = [];
@@ -804,6 +817,13 @@ router.post(
         res.status(400).json({ error: 'lat and lng are required' });
         return;
       }
+      const latNum = Number(lat);
+      const lngNum = Number(lng);
+      if (!Number.isFinite(latNum) || !Number.isFinite(lngNum) ||
+          latNum < -90 || latNum > 90 || lngNum < -180 || lngNum > 180) {
+        res.status(400).json({ error: 'lat must be between -90 and 90, lng between -180 and 180' });
+        return;
+      }
 
       const now = localNow();
       const result = db.prepare(`
@@ -813,8 +833,8 @@ router.post(
         req.user?.userId ?? null,
         'broadcast_sent',
         'safety_alert',
-        '0',
-        JSON.stringify({ type, lat, lng, details, radius_m: radius_m || 500 }),
+        type, // Use the alert type as entity_id for meaningful identification
+        JSON.stringify({ type, lat: latNum, lng: lngNum, details, radius_m: radius_m || 500 }),
         req.ip || 'unknown',
         now,
       );
@@ -822,8 +842,8 @@ router.post(
       const alertData = {
         alert_id: result.lastInsertRowid,
         type,
-        lat,
-        lng,
+        lat: latNum,
+        lng: lngNum,
         details: details || '',
         radius_m: radius_m || 500,
         issued_by: req.user?.fullName || req.user?.username || 'Unknown',

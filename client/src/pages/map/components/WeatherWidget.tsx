@@ -31,6 +31,8 @@ export default function WeatherWidget({ weather }: WeatherWidgetProps) {
 
   return (
     <div
+      role="status"
+      aria-busy={loading}
       className="flex items-center gap-1.5 px-2 py-1 text-[11px] text-white/80 select-none pointer-events-auto"
       style={{
         background: 'rgba(13,21,32,0.75)',
@@ -42,6 +44,8 @@ export default function WeatherWidget({ weather }: WeatherWidgetProps) {
     >
       {loading && temp === null ? (
         <span className="text-white/40">—</span>
+      ) : temp === null && !loading ? (
+        <span className="text-red-400/60" title="Weather data unavailable">!</span>
       ) : (
         <>
           <span>{icon}</span>

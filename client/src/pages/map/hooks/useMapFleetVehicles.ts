@@ -152,7 +152,10 @@ export function useMapFleetVehicles(
   // ── Clear all markers ─────────────────────────────────────
 
   const clearMarkers = useCallback(() => {
-    markersRef.current.forEach((m) => { m.map = null; });
+    markersRef.current.forEach((m) => {
+      if (window.google?.maps?.event) google.maps.event.clearInstanceListeners(m);
+      m.map = null;
+    });
     markersRef.current = [];
   }, []);
 
@@ -201,10 +204,12 @@ export function useMapFleetVehicles(
   const fetchFleetData = useCallback(() => {
     if (!enabled) return;
 
+    let cancelled = false;
     setLoading(true);
 
     apiFetch<FleetVehicle[]>('/fleet/map')
       .then((data) => {
+        if (cancelled) return;
         const records = Array.isArray(data) ? data : [];
         setVehicles(records);
         if (enabled) {
@@ -213,7 +218,7 @@ export function useMapFleetVehicles(
         setLoading(false);
       })
       .catch(() => {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       });
   }, [enabled, renderMarkers]);
 

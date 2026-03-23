@@ -433,11 +433,11 @@ export function useMapPerimeter(
       hvtMarkersRef.current.forEach((m) => m.setMap(null));
       hvtMarkersRef.current = [];
       if (clickListenerRef.current) {
-        google.maps.event.removeListener(clickListenerRef.current);
+        if (window.google?.maps?.event) google.maps.event.removeListener(clickListenerRef.current);
         clickListenerRef.current = null;
       }
       if (dblClickListenerRef.current) {
-        google.maps.event.removeListener(dblClickListenerRef.current);
+        if (window.google?.maps?.event) google.maps.event.removeListener(dblClickListenerRef.current);
         dblClickListenerRef.current = null;
       }
     };

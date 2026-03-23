@@ -138,7 +138,10 @@ export function useMapPatrolCheckpoints(
   // ── Clear all map objects ─────────────────────────────────
 
   const clearAll = useCallback(() => {
-    markersRef.current.forEach((m) => { m.map = null; });
+    markersRef.current.forEach((m) => {
+      if (window.google?.maps?.event) google.maps.event.clearInstanceListeners(m);
+      m.map = null;
+    });
     markersRef.current = [];
     polylinesRef.current.forEach((p) => p.setMap(null));
     polylinesRef.current = [];
@@ -230,9 +233,11 @@ export function useMapPatrolCheckpoints(
   const fetchData = useCallback(() => {
     if (!enabled) return;
 
+    let cancelled = false;
     setLoading(true);
     apiFetch<CheckpointRecord[]>('/patrol/checkpoints/map')
       .then((data) => {
+        if (cancelled) return;
         const records = Array.isArray(data) ? data : [];
         setCheckpoints(records);
         renderCheckpoints(records);

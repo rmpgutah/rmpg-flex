@@ -44,7 +44,7 @@ export function useMapBreadcrumbs({ mapInstanceRef, mapLoaded }: UseMapBreadcrum
   const breadcrumbInfoRef = useRef<google.maps.InfoWindow | null>(null);
 
   // Trail playback state
-  const [playbackTrails, setPlaybackTrails] = useState<any[]>([]);
+  const [playbackTrails, setPlaybackTrails] = useState<{ unit_id: number; call_sign: string; officer_name: string; badge_number: string; points: { lat: number; lng: number; accuracy: number | null; heading: number | null; speed: number | null; status: string; call_number: string | null; call_type: string | null; time: string; road_name: string | null; intersection: string | null }[] }[]>([]);
   const [playbackUnit, setPlaybackUnit] = useState<number | null>(null);
   const [playbackIdx, setPlaybackIdx] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -66,8 +66,7 @@ export function useMapBreadcrumbs({ mapInstanceRef, mapLoaded }: UseMapBreadcrum
 
     if (!showBreadcrumbs) { setPlaybackTrails([]); return; }
 
-    const token = localStorage.getItem('rmpg_token');
-    if (!token) return;
+    // apiFetch handles auth token automatically — no need for manual token check
 
     if (!breadcrumbInfoRef.current) {
       breadcrumbInfoRef.current = new google.maps.InfoWindow();
@@ -100,6 +99,8 @@ export function useMapBreadcrumbs({ mapInstanceRef, mapLoaded }: UseMapBreadcrum
     const MAX_RETRIES = 5;
 
     const fetchTrails = async () => {
+      // Clear any pending retry to prevent cascading retries
+      clearTimeout(retryTimeout);
       breadcrumbLinesRef.current.forEach((l) => l.setMap(null));
       breadcrumbLinesRef.current = [];
       breadcrumbMarkersRef.current.forEach((m) => m.setMap(null));

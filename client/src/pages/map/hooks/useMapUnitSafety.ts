@@ -101,6 +101,7 @@ export function useMapUnitSafety(
   const [unitClusters, setUnitClusters] = useState<UnitCluster[]>([]);
   const [backupCounts, setBackupCounts] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(false);
+  const mountedRef = useRef(true);
 
   // Position history for stationary detection
   const posHistoryRef = useRef<Map<string, { lat: number; lng: number; since: number }>>(new Map());
@@ -287,7 +288,7 @@ export function useMapUnitSafety(
   const fetchData = useCallback(async () => {
     if (!enabled) return;
 
-    setLoading(true);
+    if (mountedRef.current) setLoading(true);
 
     try {
       // Fetch unit exposure for each active unit (max 5 concurrent)
@@ -316,7 +317,7 @@ export function useMapUnitSafety(
           newExposure.set(result.value.call_sign, result.value);
         }
       });
-      setUnitExposure(newExposure);
+      if (mountedRef.current) setUnitExposure(newExposure);
 
       // Fetch coverage gaps
       let gaps: CoverageGap[] = [];
@@ -348,8 +349,10 @@ export function useMapUnitSafety(
         // non-fatal
       }
 
-      setCoverageGaps(gaps);
-      setCoveragePercent(covPct);
+      if (mountedRef.current) {
+        setCoverageGaps(gaps);
+        setCoveragePercent(covPct);
+      }
 
       // Compute derived metrics
       computeSafetyMetrics(newExposure);
@@ -389,7 +392,7 @@ export function useMapUnitSafety(
     } catch {
       // non-fatal — keep previous state
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, [enabled, units, map, computeSafetyMetrics, renderOverlays]);
 
@@ -413,7 +416,9 @@ export function useMapUnitSafety(
   // ── Cleanup on unmount ────────────────────────────────────
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       clearOverlays();
     };
   }, [clearOverlays]);

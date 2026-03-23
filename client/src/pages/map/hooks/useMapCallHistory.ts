@@ -101,7 +101,10 @@ export function useMapCallHistory(opts: UseMapCallHistoryOptions): UseMapCallHis
   // ── Clear markers ───────────────────────────────────────
 
   const clearMarkers = useCallback(() => {
-    markersRef.current.forEach((m) => { m.map = null; });
+    markersRef.current.forEach((m) => {
+      if (window.google?.maps?.event) google.maps.event.clearInstanceListeners(m);
+      m.map = null;
+    });
     markersRef.current = [];
   }, []);
 
@@ -181,19 +184,26 @@ export function useMapCallHistory(opts: UseMapCallHistoryOptions): UseMapCallHis
     if (types.length > 0) params.set('types', types.join(','));
     if (priorities.length > 0) params.set('priority', priorities.join(','));
 
+    let cancelled = false;
     setLoading(true);
     apiFetch<HistoricalCall[]>(`/dispatch/history-map?${params.toString()}`)
       .then((data) => {
+        if (cancelled) return;
         const arr = Array.isArray(data) ? data : [];
         setCalls(arr);
         renderMarkers(arr);
         setLoading(false);
       })
       .catch(() => {
+        if (cancelled) return;
         setCalls([]);
         clearMarkers();
         setLoading(false);
       });
+
+    return () => { cancelled = true; };
+  // Memoize join strings to stabilize dependency references
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, enabled, days, statuses.join(','), types.join(','), priorities.join(','), clearMarkers, renderMarkers]);
 
   // ── Cleanup on unmount ──────────────────────────────────

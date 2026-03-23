@@ -273,6 +273,8 @@ export function useMapClustering(
   }, [map, enabled, buildClusters, clearClusters]);
 
   // ── Rebuild when markers change ─────────────────────────
+  // NOTE: callMarkers array reference changes on every render (parent creates new array).
+  // This instability is accepted — clustering must rebuild when marker set changes.
 
   useEffect(() => {
     if (!map || !enabled) return;

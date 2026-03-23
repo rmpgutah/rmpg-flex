@@ -259,11 +259,13 @@ export default function SafetyAlertModal({
             </label>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-[10px] text-rmpg-500 mb-0.5 block">
+                <label htmlFor="safety-alert-lat" className="text-[10px] text-rmpg-500 mb-0.5 block">
                   Latitude
                 </label>
                 <input
+                  id="safety-alert-lat"
                   type="text"
+                  inputMode="decimal"
                   value={lat}
                   onChange={(e) => setLat(e.target.value)}
                   className="w-full rounded-sm px-2 py-1.5 text-xs text-rmpg-200 font-mono tabular-nums border-rmpg-700"
@@ -275,11 +277,13 @@ export default function SafetyAlertModal({
                 />
               </div>
               <div>
-                <label className="text-[10px] text-rmpg-500 mb-0.5 block">
+                <label htmlFor="safety-alert-lng" className="text-[10px] text-rmpg-500 mb-0.5 block">
                   Longitude
                 </label>
                 <input
+                  id="safety-alert-lng"
                   type="text"
+                  inputMode="decimal"
                   value={lng}
                   onChange={(e) => setLng(e.target.value)}
                   className="w-full rounded-sm px-2 py-1.5 text-xs text-rmpg-200 font-mono tabular-nums border-rmpg-700"
@@ -295,10 +299,11 @@ export default function SafetyAlertModal({
 
           {/* Details */}
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-wider text-rmpg-400 mb-1.5 block">
+            <label htmlFor="safety-alert-details" className="text-[10px] font-bold uppercase tracking-wider text-rmpg-400 mb-1.5 block">
               Details
             </label>
             <textarea
+              id="safety-alert-details"
               value={details}
               onChange={(e) => setDetails(e.target.value)}
               rows={3}

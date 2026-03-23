@@ -14,8 +14,8 @@ interface MapOverlaysProps {
   isMobile: boolean;
 
   // Counts
-  unitsWithCoords: any[];
-  callsWithCoords: any[];
+  unitsWithCoords: { id: string; call_sign: string; latitude: number; longitude: number; status: string }[];
+  callsWithCoords: { id: string; call_number: string; latitude: number; longitude: number; priority: string }[];
   unitsByStatus: Record<string, number>;
   callsByPriority: Record<string, number>;
 
@@ -23,8 +23,8 @@ interface MapOverlaysProps {
   showTrackingLines: boolean;
   trackingLinesRef: React.MutableRefObject<google.maps.Polyline[]>;
 
-  // Route
-  activeRoute: any;
+  // Route (routing result from useMapRouting hook)
+  activeRoute: { unitCallSign: string; callNumber: string; eta: string; distance: string } | null;
   routeLoading: boolean;
   clearRoute: () => void;
 
@@ -162,6 +162,7 @@ export default function MapOverlays({
             <button
               onClick={clearRoute}
               style={{ background: 'none', border: 'none', color: '#5a6e80', cursor: 'pointer', fontSize: 12, padding: '0 0 0 8px' }}
+              aria-label="Clear route"
               title="Clear route"
             >
               ✕
@@ -201,6 +202,7 @@ export default function MapOverlays({
               }}
               className="flex items-center justify-center transition-colors hover:bg-white/10 active:bg-white/20"
               style={{ width: 48, height: 48, borderBottom: '1px solid #1e3048' }}
+              aria-label="Zoom in"
               title="Zoom in"
             >
               <Plus className="w-5 h-5 text-white/80" />
@@ -212,6 +214,7 @@ export default function MapOverlays({
               }}
               className="flex items-center justify-center transition-colors hover:bg-white/10 active:bg-white/20"
               style={{ width: 48, height: 48 }}
+              aria-label="Zoom out"
               title="Zoom out"
             >
               <Minus className="w-5 h-5 text-white/80" />

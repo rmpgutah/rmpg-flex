@@ -203,11 +203,19 @@ export function useMapCorridor(
               ctx.fillText(seg.traffic_label, 2, 14);
             }
 
+            let canvasDataUrl: string;
+            try {
+              canvasDataUrl = canvas.toDataURL();
+            } catch {
+              // Canvas tainted or toDataURL failed — skip this label
+              return;
+            }
+
             const label = new google.maps.Marker({
               position: { lat: midLat, lng: midLng },
               map,
               icon: {
-                url: canvas.toDataURL(),
+                url: canvasDataUrl,
                 scaledSize: new google.maps.Size(100, 20),
                 anchor: new google.maps.Point(50, 10),
               },

@@ -357,7 +357,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
       setPlaybackIdx(currentIdx);
       currentIdx++;
       const delay = 200 / playbackSpeed;
-      playbackAnimRef.current = window.setTimeout(step, delay) as unknown as number;
+      playbackAnimRef.current = window.setTimeout(step, delay) as ReturnType<typeof setTimeout> as unknown as number;
     };
 
     step();
@@ -411,6 +411,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
           <select
             value={selectedUnit ?? ''}
             onChange={(e) => setSelectedUnit(e.target.value ? Number(e.target.value) : null)}
+            aria-label="Select unit for trail playback"
             className="w-full input-dark text-[11px] font-mono px-2 py-1.5"
             style={{ borderRadius: 2 }}
           >

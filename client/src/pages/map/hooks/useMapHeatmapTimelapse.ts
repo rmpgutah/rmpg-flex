@@ -173,7 +173,8 @@ export function useMapHeatmapTimelapse(
     intervalRef.current = setInterval(() => {
       setCurrentIndex((prev) => {
         if (prev >= slices.length - 1) {
-          setIsPlaying(false);
+          // Move setIsPlaying outside the updater to avoid state update during render
+          queueMicrotask(() => setIsPlaying(false));
           return prev;
         }
         return prev + 1;

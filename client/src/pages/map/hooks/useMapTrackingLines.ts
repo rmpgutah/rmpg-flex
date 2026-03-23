@@ -54,7 +54,14 @@ export function useMapTrackingLines({ mapInstanceRef, mapLoaded, units, calls }:
 
       trackingLinesRef.current.push(line);
     });
-  }, [units, calls, showTrackingLines, mapLoaded, mapInstanceRef]);
+
+    return () => {
+      trackingLinesRef.current.forEach(l => l.setMap(null));
+      trackingLinesRef.current = [];
+    };
+  // mapInstanceRef excluded — refs are stable, including it is misleading
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [units, calls, showTrackingLines, mapLoaded]);
 
   return {
     showTrackingLines,

@@ -50,6 +50,8 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
     setOpen(false);
     try {
       await onScreenshot();
+    } catch {
+      // Screenshot failed — silently handled; busy state resets below
     } finally {
       setBusy(false);
     }
@@ -76,6 +78,8 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
           : { borderRadius: 2, padding: 10, display: 'flex', alignItems: 'center', gap: 4 }
         }
         title="Export map"
+        aria-expanded={open}
+        aria-haspopup="true"
       >
         {busy ? (
           <Loader2 className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${light ? 'text-gray-600' : 'text-rmpg-300'} animate-spin`} />
@@ -90,6 +94,7 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
       {/* Dropdown */}
       {open && (
         <div
+          role="menu"
           className="absolute bottom-full mb-2 right-0 z-[1100] backdrop-blur-md shadow-2xl overflow-hidden"
           style={{
             borderRadius: 2,
@@ -99,6 +104,7 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
           }}
         >
           <button
+            role="menuitem"
             onClick={handleScreenshot}
             className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${textColor} ${hoverBg}`}
             style={{ borderBottom: borderBase }}
@@ -110,6 +116,7 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
             </div>
           </button>
           <button
+            role="menuitem"
             onClick={handlePrint}
             className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${textColor} ${hoverBg}`}
           >

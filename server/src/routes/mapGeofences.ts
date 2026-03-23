@@ -17,8 +17,8 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     const showAll = req.query.all === 'true';
 
     const rows = showAll
-      ? db.prepare('SELECT * FROM geofences ORDER BY created_at DESC').all()
-      : db.prepare('SELECT * FROM geofences WHERE is_active = 1 ORDER BY created_at DESC').all();
+      ? db.prepare('SELECT * FROM geofences ORDER BY created_at DESC LIMIT 500').all()
+      : db.prepare('SELECT * FROM geofences WHERE is_active = 1 ORDER BY created_at DESC LIMIT 500').all();
 
     res.json(rows);
   } catch (error: any) {
@@ -47,18 +47,33 @@ router.post('/', requireRole('admin', 'supervisor'), (req: Request, res: Respons
       return;
     }
 
-    // Validate polygon_coords is valid JSON array
+    // Validate polygon_coords is valid JSON array of {lat, lng} with at least 3 points
     let coordsStr: string;
+    let parsedCoords: any;
     if (typeof polygon_coords === 'string') {
       try {
-        JSON.parse(polygon_coords);
+        parsedCoords = JSON.parse(polygon_coords);
         coordsStr = polygon_coords;
       } catch {
         res.status(400).json({ error: 'polygon_coords must be valid JSON' });
         return;
       }
     } else {
+      parsedCoords = polygon_coords;
       coordsStr = JSON.stringify(polygon_coords);
+    }
+
+    if (!Array.isArray(parsedCoords) || parsedCoords.length < 3) {
+      res.status(400).json({ error: 'polygon_coords must be an array with at least 3 points' });
+      return;
+    }
+    for (const pt of parsedCoords) {
+      if (typeof pt !== 'object' || pt === null ||
+          typeof pt.lat !== 'number' || typeof pt.lng !== 'number' ||
+          !Number.isFinite(pt.lat) || !Number.isFinite(pt.lng)) {
+        res.status(400).json({ error: 'Each point in polygon_coords must have numeric lat and lng' });
+        return;
+      }
     }
 
     const now = localNow();
@@ -72,7 +87,7 @@ router.post('/', requireRole('admin', 'supervisor'), (req: Request, res: Respons
       alert_on_enter ? 1 : 0,
       alert_on_exit ? 1 : 0,
       (typeof color === 'string' && color.length <= 20) ? color : '#ef4444',
-      req.user?.fullName || req.user?.username || null,
+      req.user?.userId ?? null,
       now,
       now,
     );

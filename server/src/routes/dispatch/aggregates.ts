@@ -153,14 +153,13 @@ router.get('/heatmap/advanced', requireRole('admin', 'manager', 'supervisor', 'o
     // Parse day-of-week filter (0=Sun, 6=Sat)
     const dayFilter = dayFilterRaw ? dayFilterRaw.split(',').map(Number).filter(n => n >= 0 && n <= 6) : [];
 
-    // Build WHERE clauses
-    const cutoff = `-${days}`;
+    // Build WHERE clauses — parameterize the date cutoff to prevent SQL injection
     const conditions: string[] = [
       'latitude IS NOT NULL',
       'longitude IS NOT NULL',
-      `created_at >= datetime('now', 'localtime', '${cutoff} days')`,
+      `created_at >= datetime('now', 'localtime', ? || ' days')`,
     ];
-    const params: any[] = [];
+    const params: any[] = [`-${days}`];
 
     // Hour range filter
     const hasHourFilter = !isNaN(hourStart) && !isNaN(hourEnd) && hourStart >= 0 && hourStart <= 23 && hourEnd >= 0 && hourEnd <= 23;
@@ -195,8 +194,9 @@ router.get('/heatmap/advanced', requireRole('admin', 'manager', 'supervisor', 'o
     const roundExpr = roundDigits === 1 ? 'ROUND(latitude, 3)' : roundDigits === 5 ? 'ROUND(latitude, 2)' : 'ROUND(latitude, 3)';
     const roundExprLng = roundDigits === 1 ? 'ROUND(longitude, 3)' : roundDigits === 5 ? 'ROUND(longitude, 2)' : 'ROUND(longitude, 3)';
     // For fine resolution, use 3 decimal places; for medium 3; for coarse 2
-    const latRound = resolution === 'coarse' ? 2 : 3;
-    const lngRound = resolution === 'coarse' ? 2 : 3;
+    // These are safe integer literals (2 or 3) derived from a validated enum — safe for interpolation
+    const latRound: 2 | 3 = resolution === 'coarse' ? 2 : 3;
+    const lngRound: 2 | 3 = resolution === 'coarse' ? 2 : 3;
 
     // For temporal mode with a specific hour, add extra filter
     let temporalConditions = '';
@@ -338,16 +338,18 @@ router.get('/heatmap/advanced', requireRole('admin', 'manager', 'supervisor', 'o
       const compCutoffStart = `-${days + comparisonDays}`;
       const compCutoffEnd = `-${days}`;
 
-      // Build comparison conditions (same filters but different date range)
+      // Build comparison conditions (same filters but different date range) — parameterized
       const compConditions = conditions.map(c => {
         if (c.includes('created_at >=')) {
-          return `created_at >= datetime('now', 'localtime', '${compCutoffStart} days') AND created_at < datetime('now', 'localtime', '${compCutoffEnd} days')`;
+          return `created_at >= datetime('now', 'localtime', ? || ' days') AND created_at < datetime('now', 'localtime', ? || ' days')`;
         }
         return c;
       });
 
+      // Build separate params: replace date param with comparison range, keep other filter params
+      const compParams: any[] = [compCutoffStart, compCutoffEnd, ...params.slice(1)];
+
       const compWhere = compConditions.join(' AND ');
-      // Params are the same minus the date param (which is inlined)
       const compPoints = db.prepare(`
         SELECT
           ROUND(latitude, ${latRound}) as latitude,
@@ -363,7 +365,7 @@ router.get('/heatmap/advanced', requireRole('admin', 'manager', 'supervisor', 'o
         GROUP BY ROUND(latitude, ${latRound}), ROUND(longitude, ${lngRound})
         ORDER BY count DESC
         LIMIT 500
-      `).all(...params) as any[];
+      `).all(...compParams) as any[];
 
       comparisonPoints = compPoints.map((p: any) => ({
         lat: p.latitude,
@@ -400,6 +402,7 @@ router.get('/queue', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       ORDER BY
         CASE c.priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 END,
         c.created_at ASC
+      LIMIT 200
     `).all();
 
     res.json(calls);

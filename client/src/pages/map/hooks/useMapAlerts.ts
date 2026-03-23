@@ -5,7 +5,7 @@
 // and Web Audio API sound differentiation.
 // ============================================================
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useWebSocket } from '../../../context/WebSocketContext';
 
@@ -180,7 +180,7 @@ export function useMapAlerts(
       circlesRef.current.clear();
       pulseTimersRef.current.forEach((t) => clearInterval(t));
       pulseTimersRef.current.clear();
-      audioCtxRef.current?.close();
+      audioCtxRef.current?.close().catch(() => {});
     };
   }, []);
 
@@ -295,6 +295,12 @@ export function useMapAlerts(
         radius?: number;
         timestamp: string;
       };
+
+      // Validate required fields before creating alert
+      if (!alertData.id || !alertData.type || alertData.lat == null || alertData.lng == null) {
+        console.warn('[useMapAlerts] Received alert with missing required fields, ignoring');
+        return;
+      }
 
       const newAlert: SafetyAlert = {
         id: alertData.id,
@@ -421,10 +427,10 @@ export function useMapAlerts(
     setAlerts([]);
   }, []);
 
-  // ── Derived state ───────────────────────────────────────
+  // ── Derived state (memoized to avoid re-renders) ────────
 
-  const activeAlerts = alerts.filter((a) => !a.expired);
-  const alertHistory = alerts;
+  const activeAlerts = useMemo(() => alerts.filter((a) => !a.expired), [alerts]);
+  const alertHistory = useMemo(() => alerts, [alerts]);
 
   return {
     broadcastAlert,

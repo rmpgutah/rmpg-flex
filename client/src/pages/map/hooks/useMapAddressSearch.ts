@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, type MutableRefObject } from 'react';
 import { escapeHtml } from '../../../utils/sanitize';
 
 interface UseMapAddressSearchParams {
@@ -38,13 +38,20 @@ export function useMapAddressSearch({ mapInstanceRef, createMarker, removeMarker
   const addressSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const addressMarkerRef = useRef<any>(null);
   const addressDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autocompleteServiceRef = useRef<google.maps.places.AutocompleteService | null>(null);
+  const geocoderRef = useRef<google.maps.Geocoder | null>(null);
 
-  // Clean up timers on unmount
+  // Clean up timers and address marker on unmount
   useEffect(() => {
     return () => {
       if (addressSearchTimer.current) clearTimeout(addressSearchTimer.current);
       if (addressDismissTimer.current) clearTimeout(addressDismissTimer.current);
+      if (addressMarkerRef.current) {
+        removeMarker(addressMarkerRef.current);
+        addressMarkerRef.current = null;
+      }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleAddressSearch = useCallback((query: string) => {
@@ -59,8 +66,10 @@ export function useMapAddressSearch({ mapInstanceRef, createMarker, removeMarker
 
     addressSearchTimer.current = setTimeout(() => {
       if (typeof google === 'undefined' || !google.maps?.places) return;
-      const service = new google.maps.places.AutocompleteService();
-      service.getPlacePredictions(
+      if (!autocompleteServiceRef.current) {
+        autocompleteServiceRef.current = new google.maps.places.AutocompleteService();
+      }
+      autocompleteServiceRef.current.getPlacePredictions(
         { input: query, types: ['geocode', 'establishment'], componentRestrictions: { country: 'us' } },
         (predictions, status) => {
           if (status === google.maps.places.PlacesServiceStatus.OK && predictions) {
@@ -78,8 +87,10 @@ export function useMapAddressSearch({ mapInstanceRef, createMarker, removeMarker
     const map = mapInstanceRef.current;
     if (!map || typeof google === 'undefined') return;
 
-    const geocoder = new google.maps.Geocoder();
-    geocoder.geocode({ placeId }, (results, status) => {
+    if (!geocoderRef.current) {
+      geocoderRef.current = new google.maps.Geocoder();
+    }
+    geocoderRef.current.geocode({ placeId }, (results, status) => {
       if (status === 'OK' && results && results[0]) {
         const loc = results[0].geometry.location;
         map.panTo(loc);

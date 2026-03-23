@@ -233,9 +233,14 @@ export function useMapMarkers({
 
               try {
                 const details = await apiFetch<PropertyDetails>(`/records/properties/${prop.id}`);
-                infoWindowRef.current?.setContent(buildPropertyInfoWindow(prop, details));
+                // Only update content if info window is still open (user hasn't closed it)
+                if (infoWindowRef.current?.getMap()) {
+                  infoWindowRef.current?.setContent(buildPropertyInfoWindow(prop, details));
+                }
               } catch {
-                infoWindowRef.current?.setContent(buildPropertyFallbackWindow(prop));
+                if (infoWindowRef.current?.getMap()) {
+                  infoWindowRef.current?.setContent(buildPropertyFallbackWindow(prop));
+                }
               }
             },
           });

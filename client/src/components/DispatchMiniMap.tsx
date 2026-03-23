@@ -399,7 +399,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       )}
 
       {/* Map container */}
-      <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
+      <div ref={mapContainerRef} aria-label="Dispatch mini map" style={{ width: '100%', height: '100%' }} />
 
       {/* Loading overlay */}
       {!loaded && !error && (

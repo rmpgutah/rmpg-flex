@@ -29,8 +29,8 @@ function isCacheValid(): boolean {
   return cachedWeather !== null && Date.now() - cachedWeather.fetchedAt < CACHE_TTL;
 }
 
-async function fetchWeather(): Promise<WeatherData> {
-  const res = await fetch(API_URL);
+async function fetchWeather(signal?: AbortSignal): Promise<WeatherData> {
+  const res = await fetch(API_URL, { signal });
   if (!res.ok) throw new Error(`Weather API ${res.status}`);
   const json = await res.json();
   const c = json.current;
@@ -51,6 +51,7 @@ export function useWeatherOverlay(): UseWeatherOverlayResult {
 
   useEffect(() => {
     let cancelled = false;
+    const abortController = new AbortController();
 
     const load = async () => {
       if (isCacheValid()) {
@@ -60,7 +61,7 @@ export function useWeatherOverlay(): UseWeatherOverlayResult {
       }
       setLoading(true);
       try {
-        const weather = await fetchWeather();
+        const weather = await fetchWeather(abortController.signal);
         cachedWeather = weather;
         if (!cancelled) {
           setData(weather);
@@ -84,6 +85,7 @@ export function useWeatherOverlay(): UseWeatherOverlayResult {
 
     return () => {
       cancelled = true;
+      abortController.abort();
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, []);

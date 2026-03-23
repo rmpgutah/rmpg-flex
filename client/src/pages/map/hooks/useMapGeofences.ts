@@ -284,6 +284,7 @@ export function useMapGeofences(
 
   useEffect(() => {
     // Subscribe to geofence alerts via the data_changed message type
+    // WebSocket event types: 'data_changed' (geofence enter/exit events)
     // (server broadcasts geofence events as data_changed with entity='geofence')
     const unsub = subscribe('data_changed' as any, (msg: any) => {
       const payload = msg.payload || msg.data;

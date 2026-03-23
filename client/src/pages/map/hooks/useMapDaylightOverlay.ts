@@ -138,6 +138,7 @@ export function useMapDaylightOverlay(
   });
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastDateKeyRef = useRef<string>('');
 
   // ── Calculate and update ──────────────────────────────────
 
@@ -163,11 +164,22 @@ export function useMapDaylightOverlay(
       const elevation = calcSunElevation(now, lat, lng);
       const phase = getPhase(elevation);
 
-      // Find minutes to next sunset (sun crossing 0 degrees going down)
-      const minutesToSunset = findNextEvent(now, lat, lng, 0, 'setting');
+      // Cache findNextEvent results — only recalculate when date changes
+      const dateKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${Math.floor(now.getHours() / 2)}`;
+      let minutesToSunset: number | null;
+      let minutesToSunrise: number | null;
 
-      // Find minutes to next sunrise (sun crossing 0 degrees going up)
-      const minutesToSunrise = findNextEvent(now, lat, lng, 0, 'rising');
+      if (dateKey !== lastDateKeyRef.current) {
+        // Find minutes to next sunset (sun crossing 0 degrees going down)
+        minutesToSunset = findNextEvent(now, lat, lng, 0, 'setting');
+        // Find minutes to next sunrise (sun crossing 0 degrees going up)
+        minutesToSunrise = findNextEvent(now, lat, lng, 0, 'rising');
+        lastDateKeyRef.current = dateKey;
+      } else {
+        // Reuse previous sunset/sunrise and adjust for elapsed time
+        minutesToSunset = state.minutesToSunset != null ? state.minutesToSunset : findNextEvent(now, lat, lng, 0, 'setting');
+        minutesToSunrise = state.minutesToSunrise != null ? state.minutesToSunrise : findNextEvent(now, lat, lng, 0, 'rising');
+      }
 
       setState({
         phase,

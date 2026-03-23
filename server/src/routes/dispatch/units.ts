@@ -101,6 +101,11 @@ router.put('/units/:id', validateParamIdMiddleware, requireRole('admin', 'manage
       params.push(officer_id || null);
     }
     if (status !== undefined) {
+      const VALID_UNIT_STATUSES = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service'];
+      if (!VALID_UNIT_STATUSES.includes(status)) {
+        res.status(400).json({ error: 'Invalid unit status', valid: VALID_UNIT_STATUSES });
+        return;
+      }
       updates.push('status = ?');
       params.push(status);
       updates.push('last_status_change = ?');

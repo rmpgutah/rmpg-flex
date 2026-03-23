@@ -52,7 +52,7 @@ const REFRESH_MS = 30_000; // 30 seconds
 
 export function useMapDwellTime(
   map: google.maps.Map | null,
-  units: Array<{ call_sign: string; latitude?: number; longitude?: number; status?: string }>,
+  _units: Array<{ call_sign: string; latitude?: number; longitude?: number; status?: string }>,
   enabled: boolean,
 ): UseMapDwellTimeReturn {
   const [dwellData, setDwellData] = useState<DwellTimeRecord[]>([]);

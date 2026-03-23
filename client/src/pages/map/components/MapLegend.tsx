@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import type { UnitStatus } from '../../../types';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS } from '../utils/mapConstants';
 
@@ -74,7 +74,7 @@ export default function MapLegend({ layers, showBreadcrumbs, breadcrumbColorMode
       {/* Header */}
       <div className="flex items-center justify-between px-2.5 py-1.5" style={{ borderBottom: '1px solid #1e3048' }}>
         <span className="text-[9px] font-mono font-black tracking-wider text-rmpg-300 uppercase">Legend</span>
-        <button onClick={() => setExpanded(false)} className="text-rmpg-400 hover:text-white transition-colors p-0.5">
+        <button onClick={() => setExpanded(false)} aria-expanded={expanded} className="text-rmpg-400 hover:text-white transition-colors p-0.5">
           <ChevronDown className="w-3 h-3" />
         </button>
       </div>

@@ -382,8 +382,14 @@ router.post('/calls/:id/generate-incident', validateParamIdMiddleware, requireRo
 router.put('/calls/:id/timeline/:entryId', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const entryId = parseInt(req.params.entryId, 10);
+    if (isNaN(entryId) || entryId < 1) {
+      res.status(400).json({ error: 'Invalid timeline entry ID' });
+      return;
+    }
+
     const entry = db.prepare('SELECT * FROM activity_log WHERE id = ? AND entity_type = ? AND entity_id = ?')
-      .get(req.params.entryId, 'call', req.params.id) as any;
+      .get(entryId, 'call', req.params.id) as any;
     if (!entry) {
       res.status(404).json({ error: 'Timeline entry not found' });
       return;
@@ -393,7 +399,13 @@ router.put('/calls/:id/timeline/:entryId', validateParamIdMiddleware, requireRol
     // Note: created_at is intentionally NOT editable — audit log timestamps are immutable
     const updates: string[] = [];
     const params: any[] = [];
-    if (details !== undefined) { updates.push('details = ?'); params.push(details); }
+    if (details !== undefined) {
+      if (typeof details !== 'string' || details.length > 5000) {
+        res.status(400).json({ error: 'details must be a string of 5000 characters or less' });
+        return;
+      }
+      updates.push('details = ?'); params.push(details);
+    }
 
     if (updates.length === 0) {
       res.status(400).json({ error: 'No fields to update' });
@@ -417,8 +429,14 @@ router.put('/calls/:id/timeline/:entryId', validateParamIdMiddleware, requireRol
 router.delete('/calls/:id/timeline/:entryId', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const delEntryId = parseInt(req.params.entryId, 10);
+    if (isNaN(delEntryId) || delEntryId < 1) {
+      res.status(400).json({ error: 'Invalid timeline entry ID' });
+      return;
+    }
+
     const entry = db.prepare('SELECT * FROM activity_log WHERE id = ? AND entity_type = ? AND entity_id = ?')
-      .get(req.params.entryId, 'call', req.params.id) as any;
+      .get(delEntryId, 'call', req.params.id) as any;
     if (!entry) {
       res.status(404).json({ error: 'Timeline entry not found' });
       return;
@@ -448,8 +466,29 @@ router.post('/calls/:id/timeline', validateParamIdMiddleware, requireRole('admin
       res.status(400).json({ error: 'details is required' });
       return;
     }
+    if (typeof details !== 'string' || details.length > 5000) {
+      res.status(400).json({ error: 'details must be a string of 5000 characters or less' });
+      return;
+    }
 
-    const timestamp = created_at || localNow();
+    // Validate created_at if provided
+    let timestamp = localNow();
+    if (created_at) {
+      if (typeof created_at !== 'string' || created_at.length > 50) {
+        res.status(400).json({ error: 'created_at must be a valid date string' });
+        return;
+      }
+      const parsed = new Date(created_at);
+      if (isNaN(parsed.getTime())) {
+        res.status(400).json({ error: 'created_at is not a valid date' });
+        return;
+      }
+      if (parsed.getTime() > Date.now() + 60_000) { // Allow 1 min clock skew
+        res.status(400).json({ error: 'created_at cannot be in the future' });
+        return;
+      }
+      timestamp = created_at;
+    }
     const result = db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, ?, 'call', ?, ?, ?, ?)

@@ -41,8 +41,8 @@ export default function ClosestUnitPanel({
         body: JSON.stringify({ unit_id: Number(unitId) }),
       });
 
-      if (res && (res as any).error) {
-        setDispatchError((res as any).error);
+      if (res && typeof res === 'object' && 'error' in res && res.error) {
+        setDispatchError(String(res.error));
       } else {
         setDispatchedUnits(prev => new Set(prev).add(unitId));
         onDispatchSuccess?.();
@@ -56,6 +56,8 @@ export default function ClosestUnitPanel({
 
   return (
     <div
+      role="complementary"
+      aria-label="Closest unit panel"
       className="absolute z-[1002] flex flex-col"
       style={{
         top: 48,
@@ -83,6 +85,7 @@ export default function ClosestUnitPanel({
         </span>
         <button
           onClick={onClose}
+          aria-label="Close closest units panel"
           className="p-0.5 hover:bg-white/10 transition-colors"
           style={{ borderRadius: 2 }}
         >
@@ -228,6 +231,7 @@ export default function ClosestUnitPanel({
                     <button
                       onClick={() => handleDispatch(unit.id)}
                       disabled={isDispatching}
+                      aria-label={`Dispatch unit ${unit.call_sign}`}
                       className="flex items-center gap-1 px-2 py-1 transition-colors"
                       style={{
                         background: isDispatching ? '#1a5a9e20' : '#1a5a9e30',

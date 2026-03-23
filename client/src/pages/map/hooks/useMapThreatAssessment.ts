@@ -239,22 +239,30 @@ export function useMapThreatAssessment(
 
   // ── assessLocation ────────────────────────────────────────
 
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   const assessLocation = useCallback(
     async (lat: number, lng: number) => {
       if (!enabled) return;
+      // Abort any in-flight assessment request
+      if (abortControllerRef.current) abortControllerRef.current.abort();
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
       setLoading(true);
       try {
         const data = await apiFetch<ThreatAssessment>(
           `/map/safety/threat-assessment/${lat}/${lng}`,
+          { signal: controller.signal },
         );
-        if (data) {
+        if (data && !controller.signal.aborted) {
           setCurrentAssessment(data);
           renderAssessment(data);
         }
       } catch {
-        setCurrentAssessment(null);
+        if (!controller.signal.aborted) setCurrentAssessment(null);
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     },
     [enabled, renderAssessment],

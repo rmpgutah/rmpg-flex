@@ -66,7 +66,7 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
           return;
         }
       }
-      points = rawPoints.map((pt: any) => ({
+      points = rawPoints.filter((pt: any) => pt.lat != null && pt.lng != null).map((pt: any) => ({
         lat: Number(pt.lat),
         lng: Number(pt.lng),
         accuracy: pt.accuracy != null ? Number(pt.accuracy) : null,
@@ -229,7 +229,14 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
     try {
       const geofences = db.prepare('SELECT * FROM geofences WHERE is_active = 1').all() as any[];
       for (const fence of geofences) {
-        const coords = JSON.parse(fence.polygon_coords);
+        let coords: any;
+        try {
+          coords = JSON.parse(fence.polygon_coords);
+        } catch {
+          console.warn(`[GPS] Skipping geofence ${fence.id} — invalid polygon_coords JSON`);
+          continue;
+        }
+        if (!Array.isArray(coords) || coords.length < 3) continue;
         if (pointInPolygon(latest.lat, latest.lng, coords)) {
           // Broadcast geofence entry alert — frontend deduplicates
           if (fence.alert_on_enter) {
@@ -260,6 +267,8 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
 
     // ── Async geocode: reverse-geocode the latest point, then backfill the batch ──
     // Runs after the response is sent so it doesn't slow down the GPS endpoint.
+    // NOTE: Rate limiting — each GPS batch triggers at most ONE reverse geocode call.
+    // With ~10s batch intervals per unit, this stays well within Google Maps quota.
     (async () => {
       try {
         const geo = await reverseGeocodeDetailed(latest.lat, latest.lng);
@@ -484,6 +493,11 @@ router.get('/gps/dwell-times', requireRole('admin', 'manager', 'supervisor', 'of
         AND status != 'off_duty'
     `).all() as Array<{ id: number; call_sign: string; latitude: number; longitude: number; status: string }>;
 
+    if (units.length === 0) {
+      res.json([]);
+      return;
+    }
+
     const THRESHOLD_M = 50; // meters — movement threshold
 
     // Haversine distance in meters
@@ -497,20 +511,39 @@ router.get('/gps/dwell-times', requireRole('admin', 'manager', 'supervisor', 'of
       return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     };
 
-    const getBreadcrumbs = db.prepare(`
-      SELECT latitude, longitude, recorded_at
-      FROM gps_breadcrumbs
-      WHERE unit_id = ?
-      ORDER BY id DESC
-      LIMIT 100
-    `);
+    // Fix N+1: fetch breadcrumbs for all active units in a single grouped query.
+    // ROW_NUMBER window partitions by unit_id, limited to 100 per unit.
+    const unitIds = units.map(u => u.id);
+    const placeholders = unitIds.map(() => '?').join(',');
+    const allBreadcrumbs = db.prepare(`
+      SELECT unit_id, latitude, longitude, recorded_at
+      FROM (
+        SELECT unit_id, latitude, longitude, recorded_at,
+          ROW_NUMBER() OVER (PARTITION BY unit_id ORDER BY id DESC) as rn
+        FROM gps_breadcrumbs
+        WHERE unit_id IN (${placeholders})
+      )
+      WHERE rn <= 100
+      ORDER BY unit_id, rn ASC
+    `).all(...unitIds) as Array<{ unit_id: number; latitude: number; longitude: number; recorded_at: string }>;
+
+    // Group breadcrumbs by unit_id
+    const breadcrumbsByUnit = new Map<number, Array<{ latitude: number; longitude: number; recorded_at: string }>>();
+    for (const bc of allBreadcrumbs) {
+      let arr = breadcrumbsByUnit.get(bc.unit_id);
+      if (!arr) { arr = []; breadcrumbsByUnit.set(bc.unit_id, arr); }
+      arr.push(bc);
+    }
+
+    // Use SQLite localtime for consistent Mountain Time "now" comparison
+    const dbNow = db.prepare(`SELECT datetime('now','localtime') as now`).get() as any;
+    const nowLocal = dbNow?.now || localNow();
 
     const results: Array<{ call_sign: string; latitude: number; longitude: number; dwell_minutes: number; status: string }> = [];
 
     for (const unit of units) {
-      const breadcrumbs = getBreadcrumbs.all(unit.id) as Array<{ latitude: number; longitude: number; recorded_at: string }>;
-
-      if (breadcrumbs.length === 0) continue;
+      const breadcrumbs = breadcrumbsByUnit.get(unit.id);
+      if (!breadcrumbs || breadcrumbs.length === 0) continue;
 
       // Latest position from unit table
       const latestLat = unit.latitude;
@@ -533,8 +566,9 @@ router.get('/gps/dwell-times', requireRole('admin', 'manager', 'supervisor', 'of
 
       if (!lastMovedAt) continue;
 
+      // Compare using Mountain Time consistent timestamps (recorded_at is localtime, nowLocal is localtime)
       const movedAtMs = new Date(lastMovedAt).getTime();
-      const nowMs = Date.now();
+      const nowMs = new Date(nowLocal).getTime();
       const dwellMinutes = Math.round((nowMs - movedAtMs) / 60000);
 
       // Only include units dwelling > 5 min

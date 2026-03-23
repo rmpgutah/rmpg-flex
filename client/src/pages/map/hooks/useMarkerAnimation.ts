@@ -4,7 +4,7 @@
 // requestAnimationFrame so unit markers glide instead of jumping.
 // ============================================================
 
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
 
 interface AnimationState {
   currentLat: number;
@@ -124,6 +124,9 @@ export function useMarkerAnimation() {
     });
     map.clear();
   }, []);
+
+  // Cleanup all running animations on unmount
+  useEffect(() => () => cleanupAll(), [cleanupAll]);
 
   return { animateMarkerTo, cancelAnimation, cleanupAll };
 }

@@ -190,7 +190,7 @@ export default function SafetyDashboardPanel({
             <div className="flex items-center gap-3">
               {/* Gauge arc */}
               <div className="relative" style={{ width: 56, height: 56 }}>
-                <svg viewBox="0 0 56 56" className="w-full h-full">
+                <svg viewBox="0 0 56 56" role="img" aria-label={`Risk score gauge: ${score}`} className="w-full h-full">
                   {/* Background arc */}
                   <circle
                     cx="28"
@@ -442,7 +442,7 @@ export default function SafetyDashboardPanel({
             >
               {shiftRisk.alerts.map((alert, i) => (
                 <div
-                  key={i}
+                  key={`alert-${i}-${alert.slice(0, 20)}`}
                   className="text-[10px] text-rmpg-400 pl-2"
                   style={{
                     borderLeft: '2px solid #1e2a3a',

@@ -77,7 +77,8 @@ export function useMapTactical(
 ): UseMapTacticalReturn {
   const [rallyPoint, setRallyPointState] = useState<RallyPoint | null>(null);
   const [entryPoints, setEntryPoints] = useState<EntryPoint[]>([]);
-  const [loading] = useState(false);
+  // loading state reserved for future async operations (currently unused)
+  const loading = false;
 
   // Refs for Google Maps objects
   const rallyMarkerRef = useRef<google.maps.Marker | null>(null);
@@ -92,12 +93,24 @@ export function useMapTactical(
 
   useEffect(() => {
     return () => {
-      rallyMarkerRef.current?.setMap(null);
+      if (rallyMarkerRef.current) {
+        if (window.google?.maps?.event) google.maps.event.clearInstanceListeners(rallyMarkerRef.current);
+        rallyMarkerRef.current.setMap(null);
+      }
       commandRingsRef.current.forEach((c) => c.setMap(null));
-      k9CircleRef.current?.setMap(null);
-      hospitalMarkersRef.current.forEach((m) => m.setMap(null));
-      fireMarkersRef.current.forEach((m) => m.setMap(null));
-      entryMarkersRef.current.forEach((m) => m.setMap(null));
+      if (k9CircleRef.current) k9CircleRef.current.setMap(null);
+      hospitalMarkersRef.current.forEach((m) => {
+        if (window.google?.maps?.event) google.maps.event.clearInstanceListeners(m);
+        m.setMap(null);
+      });
+      fireMarkersRef.current.forEach((m) => {
+        if (window.google?.maps?.event) google.maps.event.clearInstanceListeners(m);
+        m.setMap(null);
+      });
+      entryMarkersRef.current.forEach((m) => {
+        if (window.google?.maps?.event) google.maps.event.clearInstanceListeners(m);
+        m.setMap(null);
+      });
     };
   }, []);
 

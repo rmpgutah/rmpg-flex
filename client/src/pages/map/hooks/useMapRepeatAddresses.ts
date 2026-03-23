@@ -125,7 +125,10 @@ export function useMapRepeatAddresses(
   // ── Clear markers ─────────────────────────────────────────
 
   const clearMarkers = useCallback(() => {
-    markersRef.current.forEach((m) => { m.map = null; });
+    markersRef.current.forEach((m) => {
+      if (window.google?.maps?.event) google.maps.event.clearInstanceListeners(m);
+      m.map = null;
+    });
     markersRef.current = [];
   }, []);
 

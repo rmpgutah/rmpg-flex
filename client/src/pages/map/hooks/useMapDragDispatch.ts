@@ -25,6 +25,7 @@ export function useMapDragDispatch(
   onDispatch: (unitId: string, callId: string) => Promise<void>,
 ): { dispatching: boolean } {
   const [dispatching, setDispatching] = useState(false);
+  const mountedRef = useRef(true);
 
   // Store original positions to snap back after drag
   const originalPositions = useRef<Map<string, google.maps.LatLngLiteral>>(new Map());
@@ -163,7 +164,7 @@ export function useMapDragDispatch(
             } catch {
               // Parent handles error
             } finally {
-              setDispatching(false);
+              if (mountedRef.current) setDispatching(false);
             }
           }
         });
@@ -189,7 +190,9 @@ export function useMapDragDispatch(
   // ── Cleanup on unmount ──────────────────────────────────
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       listenersRef.current.forEach((listener) => {
         if (window.google?.maps) {
           google.maps.event.removeListener(listener);
