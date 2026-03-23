@@ -3234,8 +3234,56 @@ function migrateSchema(): void {
   addCol('offender_alerts', 'alert_address', 'TEXT');
   addCol('offender_alerts', 'alert_enabled', 'INTEGER DEFAULT 1');
 
-  // Forensic cases — linked incident
+  // Forensic cases — missing columns for indexes
   addCol('forensic_cases', 'linked_incident_id', 'INTEGER');
+  addCol('forensic_cases', 'lab_number', 'TEXT');
+  addCol('forensic_cases', 'lead_examiner_id', 'INTEGER');
+  addCol('forensic_cases', 'linked_case_id', 'INTEGER');
+
+  // Dashcam videos — incident linkage
+  addCol('dashcam_videos', 'incident_id', 'INTEGER');
+
+  // Training records/requirements — missing columns
+  addCol('training_records', 'training_type', 'TEXT');
+  addCol('training_records', 'expiration_date', 'TEXT');
+  addCol('training_requirements', 'required_for_role', 'TEXT');
+  addCol('training_requirements', 'is_active', 'INTEGER DEFAULT 1');
+
+  // HR tables — missing columns
+  addCol('hr_documents', 'officer_id', 'INTEGER');
+  addCol('hr_documents', 'document_type', 'TEXT');
+  addCol('hr_grievances', 'officer_id', 'INTEGER');
+  addCol('hr_workers_comp', 'injury_date', 'TEXT');
+  addCol('hr_attendance', 'attendance_date', 'TEXT');
+
+  // Fleet tables — missing columns
+  addCol('fleet_tires', 'status', 'TEXT DEFAULT "active"');
+  addCol('fleet_damage_reports', 'status', 'TEXT DEFAULT "pending"');
+  addCol('fleet_damage_reports', 'reported_at', 'TEXT');
+
+  // Email logs
+  addCol('email_logs', 'to_email', 'TEXT');
+
+  // Patrol breaks
+  addCol('patrol_breaks', 'start_time', 'TEXT');
+
+  // Person associates
+  addCol('person_associates', 'associated_person_id', 'INTEGER');
+
+  // CPGPS tables
+  addCol('cpgps_vehicles', 'unit_number', 'TEXT');
+  addCol('cpgps_trips', 'start_time', 'TEXT');
+  addCol('cpgps_locations', 'timestamp', 'TEXT');
+
+  // Warrant watch
+  addCol('warrant_watch_runs', 'created_at', "TEXT DEFAULT (datetime('now','localtime'))");
+  addCol('warrant_watch_log', 'run_id', 'INTEGER');
+
+  // Record locks
+  addCol('record_locks', 'user_id', 'INTEGER');
+
+  // Utah statutes
+  addCol('utah_statutes', 'statute_code', 'TEXT');
 
   // Feature 26: Evidence intake extended fields
   addCol('forensic_exhibits', 'condition_on_receipt', 'TEXT');
