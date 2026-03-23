@@ -136,6 +136,9 @@ export function useMapHeatmapAdvanced(
   map: google.maps.Map | null,
   options: HeatmapAdvancedOptions,
 ): UseMapHeatmapAdvancedReturn {
+  // Diagnostic: log every render to trace enabled state
+  console.log(`[AdvancedHeatmap] Hook render: enabled=${options.enabled}, map=${!!map}, mode=${options.mode}, days=${options.days}`);
+
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<HeatmapStats | null>(null);
   const [clusters, setClusters] = useState<HeatmapCluster[]>([]);
@@ -216,6 +219,7 @@ export function useMapHeatmapAdvanced(
   // ── Main data fetch (non-temporal or initial) ───────────
 
   useEffect(() => {
+    console.log(`[AdvancedHeatmap] Fetch effect: enabled=${options.enabled}, mode=${options.mode}`);
     if (!options.enabled) {
       setPoints([]);
       setComparisonPoints([]);
