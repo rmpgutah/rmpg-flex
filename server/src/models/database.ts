@@ -3971,6 +3971,21 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_citations_call ON citations(call_id);
     CREATE INDEX IF NOT EXISTS idx_citations_created ON citations(created_at);
 
+    -- Citation payments table (was previously lazy-created in citations route)
+    CREATE TABLE IF NOT EXISTS citation_payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      citation_id INTEGER NOT NULL,
+      amount REAL NOT NULL,
+      payment_date TEXT,
+      payment_method TEXT,
+      reference_number TEXT,
+      notes TEXT,
+      recorded_by INTEGER,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (citation_id) REFERENCES citations(id),
+      FOREIGN KEY (recorded_by) REFERENCES users(id)
+    );
+
     -- Citation payments indexes
     CREATE INDEX IF NOT EXISTS idx_citation_payments_citation ON citation_payments(citation_id);
     CREATE INDEX IF NOT EXISTS idx_citation_payments_date ON citation_payments(payment_date);

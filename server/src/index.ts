@@ -426,7 +426,7 @@ try {
     )`).run();
     const versionRow = db.prepare('SELECT version FROM migration_version WHERE id = 1').get() as any;
     if (!versionRow) {
-      db.prepare('INSERT INTO migration_version (id, version, last_migrated_at) VALUES (1, 1, datetime("now","localtime"))').run();
+      db.prepare("INSERT INTO migration_version (id, version, last_migrated_at) VALUES (1, 1, datetime('now','localtime'))").run();
       console.log('Database migration version initialized: v1');
     } else {
       console.log(`Database migration version: v${versionRow.version}`);
