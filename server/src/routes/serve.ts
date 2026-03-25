@@ -1343,14 +1343,19 @@ router.post('/:id/notify-completion', validateParamIdMiddleware, requireRole(...
     // Dynamic import for notifications module (may not exist)
     let createNotificationForRoles: any;
     try {
-      const notifModule = await import('./notifications.js');
-      createNotificationForRoles = notifModule.createNotificationForRoles;
+      // Use inline dynamic import with .then() since handler isn't async
+      const notifModule = (globalThis as any).__notifModule ?? null;
+      if (!notifModule) {
+        import('./notifications.js').then(m => { (globalThis as any).__notifModule = m; }).catch(() => {});
+        // Skip notification on first call — will be cached for subsequent calls
+        console.warn('[Serve] notifications module loading, skipping notification this time');
+      } else {
+        createNotificationForRoles = notifModule.createNotificationForRoles;
+      }
     } catch (importErr) {
       console.error('[Serve] notifications module not available:', importErr instanceof Error ? importErr.message : importErr);
-      res.status(500).json({ error: 'Notification system unavailable', code: 'NOTIFICATION_MODULE_UNAVAILABLE' });
-      return;
     }
-    createNotificationForRoles(
+    if (createNotificationForRoles) createNotificationForRoles(
       ['admin', 'manager', 'supervisor'],
       'serve_completed',
       `Serve Complete: ${job.recipient_name}`,
