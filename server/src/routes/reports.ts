@@ -1514,7 +1514,7 @@ router.get('/officer-scorecard/:officerId', requireRole('admin', 'manager', 'sup
     `).get(officerId, offset) as any;
 
     const arrests = db.prepare(`
-      SELECT COUNT(*) as count FROM arrests
+      SELECT COUNT(*) as count FROM arrest_records
       WHERE officer_id = ? AND created_at >= DATE('now', ?)
     `).get(officerId, offset) as any;
 
@@ -1862,7 +1862,7 @@ router.get('/arrest-demographics', requireRole('admin', 'manager', 'supervisor')
     const offset = `-${days} days`;
 
     const byCharge = db.prepare(`
-      SELECT charge_description, COUNT(*) as count FROM arrests
+      SELECT charge_description, COUNT(*) as count FROM arrest_records
       WHERE created_at >= DATE('now', ?) GROUP BY charge_description ORDER BY count DESC LIMIT 20
     `).all(offset);
 
@@ -1877,7 +1877,7 @@ router.get('/arrest-demographics', requireRole('admin', 'manager', 'supervisor')
     `).all(offset);
 
     const byLocation = db.prepare(`
-      SELECT COALESCE(zone_beat, 'Unknown') as location, COUNT(*) as count FROM arrests
+      SELECT COALESCE(zone_beat, 'Unknown') as location, COUNT(*) as count FROM arrest_records
       WHERE created_at >= DATE('now', ?) GROUP BY location ORDER BY count DESC LIMIT 15
     `).all(offset);
 

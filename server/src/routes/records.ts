@@ -2867,7 +2867,7 @@ router.get('/ncic-query', (req: Request, res: Response) => {
               OR p.first_name LIKE ? OR p.last_name LIKE ?
               OR (p.first_name || ' ' || p.last_name) LIKE ?
               OR w.charge_description LIKE ?)
-          ORDER BY w.issue_date DESC
+          ORDER BY w.created_at DESC
           LIMIT 10
         `).all(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
 
