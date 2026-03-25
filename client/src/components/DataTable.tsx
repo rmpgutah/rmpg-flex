@@ -55,7 +55,6 @@ function SkeletonRows({ columns, count = 6 }: { columns: Column<unknown>[]; coun
 }
 
 // ── Sort indicator ────────────────────────────────────────────
-{/* 32: Sort indicator with transition for smoother direction changes */}
 function SortIndicator({ active, dir }: { active: boolean; dir?: 'asc' | 'desc' }) {
   if (!active) {
     return (
@@ -100,7 +99,6 @@ export default function DataTable<T>({
     align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : 'text-left';
 
   return (
-    {/* 35: Table container with consistent rounded corners */}
     <div className={`overflow-auto border border-rmpg-700/50 bg-surface-base scrollbar-dark ${className}`} role="region" aria-label={ariaLabel ? `${ariaLabel} region` : undefined} style={{ borderRadius: '2px' }}>
       <table className="w-full text-xs" aria-label={ariaLabel}>
         {/* 2: Sticky header with z-index so it stays on top during scroll */}
@@ -156,7 +154,6 @@ export default function DataTable<T>({
               const key = getKey(row, idx);
               const isSelected = selectedKey !== undefined && selectedKey === key;
               return (
-                {/* 34: Row with improved selected state and group hover for actions */}
                 <tr
                   key={key}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
