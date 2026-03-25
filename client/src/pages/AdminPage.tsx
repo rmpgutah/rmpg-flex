@@ -638,7 +638,12 @@ export default function AdminPage() {
         { id: 'branding', label: 'Branding & Reports', icon: Palette },
         { id: 'retention', label: 'Data Retention', icon: Archive },
         { id: 'offline', label: 'Offline Mode', icon: WifiOff },
-        { id: 'ai_settings', label: 'AI Settings', icon: Brain },
+      ],
+    },
+    {
+      category: 'AI & Intelligence',
+      tabs: [
+        { id: 'ai_settings', label: 'AI Command Center', icon: Brain },
       ],
     },
     {
