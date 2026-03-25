@@ -76,6 +76,8 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { toDisplayLabel } from '../utils/formatters';
 import { openPageWindow, POPOUT_PAGES } from '../utils/windowManager';
 import LocationGate from './LocationGate';
+import DispatchAlertBanner, { type AlertBannerItem } from './DispatchAlertBanner';
+import { useDispatchVoiceAlerts } from '../hooks/useDispatchVoiceAlerts';
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -209,6 +211,18 @@ export default function Layout() {
 
   const gps = useGpsTracking();
   const presence = usePresence();
+
+  // ── Dispatch voice alerts + visual banner state ──
+  const [dispatchAlerts, setDispatchAlerts] = useState<AlertBannerItem[]>([]);
+  const addDispatchAlert = useCallback((alert: AlertBannerItem) => {
+    setDispatchAlerts(prev => [...prev, alert]);
+  }, []);
+  const dismissDispatchAlert = useCallback((id: string) => {
+    setDispatchAlerts(prev => prev.filter(a => a.id !== id));
+  }, []);
+  const dismissAllDispatchAlerts = useCallback(() => setDispatchAlerts([]), []);
+  useDispatchVoiceAlerts({ onAlert: addDispatchAlert });
+
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const isClientViewer = user?.role === 'client_viewer';
   const isContractManager = user?.role === 'contract_manager';
@@ -690,6 +704,9 @@ export default function Layout() {
 
       {/* Offline Status Bar (shows when offline or syncing — Electron and browser) */}
       <OfflineStatusBar />
+
+      {/* Dispatch severity alert banners (panic, BOLO, pursuit, etc.) */}
+      <DispatchAlertBanner alerts={dispatchAlerts} onDismiss={dismissDispatchAlert} onDismissAll={dismissAllDispatchAlerts} />
 
       {/* GPS tracking runs silently — no blocking gate */}
 
