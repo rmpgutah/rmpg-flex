@@ -376,18 +376,23 @@ export default function DashboardPage() {
   // Weather fetch — refresh every 15 minutes
   const fetchWeather = useCallback(async () => {
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
       const resp = await fetch(
-        'https://api.open-meteo.com/v1/forecast?latitude=40.7608&longitude=-111.891&current=temperature_2m,weather_code&temperature_unit=fahrenheit&timezone=America/Denver'
+        'https://api.open-meteo.com/v1/forecast?latitude=40.7608&longitude=-111.891&current=temperature_2m,weather_code&temperature_unit=fahrenheit&timezone=America/Denver',
+        { signal: controller.signal }
       );
-      if (!resp.ok) return;
+      clearTimeout(timeout);
+      if (!resp.ok) { setWeather({ temperature: 0, weatherCode: -1, description: 'Unavailable', icon: Cloud }); return; }
       const data = await resp.json();
       const temp = data?.current?.temperature_2m;
-      if (temp == null) return;
+      if (temp == null) { setWeather({ temperature: 0, weatherCode: -1, description: 'No data', icon: Cloud }); return; }
       const code = data?.current?.weather_code ?? 0;
       const info = getWeatherInfo(code);
       setWeather({ temperature: Math.round(temp), weatherCode: code, description: info.description, icon: info.icon });
     } catch {
-      // Fail silently — weather is non-critical
+      // Show unavailable instead of spinning forever
+      setWeather({ temperature: 0, weatherCode: -1, description: 'Unavailable', icon: Cloud });
     }
   }, []);
 
