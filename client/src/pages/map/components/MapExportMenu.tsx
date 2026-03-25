@@ -79,7 +79,7 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
         }
         title="Export map"
         aria-expanded={open}
-        aria-haspopup="true"
+        aria-haspopup="menu"
       >
         {busy ? (
           <Loader2 className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${light ? 'text-gray-600' : 'text-rmpg-300'} animate-spin`} />
@@ -92,42 +92,46 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
       </button>
 
       {/* Dropdown */}
-      {open && (
-        <div
-          role="menu"
-          className="absolute bottom-full mb-2 right-0 z-[1100] backdrop-blur-md shadow-2xl overflow-hidden"
-          style={{
-            borderRadius: 2,
-            background: bgBase,
-            border: borderBase,
-            minWidth: 180,
-          }}
+      <div
+        role="menu"
+        className={`absolute bottom-full mb-2 right-0 z-[1100] backdrop-blur-md shadow-xl overflow-hidden transition-all duration-150 origin-bottom-right border ${
+          light ? 'border-gray-300' : 'border-[#1e3048]'
+        } ${
+          open
+            ? 'scale-100 opacity-100 pointer-events-auto'
+            : 'scale-95 opacity-0 pointer-events-none'
+        }`}
+        style={{
+          borderRadius: 2,
+          background: bgBase,
+          minWidth: 180,
+        }}
+      >
+        <button type="button"
+          role="menuitem"
+          onClick={handleScreenshot}
+          className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors duration-100 active:scale-[0.97] ${textColor} hover:bg-[#1a2636]`}
+          style={{ borderBottom: borderBase }}
         >
-          <button type="button"
-            role="menuitem"
-            onClick={handleScreenshot}
-            className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${textColor} ${hoverBg}`}
-            style={{ borderBottom: borderBase }}
-          >
-            <Camera className="w-3.5 h-3.5 shrink-0 opacity-70" />
-            <div>
-              <div className="text-xs font-medium">Screenshot Map</div>
-              <div className={`text-[9px] ${light ? 'text-rmpg-400' : 'text-rmpg-500'}`}>Download as PNG</div>
-            </div>
-          </button>
-          <button type="button"
-            role="menuitem"
-            onClick={handlePrint}
-            className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${textColor} ${hoverBg}`}
-          >
-            <Printer className="w-3.5 h-3.5 shrink-0 opacity-70" />
-            <div>
-              <div className="text-xs font-medium">Print Map</div>
-              <div className={`text-[9px] ${light ? 'text-rmpg-400' : 'text-rmpg-500'}`}>Open print dialog</div>
-            </div>
-          </button>
-        </div>
-      )}
+          <Camera className="w-3.5 h-3.5 shrink-0 opacity-70" />
+          <div>
+            <div className="text-xs font-medium">Screenshot Map</div>
+            <div className={`text-[9px] ${light ? 'text-rmpg-400' : 'text-rmpg-500'}`}>Download as PNG</div>
+          </div>
+        </button>
+        <div style={{ borderBottom: borderBase }} />
+        <button type="button"
+          role="menuitem"
+          onClick={handlePrint}
+          className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors duration-100 active:scale-[0.97] ${textColor} hover:bg-[#1a2636]`}
+        >
+          <Printer className="w-3.5 h-3.5 shrink-0 opacity-70" />
+          <div>
+            <div className="text-xs font-medium">Print Map</div>
+            <div className={`text-[9px] ${light ? 'text-rmpg-400' : 'text-rmpg-500'}`}>Open print dialog</div>
+          </div>
+        </button>
+      </div>
     </div>
   );
 }

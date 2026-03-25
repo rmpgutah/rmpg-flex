@@ -155,6 +155,8 @@ export default function DispatchPage() {
 
   // ── Feature 1: Call priority sound alerts ──
   const [soundAlertsMuted, setSoundAlertsMuted] = useState(() => localStorage.getItem('rmpg_sound_alerts_muted') === 'true');
+  const soundAlertsMutedRef = useRef(soundAlertsMuted);
+  useEffect(() => { soundAlertsMutedRef.current = soundAlertsMuted; }, [soundAlertsMuted]);
   const toggleSoundAlerts = useCallback(() => {
     setSoundAlertsMuted(prev => {
       const next = !prev;
@@ -601,7 +603,7 @@ export default function DispatchPage() {
           });
         }
         // Feature 1: Priority-based sound alerts (unless muted)
-        if (!soundAlertsMuted) {
+        if (!soundAlertsMutedRef.current) {
           if (mapped.priority === 'P1') playTone('alarm');
           else if (mapped.priority === 'P2') playTone('warning');
           else playTone('info');
@@ -706,7 +708,7 @@ export default function DispatchPage() {
   // Create or Update Unit handler
   const handleSaveUnit = async () => {
     const cs = newUnitCallSign.trim();
-    if (!cs) return;
+    if (!cs) { addToast('Call sign is required', 'error'); return; }
     setUnitCreating(true);
     try {
       if (editingUnit) {
@@ -990,7 +992,7 @@ export default function DispatchPage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedCall, filteredCalls, fetchData]);
+  }, [selectedCall, filteredCalls, fetchData, handleStatusChange, handleClearWithDisposition, setFilterTab]);
 
   const handlePsoExpandToFullForm = (data: Record<string, any>) => {
     setShowQuickPsoModal(false);
@@ -1286,7 +1288,7 @@ export default function DispatchPage() {
     }
     try {
       // Build notes array with the new note appended
-      const existingNotes = selectedCall.notes || [];
+      const existingNotes = Array.isArray(selectedCall.notes) ? selectedCall.notes : [];
       const note: CallNote = {
         id: `n-${Date.now()}`,
         author: 'Dispatch',
@@ -1670,7 +1672,7 @@ export default function DispatchPage() {
     };
     const interval = setInterval(checkEscalation, 30000); // Check every 30s
     return () => clearInterval(interval);
-  }, [calls, addToast]);
+  }, [calls, addToast, handleArchive]);
 
   // Feature 4: Unit availability counter
   const unitAvailability = useMemo(() => {
@@ -1693,10 +1695,11 @@ export default function DispatchPage() {
 
   // Feature 6: Quick note add handler (from CallCard)
   const handleQuickNote = useCallback(async (callId: string, noteText: string) => {
+    if (!noteText.trim()) return;
     const call = calls.find(c => c.id === callId);
     if (!call) return;
     try {
-      const existingNotes = call.notes || [];
+      const existingNotes = Array.isArray(call.notes) ? call.notes : [];
       const note = { id: `qn-${Date.now()}`, author: 'Dispatch', text: noteText, timestamp: new Date().toISOString() };
       const allNotes = [...existingNotes, note];
       const result = await apiFetch<any>(`/dispatch/calls/${callId}`, {
@@ -1754,9 +1757,12 @@ export default function DispatchPage() {
     apiFetch<any[]>('/dispatch/disposition-stats')
       .then(data => setDispositionStats(Array.isArray(data) ? data : []))
       .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [calls.filter(c => c.disposition).length]); // Re-fetch when dispositions change
 
   // Feature 17: Auto-archive cleared calls after 5 minutes
+  const handleArchiveRef = useRef(handleArchive);
+  useEffect(() => { handleArchiveRef.current = handleArchive; }, [handleArchive]);
   useEffect(() => {
     const checkAutoArchive = () => {
       const now = Date.now();
@@ -1764,7 +1770,7 @@ export default function DispatchPage() {
       calls.filter(c => ['cleared'].includes(c.status) && c.cleared_at).forEach(c => {
         const clearedTime = new Date(c.cleared_at!).getTime();
         if (now - clearedTime > fiveMinMs) {
-          handleArchive(c.id).catch(() => {});
+          handleArchiveRef.current(c.id).catch(() => {});
         }
       });
     };
@@ -1811,8 +1817,10 @@ export default function DispatchPage() {
 
   // Feature 20: Broadcast note handler
   const [broadcastNoteText, setBroadcastNoteText] = useState('');
+  const [isBroadcasting, setIsBroadcasting] = useState(false);
   const handleBroadcastNote = useCallback(async () => {
-    if (!selectedCall || !broadcastNoteText.trim()) return;
+    if (!selectedCall || !broadcastNoteText.trim() || isBroadcasting) return;
+    setIsBroadcasting(true);
     try {
       const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/broadcast-note`, {
         method: 'POST', body: JSON.stringify({ message: broadcastNoteText.trim() }),
@@ -1824,8 +1832,10 @@ export default function DispatchPage() {
       addToast('Note broadcast to all units', 'success');
     } catch (err: any) {
       addToast(err?.message || 'Broadcast failed', 'error');
+    } finally {
+      setIsBroadcasting(false);
     }
-  }, [selectedCall, broadcastNoteText, addToast]);
+  }, [selectedCall, broadcastNoteText, addToast, isBroadcasting]);
 
   // ── Dispatch alarm interval — check overdue calls every 5s ──
   const alarmPlayedRef = useRef<Set<string>>(new Set());
@@ -2224,12 +2234,12 @@ export default function DispatchPage() {
                 {/* Notes + Add Note */}
                 <div className="panel-inset p-3">
                   <div className="field-label mb-2">Notes</div>
-                  {selectedCall.notes && selectedCall.notes.length > 0 && (
+                  {Array.isArray(selectedCall.notes) && selectedCall.notes.length > 0 && (
                     <div className="space-y-2 mb-3">
                       {selectedCall.notes.map((note) => (
                         <div key={note.id} className="text-xs">
                           <div className="flex items-center gap-2 text-rmpg-400">
-                            <span className="font-bold">{note.author}</span>
+                            <span className="font-bold">{note.author || 'System'}</span>
                             <span className="font-mono">{formatTime(note.timestamp)}</span>
                           </div>
                           <div className="text-rmpg-200 mt-0.5">{note.text}</div>
@@ -2342,7 +2352,7 @@ export default function DispatchPage() {
                     )}
 
                     {/* Visit History (mobile) */}
-                    {selectedCall.visit_history && selectedCall.visit_history.length > 0 && (
+                    {Array.isArray(selectedCall.visit_history) && selectedCall.visit_history.length > 0 && (
                       <div className="mt-3 pt-2 border-t border-rmpg-600">
                         <div className="field-label mb-1.5">Visit History</div>
                         <div className="space-y-1.5">
@@ -2869,10 +2879,10 @@ export default function DispatchPage() {
                     )}
                     {isEditing && (
                       <>
-                        <button onClick={saveEditing} className="toolbar-btn toolbar-btn-primary">
-                          <Save style={{ width: 10, height: 10 }} /> Save
+                        <button onClick={saveEditing} disabled={isSaving} className="toolbar-btn toolbar-btn-primary">
+                          {isSaving ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" /> : <Save style={{ width: 10, height: 10 }} />} Save
                         </button>
-                        <button onClick={cancelEditing} className="toolbar-btn">
+                        <button onClick={cancelEditing} disabled={isSaving} className="toolbar-btn">
                           <X style={{ width: 10, height: 10 }} /> Cancel
                         </button>
                       </>
@@ -4227,11 +4237,11 @@ export default function DispatchPage() {
                     <MessageSquare className="w-3 h-3" /> Notes
                   </label>
                   <div className="space-y-1.5 mb-3 flex-1 overflow-y-auto">
-                    {(selectedCall.notes || []).map((note) => (
+                    {(Array.isArray(selectedCall.notes) ? selectedCall.notes : []).map((note) => (
                       <div key={note.id} className="flex items-start gap-2 text-xs">
                         <span className="text-rmpg-400 font-mono whitespace-nowrap">{formatTime(note.timestamp)}</span>
-                        <span className="text-brand-400 font-semibold whitespace-nowrap">{note.author}:</span>
-                        <span className="text-rmpg-200">{renderFormattedText(note.text)}</span>
+                        <span className="text-brand-400 font-semibold whitespace-nowrap">{note.author || 'System'}:</span>
+                        <span className="text-rmpg-200">{renderFormattedText(note.text || '')}</span>
                       </div>
                     ))}
                   </div>

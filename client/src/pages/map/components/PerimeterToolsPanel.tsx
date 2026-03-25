@@ -52,7 +52,7 @@ export default function PerimeterToolsPanel({
     : [];
 
   return (
-    <div className="panel-beveled rounded-sm bg-surface-base border border-rmpg-700 shadow-lg w-[280px] max-w-[280px] select-none">
+    <div className="panel-beveled rounded-sm bg-surface-base border border-rmpg-700 shadow-lg w-[280px] max-w-[280px] select-none transition-all duration-200 ease-out backdrop-blur-sm">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-rmpg-700">
         <div className="flex items-center gap-1.5">
@@ -63,12 +63,13 @@ export default function PerimeterToolsPanel({
         </div>
         <button type="button"
           onClick={onClose}
-          className="p-0.5 rounded-sm hover:bg-rmpg-700/50 text-rmpg-400 hover:text-rmpg-200 transition-colors">
+          className="p-0.5 rounded-sm hover:bg-[#1a2636] text-rmpg-400 hover:text-rmpg-200 transition-colors duration-150"
+          aria-label="Close perimeter tools">
           <X className="w-3.5 h-3.5" />
         </button>
       </div>
 
-      <div className="p-3 space-y-3">
+      <div className="p-3 space-y-3 max-h-[calc(100vh-200px)] overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
         {/* 1. Perimeter Check */}
         <section className="space-y-1.5">
           <div className="flex items-center gap-1.5">
@@ -80,7 +81,8 @@ export default function PerimeterToolsPanel({
           <button type="button"
             onClick={onAnalyzeCoverage}
             disabled={loading}
-            className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-sm text-[9px] font-mono uppercase tracking-wider bg-rmpg-700/40 border border-rmpg-700 text-rmpg-300 hover:bg-rmpg-700/70 hover:text-rmpg-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-sm text-[9px] font-mono uppercase tracking-wider bg-rmpg-700/40 border border-rmpg-700 text-rmpg-300 hover:bg-rmpg-700/70 hover:text-rmpg-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-150 active:scale-[0.97]"
+            aria-label="Analyze perimeter coverage"
           >
             {loading ? (
               <>
@@ -102,8 +104,11 @@ export default function PerimeterToolsPanel({
                 {quadrantEntries.map(([label, pct]) => (
                   <div key={label} className="space-y-0.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-[9px] font-mono text-rmpg-400">{label}</span>
-                      <span className={`text-[9px] font-mono font-semibold ${getCoverageLabel(pct)}`}>
+                      <div className="flex items-center gap-1">
+                        <span className="inline-block w-1.5 h-1.5 rounded-full transition-colors duration-200" style={{ backgroundColor: getCoverageColor(pct), boxShadow: `0 0 4px ${getCoverageColor(pct)}60` }} />
+                        <span className="text-[9px] font-mono text-rmpg-400">{label}</span>
+                      </div>
+                      <span className={`text-[9px] font-mono font-semibold tabular-nums ${getCoverageLabel(pct)}`}>
                         {pct}%
                       </span>
                     </div>
@@ -155,7 +160,8 @@ export default function PerimeterToolsPanel({
             <button type="button"
               onClick={onStartContainment}
               disabled={isDrawingContainment}
-              className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-sm text-[9px] font-mono uppercase tracking-wider bg-rmpg-700/40 border border-rmpg-700 text-rmpg-300 hover:bg-rmpg-700/70 hover:text-rmpg-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-sm text-[9px] font-mono uppercase tracking-wider bg-rmpg-700/40 border border-rmpg-700 text-rmpg-300 hover:bg-rmpg-700/70 hover:text-rmpg-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-150 active:scale-[0.97]"
+              aria-label="Draw containment polygon"
             >
               <Pentagon className="w-3 h-3" />
               Draw
@@ -163,7 +169,8 @@ export default function PerimeterToolsPanel({
             <button type="button"
               onClick={onClearContainment}
               disabled={containmentVertices === 0 && !isDrawingContainment}
-              className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-sm text-[9px] font-mono uppercase tracking-wider bg-rmpg-700/40 border border-rmpg-700 text-rmpg-300 hover:bg-rmpg-700/70 hover:text-rmpg-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+              className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-sm text-[9px] font-mono uppercase tracking-wider bg-rmpg-700/40 border border-rmpg-700 text-rmpg-300 hover:bg-rmpg-700/70 hover:text-rmpg-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-150 active:scale-[0.97]"
+              aria-label="Clear containment polygon">
               <X className="w-3 h-3" />
               Clear
             </button>
@@ -197,7 +204,8 @@ export default function PerimeterToolsPanel({
           </div>
           <button type="button"
             onClick={onToggleHVTs}
-            className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-sm text-[9px] font-mono uppercase tracking-wider bg-rmpg-700/40 border border-rmpg-700 text-rmpg-300 hover:bg-rmpg-700/70 hover:text-rmpg-200 transition-colors"
+            className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-sm text-[9px] font-mono uppercase tracking-wider bg-rmpg-700/40 border border-rmpg-700 text-rmpg-300 hover:bg-rmpg-700/70 hover:text-rmpg-200 transition-all duration-150 active:scale-[0.97]"
+            aria-label={hvtVisible ? 'Hide critical infrastructure' : 'Show critical infrastructure'}
           >
             <Building className="w-3 h-3" />
             {hvtVisible ? 'Hide HVTs' : 'Show HVTs'}

@@ -184,7 +184,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
           <span>ACTIVE TRESPASS ORDER{trespassOrders.length > 1 ? 'S' : ''}:</span>
           {trespassOrders.map(to => (
             <span key={to.id} className="px-1.5 py-0.5" style={{ background: 'rgba(239,68,68,0.3)', border: '1px solid #ef4444' }}>
-              {to.subject_last_name?.toUpperCase()}, {to.subject_first_name} — {to.order_type?.replace(/_/g, ' ').toUpperCase()}
+              {(to.subject_last_name || '').toUpperCase()}, {to.subject_first_name || ''} — {(to.order_type || '').replace(/_/g, ' ').toUpperCase()}
             </span>
           ))}
         </div>

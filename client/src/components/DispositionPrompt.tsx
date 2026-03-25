@@ -61,6 +61,7 @@ export default function DispositionPrompt({
           value={selected}
           onChange={(e) => setSelected(e.target.value)}
           className="flex-1 bg-surface-base border border-rmpg-600 text-white text-[10px] px-2 py-1 font-mono focus:border-amber-500 focus:outline-none"
+          aria-label="Disposition code"
           autoFocus
         >
           <option value="">— Select Disposition Code —</option>

@@ -2,6 +2,9 @@
   "name": "rmpg-flex-server",
   "version": "5.5.0",
   "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "dev": "npx tsx watch src/index.ts",
     "build": "tsc",
@@ -9,13 +12,13 @@
     "seed": "npx tsx src/seeds/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "lint": "tsc --noEmit"
   },
   "dependencies": {
     "@azure/msal-node": "^5.0.6",
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "@simplewebauthn/server": "^13.2.3",
-    "@types/qrcode": "^1.5.6",
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^11.7.0",
     "cors": "^2.8.5",
@@ -35,6 +38,7 @@
     "dompurify": "file:./stubs/dompurify"
   },
   "devDependencies": {
+    "@types/qrcode": "^1.5.6",
     "@types/bcryptjs": "^2.4.6",
     "@types/better-sqlite3": "^7.6.12",
     "@types/cors": "^2.8.17",

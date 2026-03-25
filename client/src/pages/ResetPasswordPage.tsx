@@ -71,7 +71,7 @@ export default function ResetPasswordPage() {
         body: JSON.stringify({ token, password }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
         throw new Error(data.error || 'Failed to reset password');

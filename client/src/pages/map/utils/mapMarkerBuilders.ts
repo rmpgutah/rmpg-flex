@@ -14,25 +14,36 @@ export function buildUnitMarkerContent(callSign: string, status: UnitStatus, _gp
   const label = UNIT_STATUS_LABELS[status];
 
   const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7)) drop-shadow(0 0 1px rgba(0,0,0,0.5));';
+  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7)) drop-shadow(0 0 1px rgba(0,0,0,0.5));transition:all 0.2s ease;will-change:transform;';
+  wrapper.setAttribute('aria-label', callSign + ' - ' + label);
+  wrapper.title = callSign + ' \u2014 ' + label;
+
+  // Hover scale interactions
+  wrapper.addEventListener('mouseenter', () => { wrapper.style.transform = 'scale(1.08)'; });
+  wrapper.addEventListener('mouseleave', () => { wrapper.style.transform = 'scale(1)'; });
 
   const tag = document.createElement('div');
   tag.style.cssText =
     `background:${color};color:#fff;font-size:9px;font-weight:900;` +
-    "padding:2px 6px;border:1.5px solid rgba(255,255,255,0.9);white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;" +
-    'display:flex;align-items:center;gap:3px;border-radius:1px;';
+    "padding:2px 6px;border:1.5px solid rgba(255,255,255,0.85);white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;" +
+    `display:flex;align-items:center;gap:3px;border-radius:1px;line-height:1.2;min-width:36px;text-align:center;justify-content:center;` +
+    `box-shadow:inset 0 1px 0 rgba(255,255,255,0.15), 0 0 8px ${color}40;filter:saturate(1.1);`;
 
   const csSpan = document.createElement('span');
   csSpan.textContent = callSign;
+  const sepSpan = document.createElement('span');
+  sepSpan.style.cssText = 'opacity:0.5;font-size:7px;';
+  sepSpan.textContent = '\u00b7';
   const stSpan = document.createElement('span');
-  stSpan.style.cssText = 'font-size:6px;opacity:0.85;letter-spacing:0.5px;';
+  stSpan.style.cssText = 'font-size:7px;opacity:0.85;letter-spacing:0.5px;';
   stSpan.textContent = label;
   tag.appendChild(csSpan);
+  tag.appendChild(sepSpan);
   tag.appendChild(stSpan);
 
   const caret = document.createElement('div');
   caret.style.cssText =
-    `width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid ${color};`;
+    `width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid ${color};transition:border-color 0.2s ease;`;
 
   wrapper.appendChild(tag);
   wrapper.appendChild(caret);
@@ -43,14 +54,28 @@ export function buildIncidentMarkerContent(priority: string, incidentType: strin
   const color = PRIORITY_COLORS[priority] || '#6b7280';
   const { category } = getIncidentCategory(incidentType);
 
+  // Priority-based glow
+  const glowShadow = priority === 'P1' ? `0 0 12px ${color}50` : priority === 'P2' ? `0 0 8px ${color}40` : `0 0 6px ${color}30`;
+
   const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 4px rgba(0,0,0,0.8)) drop-shadow(0 0 2px rgba(0,0,0,0.5));';
+  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 4px rgba(0,0,0,0.8)) drop-shadow(0 0 2px rgba(0,0,0,0.5));transition:transform 0.2s ease;';
+  wrapper.setAttribute('aria-label', (callNumber || '') + ' ' + category);
+
+  // P1 pulse animation
+  if (priority === 'P1') {
+    wrapper.style.animation = 'pulse-incident 2s ease-in-out infinite';
+  }
+
+  // Hover scale interactions
+  wrapper.addEventListener('mouseenter', () => { wrapper.style.transform = 'scale(1.08)'; });
+  wrapper.addEventListener('mouseleave', () => { wrapper.style.transform = 'scale(1)'; });
 
   const tag = document.createElement('div');
   tag.style.cssText =
     `background:${color};color:#fff;font-size:9px;font-weight:900;` +
     "padding:2px 6px;border:1.5px solid rgba(255,255,255,0.95);white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;" +
-    'display:flex;align-items:center;gap:3px;border-radius:1px;';
+    `display:flex;align-items:center;gap:3px;border-radius:1px;line-height:1.2;min-width:40px;text-align:center;justify-content:center;` +
+    `box-shadow:${glowShadow};`;
 
   if (callNumber) {
     const numSpan = document.createElement('span');
@@ -59,13 +84,13 @@ export function buildIncidentMarkerContent(priority: string, incidentType: strin
   }
 
   const catSpan = document.createElement('span');
-  catSpan.style.cssText = 'font-size:7px;opacity:0.85;letter-spacing:0.3px;';
+  catSpan.style.cssText = 'font-size:8px;opacity:0.85;letter-spacing:0.3px;';
   catSpan.textContent = category;
   tag.appendChild(catSpan);
 
   const caret = document.createElement('div');
   caret.style.cssText =
-    `width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid ${color};`;
+    `width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid ${color};`;
 
   wrapper.appendChild(tag);
   wrapper.appendChild(caret);
@@ -79,23 +104,23 @@ export function buildPropertyMarkerContent(name: string, address?: string, clien
   // Small dot marker — visible on any map style (dark, satellite, streets, terrain)
   const dot = document.createElement('div');
   dot.style.cssText =
-    'width:10px;height:10px;border-radius:50%;' +
-    'background:radial-gradient(circle at 35% 35%, #60a5fa, #1e3a5f);' +
+    'width:12px;height:12px;border-radius:50%;' +
+    'background:radial-gradient(circle at 30% 30%, #93c5fd, #1e3a5f);' +
     'border:2px solid rgba(255,255,255,0.95);' +
     'box-shadow:0 0 8px rgba(59,130,246,0.7), 0 1px 4px rgba(0,0,0,0.5);' +
-    'transition:transform 0.15s ease, box-shadow 0.15s ease;';
+    'transition:transform 0.2s ease, box-shadow 0.2s ease;will-change:transform, box-shadow;';
 
   // Hover tooltip — shows name, address, client on mouseover
   const tooltip = document.createElement('div');
   tooltip.style.cssText =
-    'position:absolute;bottom:18px;left:50%;transform:translateX(-50%);' +
-    "background:#0d1520;color:#e5e7eb;padding:6px 10px;border:1px solid #3b82f650;border-radius:4px;" +
+    'position:absolute;bottom:20px;left:50%;transform:translateX(-50%);' +
+    "background:#0d1520;color:#e5e7eb;padding:8px 12px;border:1px solid #3b82f650;border-radius:2px;" +
     "font-family:'JetBrains Mono',monospace;white-space:nowrap;pointer-events:none;" +
-    'opacity:0;transition:opacity 0.15s ease;z-index:9999;min-width:120px;' +
-    'box-shadow:0 4px 12px rgba(0,0,0,0.5);';
+    'opacity:0;transition:opacity 0.15s ease;z-index:9999;min-width:120px;max-width:220px;' +
+    'box-shadow:0 4px 12px rgba(0,0,0,0.5);backdrop-filter:blur(8px);';
 
   const nameEl = document.createElement('div');
-  nameEl.style.cssText = 'font-size:10px;font-weight:900;color:#60a5fa;margin-bottom:2px;';
+  nameEl.style.cssText = 'font-size:10px;font-weight:900;color:#60a5fa;margin-bottom:2px;text-overflow:ellipsis;overflow:hidden;';
   nameEl.textContent = name;
   tooltip.appendChild(nameEl);
 
@@ -112,6 +137,13 @@ export function buildPropertyMarkerContent(name: string, address?: string, clien
     clientEl.textContent = `Client: ${clientName}`;
     tooltip.appendChild(clientEl);
   }
+
+  // Tooltip caret arrow pointing down
+  const tooltipCaret = document.createElement('div');
+  tooltipCaret.style.cssText =
+    'position:absolute;bottom:-5px;left:50%;transform:translateX(-50%);' +
+    'width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:5px solid #0d1520;';
+  tooltip.appendChild(tooltipCaret);
 
   // Hover events — enlarge dot + show tooltip
   wrapper.addEventListener('mouseenter', () => {
@@ -137,7 +169,12 @@ export function buildHistoricalCallMarkerContent(priority: string, incidentType:
   const { category } = getIncidentCategory(incidentType);
 
   const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.6));opacity:0.65;';
+  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.6));opacity:0.55;transition:opacity 0.2s ease, transform 0.2s ease;';
+  wrapper.setAttribute('aria-label', 'Historical: ' + (callNumber || '') + ' ' + category);
+
+  // Hover interactions
+  wrapper.addEventListener('mouseenter', () => { wrapper.style.opacity = '0.9'; wrapper.style.transform = 'scale(1.05)'; });
+  wrapper.addEventListener('mouseleave', () => { wrapper.style.opacity = '0.55'; wrapper.style.transform = 'scale(1)'; });
 
   const tag = document.createElement('div');
   tag.style.cssText =
@@ -148,10 +185,10 @@ export function buildHistoricalCallMarkerContent(priority: string, incidentType:
   // Clock badge (top-right corner)
   const badge = document.createElement('div');
   badge.style.cssText =
-    'position:absolute;top:-5px;right:-5px;width:10px;height:10px;border-radius:50%;' +
+    'position:absolute;top:-6px;right:-6px;width:12px;height:12px;border-radius:2px;' +
     'background:#0d1520;border:1px solid ' + color + ';display:flex;align-items:center;justify-content:center;' +
-    'font-size:6px;color:' + color + ';font-weight:900;line-height:1;';
-  badge.textContent = 'H';
+    'font-size:7px;color:' + color + ';font-weight:900;line-height:1;backdrop-filter:blur(4px);';
+  badge.textContent = '\u23F1';
   tag.appendChild(badge);
 
   if (callNumber) {
@@ -187,16 +224,22 @@ export function buildIncidentReportMarkerContent(status: string): HTMLElement {
   const color = statusColors[status] || '#6b7280';
 
   const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7));';
+  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7));transition:transform 0.2s ease;';
+  wrapper.setAttribute('aria-label', 'Incident Report - ' + status);
+
+  // Hover scale interactions
+  wrapper.addEventListener('mouseenter', () => { wrapper.style.transform = 'scale(1.1)'; });
+  wrapper.addEventListener('mouseleave', () => { wrapper.style.transform = 'scale(1)'; });
 
   const diamond = document.createElement('div');
   diamond.style.cssText =
-    `width:20px;height:20px;background:${color};transform:rotate(45deg);` +
-    'border:1.5px solid rgba(255,255,255,0.9);display:flex;align-items:center;justify-content:center;';
+    `width:22px;height:22px;background:${color};transform:rotate(45deg);` +
+    `border:1.5px solid rgba(255,255,255,0.9);display:flex;align-items:center;justify-content:center;` +
+    `box-shadow:0 0 8px ${color}50;outline:1px solid ${color}40;outline-offset:2px;border-radius:1px;`;
 
   const label = document.createElement('span');
   label.style.cssText =
-    "transform:rotate(-45deg);color:#fff;font-size:7px;font-weight:900;font-family:'JetBrains Mono',monospace;letter-spacing:0.3px;line-height:1;";
+    "transform:rotate(-45deg);color:#fff;font-size:8px;font-weight:900;font-family:'JetBrains Mono',monospace;letter-spacing:0.3px;line-height:1;";
   label.textContent = 'IR';
   diamond.appendChild(label);
 
@@ -214,18 +257,18 @@ export function buildSelfPositionMarker(accuracy: number | null, heading: number
 
   // Accuracy ring
   const ring = document.createElement('div');
-  ring.style.cssText = `width:${acc}px;height:${acc}px;border-radius:50%;background:rgba(59,130,246,0.15);border:2px solid rgba(59,130,246,0.4);position:absolute;animation:pulse-gps 2s ease-in-out infinite;`;
+  ring.style.cssText = `width:${acc}px;height:${acc}px;border-radius:50%;background:radial-gradient(circle, rgba(59,130,246,0.2), rgba(59,130,246,0.05));border:2px solid rgba(59,130,246,0.4);position:absolute;animation:pulse-gps 2s ease-in-out infinite;will-change:transform;`;
   el.appendChild(ring);
 
   // Center dot
   const dot = document.createElement('div');
-  dot.style.cssText = 'width:14px;height:14px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#60a5fa,#2563eb);border:2.5px solid #fff;box-shadow:0 0 10px rgba(59,130,246,0.8),0 0 20px rgba(59,130,246,0.3);z-index:1;';
+  dot.style.cssText = 'width:14px;height:14px;border-radius:50%;background:radial-gradient(circle at 35% 30%, #93c5fd, #1e40af);border:3px solid #fff;box-shadow:0 0 10px rgba(59,130,246,0.8),0 0 20px rgba(59,130,246,0.3),0 0 30px rgba(59,130,246,0.2);z-index:1;';
   el.appendChild(dot);
 
   // Heading arrow
   if (heading != null) {
     const arrow = document.createElement('div');
-    arrow.style.cssText = `position:absolute;top:-10px;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:10px solid #3b82f6;transform:rotate(${heading}deg);transform-origin:center 17px;filter:drop-shadow(0 0 3px rgba(59,130,246,0.6));z-index:2;`;
+    arrow.style.cssText = `position:absolute;top:-10px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:12px solid #3b82f6;transform:rotate(${heading}deg);transform-origin:center 17px;filter:drop-shadow(0 0 3px rgba(59,130,246,0.6));z-index:2;transition:transform 0.3s ease;will-change:transform;`;
     el.appendChild(arrow);
   }
 
@@ -338,13 +381,25 @@ export function injectKeyframes() {
   const style = document.createElement('style');
   style.id = STYLE_ID;
   style.textContent = `
-    @keyframes pulse-led { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
-    @keyframes pulse-incident { 0%,100% { box-shadow:0 0 4px rgba(220,38,38,0.3); transform:scale(1); } 50% { box-shadow:0 0 14px rgba(220,38,38,0.7); transform:scale(1.05); } }
-    @keyframes pulse-gps { 0%,100% { transform:scale(1); opacity:0.7; } 50% { transform:scale(2.5); opacity:0; } }
-    .gm-style-iw { background:#0d1520 !important; border:1px solid #1e3048 !important; border-radius:4px !important; color:#e5e7eb !important; }
-    .gm-style-iw-d { overflow:auto !important; }
+    @keyframes pulse-led { 0%,100% { opacity:1; } 40% { opacity:0.2; } 60% { opacity:0.2; } }
+    @keyframes pulse-incident { 0%,100% { box-shadow:0 0 4px rgba(220,38,38,0.3); transform:scale(1); } 50% { box-shadow:0 0 20px rgba(220,38,38,0.8); transform:scale(1.05); } }
+    @keyframes pulse-gps { 0%,100% { transform:scale(1); opacity:0.7; } 50% { transform:scale(3.0); opacity:0; } }
+    @keyframes marker-enter { from { opacity:0; transform:scale(0.5) translateY(10px); } to { opacity:1; transform:scale(1) translateY(0); } }
+    @keyframes marker-exit { from { opacity:1; transform:scale(1); } to { opacity:0; transform:scale(0.8); } }
+    @keyframes marker-selected { 0%,100% { box-shadow:0 0 0 0 rgba(96,165,250,0.4); } 50% { box-shadow:0 0 0 8px rgba(96,165,250,0); } }
+    @keyframes marker-bounce { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-4px); } }
+    @keyframes glow-breathe { 0%,100% { filter:brightness(1); } 50% { filter:brightness(1.15); } }
+    .rmpg-marker-hover { transform:scale(1.08); transition:transform 0.2s ease; }
+    .rmpg-marker-selected { animation:marker-selected 1.5s ease-in-out infinite; }
+    .rmpg-marker-enter { animation:marker-enter 0.3s ease-out forwards; }
+    .gm-style-iw { background:#0d1520 !important; border:1px solid #1e3048 !important; border-radius:4px !important; color:#e5e7eb !important; box-shadow:0 4px 24px rgba(0,0,0,0.6) !important; }
+    .gm-style-iw-d { overflow:auto !important; scrollbar-width:thin; scrollbar-color:#1e3048 transparent; }
+    .gm-style-iw-d::-webkit-scrollbar { width:4px; }
+    .gm-style-iw-d::-webkit-scrollbar-thumb { background:#1e3048; border-radius:2px; }
+    .gm-style-iw-d::-webkit-scrollbar-track { background:transparent; }
     .gm-style-iw button[aria-label="Close"] { filter: invert(1) !important; }
     .gm-style .gm-style-iw-tc::after { background:#0d1520 !important; }
+    @media (prefers-reduced-motion: reduce) { .rmpg-marker-enter, .rmpg-marker-selected, [style*=animation] { animation:none !important; } }
   `;
   document.head.appendChild(style);
 }

@@ -48,7 +48,8 @@ function parsePolygonCoords(coordStr: string): google.maps.LatLngLiteral[] {
     if (Array.isArray(parsed)) {
       return parsed
         .filter((p: any) => p.lat != null && p.lng != null)
-        .map((p: any) => ({ lat: Number(p.lat), lng: Number(p.lng) }));
+        .map((p: any) => ({ lat: Number(p.lat), lng: Number(p.lng) }))
+        .filter((p: { lat: number; lng: number }) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
     }
   } catch {
     // Try comma-separated format: "lat,lng;lat,lng;..."

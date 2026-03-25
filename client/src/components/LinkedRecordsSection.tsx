@@ -207,6 +207,7 @@ export default function LinkedRecordsSection({ entityType, entityId, onOpenLinkM
                   disabled={isDeleting}
                   onClick={() => handleDelete(link.id)}
                   title="Remove link"
+                  aria-label={`Remove link to ${link.linked_label}`}
                 >
                   {isDeleting ? (
                     <Loader2 size={12} className="animate-spin" />

@@ -23,7 +23,8 @@ function nextNumber(table: string, prefix: string, col: string): string {
   const last = db.prepare(
     `SELECT ${col} FROM ${table} WHERE ${col} LIKE ? ORDER BY id DESC LIMIT 1`
   ).get(`${pfx}%`) as any;
-  const seq = last ? parseInt(last[col].replace(pfx, ''), 10) + 1 : 1;
+  const parsed = last ? parseInt(last[col].replace(pfx, ''), 10) : 0;
+  const seq = isNaN(parsed) ? 1 : parsed + 1;
   return `${pfx}${String(seq).padStart(4, '0')}`;
 }
 
@@ -36,7 +37,6 @@ router.get('/stats', (req: Request, res: Response) => {
     const today = localToday();
     const parkingToday = db.prepare(`SELECT COUNT(*) as count FROM citations WHERE type = 'parking' AND violation_date = ?`).get(today) as any;
 
-    res.set('Cache-Control', 'private, max-age=60');
     res.set('Cache-Control', 'private, max-age=60');
     res.json({
       data: {
@@ -92,7 +92,7 @@ router.get('/violations/:id', (req: Request, res: Response) => {
     const row = db.prepare('SELECT * FROM code_violations WHERE id = ?').get(id);
     if (!row) return res.status(404).json({ error: 'Violation not found', code: 'VIOLATION_NOT_FOUND' });
     res.json({ data: row });
-  } catch (error: any) { res.status(500).json({ error: 'Failed to retrieve violation', code: 'GET_VIOLATION_ERROR' }); }
+  } catch (error: any) { console.error('Get violation error:', error); res.status(500).json({ error: 'Failed to retrieve violation', code: 'GET_VIOLATION_ERROR' }); }
 });
 
 router.post('/violations', (req: Request, res: Response) => {

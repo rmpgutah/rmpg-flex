@@ -189,6 +189,25 @@ router.post('/shift-plans', requireRole('admin', 'manager', 'supervisor'), (req:
       return;
     }
 
+    // Validate shift_type enum
+    const validShiftTypes = ['day', 'swing', 'night', 'graveyard', 'custom'];
+    if (shiftType && !validShiftTypes.includes(shiftType)) {
+      res.status(400).json({ error: `shift_type must be one of: ${validShiftTypes.join(', ')}`, code: 'INVALID_SHIFT_TYPE' });
+      return;
+    }
+
+    // Validate status enum
+    const validPlanStatuses = ['draft', 'active', 'completed', 'cancelled'];
+    if (status && !validPlanStatuses.includes(status)) {
+      res.status(400).json({ error: `status must be one of: ${validPlanStatuses.join(', ')}`, code: 'INVALID_STATUS' });
+      return;
+    }
+
+    if (typeof name === 'string' && name.length > 200) {
+      res.status(400).json({ error: 'name must be 200 characters or less', code: 'NAME_TOO_LONG' });
+      return;
+    }
+
     // Input sanitization
     const cleanName = typeof name === 'string' ? name.trim() : name;
 

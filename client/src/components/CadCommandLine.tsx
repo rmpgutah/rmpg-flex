@@ -200,6 +200,7 @@ export default function CadCommandLine({ context, onAction }: CadCommandLineProp
           onKeyDown={handleKeyDown}
           onFocus={() => setIsExpanded(true)}
           placeholder="Type command or press / to focus  (HELP for commands)"
+          aria-label="CAD command line"
           spellCheck={false}
           autoComplete="off"
           autoCapitalize="characters"

@@ -18,6 +18,11 @@ export function validatePassword(password: string): PasswordValidationResult {
     errors.push(`Password must be at least ${minLength} characters`);
   }
 
+  // [FIX 101] Enforce maximum password length to prevent bcrypt DoS (bcrypt truncates at 72 bytes)
+  if (password.length > 128) {
+    errors.push('Password must not exceed 128 characters');
+  }
+
   if (requireUppercase && !/[A-Z]/.test(password)) {
     errors.push('Password must contain at least one uppercase letter');
   }

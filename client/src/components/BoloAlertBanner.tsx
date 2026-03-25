@@ -116,6 +116,7 @@ export default function BoloAlertBanner({ address, subject, vehicle, onViewBolo 
                     onClick={() => onViewBolo(bolo.id)}
                     className="text-rmpg-500 hover:text-red-400 flex-shrink-0"
                     title="View BOLO"
+                    aria-label={`View BOLO ${bolo.bolo_number}`}
                   >
                     <ExternalLink style={{ width: 9, height: 9 }} />
                   </button>

@@ -81,7 +81,8 @@ export default function SignaturePad({
   }, [showPad, mode, initCanvas]);
 
   const getPoint = (e: React.MouseEvent | React.TouchEvent): { x: number; y: number; time: number } => {
-    const canvas = canvasRef.current!;
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0, time: Date.now() };
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
@@ -312,6 +313,7 @@ export default function SignaturePad({
             ref={canvasRef}
             width={cW}
             height={cH}
+            aria-label="Signature drawing area"
             className="bg-white rounded-sm cursor-crosshair touch-none"
             style={{ width: cW, height: cH }}
             onMouseDown={startDraw}
@@ -359,7 +361,7 @@ export default function SignaturePad({
             <div className="flex gap-1 mb-1">
               {SIGNATURE_FONTS.map((f, i) => (
                 <button
-                  key={i}
+                  key={f.name}
                   type="button"
                   onClick={() => setSelectedFont(i)}
                   className={`px-1.5 py-0.5 text-[9px] rounded-sm transition-colors ${

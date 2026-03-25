@@ -224,6 +224,7 @@ export function useMapAlerts(
   const renderAlertCircle = useCallback(
     (alert: SafetyAlert) => {
       if (!map || !window.google?.maps) return;
+      if (!Number.isFinite(alert.lat) || !Number.isFinite(alert.lng)) return;
 
       // Remove existing
       const existing = circlesRef.current.get(alert.id);
@@ -308,7 +309,7 @@ export function useMapAlerts(
         lat: alertData.lat,
         lng: alertData.lng,
         details: alertData.details,
-        radius: alertData.radius || 500,
+        radius: (alertData.radius != null && Number.isFinite(alertData.radius) && alertData.radius > 0) ? alertData.radius : 500,
         timestamp: alertData.timestamp,
         acknowledged: false,
         expired: false,
@@ -357,6 +358,7 @@ export function useMapAlerts(
       details: string,
       radius?: number,
     ) => {
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
       setLoading(true);
       try {
         await apiFetch<{ success: boolean; id: string }>(

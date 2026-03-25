@@ -41,6 +41,7 @@ function getVehicleColor(status: string, gpsReportedAt: string | null): string {
   // If GPS data is stale (> 1 hour), show gray regardless of status
   if (gpsReportedAt) {
     const reportedTime = new Date(gpsReportedAt).getTime();
+    if (isNaN(reportedTime)) return '#6b7280'; // invalid date — gray
     const oneHourAgo = Date.now() - 60 * 60 * 1000;
     if (reportedTime < oneHourAgo) return '#6b7280'; // gray
   } else {

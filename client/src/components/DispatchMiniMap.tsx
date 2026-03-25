@@ -186,8 +186,9 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     }
 
     // Assigned unit markers (blue dots)
+    // assigned_units contains numeric unit IDs as strings (from mapDbCall parsing assigned_unit_ids)
     const assignedUnits = units.filter(u =>
-      call?.assigned_units?.includes(u.call_sign) && u.latitude != null && u.longitude != null
+      call?.assigned_units?.includes(String(u.id)) && u.latitude != null && u.longitude != null
     );
 
     for (const unit of assignedUnits) {
@@ -210,7 +211,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     }
 
     const assignedWithGps = units.filter(u =>
-      call.assigned_units?.includes(u.call_sign) && u.latitude != null && u.longitude != null
+      call.assigned_units?.includes(String(u.id)) && u.latitude != null && u.longitude != null
     );
 
     if (assignedWithGps.length === 1) {
@@ -258,7 +259,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   if (showLeafletFallback) {
     // Build assigned unit positions for the fallback
     const assignedUnits = units
-      .filter(u => call?.assigned_units?.includes(u.call_sign) && u.latitude != null && u.longitude != null)
+      .filter(u => call?.assigned_units?.includes(String(u.id)) && u.latitude != null && u.longitude != null)
       .map(u => ({
         call_sign: u.call_sign,
         lat: u.latitude!,
@@ -392,7 +393,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       )}
 
       {/* Map container */}
-      <div ref={mapContainerRef} aria-label="Dispatch mini map" style={{ width: '100%', height: '100%' }} />
+      <div ref={mapContainerRef} role="application" aria-label="Dispatch mini map" style={{ width: '100%', height: '100%' }} />
 
       {/* Loading overlay */}
       {!loaded && !error && (
