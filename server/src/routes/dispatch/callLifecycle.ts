@@ -228,6 +228,13 @@ router.delete('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'man
       try { db.prepare('UPDATE units SET current_call_id = NULL WHERE current_call_id = ?').run(call.id); } catch (e) { console.error('[CallLifecycle] Failed to nullify units FK:', e instanceof Error ? e.message : e); }
       try { db.prepare('DELETE FROM record_links WHERE (source_type = ? AND source_id = ?) OR (target_type = ? AND target_id = ?)').run('call', String(call.id), 'call', String(call.id)); } catch (e) { console.error('[CallLifecycle] Failed to delete record_links:', e instanceof Error ? e.message : e); }
 
+      // Delete child rows from non-cascading FK tables
+      try { db.prepare('DELETE FROM call_visit_history WHERE call_id = ?').run(call.id); } catch (e) { console.error('[CallLifecycle] Failed to delete call_visit_history:', e instanceof Error ? e.message : e); }
+      try { db.prepare('DELETE FROM call_persons WHERE call_id = ?').run(call.id); } catch (e) { console.error('[CallLifecycle] Failed to delete call_persons:', e instanceof Error ? e.message : e); }
+      try { db.prepare('DELETE FROM call_vehicles WHERE call_id = ?').run(call.id); } catch (e) { console.error('[CallLifecycle] Failed to delete call_vehicles:', e instanceof Error ? e.message : e); }
+      try { db.prepare('DELETE FROM call_units WHERE call_id = ?').run(call.id); } catch (e) { console.error('[CallLifecycle] Failed to delete call_units:', e instanceof Error ? e.message : e); }
+      try { db.prepare('DELETE FROM dashcam_video_links WHERE call_id = ?').run(call.id); } catch (e) { console.error('[CallLifecycle] Failed to delete dashcam_video_links:', e instanceof Error ? e.message : e); }
+
       // Delete related activity log entries
       try { db.prepare('DELETE FROM activity_log WHERE entity_type = ? AND entity_id = ?').run('call', call.id); } catch (e) { console.error('[CallLifecycle] Failed to delete activity_log entries:', e instanceof Error ? e.message : e); }
 
