@@ -223,6 +223,9 @@ interface WeatherData {
   weatherCode: number;
   description: string;
   icon: React.ComponentType<any>;
+  humidity?: number;
+  windSpeed?: number;
+  windDirection?: number;
 }
 
 function getWeatherInfo(code: number): { description: string; icon: React.ComponentType<any> } {
@@ -383,7 +386,15 @@ export default function DashboardPage() {
       if (temp == null) { setWeather(null); return; }
       const code = resp?.current?.weather_code ?? 0;
       const info = getWeatherInfo(code);
-      setWeather({ temperature: Math.round(temp), weatherCode: code, description: info.description, icon: info.icon });
+      setWeather({
+        temperature: Math.round(temp),
+        weatherCode: code,
+        description: info.description,
+        icon: info.icon,
+        humidity: resp?.current?.relative_humidity_2m ?? undefined,
+        windSpeed: resp?.current?.wind_speed_10m ?? undefined,
+        windDirection: resp?.current?.wind_direction_10m ?? undefined,
+      });
     } catch {
       setWeather(null);
     } finally {
@@ -740,6 +751,17 @@ export default function DashboardPage() {
                       <div className="text-xs text-rmpg-400 mt-0.5 font-medium">{weather.description}</div>
                     </div>
                   </div>
+                  {/* Humidity & Wind */}
+                  {(weather.humidity != null || weather.windSpeed != null) && (
+                    <div className="flex items-center gap-4 text-[10px] text-rmpg-400 font-mono tabular-nums">
+                      {weather.humidity != null && (
+                        <span title="Relative humidity">💧 {weather.humidity}%</span>
+                      )}
+                      {weather.windSpeed != null && (
+                        <span title={`Wind direction: ${weather.windDirection ?? '—'}°`}>💨 {Math.round(weather.windSpeed)} mph</span>
+                      )}
+                    </div>
+                  )}
                   {/* Road Conditions Warning */}
                   {isFreezing && (
                     <div className="flex items-center gap-2 p-2.5 bg-blue-900/20 border border-blue-700/30 rounded-sm animate-fade-in" role="alert">
