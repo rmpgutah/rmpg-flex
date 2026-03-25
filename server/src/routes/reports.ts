@@ -1637,7 +1637,7 @@ router.get('/beat-activity', (req: Request, res: Response) => {
 
     const arrestsByBeat = db.prepare(`
       SELECT COALESCE(zone_beat, 'Unassigned') as beat, COUNT(*) as count
-      FROM arrest_recordsWHERE created_at >= DATE('now', ?)
+      FROM arrest_records WHERE created_at >= DATE('now', ?)
       GROUP BY beat ORDER BY count DESC
     `).all(offset) as any[];
 
@@ -1868,12 +1868,12 @@ router.get('/arrest-demographics', requireRole('admin', 'manager', 'supervisor')
 
     const byTimeOfDay = db.prepare(`
       SELECT CAST(strftime('%H', created_at) AS INTEGER) as hour, COUNT(*) as count
-      FROM arrest_recordsWHERE created_at >= DATE('now', ?) GROUP BY hour ORDER BY hour
+      FROM arrest_records WHERE created_at >= DATE('now', ?) GROUP BY hour ORDER BY hour
     `).all(offset);
 
     const byDayOfWeek = db.prepare(`
       SELECT CAST(strftime('%w', created_at) AS INTEGER) as day, COUNT(*) as count
-      FROM arrest_recordsWHERE created_at >= DATE('now', ?) GROUP BY day ORDER BY day
+      FROM arrest_records WHERE created_at >= DATE('now', ?) GROUP BY day ORDER BY day
     `).all(offset);
 
     const byLocation = db.prepare(`
@@ -1883,10 +1883,10 @@ router.get('/arrest-demographics', requireRole('admin', 'manager', 'supervisor')
 
     const monthlyTrend = db.prepare(`
       SELECT strftime('%Y-%m', created_at) as month, COUNT(*) as count
-      FROM arrest_recordsWHERE created_at >= DATE('now', ?) GROUP BY month ORDER BY month
+      FROM arrest_records WHERE created_at >= DATE('now', ?) GROUP BY month ORDER BY month
     `).all(offset);
 
-    const total = db.prepare(`SELECT COUNT(*) as count FROM arrest_recordsWHERE created_at >= DATE('now', ?)`).get(offset) as any;
+    const total = db.prepare(`SELECT COUNT(*) as count FROM arrest_records WHERE created_at >= DATE('now', ?)`).get(offset) as any;
 
     res.json({ period_days: days, total: total.count, byCharge, byTimeOfDay, byDayOfWeek, byLocation, monthlyTrend });
   } catch (error: any) {
@@ -2069,7 +2069,7 @@ router.get('/weekly-digest', requireRole('admin', 'manager', 'supervisor'), (req
     const totalCalls = db.prepare(`SELECT COUNT(*) as count FROM calls_for_service WHERE created_at >= DATE('now', '-7 days')`).get() as any;
     const totalIncidents = db.prepare(`SELECT COUNT(*) as count FROM incidents WHERE created_at >= DATE('now', '-7 days')`).get() as any;
     const totalCitations = db.prepare(`SELECT COUNT(*) as count FROM citations WHERE created_at >= DATE('now', '-7 days')`).get() as any;
-    const totalArrests = db.prepare(`SELECT COUNT(*) as count FROM arrest_recordsWHERE created_at >= DATE('now', '-7 days')`).get() as any;
+    const totalArrests = db.prepare(`SELECT COUNT(*) as count FROM arrest_records WHERE created_at >= DATE('now', '-7 days')`).get() as any;
 
     const avgResponse = db.prepare(`
       SELECT ROUND(AVG((julianday(onscene_at) - julianday(created_at)) * 1440), 1) as avg_min

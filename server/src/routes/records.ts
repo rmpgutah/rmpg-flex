@@ -2784,7 +2784,7 @@ router.get('/ncic-query', (req: Request, res: Response) => {
           try {
             warrants = db.prepare(`
               SELECT * FROM warrants WHERE subject_person_id = ? AND status = 'active'
-              ORDER BY issue_date DESC
+              ORDER BY created_at DESC
             
               LIMIT 1000
             `).all(p.id);
@@ -2842,7 +2842,7 @@ router.get('/ncic-query', (req: Request, res: Response) => {
           try {
             warrants = db.prepare(`
               SELECT * FROM warrants WHERE subject_person_id = ? AND status = 'active'
-              ORDER BY issue_date DESC
+              ORDER BY created_at DESC
             
               LIMIT 1000
             `).all(p.id);
