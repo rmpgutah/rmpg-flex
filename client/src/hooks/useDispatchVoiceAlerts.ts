@@ -123,6 +123,21 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
           const call = normalizeCallForVoice(data.call);
           announceUnitDispatched(call, data.units);
         }
+
+        if (action === 'ai_analysis' && data.analysis?.safetyBriefing && data.analysis.confidence > 0.7) {
+          const severity = data.analysis.severityOverride || 'moderate';
+          announceWithSeverity(
+            `AI safety alert, call ${data.call_number}: ${data.analysis.safetyBriefing}`,
+            severity
+          );
+          onAlert?.({
+            id: nextAlertId(),
+            severity,
+            title: 'AI SAFETY ALERT',
+            message: data.analysis.safetyBriefing,
+            timestamp: Date.now(),
+          });
+        }
       })
     );
 
