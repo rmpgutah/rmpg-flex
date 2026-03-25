@@ -403,7 +403,7 @@ function DigitalForensicsSection({ evidenceId }: { evidenceId: string }) {
         <button type="button"
           onClick={handleComputeHashes}
           disabled={computing}
-          className="toolbar-btn text-[10px] flex items-center gap-1 px-2.5 py-1 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
+          className="toolbar-btn text-[10px] flex items-center gap-1 px-2.5 py-1 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-40"
         >
           {computing ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Hash className="w-3 h-3" />}
           {computing ? 'Computing...' : 'Compute Hashes'}

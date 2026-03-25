@@ -166,7 +166,7 @@ export default function TrainingDocsPage() {
           <h1 className="text-sm font-bold text-rmpg-100 uppercase tracking-wider">
             Company Policies & Training Documents
           </h1>
-          <span className="text-[9px] font-mono text-rmpg-500 bg-rmpg-800 px-1.5 py-0.5 rounded-sm ml-2">{filtered.length}</span>
+          <span className="text-[9px] font-mono text-rmpg-400 bg-rmpg-700/50 px-1.5 py-0.5 rounded-sm ml-2">{filtered.length}</span>
         </div>
         <div className="flex items-center gap-2">
           {/* Search */}

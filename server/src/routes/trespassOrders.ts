@@ -607,4 +607,131 @@ router.get('/:id/pdf-data', (req: Request, res: Response) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// UPGRADE 21: Expiration Countdown Display
+// ════════════════════════════════════════════════════════════
+router.get('/expiring', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = parseInt(req.query.days as string, 10) || 30;
+    const orders = db.prepare(`
+      SELECT t.*, CAST(JULIANDAY(t.expiration_date) - JULIANDAY('now', 'localtime') AS INTEGER) as days_remaining,
+        u.full_name as issued_by_display
+      FROM trespass_orders t LEFT JOIN users u ON t.issued_by = u.id
+      WHERE t.status = 'active' AND t.expiration_date IS NOT NULL
+        AND t.expiration_date <= date('now', '+' || ? || ' days', 'localtime')
+        AND t.expiration_date >= date('now', 'localtime')
+        AND t.archived_at IS NULL
+      ORDER BY t.expiration_date ASC LIMIT 100
+    `).all(days);
+    res.json({ data: orders, count: orders.length });
+  } catch (err: any) { console.error('[TrespassOrders] Expiring error:', err?.message); res.status(500).json({ error: 'Failed to get expiring orders', code: 'EXPIRING_ORDERS_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 22: Violation Count Badge
+// ════════════════════════════════════════════════════════════
+try { const db = getDb(); db.prepare(`CREATE TABLE IF NOT EXISTS trespass_violations (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, violation_date TEXT NOT NULL, location TEXT, description TEXT, officer_id INTEGER, officer_name TEXT, linked_incident_id INTEGER, linked_call_id INTEGER, notes TEXT, created_at TEXT NOT NULL)`).run(); } catch { /* already exists */ }
+
+router.get('/:id/violations', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const order = db.prepare('SELECT id FROM trespass_orders WHERE id = ?').get(req.params.id);
+    if (!order) { res.status(404).json({ error: 'Trespass order not found', code: 'NOT_FOUND' }); return; }
+    const violations = db.prepare('SELECT tv.*, u.full_name as officer_display FROM trespass_violations tv LEFT JOIN users u ON tv.officer_id = u.id WHERE tv.order_id = ? ORDER BY tv.violation_date DESC').all(req.params.id);
+    res.json({ data: violations, count: violations.length });
+  } catch (err: any) { console.error('[TrespassOrders] Violations error:', err?.message); res.status(500).json({ error: 'Failed to get violations', code: 'GET_VIOLATIONS_ERROR' }); }
+});
+
+router.post('/:id/violations', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const user = (req as any).user;
+    const order = db.prepare('SELECT id, order_number FROM trespass_orders WHERE id = ?').get(req.params.id) as any;
+    if (!order) { res.status(404).json({ error: 'Trespass order not found', code: 'NOT_FOUND' }); return; }
+    const { violation_date, location, description, linked_incident_id, linked_call_id, notes } = req.body;
+    const now = localNow();
+    const result = db.prepare('INSERT INTO trespass_violations (order_id, violation_date, location, description, officer_id, officer_name, linked_incident_id, linked_call_id, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(req.params.id, violation_date || now, location || null, description || null, user.id, user.full_name, linked_incident_id || null, linked_call_id || null, notes || null, now);
+    // Update order status to violated
+    db.prepare("UPDATE trespass_orders SET status = 'violated', updated_at = ? WHERE id = ?").run(now, req.params.id);
+    auditLog(req, 'CREATE', 'trespass_violation', Number(result.lastInsertRowid), `Violation recorded on order ${order.order_number}`);
+    broadcast('alerts', 'trespass_violation_recorded', { order_id: parseInt(req.params.id), order_number: order.order_number });
+    res.status(201).json({ data: { id: result.lastInsertRowid } });
+  } catch (err: any) { console.error('[TrespassOrders] Create violation error:', err?.message); res.status(500).json({ error: 'Failed to record violation', code: 'CREATE_VIOLATION_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 23: Auto-Archive Expired Orders
+// ════════════════════════════════════════════════════════════
+router.post('/auto-archive-expired', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const expired = db.prepare(`SELECT id, order_number FROM trespass_orders WHERE status = 'active' AND expiration_date IS NOT NULL AND expiration_date < date('now', 'localtime') AND archived_at IS NULL`).all() as any[];
+    if (expired.length === 0) { res.json({ data: { archived_count: 0 } }); return; }
+    db.prepare(`UPDATE trespass_orders SET status = 'expired', archived_at = ?, updated_at = ? WHERE status = 'active' AND expiration_date IS NOT NULL AND expiration_date < date('now', 'localtime') AND archived_at IS NULL`).run(now, now);
+    for (const o of expired) {
+      auditLog(req, 'UPDATE', 'trespass_order', o.id, `Auto-archived expired order ${o.order_number}`);
+    }
+    broadcast('alerts', 'trespass_orders_auto_archived', { count: expired.length });
+    res.json({ data: { archived_count: expired.length, archived_orders: expired.map((o: any) => o.order_number) } });
+  } catch (err: any) { console.error('[TrespassOrders] Auto-archive error:', err?.message); res.status(500).json({ error: 'Failed to auto-archive', code: 'AUTO_ARCHIVE_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 24: Trespass Orders CSV Export
+// ════════════════════════════════════════════════════════════
+router.get('/export/csv', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { status, date_from, date_to } = req.query;
+    let where = 'WHERE 1=1';
+    const params: any[] = [];
+    if (status) { where += ' AND t.status = ?'; params.push(status); }
+    if (date_from) { where += ' AND t.effective_date >= ?'; params.push(date_from); }
+    if (date_to) { where += ' AND t.effective_date <= ?'; params.push(date_to); }
+    const rows = db.prepare(`SELECT t.order_number, t.subject_first_name, t.subject_last_name, t.order_type, t.status, t.property_name, t.location, t.reason, t.effective_date, t.expiration_date, t.duration_days, t.issued_by_name, t.authorized_by, t.created_at FROM trespass_orders t ${where} ORDER BY t.created_at DESC LIMIT 10000`).all(...params) as any[];
+    const headers = ['Order #', 'First Name', 'Last Name', 'Type', 'Status', 'Property', 'Location', 'Reason', 'Effective', 'Expires', 'Duration', 'Issued By', 'Authorized By', 'Created'];
+    const csvRows = rows.map((r: any) => [r.order_number, r.subject_first_name, r.subject_last_name, r.order_type, r.status, (r.property_name || '').replace(/"/g, '""'), (r.location || '').replace(/"/g, '""'), (r.reason || '').replace(/"/g, '""'), r.effective_date, r.expiration_date, r.duration_days, r.issued_by_name, r.authorized_by, r.created_at]);
+    const csv = [headers.join(','), ...csvRows.map((r: any[]) => r.map(v => `"${v || ''}"`).join(','))].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="trespass_orders_${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(csv);
+  } catch (err: any) { console.error('[TrespassOrders] Export error:', err?.message); res.status(500).json({ error: 'Failed to export', code: 'EXPORT_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 25: Trespass Orders Statistics
+// ════════════════════════════════════════════════════════════
+router.get('/stats/overview', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const byStatus = db.prepare(`SELECT status, COUNT(*) as count FROM trespass_orders WHERE archived_at IS NULL GROUP BY status`).all() as any[];
+    const byType = db.prepare(`SELECT order_type, COUNT(*) as count FROM trespass_orders WHERE archived_at IS NULL GROUP BY order_type`).all() as any[];
+    const activeCount = (db.prepare("SELECT COUNT(*) as count FROM trespass_orders WHERE status = 'active' AND archived_at IS NULL").get() as any).count;
+    const expiringThisMonth = (db.prepare(`SELECT COUNT(*) as count FROM trespass_orders WHERE status = 'active' AND expiration_date IS NOT NULL AND expiration_date BETWEEN date('now','localtime') AND date('now','localtime','+30 days') AND archived_at IS NULL`).get() as any).count;
+    let totalViolations = 0;
+    try { totalViolations = (db.prepare('SELECT COUNT(*) as count FROM trespass_violations').get() as any).count; } catch { /* table may not exist */ }
+    const recentlyIssued = (db.prepare("SELECT COUNT(*) as count FROM trespass_orders WHERE created_at >= datetime('now','-7 days','localtime')").get() as any).count;
+    res.json({ data: { by_status: Object.fromEntries(byStatus.map((r: any) => [r.status, r.count])), by_type: Object.fromEntries(byType.map((r: any) => [r.order_type, r.count])), active_count: activeCount, expiring_this_month: expiringThisMonth, total_violations: totalViolations, recently_issued_7d: recentlyIssued } });
+  } catch (err: any) { console.error('[TrespassOrders] Stats error:', err?.message); res.status(500).json({ error: 'Failed to get stats', code: 'STATS_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 26: Trespass Order Data Completeness
+// ════════════════════════════════════════════════════════════
+router.get('/:id/completeness', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const order = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id) as any;
+    if (!order) { res.status(404).json({ error: 'Trespass order not found', code: 'NOT_FOUND' }); return; }
+    const requiredFields = ['subject_first_name', 'subject_last_name', 'location', 'reason'];
+    const recommendedFields = ['subject_dob', 'subject_description', 'property_name', 'conditions', 'expiration_date', 'authorized_by', 'notes'];
+    const filledRequired = requiredFields.filter(f => order[f] != null && String(order[f]).trim() !== '').length;
+    const filledRecommended = recommendedFields.filter(f => order[f] != null && String(order[f]).trim() !== '').length;
+    const score = Math.round(((filledRequired / requiredFields.length) * 60 + (filledRecommended / recommendedFields.length) * 40));
+    res.json({ data: { order_id: order.id, score, grade: score >= 80 ? 'A' : score >= 60 ? 'B' : score >= 40 ? 'C' : 'D', missing_required: requiredFields.filter(f => !order[f] || String(order[f]).trim() === ''), missing_recommended: recommendedFields.filter(f => !order[f] || String(order[f]).trim() === '') } });
+  } catch (err: any) { console.error('[TrespassOrders] Completeness error:', err?.message); res.status(500).json({ error: 'Failed to get completeness', code: 'COMPLETENESS_ERROR' }); }
+});
+
 export default router;

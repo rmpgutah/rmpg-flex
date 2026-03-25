@@ -102,7 +102,7 @@ export default function FormModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={dialogRef}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={guardedClose} />
-      <div className={`relative w-full ${maxWidth} mx-4 shadow-2xl animate-fade-in panel-beveled`} style={{ background: '#141e2b' }}>
+      <div className={`relative w-full ${maxWidth} mx-4 shadow-2xl animate-scale-in panel-beveled`} style={{ background: '#141e2b' }}>
         <div className="panel-title-bar">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2" style={{ background: '#1a5a9e' }} />
@@ -129,11 +129,11 @@ export default function FormModal({
         </div>
         <form onSubmit={onSubmit} noValidate className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
           {children}
-          <div className="flex items-center justify-end gap-2 pt-4" style={{ borderTop: '1px solid #1e3048' }}>
-            <button type="button" onClick={guardedClose} className="toolbar-btn" disabled={isSubmitting}>
+          <div className="flex items-center justify-end gap-3 pt-4 mt-2" style={{ borderTop: '1px solid #1e3048' }}>
+            <button type="button" onClick={guardedClose} className="toolbar-btn" disabled={isSubmitting} style={{ padding: '4px 12px' }}>
               Cancel
             </button>
-            <button type="submit" className="toolbar-btn toolbar-btn-primary" disabled={isSubmitting}>
+            <button type="submit" className="toolbar-btn toolbar-btn-primary" disabled={isSubmitting} style={{ padding: '4px 12px' }}>
               {isSubmitting && <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" />}
               {submitLabel}
             </button>
@@ -145,7 +145,7 @@ export default function FormModal({
       {showDiscardConfirm && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center">
           <div className="absolute inset-0 bg-black/50" onClick={handleCancelDiscard} />
-          <div className="relative w-full max-w-sm mx-4 bg-surface-base border border-rmpg-600 shadow-2xl animate-fade-in">
+          <div className="relative w-full max-w-sm mx-4 bg-surface-base border border-rmpg-600 shadow-2xl animate-scale-in">
             <div
               className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600"
               style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)' }}

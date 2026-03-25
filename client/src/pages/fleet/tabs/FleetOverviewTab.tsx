@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Car, Wrench, DollarSign, Calendar, Clock, Gauge, Shield, Radio, Settings, Tag, ArrowRight, Pencil, Trash2,
+  AlertTriangle, TrendingUp, Fuel,
 } from 'lucide-react';
+import { apiFetch } from '../../../hooks/useApi';
 import type { FleetVehicle, FleetMaintenance, FleetVehicleStatus } from '../../../types';
 import { formatMilitary, daysUntilExpiry, expiryProgress } from '../utils/fleetFormatters';
 
@@ -73,35 +75,46 @@ const timeAgo = (date: string): string => {
 };
 
 export default function FleetOverviewTab({ detail, maintenance, onEditMaintenance, onDeleteMaintenance }: Props) {
+  const [fuelEfficiency, setFuelEfficiency] = useState<any>(null);
+  const [maintenanceCosts, setMaintenanceCosts] = useState<any>(null);
+  const [mileageHistory, setMileageHistory] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!detail?.id) return;
+    apiFetch<any>(`/api/fleet/${detail.id}/fuel-efficiency`).then((d: any) => d && setFuelEfficiency(d)).catch(() => {});
+    apiFetch<any>(`/api/fleet/${detail.id}/maintenance-costs`).then((d: any) => d && setMaintenanceCosts(d)).catch(() => {});
+    apiFetch<any>(`/api/fleet/${detail.id}/mileage-history`).then((d: any) => Array.isArray(d) && setMileageHistory(d)).catch(() => {});
+  }, [detail?.id]);
+
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
       {/* Vehicle Stats Row */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-        <div className="panel-beveled p-2.5 text-center" style={{ background: '#0d1520' }}>
+        <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
           <Gauge className="w-3.5 h-3.5 mx-auto text-brand-400 mb-1" />
           <div className="text-sm font-bold font-mono text-brand-400">{detail.current_mileage?.toLocaleString() || '-'}</div>
           <div className="text-[7px] text-rmpg-500 uppercase">Mileage</div>
         </div>
-        <div className="panel-beveled p-2.5 text-center" style={{ background: '#0d1520' }}>
+        <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
           <Wrench className="w-3.5 h-3.5 mx-auto text-amber-400 mb-1" />
           <div className="text-sm font-bold font-mono text-amber-400">{maintenance.length}</div>
           <div className="text-[7px] text-rmpg-500 uppercase">Services</div>
         </div>
-        <div className="panel-beveled p-2.5 text-center" style={{ background: '#0d1520' }}>
+        <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
           <DollarSign className="w-3.5 h-3.5 mx-auto text-green-400 mb-1" />
           <div className="text-sm font-bold font-mono text-green-400">
             ${maintenance.reduce((sum, m) => sum + (m.cost || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
           </div>
           <div className="text-[7px] text-rmpg-500 uppercase">Total Cost</div>
         </div>
-        <div className="panel-beveled p-2.5 text-center" style={{ background: '#0d1520' }}>
+        <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
           <Calendar className="w-3.5 h-3.5 mx-auto text-blue-400 mb-1" />
           <div className="text-[10px] font-bold font-mono text-blue-400">{formatMilitary(detail.last_service_date)}</div>
           <div className="text-[7px] text-rmpg-500 uppercase">Last Service</div>
         </div>
         <div className={`panel-beveled p-2.5 text-center ${
           getExpiryStatus(detail.next_service_due) === 'expired' ? 'border-amber-700/50' : ''
-        }`} style={{ background: getExpiryStatus(detail.next_service_due) === 'expired' ? '#1a1400' : '#0d1520' }}>
+        }`} style={{ background: getExpiryStatus(detail.next_service_due) === 'expired' ? '#1a1400' : 'var(--surface-sunken)' }}>
           <Clock className="w-3.5 h-3.5 mx-auto mb-1" style={{ color: getExpiryStatus(detail.next_service_due) === 'expired' ? '#f59e0b' : '#22c55e' }} />
           <div className="text-[10px] font-bold font-mono" style={{ color: getExpiryStatus(detail.next_service_due) === 'expired' ? '#f59e0b' : '#22c55e' }}>
             {formatMilitary(detail.next_service_due)}
@@ -256,11 +269,113 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
       {detail.notes && (
         <div className="panel-beveled p-3 bg-surface-base">
           <h3 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2">Notes</h3>
-          <div className="p-2 text-[11px] text-rmpg-300 whitespace-pre-wrap leading-relaxed" style={{ background: '#0d1520', border: '1px solid #162236' }}>
+          <div className="p-2 text-[11px] text-rmpg-300 whitespace-pre-wrap leading-relaxed bg-surface-sunken border border-rmpg-700">
             {detail.notes}
           </div>
         </div>
       )}
+
+      {/* Fuel Efficiency & Maintenance Costs Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {fuelEfficiency && (
+          <div className="panel-beveled p-3 bg-surface-base">
+            <h3 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+              <Fuel className="w-3 h-3" /> Fuel Efficiency
+            </h3>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="text-center p-1.5 bg-surface-sunken rounded">
+                <div className="text-sm font-bold font-mono text-green-400">{fuelEfficiency.avg_mpg ?? '-'}</div>
+                <div className="text-[7px] text-rmpg-500 uppercase">Avg MPG</div>
+              </div>
+              <div className="text-center p-1.5 bg-surface-sunken rounded">
+                <div className="text-sm font-bold font-mono text-cyan-400">{fuelEfficiency.data?.length || 0}</div>
+                <div className="text-[7px] text-rmpg-500 uppercase">Fill-ups</div>
+              </div>
+            </div>
+            {fuelEfficiency.data?.length > 0 && (
+              <div className="mt-2 space-y-0.5 max-h-[100px] overflow-y-auto">
+                {fuelEfficiency.data.slice(-5).reverse().map((d: any, i: number) => (
+                  <div key={i} className="flex justify-between text-[9px] px-1 py-0.5 bg-surface-sunken/50 rounded">
+                    <span className="text-rmpg-400">{d.date}</span>
+                    <span className="text-green-400 font-mono">{d.mpg} mpg</span>
+                    {d.cost_per_mile != null && <span className="text-amber-400 font-mono">${d.cost_per_mile}/mi</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {maintenanceCosts && (
+          <div className="panel-beveled p-3 bg-surface-base">
+            <h3 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+              <TrendingUp className="w-3 h-3" /> Maintenance Costs
+            </h3>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="text-center p-1.5 bg-surface-sunken rounded">
+                <div className="text-sm font-bold font-mono text-green-400">${maintenanceCosts.total_cost?.toLocaleString() || 0}</div>
+                <div className="text-[7px] text-rmpg-500 uppercase">Total</div>
+              </div>
+              <div className="text-center p-1.5 bg-surface-sunken rounded">
+                <div className="text-sm font-bold font-mono text-amber-400">${maintenanceCosts.total_parts_cost?.toLocaleString() || 0}</div>
+                <div className="text-[7px] text-rmpg-500 uppercase">Parts</div>
+              </div>
+              <div className="text-center p-1.5 bg-surface-sunken rounded">
+                <div className="text-sm font-bold font-mono text-cyan-400">${maintenanceCosts.total_labor_cost?.toLocaleString() || 0}</div>
+                <div className="text-[7px] text-rmpg-500 uppercase">Labor</div>
+              </div>
+            </div>
+            {maintenanceCosts.by_type?.length > 0 && (
+              <div className="mt-2 space-y-0.5">
+                {maintenanceCosts.by_type.slice(0, 5).map((t: any) => (
+                  <div key={t.type} className="flex justify-between text-[9px] px-1 py-0.5 bg-surface-sunken/50 rounded">
+                    <span className="text-rmpg-300 capitalize">{t.type?.replace(/_/g, ' ') || 'Other'}</span>
+                    <span className="text-green-400 font-mono">${t.total_cost?.toFixed(0)} ({t.count})</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Mileage History */}
+      {mileageHistory.length > 0 && (
+        <div className="panel-beveled p-3 bg-surface-base">
+          <h3 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+            <Gauge className="w-3 h-3" /> Mileage Log ({mileageHistory.length})
+          </h3>
+          <div className="space-y-0.5 max-h-[120px] overflow-y-auto">
+            {mileageHistory.slice(0, 10).map((m: any) => (
+              <div key={m.id} className="flex justify-between text-[9px] px-2 py-1 bg-surface-sunken/50 rounded">
+                <span className="text-rmpg-400">{m.recorded_at?.slice(0, 10)}</span>
+                <span className="text-rmpg-300">{m.recorded_by_name || 'System'}</span>
+                <span className="font-mono text-brand-400">{m.previous_mileage?.toLocaleString()} &rarr; {m.new_mileage?.toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Service Alert for This Vehicle */}
+      {detail.next_service_due && (() => {
+        const daysUntil = Math.floor((new Date(detail.next_service_due).getTime() - Date.now()) / 86400000);
+        if (daysUntil > 30) return null;
+        return (
+          <div className={`panel-beveled p-3 ${daysUntil < 0 ? 'bg-red-900/20 border-red-700/40' : 'bg-amber-900/20 border-amber-700/40'}`}>
+            <div className="flex items-center gap-2">
+              <AlertTriangle className={`w-4 h-4 ${daysUntil < 0 ? 'text-red-400' : 'text-amber-400'}`} />
+              <div>
+                <div className={`text-[11px] font-bold ${daysUntil < 0 ? 'text-red-400' : 'text-amber-400'}`}>
+                  {daysUntil < 0 ? 'SERVICE OVERDUE' : 'SERVICE DUE SOON'}
+                </div>
+                <div className="text-[9px] text-rmpg-400">
+                  {(detail as any).next_service_type || 'Scheduled Service'} - {daysUntil < 0 ? `${Math.abs(daysUntil)} days overdue` : `Due in ${daysUntil} days`} ({detail.next_service_due})
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Maintenance History */}
       <div className="panel-beveled p-3 bg-surface-base">
@@ -276,7 +391,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
         </div>
         {maintenance.length === 0 ? (
           <div className="text-center py-6">
-            <div className="w-12 h-12 mx-auto mb-2 rounded-full border border-rmpg-700 flex items-center justify-center" style={{ background: '#0d1520' }}>
+            <div className="w-12 h-12 mx-auto mb-2 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
               <Wrench className="w-6 h-6 text-rmpg-600" />
             </div>
             <p className="text-[10px] text-rmpg-500">No maintenance records</p>

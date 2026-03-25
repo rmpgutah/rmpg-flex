@@ -173,7 +173,7 @@ function DutyToggle({ officerId, currentStatus }: { officerId: string; currentSt
         isOnDuty
           ? 'bg-green-900/50 text-green-400 border-green-700/50 hover:bg-red-900/50 hover:text-red-400 hover:border-red-700/50'
           : 'bg-surface-sunken text-rmpg-400 border-rmpg-600 hover:bg-green-900/50 hover:text-green-400 hover:border-green-700/50'
-      } disabled:opacity-50`}
+      } disabled:opacity-40`}
       title={isOnDuty ? 'Go Off Duty' : 'Go On Duty'}
       aria-label={isOnDuty ? 'Toggle off duty' : 'Toggle on duty'}
     >

@@ -1513,7 +1513,7 @@ router.get('/officer-scorecard/:officerId', requireRole('admin', 'manager', 'sup
     `).get(officerId, offset) as any;
 
     const arrests = db.prepare(`
-      SELECT COUNT(*) as count FROM arrests
+      SELECT COUNT(*) as count FROM arrest_records
       WHERE officer_id = ? AND created_at >= DATE('now', ?)
     `).get(officerId, offset) as any;
 
@@ -1629,14 +1629,14 @@ router.get('/beat-activity', (req: Request, res: Response) => {
     `).all(offset) as any[];
 
     const citationsByBeat = db.prepare(`
-      SELECT COALESCE(beat, 'Unassigned') as beat, COUNT(*) as count
+      SELECT COALESCE(zone_beat, 'Unassigned') as beat, COUNT(*) as count
       FROM citations WHERE created_at >= DATE('now', ?)
       GROUP BY beat ORDER BY count DESC
     `).all(offset) as any[];
 
     const arrestsByBeat = db.prepare(`
-      SELECT COALESCE(beat, 'Unassigned') as beat, COUNT(*) as count
-      FROM arrests WHERE created_at >= DATE('now', ?)
+      SELECT COALESCE(zone_beat, 'Unassigned') as beat, COUNT(*) as count
+      FROM arrest_records WHERE created_at >= DATE('now', ?)
       GROUP BY beat ORDER BY count DESC
     `).all(offset) as any[];
 
@@ -1663,7 +1663,7 @@ router.get('/beat-activity', (req: Request, res: Response) => {
     res.json({ period_days: days, beats: Object.values(beatMap).sort((a: any, b: any) => b.calls - a.calls) });
   } catch (error: any) {
     console.error('Beat activity error:', error);
-    res.status(500).json({ error: 'Failed to beat activity', code: 'BEAT_ACTIVITY_ERROR' });
+    res.status(500).json({ error: 'Failed to get beat activity report', code: 'BEAT_ACTIVITY_ERROR' });
   }
 });
 
@@ -1861,31 +1861,31 @@ router.get('/arrest-demographics', requireRole('admin', 'manager', 'supervisor')
     const offset = `-${days} days`;
 
     const byCharge = db.prepare(`
-      SELECT charge_description, COUNT(*) as count FROM arrests
+      SELECT charge_description, COUNT(*) as count FROM arrest_records
       WHERE created_at >= DATE('now', ?) GROUP BY charge_description ORDER BY count DESC LIMIT 20
     `).all(offset);
 
     const byTimeOfDay = db.prepare(`
       SELECT CAST(strftime('%H', created_at) AS INTEGER) as hour, COUNT(*) as count
-      FROM arrests WHERE created_at >= DATE('now', ?) GROUP BY hour ORDER BY hour
+      FROM arrest_records WHERE created_at >= DATE('now', ?) GROUP BY hour ORDER BY hour
     `).all(offset);
 
     const byDayOfWeek = db.prepare(`
       SELECT CAST(strftime('%w', created_at) AS INTEGER) as day, COUNT(*) as count
-      FROM arrests WHERE created_at >= DATE('now', ?) GROUP BY day ORDER BY day
+      FROM arrest_records WHERE created_at >= DATE('now', ?) GROUP BY day ORDER BY day
     `).all(offset);
 
     const byLocation = db.prepare(`
-      SELECT COALESCE(beat, 'Unknown') as location, COUNT(*) as count FROM arrests
+      SELECT COALESCE(zone_beat, 'Unknown') as location, COUNT(*) as count FROM arrest_records
       WHERE created_at >= DATE('now', ?) GROUP BY location ORDER BY count DESC LIMIT 15
     `).all(offset);
 
     const monthlyTrend = db.prepare(`
       SELECT strftime('%Y-%m', created_at) as month, COUNT(*) as count
-      FROM arrests WHERE created_at >= DATE('now', ?) GROUP BY month ORDER BY month
+      FROM arrest_records WHERE created_at >= DATE('now', ?) GROUP BY month ORDER BY month
     `).all(offset);
 
-    const total = db.prepare(`SELECT COUNT(*) as count FROM arrests WHERE created_at >= DATE('now', ?)`).get(offset) as any;
+    const total = db.prepare(`SELECT COUNT(*) as count FROM arrest_records WHERE created_at >= DATE('now', ?)`).get(offset) as any;
 
     res.json({ period_days: days, total: total.count, byCharge, byTimeOfDay, byDayOfWeek, byLocation, monthlyTrend });
   } catch (error: any) {
@@ -2068,7 +2068,7 @@ router.get('/weekly-digest', requireRole('admin', 'manager', 'supervisor'), (req
     const totalCalls = db.prepare(`SELECT COUNT(*) as count FROM calls_for_service WHERE created_at >= DATE('now', '-7 days')`).get() as any;
     const totalIncidents = db.prepare(`SELECT COUNT(*) as count FROM incidents WHERE created_at >= DATE('now', '-7 days')`).get() as any;
     const totalCitations = db.prepare(`SELECT COUNT(*) as count FROM citations WHERE created_at >= DATE('now', '-7 days')`).get() as any;
-    const totalArrests = db.prepare(`SELECT COUNT(*) as count FROM arrests WHERE created_at >= DATE('now', '-7 days')`).get() as any;
+    const totalArrests = db.prepare(`SELECT COUNT(*) as count FROM arrest_records WHERE created_at >= DATE('now', '-7 days')`).get() as any;
 
     const avgResponse = db.prepare(`
       SELECT ROUND(AVG((julianday(onscene_at) - julianday(created_at)) * 1440), 1) as avg_min
@@ -2355,6 +2355,367 @@ router.get('/overdue-reports', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Overdue reports error:', error);
     res.status(500).json({ error: 'Failed to overdue reports', code: 'OVERDUE_REPORTS_ERROR' });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════
+// REPORT UPGRADES
+// ══════════════════════════════════════════════════════════════════
+
+// ── Upgrade 26: Report templates CRUD ───────────────────────────
+router.get('/templates', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const templates = db.prepare(`
+      SELECT config_key, config_value, created_at, updated_at
+      FROM system_config
+      WHERE category = 'report_template' AND is_active = 1
+      ORDER BY sort_order ASC
+    `).all() as any[];
+
+    const parsed = templates.map(t => {
+      try {
+        return { id: t.config_key, ...JSON.parse(t.config_value), created_at: t.created_at, updated_at: t.updated_at };
+      } catch {
+        return { id: t.config_key, name: t.config_key, config: {}, created_at: t.created_at };
+      }
+    });
+
+    res.json({ data: parsed });
+  } catch (error: any) {
+    console.error('Get report templates error:', error);
+    res.status(500).json({ error: 'Failed to get report templates', code: 'GET_REPORT_TEMPLATES_ERROR' });
+  }
+});
+
+router.post('/templates', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { name, description, source, columns, filters, groupBy, sortBy, sortDir, schedule } = req.body;
+    if (!name) { res.status(400).json({ error: 'name is required', code: 'NAME_REQUIRED' }); return; }
+
+    const now = localNow();
+    const key = `rpt_${Date.now()}`;
+    const value = JSON.stringify({ name, description, source, columns, filters, groupBy, sortBy, sortDir, schedule });
+
+    const maxOrder = db.prepare(
+      "SELECT MAX(sort_order) as mx FROM system_config WHERE category = 'report_template'"
+    ).get() as any;
+
+    db.prepare(`
+      INSERT INTO system_config (config_key, config_value, category, sort_order, created_at, updated_at)
+      VALUES (?, ?, 'report_template', ?, ?, ?)
+    `).run(key, value, (maxOrder?.mx ?? -1) + 1, now, now);
+
+    res.status(201).json({ id: key, name, description });
+  } catch (error: any) {
+    console.error('Create report template error:', error);
+    res.status(500).json({ error: 'Failed to create report template', code: 'CREATE_REPORT_TEMPLATE_ERROR' });
+  }
+});
+
+router.put('/templates/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare(
+      "SELECT * FROM system_config WHERE config_key = ? AND category = 'report_template'"
+    ).get(req.params.id) as any;
+    if (!existing) { res.status(404).json({ error: 'Template not found', code: 'TEMPLATE_NOT_FOUND' }); return; }
+
+    const now = localNow();
+    const value = JSON.stringify(req.body);
+    db.prepare("UPDATE system_config SET config_value = ?, updated_at = ? WHERE config_key = ? AND category = 'report_template'")
+      .run(value, now, req.params.id);
+
+    res.json({ id: req.params.id, ...req.body });
+  } catch (error: any) {
+    console.error('Update report template error:', error);
+    res.status(500).json({ error: 'Failed to update report template', code: 'UPDATE_REPORT_TEMPLATE_ERROR' });
+  }
+});
+
+router.delete('/templates/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare("UPDATE system_config SET is_active = 0 WHERE config_key = ? AND category = 'report_template'")
+      .run(req.params.id);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Delete report template error:', error);
+    res.status(500).json({ error: 'Failed to delete report template', code: 'DELETE_REPORT_TEMPLATE_ERROR' });
+  }
+});
+
+// ── Upgrade 27: Report scheduling (save schedule configs) ───────
+router.get('/schedules', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const schedules = db.prepare(`
+      SELECT config_key, config_value, created_at, updated_at
+      FROM system_config
+      WHERE category = 'report_schedule' AND is_active = 1
+      ORDER BY created_at DESC
+    `).all() as any[];
+
+    const parsed = schedules.map(s => {
+      try {
+        return { id: s.config_key, ...JSON.parse(s.config_value), created_at: s.created_at };
+      } catch {
+        return { id: s.config_key, name: 'Unknown', created_at: s.created_at };
+      }
+    });
+
+    res.json({ data: parsed });
+  } catch (error: any) {
+    console.error('Get report schedules error:', error);
+    res.status(500).json({ error: 'Failed to get report schedules', code: 'GET_REPORT_SCHEDULES_ERROR' });
+  }
+});
+
+router.post('/schedules', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { name, template_id, frequency, day_of_week, day_of_month, time_of_day, recipients, enabled } = req.body;
+    if (!name || !frequency) { res.status(400).json({ error: 'name and frequency required', code: 'NAME_FREQUENCY_REQUIRED' }); return; }
+
+    const now = localNow();
+    const key = `sched_${Date.now()}`;
+    const value = JSON.stringify({
+      name, template_id, frequency, day_of_week, day_of_month, time_of_day,
+      recipients, enabled: enabled !== false, created_by: req.user!.userId,
+    });
+
+    db.prepare(`
+      INSERT INTO system_config (config_key, config_value, category, sort_order, created_at, updated_at)
+      VALUES (?, ?, 'report_schedule', 0, ?, ?)
+    `).run(key, value, now, now);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'report_schedule_created', 'report_schedule', 0, ?, ?)`).run(
+      req.user!.userId, `Created report schedule: ${name} (${frequency})`, req.ip || 'unknown');
+
+    res.status(201).json({ id: key, name, frequency });
+  } catch (error: any) {
+    console.error('Create report schedule error:', error);
+    res.status(500).json({ error: 'Failed to create report schedule', code: 'CREATE_REPORT_SCHEDULE_ERROR' });
+  }
+});
+
+router.put('/schedules/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const value = JSON.stringify(req.body);
+    db.prepare("UPDATE system_config SET config_value = ?, updated_at = ? WHERE config_key = ? AND category = 'report_schedule'")
+      .run(value, now, req.params.id);
+    res.json({ id: req.params.id, ...req.body });
+  } catch (error: any) {
+    console.error('Update report schedule error:', error);
+    res.status(500).json({ error: 'Failed to update report schedule', code: 'UPDATE_REPORT_SCHEDULE_ERROR' });
+  }
+});
+
+router.delete('/schedules/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare("UPDATE system_config SET is_active = 0 WHERE config_key = ? AND category = 'report_schedule'")
+      .run(req.params.id);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Delete report schedule error:', error);
+    res.status(500).json({ error: 'Failed to delete report schedule', code: 'DELETE_REPORT_SCHEDULE_ERROR' });
+  }
+});
+
+// ── Upgrade 28: Period comparison (this week vs last week, etc) ─
+router.get('/comparison', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { period = 'week' } = req.query;
+
+    let currentStart: string, currentEnd: string, previousStart: string, previousEnd: string;
+
+    if (period === 'month') {
+      currentStart = "date('now', 'start of month')";
+      currentEnd = "datetime('now')";
+      previousStart = "date('now', 'start of month', '-1 month')";
+      previousEnd = "date('now', 'start of month')";
+    } else {
+      // Default: week (Mon-Sun)
+      currentStart = "date('now', 'weekday 0', '-6 days')";
+      currentEnd = "datetime('now')";
+      previousStart = "date('now', 'weekday 0', '-13 days')";
+      previousEnd = "date('now', 'weekday 0', '-6 days')";
+    }
+
+    // Calls comparison
+    const currentCalls = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service WHERE created_at >= ${currentStart} AND created_at <= ${currentEnd}
+    `).get() as any;
+    const previousCalls = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service WHERE created_at >= ${previousStart} AND created_at < ${previousEnd}
+    `).get() as any;
+
+    // Incidents comparison
+    const currentIncidents = db.prepare(`
+      SELECT COUNT(*) as count FROM incidents WHERE created_at >= ${currentStart} AND created_at <= ${currentEnd}
+    `).get() as any;
+    const previousIncidents = db.prepare(`
+      SELECT COUNT(*) as count FROM incidents WHERE created_at >= ${previousStart} AND created_at < ${previousEnd}
+    `).get() as any;
+
+    // Citations comparison
+    const currentCitations = db.prepare(`
+      SELECT COUNT(*) as count FROM citations WHERE created_at >= ${currentStart} AND created_at <= ${currentEnd}
+    `).get() as any;
+    const previousCitations = db.prepare(`
+      SELECT COUNT(*) as count FROM citations WHERE created_at >= ${previousStart} AND created_at < ${previousEnd}
+    `).get() as any;
+
+    // Response time comparison
+    const currentResponse = db.prepare(`
+      SELECT AVG((julianday(onscene_at) - julianday(created_at)) * 24 * 60) as avg_minutes
+      FROM calls_for_service WHERE onscene_at IS NOT NULL AND created_at >= ${currentStart} AND created_at <= ${currentEnd}
+    `).get() as any;
+    const previousResponse = db.prepare(`
+      SELECT AVG((julianday(onscene_at) - julianday(created_at)) * 24 * 60) as avg_minutes
+      FROM calls_for_service WHERE onscene_at IS NOT NULL AND created_at >= ${previousStart} AND created_at < ${previousEnd}
+    `).get() as any;
+
+    const calcChange = (current: number, previous: number) => {
+      if (previous === 0) return current > 0 ? 100 : 0;
+      return Math.round(((current - previous) / previous) * 100);
+    };
+
+    const round = (v: any) => v ? Math.round(v * 10) / 10 : null;
+
+    res.json({
+      period,
+      calls: {
+        current: currentCalls?.count || 0,
+        previous: previousCalls?.count || 0,
+        change: calcChange(currentCalls?.count || 0, previousCalls?.count || 0),
+      },
+      incidents: {
+        current: currentIncidents?.count || 0,
+        previous: previousIncidents?.count || 0,
+        change: calcChange(currentIncidents?.count || 0, previousIncidents?.count || 0),
+      },
+      citations: {
+        current: currentCitations?.count || 0,
+        previous: previousCitations?.count || 0,
+        change: calcChange(currentCitations?.count || 0, previousCitations?.count || 0),
+      },
+      responseTime: {
+        current: round(currentResponse?.avg_minutes),
+        previous: round(previousResponse?.avg_minutes),
+        change: currentResponse?.avg_minutes && previousResponse?.avg_minutes
+          ? calcChange(currentResponse.avg_minutes, previousResponse.avg_minutes) : null,
+      },
+    });
+  } catch (error: any) {
+    console.error('Comparison report error:', error);
+    res.status(500).json({ error: 'Failed to get comparison report', code: 'COMPARISON_REPORT_ERROR' });
+  }
+});
+
+// ── Upgrade 29: Shift summary data ─────────────────────────────
+router.get('/shift-summary', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { date, shift } = req.query;
+    const targetDate = (date as string) || localToday();
+
+    // Define shift windows (default day shift 0600-1800, night 1800-0600)
+    let startHour = 6, endHour = 18;
+    if (shift === 'night') { startHour = 18; endHour = 6; }
+    else if (shift === 'swing') { startHour = 14; endHour = 22; }
+
+    const shiftStart = `${targetDate} ${String(startHour).padStart(2, '0')}:00:00`;
+    const shiftEnd = shift === 'night'
+      ? `${targetDate} 23:59:59`
+      : `${targetDate} ${String(endHour).padStart(2, '0')}:00:00`;
+
+    // Calls during shift
+    const calls = db.prepare(`
+      SELECT COUNT(*) as total,
+        SUM(CASE WHEN priority = 'P1' THEN 1 ELSE 0 END) as p1,
+        SUM(CASE WHEN priority = 'P2' THEN 1 ELSE 0 END) as p2,
+        SUM(CASE WHEN status = 'cleared' THEN 1 ELSE 0 END) as cleared,
+        AVG(CASE WHEN onscene_at IS NOT NULL
+          THEN (julianday(onscene_at) - julianday(created_at)) * 24 * 60
+          ELSE NULL END) as avg_response_min
+      FROM calls_for_service
+      WHERE created_at >= ? AND created_at <= ?
+    `).get(shiftStart, shiftEnd) as any;
+
+    // Incidents during shift
+    const incidents = db.prepare(`
+      SELECT COUNT(*) as total FROM incidents WHERE created_at >= ? AND created_at <= ?
+    `).get(shiftStart, shiftEnd) as any;
+
+    // Officers on duty during shift
+    const officers = db.prepare(`
+      SELECT DISTINCT u.id, u.full_name, u.badge_number, un.call_sign
+      FROM units un
+      JOIN users u ON un.officer_id = u.id
+      WHERE un.status != 'off_duty'
+      LIMIT 50
+    `).all();
+
+    // Activity during shift
+    const activity = db.prepare(`
+      SELECT al.action, COUNT(*) as count
+      FROM activity_log al
+      WHERE al.created_at >= ? AND al.created_at <= ?
+      GROUP BY al.action ORDER BY count DESC LIMIT 10
+    `).all(shiftStart, shiftEnd);
+
+    res.json({
+      date: targetDate,
+      shift: shift || 'day',
+      shiftStart,
+      shiftEnd,
+      calls: {
+        total: calls?.total || 0,
+        p1: calls?.p1 || 0,
+        p2: calls?.p2 || 0,
+        cleared: calls?.cleared || 0,
+        avgResponseMin: calls?.avg_response_min ? Math.round(calls.avg_response_min * 10) / 10 : null,
+      },
+      incidents: incidents?.total || 0,
+      officersOnDuty: officers,
+      topActivity: activity,
+    });
+  } catch (error: any) {
+    console.error('Shift summary error:', error);
+    res.status(500).json({ error: 'Failed to get shift summary', code: 'SHIFT_SUMMARY_ERROR' });
+  }
+});
+
+// ── Upgrade 30: Officer activity feed (recent actions) ──────────
+router.get('/officer-feed/:officerId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { officerId } = req.params;
+    const { limit = '30' } = req.query;
+    const limitNum = Math.min(100, parseInt(limit as string, 10) || 30);
+
+    const officer = db.prepare('SELECT id, full_name, badge_number FROM users WHERE id = ?').get(officerId) as any;
+    if (!officer) { res.status(404).json({ error: 'Officer not found', code: 'OFFICER_NOT_FOUND' }); return; }
+
+    const feed = db.prepare(`
+      SELECT al.id, al.action, al.entity_type, al.entity_id, al.details, al.created_at
+      FROM activity_log al
+      WHERE al.user_id = ?
+      ORDER BY al.created_at DESC
+      LIMIT ?
+    `).all(officerId, limitNum);
+
+    res.json({ officer, feed });
+  } catch (error: any) {
+    console.error('Officer feed error:', error);
+    res.status(500).json({ error: 'Failed to get officer feed', code: 'OFFICER_FEED_ERROR' });
   }
 });
 

@@ -1879,6 +1879,7 @@ export interface FieldInterview {
   linked_person_first?: string;
   linked_person_last?: string;
   person_flags?: string;
+  gang_affiliation?: string;
   status: 'active' | 'archived';
   created_at: string;
   archived_at?: string;
@@ -1927,6 +1928,152 @@ export interface TrespassOrder {
   archived_at?: string;
   created_at: string;
   updated_at: string;
+  violation_count?: number;
+  days_remaining?: number;
+}
+
+// --- Person Alias ---
+export interface PersonAlias {
+  id: number;
+  person_id: number;
+  alias_name: string;
+  alias_type: string;
+  notes?: string;
+  created_by?: number;
+  created_by_name?: string;
+  created_at: string;
+}
+
+// --- Person Associate ---
+export interface PersonAssociate {
+  id: number;
+  person_id: number;
+  associate_person_id?: number;
+  associate_name: string;
+  relationship_type: string;
+  notes?: string;
+  assoc_first?: string;
+  assoc_last?: string;
+  assoc_photo?: string;
+  assoc_dob?: string;
+  created_at: string;
+}
+
+// --- Person Address History ---
+export interface PersonAddressHistory {
+  id: number;
+  person_id: number;
+  address: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  address_type: string;
+  source: string;
+  verified: boolean;
+  effective_from?: string;
+  effective_to?: string;
+  created_by_name?: string;
+  created_at: string;
+}
+
+// --- Data Completeness ---
+export interface DataCompleteness {
+  score: number;
+  grade: string;
+  max_score?: number;
+  missing_required: string[];
+  missing_recommended: string[];
+  breakdown?: Record<string, { filled: number; total: number; score: number }>;
+}
+
+// --- Warrant Service Attempt ---
+export interface WarrantServiceAttempt {
+  id: number;
+  warrant_id: number;
+  attempted_by: number;
+  attempted_by_name?: string;
+  attempted_at: string;
+  location?: string;
+  method: string;
+  result: string;
+  notes?: string;
+  created_at: string;
+}
+
+// --- Case Person (Role Tracking) ---
+export type CasePersonRole = 'suspect' | 'victim' | 'witness' | 'involved' | 'person_of_interest' | 'informant';
+
+export interface CasePerson {
+  id: number;
+  case_id: number;
+  person_id?: number;
+  person_name: string;
+  role: CasePersonRole;
+  notes?: string;
+  first_name?: string;
+  last_name?: string;
+  dob?: string;
+  photo_url?: string;
+  flags?: string;
+  added_by_name?: string;
+  created_at: string;
+}
+
+// --- Case Timeline Event ---
+export interface CaseTimelineEvent {
+  type: string;
+  date: string;
+  title: string;
+  description?: string;
+  author?: string;
+}
+
+// --- FI Associate ---
+export interface FIAssociate {
+  id: number;
+  fi_id: number;
+  person_id?: number;
+  name: string;
+  relationship: string;
+  notes?: string;
+  first_name?: string;
+  last_name?: string;
+  photo_url?: string;
+  created_at: string;
+}
+
+// --- Trespass Violation ---
+export interface TrespassViolation {
+  id: number;
+  order_id: number;
+  violation_date: string;
+  location?: string;
+  description?: string;
+  officer_id?: number;
+  officer_name?: string;
+  officer_display?: string;
+  linked_incident_id?: number;
+  linked_call_id?: number;
+  notes?: string;
+  created_at: string;
+}
+
+// --- Cross-Entity Search Result ---
+export interface CrossSearchResult {
+  data: Record<string, any[]>;
+  alias_matches: any[];
+  total_results: number;
+  query: string;
+}
+
+// --- Recent Search ---
+export interface RecentSearch {
+  id: number;
+  user_id: number;
+  query: string;
+  entity_types?: string;
+  result_count: number;
+  created_at: string;
 }
 
 // --- Evidence Property Room ---

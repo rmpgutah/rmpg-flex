@@ -43,7 +43,7 @@ function typeBadgeStyle(type: DisciplinaryType) {
     case 'counseling':
       return 'bg-blue-900/20 text-blue-400 border-blue-600/30';
     default:
-      return 'bg-rmpg-800/50 text-rmpg-300 border-rmpg-600/30';
+      return 'bg-rmpg-800/50 text-rmpg-300 border-rmpg-700/30';
   }
 }
 
@@ -211,6 +211,18 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
   };
 
   // ─── Officer read-only view ──────────────────────────────
+  // ─── Manager / Admin view ────────────────────────────────
+  // Set document title
+  useEffect(() => { document.title = 'HR - Disciplinary \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setModalOpen(false); setEditRecord(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
   if (!manager) {
     const commendations = records.filter(r => r.type === 'commendation');
     const others = records.filter(r => r.type !== 'commendation');
@@ -278,18 +290,6 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
     );
   }
 
-  // ─── Manager / Admin view ────────────────────────────────
-  // Set document title
-  useEffect(() => { document.title = 'HR - Disciplinary \u2014 RMPG Flex'; }, []);
-
-  // Keyboard shortcut: Escape to close modals
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setModalOpen(false); setEditRecord(null); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
 
   return (
     <div className="p-4 space-y-4">
@@ -301,13 +301,13 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
         </h2>
         <div className="flex items-center gap-2">
           {/* View toggle */}
-          <div className="flex border border-[#1e3048] rounded-sm overflow-hidden">
+          <div className="flex border border-rmpg-700 rounded-sm overflow-hidden">
             <button type="button"
               onClick={() => setViewMode('list')}
               className={`px-2 py-1 text-xs flex items-center gap-1 ${
                 viewMode === 'list'
                   ? 'bg-brand-600 text-white'
-                  : 'bg-[#0d1520] text-rmpg-400 hover:text-white'
+                  : 'bg-surface-sunken text-rmpg-400 hover:text-white'
               }`}
             >
               <List size={12} /> List
@@ -317,7 +317,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
               className={`px-2 py-1 text-xs flex items-center gap-1 ${
                 viewMode === 'timeline'
                   ? 'bg-brand-600 text-white'
-                  : 'bg-[#0d1520] text-rmpg-400 hover:text-white'
+                  : 'bg-surface-sunken text-rmpg-400 hover:text-white'
               }`}
             >
               <Clock size={12} /> Timeline
@@ -339,7 +339,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
           <select
             value={filterOfficer}
             onChange={e => setFilterOfficer(e.target.value)}
-            className="bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1 text-xs text-white"
+            className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
           >
             <option value="">All Officers</option>
             {officers.map(o => (
@@ -351,7 +351,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
           <select
             value={filterType}
             onChange={e => setFilterType(e.target.value)}
-            className="bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1 text-xs text-white"
+            className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
           >
             <option value="">All Types</option>
             {Object.entries(DISCIPLINARY_TYPE_LABELS).map(([v, l]) => (
@@ -363,7 +363,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
           <select
             value={filterSeverity}
             onChange={e => setFilterSeverity(e.target.value)}
-            className="bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1 text-xs text-white"
+            className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
           >
             <option value="">All Severities</option>
             <option value="minor">Minor</option>
@@ -374,7 +374,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
           <select
             value={filterStatus}
             onChange={e => setFilterStatus(e.target.value)}
-            className="bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1 text-xs text-white"
+            className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
           >
             <option value="">All Statuses</option>
             <option value="open">Open</option>
@@ -420,7 +420,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
           <select
             value={selectedOfficerId}
             onChange={e => setSelectedOfficerId(e.target.value)}
-            className="bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1.5 text-sm text-white w-full sm:w-64"
+            className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-white w-full sm:w-64"
           >
             <option value="">Select officer...</option>
             {officers.map(o => (
@@ -485,8 +485,8 @@ function RecordCard({
 
   return (
     <div
-      className={`rounded border border-[#1e3048] border-l-4 ${
-        isComm ? 'bg-amber-950/10' : 'bg-[#0d1520]'
+      className={`rounded border border-rmpg-700 border-l-4 ${
+        isComm ? 'bg-amber-950/10' : 'bg-surface-sunken'
       }`}
       style={{ borderLeftColor: borderColor }}
     >
@@ -568,7 +568,7 @@ function RecordCard({
             {onEdit && (
               <button type="button"
                 onClick={onEdit}
-                className="p-1 text-rmpg-400 hover:text-white rounded-sm hover:bg-[#1a2636]"
+                className="p-1 text-rmpg-400 hover:text-white rounded-sm hover:bg-surface-raised"
                 title="Edit"
               >
                 <Pencil size={13} />
@@ -577,7 +577,7 @@ function RecordCard({
             {isAdmin && onDelete && (
               <button type="button"
                 onClick={onDelete}
-                className="p-1 text-rmpg-400 hover:text-red-400 rounded-sm hover:bg-[#1a2636]"
+                className="p-1 text-rmpg-400 hover:text-red-400 rounded-sm hover:bg-surface-raised"
                 title="Delete"
               >
                 <Trash2 size={13} />
@@ -595,7 +595,7 @@ function TimelineView({ records }: { records: DisciplinaryRecord[] }) {
   return (
     <div className="relative pl-6 space-y-4">
       {/* Vertical line */}
-      <div className="absolute left-[11px] top-2 bottom-2 w-px bg-[#1e3048]" />
+      <div className="absolute left-[11px] top-2 bottom-2 w-px bg-rmpg-700" />
 
       {records.map(rec => {
         const isComm = rec.type === 'commendation';
@@ -605,12 +605,12 @@ function TimelineView({ records }: { records: DisciplinaryRecord[] }) {
           <div key={rec.id} className="relative flex gap-3">
             {/* Node dot */}
             <div
-              className="absolute -left-6 top-1 w-[10px] h-[10px] rounded-full border-2 bg-[#141e2b]"
+              className="absolute -left-6 top-1 w-[10px] h-[10px] rounded-full border-2 bg-surface-base"
               style={{ borderColor: color }}
             />
 
             {/* Content */}
-            <div className="flex-1 rounded-sm border border-[#1e3048] bg-[#0d1520] p-3 space-y-1">
+            <div className="flex-1 rounded-sm border border-rmpg-700 bg-surface-sunken p-3 space-y-1">
               <div className="flex items-center gap-2 text-xs">
                 {isComm ? (
                   <Star size={12} className="text-amber-400" />

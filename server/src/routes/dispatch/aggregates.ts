@@ -487,30 +487,44 @@ router.get('/heatmap/advanced', requireRole('admin', 'manager', 'supervisor', 'o
   }
 });
 
-// GET /api/dispatch/queue - Active dispatch queue
+// GET /api/dispatch/queue - Active dispatch queue (Enhanced with priority scoring)
 router.get('/queue', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+
+    // Upgrade 87: Include on_hold calls and sort by priority_score
     const calls = db.prepare(`
-      SELECT c.*, p.name as property_name, u.full_name as dispatcher_name
+      SELECT c.*, p.name as property_name, u.full_name as dispatcher_name,
+        ROUND((julianday('now', 'localtime') - julianday(c.created_at)) * 24 * 60, 1) as age_minutes,
+        c.priority_score,
+        c.response_time_seconds
       FROM calls_for_service c
       LEFT JOIN properties p ON c.property_id = p.id
       LEFT JOIN users u ON c.dispatcher_id = u.id
-      WHERE c.status IN ('pending', 'dispatched', 'enroute', 'onscene')
+      WHERE c.status IN ('pending', 'dispatched', 'enroute', 'onscene', 'on_hold')
       ORDER BY
-        CASE c.priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 END,
+        CASE c.status WHEN 'on_hold' THEN 1 ELSE 0 END,
+        COALESCE(c.priority_score, CASE c.priority WHEN 'P1' THEN 400 WHEN 'P2' THEN 300 WHEN 'P3' THEN 200 WHEN 'P4' THEN 100 END) DESC,
         c.created_at ASC
       LIMIT 200
-    `).all();
+    `).all() as any[];
 
-    res.json(calls);
+    // Upgrade 88: Add overdue flag — calls exceeding expected response time
+    const enriched = calls.map((c: any) => {
+      const expectedMinutes: Record<string, number> = { P1: 8, P2: 15, P3: 30, P4: 60 };
+      const expected = expectedMinutes[c.priority] || 30;
+      const isOverdue = c.age_minutes && c.age_minutes > expected && c.status === 'pending';
+      return { ...c, _overdue: isOverdue, _expected_response_minutes: expected };
+    });
+
+    res.json(enriched);
   } catch (error: any) {
     console.error('[Dispatch] get queue error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error', code: 'QUEUE_ERROR' });
   }
 });
 
-// GET /api/dispatch/stats - Current dispatch statistics
+// GET /api/dispatch/stats - Current dispatch statistics (Enhanced)
 router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
@@ -533,7 +547,7 @@ router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
 
     const activeCalls = db.prepare(`
       SELECT COUNT(*) as count FROM calls_for_service
-      WHERE status IN ('pending', 'dispatched', 'enroute', 'onscene')
+      WHERE status IN ('pending', 'dispatched', 'enroute', 'onscene', 'on_hold')
     `).get() as any;
 
     const todayTotal = db.prepare(`
@@ -549,6 +563,55 @@ router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       WHERE onscene_at IS NOT NULL AND DATE(created_at) = DATE('now', 'localtime')
     `).get() as any;
 
+    // Upgrade 81: Pending calls count and oldest pending age
+    const pendingCalls = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service WHERE status = 'pending'
+    `).get() as any;
+
+    const oldestPending = db.prepare(`
+      SELECT ROUND((julianday('now', 'localtime') - julianday(created_at)) * 24 * 60, 1) as age_minutes
+      FROM calls_for_service WHERE status = 'pending'
+      ORDER BY created_at ASC LIMIT 1
+    `).get() as any;
+
+    // Upgrade 82: Average dispatch delay (created -> dispatched)
+    const avgDispatchDelay = db.prepare(`
+      SELECT ROUND(AVG((julianday(dispatched_at) - julianday(created_at)) * 24 * 60), 1) as avg_minutes
+      FROM calls_for_service
+      WHERE dispatched_at IS NOT NULL AND DATE(created_at) = DATE('now', 'localtime')
+        AND (julianday(dispatched_at) - julianday(created_at)) * 24 * 60 > 0
+        AND (julianday(dispatched_at) - julianday(created_at)) * 24 * 60 < 720
+    `).get() as any;
+
+    // Upgrade 83: Calls on hold count
+    const onHoldCount = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service WHERE status = 'on_hold'
+    `).get() as any;
+
+    // Upgrade 84: P1 calls today
+    const p1Today = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service
+      WHERE priority = 'P1' AND DATE(created_at) = DATE('now', 'localtime')
+    `).get() as any;
+
+    // Upgrade 85: Cleared/closed today
+    const resolvedToday = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service
+      WHERE status IN ('cleared', 'closed') AND DATE(created_at) = DATE('now', 'localtime')
+    `).get() as any;
+
+    // Upgrade 86: Average response time by priority (today)
+    const responseByPriority = db.prepare(`
+      SELECT priority,
+        ROUND(AVG((julianday(onscene_at) - julianday(created_at)) * 24 * 60), 1) as avg_minutes,
+        COUNT(*) as count
+      FROM calls_for_service
+      WHERE onscene_at IS NOT NULL AND DATE(created_at) = DATE('now', 'localtime')
+        AND (julianday(onscene_at) - julianday(created_at)) * 24 * 60 > 0
+        AND (julianday(onscene_at) - julianday(created_at)) * 24 * 60 < 720
+      GROUP BY priority
+    `).all();
+
     res.json({
       activeCalls: activeCalls?.count ?? 0,
       todayTotal: todayTotal?.count ?? 0,
@@ -556,10 +619,19 @@ router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       callsByStatus,
       callsByPriority,
       unitsByStatus,
+      // New stats
+      pendingCalls: pendingCalls?.count || 0,
+      oldestPendingMinutes: oldestPending?.age_minutes || null,
+      avgDispatchDelayMinutes: avgDispatchDelay?.avg_minutes || null,
+      onHoldCalls: onHoldCount?.count || 0,
+      p1CallsToday: p1Today?.count || 0,
+      resolvedToday: resolvedToday?.count || 0,
+      responseByPriority,
     });
   } catch (error: any) {
     console.error('[Dispatch] get stats error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error', code: 'STATS_ERROR' });
+
   }
 });
 

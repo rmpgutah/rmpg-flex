@@ -174,4 +174,203 @@ router.delete('/config/:id', requireRole('admin', 'manager'), (req: Request, res
   }
 });
 
+// ══════════════════════════════════════════════════════════════════
+// SYSTEM CONFIG UPGRADES
+// ══════════════════════════════════════════════════════════════════
+
+// ── Upgrade 36: Config versioning / history ─────────────────────
+router.get('/config-history', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { category, config_key, limit: qLimit = '50' } = req.query;
+    const limitNum = Math.min(500, parseInt(qLimit as string, 10) || 50);
+
+    let where = '';
+    const params: any[] = [];
+
+    if (category) {
+      where += (where ? ' AND' : ' WHERE') + ' al.details LIKE ?';
+      params.push(`%${category}%`);
+    }
+    if (config_key) {
+      where += (where ? ' AND' : ' WHERE') + ' al.details LIKE ?';
+      params.push(`%${config_key}%`);
+    }
+
+    // Pull config changes from activity_log
+    const history = db.prepare(`
+      SELECT al.id, al.user_id, al.action, al.details, al.created_at,
+        u.full_name as user_name
+      FROM activity_log al
+      LEFT JOIN users u ON al.user_id = u.id
+      WHERE al.entity_type = 'system_config' ${where ? 'AND ' + where.replace('WHERE', '') : ''}
+      ORDER BY al.created_at DESC
+      LIMIT ?
+    `).all(...params, limitNum);
+
+    res.json({ data: history });
+  } catch (error: any) {
+    console.error('Config history error:', error);
+    res.status(500).json({ error: 'Failed to get config history', code: 'CONFIG_HISTORY_ERROR' });
+  }
+});
+
+// ── Upgrade 37: Config export (download all config as JSON) ─────
+router.get('/config-export', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { category } = req.query;
+
+    let where = 'WHERE is_active = 1';
+    const params: any[] = [];
+    if (category) {
+      where += ' AND category = ?';
+      params.push(category);
+    }
+
+    const items = db.prepare(`
+      SELECT id, config_key, config_value, category, sort_order, is_active, created_at, updated_at
+      FROM system_config ${where}
+      ORDER BY category, sort_order
+    `).all(...params);
+
+    const exportData = {
+      exported_at: localNow(),
+      exported_by: req.user!.fullName,
+      version: '1.0',
+      item_count: items.length,
+      items,
+    };
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="system-config-export-${new Date().toISOString().slice(0, 10)}.json"`);
+    res.json(exportData);
+  } catch (error: any) {
+    console.error('Config export error:', error);
+    res.status(500).json({ error: 'Failed to export config', code: 'CONFIG_EXPORT_ERROR' });
+  }
+});
+
+// ── Upgrade 38: Config import (restore from JSON) ───────────────
+router.post('/config-import', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { items, mode = 'merge' } = req.body;
+
+    if (!items || !Array.isArray(items)) {
+      res.status(400).json({ error: 'items array is required', code: 'ITEMS_REQUIRED' });
+      return;
+    }
+
+    const now = localNow();
+    let imported = 0;
+    let skipped = 0;
+    let updated = 0;
+
+    const tx = db.transaction(() => {
+      for (const item of items) {
+        if (!item.config_key || !item.category) { skipped++; continue; }
+
+        const existing = db.prepare(
+          'SELECT id FROM system_config WHERE config_key = ? AND category = ?'
+        ).get(item.config_key, item.category) as any;
+
+        if (existing) {
+          if (mode === 'merge' || mode === 'overwrite') {
+            db.prepare(`
+              UPDATE system_config SET config_value = ?, sort_order = ?, updated_at = ?
+              WHERE config_key = ? AND category = ?
+            `).run(item.config_value, item.sort_order || 0, now, item.config_key, item.category);
+            updated++;
+          } else {
+            skipped++;
+          }
+        } else {
+          db.prepare(`
+            INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 1, ?, ?)
+          `).run(item.config_key, item.config_value, item.category, item.sort_order || 0, now, now);
+          imported++;
+        }
+      }
+    });
+    tx();
+
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'config_imported', 'system_config', 0, ?, ?)
+    `).run(req.user!.userId, `Imported config: ${imported} new, ${updated} updated, ${skipped} skipped`, req.ip || 'unknown');
+
+    res.json({ imported, updated, skipped, total: items.length });
+  } catch (error: any) {
+    console.error('Config import error:', error);
+    res.status(500).json({ error: 'Failed to import config', code: 'CONFIG_IMPORT_ERROR' });
+  }
+});
+
+// ── Upgrade 39: Config categories list ──────────────────────────
+router.get('/config-categories', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const categories = db.prepare(`
+      SELECT category, COUNT(*) as item_count,
+        SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active_count,
+        MAX(updated_at) as last_updated
+      FROM system_config
+      GROUP BY category
+      ORDER BY category
+    `).all();
+
+    res.json({ data: categories });
+  } catch (error: any) {
+    console.error('Config categories error:', error);
+    res.status(500).json({ error: 'Failed to get config categories', code: 'CONFIG_CATEGORIES_ERROR' });
+  }
+});
+
+// ── Upgrade 40: Config diff (compare two versions) ──────────────
+router.get('/config-diff', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { category } = req.query;
+    if (!category) { res.status(400).json({ error: 'category required', code: 'CATEGORY_REQUIRED' }); return; }
+
+    // Current active config
+    const current = db.prepare(`
+      SELECT config_key, config_value FROM system_config
+      WHERE category = ? AND is_active = 1 ORDER BY config_key
+    `).all(category) as any[];
+
+    // Inactive/deleted config for same category
+    const inactive = db.prepare(`
+      SELECT config_key, config_value FROM system_config
+      WHERE category = ? AND is_active = 0 ORDER BY config_key
+    `).all(category) as any[];
+
+    const currentMap = new Map(current.map(c => [c.config_key, c.config_value]));
+    const inactiveMap = new Map(inactive.map(c => [c.config_key, c.config_value]));
+
+    const diff: any[] = [];
+    for (const [key, value] of currentMap) {
+      if (inactiveMap.has(key)) {
+        if (inactiveMap.get(key) !== value) {
+          diff.push({ key, status: 'changed', current: value, previous: inactiveMap.get(key) });
+        }
+      } else {
+        diff.push({ key, status: 'added', current: value });
+      }
+    }
+    for (const [key, value] of inactiveMap) {
+      if (!currentMap.has(key)) {
+        diff.push({ key, status: 'removed', previous: value });
+      }
+    }
+
+    res.json({ category, diff, current_count: current.length, inactive_count: inactive.length });
+  } catch (error: any) {
+    console.error('Config diff error:', error);
+    res.status(500).json({ error: 'Failed to get config diff', code: 'CONFIG_DIFF_ERROR' });
+  }
+});
+
 export default router;

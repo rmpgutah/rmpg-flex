@@ -137,7 +137,7 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
                   <div className="flex items-center gap-2">
                     <FileText className="w-3.5 h-3.5 text-brand-400" />
                     <span className="text-xs font-bold text-white">{doc.title}</span>
-                    <span className="text-[9px] font-mono px-1.5 py-0.5 bg-rmpg-700 text-rmpg-300 uppercase rounded-sm border border-rmpg-600">{doc.category}</span>
+                    <span className="text-[9px] font-mono px-1.5 py-0.5 bg-rmpg-700 text-rmpg-300 uppercase rounded-sm border border-rmpg-700">{doc.category}</span>
                   </div>
                   {doc.description && <p className="text-[10px] text-rmpg-400 mt-1">{doc.description}</p>}
                   <span className="text-[10px] text-rmpg-500">Uploaded by {doc.uploaded_by_name} on {doc.created_at ? new Date(doc.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}</span>
@@ -157,7 +157,7 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
               </div>
 
               {selectedDocId === doc.id && acks.length > 0 && (
-                <div className="mt-3 border-t border-rmpg-600 pt-2">
+                <div className="mt-3 border-t border-rmpg-700 pt-2">
                   <p className="text-[10px] text-rmpg-400 font-bold mb-1">Acknowledgments ({acks.length})</p>
                   <div className="grid grid-cols-3 gap-1">
                     {acks.map(a => (

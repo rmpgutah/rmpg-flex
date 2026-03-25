@@ -371,4 +371,150 @@ router.get('/repeat-check', (req: Request, res: Response) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// UPGRADE 27: Gang Affiliation Tracking Field
+// ════════════════════════════════════════════════════════════
+// Add gang_affiliation column if not present
+try { const db = getDb(); db.prepare("SELECT gang_affiliation FROM field_interviews LIMIT 1").get(); } catch { try { const db = getDb(); db.prepare("ALTER TABLE field_interviews ADD COLUMN gang_affiliation TEXT").run(); } catch { /* already exists */ } }
+
+// UPGRADE 28: Associate Linking for Field Interviews
+try { const db = getDb(); db.prepare(`CREATE TABLE IF NOT EXISTS fi_associates (id INTEGER PRIMARY KEY AUTOINCREMENT, fi_id INTEGER NOT NULL, person_id INTEGER, name TEXT NOT NULL, relationship TEXT DEFAULT 'associate', notes TEXT, created_at TEXT NOT NULL)`).run(); } catch { /* already exists */ }
+
+router.get('/:id/associates', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const fi = db.prepare('SELECT id FROM field_interviews WHERE id = ?').get(req.params.id);
+    if (!fi) { res.status(404).json({ error: 'Field interview not found', code: 'NOT_FOUND' }); return; }
+    const associates = db.prepare('SELECT fa.*, p.first_name, p.last_name, p.photo_url, p.dob FROM fi_associates fa LEFT JOIN persons p ON fa.person_id = p.id WHERE fa.fi_id = ? ORDER BY fa.created_at DESC').all(req.params.id);
+    res.json({ data: associates });
+  } catch (err: any) { console.error('[FieldInterviews] Get associates error:', err?.message); res.status(500).json({ error: 'Failed to get associates', code: 'GET_FI_ASSOCIATES_ERROR' }); }
+});
+
+router.post('/:id/associates', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const fi = db.prepare('SELECT id, fi_number FROM field_interviews WHERE id = ?').get(req.params.id) as any;
+    if (!fi) { res.status(404).json({ error: 'Field interview not found', code: 'NOT_FOUND' }); return; }
+    const { person_id, name, relationship, notes } = req.body;
+    if (!name?.trim() && !person_id) { res.status(400).json({ error: 'name or person_id required', code: 'MISSING_ASSOCIATE_INFO' }); return; }
+    let assocName = name || '';
+    if (person_id && !assocName) { const p = db.prepare('SELECT first_name, last_name FROM persons WHERE id = ?').get(person_id) as any; if (p) assocName = `${p.first_name} ${p.last_name}`; }
+    const now = localNow();
+    const result = db.prepare('INSERT INTO fi_associates (fi_id, person_id, name, relationship, notes, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(req.params.id, person_id || null, assocName, relationship || 'associate', notes || null, now);
+    auditLog(req, 'CREATE', 'fi_associate', Number(result.lastInsertRowid), `Added associate "${assocName}" to FI ${fi.fi_number}`);
+    res.status(201).json({ data: { id: result.lastInsertRowid } });
+  } catch (err: any) { console.error('[FieldInterviews] Create associate error:', err?.message); res.status(500).json({ error: 'Failed to add associate', code: 'CREATE_FI_ASSOCIATE_ERROR' }); }
+});
+
+router.delete('/:id/associates/:assocId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const assoc = db.prepare('SELECT * FROM fi_associates WHERE id = ? AND fi_id = ?').get(req.params.assocId, req.params.id) as any;
+    if (!assoc) { res.status(404).json({ error: 'Associate not found', code: 'FI_ASSOCIATE_NOT_FOUND' }); return; }
+    db.prepare('DELETE FROM fi_associates WHERE id = ?').run(req.params.assocId);
+    res.json({ success: true });
+  } catch (err: any) { console.error('[FieldInterviews] Delete associate error:', err?.message); res.status(500).json({ error: 'Failed to delete associate', code: 'DELETE_FI_ASSOCIATE_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 29: Location Clustering (FIs at same location)
+// ════════════════════════════════════════════════════════════
+router.get('/location-clusters', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = parseInt(req.query.days as string, 10) || 90;
+    const minCount = parseInt(req.query.min_count as string, 10) || 2;
+    // Cluster by exact location string match
+    const clusters = db.prepare(`
+      SELECT location, COUNT(*) as fi_count,
+        MIN(created_at) as first_contact, MAX(created_at) as last_contact,
+        GROUP_CONCAT(DISTINCT contact_reason) as reasons,
+        GROUP_CONCAT(DISTINCT (subject_first_name || ' ' || subject_last_name), ', ') as subjects
+      FROM field_interviews
+      WHERE location IS NOT NULL AND location != ''
+        AND created_at >= datetime('now', '-' || ? || ' days', 'localtime')
+        AND archived_at IS NULL
+      GROUP BY location
+      HAVING COUNT(*) >= ?
+      ORDER BY fi_count DESC
+      LIMIT 50
+    `).all(days, minCount);
+    // Also cluster by proximity (rounded lat/lng)
+    let geoClusters: any[] = [];
+    try {
+      geoClusters = db.prepare(`
+        SELECT ROUND(latitude, 3) as lat_cluster, ROUND(longitude, 3) as lng_cluster,
+          COUNT(*) as fi_count,
+          GROUP_CONCAT(DISTINCT location, ' | ') as locations
+        FROM field_interviews
+        WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+          AND created_at >= datetime('now', '-' || ? || ' days', 'localtime')
+          AND archived_at IS NULL
+        GROUP BY lat_cluster, lng_cluster
+        HAVING COUNT(*) >= ?
+        ORDER BY fi_count DESC
+        LIMIT 30
+      `).all(days, minCount);
+    } catch { /* lat/lng columns may not exist */ }
+    res.json({ data: { location_clusters: clusters, geo_clusters: geoClusters } });
+  } catch (err: any) { console.error('[FieldInterviews] Location clusters error:', err?.message); res.status(500).json({ error: 'Failed to get clusters', code: 'LOCATION_CLUSTERS_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 30: Field Interviews CSV Export
+// ════════════════════════════════════════════════════════════
+router.get('/export/csv', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { date_from, date_to, contact_reason } = req.query;
+    let where = 'WHERE fi.archived_at IS NULL';
+    const params: any[] = [];
+    if (date_from) { where += ' AND fi.created_at >= ?'; params.push(date_from); }
+    if (date_to) { where += ' AND fi.created_at <= ?'; params.push(date_to); }
+    if (contact_reason) { where += ' AND fi.contact_reason = ?'; params.push(contact_reason); }
+    const rows = db.prepare(`SELECT fi.fi_number, fi.subject_first_name, fi.subject_last_name, fi.subject_dob, fi.subject_gender, fi.subject_race, fi.location, fi.contact_reason, fi.contact_type, fi.action_taken, fi.narrative, fi.vehicle_plate, fi.vehicle_description, fi.officer_name, fi.created_at FROM field_interviews fi ${where} ORDER BY fi.created_at DESC LIMIT 10000`).all(...params) as any[];
+    const headers = ['FI #', 'First Name', 'Last Name', 'DOB', 'Gender', 'Race', 'Location', 'Reason', 'Type', 'Action', 'Narrative', 'Vehicle Plate', 'Vehicle Desc', 'Officer', 'Created'];
+    const csvRows = rows.map((r: any) => [r.fi_number, r.subject_first_name, r.subject_last_name, r.subject_dob, r.subject_gender, r.subject_race, (r.location || '').replace(/"/g, '""'), r.contact_reason, r.contact_type, r.action_taken, (r.narrative || '').replace(/"/g, '""').replace(/\n/g, ' '), r.vehicle_plate, (r.vehicle_description || '').replace(/"/g, '""'), r.officer_name, r.created_at]);
+    const csv = [headers.join(','), ...csvRows.map((r: any[]) => r.map(v => `"${v || ''}"`).join(','))].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="field_interviews_${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(csv);
+  } catch (err: any) { console.error('[FieldInterviews] Export error:', err?.message); res.status(500).json({ error: 'Failed to export', code: 'EXPORT_FI_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 31: Field Interview Statistics
+// ════════════════════════════════════════════════════════════
+router.get('/stats/overview', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const totalActive = (db.prepare("SELECT COUNT(*) as count FROM field_interviews WHERE status = 'active'").get() as any).count;
+    const byReason = db.prepare(`SELECT contact_reason, COUNT(*) as count FROM field_interviews WHERE archived_at IS NULL GROUP BY contact_reason`).all() as any[];
+    const byAction = db.prepare(`SELECT action_taken, COUNT(*) as count FROM field_interviews WHERE archived_at IS NULL GROUP BY action_taken`).all() as any[];
+    const byOfficer = db.prepare(`SELECT officer_id, officer_name, COUNT(*) as fi_count FROM field_interviews WHERE archived_at IS NULL AND officer_id IS NOT NULL GROUP BY officer_id, officer_name ORDER BY fi_count DESC LIMIT 20`).all() as any[];
+    const thisWeek = (db.prepare("SELECT COUNT(*) as count FROM field_interviews WHERE created_at >= datetime('now','-7 days','localtime')").get() as any).count;
+    const thisMonth = (db.prepare("SELECT COUNT(*) as count FROM field_interviews WHERE created_at >= datetime('now','start of month','localtime')").get() as any).count;
+    // Top locations
+    const topLocations = db.prepare(`SELECT location, COUNT(*) as count FROM field_interviews WHERE archived_at IS NULL AND location IS NOT NULL GROUP BY location ORDER BY count DESC LIMIT 10`).all() as any[];
+    res.json({ data: { total_active: totalActive, by_reason: Object.fromEntries(byReason.map((r: any) => [r.contact_reason, r.count])), by_action: Object.fromEntries(byAction.map((r: any) => [r.action_taken, r.count])), by_officer: byOfficer, this_week: thisWeek, this_month: thisMonth, top_locations: topLocations } });
+  } catch (err: any) { console.error('[FieldInterviews] Stats error:', err?.message); res.status(500).json({ error: 'Failed to get stats', code: 'FI_STATS_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 32: FI Data Completeness
+// ════════════════════════════════════════════════════════════
+router.get('/:id/completeness', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const fi = db.prepare('SELECT * FROM field_interviews WHERE id = ?').get(req.params.id) as any;
+    if (!fi) { res.status(404).json({ error: 'Field interview not found', code: 'NOT_FOUND' }); return; }
+    const requiredFields = ['location', 'contact_reason'];
+    const recommendedFields = ['subject_first_name', 'subject_last_name', 'subject_dob', 'subject_gender', 'subject_race', 'subject_description', 'narrative', 'latitude', 'longitude', 'vehicle_plate'];
+    const filledRequired = requiredFields.filter(f => fi[f] != null && String(fi[f]).trim() !== '').length;
+    const filledRecommended = recommendedFields.filter(f => fi[f] != null && String(fi[f]).trim() !== '').length;
+    const score = Math.round(((filledRequired / requiredFields.length) * 40 + (filledRecommended / recommendedFields.length) * 60));
+    res.json({ data: { fi_id: fi.id, score, grade: score >= 80 ? 'A' : score >= 60 ? 'B' : score >= 40 ? 'C' : 'D', missing_required: requiredFields.filter(f => !fi[f] || String(fi[f]).trim() === ''), missing_recommended: recommendedFields.filter(f => !fi[f] || String(fi[f]).trim() === '') } });
+  } catch (err: any) { console.error('[FieldInterviews] Completeness error:', err?.message); res.status(500).json({ error: 'Failed to get completeness', code: 'FI_COMPLETENESS_ERROR' }); }
+});
+
 export default router;

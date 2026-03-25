@@ -196,7 +196,7 @@ export default function ModuleTileBar({
                 minWidth: 72,
                 height: 50,
                 padding: '0 6px',
-                borderRadius: 3,
+                borderRadius: 0,
                 cursor: 'pointer',
                 transition: 'all 120ms ease',
                 background: active ? 'rgba(26,90,158,0.15)' : 'transparent',
@@ -269,7 +269,7 @@ export default function ModuleTileBar({
                   minWidth: 180,
                   background: 'var(--surface-raised, #141e2b)',
                   border: '1px solid var(--border-default, #1c2d44)',
-                  borderRadius: 4,
+                  borderTop: '2px solid #1a5a9e',
                   boxShadow: '0 6px 20px rgba(0,0,0,0.6)',
                   padding: '4px 0',
                 }}

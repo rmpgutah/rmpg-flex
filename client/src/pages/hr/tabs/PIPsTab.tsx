@@ -22,7 +22,7 @@ const STATUS_COLORS: Record<string, string> = {
   completed: 'bg-green-900/50 text-green-400 border border-green-700/50',
   extended: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
   failed: 'bg-red-900/50 text-red-400 border border-red-700/50',
-  cancelled: 'bg-rmpg-700 text-rmpg-400 border border-rmpg-600',
+  cancelled: 'bg-rmpg-700 text-rmpg-400 border border-rmpg-700',
 };
 
 function fmtDate(d: string | null | undefined): string {

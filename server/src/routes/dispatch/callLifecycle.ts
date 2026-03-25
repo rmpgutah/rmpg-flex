@@ -2,12 +2,45 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../../models/database';
 import { requireRole } from '../../middleware/auth';
 import { validateParamId, validateParamIdMiddleware } from '../../middleware/sanitize';
-import { broadcastDispatchUpdate } from '../../utils/websocket';
+import { broadcastDispatchUpdate, broadcastUnitUpdate } from '../../utils/websocket';
 import { generateIncidentNumber } from '../../utils/caseNumbers';
 import { localNow } from '../../utils/timeUtils';
 import { auditLog } from '../../utils/auditLogger';
 
 const router = Router();
+
+// ── Upgrade 45: Legal status transition map ──
+// Defines which status transitions are allowed.
+const LEGAL_TRANSITIONS: Record<string, string[]> = {
+  pending:     ['dispatched', 'cancelled', 'on_hold'],
+  dispatched:  ['enroute', 'onscene', 'cleared', 'cancelled', 'on_hold', 'pending'],
+  enroute:     ['onscene', 'cleared', 'cancelled', 'on_hold', 'dispatched'],
+  onscene:     ['cleared', 'closed', 'cancelled', 'on_hold', 'enroute'],
+  cleared:     ['closed', 'archived', 'onscene'],  // allow revert to onscene
+  closed:      ['archived', 'cleared'],              // allow revert to cleared
+  cancelled:   ['archived', 'pending'],              // allow reopen to pending
+  on_hold:     ['pending', 'dispatched', 'enroute', 'onscene'],  // resume to any active
+  archived:    ['closed'],                           // unarchive only
+};
+
+function isLegalTransition(fromStatus: string, toStatus: string): boolean {
+  const allowed = LEGAL_TRANSITIONS[fromStatus];
+  if (!allowed) return false;
+  return allowed.includes(toStatus);
+}
+
+// ── Upgrade 46: Calculate response time in seconds ──
+function calculateResponseTimeSeconds(createdAt: string | null, onsceneAt: string | null): number | null {
+  if (!createdAt || !onsceneAt) return null;
+  try {
+    const created = new Date(createdAt);
+    const onscene = new Date(onsceneAt);
+    if (isNaN(created.getTime()) || isNaN(onscene.getTime())) return null;
+    const diffMs = onscene.getTime() - created.getTime();
+    if (diffMs < 0 || diffMs > 43200000) return null; // ignore negative or > 12 hours
+    return Math.round(diffMs / 1000);
+  } catch { return null; }
+}
 
 // POST /api/dispatch/calls/archive-bulk - Archive multiple cleared/closed/cancelled calls at once
 // NOTE: This route MUST come before /calls/:id/archive to avoid Express matching "archive-bulk" as :id
@@ -690,6 +723,216 @@ router.put('/calls/:id/mileage', validateParamIdMiddleware, requireRole('admin',
   } catch (error: any) {
     console.error('[CallLifecycle] mileage update error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to mileage update', code: 'CALLLIFECYCLE_MILEAGE_UPDATE_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Upgrade 47: POST /api/dispatch/calls/:id/validate-transition — Check if status transition is legal
+// ═══════════════════════════════════════════════════════════
+router.post('/calls/:id/validate-transition', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT id, call_number, status FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) {
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
+      return;
+    }
+
+    const { target_status } = req.body;
+    if (!target_status) {
+      res.status(400).json({ error: 'target_status is required', code: 'TARGET_STATUS_REQUIRED' });
+      return;
+    }
+
+    const legal = isLegalTransition(call.status, target_status);
+    const allowed = LEGAL_TRANSITIONS[call.status] || [];
+
+    res.json({
+      current_status: call.status,
+      target_status,
+      allowed: legal,
+      valid_transitions: allowed,
+      call_number: call.call_number,
+    });
+  } catch (error: any) {
+    console.error('[CallLifecycle] validate transition error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to validate transition', code: 'VALIDATE_TRANSITION_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Upgrade 48: GET /api/dispatch/calls/:id/response-time — Get computed response metrics
+// ═══════════════════════════════════════════════════════════
+router.get('/calls/:id/response-time', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) {
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
+      return;
+    }
+
+    // Upgrade 49: Detailed time breakdown
+    const created = call.created_at ? new Date(call.created_at) : null;
+    const dispatched = call.dispatched_at ? new Date(call.dispatched_at) : null;
+    const enroute = call.enroute_at ? new Date(call.enroute_at) : null;
+    const onscene = call.onscene_at ? new Date(call.onscene_at) : null;
+    const cleared = call.cleared_at ? new Date(call.cleared_at) : null;
+
+    const safeDiff = (a: Date | null, b: Date | null): number | null => {
+      if (!a || !b) return null;
+      const diff = b.getTime() - a.getTime();
+      if (diff < 0 || diff > 86400000) return null; // max 24 hours
+      return Math.round(diff / 1000);
+    };
+
+    // Upgrade 50: Time in queue, travel time, on-scene duration
+    const queueTimeSec = safeDiff(created, dispatched);
+    const travelTimeSec = safeDiff(dispatched, enroute);
+    const arrivalTimeSec = safeDiff(enroute, onscene);
+    const totalResponseSec = safeDiff(created, onscene);
+    const onSceneDurationSec = safeDiff(onscene, cleared);
+    const totalCallDurationSec = safeDiff(created, cleared);
+
+    res.json({
+      call_number: call.call_number,
+      priority: call.priority,
+      queue_time_seconds: queueTimeSec,
+      travel_time_seconds: travelTimeSec,
+      arrival_time_seconds: arrivalTimeSec,
+      total_response_seconds: totalResponseSec,
+      on_scene_duration_seconds: onSceneDurationSec,
+      total_call_duration_seconds: totalCallDurationSec,
+      // Human-readable
+      total_response_minutes: totalResponseSec ? Math.round(totalResponseSec / 6) / 10 : null,
+      on_scene_duration_minutes: onSceneDurationSec ? Math.round(onSceneDurationSec / 6) / 10 : null,
+      timestamps: {
+        created_at: call.created_at,
+        dispatched_at: call.dispatched_at,
+        enroute_at: call.enroute_at,
+        onscene_at: call.onscene_at,
+        cleared_at: call.cleared_at,
+        closed_at: call.closed_at,
+      },
+    });
+  } catch (error: any) {
+    console.error('[CallLifecycle] response time error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to get response time', code: 'RESPONSE_TIME_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Upgrade 51: POST /api/dispatch/calls/:id/auto-close — Auto-close stale calls
+// ═══════════════════════════════════════════════════════════
+router.post('/calls/auto-close-stale', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { hours = 24, status_filter = ['cleared'] } = req.body;
+    const maxHours = Math.max(1, Math.min(720, Number(hours) || 24));
+    const now = localNow();
+
+    // Upgrade 52: Find calls in cleared state older than threshold
+    const validFilters = ['cleared'];
+    const filters = (Array.isArray(status_filter) ? status_filter : [status_filter]).filter(
+      (s: string) => validFilters.includes(s)
+    );
+    if (filters.length === 0) {
+      res.status(400).json({ error: 'status_filter must include valid statuses (cleared)', code: 'INVALID_STATUS_FILTER' });
+      return;
+    }
+
+    const placeholders = filters.map(() => '?').join(',');
+    const cutoffTime = new Date(Date.now() - maxHours * 60 * 60 * 1000).toISOString();
+
+    const staleCalls = db.prepare(`
+      SELECT id, call_number, status, cleared_at
+      FROM calls_for_service
+      WHERE status IN (${placeholders}) AND cleared_at IS NOT NULL AND cleared_at < ?
+    `).all(...filters, cutoffTime) as any[];
+
+    if (staleCalls.length === 0) {
+      res.json({ closed_count: 0, message: 'No stale calls to auto-close' });
+      return;
+    }
+
+    // Upgrade 53: Auto-close in transaction
+    let closedCount = 0;
+    const closeTx = db.transaction(() => {
+      for (const call of staleCalls) {
+        db.prepare(`UPDATE calls_for_service SET status = 'closed', closed_at = COALESCE(closed_at, ?), status_changed_at = ?, updated_at = ? WHERE id = ?`)
+          .run(now, now, now, call.id);
+        closedCount++;
+      }
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'auto_close_stale', 'call', 0, ?, ?)`).run(
+        req.user!.userId, `Auto-closed ${closedCount} stale call(s) older than ${maxHours}h`, req.ip || 'unknown');
+    });
+    closeTx();
+
+    broadcastDispatchUpdate({ action: 'calls_auto_closed', count: closedCount });
+    res.json({ closed_count: closedCount, message: `Auto-closed ${closedCount} stale call(s)` });
+  } catch (error: any) {
+    console.error('[CallLifecycle] auto-close stale error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to auto-close stale calls', code: 'AUTO_CLOSE_STALE_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Upgrade 54: GET /api/dispatch/calls/:id/timeline-summary — Condensed timeline
+// ═══════════════════════════════════════════════════════════
+router.get('/calls/:id/timeline-summary', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) {
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
+      return;
+    }
+
+    // Upgrade 55: Build structured timeline from timestamps
+    const timeline: Array<{ event: string; timestamp: string | null; elapsed_seconds: number | null }> = [];
+    const baseTime = call.created_at ? new Date(call.created_at).getTime() : null;
+
+    const addEvent = (event: string, ts: string | null) => {
+      let elapsed: number | null = null;
+      if (ts && baseTime) {
+        const t = new Date(ts).getTime();
+        if (!isNaN(t)) elapsed = Math.round((t - baseTime) / 1000);
+      }
+      timeline.push({ event, timestamp: ts, elapsed_seconds: elapsed });
+    };
+
+    addEvent('created', call.created_at);
+    addEvent('dispatched', call.dispatched_at);
+    addEvent('enroute', call.enroute_at);
+    addEvent('onscene', call.onscene_at);
+    addEvent('cleared', call.cleared_at);
+    addEvent('closed', call.closed_at);
+    addEvent('archived', call.archived_at);
+
+    // Upgrade 56: Count of activity log entries by action type
+    const actionCounts = db.prepare(`
+      SELECT action, COUNT(*) as count
+      FROM activity_log
+      WHERE entity_type = 'call' AND entity_id = ?
+      GROUP BY action
+      ORDER BY count DESC
+    `).all(call.id);
+
+    // Upgrade 57: Response time stored on the call
+    const responseTimeSec = calculateResponseTimeSeconds(call.created_at, call.onscene_at);
+
+    res.json({
+      call_number: call.call_number,
+      current_status: call.status,
+      timeline: timeline.filter(t => t.timestamp),
+      action_counts: actionCounts,
+      response_time_seconds: responseTimeSec,
+      response_time_minutes: responseTimeSec ? Math.round(responseTimeSec / 6) / 10 : null,
+    });
+  } catch (error: any) {
+    console.error('[CallLifecycle] timeline summary error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to get timeline summary', code: 'TIMELINE_SUMMARY_ERROR' });
   }
 });
 

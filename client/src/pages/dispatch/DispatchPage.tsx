@@ -90,6 +90,8 @@ import {
 } from '../../utils/callOptions';
 import PersonFormModal, { type PersonFormData } from '../../components/PersonFormModal';
 import VehicleFormModal, { type VehicleFormData } from '../../components/VehicleFormModal';
+import AIDispatchSidebar from '../../components/dispatch/AIDispatchSidebar';
+import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
 
 export default function DispatchPage() {
   const unitModalTitleId = useId();
@@ -152,6 +154,9 @@ export default function DispatchPage() {
   const [isCreatingRecord, setIsCreatingRecord] = useState(false);
   const [serveLink, setServeLink] = useState<any>(null);
   const [sendingToServe, setSendingToServe] = useState(false);
+  // AI Dispatch analysis state
+  const [aiAnalyses, setAiAnalyses] = useState<Record<string, any>>({});
+  const [showAiSidebar, setShowAiSidebar] = useState(false);
 
   // ── Feature 1: Call priority sound alerts ──
   const [soundAlertsMuted, setSoundAlertsMuted] = useState(() => localStorage.getItem('rmpg_sound_alerts_muted') === 'true');
@@ -634,6 +639,9 @@ export default function DispatchPage() {
       } else if (data.action === 'units_dispatched' || data.action === 'unit_assigned' || data.action === 'unit_unassigned') {
         // Refresh the full list to keep unit assignments in sync
         fetchData({ silent: true });
+      } else if (data.action === 'ai_analysis' && data.call_id && data.analysis) {
+        setAiAnalyses(prev => ({ ...prev, [data.call_id]: data.analysis }));
+        setShowAiSidebar(true);
       }
       } catch (err) {
         console.error('[Dispatch] Error processing WS dispatch_update:', err);
@@ -992,7 +1000,8 @@ export default function DispatchPage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedCall, filteredCalls, fetchData, handleStatusChange, handleClearWithDisposition, setFilterTab]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCall, filteredCalls, fetchData, setFilterTab]);
 
   const handlePsoExpandToFullForm = (data: Record<string, any>) => {
     setShowQuickPsoModal(false);
@@ -1905,14 +1914,21 @@ export default function DispatchPage() {
     }
   };
 
-  const tabCounts = useMemo(() => ({
-    all: calls.length,
-    pending: calls.filter((c) => c.status === 'pending').length,
-    active: calls.filter((c) => ['dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status)).length,
-    cleared: calls.filter((c) => ['cleared', 'closed', 'cancelled'].includes(c.status)).length,
-    archived: archivedCalls.length,
-    serve: calls.filter((c) => PSO_INCIDENT_TYPES.includes(c.incident_type)).length,
-  }), [calls, archivedCalls]);
+  const tabCounts = useMemo(() => {
+    const pending = calls.filter((c) => c.status === 'pending').length;
+    const active = calls.filter((c) => ['dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status)).length;
+    const cleared = calls.filter((c) => ['cleared', 'closed', 'cancelled'].includes(c.status)).length;
+    // ALL count: if user hides cleared calls, exclude them from the count to match the visible list
+    const allCount = userPrefs?.dispatch_show_cleared ? calls.length : calls.length - cleared;
+    return {
+      all: allCount,
+      pending,
+      active,
+      cleared,
+      archived: archivedCalls.length,
+      serve: calls.filter((c) => PSO_INCIDENT_TYPES.includes(c.incident_type)).length,
+    };
+  }, [calls, archivedCalls, userPrefs?.dispatch_show_cleared]);
 
   if (isLoading) {
     return (
@@ -2753,8 +2769,8 @@ export default function DispatchPage() {
                     className="h-2 rounded-sm bg-brand-500"
                     style={{ width: `${Math.max(pct * 0.8, 4)}px`, minWidth: 4, opacity: 0.7 + pct * 0.003 }}
                   />
-                  <span className="text-[7px] font-mono text-rmpg-400 truncate max-w-[60px] tabular-nums">
-                    {formatIncidentType(type).slice(0, 8)} {count}
+                  <span className="text-[7px] font-mono text-rmpg-400 truncate max-w-[80px] tabular-nums" title={formatIncidentType(type)}>
+                    {formatIncidentType(type).slice(0, 12)} {count}
                   </span>
                 </div>
               );
@@ -2831,31 +2847,33 @@ export default function DispatchPage() {
           {selectedCall ? (
             <>
               {/* Detail Header — PanelTitleBar style */}
-              <div className="panel-title-bar flex-shrink-0" style={selectedCall.priority === 'P1' ? { borderLeft: '3px solid #ef4444', background: 'linear-gradient(90deg, rgba(239,68,68,0.08) 0%, transparent 30%)' } : selectedCall.priority === 'P2' ? { borderLeft: '3px solid #f59e0b' } : { borderLeft: '3px solid #1a5a9e' }}>
-                <div className="flex items-center gap-2">
+              <div className="flex-shrink-0" style={selectedCall.priority === 'P1' ? { borderLeft: '3px solid #ef4444', background: 'linear-gradient(90deg, rgba(239,68,68,0.08) 0%, transparent 30%)' } : selectedCall.priority === 'P2' ? { borderLeft: '3px solid #f59e0b' } : { borderLeft: '3px solid #1a5a9e' }}>
+                {/* Row 1: Call identification */}
+                <div className="panel-title-bar flex items-center gap-2" style={{ borderBottom: 'none' }}>
                   {selectedCall.priority === 'P1' && (
-                    <AlertTriangle className="w-4 h-4 text-red-500 animate-emergency-blink" style={{ filter: 'drop-shadow(0 0 4px rgba(239,68,68,0.5))' }} />
+                    <AlertTriangle className="w-4 h-4 text-red-500 animate-emergency-blink shrink-0" style={{ filter: 'drop-shadow(0 0 4px rgba(239,68,68,0.5))' }} />
                   )}
-                  <span className="text-sm font-bold text-green-400 font-mono tracking-wide tabular-nums" style={{ textShadow: '0 0 8px rgba(74,222,128,0.2)' }}>{selectedCall.call_number}</span>
+                  <span className="text-sm font-bold text-green-400 font-mono tracking-wide tabular-nums whitespace-nowrap" style={{ textShadow: '0 0 8px rgba(74,222,128,0.2)' }}>{selectedCall.call_number}</span>
                   {selectedCall.case_number && (
-                    <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1.5 py-0.5">
+                    <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1.5 py-0.5 whitespace-nowrap">
                       CASE {selectedCall.case_number}
                     </span>
                   )}
                   {selectedCall.incident_number && (
-                    <span className="text-[10px] font-bold font-mono text-green-300 bg-green-900/30 border border-green-700/40 px-1.5 py-0.5">
+                    <span className="text-[10px] font-bold font-mono text-green-300 bg-green-900/30 border border-green-700/40 px-1.5 py-0.5 whitespace-nowrap">
                       INC {selectedCall.incident_number}
                     </span>
                   )}
                   <StatusBadge status={selectedCall.priority} type="priority" size="sm" />
                   <StatusBadge status={selectedCall.status} type="call_status" size="sm" />
                   {callWarnings.length > 0 && (
-                    <span className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold font-mono text-red-400 bg-red-900/30 border border-red-700/50 animate-pulse">
+                    <span className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold font-mono text-red-400 bg-red-900/30 border border-red-700/50 animate-pulse whitespace-nowrap">
                       <AlertTriangle style={{ width: 9, height: 9 }} /> {callWarnings.length} ALERT{callWarnings.length !== 1 ? 'S' : ''}
                     </span>
                   )}
                 </div>
-                  <div className="ml-auto flex items-center gap-1 flex-wrap">
+                {/* Row 2: Action buttons — separate row to prevent cramping */}
+                <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[#1e3048] overflow-x-auto whitespace-nowrap scrollbar-dark" style={{ background: '#0d1520' }}>
                     <PrintRecordButton
                       recordType="call"
                       recordData={{
@@ -3179,7 +3197,15 @@ export default function DispatchPage() {
                     <div>
                       <label className="field-label">Description:</label>
                       {isEditing ? (
-                        <textarea className="textarea-dark text-xs mt-0.5" rows={3} value={editData.description} onChange={(e) => updateEditField('description', e.target.value)} />
+                        <>
+                          <textarea className="textarea-dark text-xs mt-0.5" rows={3} value={editData.description} onChange={(e) => updateEditField('description', e.target.value)} />
+                          <NarrativeAssist
+                            notes={editData.description || ''}
+                            incidentType={editData.incident_type || selectedCall.incident_type}
+                            locationAddress={editData.location_address || selectedCall.location || ''}
+                            onAccept={(narrative) => updateEditField('description', narrative)}
+                          />
+                        </>
                       ) : (
                         <p className="text-sm text-rmpg-200 leading-relaxed">{selectedCall.description}</p>
                       )}
@@ -4477,6 +4503,27 @@ export default function DispatchPage() {
             </div>
           )}
           </div>
+
+          {/* AI Dispatch Sidebar (conditionally shown between detail and map) */}
+          {showAiSidebar && selectedCall && (
+            <AIDispatchSidebar
+              selectedCall={selectedCall}
+              aiAnalyses={aiAnalyses}
+              onAcceptFlag={async (callId, flag) => {
+                try {
+                  await apiFetch(`/dispatch/calls/${callId}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ [flag]: true }),
+                  });
+                  const updated = { ...selectedCall, [flag]: 1 };
+                  setSelectedCall(updated);
+                  setCalls(prev => prev.map(c => c.id === callId ? updated : c));
+                  addToast(`Flag "${flag.replace(/_/g, ' ')}" accepted`, 'success');
+                } catch { addToast(`Failed to set flag`, 'error'); }
+              }}
+              onDismiss={() => setShowAiSidebar(false)}
+            />
+          )}
 
           {/* Dispatch Map Panel (right side, always visible) */}
           <div className="w-[35%] border-l border-[#1e3048] flex flex-col overflow-hidden flex-shrink-0" style={{ background: 'var(--surface-deep)' }}>

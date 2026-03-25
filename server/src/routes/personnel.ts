@@ -960,6 +960,188 @@ router.get('/compare', (req: Request, res: Response) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// UPGRADE BATCH — Personnel Management Enhancements
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── U12: Certification Expiration Warnings (30/60/90 day) ───────────
+router.get('/cert-expiration-warnings', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localToday();
+    const warnings: any[] = [];
+
+    const creds = db.prepare(`
+      SELECT c.id, c.officer_id, c.credential_type, c.status, c.expiry_date,
+        u.full_name as officer_name, u.badge_number
+      FROM credentials c JOIN users u ON u.id = c.officer_id
+      WHERE u.status = 'active' AND c.expiry_date IS NOT NULL
+      ORDER BY c.expiry_date ASC LIMIT 1000
+    `).all() as any[];
+
+    for (const c of creds) {
+      const daysUntil = Math.floor((new Date(c.expiry_date).getTime() - new Date(today).getTime()) / 86400000);
+      let severity: string | null = null;
+      if (daysUntil < 0) severity = 'expired';
+      else if (daysUntil <= 30) severity = 'critical';
+      else if (daysUntil <= 60) severity = 'warning';
+      else if (daysUntil <= 90) severity = 'upcoming';
+      else continue;
+
+      warnings.push({ credential_id: c.id, officer_id: c.officer_id, officer_name: c.officer_name,
+        badge_number: c.badge_number, credential_type: c.credential_type,
+        expiry_date: c.expiry_date, days_until: daysUntil, severity });
+    }
+
+    const summary = { expired: warnings.filter(w => w.severity === 'expired').length,
+      within_30: warnings.filter(w => w.severity === 'critical').length,
+      within_60: warnings.filter(w => w.severity === 'warning').length,
+      within_90: warnings.filter(w => w.severity === 'upcoming').length };
+
+    res.json({ warnings, summary, total: warnings.length });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load cert warnings', code: 'CERT_WARNINGS_ERROR' });
+  }
+});
+
+// ── U13: Equipment Checkout/Return Logging ──────────────────────────
+router.get('/equipment-log', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.exec(`CREATE TABLE IF NOT EXISTS equipment_checkout_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, officer_id INTEGER NOT NULL,
+      equipment_id INTEGER, equipment_name TEXT NOT NULL, action TEXT NOT NULL,
+      condition_notes TEXT, checked_by INTEGER, created_at TEXT DEFAULT (datetime('now'))
+    )`);
+    const { officer_id, days = '30' } = req.query;
+    const dayCount = parseInt(days as string, 10) || 30;
+    let sql = `SELECT ecl.*, u.full_name as officer_name, cu.full_name as checked_by_name
+      FROM equipment_checkout_log ecl LEFT JOIN users u ON ecl.officer_id = u.id
+      LEFT JOIN users cu ON ecl.checked_by = cu.id WHERE ecl.created_at >= datetime('now', '-' || ? || ' days')`;
+    const params: any[] = [dayCount];
+    if (officer_id) { sql += ' AND ecl.officer_id = ?'; params.push(officer_id); }
+    sql += ' ORDER BY ecl.created_at DESC LIMIT 500';
+    res.json(db.prepare(sql).all(...params));
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load equipment log', code: 'EQUIPMENT_LOG_ERROR' });
+  }
+});
+
+router.post('/equipment-log', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.exec(`CREATE TABLE IF NOT EXISTS equipment_checkout_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, officer_id INTEGER NOT NULL,
+      equipment_id INTEGER, equipment_name TEXT NOT NULL, action TEXT NOT NULL,
+      condition_notes TEXT, checked_by INTEGER, created_at TEXT DEFAULT (datetime('now'))
+    )`);
+    const { officer_id, equipment_id, equipment_name, action, condition_notes } = req.body;
+    if (!officer_id || !equipment_name || !action) return res.status(400).json({ error: 'officer_id, equipment_name, and action required', code: 'MISSING_FIELDS' });
+    const result = db.prepare(`INSERT INTO equipment_checkout_log (officer_id, equipment_id, equipment_name, action, condition_notes, checked_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(officer_id, equipment_id || null, equipment_name, action, condition_notes || null, req.user!.userId, localNow());
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to log equipment checkout', code: 'EQUIPMENT_CHECKOUT_ERROR' });
+  }
+});
+
+// ── U14: Duty Hour Calculations ─────────────────────────────────────
+router.get('/duty-hours', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { period = '14', officer_id } = req.query;
+    const days = parseInt(period as string, 10) || 14;
+    const cutoff = new Date(Date.now() - days * 86400000).toISOString();
+
+    let sql = `SELECT te.officer_id, u.full_name as officer_name, u.badge_number,
+      COUNT(*) as shift_count, SUM(te.total_hours) as total_hours,
+      AVG(te.total_hours) as avg_hours_per_shift, MAX(te.total_hours) as max_shift_hours,
+      SUM(te.overtime_hours) as total_overtime
+      FROM time_entries te JOIN users u ON u.id = te.officer_id WHERE te.clock_in >= ?`;
+    const params: any[] = [cutoff];
+    if (officer_id) { sql += ' AND te.officer_id = ?'; params.push(officer_id); }
+    sql += ' GROUP BY te.officer_id ORDER BY total_hours DESC LIMIT 200';
+
+    const rows = db.prepare(sql).all(...params) as any[];
+    const maxWeeklyHours = 60;
+    const weeklyFactor = 7 / days;
+    const flagged = rows.filter((r: any) => ((r.total_hours || 0) * weeklyFactor) > maxWeeklyHours)
+      .map((r: any) => ({ ...r, weekly_estimate: Math.round(((r.total_hours || 0) * weeklyFactor) * 10) / 10 }));
+
+    res.json({ period_days: days,
+      officers: rows.map((r: any) => ({ ...r, total_hours: Math.round((r.total_hours || 0) * 10) / 10,
+        avg_hours_per_shift: Math.round((r.avg_hours_per_shift || 0) * 10) / 10,
+        total_overtime: Math.round((r.total_overtime || 0) * 10) / 10 })),
+      flagged_excessive_hours: flagged });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load duty hours', code: 'DUTY_HOURS_ERROR' });
+  }
+});
+
+// ── U15: Personnel Notifications ────────────────────────────────────
+router.get('/notifications', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localToday();
+    const notifications: any[] = [];
+
+    try {
+      const expiring = db.prepare(`SELECT c.credential_type, c.expiry_date, u.full_name, u.id as officer_id
+        FROM credentials c JOIN users u ON u.id = c.officer_id
+        WHERE u.status = 'active' AND c.expiry_date IS NOT NULL
+        AND c.expiry_date <= date(?, '+30 days') ORDER BY c.expiry_date ASC LIMIT 50`).all(today) as any[];
+      for (const e of expiring) {
+        const daysUntil = Math.floor((new Date(e.expiry_date).getTime() - new Date(today).getTime()) / 86400000);
+        notifications.push({ type: 'cert_expiring', severity: daysUntil < 0 ? 'critical' : 'warning',
+          message: `${e.full_name}: ${e.credential_type} ${daysUntil < 0 ? 'expired' : 'expires in ' + daysUntil + ' days'}`,
+          officer_id: e.officer_id, date: e.expiry_date });
+      }
+    } catch { /* table may not exist */ }
+
+    try {
+      const overdue = db.prepare(`SELECT t.course_name, t.officer_id, u.full_name, t.expiry_date
+        FROM training_records t JOIN users u ON u.id = t.officer_id
+        WHERE t.status = 'overdue' OR (t.expiry_date IS NOT NULL AND t.expiry_date < ?) LIMIT 50`).all(today) as any[];
+      for (const t of overdue) {
+        notifications.push({ type: 'training_overdue', severity: 'warning',
+          message: `${t.full_name}: ${t.course_name} training overdue`,
+          officer_id: t.officer_id, date: t.expiry_date });
+      }
+    } catch { /* table may not exist */ }
+
+    notifications.sort((a, b) => ({ critical: 0, warning: 1, info: 2 }[a.severity as string] || 9) - ({ critical: 0, warning: 1, info: 2 }[b.severity as string] || 9));
+    res.json({ notifications, total: notifications.length });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load personnel notifications', code: 'PERSONNEL_NOTIFICATIONS_ERROR' });
+  }
+});
+
+// ── U16: Personnel Analytics Dashboard ──────────────────────────────
+router.get('/analytics-dashboard', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localToday();
+    const totalActive = (db.prepare("SELECT COUNT(*) as cnt FROM users WHERE status = 'active'").get() as any)?.cnt || 0;
+    const byRole = db.prepare("SELECT role, COUNT(*) as count FROM users WHERE status = 'active' GROUP BY role ORDER BY count DESC").all();
+    const byDepartment = db.prepare("SELECT department, COUNT(*) as count FROM users WHERE status = 'active' AND department IS NOT NULL GROUP BY department ORDER BY count DESC").all();
+
+    let credCompliance = { total_creds: 0, active_creds: 0, expired_creds: 0 };
+    try {
+      const cc = db.prepare(`SELECT COUNT(*) as total, SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_count, SUM(CASE WHEN expiry_date < ? THEN 1 ELSE 0 END) as expired_count FROM credentials`).get(today) as any;
+      credCompliance = { total_creds: cc.total || 0, active_creds: cc.active_count || 0, expired_creds: cc.expired_count || 0 };
+    } catch { /* ok */ }
+
+    let trainingStats = { total_records: 0, completed: 0, avg_hours: 0 };
+    try {
+      const ts = db.prepare(`SELECT COUNT(*) as total, SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed, AVG(hours) as avg_hours FROM training_records`).get() as any;
+      trainingStats = { total_records: ts.total || 0, completed: ts.completed || 0, avg_hours: Math.round((ts.avg_hours || 0) * 10) / 10 };
+    } catch { /* ok */ }
+
+    res.json({ total_active: totalActive, by_role: byRole, by_department: byDepartment, credential_compliance: credCompliance, training_stats: trainingStats });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load analytics dashboard', code: 'ANALYTICS_DASHBOARD_ERROR' });
+  }
+});
+
 export default router;
 
 // We export schedule and time routes separately for cleaner organization
@@ -2142,7 +2324,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       ).all() as any[];
 
       const officers = db.prepare(
-        "SELECT id, full_name, badge_number, role FROM users WHERE active = 1 AND role IN ('admin','manager','supervisor','officer','dispatcher')"
+        "SELECT id, full_name, badge_number, role FROM users WHERE status = 'active' AND role IN ('admin','manager','supervisor','officer','dispatcher')"
       ).all() as any[];
 
       const alerts: any[] = [];
@@ -2936,6 +3118,241 @@ export function mountScheduleRoutes(parentRouter: Router): void {
     }
   });
 
+  // ════════════════════════════════════════════════════════════
+  // BODY CAMERA UPGRADE 1: Video Retention Policy Enforcement
+  // Returns videos that are past their retention period.
+  // ════════════════════════════════════════════════════════════
+  parentRouter.get('/personnel/bodycam-videos/retention/report', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (_req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      // Default retention: evidence=7 years, incident=3 years, routine=90 days, training=1 year
+      const retentionDays: Record<string, number> = { evidence: 2555, incident: 1095, routine: 90, training: 365 };
+
+      const report: any[] = [];
+      for (const [classification, days] of Object.entries(retentionDays)) {
+        const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+        const expired = db.prepare(`
+          SELECT id, title, classification, file_size, created_at, officer_id,
+            CAST(julianday('now') - julianday(created_at) AS INTEGER) as age_days
+          FROM bodycam_videos
+          WHERE classification = ? AND created_at < ?
+          ORDER BY created_at ASC LIMIT 50
+        `).all(classification, cutoff) as any[];
+        if (expired.length > 0) {
+          report.push({
+            classification,
+            retention_days: days,
+            expired_count: expired.length,
+            total_bytes: expired.reduce((s: number, v: any) => s + (v.file_size || 0), 0),
+            videos: expired,
+          });
+        }
+      }
+
+      const totalExpired = report.reduce((s, r) => s + r.expired_count, 0);
+      const totalBytes = report.reduce((s, r) => s + r.total_bytes, 0);
+
+      res.json({
+        retention_policies: retentionDays,
+        expired_groups: report,
+        total_expired: totalExpired,
+        total_storage_gb: Math.round(totalBytes / 1024 / 1024 / 1024 * 100) / 100,
+      });
+    } catch (error: any) {
+      console.error('Retention report error:', error);
+      res.status(500).json({ error: 'Failed to get retention report', code: 'RETENTION_REPORT_ERROR' });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════
+  // BODY CAMERA UPGRADE 2: Auto-Tag Videos by Incident/Call
+  // Finds untagged videos and suggests matching incidents/calls.
+  // ════════════════════════════════════════════════════════════
+  parentRouter.get('/personnel/bodycam-videos/auto-tag/suggestions', authenticateToken, (_req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      // Find videos without case numbers that have timestamps
+      const untagged = db.prepare(`
+        SELECT id, title, officer_id, created_at, duration_seconds
+        FROM bodycam_videos
+        WHERE (case_number IS NULL OR case_number = '') AND created_at IS NOT NULL
+        ORDER BY created_at DESC LIMIT 20
+      `).all() as any[];
+
+      const suggestions: any[] = [];
+      for (const video of untagged) {
+        // Find incidents by the same officer around the same time
+        const nearby = db.prepare(`
+          SELECT id, incident_number, incident_type, created_at
+          FROM incidents
+          WHERE officer_id = ?
+            AND ABS(CAST((julianday(created_at) - julianday(?)) * 24 * 60 AS INTEGER)) <= 60
+          ORDER BY ABS(julianday(created_at) - julianday(?))
+          LIMIT 3
+        `).all(video.officer_id, video.created_at, video.created_at) as any[];
+
+        if (nearby.length > 0) {
+          suggestions.push({
+            video_id: video.id,
+            video_title: video.title,
+            video_time: video.created_at,
+            suggested_incidents: nearby,
+          });
+        }
+      }
+
+      res.json({ suggestions, total_untagged: untagged.length });
+    } catch (error: any) {
+      console.error('Auto-tag suggestions error:', error);
+      res.status(500).json({ error: 'Failed to get tag suggestions', code: 'AUTOTAG_SUGGESTIONS_ERROR' });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════
+  // BODY CAMERA UPGRADE 3: Video Review Assignment Workflow
+  // Assigns videos for review and tracks review status.
+  // ════════════════════════════════════════════════════════════
+  parentRouter.post('/personnel/bodycam-videos/:videoId/assign-review', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const videoId = parseInt(req.params.videoId, 10);
+      if (isNaN(videoId)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
+
+      const { reviewer_id, priority, notes } = req.body;
+      if (!reviewer_id) { res.status(400).json({ error: 'reviewer_id required' }); return; }
+
+      const now = localNow();
+
+      // Ensure review assignment table exists
+      try {
+        db.prepare(`CREATE TABLE IF NOT EXISTS bodycam_review_assignments (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          video_id INTEGER NOT NULL, reviewer_id INTEGER NOT NULL,
+          assigned_by INTEGER NOT NULL, priority TEXT DEFAULT 'normal',
+          status TEXT DEFAULT 'pending', notes TEXT,
+          review_notes TEXT, reviewed_at TEXT,
+          created_at TEXT, updated_at TEXT
+        )`);
+      } catch { /* already exists */ }
+
+      const result = db.prepare(`
+        INSERT INTO bodycam_review_assignments (video_id, reviewer_id, assigned_by, priority, notes, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+      `).run(videoId, reviewer_id, req.user!.userId, priority || 'normal', notes || null, now, now);
+
+      res.status(201).json({ id: result.lastInsertRowid, status: 'pending' });
+    } catch (error: any) {
+      console.error('Assign review error:', error);
+      res.status(500).json({ error: 'Failed to assign review', code: 'ASSIGN_REVIEW_ERROR' });
+    }
+  });
+
+  parentRouter.get('/personnel/bodycam-videos/reviews/pending', authenticateToken, (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      let rows: any[] = [];
+      try {
+        rows = db.prepare(`
+          SELECT ra.*, v.title as video_title, v.classification,
+            reviewer.full_name as reviewer_name, assigner.full_name as assigned_by_name
+          FROM bodycam_review_assignments ra
+          LEFT JOIN bodycam_videos v ON ra.video_id = v.id
+          LEFT JOIN users reviewer ON ra.reviewer_id = reviewer.id
+          LEFT JOIN users assigner ON ra.assigned_by = assigner.id
+          WHERE ra.status = 'pending'
+          ORDER BY CASE ra.priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END, ra.created_at ASC
+          LIMIT 100
+        `).all();
+      } catch { /* table may not exist */ }
+      res.json({ data: rows, count: rows.length });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to get pending reviews', code: 'PENDING_REVIEWS_ERROR' });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════
+  // BODY CAMERA UPGRADE 4: Redaction Request Tracking
+  // Track requests to redact portions of body camera footage.
+  // ════════════════════════════════════════════════════════════
+  parentRouter.post('/personnel/bodycam-videos/:videoId/redaction-request', authenticateToken, (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const videoId = parseInt(req.params.videoId, 10);
+      if (isNaN(videoId)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
+
+      const { reason, start_time_seconds, end_time_seconds, redaction_type } = req.body;
+      if (!reason) { res.status(400).json({ error: 'Reason required for redaction request' }); return; }
+
+      const now = localNow();
+
+      // Ensure redaction request table exists
+      try {
+        db.prepare(`CREATE TABLE IF NOT EXISTS bodycam_redaction_requests (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          video_id INTEGER NOT NULL, requested_by INTEGER NOT NULL,
+          reason TEXT NOT NULL, redaction_type TEXT DEFAULT 'face_blur',
+          start_time_seconds REAL, end_time_seconds REAL,
+          status TEXT DEFAULT 'pending', approved_by INTEGER,
+          approved_at TEXT, notes TEXT,
+          created_at TEXT, updated_at TEXT
+        )`);
+      } catch { /* already exists */ }
+
+      const result = db.prepare(`
+        INSERT INTO bodycam_redaction_requests (video_id, requested_by, reason, redaction_type,
+          start_time_seconds, end_time_seconds, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+      `).run(videoId, req.user!.userId, reason, redaction_type || 'face_blur',
+        start_time_seconds || null, end_time_seconds || null, now, now);
+
+      res.status(201).json({ id: result.lastInsertRowid, status: 'pending' });
+    } catch (error: any) {
+      console.error('Redaction request error:', error);
+      res.status(500).json({ error: 'Failed to create redaction request', code: 'REDACTION_REQUEST_ERROR' });
+    }
+  });
+
+  parentRouter.get('/personnel/bodycam-videos/redaction-requests', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (_req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      let rows: any[] = [];
+      try {
+        rows = db.prepare(`
+          SELECT rr.*, v.title as video_title, u.full_name as requested_by_name,
+            approver.full_name as approved_by_name
+          FROM bodycam_redaction_requests rr
+          LEFT JOIN bodycam_videos v ON rr.video_id = v.id
+          LEFT JOIN users u ON rr.requested_by = u.id
+          LEFT JOIN users approver ON rr.approved_by = approver.id
+          ORDER BY CASE rr.status WHEN 'pending' THEN 0 ELSE 1 END, rr.created_at DESC
+          LIMIT 100
+        `).all();
+      } catch { /* table may not exist */ }
+      res.json({ data: rows, count: rows.length });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to get redaction requests', code: 'GET_REDACTION_REQUESTS_ERROR' });
+    }
+  });
+
+  parentRouter.put('/personnel/bodycam-videos/redaction-requests/:requestId/approve', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const reqId = parseInt(req.params.requestId, 10);
+      if (isNaN(reqId)) { res.status(400).json({ error: 'Invalid request ID' }); return; }
+      const now = localNow();
+      const { status, notes } = req.body;
+      const newStatus = status === 'rejected' ? 'rejected' : 'approved';
+      try {
+        db.prepare(`UPDATE bodycam_redaction_requests SET status = ?, approved_by = ?,
+          approved_at = ?, notes = ?, updated_at = ? WHERE id = ?`)
+          .run(newStatus, req.user!.userId, now, notes || null, now, reqId);
+      } catch { /* ok */ }
+      res.json({ success: true, status: newStatus });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to process redaction request', code: 'PROCESS_REDACTION_ERROR' });
+    }
+  });
+
   // GET /api/personnel/:id/bodycam-videos - Get videos for specific officer
   parentRouter.get('/personnel/:id/bodycam-videos', authenticateToken, (req: Request, res: Response) => {
     try {
@@ -3341,6 +3758,269 @@ export function mountScheduleRoutes(parentRouter: Router): void {
     } catch (error: any) {
       console.error('Get personnel analytics error:', error);
       res.status(500).json({ error: 'Failed to get personnel analytics', code: 'GET_PERSONNEL_ANALYTICS_ERROR' });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // UPGRADE BATCH — Training & Scheduling Enhancements
+  // ═══════════════════════════════════════════════════════════════════
+
+  // ── U17: Training Completion Percentages ────────────────────────────
+  parentRouter.get('/personnel/training-completion', authenticateToken, (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const officers = db.prepare(`SELECT id, full_name, badge_number, role FROM users WHERE status = 'active' AND archived_at IS NULL ORDER BY full_name LIMIT 500`).all() as any[];
+
+      let requirements: any[] = [];
+      try { requirements = db.prepare('SELECT * FROM training_requirements WHERE is_mandatory = 1').all() as any[]; } catch { /* ok */ }
+
+      const records = db.prepare(`SELECT officer_id, course_name, status, expiry_date FROM training_records ORDER BY completed_date DESC`).all() as any[];
+      const recordsByOfficer: Record<number, any[]> = {};
+      for (const r of records) {
+        if (!recordsByOfficer[r.officer_id]) recordsByOfficer[r.officer_id] = [];
+        recordsByOfficer[r.officer_id].push(r);
+      }
+
+      const completion = officers.map((o: any) => {
+        const officerRecords = recordsByOfficer[o.id] || [];
+        const completedCourses = new Set(officerRecords.filter((r: any) => r.status === 'completed').map((r: any) => r.course_name));
+        const applicableReqs = requirements.filter((req: any) => {
+          const roles = typeof req.required_for_roles === 'string' ? JSON.parse(req.required_for_roles) : (req.required_for_roles || []);
+          return roles.length === 0 || roles.includes(o.role);
+        });
+        const completedReqs = applicableReqs.filter((req: any) => completedCourses.has(req.course_name));
+        const overdueReqs = applicableReqs.filter((req: any) => !completedCourses.has(req.course_name));
+
+        return {
+          officer_id: o.id, full_name: o.full_name, badge_number: o.badge_number, role: o.role,
+          total_required: applicableReqs.length, completed: completedReqs.length,
+          overdue: overdueReqs.length,
+          completion_pct: applicableReqs.length > 0 ? Math.round((completedReqs.length / applicableReqs.length) * 100) : 100,
+          overdue_courses: overdueReqs.map((r: any) => r.course_name),
+          total_training_records: officerRecords.length,
+          total_hours: officerRecords.reduce((s: number, r: any) => s + (r.hours || 0), 0),
+        };
+      });
+
+      const overallCompliance = completion.length > 0
+        ? Math.round(completion.reduce((s, c) => s + c.completion_pct, 0) / completion.length)
+        : 100;
+
+      res.json({ officers: completion, overall_compliance_pct: overallCompliance, total_requirements: requirements.length });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to load training completion', code: 'TRAINING_COMPLETION_ERROR' });
+    }
+  });
+
+  // ── U18: Required vs Completed Training Matrix ──────────────────────
+  parentRouter.get('/personnel/training-requirements-matrix', authenticateToken, (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      let requirements: any[] = [];
+      try {
+        requirements = db.prepare('SELECT * FROM training_requirements ORDER BY course_name').all() as any[];
+        requirements = requirements.map((r: any) => ({
+          ...r, required_for_roles: typeof r.required_for_roles === 'string' ? JSON.parse(r.required_for_roles) : (r.required_for_roles || []),
+          is_mandatory: !!r.is_mandatory,
+        }));
+      } catch { /* ok */ }
+
+      const officers = db.prepare(`SELECT id, full_name, badge_number, role FROM users WHERE status = 'active' AND archived_at IS NULL ORDER BY full_name LIMIT 500`).all() as any[];
+      const records = db.prepare(`SELECT officer_id, course_name, status, completed_date, expiry_date FROM training_records`).all() as any[];
+
+      const recordMap: Record<string, any> = {};
+      for (const r of records) {
+        const key = `${r.officer_id}-${r.course_name}`;
+        if (!recordMap[key] || (r.completed_date && (!recordMap[key].completed_date || r.completed_date > recordMap[key].completed_date))) {
+          recordMap[key] = r;
+        }
+      }
+
+      const matrix = officers.map((o: any) => {
+        const courseStatuses: Record<string, { status: string; completed_date?: string; expiry_date?: string }> = {};
+        for (const req of requirements) {
+          const key = `${o.id}-${req.course_name}`;
+          const record = recordMap[key];
+          if (record) {
+            courseStatuses[req.course_name] = { status: record.status, completed_date: record.completed_date, expiry_date: record.expiry_date };
+          } else {
+            const roles = req.required_for_roles || [];
+            if (roles.length === 0 || roles.includes(o.role)) {
+              courseStatuses[req.course_name] = { status: 'not_started' };
+            }
+          }
+        }
+        return { officer_id: o.id, full_name: o.full_name, badge_number: o.badge_number, role: o.role, courses: courseStatuses };
+      });
+
+      res.json({ matrix, requirements: requirements.map((r: any) => ({ id: r.id, course_name: r.course_name, category: r.category, is_mandatory: r.is_mandatory })) });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to load training matrix', code: 'TRAINING_MATRIX_ERROR' });
+    }
+  });
+
+  // ── U19: Training Certificate Generation Data ───────────────────────
+  parentRouter.get('/personnel/training-certificate-data/:recordId', authenticateToken, (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const record = db.prepare(`
+        SELECT t.*, u.full_name as officer_name, u.badge_number, u.rank
+        FROM training_records t LEFT JOIN users u ON t.officer_id = u.id
+        WHERE t.id = ?
+      `).get(req.params.recordId) as any;
+      if (!record) return res.status(404).json({ error: 'Training record not found', code: 'NOT_FOUND' });
+
+      res.json({
+        certificate: {
+          officer_name: record.officer_name, badge_number: record.badge_number,
+          rank: record.rank, course_name: record.course_name, category: record.category,
+          provider: record.provider, completed_date: record.completed_date,
+          expiry_date: record.expiry_date, hours: record.hours, score: record.score,
+          certificate_number: record.certificate_number || `RMPG-${record.id}-${Date.now().toString(36).toUpperCase()}`,
+          status: record.status, organization: 'Rocky Mountain Protective Group',
+          issued_date: record.completed_date || localToday(),
+        },
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to load certificate data', code: 'CERTIFICATE_DATA_ERROR' });
+    }
+  });
+
+  // ── U20: Bulk Training Assignment ───────────────────────────────────
+  parentRouter.post('/personnel/training-bulk-assign', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const { officer_ids, course_name, category, provider, scheduled_date, hours, notes } = req.body;
+      if (!Array.isArray(officer_ids) || officer_ids.length === 0 || !course_name) {
+        return res.status(400).json({ error: 'officer_ids array and course_name required', code: 'MISSING_FIELDS' });
+      }
+
+      const now = localNow();
+      const created: number[] = [];
+      const insert = db.prepare(`INSERT INTO training_records (officer_id, course_name, category, provider, completed_date, hours, status, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, 'scheduled', ?, ?)`);
+
+      const tx = db.transaction(() => {
+        for (const officerId of officer_ids.slice(0, 100)) {
+          const result = insert.run(officerId, course_name, category || 'other', provider || null, scheduled_date || null, hours || 0, notes || null, now);
+          created.push(Number(result.lastInsertRowid));
+        }
+      });
+      tx();
+
+      res.status(201).json({ success: true, created_count: created.length, record_ids: created });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to bulk assign training', code: 'BULK_ASSIGN_ERROR' });
+    }
+  });
+
+  // ── U21: Schedule Conflict Detection ────────────────────────────────
+  parentRouter.get('/personnel/schedule-conflicts', authenticateToken, (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const { start_date, end_date } = req.query;
+      const startDate = start_date || localToday();
+      const endDate = end_date || new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0];
+
+      const schedules = db.prepare(`
+        SELECT s.*, u.full_name as officer_name
+        FROM schedules s LEFT JOIN users u ON s.officer_id = u.id
+        WHERE s.shift_date BETWEEN ? AND ?
+        ORDER BY s.officer_id, s.shift_date, s.start_time
+        LIMIT 5000
+      `).all(startDate, endDate) as any[];
+
+      // Detect double-bookings
+      const conflicts: any[] = [];
+      const byOfficer: Record<number, any[]> = {};
+      for (const s of schedules) {
+        if (!byOfficer[s.officer_id]) byOfficer[s.officer_id] = [];
+        byOfficer[s.officer_id].push(s);
+      }
+
+      for (const [officerId, shifts] of Object.entries(byOfficer)) {
+        for (let i = 0; i < shifts.length; i++) {
+          for (let j = i + 1; j < shifts.length; j++) {
+            if (shifts[i].shift_date === shifts[j].shift_date) {
+              const s1Start = shifts[i].start_time;
+              const s1End = shifts[i].end_time;
+              const s2Start = shifts[j].start_time;
+              const s2End = shifts[j].end_time;
+              if (s1Start < s2End && s2Start < s1End) {
+                conflicts.push({
+                  officer_id: Number(officerId), officer_name: shifts[i].officer_name,
+                  date: shifts[i].shift_date,
+                  shift_1: { id: shifts[i].id, start: s1Start, end: s1End, property: shifts[i].property_name },
+                  shift_2: { id: shifts[j].id, start: s2Start, end: s2End, property: shifts[j].property_name },
+                  type: 'double_booked',
+                });
+              }
+            }
+          }
+        }
+      }
+
+      res.json({ conflicts, total: conflicts.length, period: { start: startDate, end: endDate } });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to detect schedule conflicts', code: 'SCHEDULE_CONFLICTS_ERROR' });
+    }
+  });
+
+  // ── U22: Shift Coverage Gap Alerts ──────────────────────────────────
+  parentRouter.get('/personnel/coverage-gaps', authenticateToken, (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const { start_date, end_date, min_officers = '1' } = req.query;
+      const startDate = start_date || localToday();
+      const endDate = end_date || new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0];
+      const minRequired = parseInt(min_officers as string, 10) || 1;
+
+      const schedules = db.prepare(`
+        SELECT shift_date, COUNT(DISTINCT officer_id) as officer_count
+        FROM schedules WHERE shift_date BETWEEN ? AND ? AND status != 'cancelled'
+        GROUP BY shift_date ORDER BY shift_date
+      `).all(startDate, endDate) as any[];
+
+      const coverageByDate: Record<string, number> = {};
+      for (const s of schedules) coverageByDate[s.shift_date] = s.officer_count;
+
+      const gaps: any[] = [];
+      const start = new Date(startDate as string);
+      const end = new Date(endDate as string);
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const dateStr = d.toISOString().split('T')[0];
+        const count = coverageByDate[dateStr] || 0;
+        if (count < minRequired) {
+          gaps.push({ date: dateStr, officers_scheduled: count, minimum_required: minRequired, shortfall: minRequired - count });
+        }
+      }
+
+      res.json({ gaps, total: gaps.length, period: { start: startDate, end: endDate }, minimum_officers: minRequired });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to detect coverage gaps', code: 'COVERAGE_GAPS_ERROR' });
+    }
+  });
+
+  // ── U23: Bulk Schedule Publishing ───────────────────────────────────
+  parentRouter.post('/personnel/schedules/bulk-publish', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const { schedule_ids, start_date, end_date } = req.body;
+
+      let updated = 0;
+      if (Array.isArray(schedule_ids) && schedule_ids.length > 0) {
+        const placeholders = schedule_ids.map(() => '?').join(',');
+        const result = db.prepare(`UPDATE schedules SET status = 'published', updated_at = ? WHERE id IN (${placeholders}) AND status = 'draft'`).run(localNow(), ...schedule_ids);
+        updated = result.changes;
+      } else if (start_date && end_date) {
+        const result = db.prepare(`UPDATE schedules SET status = 'published', updated_at = ? WHERE shift_date BETWEEN ? AND ? AND status = 'draft'`).run(localNow(), start_date, end_date);
+        updated = result.changes;
+      } else {
+        return res.status(400).json({ error: 'Provide schedule_ids or start_date/end_date', code: 'MISSING_FIELDS' });
+      }
+
+      res.json({ success: true, updated_count: updated });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to bulk publish schedules', code: 'BULK_PUBLISH_ERROR' });
     }
   });
 }

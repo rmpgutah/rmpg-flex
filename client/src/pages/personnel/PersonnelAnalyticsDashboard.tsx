@@ -1,7 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
-  Users, UserCheck, Clock, Award, AlertTriangle, TrendingUp, GraduationCap,
+  Users, UserCheck, Clock, Award, AlertTriangle, TrendingUp, GraduationCap, Bell, Shield,
 } from 'lucide-react';
+import { apiFetch } from '../../hooks/useApi';
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area,
 } from 'recharts';
@@ -276,9 +277,74 @@ export default function PersonnelAnalyticsDashboard({ officers, credentials, tim
         </div>
       )}
 
+      {/* Enhanced: Duty Hours & Cert Warnings */}
+      <DutyHoursPanel />
+      <CertWarningsPanel />
+
       <p className="text-[9px] text-rmpg-500 text-center pt-2">
         Select an officer from the roster to view their details
       </p>
+    </div>
+  );
+}
+
+function DutyHoursPanel() {
+  const [data, setData] = useState<any>(null);
+  useEffect(() => {
+    apiFetch('/api/personnel/duty-hours?period=14').then((d: any) => d && setData(d)).catch(() => {});
+  }, []);
+  if (!data?.officers?.length) return null;
+  const flagged = data.flagged_excessive_hours || [];
+  return (
+    <div className="panel-beveled p-3">
+      <h4 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+        <Clock className="w-3 h-3" /> Duty Hours (14 Day Period)
+        {flagged.length > 0 && (
+          <span className="ml-auto text-[8px] bg-red-900/30 text-red-400 px-1.5 py-0.5 rounded">{flagged.length} excessive</span>
+        )}
+      </h4>
+      <div className="space-y-0.5 max-h-[120px] overflow-y-auto">
+        {data.officers.slice(0, 10).map((o: any) => (
+          <div key={o.officer_id} className="flex items-center justify-between px-2 py-0.5 bg-surface-sunken rounded text-[9px]">
+            <span className="text-rmpg-200">{o.officer_name}</span>
+            <span className="font-mono text-cyan-400">{o.total_hours}h</span>
+            <span className="font-mono text-amber-400">{o.total_overtime}h OT</span>
+            <span className="text-rmpg-500">{o.shift_count} shifts</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CertWarningsPanel() {
+  const [data, setData] = useState<any>(null);
+  useEffect(() => {
+    apiFetch('/api/personnel/cert-expiration-warnings').then((d: any) => d && setData(d)).catch(() => {});
+  }, []);
+  if (!data?.warnings?.length) return null;
+  return (
+    <div className="panel-beveled p-3">
+      <h4 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+        <Shield className="w-3 h-3 text-amber-400" /> Certification Warnings
+      </h4>
+      <div className="grid grid-cols-4 gap-1 mb-2">
+        <div className="text-center p-1 bg-red-900/20 rounded"><span className="text-xs font-bold text-red-400">{data.summary.expired}</span><div className="text-[7px] text-rmpg-500">Expired</div></div>
+        <div className="text-center p-1 bg-red-900/10 rounded"><span className="text-xs font-bold text-red-300">{data.summary.within_30}</span><div className="text-[7px] text-rmpg-500">30d</div></div>
+        <div className="text-center p-1 bg-amber-900/10 rounded"><span className="text-xs font-bold text-amber-400">{data.summary.within_60}</span><div className="text-[7px] text-rmpg-500">60d</div></div>
+        <div className="text-center p-1 bg-blue-900/10 rounded"><span className="text-xs font-bold text-blue-400">{data.summary.within_90}</span><div className="text-[7px] text-rmpg-500">90d</div></div>
+      </div>
+      <div className="space-y-0.5 max-h-[100px] overflow-y-auto">
+        {data.warnings.slice(0, 8).map((w: any) => (
+          <div key={w.credential_id} className="flex items-center justify-between px-2 py-0.5 bg-surface-sunken rounded text-[9px]">
+            <span className="text-rmpg-200">{w.officer_name}</span>
+            <span className="text-rmpg-400">{w.credential_type}</span>
+            <span className={`font-mono ${w.severity === 'expired' ? 'text-red-400' : w.severity === 'critical' ? 'text-red-300' : 'text-amber-400'}`}>
+              {w.days_until < 0 ? `${Math.abs(w.days_until)}d overdue` : `${w.days_until}d`}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

@@ -24,6 +24,9 @@ import {
   announcePursuit,
   announceAllUnits,
 } from '../utils/voiceAlerts';
+import { classifySeverity } from '../utils/alertSeverity';
+import { announceWithSeverity, isEdgeTTSEnabled } from '../utils/edgeTTS';
+import type { AlertBannerItem } from '../components/DispatchAlertBanner';
 
 /**
  * Normalize DB column names to voice system field names.
@@ -63,13 +66,21 @@ function tryParseJson(s: string): any[] {
   try { const r = JSON.parse(s); return Array.isArray(r) ? r : []; } catch { return []; }
 }
 
+// ── Unique alert ID generator ──
+let alertIdCounter = 0;
+function nextAlertId(): string { return `alert-${Date.now()}-${++alertIdCounter}`; }
+
 /**
  * App-wide dispatch voice alert hook.
  * Call once in Layout.tsx — subscribes to all dispatch-related
  * WebSocket events and fires the appropriate voice announcements.
+ *
+ * When `onAlert` is provided, each event also pushes a visual
+ * AlertBannerItem for the DispatchAlertBanner overlay.
  */
-export function useDispatchVoiceAlerts(): void {
+export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBannerItem) => void }): void {
   const { subscribe } = useWebSocket();
+  const onAlert = options?.onAlert;
 
   useEffect(() => {
     const unsubs: Array<() => void> = [];
@@ -82,24 +93,56 @@ export function useDispatchVoiceAlerts(): void {
 
         if (action === 'call_created' && data.call) {
           const call = normalizeCallForVoice(data.call);
-          announceNewCall(call);
-          announceCallAlerts(call);
+          const { severity } = classifySeverity('call_created', call);
+          if (isEdgeTTSEnabled()) {
+            const text = `New call: ${call.call_type || call.nature || 'Unknown'} at ${call.location || 'unknown location'}`;
+            announceWithSeverity(text, severity);
+          } else {
+            announceNewCall(call);
+            announceCallAlerts(call);
+          }
+          onAlert?.({ id: nextAlertId(), severity, title: 'New Call', message: call.description || call.narrative || call.call_type || '', timestamp: Date.now() });
         }
 
         if (action === 'call_status_changed' && data.call) {
           const call = normalizeCallForVoice(data.call);
           const status = data.status || call.status;
-          if (status) {
+          if (status && !isEdgeTTSEnabled()) {
             announceStatusChange(call, status);
           }
           if (status === 'dispatched') {
-            announceDispatchEvent(call);
+            const { severity } = classifySeverity('call_dispatched', call);
+            if (isEdgeTTSEnabled()) {
+              const units = Array.isArray(call.assigned_units) ? call.assigned_units.join(', ') : '';
+              const text = `Dispatched${units ? ` ${units}` : ''} to ${call.call_type || 'call'} at ${call.location || 'unknown location'}`;
+              announceWithSeverity(text, severity);
+            } else {
+              announceDispatchEvent(call);
+            }
+            onAlert?.({ id: nextAlertId(), severity, title: 'Dispatched', message: `${call.assigned_units?.join(', ') || 'Unit'} — ${call.call_type || call.nature || ''} at ${call.location || ''}`, timestamp: Date.now() });
           }
         }
 
         if (action === 'units_dispatched') {
           const call = normalizeCallForVoice(data.call);
-          announceUnitDispatched(call, data.units);
+          if (!isEdgeTTSEnabled()) {
+            announceUnitDispatched(call, data.units);
+          }
+        }
+
+        if (action === 'ai_analysis' && data.analysis?.safetyBriefing && data.analysis.confidence > 0.7) {
+          const severity = data.analysis.severityOverride || 'moderate';
+          announceWithSeverity(
+            `AI safety alert, call ${data.call_number}: ${data.analysis.safetyBriefing}`,
+            severity
+          );
+          onAlert?.({
+            id: nextAlertId(),
+            severity,
+            title: 'AI SAFETY ALERT',
+            message: data.analysis.safetyBriefing,
+            timestamp: Date.now(),
+          });
         }
       })
     );
@@ -108,7 +151,13 @@ export function useDispatchVoiceAlerts(): void {
     unsubs.push(
       subscribe('panic_alert', (msg) => {
         const data = (msg.data || msg.payload || msg) as any;
-        announcePanicAlert(data.user_name || data.userName || data.officerName);
+        const officerName = data.user_name || data.userName || data.officerName || 'Unknown officer';
+        if (isEdgeTTSEnabled()) {
+          announceWithSeverity(`Panic alert! ${officerName} has activated panic.`, 'major');
+        } else {
+          announcePanicAlert(officerName);
+        }
+        onAlert?.({ id: nextAlertId(), severity: 'major', title: 'PANIC', message: officerName, timestamp: Date.now() });
       })
     );
 
@@ -116,7 +165,13 @@ export function useDispatchVoiceAlerts(): void {
     unsubs.push(
       subscribe('bolo_alert', (msg) => {
         const data = (msg.data || msg.payload || msg) as any;
-        announceBolo(data.title || data.subject || 'Alert', data.priority);
+        const boloTitle = data.title || data.subject || 'Alert';
+        if (isEdgeTTSEnabled()) {
+          announceWithSeverity(`BOLO alert: ${boloTitle}`, 'moderate');
+        } else {
+          announceBolo(boloTitle, data.priority);
+        }
+        onAlert?.({ id: nextAlertId(), severity: 'moderate', title: 'BOLO', message: boloTitle, timestamp: Date.now() });
       })
     );
 
@@ -124,7 +179,13 @@ export function useDispatchVoiceAlerts(): void {
     unsubs.push(
       subscribe('call:warrant_alert', (msg) => {
         const data = (msg.data || msg.payload || msg) as any;
-        announceWarrantHit(data.subject_name || data.name || 'Unknown subject');
+        const subjectName = data.subject_name || data.name || 'Unknown subject';
+        if (isEdgeTTSEnabled()) {
+          announceWithSeverity(`Warrant hit on ${subjectName}`, 'moderate');
+        } else {
+          announceWarrantHit(subjectName);
+        }
+        onAlert?.({ id: nextAlertId(), severity: 'moderate', title: 'WARRANT HIT', message: subjectName, timestamp: Date.now() });
       })
     );
 
@@ -132,7 +193,14 @@ export function useDispatchVoiceAlerts(): void {
     unsubs.push(
       subscribe('backup_request', (msg) => {
         const data = (msg.data || msg.payload || msg) as any;
-        announceBackupRequest({ officer_name: data.call_sign || data.unit, location: data.location });
+        const unit = data.call_sign || data.unit || 'Unknown unit';
+        const loc = data.location || 'unknown location';
+        if (isEdgeTTSEnabled()) {
+          announceWithSeverity(`Backup requested by ${unit} at ${loc}`, 'moderate');
+        } else {
+          announceBackupRequest({ officer_name: unit, location: loc });
+        }
+        onAlert?.({ id: nextAlertId(), severity: 'moderate', title: 'BACKUP', message: `${unit} — ${loc}`, timestamp: Date.now() });
       })
     );
 
@@ -140,7 +208,14 @@ export function useDispatchVoiceAlerts(): void {
     unsubs.push(
       subscribe('pursuit_update', (msg) => {
         const data = (msg.data || msg.payload || msg) as any;
-        announcePursuit({ officer_name: data.call_sign || data.unit, direction: data.direction });
+        const unit = data.call_sign || data.unit || 'Unknown unit';
+        const direction = data.direction || '';
+        if (isEdgeTTSEnabled()) {
+          announceWithSeverity(`Pursuit update: ${unit}${direction ? ` heading ${direction}` : ''}`, 'major');
+        } else {
+          announcePursuit({ officer_name: unit, direction });
+        }
+        onAlert?.({ id: nextAlertId(), severity: 'major', title: 'PURSUIT', message: `${unit}${direction ? ` — ${direction}` : ''}`, timestamp: Date.now() });
       })
     );
 
@@ -148,12 +223,17 @@ export function useDispatchVoiceAlerts(): void {
     unsubs.push(
       subscribe('all_units', (msg) => {
         const data = (msg.data || msg.payload || msg) as any;
-        announceAllUnits(data.message || data.text || '');
+        const allUnitsMsg = data.message || data.text || '';
+        if (isEdgeTTSEnabled()) {
+          announceWithSeverity(`All units: ${allUnitsMsg}`, 'moderate');
+        } else {
+          announceAllUnits(allUnitsMsg);
+        }
       })
     );
 
     return () => {
       unsubs.forEach(fn => fn());
     };
-  }, [subscribe]);
+  }, [subscribe, onAlert]);
 }

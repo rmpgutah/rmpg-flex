@@ -250,15 +250,83 @@ export function resetVoiceState(): void {
   cachedVoice = null;
 }
 
+// ─── NATO Phonetic Alphabet ─────────────────────────────────
+
+const NATO_ALPHABET: Record<string, string> = {
+  A: 'Alpha', B: 'Bravo', C: 'Charlie', D: 'Delta', E: 'Echo',
+  F: 'Foxtrot', G: 'Golf', H: 'Hotel', I: 'India', J: 'Juliet',
+  K: 'Kilo', L: 'Lima', M: 'Mike', N: 'November', O: 'Oscar',
+  P: 'Papa', Q: 'Quebec', R: 'Romeo', S: 'Sierra', T: 'Tango',
+  U: 'Uniform', V: 'Victor', W: 'Whiskey', X: 'X-ray', Y: 'Yankee',
+  Z: 'Zulu',
+};
+
+/**
+ * Convert alphanumeric text to NATO phonetic alphabet.
+ * Letters become their NATO word; digits stay as-is.
+ * Example: "ABC1234" → "Alpha Bravo Charlie 1 2 3 4"
+ */
+export function toPhonetic(text: string): string {
+  return text.toUpperCase().split('').map(ch => {
+    if (NATO_ALPHABET[ch]) return NATO_ALPHABET[ch];
+    if (/\d/.test(ch)) return ch; // digits stay as-is
+    return '';
+  }).filter(Boolean).join(' ');
+}
+
+/**
+ * Format a license plate using NATO phonetic alphabet.
+ * Strips non-alphanumeric characters, then converts each character.
+ * Example: "ABC-1234" → "Alpha Bravo Charlie 1 2 3 4"
+ */
+function formatPlatePhonetic(plate: string): string {
+  return plate.replace(/[^A-Z0-9]/gi, '').split('').map(ch => {
+    const upper = ch.toUpperCase();
+    return NATO_ALPHABET[upper] || ch;
+  }).join(' ');
+}
+
 // ─── Natural Speech Helpers ─────────────────────────────────
+
+/** Pattern for license plates: 2-4 letters followed by 1-5 digits (with optional separator) */
+const PLATE_PATTERN = /\b([A-Z]{2,4})[- ]?(\d{1,5})\b/gi;
+
+/** Pattern for mixed alphanumeric plates like 7A1B2C3 */
+const MIXED_PLATE_PATTERN = /\b(\d[A-Z]\d[A-Z]\d[A-Z]\d)\b/gi;
+
+/** Pattern for 24-hour time: HH:MM */
+const TIME_24H_PATTERN = /\b([01]?\d|2[0-3]):([0-5]\d)\b/g;
 
 /**
  * Convert robotic ALL-CAPS dispatch text into natural spoken English.
  * TTS engines handle sentence-case text far better — proper intonation,
  * natural pacing, and no letter-by-letter spelling of acronyms.
  * Punctuation pauses (commas, periods) add breathing room.
+ *
+ * Also handles:
+ * - License plate conversion to NATO phonetic alphabet
+ * - 24-hour time to spoken form ("14:30" → "at fourteen thirty hours")
  */
 function naturalPhrase(text: string): string {
+  // Convert license plates to phonetic before checking the map
+  let processed = text.replace(PLATE_PATTERN, (_match, letters, digits) => {
+    return `plate ${formatPlatePhonetic(letters + digits)}`;
+  });
+  processed = processed.replace(MIXED_PLATE_PATTERN, (_match, plate) => {
+    return `plate ${formatPlatePhonetic(plate)}`;
+  });
+
+  // Convert 24-hour time to spoken form
+  processed = processed.replace(TIME_24H_PATTERN, (_match, hours, minutes) => {
+    const h = parseInt(hours, 10);
+    const m = parseInt(minutes, 10);
+    if (m === 0) return `at ${h} hundred hours`;
+    return `at ${h} ${m < 10 ? 'oh ' + m : m} hours`;
+  });
+
+  // If the processed text was transformed, return it (skip the static map)
+  if (processed !== text) return processed;
+
   // Map of dispatch shorthand → natural spoken form
   const NATURAL_MAP: Record<string, string> = {
     'ACTIVE WARRANTS': 'Active warrants on file.',

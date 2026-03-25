@@ -594,4 +594,130 @@ router.post('/:id/payments', (req: Request, res: Response) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// UPGRADE 9: Violation Code Lookup / Autocomplete
+// ════════════════════════════════════════════════════════════
+router.get('/statutes/lookup', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { q, offense_level } = req.query;
+    if (!q || (q as string).length < 2) { res.status(400).json({ error: 'Query too short', code: 'QUERY_TOO_SHORT' }); return; }
+    const searchTerm = `%${q}%`;
+    let whereExtra = '';
+    const params: any[] = [searchTerm, searchTerm, searchTerm];
+    if (offense_level) { whereExtra = ' AND s.offense_level = ?'; params.push(offense_level); }
+    try {
+      const statutes = db.prepare(`SELECT s.id, s.citation_code, s.title, s.offense_level, s.default_fine, s.description FROM statutes s WHERE (s.citation_code LIKE ? OR s.title LIKE ? OR s.description LIKE ?)${whereExtra} ORDER BY s.citation_code LIMIT 20`).all(...params);
+      res.json({ data: statutes });
+    } catch {
+      // statutes table may not exist — return empty
+      res.json({ data: [] });
+    }
+  } catch (error: any) { console.error('Statute lookup error:', error); res.status(500).json({ error: 'Failed to lookup statutes', code: 'STATUTE_LOOKUP_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 10: Fine Calculation Based on Violation Type
+// ════════════════════════════════════════════════════════════
+router.get('/calculate-fine', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { statute_id, offense_level, type } = req.query;
+    let baseFine = 0;
+    if (statute_id) {
+      try {
+        const statute = db.prepare('SELECT default_fine, offense_level FROM statutes WHERE id = ?').get(statute_id) as any;
+        if (statute?.default_fine) baseFine = statute.default_fine;
+      } catch { /* statutes table may not exist */ }
+    }
+    if (!baseFine) {
+      // Default fine schedule by offense level
+      const fineSchedule: Record<string, number> = { felony: 1000, misdemeanor_a: 500, misdemeanor_b: 350, misdemeanor_c: 250, misdemeanor: 350, infraction: 150, violation: 100 };
+      baseFine = fineSchedule[offense_level as string] || 100;
+    }
+    // Type multipliers
+    const typeMultipliers: Record<string, number> = { traffic: 1.0, criminal: 1.5, parking: 0.5, warning: 0 };
+    const multiplier = typeMultipliers[type as string] || 1.0;
+    const calculatedFine = Math.round(baseFine * multiplier * 100) / 100;
+    res.json({ data: { base_fine: baseFine, multiplier, calculated_fine: calculatedFine, type: type || 'traffic' } });
+  } catch (error: any) { console.error('Calculate fine error:', error); res.status(500).json({ error: 'Failed to calculate fine', code: 'CALCULATE_FINE_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 11: Payment Tracking Summary
+// ════════════════════════════════════════════════════════════
+router.get('/payment-summary', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { date_from, date_to } = req.query;
+    let dateFilter = '';
+    const params: any[] = [];
+    if (date_from) { dateFilter += ' AND cp.payment_date >= ?'; params.push(date_from); }
+    if (date_to) { dateFilter += ' AND cp.payment_date <= ?'; params.push(date_to); }
+    const totalPayments = db.prepare(`SELECT COUNT(*) as count, COALESCE(SUM(amount), 0) as total FROM citation_payments cp WHERE 1=1${dateFilter}`).get(...params) as any;
+    const byMethod = db.prepare(`SELECT payment_method, COUNT(*) as count, COALESCE(SUM(amount), 0) as total FROM citation_payments cp WHERE 1=1${dateFilter} GROUP BY payment_method`).all(...params) as any[];
+    const outstandingRow = db.prepare(`SELECT COUNT(*) as count, COALESCE(SUM(fine_amount), 0) as total FROM citations WHERE status IN ('issued', 'contested', 'payment_plan') AND fine_amount > 0`).get() as any;
+    const collectedRow = db.prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM citation_payments`).get() as any;
+    res.json({ data: { payment_count: totalPayments.count, payment_total: totalPayments.total, by_method: byMethod, outstanding_citations: outstandingRow.count, outstanding_amount: outstandingRow.total, total_collected: collectedRow.total, collection_rate: outstandingRow.total > 0 ? Math.round((collectedRow.total / (outstandingRow.total + collectedRow.total)) * 100) : 0 } });
+  } catch (error: any) { console.error('Payment summary error:', error); res.status(500).json({ error: 'Failed to get payment summary', code: 'PAYMENT_SUMMARY_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 12: Citations by Officer Stats
+// ════════════════════════════════════════════════════════════
+router.get('/stats/by-officer', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { date_from, date_to } = req.query;
+    let dateFilter = '';
+    const params: any[] = [];
+    if (date_from) { dateFilter += ' AND c.violation_date >= ?'; params.push(date_from); }
+    if (date_to) { dateFilter += ' AND c.violation_date <= ?'; params.push(date_to); }
+    const byOfficer = db.prepare(`SELECT c.issuing_officer_id, c.issuing_officer_name, COUNT(*) as citation_count, COALESCE(SUM(c.fine_amount), 0) as total_fines, SUM(CASE WHEN c.status = 'paid' THEN 1 ELSE 0 END) as paid_count, SUM(CASE WHEN c.status = 'contested' THEN 1 ELSE 0 END) as contested_count, SUM(CASE WHEN c.type = 'traffic' THEN 1 ELSE 0 END) as traffic_count, SUM(CASE WHEN c.type = 'criminal' THEN 1 ELSE 0 END) as criminal_count FROM citations c WHERE c.status != 'voided' AND c.issuing_officer_id IS NOT NULL${dateFilter} GROUP BY c.issuing_officer_id, c.issuing_officer_name ORDER BY citation_count DESC`).all(...params);
+    res.json({ data: byOfficer });
+  } catch (error: any) { console.error('Citations by officer error:', error); res.status(500).json({ error: 'Failed to get officer stats', code: 'OFFICER_STATS_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 13: Citations CSV Export with Date Range
+// ════════════════════════════════════════════════════════════
+router.get('/export', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { date_from, date_to, status, type } = req.query;
+    let where = "WHERE c.status != 'voided'";
+    const params: any[] = [];
+    if (date_from) { where += ' AND c.violation_date >= ?'; params.push(date_from); }
+    if (date_to) { where += ' AND c.violation_date <= ?'; params.push(date_to); }
+    if (status) { where += ' AND c.status = ?'; params.push(status); }
+    if (type) { where += ' AND c.type = ?'; params.push(type); }
+    const rows = db.prepare(`SELECT c.citation_number, c.type, c.status, c.person_name, c.person_dob, c.violation_description, c.statute_citation, c.offense_level, c.fine_amount, c.violation_date, c.violation_time, c.location, c.issuing_officer_name, c.court_date, c.court_name, c.created_at FROM citations c ${where} ORDER BY c.violation_date DESC LIMIT 10000`).all(...params) as any[];
+    const headers = ['Citation #', 'Type', 'Status', 'Person', 'DOB', 'Violation', 'Statute', 'Offense Level', 'Fine', 'Date', 'Time', 'Location', 'Officer', 'Court Date', 'Court', 'Created'];
+    const csvRows = rows.map((r: any) => [r.citation_number, r.type, r.status, r.person_name, r.person_dob, (r.violation_description || '').replace(/"/g, '""'), r.statute_citation, r.offense_level, r.fine_amount, r.violation_date, r.violation_time, (r.location || '').replace(/"/g, '""'), r.issuing_officer_name, r.court_date, r.court_name, r.created_at]);
+    const csv = [headers.join(','), ...csvRows.map((r: any[]) => r.map(v => `"${v || ''}"`).join(','))].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="citations_export_${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(csv);
+  } catch (error: any) { console.error('Export citations error:', error); res.status(500).json({ error: 'Failed to export citations', code: 'EXPORT_CITATIONS_ERROR' }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 14: Citation Data Completeness
+// ════════════════════════════════════════════════════════════
+router.get('/:id/completeness', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const citation = db.prepare('SELECT * FROM citations WHERE id = ?').get(req.params.id) as any;
+    if (!citation) { res.status(404).json({ error: 'Citation not found', code: 'CITATION_NOT_FOUND' }); return; }
+    const requiredFields = ['person_name', 'violation_description', 'violation_date', 'location', 'issuing_officer_name'];
+    const recommendedFields = ['person_dob', 'person_dl', 'person_address', 'statute_citation', 'offense_level', 'fine_amount', 'violation_time', 'court_date', 'court_name', 'vehicle_plate'];
+    const filledRequired = requiredFields.filter(f => citation[f] != null && String(citation[f]).trim() !== '').length;
+    const filledRecommended = recommendedFields.filter(f => citation[f] != null && String(citation[f]).trim() !== '').length;
+    const score = Math.round(((filledRequired / requiredFields.length) * 60 + (filledRecommended / recommendedFields.length) * 40));
+    const missingRequired = requiredFields.filter(f => !citation[f] || String(citation[f]).trim() === '');
+    const missingRecommended = recommendedFields.filter(f => !citation[f] || String(citation[f]).trim() === '');
+    res.json({ data: { citation_id: citation.id, score, grade: score >= 80 ? 'A' : score >= 60 ? 'B' : score >= 40 ? 'C' : 'D', missing_required: missingRequired, missing_recommended: missingRecommended, filled_required: filledRequired, total_required: requiredFields.length, filled_recommended: filledRecommended, total_recommended: recommendedFields.length } });
+  } catch (error: any) { console.error('Citation completeness error:', error); res.status(500).json({ error: 'Failed to get completeness', code: 'CITATION_COMPLETENESS_ERROR' }); }
+});
+
 export default router;

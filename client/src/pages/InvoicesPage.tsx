@@ -1004,6 +1004,9 @@ export default function InvoicesPage() {
 
   // ── Main render ──────────────────────────────────────────
 
+  // Set document title
+  useEffect(() => { document.title = 'Invoices \u2014 RMPG Flex'; }, []);
+
   // Mobile: show either list or detail
   if (isMobile) {
     return (
@@ -1084,9 +1087,6 @@ export default function InvoicesPage() {
   }
 
   // Desktop: split panel
-  // Set document title
-  useEffect(() => { document.title = 'Invoices \u2014 RMPG Flex'; }, []);
-
   return (
     <div className="app-grid-bg h-full flex flex-col">
       {/* Toolbar */}

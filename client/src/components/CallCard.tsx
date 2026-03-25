@@ -18,7 +18,21 @@ const SOURCE_ICONS: Record<string, React.ElementType> = {
 };
 
 // Feature 3: Elapsed time formatter
-function formatCallDuration(createdAt: string): string {
+function formatCallDuration(createdAt: string, status?: string, archivedAt?: string): string {
+  // For archived/closed/cancelled calls, show the final duration (not a running timer)
+  if (status && ['archived', 'closed', 'cancelled'].includes(status)) {
+    const endTime = archivedAt || createdAt;
+    const start = new Date(createdAt).getTime();
+    const end = new Date(endTime).getTime();
+    const elapsed = end - start;
+    if (elapsed <= 0 || !isFinite(elapsed)) return '0:00';
+    const totalSec = Math.floor(elapsed / 1000);
+    const hrs = Math.floor(totalSec / 3600);
+    const mins = Math.floor((totalSec % 3600) / 60);
+    const secs = totalSec % 60;
+    if (hrs > 0) return `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    return `${mins}:${String(secs).padStart(2, '0')}`;
+  }
   const elapsed = Date.now() - new Date(createdAt).getTime();
   if (elapsed < 0 || !isFinite(elapsed)) return '0:00';
   const totalSec = Math.floor(elapsed / 1000);
@@ -103,7 +117,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
 
       // Feature 3: Update call duration display
       if (durationRef.current && call.created_at) {
-        durationRef.current.textContent = formatCallDuration(call.created_at);
+        durationRef.current.textContent = formatCallDuration(call.created_at, call.status, (call as any).archived_at || call.cleared_at || call.closed_at);
       }
 
       // Feature 12: Update hold timer
@@ -192,6 +206,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         ${isOverdue ? 'timer-overdue' : ''}
         ${call.status === 'on_hold' ? 'call-on-hold' : ''}
         ${call.priority === 'P1' ? 'p1-pulse-border' : ''}
+        ${call.status === 'archived' ? 'opacity-60' : ''}
       `}
       style={{
         background: call.status === 'on_hold'
@@ -221,7 +236,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
       )}
 
       {/* Header Row */}
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-2">
           {isEmergency && (
             <AlertTriangle className="w-4 h-4 text-red-500 animate-emergency-blink" />
@@ -320,7 +335,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           return <SourceIcon className="w-3 h-3 flex-shrink-0" title={call.source?.replace('_', ' ')} />;
         })()}
         {/* Feature 3: Call duration */}
-        <span ref={durationRef} className="font-mono">{call.created_at ? formatCallDuration(call.created_at) : ''}</span>
+        <span ref={durationRef} className="font-mono tabular-nums">{call.created_at ? formatCallDuration(call.created_at, call.status, (call as any).archived_at || call.cleared_at || call.closed_at) : ''}</span>
         {/* Feature 5: Stacked calls badge */}
         {stackCount != null && stackCount > 1 && (
           <span className="flex items-center gap-0.5 px-1 py-0 bg-purple-900/40 text-purple-300 border border-purple-700/40 font-bold text-[8px]">
@@ -334,16 +349,11 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         })()}
       </div>
 
-      {/* 40: Location with improved pin icon color and coords as tabular-nums */}
+      {/* 40: Location with improved pin icon color — coords hidden (redundant with address) */}
       <div className="flex items-center gap-1.5 text-xs text-rmpg-300 mb-1">
         <MapPin className="w-3 h-3 flex-shrink-0 text-rmpg-500" aria-hidden="true" />
         <span className="truncate">{call.location}</span>
       </div>
-      {call.latitude != null && call.longitude != null && (
-        <div className="text-[9px] font-mono text-rmpg-400 ml-[18px] mb-2 tabular-nums">
-          {Number(call.latitude).toFixed(5)}, {Number(call.longitude).toFixed(5)}
-        </div>
-      )}
 
       {/* 20: Footer row with top border separator for visual grouping */}
       <div className="flex items-center justify-between text-xs text-rmpg-400 pt-1 border-t border-rmpg-700/20 mt-1">

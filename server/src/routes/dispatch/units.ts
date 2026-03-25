@@ -304,4 +304,242 @@ router.put('/units/:id/mileage', requireRole('admin', 'manager', 'supervisor', '
   }
 });
 
+// ═══════════════════════════════════════════════════════════
+// Upgrade 68: GET /api/dispatch/units/available — List only available units
+// ═══════════════════════════════════════════════════════════
+router.get('/units/available', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const units = db.prepare(`
+      SELECT u.*, usr.full_name as officer_name, usr.badge_number, usr.phone as officer_phone
+      FROM units u
+      LEFT JOIN users usr ON u.officer_id = usr.id
+      WHERE u.status = 'available'
+      ORDER BY u.call_sign
+      LIMIT 500
+    `).all();
+    res.json(units);
+  } catch (error: any) {
+    console.error('[Units] get available units error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to get available units', code: 'GET_AVAILABLE_UNITS_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Upgrade 69: GET /api/dispatch/units/workload — Unit workload stats
+// ═══════════════════════════════════════════════════════════
+router.get('/units/workload', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(90, parseInt(req.query.days as string, 10) || 7));
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+    // Upgrade 70: Count calls handled per unit in the time period
+    const units = db.prepare(`
+      SELECT u.id, u.call_sign, u.status, u.officer_id, usr.full_name as officer_name
+      FROM units u
+      LEFT JOIN users usr ON u.officer_id = usr.id
+      ORDER BY u.call_sign
+      LIMIT 500
+    `).all() as any[];
+
+    const workload = units.map((unit: any) => {
+      // Count how many calls this unit was assigned to
+      const callCount = db.prepare(`
+        SELECT COUNT(*) as count
+        FROM calls_for_service
+        WHERE assigned_unit_ids LIKE ? AND created_at >= ?
+      `).get(`%${unit.id}%`, cutoff) as any;
+
+      // Upgrade 71: Average time on scene per call
+      const avgOnScene = db.prepare(`
+        SELECT ROUND(AVG(onscene_duration_seconds), 0) as avg_seconds
+        FROM calls_for_service
+        WHERE assigned_unit_ids LIKE ? AND onscene_duration_seconds IS NOT NULL AND created_at >= ?
+      `).get(`%${unit.id}%`, cutoff) as any;
+
+      // Upgrade 72: Count of status changes (activity level)
+      const statusChanges = db.prepare(`
+        SELECT COUNT(*) as count
+        FROM activity_log
+        WHERE entity_type = 'unit' AND entity_id = ? AND action = 'status_change' AND created_at >= ?
+      `).get(unit.id, cutoff) as any;
+
+      return {
+        unit_id: unit.id,
+        call_sign: unit.call_sign,
+        officer_name: unit.officer_name,
+        current_status: unit.status,
+        calls_handled: callCount?.count || 0,
+        avg_onscene_seconds: avgOnScene?.avg_seconds || null,
+        status_changes: statusChanges?.count || 0,
+      };
+    });
+
+    // Upgrade 73: Sort by calls handled descending
+    workload.sort((a: any, b: any) => b.calls_handled - a.calls_handled);
+
+    res.json({ period_days: days, units: workload });
+  } catch (error: any) {
+    console.error('[Units] workload stats error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to get workload stats', code: 'WORKLOAD_STATS_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Upgrade 74: POST /api/dispatch/units/bulk-status — Bulk unit status update
+// ═══════════════════════════════════════════════════════════
+router.post('/units/bulk-status', requireRole('admin', 'manager', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { unit_ids, status } = req.body;
+
+    if (!unit_ids || !Array.isArray(unit_ids) || unit_ids.length === 0) {
+      res.status(400).json({ error: 'unit_ids array is required', code: 'UNITIDS_REQUIRED' });
+      return;
+    }
+    if (unit_ids.length > 50) {
+      res.status(400).json({ error: 'Cannot update more than 50 units at once', code: 'TOO_MANY_UNITS' });
+      return;
+    }
+
+    const VALID_UNIT_STATUSES = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service'];
+    if (!status || !VALID_UNIT_STATUSES.includes(status)) {
+      res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_UNIT_STATUSES.join(', ')}`, code: 'INVALID_STATUS' });
+      return;
+    }
+
+    const now = localNow();
+    let updatedCount = 0;
+
+    const bulkTx = db.transaction(() => {
+      for (const unitId of unit_ids) {
+        const id = parseInt(String(unitId), 10);
+        if (isNaN(id) || id < 1) continue;
+
+        const unit = db.prepare('SELECT id, call_sign FROM units WHERE id = ?').get(id) as any;
+        if (!unit) continue;
+
+        // Upgrade 75: Clear current_call_id when going available or off_duty
+        if (status === 'available' || status === 'off_duty') {
+          db.prepare(`UPDATE units SET status = ?, current_call_id = NULL, last_status_change = ?, updated_at = ? WHERE id = ?`)
+            .run(status, now, now, id);
+        } else {
+          db.prepare(`UPDATE units SET status = ?, last_status_change = ?, updated_at = ? WHERE id = ?`)
+            .run(status, now, now, id);
+        }
+        updatedCount++;
+      }
+
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'bulk_unit_status', 'unit', 0, ?, ?)`).run(
+        req.user!.userId, `Bulk unit status update: ${updatedCount} unit(s) set to ${status}`, req.ip || 'unknown');
+    });
+    bulkTx();
+
+    // Broadcast unit updates
+    for (const unitId of unit_ids) {
+      const unitData = db.prepare(`
+        SELECT u.*, usr.full_name as officer_name, usr.badge_number
+        FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.id = ?
+      `).get(unitId);
+      if (unitData) broadcastUnitUpdate({ action: 'unit_status_changed', unit: unitData });
+    }
+
+    res.json({ updated_count: updatedCount, status });
+  } catch (error: any) {
+    console.error('[Units] bulk status error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to bulk update units', code: 'BULK_UNIT_STATUS_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Upgrade 76: GET /api/dispatch/units/stats — Unit status distribution stats
+// ═══════════════════════════════════════════════════════════
+router.get('/units/stats', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    const byStatus = db.prepare(`
+      SELECT status, COUNT(*) as count
+      FROM units
+      GROUP BY status
+      ORDER BY count DESC
+    `).all();
+
+    const total = db.prepare('SELECT COUNT(*) as count FROM units').get() as any;
+    const withOfficer = db.prepare('SELECT COUNT(*) as count FROM units WHERE officer_id IS NOT NULL').get() as any;
+    const withGps = db.prepare('SELECT COUNT(*) as count FROM units WHERE latitude IS NOT NULL AND longitude IS NOT NULL').get() as any;
+    const onCall = db.prepare('SELECT COUNT(*) as count FROM units WHERE current_call_id IS NOT NULL').get() as any;
+
+    // Upgrade 77: Average time since last status change
+    const avgIdleMinutes = db.prepare(`
+      SELECT ROUND(AVG((julianday('now', 'localtime') - julianday(last_status_change)) * 24 * 60), 1) as avg_min
+      FROM units
+      WHERE status = 'available' AND last_status_change IS NOT NULL
+    `).get() as any;
+
+    res.json({
+      total: total?.count || 0,
+      by_status: byStatus,
+      with_officer: withOfficer?.count || 0,
+      with_gps: withGps?.count || 0,
+      on_call: onCall?.count || 0,
+      avg_available_idle_minutes: avgIdleMinutes?.avg_min || null,
+    });
+  } catch (error: any) {
+    console.error('[Units] stats error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to get unit stats', code: 'UNIT_STATS_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Upgrade 78: GET /api/dispatch/units/:id/history — Unit activity history
+// ═══════════════════════════════════════════════════════════
+router.get('/units/:id/history', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const unitId = parseInt(req.params.id, 10);
+
+    const unit = db.prepare('SELECT id, call_sign FROM units WHERE id = ?').get(unitId) as any;
+    if (!unit) {
+      res.status(404).json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' });
+      return;
+    }
+
+    const days = Math.max(1, Math.min(90, parseInt(req.query.days as string, 10) || 7));
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+    // Upgrade 79: Activity log entries for this unit
+    const activities = db.prepare(`
+      SELECT al.*, u.full_name as user_name
+      FROM activity_log al
+      LEFT JOIN users u ON al.user_id = u.id
+      WHERE al.entity_type = 'unit' AND al.entity_id = ? AND al.created_at >= ?
+      ORDER BY al.created_at DESC
+      LIMIT 200
+    `).all(unitId, cutoff);
+
+    // Upgrade 80: Calls this unit was assigned to
+    const calls = db.prepare(`
+      SELECT id, call_number, incident_type, priority, status, location_address,
+        created_at, cleared_at, response_time_seconds
+      FROM calls_for_service
+      WHERE assigned_unit_ids LIKE ? AND created_at >= ?
+      ORDER BY created_at DESC
+      LIMIT 50
+    `).all(`%${unitId}%`, cutoff);
+
+    res.json({
+      unit: { id: unit.id, call_sign: unit.call_sign },
+      period_days: days,
+      activities,
+      calls_assigned: calls,
+    });
+  } catch (error: any) {
+    console.error('[Units] history error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to get unit history', code: 'UNIT_HISTORY_ERROR' });
+  }
+});
+
 export default router;

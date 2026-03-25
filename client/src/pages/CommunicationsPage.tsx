@@ -310,6 +310,21 @@ export default function CommunicationsPage() {
   const [activitiesTotal, setActivitiesTotal] = useState(0);
   const [activitiesLoadingMore, setActivitiesLoadingMore] = useState(false);
 
+  // --- Upgrade: BOLO Stats state ---
+  const [boloStats, setBoloStats] = useState<{
+    byCategory: { category: string; count: number; active_count: number }[];
+    byPriority: { priority: string; count: number }[];
+    totalActive: number;
+    expiringSoon: number;
+    avgLifespanHours: number | null;
+  } | null>(null);
+
+  // --- Upgrade: Message priority stats ---
+  const [msgPriorityStats, setMsgPriorityStats] = useState<{
+    byPriority: { priority: string; total: number; read_count: number; avg_read_time_minutes: number | null }[];
+    byChannel: { channel: string; count: number }[];
+  } | null>(null);
+
   // ============================================================
   // Threading
   // ============================================================
@@ -388,12 +403,20 @@ export default function CommunicationsPage() {
     else if (activePanel === 'activity') fetchActivity();
   }, [activePanel, fetchMessages, fetchBolos, fetchActivity]);
 
-  // Initial load for messages (default panel) + officers list
+  // Initial load for messages (default panel) + officers list + stats
   useEffect(() => {
     fetchMessages();
     apiFetch<any[]>('/personnel')
       .then((data) => setOfficers((Array.isArray(data) ? data : []).map((u: any) => ({ id: u.id, full_name: u.full_name }))))
       .catch((err) => { console.warn('[CommunicationsPage] fetch personnel failed:', err); });
+    // Fetch BOLO stats
+    apiFetch<any>('/comms/bolos/stats')
+      .then((data) => { if (data) setBoloStats(data); })
+      .catch(() => { /* stats optional */ });
+    // Fetch message priority stats
+    apiFetch<any>('/comms/messages/priority-stats')
+      .then((data) => { if (data) setMsgPriorityStats(data); })
+      .catch(() => { /* stats optional */ });
   }, [fetchMessages]);
 
   // Scroll to bottom of thread when selected or new messages arrive
@@ -645,9 +668,9 @@ export default function CommunicationsPage() {
   // ============================================================
 
   const Spinner = ({ label }: { label?: string }) => (
-    <div className="flex-1 flex flex-col items-center justify-center text-rmpg-400 py-20">
-      <Loader2 className="w-6 h-6 animate-spin mb-2" role="status" aria-label="Loading" />
-      {label && <p className="text-xs">{label}</p>}
+    <div className="flex-1 flex flex-col items-center justify-center py-20 gap-2">
+      <Loader2 className="w-6 h-6 animate-spin text-brand-400" role="status" aria-label="Loading" />
+      {label && <p className="text-[10px] text-rmpg-500">{label}</p>}
     </div>
   );
 
@@ -692,7 +715,8 @@ export default function CommunicationsPage() {
               <Search className="w-3 h-3 text-rmpg-500" />
               <input
                 type="text"
-                placeholder="Search conversations..." aria-label="Search conversations..."
+                placeholder="Search conversations..." aria-label="Search conversations"
+                autoComplete="off"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="bg-transparent border-none outline-none text-xs text-white placeholder-rmpg-500"
@@ -773,6 +797,16 @@ export default function CommunicationsPage() {
               {unreadCount > 0 && (
                 <span className="flex items-center gap-1 text-red-400 font-bold">
                   <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" /> {unreadCount} unread
+                </span>
+              )}
+              {/* Upgrade: Message priority breakdown */}
+              {msgPriorityStats && msgPriorityStats.byPriority.length > 0 && (
+                <span className="text-rmpg-500 text-[9px]">
+                  {msgPriorityStats.byPriority.map(p => (
+                    <span key={p.priority} className={`mr-2 ${p.priority === 'emergency' ? 'text-red-400' : p.priority === 'urgent' ? 'text-amber-400' : 'text-rmpg-400'}`}>
+                      {p.priority}: {p.total}
+                    </span>
+                  ))}
                 </span>
               )}
             </>
@@ -1119,6 +1153,64 @@ export default function CommunicationsPage() {
                   </button>
                 </div>
               </form>
+            )}
+
+            {/* Upgrade: BOLO Statistics Panel */}
+            {boloStats && !showNewBOLO && (
+              <div className="panel-beveled p-3 bg-surface-raised mb-2">
+                <div className="flex items-center gap-2 mb-2">
+                  <Activity className="w-3.5 h-3.5 text-brand-blue" />
+                  <span className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">BOLO Dashboard</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="bg-surface-sunken p-2 text-center">
+                    <div className="text-lg font-bold text-red-400">{boloStats.totalActive}</div>
+                    <div className="text-[9px] text-rmpg-400 uppercase">Active</div>
+                  </div>
+                  <div className="bg-surface-sunken p-2 text-center">
+                    <div className="text-lg font-bold text-amber-400">{boloStats.expiringSoon}</div>
+                    <div className="text-[9px] text-rmpg-400 uppercase">Expiring 24h</div>
+                  </div>
+                  {boloStats.byCategory.slice(0, 2).map((cat) => (
+                    <div key={cat.category} className="bg-surface-sunken p-2 text-center">
+                      <div className="text-lg font-bold text-rmpg-200">{cat.active_count}</div>
+                      <div className="text-[9px] text-rmpg-400 uppercase">{cat.category}</div>
+                    </div>
+                  ))}
+                </div>
+                {boloStats.avgLifespanHours != null && (
+                  <div className="text-[9px] text-rmpg-500 mt-1">Avg lifespan: {boloStats.avgLifespanHours}h</div>
+                )}
+                <div className="flex gap-1 mt-2">
+                  <button
+                    type="button"
+                    className="toolbar-btn text-[10px]"
+                    onClick={async () => {
+                      try {
+                        const r = await apiFetch<any>('/comms/bolos/expire-check', { method: 'POST' });
+                        addToast(`Expired ${r?.expired || 0} BOLOs`, 'success');
+                        fetchBolos();
+                        apiFetch<any>('/comms/bolos/stats').then(d => d && setBoloStats(d)).catch(() => {});
+                      } catch { addToast('Expire check failed', 'error'); }
+                    }}
+                  >
+                    <Clock className="w-3 h-3" /> Check Expirations
+                  </button>
+                  <button
+                    type="button"
+                    className="toolbar-btn text-[10px]"
+                    onClick={async () => {
+                      try {
+                        const r = await apiFetch<any>('/comms/bolos/auto-archive', { method: 'POST', body: JSON.stringify({ days_expired: 7 }) });
+                        addToast(`Archived ${r?.archived || 0} expired BOLOs`, 'success');
+                        fetchBolos();
+                      } catch { addToast('Auto-archive failed', 'error'); }
+                    }}
+                  >
+                    <Archive className="w-3 h-3" /> Auto-Archive Expired
+                  </button>
+                </div>
+              </div>
             )}
 
             {bolosLoading ? (

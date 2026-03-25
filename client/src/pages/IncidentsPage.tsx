@@ -23,6 +23,7 @@ import {
   Archive,
   ChevronRight,
   Building2,
+  AlertTriangle,
 } from 'lucide-react';
 import type { Incident, IncidentType, CallPriority, IncidentStatus, IncidentPerson, IncidentVehicle } from '../types';
 import StatusBadge from '../components/StatusBadge';

@@ -150,7 +150,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
               <div
                 key={msg.id}
                 onClick={() => !msg.read_at && msg.to_user_id && handleMarkRead(msg.id)}
-                className="px-3 py-2 border-b border-rmpg-800/50 cursor-pointer transition-colors hover:bg-surface-raised/30"
+                className="px-3 py-2 border-b border-rmpg-700/50 cursor-pointer transition-colors hover:bg-surface-raised/30"
                 style={{
                   background: ps.bg,
                   borderLeft: msg.read_at ? '3px solid transparent' : `3px solid ${ps.color}`,
@@ -187,7 +187,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
       </div>
 
       {/* Compose bar */}
-      <div className="flex-shrink-0 p-2 border-t border-rmpg-700/50" style={{ background: '#0d1520' }}>
+      <div className="flex-shrink-0 p-2 border-t border-rmpg-700/50 bg-surface-sunken">
         <div className="flex items-center gap-1 mb-1">
           {(['dispatch', 'broadcast'] as const).map(ch => (
             <button type="button"
@@ -509,6 +509,10 @@ export default function MdtPage() {
     }
   };
 
+  // Set document title
+  useEffect(() => { document.title = 'Mobile Data Terminal \u2014 RMPG Flex'; }, []);
+
+
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center bg-surface-base">
@@ -519,9 +523,6 @@ export default function MdtPage() {
       </div>
     );
   }
-
-  // Set document title
-  useEffect(() => { document.title = 'Mobile Data Terminal \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden animate-fade-in">
@@ -540,8 +541,7 @@ export default function MdtPage() {
 
       {/* ── TOP BAR: Unit Identity & Status ─────────────── */}
       <div
-        className={`${isMobile ? 'flex flex-col gap-1.5 px-3 py-2' : 'flex items-center justify-between px-4 py-2'} flex-shrink-0`}
-        style={{ background: '#0d1520', borderBottom: '1px solid #1e3048' }}
+        className={`${isMobile ? 'flex flex-col gap-1.5 px-3 py-2' : 'flex items-center justify-between px-4 py-2'} flex-shrink-0 bg-surface-sunken border-b border-rmpg-700`}
       >
         <div className="flex items-center gap-3">
           <div className="flex items-center justify-center w-6 h-6" style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)' }}>
@@ -570,7 +570,7 @@ export default function MdtPage() {
           <button type="button"
             onClick={() => setShowFiForm(!showFiForm)}
             className={`px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors border mr-0.5 ${
-              showFiForm ? 'border-purple-500 text-purple-400 bg-purple-900/20' : 'border-rmpg-600 text-rmpg-400 hover:text-white hover:border-purple-500'
+              showFiForm ? 'border-purple-500 text-purple-400 bg-purple-900/20' : 'border-rmpg-700 text-rmpg-400 hover:text-white hover:border-purple-500'
             }`}
             title="Quick Field Interview"
           >
@@ -579,7 +579,7 @@ export default function MdtPage() {
           <button type="button"
             onClick={handleGenerateShiftReport}
             disabled={generatingReport}
-            className="px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors border border-rmpg-600 text-rmpg-400 hover:text-white hover:border-brand-500 mr-1"
+            className="px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors border border-rmpg-700 text-rmpg-400 hover:text-white hover:border-brand-500 mr-1"
             title="Generate End-of-Shift Report"
           >
             {generatingReport ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" /> : <FileText style={{ width: 10, height: 10 }} />}
@@ -689,7 +689,7 @@ export default function MdtPage() {
         {/* ── LEFT: Call List ── */}
         <div className={`${isMobile ? (selectedCall ? 'hidden' : 'w-full') : 'w-2/5'} flex flex-col border-r border-rmpg-700/50 overflow-hidden`}>
           {/* Tabs */}
-          <div className="flex border-b border-rmpg-700/50 flex-shrink-0 overflow-x-auto" style={{ background: '#0d1520' }}>
+          <div className="flex border-b border-rmpg-700/50 flex-shrink-0 overflow-x-auto bg-surface-sunken">
             {(['my-calls', 'pending', 'messages', 'ncic'] as const).map(tab => (
               <button type="button"
                 key={tab}
@@ -724,7 +724,7 @@ export default function MdtPage() {
                   <div
                     key={call.id}
                     onClick={() => setSelectedCall(call)}
-                    className="px-3 py-2 cursor-pointer transition-colors border-b border-rmpg-800/50"
+                    className="px-3 py-2 cursor-pointer transition-colors border-b border-rmpg-700/50 hover:bg-white/5"
                     style={{
                       background: selectedCall?.id === call.id ? 'rgba(34,197,94,0.08)' : 'transparent',
                       borderLeft: `3px solid ${prioColor(call.priority)}`,
@@ -761,7 +761,7 @@ export default function MdtPage() {
                   <div
                     key={call.id}
                     onClick={() => setSelectedCall(call)}
-                    className="px-3 py-2 cursor-pointer transition-colors border-b border-rmpg-800/50"
+                    className="px-3 py-2 cursor-pointer transition-colors border-b border-rmpg-700/50 hover:bg-white/5"
                     style={{
                       background: selectedCall?.id === call.id ? 'rgba(34,197,94,0.08)' : 'transparent',
                       borderLeft: `3px solid ${prioColor(call.priority)}`,
@@ -826,8 +826,7 @@ export default function MdtPage() {
             <>
               {/* Call header */}
               <div
-                className="px-4 py-2 flex items-center justify-between flex-shrink-0"
-                style={{ borderBottom: '1px solid #1e3048', background: '#0d1520' }}
+                className="px-4 py-2 flex items-center justify-between flex-shrink-0 border-b border-rmpg-700 bg-surface-sunken"
               >
                 <div>
                   {isMobile && (
@@ -914,7 +913,7 @@ export default function MdtPage() {
                 {selectedCall.description && (
                   <div>
                     <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">Description</div>
-                    <div className="text-[10px] text-rmpg-200 p-2" style={{ background: '#0d1520', border: '1px solid #1e3048' }}>
+                    <div className="text-[10px] text-rmpg-200 p-2 bg-surface-sunken border border-rmpg-700">
                       {selectedCall.description}
                     </div>
                   </div>
@@ -1012,7 +1011,7 @@ export default function MdtPage() {
                     <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">Notes</div>
                     <div className="space-y-1">
                       {selectedCall.notes.slice(-5).map((note, i) => (
-                        <div key={i} className="text-[9px] text-rmpg-300 px-2 py-1" style={{ background: '#0d1520', borderLeft: '2px solid #1e3048' }}>
+                        <div key={i} className="text-[9px] text-rmpg-300 px-2 py-1 bg-surface-sunken border-l-2 border-l-rmpg-700">
                           <span className="text-rmpg-500">{new Date(note.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                           {' — '}
                           {note.text}

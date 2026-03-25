@@ -22,6 +22,10 @@ import {
   Shield,
   BarChart3,
   Save,
+  AlertTriangle,
+  ArrowRightLeft,
+  Bell,
+  TrendingUp,
 } from 'lucide-react';
 import { useShiftPlanning, SHIFT_TYPES } from '../hooks/useShiftPlanning';
 import type { ShiftPlan, ShiftType, AreaAssignment } from '../hooks/useShiftPlanning';
@@ -29,6 +33,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import StatusBadge from '../components/StatusBadge';
 import { useToast } from '../components/ToastProvider';
 import ExportButton from '../components/ExportButton';
+import { apiFetch } from '../hooks/useApi';
 import { localToday, dateToLocalYMD } from '../utils/dateUtils';
 
 // ── Date helpers ───────────────────────────────────────────
@@ -92,6 +97,24 @@ export default function ShiftPlansPage() {
   const [assignOfficerIds, setAssignOfficerIds] = useState<string[]>([]);
   const [assignUnitIds, setAssignUnitIds] = useState<string[]>([]);
   const [assignNotes, setAssignNotes] = useState('');
+
+  // ── Enhanced: Swap requests, overtime, staffing, conflicts, notifications ──
+  const [swapRequests, setSwapRequests] = useState<any[]>([]);
+  const [overtimeData, setOvertimeData] = useState<any>(null);
+  const [staffingLevels, setStaffingLevels] = useState<any>(null);
+  const [conflicts, setConflicts] = useState<any[]>([]);
+  const [shiftNotifs, setShiftNotifs] = useState<any[]>([]);
+
+  useEffect(() => {
+    apiFetch('/api/shift-plans/shift-swaps?status=pending').then(r => Array.isArray(r) ? setSwapRequests(r) : null).catch(() => {});
+    apiFetch('/api/shift-plans/shift-notifications').then((r: any) => r?.notifications && setShiftNotifs(r.notifications)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    apiFetch(`/api/shift-plans/staffing-levels?date=${selectedDate}`).then((r: any) => r && setStaffingLevels(r)).catch(() => {});
+    apiFetch(`/api/shift-plans/shift-plans/conflicts/${selectedDate}`).then((r: any) => r?.conflicts && setConflicts(r.conflicts)).catch(() => {});
+    apiFetch(`/api/shift-plans/shift-overtime?week_start=${selectedDate}`).then((r: any) => r && setOvertimeData(r)).catch(() => {});
+  }, [selectedDate]);
 
   // ── Computed ──
   const plansForDate = useMemo(() =>
@@ -448,7 +471,7 @@ export default function ShiftPlansPage() {
                       {sp.activePlan.assignments.map((a) => (
                         <tr
                           key={a.id}
-                          className="border-b border-rmpg-800/30 hover:bg-surface-raised/30 transition-colors"
+                          className="border-b border-rmpg-700/30 hover:bg-surface-raised/30 transition-colors"
                         >
                           <td className="px-4 py-2">
                             <div className="flex items-center gap-1.5">
@@ -543,6 +566,75 @@ export default function ShiftPlansPage() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* ── Enhanced Panels: Notifications, Staffing, Conflicts, OT, Swaps ── */}
+      <div className="flex-shrink-0 border-t border-rmpg-700 bg-surface-sunken p-3 space-y-2 max-h-[240px] overflow-y-auto">
+        {/* Shift Notifications */}
+        {shiftNotifs.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {shiftNotifs.slice(0, 6).map((n: any, i: number) => (
+              <span key={i} className={`text-[9px] px-2 py-0.5 rounded ${n.severity === 'critical' ? 'bg-red-900/30 text-red-400' : n.severity === 'warning' ? 'bg-amber-900/30 text-amber-400' : 'bg-blue-900/30 text-blue-400'}`}>
+                {n.message}
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+          {/* Staffing Levels */}
+          {staffingLevels?.levels?.map((level: any) => (
+            <div key={level.shift_type || level.plan_id} className={`p-2 rounded border text-center ${level.is_understaffed ? 'bg-red-900/20 border-red-800/30' : 'bg-surface-base border-rmpg-700'}`}>
+              <div className="text-[8px] text-rmpg-500 uppercase">{level.shift_type} shift</div>
+              <div className={`text-sm font-bold font-mono ${level.is_understaffed ? 'text-red-400' : 'text-green-400'}`}>
+                {level.staff_count}/{level.min_required}
+              </div>
+              <div className={`text-[8px] ${level.is_understaffed ? 'text-red-400' : 'text-green-400'}`}>{level.staffing_status}</div>
+            </div>
+          ))}
+
+          {/* Conflicts for today */}
+          {conflicts.length > 0 && (
+            <div className="p-2 rounded border bg-amber-900/20 border-amber-800/30 text-center">
+              <AlertTriangle className="w-3 h-3 text-amber-400 mx-auto mb-0.5" />
+              <div className="text-sm font-bold font-mono text-amber-400">{conflicts.length}</div>
+              <div className="text-[8px] text-amber-400">Conflicts</div>
+            </div>
+          )}
+
+          {/* Pending Swap Requests */}
+          {swapRequests.length > 0 && (
+            <div className="p-2 rounded border bg-blue-900/20 border-blue-800/30 text-center">
+              <ArrowRightLeft className="w-3 h-3 text-blue-400 mx-auto mb-0.5" />
+              <div className="text-sm font-bold font-mono text-blue-400">{swapRequests.length}</div>
+              <div className="text-[8px] text-blue-400">Swap Requests</div>
+            </div>
+          )}
+
+          {/* Weekly Overtime */}
+          {overtimeData?.officers?.filter((o: any) => o.is_overtime).length > 0 && (
+            <div className="p-2 rounded border bg-amber-900/20 border-amber-800/30 text-center">
+              <TrendingUp className="w-3 h-3 text-amber-400 mx-auto mb-0.5" />
+              <div className="text-sm font-bold font-mono text-amber-400">
+                {overtimeData.officers.filter((o: any) => o.is_overtime).length}
+              </div>
+              <div className="text-[8px] text-amber-400">In OT This Week</div>
+            </div>
+          )}
+        </div>
+
+        {/* Conflict Details */}
+        {conflicts.length > 0 && (
+          <div className="space-y-0.5">
+            {conflicts.map((c: any, i: number) => (
+              <div key={i} className="flex items-center gap-2 px-2 py-1 bg-amber-900/20 rounded text-[9px] text-amber-400">
+                <AlertTriangle className="w-3 h-3 shrink-0" />
+                <span className="font-bold">{c.officer_name}</span>
+                <span>assigned to {c.shift_count} shifts</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -69,6 +69,9 @@ export default function FleetPersonnelTab({
     loadUnits();
   }, []);
 
+  // Set document title
+  useEffect(() => { document.title = 'Fleet - Personnel \u2014 RMPG Flex'; }, []);
+
   if (loading || !personnelData) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -110,15 +113,12 @@ export default function FleetPersonnelTab({
   const dlDays = officer?.dl_expiry ? daysUntilExpiry(officer.dl_expiry) : null;
   const dlProgress = officer?.dl_expiry ? expiryProgress(officer.dl_expiry) : 0;
 
-  // Set document title
-  useEffect(() => { document.title = 'Fleet - Personnel \u2014 RMPG Flex'; }, []);
-
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
 
       {/* ─── A) CURRENT ASSIGNMENT BANNER ─── */}
       {isAssigned ? (
-        <div className="panel-beveled p-3" style={{ background: '#0d1520' }}>
+        <div className="panel-beveled p-3 bg-surface-sunken">
           <div className="flex items-center gap-3">
             {/* Avatar */}
             <div className="flex-shrink-0 w-12 h-12 rounded-full border-2 border-brand-500/50 flex items-center justify-center"
@@ -197,7 +197,7 @@ export default function FleetPersonnelTab({
         </div>
       ) : (
         <div className="text-center py-8 panel-beveled bg-surface-base">
-          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center" style={{ background: '#0d1520' }}>
+          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
             <Users className="w-7 h-7 text-rmpg-600" />
           </div>
           <p className="text-[11px] text-rmpg-400 font-semibold">No Officer Assigned</p>
@@ -212,7 +212,7 @@ export default function FleetPersonnelTab({
 
       {/* ─── ASSIGN PANEL ─── */}
       {showAssignPanel && (
-        <div className="panel-beveled p-3" style={{ background: '#0d1520' }}>
+        <div className="panel-beveled p-3 bg-surface-sunken">
           <h4 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <UserPlus className="w-3 h-3" /> {isAssigned ? 'Reassign Vehicle' : 'Assign Vehicle to Unit'}
           </h4>
@@ -333,7 +333,7 @@ export default function FleetPersonnelTab({
       {/* ─── C) CREDENTIALS ─── */}
       {isAssigned && officer && (
         <div className="panel-beveled bg-surface-base">
-          <div className="px-3 py-1.5 border-b border-rmpg-700 flex items-center justify-between" style={{ background: '#0d1520' }}>
+          <div className="px-3 py-1.5 border-b border-rmpg-700 flex items-center justify-between bg-surface-sunken">
             <h4 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider flex items-center gap-1.5">
               <Shield className="w-3 h-3" /> Credentials & Certifications
               {credentials.some(c => c.status === 'expired') && (
@@ -418,7 +418,7 @@ export default function FleetPersonnelTab({
 
       {/* ─── D) NOTES ─── */}
       <div className="panel-beveled bg-surface-base">
-        <div className="px-3 py-1.5 border-b border-rmpg-700" style={{ background: '#0d1520' }}>
+        <div className="px-3 py-1.5 border-b border-rmpg-700 bg-surface-sunken">
           <h4 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider flex items-center gap-1.5">
             <FileText className="w-3 h-3" /> Vehicle Personnel Notes ({notes.length})
           </h4>
@@ -478,7 +478,7 @@ export default function FleetPersonnelTab({
 
       {/* ─── E) ASSIGNMENT HISTORY ─── */}
       <div className="panel-beveled bg-surface-base">
-        <div className="px-3 py-1.5 border-b border-rmpg-700" style={{ background: '#0d1520' }}>
+        <div className="px-3 py-1.5 border-b border-rmpg-700 bg-surface-sunken">
           <h4 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider flex items-center gap-1.5">
             <Clock className="w-3 h-3" /> Assignment History ({assignments.length})
           </h4>

@@ -157,6 +157,48 @@ interface UnifiedWarrant extends Warrant {
   source?: string | null;
 }
 
+// Utah Search types
+interface UtahWarrantResult {
+  warrant_id?: string;
+  utah_warrant_id?: string;
+  utah_person_id?: string;
+  first_name: string;
+  middle_name?: string;
+  last_name: string;
+  age?: number;
+  city?: string;
+  issue_date?: string;
+  court_name?: string;
+  case_id?: string;
+  charges?: string;
+  charge_description?: string;
+  bail_amount?: number;
+  offense_level?: string;
+  warrant_type?: string;
+  status?: string;
+  fetched_at?: string;
+  source_key?: string;
+}
+
+interface UtahSearchResults {
+  utahResults: UtahWarrantResult[];
+  localWarrants: Warrant[];
+  scrapedWarrants: UtahWarrantResult[];
+  source: 'live' | 'cache';
+  blocked: boolean;
+  searchedAt: string;
+  totalHits: number;
+}
+
+interface AutoPollStatus {
+  syncStatus: { lastSync: string | null; warrantCount: number; status: string; lastError: string | null };
+  blocked: boolean;
+  runs: WatchRun[];
+  flaggedPersons: { id: number; first_name: string; last_name: string; dob?: string; warrant_status: string; warrant_severity: string | null; local_warrant_count: number; utah_hit_count: number }[];
+  recentHits: { id: number; person_id: number; person_name: string; event: string; charges?: string; court_name?: string; created_at: string }[];
+  totalPersons: number;
+}
+
 // Coverage / Sources
 interface ScraperSource {
   id: number;
@@ -239,11 +281,13 @@ const SEVERITY_COLORS: Record<string, string> = {
   civil: 'bg-purple-900/50 text-purple-400 border-purple-700/50',
 };
 
-type TabId = 'dashboard' | 'warrants' | 'sources';
+type TabId = 'dashboard' | 'warrants' | 'utah-search' | 'watch' | 'sources';
 
 const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: string }>; roleGated?: boolean }[] = [
   { id: 'dashboard', label: 'DASHBOARD', icon: Activity },
   { id: 'warrants', label: 'WARRANTS', icon: Gavel },
+  { id: 'utah-search', label: 'UTAH SEARCH', icon: Globe },
+  { id: 'watch', label: 'WATCH LIST', icon: Radar },
   { id: 'sources', label: 'SOURCES', icon: Shield, roleGated: true },
 ];
 
@@ -310,7 +354,7 @@ function CoverageSourceCard({ source }: { source: ScraperSource }) {
   return (
     <div className={`p-2 rounded-sm border ${
       !source.enabled
-        ? 'border-rmpg-700/50 bg-rmpg-800/30'
+        ? 'border-rmpg-700/50 bg-rmpg-700/30'
         : source.consecutive_failures > 0
           ? 'border-amber-700/50 bg-amber-900/10'
           : isRecent
@@ -475,6 +519,21 @@ export default function WarrantsPage() {
   const [checkingPerson, setCheckingPerson] = useState(false);
 
   // ============================================================
+  // UTAH SEARCH TAB STATE
+  // ============================================================
+  const [utahSearchFirst, setUtahSearchFirst] = useState('');
+  const [utahSearchLast, setUtahSearchLast] = useState('');
+  const [utahSearching, setUtahSearching] = useState(false);
+  const [utahResults, setUtahResults] = useState<UtahSearchResults | null>(null);
+  const [utahSearchHistory, setUtahSearchHistory] = useState<{ first: string; last: string; hits: number; at: string }[]>([]);
+
+  // ============================================================
+  // WATCH LIST TAB STATE
+  // ============================================================
+  const [autoPollStatus, setAutoPollStatus] = useState<AutoPollStatus | null>(null);
+  const [autoPollLoading, setAutoPollLoading] = useState(false);
+
+  // ============================================================
   // SOURCES TAB STATE
   // ============================================================
   const [coverageSources, setCoverageSources] = useState<ScraperSource[]>([]);
@@ -637,6 +696,43 @@ export default function WarrantsPage() {
   // ============================================================
   // SOURCES TAB FETCHES
   // ============================================================
+
+  // ── Utah Search ──
+  const runUtahSearch = useCallback(async () => {
+    if (!utahSearchFirst.trim() || !utahSearchLast.trim()) return;
+    setUtahSearching(true);
+    try {
+      const res = await apiFetch<UtahSearchResults>('/warrants/utah-search', {
+        method: 'POST',
+        body: JSON.stringify({ firstName: utahSearchFirst.trim(), lastName: utahSearchLast.trim() }),
+      });
+      setUtahResults(res);
+      setUtahSearchHistory(prev => [
+        { first: utahSearchFirst.trim(), last: utahSearchLast.trim(), hits: res.totalHits, at: new Date().toISOString() },
+        ...prev.slice(0, 19),
+      ]);
+    } catch { /* error handled by apiFetch */ }
+    finally { setUtahSearching(false); }
+  }, [utahSearchFirst, utahSearchLast]);
+
+  // ── Auto-Poll Status ──
+  const fetchAutoPollStatus = useCallback(async () => {
+    setAutoPollLoading(true);
+    try {
+      const res = await apiFetch<AutoPollStatus>('/warrants/utah-search/auto-poll-status');
+      setAutoPollStatus(res);
+    } catch { /* error handled */ }
+    finally { setAutoPollLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'utah-search') { /* nothing to auto-fetch */ }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'watch') return;
+    fetchAutoPollStatus();
+  }, [activeTab, fetchAutoPollStatus]);
 
   const fetchCoverage = useCallback(async () => {
     setCoverageLoading(true);
@@ -1063,7 +1159,7 @@ export default function WarrantsPage() {
                         className={`px-1.5 py-0.5 text-[9px] font-bold rounded-sm border transition-colors ${
                           feedRange === r
                             ? 'bg-brand-900/40 text-brand-300 border-brand-600/50'
-                            : 'bg-rmpg-800/50 text-rmpg-400 border-rmpg-700/50 hover:text-rmpg-200'
+                            : 'bg-rmpg-700/40 text-rmpg-400 border-rmpg-700/50 hover:text-rmpg-200'
                         }`}
                       >
                         {r}
@@ -1091,7 +1187,7 @@ export default function WarrantsPage() {
                       No events in this time range
                     </div>
                   ) : (
-                    <div className="divide-y divide-rmpg-800/50">
+                    <div className="divide-y divide-rmpg-700/50">
                       {filteredFeed.map(entry => (
                         <div key={entry.id} className="flex items-center gap-2 px-3 py-2 hover:bg-surface-raised/50 transition-colors">
                           <span className="text-[9px] text-rmpg-500 font-mono shrink-0 w-14">{relativeTime(entry.created_at)}</span>
@@ -1145,7 +1241,7 @@ export default function WarrantsPage() {
                           {pw.subject_photo_url ? (
                             <img src={pw.subject_photo_url} alt="" className="w-9 h-9 rounded-sm object-cover border border-rmpg-600 shrink-0" />
                           ) : (
-                            <div className="w-9 h-9 rounded-sm bg-rmpg-800 border border-rmpg-600 flex items-center justify-center shrink-0">
+                            <div className="w-9 h-9 rounded-sm bg-surface-raised border border-rmpg-600 flex items-center justify-center shrink-0">
                               <User className="w-4 h-4 text-rmpg-500" />
                             </div>
                           )}
@@ -1198,12 +1294,17 @@ export default function WarrantsPage() {
                 <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
                 <input
                   type="text"
-                  className={`input-dark w-full pl-7 ${isMobile ? 'text-sm py-2.5' : 'text-xs'}`}
+                  className={`input-dark w-full pl-7 ${searchQuery ? 'pr-7' : 'pr-2'} ${isMobile ? 'text-sm py-2.5' : 'text-xs'}`}
                   placeholder="Search by name, warrant #, or charge..." aria-label="Search by name, warrant #, or charge..."
                   value={searchQuery}
                   onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
                   style={isMobile ? { minHeight: 44 } : undefined}
                 />
+                {searchQuery && (
+                  <button type="button" onClick={() => { setSearchQuery(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300" aria-label="Clear search">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
               <div className={`flex ${isMobile ? 'gap-1.5 flex-wrap' : 'gap-2'}`}>
                 <select
@@ -1261,7 +1362,7 @@ export default function WarrantsPage() {
                   <option value="quashed">Quashed</option>
                   <option value="expired">Expired</option>
                 </select>
-                <button type="button" onClick={handleBatchUpdate} disabled={!batchStatus || batchSubmitting} className="toolbar-btn-primary text-[10px] px-2 py-0.5 disabled:opacity-50">
+                <button type="button" onClick={handleBatchUpdate} disabled={!batchStatus || batchSubmitting} className="toolbar-btn-primary text-[10px] px-2 py-0.5 disabled:opacity-40">
                   {batchSubmitting ? 'Updating...' : 'Apply'}
                 </button>
                 <button type="button" onClick={() => setBatchSelected(new Set())} className="toolbar-btn text-[10px] px-2 py-0.5">Clear</button>
@@ -1287,7 +1388,7 @@ export default function WarrantsPage() {
                     <button type="button"
                       key={w.id}
                       onClick={() => fetchWarrantDetail(w.id)}
-                      className={`w-full text-left px-3 py-3 border-b border-rmpg-800 transition-colors hover:bg-surface-raised ${selectedWarrant?.id === w.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'border-l-2 border-l-transparent'}`}
+                      className={`w-full text-left px-3 py-3 border-b border-rmpg-700/50 transition-colors hover:bg-surface-raised ${selectedWarrant?.id === w.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'border-l-2 border-l-transparent'}`}
                       style={{ minHeight: 56 }}
                     >
                       <div className="flex items-center justify-between mb-1">
@@ -1307,6 +1408,13 @@ export default function WarrantsPage() {
                         {formatDate(w.created_at)}{w.offense_level ? ` \u2022 ${w.offense_level}` : ''}
                         {w.source ? ` \u2022 ${w.source}` : ''}
                       </div>
+                      {/* UPGRADE 42: Expiration warning highlight */}
+                      {w.expires_at && w.status === 'active' && (() => {
+                        const daysLeft = Math.ceil((new Date(w.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                        if (daysLeft < 0) return <div className="text-[9px] text-red-400 font-bold mt-0.5 flex items-center gap-1"><AlertTriangle size={9} /> EXPIRED {Math.abs(daysLeft)}d ago</div>;
+                        if (daysLeft <= 30) return <div className="text-[9px] text-amber-400 font-bold mt-0.5 flex items-center gap-1"><Clock size={9} /> Expires in {daysLeft}d</div>;
+                        return null;
+                      })()}
                     </button>
                   ))}
                 </div>
@@ -1394,8 +1502,8 @@ export default function WarrantsPage() {
                   Page {page} of {totalPages} ({totalCount} results)
                 </span>
                 <div className="flex gap-1">
-                  <button type="button" onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1} className="toolbar-btn text-[9px]">Prev</button>
-                  <button type="button" onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page >= totalPages} className="toolbar-btn text-[9px]">Next</button>
+                  <button type="button" onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1} className="toolbar-btn text-[9px] disabled:opacity-40">Prev</button>
+                  <button type="button" onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page >= totalPages} className="toolbar-btn text-[9px] disabled:opacity-40">Next</button>
                 </div>
               </div>
             )}
@@ -1651,6 +1759,419 @@ export default function WarrantsPage() {
       )}
 
       {/* ================================================================
+          TAB: UTAH SEARCH
+         ================================================================ */}
+      {activeTab === 'utah-search' && (
+        <div className="flex-1 overflow-auto">
+          <div className="p-4 space-y-4">
+            {/* Search Form */}
+            <div className="panel-raised p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Globe className="w-4 h-4 text-brand-blue" />
+                <span className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">Utah State Warrant Search</span>
+                <span className="text-[9px] text-rmpg-400 ml-auto">warrants.utah.gov</span>
+              </div>
+              <form onSubmit={(e) => { e.preventDefault(); runUtahSearch(); }} className="flex gap-2 items-end flex-wrap">
+                <div className="flex-1 min-w-[120px]">
+                  <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">First Name</label>
+                  <input
+                    type="text"
+                    className="input-dark w-full"
+                    placeholder="First name..."
+                    value={utahSearchFirst}
+                    onChange={(e) => setUtahSearchFirst(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+                <div className="flex-1 min-w-[120px]">
+                  <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Last Name</label>
+                  <input
+                    type="text"
+                    className="input-dark w-full"
+                    placeholder="Last name..."
+                    value={utahSearchLast}
+                    onChange={(e) => setUtahSearchLast(e.target.value)}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={utahSearching || !utahSearchFirst.trim() || !utahSearchLast.trim()}
+                  className="toolbar-btn !h-8 !px-4 text-xs font-bold bg-brand-blue/20 text-brand-blue border-brand-blue/40 hover:bg-brand-blue/30 disabled:opacity-40"
+                >
+                  {utahSearching ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+                  <span className="ml-1">{utahSearching ? 'Searching...' : 'Search'}</span>
+                </button>
+              </form>
+            </div>
+
+            {/* Results */}
+            {utahResults && (
+              <div className="space-y-3">
+                {/* Summary bar */}
+                <div className="panel-raised p-3 flex items-center gap-4 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${utahResults.source === 'live' ? 'bg-green-400' : 'bg-amber-400'}`} />
+                    <span className="text-[10px] text-rmpg-300 uppercase tracking-wider">
+                      Source: {utahResults.source === 'live' ? 'Live API' : 'Cached Data'}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-rmpg-400">
+                    {utahResults.totalHits} total hit{utahResults.totalHits !== 1 ? 's' : ''}
+                  </span>
+                  {utahResults.blocked && (
+                    <span className="text-[10px] text-amber-400 flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3" /> API rate-limited — using cache
+                    </span>
+                  )}
+                  <span className="text-[10px] text-rmpg-500 ml-auto">
+                    Searched {formatDateTime(utahResults.searchedAt)}
+                  </span>
+                </div>
+
+                {/* Utah State Results */}
+                {utahResults.utahResults.length > 0 && (
+                  <div className="panel-raised">
+                    <div className="p-3 border-b border-surface-border flex items-center gap-2">
+                      <Globe className="w-3.5 h-3.5 text-red-400" />
+                      <span className="text-xs font-bold text-white">Utah State Warrants</span>
+                      <span className="ml-auto text-[10px] bg-red-900/40 text-red-400 border border-red-700/50 px-1.5 py-0.5 rounded font-mono">
+                        {utahResults.utahResults.length}
+                      </span>
+                    </div>
+                    <div className="divide-y divide-surface-border">
+                      {utahResults.utahResults.map((w, i) => (
+                        <div key={`utah-${i}`} className="p-3 hover:bg-surface-raised/50 transition-colors">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-bold text-white">
+                                  {w.last_name}, {w.first_name} {w.middle_name || ''}
+                                </span>
+                                {w.age && <span className="text-[10px] text-rmpg-400">Age: {w.age}</span>}
+                                {w.city && <span className="text-[10px] text-rmpg-400">{w.city}</span>}
+                              </div>
+                              <div className="text-xs text-rmpg-300 mt-1">{w.charges || w.charge_description || 'No charge description'}</div>
+                              <div className="flex items-center gap-3 mt-1.5 text-[10px] text-rmpg-400 flex-wrap">
+                                {w.court_name && <span>Court: {w.court_name}</span>}
+                                {w.case_id && <span>Case: {w.case_id}</span>}
+                                {w.issue_date && <span>Issued: {w.issue_date}</span>}
+                                {w.bail_amount != null && w.bail_amount > 0 && (
+                                  <span className="text-amber-400 font-bold">Bail: ${Number(w.bail_amount).toLocaleString()}</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex-shrink-0">
+                              {w.offense_level ? (
+                                <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${
+                                  w.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border-red-700/50' :
+                                  w.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
+                                  'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'
+                                }`}>
+                                  {w.offense_level}
+                                </span>
+                              ) : (
+                                <span className="text-[9px] bg-red-900/30 text-red-400 border border-red-700/40 px-1.5 py-0.5 rounded font-bold uppercase">ACTIVE</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Local System Warrants */}
+                {utahResults.localWarrants.length > 0 && (
+                  <div className="panel-raised">
+                    <div className="p-3 border-b border-surface-border flex items-center gap-2">
+                      <Shield className="w-3.5 h-3.5 text-brand-blue" />
+                      <span className="text-xs font-bold text-white">Local System Warrants</span>
+                      <span className="ml-auto text-[10px] bg-brand-blue/20 text-brand-blue border border-brand-blue/40 px-1.5 py-0.5 rounded font-mono">
+                        {utahResults.localWarrants.length}
+                      </span>
+                    </div>
+                    <div className="divide-y divide-surface-border">
+                      {utahResults.localWarrants.map((w) => (
+                        <div key={`local-${w.id}`} className="p-3 hover:bg-surface-raised/50 transition-colors">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-white">{w.warrant_number}</span>
+                            <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${
+                              STATUS_COLORS[w.status] || 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'
+                            }`}>{w.status}</span>
+                            <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${
+                              TYPE_COLORS[w.type] || 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'
+                            }`}>{w.type}</span>
+                          </div>
+                          <div className="text-xs text-rmpg-300 mt-1">{w.charge_description}</div>
+                          <div className="text-[10px] text-rmpg-400 mt-1">
+                            {w.issuing_court && <span>Court: {w.issuing_court} • </span>}
+                            Created {formatDateTime(w.created_at)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Scraped Warrants */}
+                {utahResults.scrapedWarrants.length > 0 && (
+                  <div className="panel-raised">
+                    <div className="p-3 border-b border-surface-border flex items-center gap-2">
+                      <Radar className="w-3.5 h-3.5 text-amber-400" />
+                      <span className="text-xs font-bold text-white">Multi-Source Warrants</span>
+                      <span className="ml-auto text-[10px] bg-amber-900/40 text-amber-400 border border-amber-700/50 px-1.5 py-0.5 rounded font-mono">
+                        {utahResults.scrapedWarrants.length}
+                      </span>
+                    </div>
+                    <div className="divide-y divide-surface-border">
+                      {utahResults.scrapedWarrants.map((w, i) => (
+                        <div key={`scraped-${i}`} className="p-3 hover:bg-surface-raised/50 transition-colors">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-white">{w.last_name}, {w.first_name}</span>
+                            {w.source_key && <span className="text-[9px] text-rmpg-400 bg-rmpg-700/30 px-1 rounded">{w.source_key}</span>}
+                          </div>
+                          <div className="text-xs text-rmpg-300 mt-1">{w.charges || w.charge_description || '—'}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* No results */}
+                {utahResults.totalHits === 0 && (
+                  <div className="panel-raised p-8 text-center">
+                    <CheckCircle className="w-8 h-8 text-green-400 mx-auto mb-2" />
+                    <div className="text-sm font-bold text-green-400">No Active Warrants Found</div>
+                    <div className="text-xs text-rmpg-400 mt-1">
+                      No warrants found for {utahSearchFirst} {utahSearchLast} across Utah state, local system, or multi-source databases.
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Search History */}
+            {utahSearchHistory.length > 0 && (
+              <div className="panel-raised p-3">
+                <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-2 flex items-center gap-1">
+                  <History className="w-3 h-3" /> Recent Searches
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {utahSearchHistory.map((h, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      className="text-[10px] bg-surface-base/80 text-rmpg-300 hover:text-white border border-surface-border hover:border-brand-blue/40 px-2 py-1 rounded transition-colors"
+                      onClick={() => { setUtahSearchFirst(h.first); setUtahSearchLast(h.last); }}
+                    >
+                      {h.last}, {h.first}
+                      {h.hits > 0 && <span className="text-red-400 ml-1">({h.hits})</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================
+          TAB: WATCH LIST (Auto-Poll)
+         ================================================================ */}
+      {activeTab === 'watch' && (
+        <div className="flex-1 overflow-auto">
+          <div className="p-4 space-y-4">
+            {autoPollLoading && !autoPollStatus ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-5 h-5 animate-spin text-brand-blue mr-2" />
+                <span className="text-xs text-rmpg-400">Loading watch status...</span>
+              </div>
+            ) : autoPollStatus ? (
+              <>
+                {/* Status Overview */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="panel-raised p-3 text-center">
+                    <div className="text-xl font-bold font-mono text-white">{autoPollStatus.totalPersons}</div>
+                    <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Persons Monitored</div>
+                  </div>
+                  <div className="panel-raised p-3 text-center">
+                    <div className="text-xl font-bold font-mono text-red-400">{autoPollStatus.flaggedPersons.length}</div>
+                    <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Warrant Hits</div>
+                  </div>
+                  <div className="panel-raised p-3 text-center">
+                    <div className={`text-xl font-bold font-mono ${autoPollStatus.blocked ? 'text-red-400' : 'text-green-400'}`}>
+                      {autoPollStatus.blocked ? 'BLOCKED' : 'ONLINE'}
+                    </div>
+                    <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Utah API</div>
+                  </div>
+                  <div className="panel-raised p-3 text-center">
+                    <div className="text-xl font-bold font-mono text-rmpg-200">
+                      {autoPollStatus.syncStatus.lastSync ? formatDate(autoPollStatus.syncStatus.lastSync) : 'Never'}
+                    </div>
+                    <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Last Scan</div>
+                  </div>
+                </div>
+
+                {/* Trigger Scan Button */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="toolbar-btn text-xs bg-brand-blue/20 text-brand-blue border-brand-blue/40 hover:bg-brand-blue/30"
+                    disabled={scanRunning}
+                    onClick={async () => {
+                      setScanRunning(true);
+                      try {
+                        await apiFetch('/warrants/watch/scan', { method: 'POST' });
+                        setTimeout(() => { fetchAutoPollStatus(); setScanRunning(false); }, 5000);
+                      } catch { setScanRunning(false); }
+                    }}
+                  >
+                    {scanRunning ? <Loader2 className="w-3 h-3 animate-spin" /> : <PlayCircle className="w-3 h-3" />}
+                    <span className="ml-1">{scanRunning ? 'Scanning...' : 'Run Scan Now'}</span>
+                  </button>
+                  <button type="button" className="toolbar-btn text-[10px]" onClick={fetchAutoPollStatus}>
+                    <RotateCcw className="w-3 h-3" /> Refresh
+                  </button>
+                  <span className="text-[10px] text-rmpg-500 ml-auto">Auto-scans every 4 hours</span>
+                </div>
+
+                {/* Flagged Persons */}
+                {autoPollStatus.flaggedPersons.length > 0 && (
+                  <div className="panel-raised">
+                    <div className="p-3 border-b border-surface-border flex items-center gap-2">
+                      <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+                      <span className="text-xs font-bold text-white">Persons with Active Warrants</span>
+                      <span className="ml-auto text-[10px] bg-red-900/40 text-red-400 border border-red-700/50 px-1.5 py-0.5 rounded font-mono font-bold">
+                        {autoPollStatus.flaggedPersons.length}
+                      </span>
+                    </div>
+                    <div className="divide-y divide-surface-border max-h-[400px] overflow-auto">
+                      {autoPollStatus.flaggedPersons.map((p) => (
+                        <div key={p.id} className="p-3 hover:bg-surface-raised/50 transition-colors flex items-center gap-3">
+                          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-red-900/40 border border-red-700/50 flex items-center justify-center">
+                            <User className="w-4 h-4 text-red-400" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-bold text-white">{p.last_name}, {p.first_name}</span>
+                              {p.dob && <span className="text-[10px] text-rmpg-400">DOB: {p.dob}</span>}
+                            </div>
+                            <div className="flex items-center gap-2 mt-1 text-[10px] text-rmpg-400">
+                              {p.local_warrant_count > 0 && (
+                                <span className="bg-brand-blue/20 text-brand-blue border border-brand-blue/30 px-1.5 py-0.5 rounded">
+                                  {p.local_warrant_count} local
+                                </span>
+                              )}
+                              {p.utah_hit_count > 0 && (
+                                <span className="bg-red-900/30 text-red-400 border border-red-700/40 px-1.5 py-0.5 rounded">
+                                  {p.utah_hit_count} Utah
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex-shrink-0">
+                            {p.warrant_severity && (
+                              <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${
+                                p.warrant_severity === 'felony' ? 'bg-red-900/50 text-red-400 border-red-700/50' :
+                                p.warrant_severity === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
+                                'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'
+                              }`}>{p.warrant_severity}</span>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            className="flex-shrink-0 text-[10px] text-rmpg-400 hover:text-white"
+                            title="Search Utah warrants"
+                            onClick={() => {
+                              setUtahSearchFirst(p.first_name);
+                              setUtahSearchLast(p.last_name);
+                              setActiveTab('utah-search');
+                              setTimeout(() => runUtahSearch(), 100);
+                            }}
+                          >
+                            <Search className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Recent Watch Log */}
+                {autoPollStatus.recentHits.length > 0 && (
+                  <div className="panel-raised">
+                    <div className="p-3 border-b border-surface-border flex items-center gap-2">
+                      <History className="w-3.5 h-3.5 text-rmpg-300" />
+                      <span className="text-xs font-bold text-white">Recent Activity</span>
+                    </div>
+                    <div className="divide-y divide-surface-border max-h-[300px] overflow-auto">
+                      {autoPollStatus.recentHits.map((h) => (
+                        <div key={h.id} className="p-2.5 flex items-center gap-2 text-xs">
+                          <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                            h.event === 'warrant_found' ? 'bg-red-400' : 'bg-green-400'
+                          }`} />
+                          <span className="text-rmpg-200 font-medium">{h.person_name}</span>
+                          <span className={`text-[10px] ${h.event === 'warrant_found' ? 'text-red-400' : 'text-green-400'}`}>
+                            {h.event === 'warrant_found' ? 'WARRANT FOUND' : 'WARRANT CLEARED'}
+                          </span>
+                          {h.charges && <span className="text-[10px] text-rmpg-400 truncate flex-1">{h.charges}</span>}
+                          <span className="text-[10px] text-rmpg-500 flex-shrink-0 ml-auto">{formatDateTime(h.created_at)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Scan History */}
+                {autoPollStatus.runs.length > 0 && (
+                  <div className="panel-raised">
+                    <div className="p-3 border-b border-surface-border flex items-center gap-2">
+                      <Activity className="w-3.5 h-3.5 text-rmpg-300" />
+                      <span className="text-xs font-bold text-white">Scan History</span>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b border-surface-border text-[10px] text-rmpg-400 uppercase tracking-wider">
+                            <th className="p-2 text-left">Started</th>
+                            <th className="p-2 text-center">Checked</th>
+                            <th className="p-2 text-center">Found</th>
+                            <th className="p-2 text-center">Cleared</th>
+                            <th className="p-2 text-center">Errors</th>
+                            <th className="p-2 text-center">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-surface-border">
+                          {autoPollStatus.runs.map((r) => (
+                            <tr key={r.id} className="hover:bg-surface-raised/50">
+                              <td className="p-2 text-rmpg-300">{formatDateTime(r.started_at)}</td>
+                              <td className="p-2 text-center text-white font-mono">{r.persons_checked}</td>
+                              <td className="p-2 text-center text-red-400 font-mono font-bold">{r.new_warrants_found}</td>
+                              <td className="p-2 text-center text-green-400 font-mono">{r.warrants_cleared}</td>
+                              <td className="p-2 text-center text-amber-400 font-mono">{r.errors}</td>
+                              <td className="p-2 text-center">
+                                <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${
+                                  r.status === 'completed' ? 'bg-green-900/30 text-green-400' :
+                                  r.status === 'running' ? 'bg-brand-blue/20 text-brand-blue' :
+                                  'bg-red-900/30 text-red-400'
+                                }`}>{r.status}</span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <EmptyState icon={Radar} title="Watch List" description="No auto-poll data available yet. The system scans all persons in the database every 4 hours." />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================
           TAB 3: SOURCES (admin/manager only)
          ================================================================ */}
       {activeTab === 'sources' && isAdminOrManager && (
@@ -1737,7 +2258,7 @@ export default function WarrantsPage() {
                             key={state}
                             className={`p-2 rounded-sm border text-center ${
                               enabled === 0
-                                ? 'border-rmpg-700/50 bg-rmpg-800/30'
+                                ? 'border-rmpg-700/50 bg-rmpg-700/30'
                                 : hasErrors
                                   ? 'border-amber-700/50 bg-amber-900/10'
                                   : isRecent
@@ -1932,7 +2453,7 @@ export default function WarrantsPage() {
                   {personProfile.person.photo_url ? (
                     <img src={personProfile.person.photo_url} alt="" className="w-16 h-16 rounded-sm object-cover border border-rmpg-600" />
                   ) : (
-                    <div className="w-16 h-16 rounded-sm bg-rmpg-800 border border-rmpg-600 flex items-center justify-center">
+                    <div className="w-16 h-16 rounded-sm bg-surface-raised border border-rmpg-600 flex items-center justify-center">
                       <User className="w-8 h-8 text-rmpg-500" />
                     </div>
                   )}
@@ -2091,7 +2612,7 @@ export default function WarrantsPage() {
               <div className="relative">
                 <label className="field-label">Subject Person</label>
                 {selectedPersonName && formData.subject_person_id ? (
-                  <div className="flex items-center gap-2 p-2 bg-rmpg-800 border border-rmpg-600 rounded-sm text-xs">
+                  <div className="flex items-center gap-2 p-2 bg-surface-raised border border-rmpg-600 rounded-sm text-xs">
                     <User className="w-3 h-3 text-brand-400" />
                     <span className="text-white font-bold">{selectedPersonName}</span>
                     <button

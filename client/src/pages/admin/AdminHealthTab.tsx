@@ -107,6 +107,21 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
   const [showChangelog, setShowChangelog] = useState(false);
   const [expandedVersions, setExpandedVersions] = useState<Set<string>>(new Set());
 
+  // Upgrade: Enhanced system health + user activity
+  const [systemHealth, setSystemHealth] = useState<{
+    database: { sizeBytes: number; sizeMB: number; tableCounts: Record<string, number> };
+    server: { uptimeHours: number; memoryUsageMB: { rss: number; heapUsed: number; heapTotal: number }; nodeVersion: string };
+    activity: { activeSessions: number; activityLastHour: number; recentErrors: number };
+    system: { platform: string; cpus: number; totalMemoryMB: number; freeMemoryMB: number; loadAvg: number[] };
+  } | null>(null);
+  const [usersActivity, setUsersActivity] = useState<{
+    data: { id: number; full_name: string; role: string; login_count: number; last_active_at: string; recent_action_count: number; incidents_30d: number; messages_30d: number }[];
+  } | null>(null);
+  const [realtimeStats, setRealtimeStats] = useState<{
+    activeCalls: number; unitsOnDuty: number; pendingIncidents: number;
+    activeBolos: number; activeSessions: number; todayActivity: number; todayCalls: number;
+  } | null>(null);
+
   const fetchHealth = useCallback(async () => {
     setLoading(true);
     try {
@@ -132,28 +147,31 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
   useEffect(() => {
     fetchHealth();
     fetchChangelog();
-    const interval = setInterval(fetchHealth, 60000);
+    // Upgrade: fetch new system health and activity data
+    apiFetch<any>('/admin/system-health').then(d => d && setSystemHealth(d)).catch(() => {});
+    apiFetch<any>('/admin/users-activity-summary?days=30').then(d => d && setUsersActivity(d)).catch(() => {});
+    apiFetch<any>('/admin/realtime-stats').then(d => d && setRealtimeStats(d)).catch(() => {});
+    const interval = setInterval(() => {
+      fetchHealth();
+      apiFetch<any>('/admin/realtime-stats').then(d => d && setRealtimeStats(d)).catch(() => {});
+    }, 60000);
     return () => clearInterval(interval);
   }, [fetchHealth, fetchChangelog]);
 
   // Set document title
   useEffect(() => { document.title = 'Admin - Health \u2014 RMPG Flex'; }, []);
 
-  if (loading && !health) return <LoadingSpinner />;
-
   const h = health;
-  if (!h) return <div className="p-6 text-rmpg-400 text-xs">Failed to load health data.</div>;
-
-  const heapPercent = h.server.memory.heapTotal > 0
+  const heapPercent = h?.server?.memory?.heapTotal && h.server.memory.heapTotal > 0
     ? Math.round((h.server.memory.heapUsed / h.server.memory.heapTotal) * 100)
     : 0;
   const heapColor = heapPercent > 85 ? 'text-red-400' : heapPercent > 65 ? 'text-amber-400' : 'text-green-400';
 
-  const failRate = h.loginStats.successful24h + h.loginStats.failed24h > 0
+  const failRate = h?.loginStats && (h.loginStats.successful24h + h.loginStats.failed24h) > 0
     ? Math.round((h.loginStats.failed24h / (h.loginStats.successful24h + h.loginStats.failed24h)) * 100)
     : 0;
 
-  const host = h.host;
+  const host = h?.host;
   const ramPercent = host && host.memory.total > 0
     ? Math.round((host.memory.used / host.memory.total) * 100) : 0;
   const diskPercent = host && host.disk.total > 0
@@ -182,6 +200,9 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
     if (type === 'minor') return 'bg-blue-900/30 text-blue-400 border-blue-800/40';
     return 'bg-green-900/30 text-green-400 border-green-800/40';
   };
+
+  if (!h) return <div className="p-6 text-rmpg-400 text-xs">Failed to load health data.</div>;
+  if (loading && !health) return <LoadingSpinner />;
 
   return (
     <div className="p-4 space-y-4">
@@ -218,6 +239,86 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
           </button>
         </div>
       </div>
+
+      {/* Upgrade: Real-time Operations Stats */}
+      {realtimeStats && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+          {[
+            { label: 'Active Calls', value: realtimeStats.activeCalls, color: 'text-red-400' },
+            { label: 'Units On Duty', value: realtimeStats.unitsOnDuty, color: 'text-green-400' },
+            { label: 'Pending Incidents', value: realtimeStats.pendingIncidents, color: 'text-amber-400' },
+            { label: 'Active BOLOs', value: realtimeStats.activeBolos, color: 'text-orange-400' },
+            { label: 'Active Sessions', value: realtimeStats.activeSessions, color: 'text-blue-400' },
+            { label: "Today's Activity", value: realtimeStats.todayActivity, color: 'text-purple-400' },
+            { label: "Today's Calls", value: realtimeStats.todayCalls, color: 'text-cyan-400' },
+          ].map(item => (
+            <div key={item.label} className="bg-surface-sunken p-2 text-center panel-beveled">
+              <div className={`text-xl font-bold font-mono ${item.color}`}>{item.value}</div>
+              <div className="text-[8px] text-rmpg-400 uppercase tracking-wider">{item.label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Upgrade: Enhanced DB Stats */}
+      {systemHealth && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="bg-surface-sunken p-2 panel-beveled">
+            <div className="text-[10px] text-rmpg-400 uppercase">DB Size</div>
+            <div className="text-sm font-bold text-white font-mono">{systemHealth.database.sizeMB} MB</div>
+          </div>
+          <div className="bg-surface-sunken p-2 panel-beveled">
+            <div className="text-[10px] text-rmpg-400 uppercase">Server Uptime</div>
+            <div className="text-sm font-bold text-white font-mono">{systemHealth.server.uptimeHours}h</div>
+          </div>
+          <div className="bg-surface-sunken p-2 panel-beveled">
+            <div className="text-[10px] text-rmpg-400 uppercase">Heap Used</div>
+            <div className="text-sm font-bold text-white font-mono">{systemHealth.server.memoryUsageMB.heapUsed} MB</div>
+          </div>
+          <div className="bg-surface-sunken p-2 panel-beveled">
+            <div className="text-[10px] text-rmpg-400 uppercase">Recent Errors</div>
+            <div className={`text-sm font-bold font-mono ${systemHealth.activity.recentErrors > 0 ? 'text-red-400' : 'text-green-400'}`}>
+              {systemHealth.activity.recentErrors}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upgrade: Top Users by Activity (30d) */}
+      {usersActivity && usersActivity.data.length > 0 && (
+        <div className="panel-beveled bg-surface-base p-3">
+          <div className="flex items-center gap-2 mb-2 text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">
+            <Shield className="w-3.5 h-3.5 text-brand-400" />
+            User Activity (30 days)
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-[10px]">
+              <thead>
+                <tr className="text-rmpg-400 border-b border-rmpg-700/50">
+                  <th className="text-left py-1 px-2">User</th>
+                  <th className="text-left py-1 px-2">Role</th>
+                  <th className="text-right py-1 px-2">Actions</th>
+                  <th className="text-right py-1 px-2">Incidents</th>
+                  <th className="text-right py-1 px-2">Messages</th>
+                  <th className="text-right py-1 px-2">Last Active</th>
+                </tr>
+              </thead>
+              <tbody>
+                {usersActivity.data.slice(0, 10).map((u: any) => (
+                  <tr key={u.id} className="border-b border-rmpg-700/20 hover:bg-surface-raised">
+                    <td className="py-1 px-2 text-white font-bold">{u.full_name}</td>
+                    <td className="py-1 px-2 text-rmpg-400">{u.role}</td>
+                    <td className="py-1 px-2 text-right font-mono text-brand-400">{u.recent_action_count}</td>
+                    <td className="py-1 px-2 text-right font-mono">{u.incidents_30d}</td>
+                    <td className="py-1 px-2 text-right font-mono">{u.messages_30d}</td>
+                    <td className="py-1 px-2 text-right text-rmpg-500">{u.last_active_at ? timeAgo(u.last_active_at) : 'never'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Changelog Panel (collapsible) */}
       {showChangelog && changelog && (

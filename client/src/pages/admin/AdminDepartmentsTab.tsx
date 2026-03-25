@@ -142,6 +142,8 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
+  if (loading && departments.length === 0) return <LoadingSpinner />;
+
 
   if (loading && departments.length === 0) return <LoadingSpinner />;
 

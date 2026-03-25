@@ -19,6 +19,7 @@ import {
   LogOut,
   Globe,
   Clock,
+  Users,
 } from 'lucide-react';
 import type { User, UserRole } from '../../types';
 import type { UserFormData } from '../../components/UserFormModal';

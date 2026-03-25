@@ -86,6 +86,14 @@ export default function TrainingPage() {
   const [editRecord, setEditRecord] = useState<TrainingRecord | null>(null);
   const [showRequirementModal, setShowRequirementModal] = useState(false);
   const [editRequirement, setEditRequirement] = useState<TrainingRequirement | null>(null);
+  const [showBulkAssign, setShowBulkAssign] = useState(false);
+  const [bulkCourseName, setBulkCourseName] = useState('');
+  const [bulkCategory, setBulkCategory] = useState<string>('other');
+  const [bulkProvider, setBulkProvider] = useState('');
+  const [bulkHours, setBulkHours] = useState('0');
+  const [bulkOfficerIds, setBulkOfficerIds] = useState<string[]>([]);
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [trainingCompletion, setTrainingCompletion] = useState<any>(null);
 
   const mountedRef = useRef(true);
   useEffect(() => () => { mountedRef.current = false; }, []);
@@ -113,6 +121,36 @@ export default function TrainingPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useLiveSync('training', fetchData);
+
+  // Fetch training completion data
+  useEffect(() => {
+    apiFetch('/personnel/training-completion').then(d => setTrainingCompletion(d)).catch(() => {});
+  }, [records]);
+
+  const handleBulkAssign = async () => {
+    if (!bulkCourseName || bulkOfficerIds.length === 0) return;
+    setBulkSaving(true);
+    try {
+      await apiFetch('/personnel/training-bulk-assign', {
+        method: 'POST',
+        body: JSON.stringify({
+          officer_ids: bulkOfficerIds,
+          course_name: bulkCourseName,
+          category: bulkCategory,
+          provider: bulkProvider || undefined,
+          hours: parseFloat(bulkHours) || 0,
+        }),
+      });
+      setShowBulkAssign(false);
+      setBulkCourseName('');
+      setBulkOfficerIds([]);
+      fetchData();
+    } catch (err) {
+      console.error('Bulk assign error:', err);
+    } finally {
+      setBulkSaving(false);
+    }
+  };
 
   // ── Record CRUD ──────────────────────────────────────
   const handleSaveRecord = async (data: Partial<TrainingRecord>) => {
@@ -209,13 +247,22 @@ export default function TrainingPage() {
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
           {isAdmin && (
-            <button type="button"
-              onClick={() => { setEditRecord(null); setShowRecordModal(true); }}
-              className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1"
-            >
-              <Plus className="w-3 h-3" />
-              Add Record
-            </button>
+            <>
+              <button type="button"
+                onClick={() => setShowBulkAssign(true)}
+                className="toolbar-btn text-[10px] px-3 py-1 flex items-center gap-1"
+              >
+                <Users className="w-3 h-3" />
+                Bulk Assign
+              </button>
+              <button type="button"
+                onClick={() => { setEditRecord(null); setShowRecordModal(true); }}
+                className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1"
+              >
+                <Plus className="w-3 h-3" />
+                Add Record
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -293,6 +340,74 @@ export default function TrainingPage() {
           onSave={handleSaveRequirement}
           onClose={() => { setShowRequirementModal(false); setEditRequirement(null); }}
         />
+      )}
+
+      {/* Bulk Assignment Modal */}
+      {showBulkAssign && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onClick={() => setShowBulkAssign(false)}>
+          <div className="bg-surface-base border border-rmpg-700 rounded-sm w-full max-w-lg p-4 space-y-3 shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold text-rmpg-100 uppercase flex items-center gap-2">
+                <Users className="w-4 h-4 text-brand-400" /> Bulk Training Assignment
+              </h2>
+              <button type="button" onClick={() => setShowBulkAssign(false)} className="text-rmpg-500 hover:text-rmpg-300">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-2">
+              <div>
+                <label className="text-[9px] text-rmpg-400 uppercase font-bold">Course Name</label>
+                <input type="text" value={bulkCourseName} onChange={e => setBulkCourseName(e.target.value)}
+                  className="input-dark w-full mt-1 text-xs" placeholder="e.g. Annual Firearms Qualification" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Category</label>
+                  <select value={bulkCategory} onChange={e => setBulkCategory(e.target.value)} className="input-dark w-full mt-1 text-xs">
+                    {CATEGORIES.map(c => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Hours</label>
+                  <input type="number" value={bulkHours} onChange={e => setBulkHours(e.target.value)}
+                    className="input-dark w-full mt-1 text-xs" />
+                </div>
+              </div>
+              <div>
+                <label className="text-[9px] text-rmpg-400 uppercase font-bold">Provider</label>
+                <input type="text" value={bulkProvider} onChange={e => setBulkProvider(e.target.value)}
+                  className="input-dark w-full mt-1 text-xs" placeholder="Optional" />
+              </div>
+              <div>
+                <label className="text-[9px] text-rmpg-400 uppercase font-bold">
+                  Select Officers ({bulkOfficerIds.length} selected)
+                  <button type="button" className="ml-2 text-brand-400 hover:text-brand-300"
+                    onClick={() => setBulkOfficerIds(bulkOfficerIds.length === officers.length ? [] : officers.map(o => o.id))}>
+                    {bulkOfficerIds.length === officers.length ? 'Deselect All' : 'Select All'}
+                  </button>
+                </label>
+                <div className="max-h-[150px] overflow-y-auto mt-1 border border-rmpg-700 rounded-sm bg-surface-sunken p-1 space-y-0.5">
+                  {officers.map(o => (
+                    <label key={o.id} className="flex items-center gap-2 px-2 py-1 text-[10px] text-rmpg-200 hover:bg-rmpg-700/50 cursor-pointer">
+                      <input type="checkbox"
+                        checked={bulkOfficerIds.includes(o.id)}
+                        onChange={e => setBulkOfficerIds(e.target.checked ? [...bulkOfficerIds, o.id] : bulkOfficerIds.filter(id => id !== o.id))}
+                        className="w-3 h-3" />
+                      {o.full_name} {o.badge_number ? `(#${o.badge_number})` : ''}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={() => setShowBulkAssign(false)} className="toolbar-btn text-[10px] px-3 py-1.5">Cancel</button>
+              <button type="button" onClick={handleBulkAssign} disabled={bulkSaving || !bulkCourseName || bulkOfficerIds.length === 0}
+                className="toolbar-btn-primary text-[10px] px-3 py-1.5 disabled:opacity-50">
+                {bulkSaving ? 'Assigning...' : `Assign to ${bulkOfficerIds.length} Officer(s)`}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -467,7 +582,7 @@ function DashboardTab({ records, requirements, officers }: {
           </div>
           <div className="space-y-1 max-h-[300px] overflow-y-auto">
             {stats.officerCompliance.map(o => (
-              <div key={o.id} className="flex items-center gap-2 py-1 border-b border-rmpg-800/30">
+              <div key={o.id} className="flex items-center gap-2 py-1 border-b border-rmpg-700/30">
                 <span className="text-[11px] text-rmpg-100 flex-1 truncate">{o.full_name}</span>
                 {o.badge_number && (
                   <span className="text-[9px] font-mono text-rmpg-500">{o.badge_number}</span>
@@ -532,7 +647,7 @@ function DashboardTab({ records, requirements, officers }: {
           </div>
           <div className="space-y-1.5 max-h-[250px] overflow-y-auto">
             {stats.overduePersonnel.map(o => (
-              <div key={o.id} className="flex items-center gap-2 py-1 px-2 border border-rmpg-800/50 bg-red-900/5">
+              <div key={o.id} className="flex items-center gap-2 py-1 px-2 border border-rmpg-700/50 bg-red-900/5">
                 <span className="text-[11px] text-rmpg-100 font-medium w-32 truncate">{o.full_name}</span>
                 {o.badge_number && <span className="text-[9px] font-mono text-rmpg-500">{o.badge_number}</span>}
                 <span className="text-[9px] text-red-400 font-bold">{o.overdue} missing</span>
@@ -589,7 +704,7 @@ function TrainingMaterialsPanel() {
           ) : (
             <div className="space-y-1 max-h-[200px] overflow-y-auto">
               {materials.map((m: any) => (
-                <div key={m.id} className="flex items-center gap-2 py-1 px-2 border border-rmpg-800/30 bg-surface-sunken">
+                <div key={m.id} className="flex items-center gap-2 py-1 px-2 border border-rmpg-700/30 bg-surface-sunken">
                   <FileText className="w-3 h-3 text-brand-400 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <div className="text-[11px] text-rmpg-100 truncate">{m.title}</div>
@@ -749,8 +864,13 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
             placeholder="Search..." aria-label="Search..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="input-dark text-[11px] pl-6 pr-2 py-1 w-40 min-h-[36px]"
+            className={`input-dark text-[11px] pl-6 ${search ? 'pr-7' : 'pr-2'} py-1 w-40 min-h-[36px]`}
           />
+          {search && (
+            <button type="button" onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300" aria-label="Clear search">
+              <X className="w-3 h-3" />
+            </button>
+          )}
         </div>
         <select
           value={statusFilter}
@@ -810,7 +930,7 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
             </thead>
             <tbody>
               {filtered.map(record => (
-                <tr key={record.id} className="border-t border-rmpg-800 hover:bg-rmpg-800/30 transition-colors">
+                <tr key={record.id} className="border-t border-rmpg-700/50 hover:bg-surface-raised/50 transition-colors">
                   <td className="py-1.5 px-2 text-rmpg-100">{record.officer_name}</td>
                   <td className="py-1.5 px-2 text-rmpg-100 font-medium">{record.course_name}</td>
                   <td className="py-1.5 px-2">
@@ -1053,7 +1173,7 @@ function CalendarTab({ records, requirements }: {
             return (
               <div
                 key={i}
-                className={`min-h-[80px] border-b border-r border-rmpg-800/30 p-1 ${
+                className={`min-h-[80px] border-b border-r border-rmpg-700/30 p-1 ${
                   day && isToday(day) ? 'bg-brand-900/20' : day ? 'bg-surface-base' : 'bg-surface-sunken'
                 }`}
               >
@@ -1128,11 +1248,11 @@ function StatusBadge({ status }: { status: string }) {
 
 function EmptyState({ icon: Icon, message }: { icon: React.ElementType; message: string }) {
   return (
-    <div className="text-center py-16">
-      <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-base">
-        <Icon className="w-7 h-7 text-rmpg-600" />
+    <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+      <div className="w-14 h-14 bg-rmpg-700/20 border border-rmpg-700/30 flex items-center justify-center mb-4 panel-inset">
+        <Icon className="w-7 h-7 text-rmpg-500" style={{ opacity: 0.7 }} />
       </div>
-      <p className="text-xs text-rmpg-500">{message}</p>
+      <p className="text-sm text-rmpg-300">{message}</p>
     </div>
   );
 }

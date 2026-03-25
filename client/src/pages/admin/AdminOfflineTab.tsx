@@ -142,6 +142,8 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
+  if (loading) return <LoadingSpinner />;
+
 
   if (loading) return <LoadingSpinner />;
 

@@ -84,6 +84,9 @@ import {
   Flame,
   Leaf,
   Tv,
+  Brain,
+  SlidersHorizontal,
+  AudioLines,
 } from 'lucide-react';
 import { setVoiceAlertsEnabled, getVoiceAlertsEnabled, demoAllVoiceAlerts } from '../utils/voiceAlerts';
 import { apiFetch } from '../hooks/useApi';
@@ -177,6 +180,15 @@ export default function MenuBar({
   });
   const [compactMode, setCompactMode] = useState(() => {
     return localStorage.getItem('rmpg-compact') === 'true';
+  });
+  const [voiceEngine, setVoiceEngine] = useState<'edge-tts' | 'browser'>(() => {
+    return (localStorage.getItem('rmpg-voice-engine') as 'edge-tts' | 'browser') || 'edge-tts';
+  });
+  const [alertMinTier, setAlertMinTier] = useState<'minor' | 'moderate' | 'major'>(() => {
+    return (localStorage.getItem('rmpg-alert-min-tier') as 'minor' | 'moderate' | 'major') || 'minor';
+  });
+  const [aiAssistEnabled, setAiAssistEnabled] = useState(() => {
+    return localStorage.getItem('rmpg-ai-assist') !== 'false';
   });
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [show10Codes, setShow10Codes] = useState(false);
@@ -312,6 +324,23 @@ export default function MenuBar({
     document.body.classList.toggle('compact-mode', next);
   }, [compactMode]);
 
+  const toggleVoiceEngine = useCallback(() => {
+    const next = voiceEngine === 'edge-tts' ? 'browser' : 'edge-tts';
+    setVoiceEngine(next);
+    localStorage.setItem('rmpg-voice-engine', next);
+  }, [voiceEngine]);
+
+  const setAlertTier = useCallback((tier: 'minor' | 'moderate' | 'major') => {
+    setAlertMinTier(tier);
+    localStorage.setItem('rmpg-alert-min-tier', tier);
+  }, []);
+
+  const toggleAiAssist = useCallback(() => {
+    const next = !aiAssistEnabled;
+    setAiAssistEnabled(next);
+    localStorage.setItem('rmpg-ai-assist', String(next));
+  }, [aiAssistEnabled]);
+
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen?.();
@@ -340,7 +369,7 @@ export default function MenuBar({
           { type: 'separator' },
           { type: 'action', label: 'Field Interview', icon: Clipboard, action: () => navigate('/field-interviews') },
           { type: 'action', label: 'Citation', icon: FileWarning, action: () => navigate('/citations') },
-          { type: 'action', label: 'Warrant', icon: Gavel, action: () => window.open('/warrants', '_blank', 'noopener,noreferrer') },
+          { type: 'action', label: 'Warrant', icon: Gavel, action: () => navigate('/warrants') },
           { type: 'action', label: 'Trespass Order', icon: ShieldAlert, action: () => navigate('/trespass-orders') },
           { type: 'action', label: 'Service Job', icon: Briefcase, action: () => navigate('/serve') },
           { type: 'separator' },
@@ -361,7 +390,7 @@ export default function MenuBar({
           { type: 'separator' },
           { type: 'action', label: 'Incidents', icon: FileText, action: () => navigate('/incidents') },
           { type: 'action', label: 'Records', icon: Database, action: () => navigate('/records') },
-          { type: 'action', label: 'Warrants', icon: Gavel, action: () => window.open('/warrants', '_blank', 'noopener,noreferrer') },
+          { type: 'action', label: 'Warrants', icon: Gavel, action: () => navigate('/warrants') },
           { type: 'action', label: 'Citations', icon: FileWarning, action: () => navigate('/citations') },
           { type: 'action', label: 'Evidence & Property', icon: Package, action: () => navigate('/evidence') },
           { type: 'separator' },
@@ -447,6 +476,16 @@ export default function MenuBar({
           { type: 'toggle', label: 'Sound Effects', icon: soundEnabled ? Volume2 : VolumeX, checked: soundEnabled, action: toggleSound },
           { type: 'toggle', label: 'Voice Alerts', icon: voiceAlertsEnabled ? Mic : MicOff, checked: voiceAlertsEnabled, action: toggleVoiceAlerts },
           { type: 'action', label: 'Test Voice Alerts', icon: Sparkles, action: () => demoAllVoiceAlerts() },
+          { type: 'separator' },
+          { type: 'toggle', label: `Voice Engine: ${voiceEngine === 'edge-tts' ? 'Neural AI' : 'Browser'}`, icon: AudioLines, checked: voiceEngine === 'edge-tts', action: toggleVoiceEngine },
+          { type: 'separator' },
+          { type: 'action', label: `Alert Level: ${alertMinTier === 'minor' ? 'All Alerts' : alertMinTier === 'moderate' ? 'Important Only' : 'Emergencies Only'}`, icon: SlidersHorizontal, action: () => {
+            // Cycle through tiers: minor → moderate → major → minor
+            const next = alertMinTier === 'minor' ? 'moderate' : alertMinTier === 'moderate' ? 'major' : 'minor';
+            setAlertTier(next);
+          }},
+          { type: 'separator' },
+          { type: 'toggle', label: 'AI Dispatch Assistant', icon: Brain, checked: aiAssistEnabled, action: toggleAiAssist },
         ],
       },
       { type: 'separator' },
@@ -487,7 +526,7 @@ export default function MenuBar({
           { type: 'separator' },
           { type: 'action', label: 'Arrest Records', icon: Scale, action: () => navigate('/arrest-records') },
           { type: 'action', label: 'Criminal History', icon: FileSearch, action: () => navigate('/criminal-history') },
-          { type: 'action', label: 'Warrant Check', icon: Gavel, action: () => window.open('/warrants', '_blank', 'noopener,noreferrer') },
+          { type: 'action', label: 'Warrant Check', icon: Gavel, action: () => navigate('/warrants') },
           { type: 'action', label: 'Offender Registry', icon: UserCheck, action: () => navigate('/offender-registry') },
           { type: 'action', label: 'Sex Offender Registry', icon: ShieldAlert, action: () => navigate('/sex-offender-registry') },
           { type: 'separator' },

@@ -150,15 +150,15 @@ function SpeedTimeline({ track, duration, currentTime, onSeek }: {
   onSeek: (time: number) => void;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
-  if (!track.length) return null;
   const speeds = useMemo(() => track.map(p => Math.round(p.speed * KMH_TO_MPH)), [track]);
   const maxSpeed = useMemo(() => Math.max(...speeds, 1), [speeds]);
-  const startMs = track[0].timestamp;
-  const endMs = track[track.length - 1].timestamp;
+  const startMs = track.length ? track[0].timestamp : 0;
+  const endMs = track.length ? track[track.length - 1].timestamp : 0;
   const totalMs = endMs - startMs || 1;
   const h = 24;
 
   const segments = useMemo(() => {
+    if (!track.length) return [];
     return track.map((p, i) => {
       const x = ((p.timestamp - startMs) / totalMs) * 100;
       const y = h - (speeds[i] / maxSpeed) * (h - 4);
@@ -167,6 +167,8 @@ function SpeedTimeline({ track, duration, currentTime, onSeek }: {
       return { x, y, color };
     });
   }, [track, speeds, maxSpeed, startMs, totalMs, h]);
+
+  if (!track.length) return null;
 
   const progressX = duration > 0 ? (currentTime / duration) * 100 : 0;
 
@@ -632,6 +634,20 @@ export default function DashCamDetailPage() {
 
   // ── Loading / Error ──────────────────────────
 
+  // ── Render ────────────────────────────────────
+
+  // Set document title
+  useEffect(() => { document.title = 'Dash Cam Player \u2014 RMPG Flex'; }, []);
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setEditingVideo(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center" style={{ height: 'calc(100vh - 120px)' }}>
@@ -658,19 +674,6 @@ export default function DashCamDetailPage() {
     );
   }
 
-  // ── Render ────────────────────────────────────
-
-  // Set document title
-  useEffect(() => { document.title = 'Dash Cam Player \u2014 RMPG Flex'; }, []);
-
-  // Keyboard shortcut: Escape to close modals
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setEditingVideo(null); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
 
   return (
     <div id="hud-container" className="relative flex" style={{ height: 'calc(100vh - 120px)', background: '#000' }}>

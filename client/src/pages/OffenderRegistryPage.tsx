@@ -399,7 +399,12 @@ export default function OffenderRegistryPage() {
         <div className="flex gap-1 p-1.5 border-b border-rmpg-700 bg-surface-base">
           <div className="flex-1 relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" style={{ width: 12, height: 12 }} />
-            <input value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }} placeholder="Search alerts..." aria-label="Search alerts..." className="w-full pl-7 pr-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 outline-none" />
+            <input value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }} placeholder="Search alerts..." aria-label="Search alerts..." className="w-full pl-7 pr-7 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 outline-none" />
+            {searchQuery && (
+              <button type="button" onClick={() => { setSearchQuery(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300" aria-label="Clear search">
+                <X style={{ width: 12, height: 12 }} />
+              </button>
+            )}
           </div>
           <select value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none focus:border-brand-600">
             <option value="">All Types</option>
@@ -429,8 +434,8 @@ export default function OffenderRegistryPage() {
               <button type="button"
                 key={alert.id}
                 onClick={() => setSelected(alert)}
-                className={`w-full text-left px-3 py-2 border-b border-rmpg-800 transition-colors ${
-                  selected?.id === alert.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'hover:bg-rmpg-800/40 border-l-2 border-l-transparent'
+                className={`w-full text-left px-3 py-2 border-b border-rmpg-700/50 transition-colors ${
+                  selected?.id === alert.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'hover:bg-surface-raised/50 border-l-2 border-l-transparent'
                 } ${alert.severity === 'danger' ? 'border-l-red-600' : ''}`}
               >
                 <div className="flex items-center justify-between">
@@ -457,9 +462,9 @@ export default function OffenderRegistryPage() {
 
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-3 py-1.5 border-t border-rmpg-700 bg-surface-base">
-            <button type="button" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="text-[10px] text-rmpg-400 disabled:opacity-30">← Prev</button>
-            <span className="text-[9px] font-mono text-rmpg-500">Page {page}/{totalPages}</span>
-            <button type="button" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="text-[10px] text-rmpg-400 disabled:opacity-30">Next →</button>
+            <button type="button" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="toolbar-btn text-[10px] disabled:opacity-40">← Prev</button>
+            <span className="text-[9px] font-mono text-rmpg-500">Page {page} of {totalPages} ({totalCount})</span>
+            <button type="button" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="toolbar-btn text-[10px] disabled:opacity-40">Next →</button>
           </div>
         )}
       </div>
@@ -630,7 +635,7 @@ export default function OffenderRegistryPage() {
 
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn">Cancel</button>
-                <button type="button" onClick={handleCreate} disabled={submitting} className="toolbar-btn toolbar-btn-primary print:hidden">
+                <button type="button" onClick={handleCreate} disabled={submitting} className="toolbar-btn toolbar-btn-primary print:hidden disabled:opacity-40">
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: 11, height: 11 }} />}
                   Create Alert
                 </button>

@@ -57,7 +57,7 @@ const EmailPage = lazy(() => import('./pages/EmailPage'));
 const CrmPage = lazy(() => import('./pages/CrmPage'));
 const ServePage = lazy(() => import('./pages/ServePage'));
 const WebResearchPage = lazy(() => import('./pages/WebResearchPage'));
-const HRPage = lazy(() => import('./pages/hr/HRPage'));
+const HRPage = lazy(() => import('./pages/hr/HrPage'));
 const IncidentDetailWindow = lazy(() => import('./pages/detached/IncidentDetailWindow'));
 const RecordDetailWindow = lazy(() => import('./pages/detached/RecordDetailWindow'));
 

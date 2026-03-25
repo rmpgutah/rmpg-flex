@@ -60,6 +60,11 @@ export default function BodyCamerasPage() {
   // Officer list for the form modal dropdown
   const [officers, setOfficers] = useState<{ id: string; name: string }[]>([]);
 
+  // ═══ NEW: Retention, Review, and Redaction Stats ═══
+  const [retentionStats, setRetentionStats] = useState<{ total_expired: number; total_storage_gb: number } | null>(null);
+  const [pendingReviews, setPendingReviews] = useState(0);
+  const [pendingRedactions, setPendingRedactions] = useState(0);
+
   // ----------------------------------------------------------
   // Data Fetching
   // ----------------------------------------------------------
@@ -90,7 +95,23 @@ export default function BodyCamerasPage() {
       if (mountedRef.current) setLoading(false);
     }
   }, []);
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    fetchData();
+    // Fetch new upgrade data
+    const fetchUpgradeData = async () => {
+      try {
+        const [ret, rev, red] = await Promise.all([
+          apiFetch<any>('/personnel/bodycam-videos/retention/report').catch(() => null),
+          apiFetch<any>('/personnel/bodycam-videos/reviews/pending').catch(() => null),
+          apiFetch<any>('/personnel/bodycam-videos/redaction-requests').catch(() => null),
+        ]);
+        if (ret) setRetentionStats({ total_expired: ret.total_expired, total_storage_gb: ret.total_storage_gb });
+        if (rev) setPendingReviews(rev.count || 0);
+        if (red) setPendingRedactions((red.data || []).filter((r: any) => r.status === 'pending').length);
+      } catch { /* silent */ }
+    };
+    fetchUpgradeData();
+  }, [fetchData]);
 
   // Live-sync for real-time updates from other users
   useLiveSync('body_cameras', fetchData);
@@ -241,6 +262,18 @@ export default function BodyCamerasPage() {
             <span>Cameras: <strong className="text-white">{cameras.length}</strong></span>
             <span className="text-rmpg-600" aria-hidden="true">|</span>
             <span>Videos: <strong className="text-brand-400">{videos.length}</strong></span>
+            {pendingReviews > 0 && (<>
+              <span className="text-rmpg-600">|</span>
+              <span>Reviews: <strong className="text-amber-400">{pendingReviews}</strong></span>
+            </>)}
+            {pendingRedactions > 0 && (<>
+              <span className="text-rmpg-600">|</span>
+              <span>Redactions: <strong className="text-red-400">{pendingRedactions}</strong></span>
+            </>)}
+            {retentionStats && retentionStats.total_expired > 0 && (<>
+              <span className="text-rmpg-600">|</span>
+              <span>Expired: <strong className="text-red-400">{retentionStats.total_expired}</strong></span>
+            </>)}
           </div>
           <PrintButton />
         </PanelTitleBar>

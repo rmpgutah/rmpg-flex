@@ -70,35 +70,16 @@ export default function CrimeAnalysisPage() {
   useEffect(() => { fetchData(); }, [fetchData]);
   useLiveSync('incidents', fetchData);
 
-  if (loading) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-rmpg-500 mx-auto mb-2" role="status" aria-label="Loading" />
-          <div className="text-xs text-rmpg-500">Loading crime analysis...</div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!data) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-xs text-rmpg-500">No data available</div>
-      </div>
-    );
-  }
-
   /* ── Derived data ──────────────────────────────────────────── */
-  const totalIncidents = data.topOffenses?.reduce((a: number, b: any) => a + b.count, 0) || 0;
+  const totalIncidents = data?.topOffenses?.reduce((a: number, b: any) => a + b.count, 0) || 0;
 
-  const offenseData = (data.topOffenses || []).slice(0, 10).map((o: any) => ({
+  const offenseData = (data?.topOffenses || []).slice(0, 10).map((o: any) => ({
     name: (o.offense_type || 'Unknown').slice(0, 20),
     fullName: o.offense_type || 'Unknown',
     count: o.count ?? 0,
   }));
 
-  const hotspotData = (data.hotspots || []).slice(0, 10).map((h: any) => ({
+  const hotspotData = (data?.hotspots || []).slice(0, 10).map((h: any) => ({
     name: (h.location || 'Unknown').slice(0, 22),
     fullName: h.location || 'Unknown',
     count: h.count ?? 0,
@@ -106,20 +87,20 @@ export default function CrimeAnalysisPage() {
   }));
 
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const dowData = (data.dayOfWeek || []).map((d: any) => ({
+  const dowData = (data?.dayOfWeek || []).map((d: any) => ({
     name: dayNames[d.day_of_week] ?? d.day_of_week,
     count: d.count ?? 0,
     isWeekend: d.day_of_week === 0 || d.day_of_week === 6,
   }));
 
-  const todData = (data.timeOfDay || []).map((t: any) => ({
+  const todData = (data?.timeOfDay || []).map((t: any) => ({
     hour: `${String(t.hour).padStart(2, '0')}:00`,
     count: t.count ?? 0,
     isDay: t.hour >= 6 && t.hour < 18,
   }));
 
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const trendData = (data.trendData || []).map((m: any) => {
+  const trendData = (data?.trendData || []).map((m: any) => {
     const parts = (m.month || '').split('-');
     const label = parts.length === 2 ? `${monthNames[parseInt(parts[1], 10) - 1] || parts[1]} ${parts[0]?.slice(2)}` : m.month;
     return { name: label, count: m.count ?? 0 };
@@ -157,6 +138,26 @@ export default function CrimeAnalysisPage() {
 
   // Set document title
   useEffect(() => { document.title = 'Crime Analysis \u2014 RMPG Flex'; }, []);
+
+
+  if (!data) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-xs text-rmpg-500">No data available</div>
+      </div>
+    );
+  }
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-rmpg-500 mx-auto mb-2" role="status" aria-label="Loading" />
+          <div className="text-xs text-rmpg-500">Loading crime analysis...</div>
+        </div>
+      </div>
+    );
+  }
+
 
   return (
     <div className="h-full flex flex-col">
@@ -199,9 +200,9 @@ export default function CrimeAnalysisPage() {
         <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-3 mb-4`}>
           {[
             { label: 'Total Incidents', value: totalIncidents, color: 'text-white', spark: '#3b82f6' },
-            { label: 'Clearance Rate', value: `${data.clearanceRate?.rate ?? 0}%`, color: 'text-green-400', spark: '#10b981' },
-            { label: 'Avg Response', value: `${data.responseMetrics?.[0]?.avg_minutes ?? '\u2014'} min`, color: 'text-amber-400', spark: '#d97706' },
-            { label: 'Repeat Offenders', value: data.repeatOffenders?.length || 0, color: 'text-red-400', spark: '#ef4444' },
+            { label: 'Clearance Rate', value: `${data?.clearanceRate?.rate ?? 0}%`, color: 'text-green-400', spark: '#10b981' },
+            { label: 'Avg Response', value: `${data?.responseMetrics?.[0]?.avg_minutes ?? '\u2014'} min`, color: 'text-amber-400', spark: '#d97706' },
+            { label: 'Repeat Offenders', value: data?.repeatOffenders?.length || 0, color: 'text-red-400', spark: '#ef4444' },
           ].map(card => (
             <div key={card.label} className="panel-beveled p-3 text-center relative overflow-hidden">
               <div className="text-[9px] font-mono text-rmpg-500 uppercase">{card.label}</div>
@@ -341,12 +342,12 @@ export default function CrimeAnalysisPage() {
           <div className="panel-surface">
             <PanelTitleBar title="Repeat Offenders (3+ Incidents)" icon={Users} />
             <div className="p-3">
-              {(data.repeatOffenders || []).length === 0 ? (
+              {(data?.repeatOffenders || []).length === 0 ? (
                 <div className="text-center py-4 text-rmpg-500 text-xs">No repeat offenders</div>
               ) : (
                 <div className="space-y-1">
-                  {(data.repeatOffenders || []).slice(0, 15).map((person: any, idx: number) => {
-                    const maxCount = Math.max(1, ...(data.repeatOffenders || []).map((p: any) => p.incident_count ?? 0));
+                  {(data?.repeatOffenders || []).slice(0, 15).map((person: any, idx: number) => {
+                    const maxCount = Math.max(1, ...(data?.repeatOffenders || []).map((p: any) => p.incident_count ?? 0));
                     const pct = ((person.incident_count ?? 0) / maxCount) * 100;
                     return (
                       <div key={idx} className="flex items-center gap-2 px-2 py-1.5 panel-beveled">
@@ -368,11 +369,11 @@ export default function CrimeAnalysisPage() {
           <div className="panel-surface">
             <PanelTitleBar title="Response Metrics by Priority" icon={AlertTriangle} />
             <div className="p-3">
-              {(data.responseMetrics || []).length === 0 ? (
+              {(data?.responseMetrics || []).length === 0 ? (
                 <div className="text-center py-4 text-rmpg-500 text-xs">No response data</div>
               ) : (
                 <div className="space-y-2">
-                  {(data.responseMetrics || []).map((metric: any, idx: number) => {
+                  {(data?.responseMetrics || []).map((metric: any, idx: number) => {
                     const target = responseTargets[metric.priority] ?? 15;
                     const pct = Math.min(100, ((metric.avg_minutes ?? 0) / target) * 100);
                     const overTarget = (metric.avg_minutes ?? 0) > target;

@@ -1299,4 +1299,140 @@ router.get('/efficiency', (req: Request, res: Response) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// UPGRADE 1: Checkpoint Compliance Scoring per Officer
+// Returns compliance scores grouped by officer over a period.
+// ════════════════════════════════════════════════════════════
+router.get('/compliance/by-officer', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.min(90, Math.max(1, parseInt(String(req.query.days || '30'), 10)));
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+    const officers = db.prepare(`
+      SELECT ps.officer_id, u.full_name as officer_name, u.badge_number,
+        COUNT(*) as total_scans,
+        SUM(CASE WHEN ps.status = 'on_time' THEN 1 ELSE 0 END) as on_time,
+        SUM(CASE WHEN ps.status = 'late' THEN 1 ELSE 0 END) as late,
+        COUNT(DISTINCT ps.checkpoint_id) as unique_checkpoints,
+        COUNT(DISTINCT DATE(ps.scanned_at)) as active_days,
+        MIN(ps.scanned_at) as first_scan,
+        MAX(ps.scanned_at) as last_scan
+      FROM patrol_scans ps
+      LEFT JOIN users u ON ps.officer_id = u.id
+      WHERE ps.scanned_at >= ?
+      GROUP BY ps.officer_id
+      ORDER BY total_scans DESC
+    `).all(cutoff) as any[];
+
+    const scored = officers.map((o: any) => {
+      const complianceRate = o.total_scans > 0 ? Math.round((o.on_time / o.total_scans) * 100) : 0;
+      // Weighted score: on_time gets full points, late gets half
+      const efficiencyScore = o.total_scans > 0
+        ? Math.round(((o.on_time * 1.0 + o.late * 0.5) / o.total_scans) * 100) : 0;
+      return {
+        ...o,
+        compliance_rate: complianceRate,
+        efficiency_score: efficiencyScore,
+        avg_scans_per_day: o.active_days > 0 ? Math.round((o.total_scans / o.active_days) * 10) / 10 : 0,
+      };
+    });
+
+    res.json({ officers: scored, period_days: days });
+  } catch (error: any) {
+    console.error('Officer compliance error:', error);
+    res.status(500).json({ error: 'Failed to get officer compliance', code: 'OFFICER_COMPLIANCE_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 2: Beat Coverage Analysis
+// Returns which areas (properties) have adequate patrol
+// coverage and which are underserved.
+// ════════════════════════════════════════════════════════════
+router.get('/coverage/analysis', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.min(90, Math.max(1, parseInt(String(req.query.days || '7'), 10)));
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+    const properties = db.prepare(`
+      SELECT p.id, p.name,
+        COUNT(DISTINCT pc.id) as total_checkpoints,
+        COUNT(DISTINCT CASE WHEN ps.id IS NOT NULL THEN pc.id END) as scanned_checkpoints,
+        COALESCE(COUNT(ps.id), 0) as total_scans,
+        COALESCE(SUM(CASE WHEN ps.status = 'on_time' THEN 1 ELSE 0 END), 0) as on_time_scans
+      FROM properties p
+      LEFT JOIN patrol_checkpoints pc ON pc.property_id = p.id AND pc.is_active = 1
+      LEFT JOIN patrol_scans ps ON ps.checkpoint_id = pc.id AND ps.scanned_at >= ?
+      WHERE pc.id IS NOT NULL
+      GROUP BY p.id
+      ORDER BY total_checkpoints DESC
+    `).all(cutoff) as any[];
+
+    const analysis = properties.map((p: any) => ({
+      ...p,
+      coverage_pct: p.total_checkpoints > 0
+        ? Math.round((p.scanned_checkpoints / p.total_checkpoints) * 100) : 0,
+      compliance_rate: p.total_scans > 0
+        ? Math.round((p.on_time_scans / p.total_scans) * 100) : 0,
+      status: p.total_checkpoints > 0 && p.scanned_checkpoints === 0 ? 'no_coverage'
+        : p.scanned_checkpoints < p.total_checkpoints ? 'partial_coverage' : 'full_coverage',
+    }));
+
+    res.json({
+      properties: analysis,
+      summary: {
+        total_properties: analysis.length,
+        full_coverage: analysis.filter(a => a.status === 'full_coverage').length,
+        partial_coverage: analysis.filter(a => a.status === 'partial_coverage').length,
+        no_coverage: analysis.filter(a => a.status === 'no_coverage').length,
+      },
+      period_days: days,
+    });
+  } catch (error: any) {
+    console.error('Coverage analysis error:', error);
+    res.status(500).json({ error: 'Failed to get coverage analysis', code: 'COVERAGE_ANALYSIS_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// UPGRADE 3: Patrol Break Summary per Shift
+// Returns break statistics for all officers on a given date.
+// ════════════════════════════════════════════════════════════
+router.get('/breaks/summary', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const targetDate = (req.query.date as string) || localNow().split('T')[0];
+
+    let breakSummary: any[] = [];
+    try {
+      breakSummary = db.prepare(`
+        SELECT pb.officer_id, u.full_name as officer_name,
+          COUNT(*) as break_count,
+          SUM(COALESCE(pb.duration_minutes, 0)) as total_minutes,
+          MAX(pb.duration_minutes) as longest_break_minutes,
+          MIN(pb.break_start) as first_break,
+          MAX(COALESCE(pb.break_end, pb.break_start)) as last_break,
+          SUM(CASE WHEN pb.break_end IS NULL THEN 1 ELSE 0 END) as currently_on_break
+        FROM patrol_breaks pb
+        LEFT JOIN users u ON pb.officer_id = u.id
+        WHERE pb.shift_date = ?
+        GROUP BY pb.officer_id
+        ORDER BY total_minutes DESC
+      `).all(targetDate);
+    } catch { /* table may not exist */ }
+
+    res.json({
+      date: targetDate,
+      officers: breakSummary,
+      total_break_minutes: breakSummary.reduce((s: number, b: any) => s + (b.total_minutes || 0), 0),
+      officers_on_break: breakSummary.filter((b: any) => b.currently_on_break > 0).length,
+    });
+  } catch (error: any) {
+    console.error('Break summary error:', error);
+    res.status(500).json({ error: 'Failed to get break summary', code: 'BREAK_SUMMARY_ERROR' });
+  }
+});
+
 export default router;

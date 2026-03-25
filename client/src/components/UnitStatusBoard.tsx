@@ -146,7 +146,7 @@ export default React.memo(function UnitStatusBoard({
                 <StatusBadge status={unit.status} type="unit_status" size="sm" />
               </td>
               <td className="text-rmpg-300 text-xs font-mono">
-                {unit.current_call_number || '-'}
+                {unit.current_call_number || <span className="text-rmpg-500 italic text-[10px]">Unassigned</span>}
               </td>
               <td>
                 {unit.location ? (
@@ -155,7 +155,7 @@ export default React.memo(function UnitStatusBoard({
                     <span className="truncate max-w-[150px]">{unit.location}</span>
                   </div>
                 ) : (
-                  <span className="text-rmpg-500">-</span>
+                  <span className="text-rmpg-500 italic text-[10px]">No GPS</span>
                 )}
               </td>
               {canAssign && (

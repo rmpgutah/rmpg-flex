@@ -223,6 +223,9 @@ interface WeatherData {
   weatherCode: number;
   description: string;
   icon: React.ComponentType<any>;
+  humidity?: number;
+  windSpeed?: number;
+  windDirection?: number;
 }
 
 function getWeatherInfo(code: number): { description: string; icon: React.ComponentType<any> } {
@@ -347,6 +350,7 @@ export default function DashboardPage() {
   const [psoStats, setPsoStats] = useState<PsoStats | null>(null);
   const [shiftInfo, setShiftInfo] = useState<ShiftInfo>(getCurrentShift);
   const [weather, setWeather] = useState<WeatherData | null>(null);
+  const [weatherFetched, setWeatherFetched] = useState(false);
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const [showNewCallModal, setShowNewCallModal] = useState(false);
@@ -360,6 +364,13 @@ export default function DashboardPage() {
   const [upcomingCourt, setUpcomingCourt] = useState<any>(null);
   const [overdueReports, setOverdueReports] = useState<any>(null);
 
+  // ═══ NEW: Shift-aware stats, court dates, expiring certs ═══
+  const [shiftStats, setShiftStats] = useState<{
+    shift_name: string; calls: number; incidents: number; citations: number; patrol_scans: number;
+  } | null>(null);
+  const [courtDatesCount, setCourtDatesCount] = useState(0);
+  const [expiringCertsCount, setExpiringCertsCount] = useState(0);
+
   // Shift countdown timer — update every second
   useEffect(() => {
     const timer = setInterval(() => setShiftInfo(getCurrentShift()), 1000);
@@ -369,18 +380,25 @@ export default function DashboardPage() {
   // Weather fetch — refresh every 15 minutes
   const fetchWeather = useCallback(async () => {
     try {
-      const resp = await fetch(
-        'https://api.open-meteo.com/v1/forecast?latitude=40.7608&longitude=-111.891&current=temperature_2m,weather_code&temperature_unit=fahrenheit&timezone=America/Denver'
-      );
-      if (!resp.ok) return;
-      const data = await resp.json();
-      const temp = data?.current?.temperature_2m;
-      if (temp == null) return;
-      const code = data?.current?.weather_code ?? 0;
+      // Use server proxy to avoid browser CSP/CORS issues with open-meteo.com
+      const resp = await apiFetch<any>('/weather');
+      const temp = resp?.current?.temperature_2m;
+      if (temp == null) { setWeather(null); return; }
+      const code = resp?.current?.weather_code ?? 0;
       const info = getWeatherInfo(code);
-      setWeather({ temperature: Math.round(temp), weatherCode: code, description: info.description, icon: info.icon });
+      setWeather({
+        temperature: Math.round(temp),
+        weatherCode: code,
+        description: info.description,
+        icon: info.icon,
+        humidity: resp?.current?.relative_humidity_2m ?? undefined,
+        windSpeed: resp?.current?.wind_speed_10m ?? undefined,
+        windDirection: resp?.current?.wind_direction_10m ?? undefined,
+      });
     } catch {
-      // Fail silently — weather is non-critical
+      setWeather(null);
+    } finally {
+      setWeatherFetched(true);
     }
   }, []);
 
@@ -453,13 +471,16 @@ export default function DashboardPage() {
     const safe = async <T,>(url: string): Promise<T | null> => {
       try { return await apiFetch<T>(url); } catch { return null; }
     };
-    const [sc, cr, pc, ep, uc, or_] = await Promise.all([
+    const [sc, cr, pc, ep, uc, or_, ss, cd, ec] = await Promise.all([
       safe<any>('/reports/shift-comparison'),
       safe<any>('/reports/clearance-rate'),
       safe<any>('/reports/patrol-coverage'),
       safe<any>('/reports/evidence-pending'),
       safe<any>('/reports/upcoming-court'),
       safe<any>('/reports/overdue-reports'),
+      safe<any>('/admin/shift-stats'),
+      safe<any>('/admin/upcoming-court-dates?days=30'),
+      safe<any>('/admin/expiring-certifications?days=30'),
     ]);
     if (sc) setShiftComparison(sc);
     if (cr) setClearanceRate(cr);
@@ -467,6 +488,9 @@ export default function DashboardPage() {
     if (ep) setEvidencePending(ep);
     if (uc) setUpcomingCourt(uc);
     if (or_) setOverdueReports(or_);
+    if (ss) setShiftStats(ss);
+    if (cd) setCourtDatesCount(cd.count ?? 0);
+    if (ec) setExpiringCertsCount((ec.expiring_count ?? 0) + (ec.expired_count ?? 0));
   }, []);
 
   useEffect(() => {
@@ -505,7 +529,18 @@ export default function DashboardPage() {
   // Set document title
   useEffect(() => { document.title = 'Dashboard \u2014 RMPG Flex'; }, []);
 
-  if (loading && stats === DEFAULT_STATS) {
+  // Keyboard shortcut: Escape to close modals (must be before early return to preserve hook order)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setShowNewCallModal(false); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  const isInitialLoading = loading && stats === DEFAULT_STATS;
+
+  if (isInitialLoading) {
     return (
       <div className="p-4 space-y-4 animate-fade-in" role="status" aria-label="Loading dashboard" aria-busy="true">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -524,15 +559,6 @@ export default function DashboardPage() {
       </div>
     );
   }
-
-  // Keyboard shortcut: Escape to close modals
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setShowNewCallModal(false); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
 
   return (
     <div className="p-4 space-y-4 animate-fade-in" role="main" aria-label="Command and Control Dashboard">
@@ -727,6 +753,17 @@ export default function DashboardPage() {
                       <div className="text-xs text-rmpg-400 mt-0.5 font-medium">{weather.description}</div>
                     </div>
                   </div>
+                  {/* Humidity & Wind */}
+                  {(weather.humidity != null || weather.windSpeed != null) && (
+                    <div className="flex items-center gap-4 text-[10px] text-rmpg-400 font-mono tabular-nums">
+                      {weather.humidity != null && (
+                        <span title="Relative humidity">💧 {weather.humidity}%</span>
+                      )}
+                      {weather.windSpeed != null && (
+                        <span title={`Wind direction: ${weather.windDirection ?? '—'}°`}>💨 {Math.round(weather.windSpeed)} mph</span>
+                      )}
+                    </div>
+                  )}
                   {/* Road Conditions Warning */}
                   {isFreezing && (
                     <div className="flex items-center gap-2 p-2.5 bg-blue-900/20 border border-blue-700/30 rounded-sm animate-fade-in" role="alert">
@@ -748,9 +785,18 @@ export default function DashboardPage() {
                 </div>
               );
             })() : (
-              <div className="flex flex-col items-center justify-center h-[100px] gap-2" role="status" aria-label="Loading weather data">
-                <Loader2 className="w-5 h-5 text-rmpg-500 animate-spin" aria-hidden="true" />
-                <span className="text-[10px] text-rmpg-500 animate-pulse select-none">Loading weather...</span>
+              <div className="flex flex-col items-center justify-center h-[100px] gap-2" role="status" aria-label={weatherFetched ? 'Weather unavailable' : 'Loading weather data'}>
+                {!weatherFetched ? (
+                  <>
+                    <Loader2 className="w-5 h-5 text-rmpg-500 animate-spin" aria-hidden="true" />
+                    <span className="text-[10px] text-rmpg-500 animate-pulse select-none">Loading weather...</span>
+                  </>
+                ) : (
+                  <>
+                    <Cloud className="w-6 h-6 text-rmpg-500 opacity-50" aria-hidden="true" />
+                    <span className="text-[10px] text-rmpg-500 select-none">Weather unavailable</span>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -814,6 +860,64 @@ export default function DashboardPage() {
             </div>
           ))}
           </div>
+        </div>
+      )}
+
+      {/* ═══ NEW: Shift-Aware Stats + Court Dates + Expiring Certs Row ═══ */}
+      {(shiftStats || courtDatesCount > 0 || expiringCertsCount > 0) && (
+        <div className={`grid ${isMobile ? 'grid-cols-1 gap-2' : 'grid-cols-1 sm:grid-cols-3 gap-3'}`}>
+          {shiftStats && (
+            <div className="panel-beveled bg-surface-base p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="led-dot led-green animate-led-pulse" />
+                <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">{shiftStats.shift_name} Stats</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-surface-sunken p-2 rounded-sm border border-[#1e3048]">
+                  <div className="text-lg font-bold font-mono text-brand-400">{shiftStats.calls}</div>
+                  <div className="text-[9px] text-rmpg-500 uppercase">Calls</div>
+                </div>
+                <div className="bg-surface-sunken p-2 rounded-sm border border-[#1e3048]">
+                  <div className="text-lg font-bold font-mono text-amber-400">{shiftStats.incidents}</div>
+                  <div className="text-[9px] text-rmpg-500 uppercase">Incidents</div>
+                </div>
+                <div className="bg-surface-sunken p-2 rounded-sm border border-[#1e3048]">
+                  <div className="text-lg font-bold font-mono text-purple-400">{shiftStats.citations}</div>
+                  <div className="text-[9px] text-rmpg-500 uppercase">Citations</div>
+                </div>
+                <div className="bg-surface-sunken p-2 rounded-sm border border-[#1e3048]">
+                  <div className="text-lg font-bold font-mono text-green-400">{shiftStats.patrol_scans}</div>
+                  <div className="text-[9px] text-rmpg-500 uppercase">Patrols</div>
+                </div>
+              </div>
+            </div>
+          )}
+          {courtDatesCount > 0 && (
+            <div
+              className="panel-beveled bg-surface-base p-3 cursor-pointer hover:bg-surface-raised transition-colors"
+              onClick={() => navigate('/citations')}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <Gavel className="w-4 h-4 text-amber-400" />
+                <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Court Dates (30d)</span>
+              </div>
+              <div className="text-3xl font-bold font-mono text-amber-400">{courtDatesCount}</div>
+              <div className="text-[10px] text-rmpg-500 mt-1">Upcoming court appearances</div>
+            </div>
+          )}
+          {expiringCertsCount > 0 && (
+            <div
+              className="panel-beveled bg-surface-base p-3 cursor-pointer hover:bg-surface-raised transition-colors border-l-4 border-l-red-500"
+              onClick={() => navigate('/personnel')}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle className="w-4 h-4 text-red-400" />
+                <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Cert Alerts</span>
+              </div>
+              <div className="text-3xl font-bold font-mono text-red-400">{expiringCertsCount}</div>
+              <div className="text-[10px] text-rmpg-500 mt-1">Expiring or expired certifications</div>
+            </div>
+          )}
         </div>
       )}
 

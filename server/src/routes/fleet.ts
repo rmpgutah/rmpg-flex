@@ -2775,4 +2775,353 @@ router.get('/cost-per-mile/:vehicleId', (req: Request, res: Response) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// UPGRADE BATCH — Fleet Management Enhancements
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── U1: Service Interval Alerts — vehicles approaching or past service ──
+router.get('/service-interval-alerts', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localToday();
+
+    const vehicles = db.prepare(`
+      SELECT id, vehicle_number, make, model, year, current_mileage,
+        next_service_due, next_service_type, next_service_mileage, status
+      FROM fleet_vehicles
+      WHERE archived_at IS NULL AND next_service_due IS NOT NULL
+      ORDER BY next_service_due ASC
+      LIMIT 500
+    `).all() as any[];
+
+    const alerts: any[] = [];
+    for (const v of vehicles) {
+      const dueDate = v.next_service_due;
+      const daysUntil = Math.floor((new Date(dueDate).getTime() - new Date(today).getTime()) / 86400000);
+      let severity: 'overdue' | 'critical' | 'warning' | 'upcoming' = 'upcoming';
+      if (daysUntil < 0) severity = 'overdue';
+      else if (daysUntil <= 7) severity = 'critical';
+      else if (daysUntil <= 30) severity = 'warning';
+      else continue;
+
+      let mileageAlert = false;
+      if (v.next_service_mileage && v.current_mileage) {
+        const milesUntil = v.next_service_mileage - v.current_mileage;
+        if (milesUntil <= 500) mileageAlert = true;
+      }
+
+      alerts.push({
+        vehicle_id: v.id, vehicle_number: v.vehicle_number,
+        make: v.make, model: v.model, year: v.year,
+        service_type: v.next_service_type || 'General Service',
+        due_date: dueDate, days_until: daysUntil, severity,
+        mileage_alert: mileageAlert, current_mileage: v.current_mileage,
+        service_mileage: v.next_service_mileage,
+      });
+    }
+
+    res.json({ alerts, total: alerts.length });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load service interval alerts', code: 'SERVICE_INTERVAL_ALERTS_ERROR' });
+  }
+});
+
+// ── U2: Mileage Tracking Summary ────────────────────────────────────
+router.get('/mileage-summary', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const vehicles = db.prepare(`
+      SELECT id, vehicle_number, make, model, year, current_mileage, status, next_service_mileage
+      FROM fleet_vehicles WHERE archived_at IS NULL AND current_mileage IS NOT NULL
+      ORDER BY current_mileage DESC LIMIT 500
+    `).all() as any[];
+
+    const totalMileage = vehicles.reduce((s: number, v: any) => s + (v.current_mileage || 0), 0);
+    const avgMileage = vehicles.length > 0 ? Math.round(totalMileage / vehicles.length) : 0;
+    const highMileage = vehicles.filter((v: any) => v.current_mileage >= 100000);
+    const needsServiceSoon = vehicles.filter((v: any) =>
+      v.next_service_mileage && v.current_mileage && (v.next_service_mileage - v.current_mileage) <= 1000
+    );
+
+    res.json({
+      total_vehicles: vehicles.length, total_fleet_mileage: totalMileage,
+      average_mileage: avgMileage, highest_mileage: vehicles[0] || null,
+      high_mileage_count: highMileage.length,
+      needs_service_by_mileage: needsServiceSoon.length, vehicles,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load mileage summary', code: 'MILEAGE_SUMMARY_ERROR' });
+  }
+});
+
+// ── U3: Fleet-Wide Assignment History ───────────────────────────────
+router.get('/assignment-history-all', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { days = '90' } = req.query;
+    const cutoff = new Date(Date.now() - parseInt(days as string, 10) * 86400000).toISOString();
+    const rows = db.prepare(`
+      SELECT fa.*, fv.vehicle_number, fv.make, fv.model,
+        u.full_name as officer_name, un.call_sign
+      FROM fleet_assignments fa
+      JOIN fleet_vehicles fv ON fv.id = fa.vehicle_id
+      LEFT JOIN units un ON un.id = fa.unit_id
+      LEFT JOIN users u ON u.id = un.officer_id
+      WHERE fa.assigned_at >= ?
+      ORDER BY fa.assigned_at DESC LIMIT 1000
+    `).all(cutoff);
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load assignment history', code: 'ASSIGNMENT_HISTORY_ALL_ERROR' });
+  }
+});
+
+// ── U4: Fleet-Wide Maintenance Cost Summary ─────────────────────────
+router.get('/maintenance-cost-summary', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const yearFilter = req.query.year ? String(req.query.year) : new Date().getFullYear().toString();
+
+    const perVehicle = db.prepare(`
+      SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year,
+        COALESCE(SUM(fm.cost), 0) as parts_cost, COALESCE(SUM(fm.labor_cost), 0) as labor_cost,
+        COUNT(fm.id) as work_order_count
+      FROM fleet_vehicles fv
+      LEFT JOIN fleet_maintenance fm ON fm.vehicle_id = fv.id AND strftime('%Y', fm.performed_at) = ?
+      WHERE fv.archived_at IS NULL GROUP BY fv.id
+      ORDER BY (COALESCE(SUM(fm.cost), 0) + COALESCE(SUM(fm.labor_cost), 0)) DESC LIMIT 500
+    `).all(yearFilter) as any[];
+
+    const totalParts = perVehicle.reduce((s: number, v: any) => s + v.parts_cost, 0);
+    const totalLabor = perVehicle.reduce((s: number, v: any) => s + v.labor_cost, 0);
+
+    const byType = db.prepare(`
+      SELECT maintenance_type as type, COALESCE(SUM(cost), 0) as cost, COUNT(*) as count
+      FROM fleet_maintenance WHERE strftime('%Y', performed_at) = ? AND cost IS NOT NULL
+      GROUP BY maintenance_type ORDER BY cost DESC
+    `).all(yearFilter) as any[];
+
+    res.json({
+      year: yearFilter,
+      total_parts_cost: Math.round(totalParts * 100) / 100,
+      total_labor_cost: Math.round(totalLabor * 100) / 100,
+      total_cost: Math.round((totalParts + totalLabor) * 100) / 100,
+      per_vehicle: perVehicle.map((v: any) => ({ ...v, total_cost: Math.round((v.parts_cost + v.labor_cost) * 100) / 100 })),
+      by_type: byType,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load maintenance cost summary', code: 'MAINTENANCE_COST_SUMMARY_ERROR' });
+  }
+});
+
+// ── U5: Inspection Pass/Fail Stats ──────────────────────────────────
+router.get('/inspection-stats', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const cutoff = new Date(Date.now() - parseInt(req.query.days as string || '90', 10) * 86400000).toISOString().split('T')[0];
+
+    const stats = db.prepare(`SELECT overall_result, COUNT(*) as count FROM fleet_inspections WHERE inspection_date >= ? GROUP BY overall_result`).all(cutoff) as any[];
+    const byVehicle = db.prepare(`
+      SELECT fv.vehicle_number, fv.id as vehicle_id, COUNT(*) as total_inspections,
+        SUM(CASE WHEN fi.overall_result = 'pass' THEN 1 ELSE 0 END) as pass_count,
+        SUM(CASE WHEN fi.overall_result = 'fail' THEN 1 ELSE 0 END) as fail_count,
+        MAX(fi.inspection_date) as last_inspection
+      FROM fleet_inspections fi JOIN fleet_vehicles fv ON fv.id = fi.vehicle_id
+      WHERE fi.inspection_date >= ? GROUP BY fi.vehicle_id ORDER BY fail_count DESC LIMIT 200
+    `).all(cutoff) as any[];
+
+    const total = stats.reduce((s: number, r: any) => s + r.count, 0);
+    const passCount = stats.find((s: any) => s.overall_result === 'pass')?.count || 0;
+    const failCount = stats.find((s: any) => s.overall_result === 'fail')?.count || 0;
+
+    res.json({
+      total_inspections: total, pass_count: passCount, fail_count: failCount,
+      pass_rate: total > 0 ? Math.round((passCount / total) * 1000) / 10 : 0,
+      by_vehicle: byVehicle.map((v: any) => ({ ...v, pass_rate: v.total_inspections > 0 ? Math.round((v.pass_count / v.total_inspections) * 1000) / 10 : 0 })),
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load inspection stats', code: 'INSPECTION_STATS_ERROR' });
+  }
+});
+
+// ── U6: Overdue Inspection Alerts ───────────────────────────────────
+router.get('/overdue-inspections', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localToday();
+    const vehicles = db.prepare(`
+      SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year, fv.status,
+        MAX(fi.inspection_date) as last_inspection_date, fi.overall_result as last_result
+      FROM fleet_vehicles fv LEFT JOIN fleet_inspections fi ON fi.vehicle_id = fv.id
+      WHERE fv.archived_at IS NULL AND fv.status = 'in_service'
+      GROUP BY fv.id HAVING last_inspection_date IS NULL OR last_inspection_date < date(?, '-30 days')
+      ORDER BY last_inspection_date ASC LIMIT 200
+    `).all(today) as any[];
+
+    const alerts = vehicles.map((v: any) => {
+      const daysSince = v.last_inspection_date ? Math.floor((new Date(today).getTime() - new Date(v.last_inspection_date).getTime()) / 86400000) : null;
+      return { ...v, days_since_inspection: daysSince, severity: daysSince === null ? 'never_inspected' : daysSince > 60 ? 'critical' : 'warning' };
+    });
+    res.json({ alerts, total: alerts.length });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load overdue inspections', code: 'OVERDUE_INSPECTIONS_ERROR' });
+  }
+});
+
+// ── U7: Inspection Checklist Templates CRUD ─────────────────────────
+router.get('/inspection-templates', (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.exec(`CREATE TABLE IF NOT EXISTS fleet_inspection_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT,
+      vehicle_type TEXT DEFAULT 'all', items TEXT NOT NULL DEFAULT '[]',
+      is_default INTEGER DEFAULT 0, created_by INTEGER,
+      created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
+    )`);
+    res.json(db.prepare('SELECT * FROM fleet_inspection_templates ORDER BY is_default DESC, name ASC').all());
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load inspection templates', code: 'INSPECTION_TEMPLATES_ERROR' });
+  }
+});
+
+router.post('/inspection-templates', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.exec(`CREATE TABLE IF NOT EXISTS fleet_inspection_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT,
+      vehicle_type TEXT DEFAULT 'all', items TEXT NOT NULL DEFAULT '[]',
+      is_default INTEGER DEFAULT 0, created_by INTEGER,
+      created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
+    )`);
+    const { name, description, vehicle_type, items, is_default } = req.body;
+    if (!name) return res.status(400).json({ error: 'name is required', code: 'NAME_REQUIRED' });
+    const now = localNow();
+    const result = db.prepare(`INSERT INTO fleet_inspection_templates (name, description, vehicle_type, items, is_default, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(name, description || null, vehicle_type || 'all', JSON.stringify(items || []), is_default ? 1 : 0, req.user!.userId, now, now);
+    res.status(201).json({ success: true, id: Number(result.lastInsertRowid) });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create inspection template', code: 'CREATE_INSPECTION_TEMPLATE_ERROR' });
+  }
+});
+
+router.put('/inspection-templates/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { name, description, vehicle_type, items, is_default } = req.body;
+    const sets: string[] = []; const vals: any[] = [];
+    if (name !== undefined) { sets.push('name = ?'); vals.push(name); }
+    if (description !== undefined) { sets.push('description = ?'); vals.push(description); }
+    if (vehicle_type !== undefined) { sets.push('vehicle_type = ?'); vals.push(vehicle_type); }
+    if (items !== undefined) { sets.push('items = ?'); vals.push(JSON.stringify(items)); }
+    if (is_default !== undefined) { sets.push('is_default = ?'); vals.push(is_default ? 1 : 0); }
+    if (sets.length === 0) return res.status(400).json({ error: 'No fields', code: 'NO_FIELDS' });
+    sets.push('updated_at = ?'); vals.push(localNow()); vals.push(req.params.id);
+    db.prepare(`UPDATE fleet_inspection_templates SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to update inspection template', code: 'UPDATE_INSPECTION_TEMPLATE_ERROR' });
+  }
+});
+
+// ── U8: Fleet Cost Per Mile Analytics ───────────────────────────────
+router.get('/fleet-cost-analytics', (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const vehicles = db.prepare(`
+      SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year, fv.current_mileage,
+        COALESCE((SELECT SUM(total_cost) FROM fleet_fuel_logs WHERE vehicle_id = fv.id), 0) as fuel_cost,
+        COALESCE((SELECT SUM(cost) FROM fleet_maintenance WHERE vehicle_id = fv.id), 0) as maint_cost
+      FROM fleet_vehicles fv WHERE fv.archived_at IS NULL AND fv.current_mileage > 0
+      ORDER BY fv.vehicle_number LIMIT 500
+    `).all() as any[];
+
+    const result = vehicles.map((v: any) => {
+      const totalCost = (v.fuel_cost || 0) + (v.maint_cost || 0);
+      return { ...v, total_cost: Math.round(totalCost * 100) / 100,
+        cost_per_mile: v.current_mileage > 0 ? Math.round((totalCost / v.current_mileage) * 100) / 100 : null,
+        fuel_cost_per_mile: v.current_mileage > 0 ? Math.round((v.fuel_cost / v.current_mileage) * 100) / 100 : null,
+        maint_cost_per_mile: v.current_mileage > 0 ? Math.round((v.maint_cost / v.current_mileage) * 100) / 100 : null,
+      };
+    });
+    const totalFleetCost = result.reduce((s: number, v: any) => s + v.total_cost, 0);
+    const totalFleetMiles = result.reduce((s: number, v: any) => s + (v.current_mileage || 0), 0);
+
+    res.json({ vehicles: result, fleet_total_cost: Math.round(totalFleetCost * 100) / 100,
+      fleet_total_miles: totalFleetMiles,
+      fleet_avg_cost_per_mile: totalFleetMiles > 0 ? Math.round((totalFleetCost / totalFleetMiles) * 100) / 100 : null });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load fleet cost analytics', code: 'FLEET_COST_ANALYTICS_ERROR' });
+  }
+});
+
+// ── U9: Update vehicle mileage ──────────────────────────────────────
+router.put('/:id/mileage', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { mileage } = req.body;
+    if (mileage === undefined || mileage === null) return res.status(400).json({ error: 'mileage is required', code: 'MILEAGE_REQUIRED' });
+    const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(req.params.id) as any;
+    if (!vehicle) return res.status(404).json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' });
+
+    const now = localNow();
+    db.exec(`CREATE TABLE IF NOT EXISTS fleet_mileage_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER NOT NULL,
+      previous_mileage INTEGER, new_mileage INTEGER NOT NULL,
+      recorded_by INTEGER, recorded_at TEXT NOT NULL
+    )`);
+    db.prepare(`INSERT INTO fleet_mileage_log (vehicle_id, previous_mileage, new_mileage, recorded_by, recorded_at) VALUES (?, ?, ?, ?, ?)`).run(req.params.id, vehicle.current_mileage, mileage, req.user!.userId, now);
+    db.prepare('UPDATE fleet_vehicles SET current_mileage = ?, updated_at = ? WHERE id = ?').run(mileage, now, req.params.id);
+
+    let serviceDue = false;
+    if (vehicle.next_service_mileage && mileage >= vehicle.next_service_mileage) serviceDue = true;
+    broadcastFleetUpdate({ type: 'mileage_updated', vehicle_id: Number(req.params.id), mileage });
+    res.json({ success: true, service_due: serviceDue });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to update mileage', code: 'UPDATE_MILEAGE_ERROR' });
+  }
+});
+
+// ── U10: Vehicle mileage history ────────────────────────────────────
+router.get('/:id/mileage-history', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.exec(`CREATE TABLE IF NOT EXISTS fleet_mileage_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER NOT NULL,
+      previous_mileage INTEGER, new_mileage INTEGER NOT NULL,
+      recorded_by INTEGER, recorded_at TEXT NOT NULL
+    )`);
+    const rows = db.prepare(`SELECT fml.*, u.full_name as recorded_by_name FROM fleet_mileage_log fml LEFT JOIN users u ON u.id = fml.recorded_by WHERE fml.vehicle_id = ? ORDER BY fml.recorded_at DESC LIMIT 200`).all(req.params.id);
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load mileage history', code: 'MILEAGE_HISTORY_ERROR' });
+  }
+});
+
+// ── U11: Fleet Notifications ────────────────────────────────────────
+router.get('/notifications', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localToday();
+    const notifications: any[] = [];
+
+    const serviceDue = db.prepare(`SELECT id, vehicle_number, next_service_due, next_service_type FROM fleet_vehicles WHERE archived_at IS NULL AND next_service_due IS NOT NULL AND next_service_due <= date(?, '+7 days')`).all(today) as any[];
+    for (const v of serviceDue) {
+      const daysUntil = Math.floor((new Date(v.next_service_due).getTime() - new Date(today).getTime()) / 86400000);
+      notifications.push({ type: 'service_due', severity: daysUntil < 0 ? 'critical' : 'warning',
+        message: `${v.vehicle_number}: ${v.next_service_type || 'Service'} ${daysUntil < 0 ? 'overdue by ' + Math.abs(daysUntil) + ' days' : 'due in ' + daysUntil + ' days'}`,
+        vehicle_id: v.id, date: v.next_service_due });
+    }
+
+    const expiring = db.prepare(`SELECT id, vehicle_number, insurance_expiry, registration_expiry FROM fleet_vehicles WHERE archived_at IS NULL AND ((insurance_expiry IS NOT NULL AND insurance_expiry <= date(?, '+30 days')) OR (registration_expiry IS NOT NULL AND registration_expiry <= date(?, '+30 days')))`).all(today, today) as any[];
+    for (const v of expiring) {
+      if (v.insurance_expiry) notifications.push({ type: 'insurance_expiring', severity: v.insurance_expiry <= today ? 'critical' : 'warning', message: `${v.vehicle_number}: Insurance ${v.insurance_expiry <= today ? 'expired' : 'expiring'} ${v.insurance_expiry}`, vehicle_id: v.id, date: v.insurance_expiry });
+      if (v.registration_expiry) notifications.push({ type: 'registration_expiring', severity: v.registration_expiry <= today ? 'critical' : 'warning', message: `${v.vehicle_number}: Registration ${v.registration_expiry <= today ? 'expired' : 'expiring'} ${v.registration_expiry}`, vehicle_id: v.id, date: v.registration_expiry });
+    }
+
+    notifications.sort((a, b) => ({ critical: 0, warning: 1, info: 2 }[a.severity as string] || 9) - ({ critical: 0, warning: 1, info: 2 }[b.severity as string] || 9));
+    res.json({ notifications, total: notifications.length });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load fleet notifications', code: 'FLEET_NOTIFICATIONS_ERROR' });
+  }
+});
+
 export default router;

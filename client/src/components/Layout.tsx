@@ -76,6 +76,8 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { toDisplayLabel } from '../utils/formatters';
 import { openPageWindow, POPOUT_PAGES } from '../utils/windowManager';
 import LocationGate from './LocationGate';
+import DispatchAlertBanner, { type AlertBannerItem } from './DispatchAlertBanner';
+import { useDispatchVoiceAlerts } from '../hooks/useDispatchVoiceAlerts';
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -152,14 +154,14 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/forensics', icon: Network, label: 'Connections' },
     { path: '/cases', icon: Briefcase, label: 'Case Management' },
   ]},
-  { path: '/warrants', icon: AlertTriangle, label: 'Enforce', group: 'records', shortcut: 'F7', newWindow: true, children: [
-    { path: '/warrants', icon: AlertTriangle, label: 'Warrants', newWindow: true },
-    { path: '/citations', icon: FileWarning, label: 'Citations', newWindow: true },
-    { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders', newWindow: true },
-    { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement', newWindow: true },
-    { path: '/court', icon: Gavel, label: 'Court Tracker', newWindow: true },
-    { path: '/offender-registry', icon: UserX, label: 'Offender Registry', newWindow: true },
-    { path: '/serve', icon: Briefcase, label: 'Process Server', newWindow: true },
+  { path: '/warrants', icon: AlertTriangle, label: 'Enforce', group: 'records', shortcut: 'F7', children: [
+    { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
+    { path: '/citations', icon: FileWarning, label: 'Citations' },
+    { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
+    { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
+    { path: '/court', icon: Gavel, label: 'Court Tracker' },
+    { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
+    { path: '/serve', icon: Briefcase, label: 'Process Server' },
   ]},
   { path: '/personnel', icon: Users, label: 'Personnel', group: 'records', shortcut: 'F8', children: [
     { path: '/personnel', icon: Users, label: 'Personnel' },
@@ -209,6 +211,18 @@ export default function Layout() {
 
   const gps = useGpsTracking();
   const presence = usePresence();
+
+  // ── Dispatch voice alerts + visual banner state ──
+  const [dispatchAlerts, setDispatchAlerts] = useState<AlertBannerItem[]>([]);
+  const addDispatchAlert = useCallback((alert: AlertBannerItem) => {
+    setDispatchAlerts(prev => [...prev, alert]);
+  }, []);
+  const dismissDispatchAlert = useCallback((id: string) => {
+    setDispatchAlerts(prev => prev.filter(a => a.id !== id));
+  }, []);
+  const dismissAllDispatchAlerts = useCallback(() => setDispatchAlerts([]), []);
+  useDispatchVoiceAlerts({ onAlert: addDispatchAlert });
+
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const isClientViewer = user?.role === 'client_viewer';
   const isContractManager = user?.role === 'contract_manager';
@@ -691,6 +705,9 @@ export default function Layout() {
       {/* Offline Status Bar (shows when offline or syncing — Electron and browser) */}
       <OfflineStatusBar />
 
+      {/* Dispatch severity alert banners (panic, BOLO, pursuit, etc.) */}
+      <DispatchAlertBanner alerts={dispatchAlerts} onDismiss={dismissDispatchAlert} onDismissAll={dismissAllDispatchAlerts} />
+
       {/* GPS tracking runs silently — no blocking gate */}
 
       {/* ============================================================ */}
@@ -978,11 +995,11 @@ export default function Layout() {
                   style={{ minWidth: 220, zIndex: 9995, boxShadow: '0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)' }}
                 >
                   {/* User info header */}
-                  <div className="px-3 py-2 border-b border-rmpg-700">
+                  <div className="px-3 py-2.5 border-b border-rmpg-700" style={{ background: 'rgba(13, 21, 32, 0.5)' }}>
                     <div className="text-xs font-bold text-white">
                       {user?.first_name} {user?.last_name}
                     </div>
-                    <div className="text-[9px] font-mono text-rmpg-500">
+                    <div className="text-[9px] font-mono text-rmpg-500 mt-0.5">
                       {user?.email}
                     </div>
                     <div className="flex items-center gap-2 mt-1">
@@ -1107,7 +1124,7 @@ export default function Layout() {
           aria-label="Navigate back"
           style={{ height: 36, width: 30, padding: '2px 4px', opacity: canGoBack ? 1 : 0.3 }}
         >
-          <ChevronLeft style={{ width: 16, height: 16 }} />
+          <ChevronLeft style={{ width: 14, height: 14 }} />
         </button>
         <button
           type="button"
@@ -1118,7 +1135,7 @@ export default function Layout() {
           aria-label="Navigate forward"
           style={{ height: 36, width: 30, padding: '2px 4px', opacity: canGoForward ? 1 : 0.3 }}
         >
-          <ChevronRight style={{ width: 16, height: 16 }} />
+          <ChevronRight style={{ width: 14, height: 14 }} />
         </button>
         <div
           className="self-stretch mx-0.5"
@@ -1316,6 +1333,18 @@ export default function Layout() {
                             style={{
                               color: childActive ? '#ffffff' : '#b0bcc8',
                               background: childActive ? 'rgba(26,90,158,0.15)' : 'transparent',
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!childActive) {
+                                (e.currentTarget as HTMLElement).style.background = 'linear-gradient(180deg, rgba(26,90,158,0.2) 0%, rgba(26,90,158,0.1) 100%)';
+                                (e.currentTarget as HTMLElement).style.color = '#ffffff';
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!childActive) {
+                                (e.currentTarget as HTMLElement).style.background = 'transparent';
+                                (e.currentTarget as HTMLElement).style.color = '#b0bcc8';
+                              }
                             }}
                           >
                             {/* 11: Slightly larger child icon + semibold label for active items */}

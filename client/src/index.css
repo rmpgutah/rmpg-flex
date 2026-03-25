@@ -745,8 +745,9 @@ body.fx-noise::after {
     letter-spacing: 0.05em;
     color: #b0bcc8;
     user-select: none;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     min-height: 24px;
+    overflow: hidden;
   }
 
   .panel-title-bar .title-icon {
@@ -1633,15 +1634,15 @@ body.fx-noise::after {
 }
 
 .cad-command-input::placeholder {
-  color: #3a2a1a;
+  color: #7a6a4a;
   font-style: normal;
 }
 
 .cad-command-hint {
-  color: #3a2a1a;
+  color: #7a6a4a;
   font-size: 9px;
   font-family: 'Courier New', monospace;
-  border: 1px solid #3a2a1a;
+  border: 1px solid #5a4a2a;
   padding: 0 4px;
   line-height: 16px;
 }
@@ -3144,4 +3145,12 @@ html.theme-light .panel-surface { background: var(--surface-raised) !important; 
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Alert Banner — strobe animation for major alerts
+   ═══════════════════════════════════════════════════════════════ */
+@keyframes strobe {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 1; }
 }

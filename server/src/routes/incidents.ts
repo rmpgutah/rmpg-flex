@@ -1277,4 +1277,313 @@ router.delete('/:incidentId/supplements/:supId', (req: Request, res: Response) =
   }
 });
 
+// ══════════════════════════════════════════════════════════════════
+// INCIDENT UPGRADES
+// ══════════════════════════════════════════════════════════════════
+
+// ── Upgrade 17: Incident severity scoring ───────────────────────
+router.get('/:id/severity', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id) as any;
+    if (!incident) { res.status(404).json({ error: 'Incident not found', code: 'INCIDENT_NOT_FOUND' }); return; }
+
+    // Compute severity score 0-100 based on multiple factors
+    let score = 0;
+    const factors: { factor: string; points: number; reason: string }[] = [];
+
+    // Priority factor (0-30)
+    const priorityScores: Record<string, number> = { P1: 30, P2: 20, P3: 10, P4: 5 };
+    const priorityPoints = priorityScores[incident.priority] || 5;
+    score += priorityPoints;
+    factors.push({ factor: 'priority', points: priorityPoints, reason: `Priority ${incident.priority}` });
+
+    // Weapons involved (0-20)
+    if (incident.weapons_involved) {
+      score += 20;
+      factors.push({ factor: 'weapons', points: 20, reason: 'Weapons involved' });
+    }
+
+    // Injuries (0-15)
+    if (incident.injuries === 'fatal') { score += 15; factors.push({ factor: 'injuries', points: 15, reason: 'Fatal injuries' }); }
+    else if (incident.injuries === 'serious') { score += 10; factors.push({ factor: 'injuries', points: 10, reason: 'Serious injuries' }); }
+    else if (incident.injuries === 'minor') { score += 5; factors.push({ factor: 'injuries', points: 5, reason: 'Minor injuries' }); }
+
+    // Domestic violence (0-10)
+    if (incident.domestic_violence) {
+      score += 10;
+      factors.push({ factor: 'domestic_violence', points: 10, reason: 'Domestic violence' });
+    }
+
+    // Drugs/alcohol (0-5 each)
+    if (incident.alcohol_involved) { score += 5; factors.push({ factor: 'alcohol', points: 5, reason: 'Alcohol involved' }); }
+    if (incident.drugs_involved) { score += 5; factors.push({ factor: 'drugs', points: 5, reason: 'Drugs involved' }); }
+
+    // Damage estimate (0-10)
+    const dmg = parseFloat(incident.damage_estimate) || 0;
+    if (dmg > 10000) { score += 10; factors.push({ factor: 'damage', points: 10, reason: `Damage $${dmg.toLocaleString()}` }); }
+    else if (dmg > 1000) { score += 5; factors.push({ factor: 'damage', points: 5, reason: `Damage $${dmg.toLocaleString()}` }); }
+
+    // Multiple persons (0-5)
+    const personCount = (db.prepare('SELECT COUNT(*) as count FROM incident_persons WHERE incident_id = ?').get(incident.id) as any)?.count || 0;
+    if (personCount > 2) { score += 5; factors.push({ factor: 'persons', points: 5, reason: `${personCount} persons involved` }); }
+
+    const level = score >= 70 ? 'critical' : score >= 50 ? 'high' : score >= 30 ? 'medium' : 'low';
+
+    res.json({ incident_id: incident.id, severity_score: Math.min(score, 100), severity_level: level, factors });
+  } catch (error: any) {
+    console.error('Severity scoring error:', error);
+    res.status(500).json({ error: 'Failed to compute severity', code: 'SEVERITY_ERROR' });
+  }
+});
+
+// ── Upgrade 18: Auto-link incident to dispatch calls ────────────
+router.post('/:id/auto-link', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id) as any;
+    if (!incident) { res.status(404).json({ error: 'Incident not found', code: 'INCIDENT_NOT_FOUND' }); return; }
+
+    if (incident.call_id) {
+      res.json({ message: 'Already linked to call', call_id: incident.call_id, auto_linked: false });
+      return;
+    }
+
+    // Try to find matching call by address and time (within 2 hours)
+    const conditions: string[] = [];
+    const params: any[] = [];
+
+    if (incident.location_address) {
+      conditions.push('UPPER(c.location_address) = UPPER(?)');
+      params.push(incident.location_address);
+    }
+
+    if (conditions.length === 0 && incident.latitude && incident.longitude) {
+      // Try GPS proximity (within ~0.3 miles / 500m)
+      conditions.push('ABS(c.latitude - ?) < 0.005 AND ABS(c.longitude - ?) < 0.005');
+      params.push(incident.latitude, incident.longitude);
+    }
+
+    if (conditions.length === 0) {
+      res.json({ message: 'No address or GPS to match', auto_linked: false });
+      return;
+    }
+
+    // Time window: 2 hours before and 30 minutes after incident creation
+    const timeCondition = `c.created_at BETWEEN datetime(?, '-2 hours') AND datetime(?, '+30 minutes')`;
+    conditions.push(timeCondition);
+    params.push(incident.created_at, incident.created_at);
+
+    const match = db.prepare(`
+      SELECT c.id, c.call_number, c.incident_type, c.location_address, c.created_at
+      FROM calls_for_service c
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY ABS(julianday(c.created_at) - julianday(?)) ASC
+      LIMIT 1
+    `).get(...params, incident.created_at) as any;
+
+    if (match) {
+      db.prepare('UPDATE incidents SET call_id = ?, updated_at = ? WHERE id = ?')
+        .run(match.id, localNow(), incident.id);
+
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'incident_auto_linked', 'incident', ?, ?, ?)`).run(
+        req.user!.userId, incident.id,
+        `Auto-linked ${incident.incident_number} to call ${match.call_number}`,
+        req.ip || 'unknown');
+
+      res.json({ auto_linked: true, call_id: match.id, call_number: match.call_number });
+    } else {
+      res.json({ auto_linked: false, message: 'No matching call found' });
+    }
+  } catch (error: any) {
+    console.error('Auto-link error:', error);
+    res.status(500).json({ error: 'Failed to auto-link incident', code: 'AUTO_LINK_ERROR' });
+  }
+});
+
+// ── Upgrade 19: Incident type statistics (enhanced) ─────────────
+router.get('/type-stats/detailed', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { days = '30' } = req.query;
+    const daysNum = Math.max(1, Math.min(365, parseInt(days as string, 10) || 30));
+
+    // Type breakdown with trend
+    const byType = db.prepare(`
+      SELECT incident_type, COUNT(*) as count,
+        SUM(CASE WHEN weapons_involved = 1 THEN 1 ELSE 0 END) as weapons_count,
+        SUM(CASE WHEN domestic_violence = 1 THEN 1 ELSE 0 END) as dv_count,
+        SUM(CASE WHEN injuries != 'none' AND injuries IS NOT NULL THEN 1 ELSE 0 END) as injury_count,
+        AVG(CASE WHEN damage_estimate IS NOT NULL THEN CAST(damage_estimate AS REAL) ELSE NULL END) as avg_damage
+      FROM incidents
+      WHERE created_at >= datetime('now', '-' || ? || ' days')
+      GROUP BY incident_type
+      ORDER BY count DESC
+    `).all(daysNum);
+
+    // This period vs previous period comparison
+    const currentPeriod = db.prepare(`
+      SELECT COUNT(*) as count FROM incidents
+      WHERE created_at >= datetime('now', '-' || ? || ' days')
+    `).get(daysNum) as any;
+
+    const previousPeriod = db.prepare(`
+      SELECT COUNT(*) as count FROM incidents
+      WHERE created_at >= datetime('now', '-' || ? || ' days')
+        AND created_at < datetime('now', '-' || ? || ' days')
+    `).get(daysNum * 2, daysNum) as any;
+
+    const currentCount = currentPeriod?.count || 0;
+    const previousCount = previousPeriod?.count || 0;
+    const changePercent = previousCount > 0
+      ? Math.round(((currentCount - previousCount) / previousCount) * 100)
+      : null;
+
+    // By day of week
+    const byDayOfWeek = db.prepare(`
+      SELECT CAST(strftime('%w', created_at) AS INTEGER) as day_of_week, COUNT(*) as count
+      FROM incidents
+      WHERE created_at >= datetime('now', '-' || ? || ' days')
+      GROUP BY day_of_week ORDER BY day_of_week
+    `).all(daysNum);
+
+    // By hour of day
+    const byHour = db.prepare(`
+      SELECT CAST(strftime('%H', created_at) AS INTEGER) as hour, COUNT(*) as count
+      FROM incidents
+      WHERE created_at >= datetime('now', '-' || ? || ' days')
+      GROUP BY hour ORDER BY hour
+    `).all(daysNum);
+
+    // By officer
+    const byOfficer = db.prepare(`
+      SELECT u.full_name, u.badge_number, COUNT(*) as count
+      FROM incidents i
+      JOIN users u ON i.officer_id = u.id
+      WHERE i.created_at >= datetime('now', '-' || ? || ' days')
+      GROUP BY i.officer_id
+      ORDER BY count DESC LIMIT 10
+    `).all(daysNum);
+
+    // Disposition breakdown
+    const byDisposition = db.prepare(`
+      SELECT disposition, COUNT(*) as count
+      FROM incidents
+      WHERE created_at >= datetime('now', '-' || ? || ' days')
+        AND disposition IS NOT NULL AND disposition != ''
+      GROUP BY disposition ORDER BY count DESC
+    `).all(daysNum);
+
+    res.json({
+      period_days: daysNum,
+      byType,
+      comparison: { current: currentCount, previous: previousCount, changePercent },
+      byDayOfWeek,
+      byHour,
+      byOfficer,
+      byDisposition,
+    });
+  } catch (error: any) {
+    console.error('Type stats error:', error);
+    res.status(500).json({ error: 'Failed to get type statistics', code: 'TYPE_STATS_ERROR' });
+  }
+});
+
+// ── Upgrade 20: Batch severity scoring for all recent incidents ─
+router.get('/severity-batch', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { days = '7', min_score = '0' } = req.query;
+    const daysNum = Math.max(1, Math.min(90, parseInt(days as string, 10) || 7));
+    const minScore = parseInt(min_score as string, 10) || 0;
+
+    const incidents = db.prepare(`
+      SELECT i.id, i.incident_number, i.incident_type, i.priority, i.status,
+        i.weapons_involved, i.injuries, i.domestic_violence,
+        i.alcohol_involved, i.drugs_involved, i.damage_estimate,
+        i.location_address, i.created_at, u.full_name as officer_name
+      FROM incidents i
+      LEFT JOIN users u ON i.officer_id = u.id
+      WHERE i.created_at >= datetime('now', '-' || ? || ' days')
+      ORDER BY i.created_at DESC
+    `).all(daysNum) as any[];
+
+    const scored = incidents.map(inc => {
+      let score = 0;
+      const priorityScores: Record<string, number> = { P1: 30, P2: 20, P3: 10, P4: 5 };
+      score += priorityScores[inc.priority] || 5;
+      if (inc.weapons_involved) score += 20;
+      if (inc.injuries === 'fatal') score += 15;
+      else if (inc.injuries === 'serious') score += 10;
+      else if (inc.injuries === 'minor') score += 5;
+      if (inc.domestic_violence) score += 10;
+      if (inc.alcohol_involved) score += 5;
+      if (inc.drugs_involved) score += 5;
+      const dmg = parseFloat(inc.damage_estimate) || 0;
+      if (dmg > 10000) score += 10;
+      else if (dmg > 1000) score += 5;
+
+      const level = score >= 70 ? 'critical' : score >= 50 ? 'high' : score >= 30 ? 'medium' : 'low';
+      return { ...inc, severity_score: Math.min(score, 100), severity_level: level };
+    }).filter(inc => inc.severity_score >= minScore);
+
+    scored.sort((a, b) => b.severity_score - a.severity_score);
+
+    res.json({ data: scored, count: scored.length });
+  } catch (error: any) {
+    console.error('Severity batch error:', error);
+    res.status(500).json({ error: 'Failed to batch severity', code: 'SEVERITY_BATCH_ERROR' });
+  }
+});
+
+// ── Upgrade 21: Find potential call matches for unlinked incidents
+router.get('/:id/potential-calls', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id) as any;
+    if (!incident) { res.status(404).json({ error: 'Incident not found', code: 'INCIDENT_NOT_FOUND' }); return; }
+
+    const conditions: string[] = [];
+    const params: any[] = [];
+
+    // Time window: 4 hours before, 1 hour after
+    conditions.push(`c.created_at BETWEEN datetime(?, '-4 hours') AND datetime(?, '+1 hour')`);
+    params.push(incident.created_at, incident.created_at);
+
+    // Match by address similarity or GPS proximity
+    const matchConditions: string[] = [];
+    if (incident.location_address) {
+      matchConditions.push('UPPER(c.location_address) LIKE UPPER(?)');
+      params.push(`%${incident.location_address.split(',')[0]}%`);
+    }
+    if (incident.latitude && incident.longitude) {
+      matchConditions.push('(ABS(c.latitude - ?) < 0.01 AND ABS(c.longitude - ?) < 0.01)');
+      params.push(incident.latitude, incident.longitude);
+    }
+    if (incident.incident_type) {
+      matchConditions.push('c.incident_type = ?');
+      params.push(incident.incident_type);
+    }
+
+    if (matchConditions.length > 0) {
+      conditions.push(`(${matchConditions.join(' OR ')})`);
+    }
+
+    const calls = db.prepare(`
+      SELECT c.id, c.call_number, c.incident_type, c.priority, c.status,
+        c.location_address, c.created_at, c.description
+      FROM calls_for_service c
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY ABS(julianday(c.created_at) - julianday(?)) ASC
+      LIMIT 10
+    `).all(...params, incident.created_at);
+
+    res.json({ incident_id: incident.id, potential_calls: calls, count: calls.length });
+  } catch (error: any) {
+    console.error('Potential calls error:', error);
+    res.status(500).json({ error: 'Failed to find potential calls', code: 'POTENTIAL_CALLS_ERROR' });
+  }
+});
+
 export default router;

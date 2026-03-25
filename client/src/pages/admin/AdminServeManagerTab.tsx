@@ -226,7 +226,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
     }
   };
 
-  // Set document title
+  // Set document title (must be before early return to preserve hook order)
   useEffect(() => { document.title = 'Admin - Serve Manager \u2014 RMPG Flex'; }, []);
 
   if (loading) return <LoadingSpinner />;

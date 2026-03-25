@@ -3244,6 +3244,57 @@ function migrateSchema(): void {
   addCol('offender_alerts', 'alert_address', 'TEXT');
   addCol('offender_alerts', 'alert_enabled', 'INTEGER DEFAULT 1');
 
+  // Forensic cases — missing columns for indexes
+  addCol('forensic_cases', 'linked_incident_id', 'INTEGER');
+  addCol('forensic_cases', 'lab_number', 'TEXT');
+  addCol('forensic_cases', 'lead_examiner_id', 'INTEGER');
+  addCol('forensic_cases', 'linked_case_id', 'INTEGER');
+
+  // Dashcam videos — incident linkage
+  addCol('dashcam_videos', 'incident_id', 'INTEGER');
+
+  // Training records/requirements — missing columns
+  addCol('training_records', 'training_type', 'TEXT');
+  addCol('training_records', 'expiration_date', 'TEXT');
+  addCol('training_requirements', 'required_for_role', 'TEXT');
+  addCol('training_requirements', 'is_active', 'INTEGER DEFAULT 1');
+
+  // HR tables — missing columns
+  addCol('hr_documents', 'officer_id', 'INTEGER');
+  addCol('hr_documents', 'document_type', 'TEXT');
+  addCol('hr_grievances', 'officer_id', 'INTEGER');
+  addCol('hr_workers_comp', 'injury_date', 'TEXT');
+  addCol('hr_attendance', 'attendance_date', 'TEXT');
+
+  // Fleet tables — missing columns
+  addCol('fleet_tires', 'status', 'TEXT DEFAULT "active"');
+  addCol('fleet_damage_reports', 'status', 'TEXT DEFAULT "pending"');
+  addCol('fleet_damage_reports', 'reported_at', 'TEXT');
+
+  // Email logs
+  addCol('email_logs', 'to_email', 'TEXT');
+
+  // Patrol breaks
+  addCol('patrol_breaks', 'start_time', 'TEXT');
+
+  // Person associates
+  addCol('person_associates', 'associated_person_id', 'INTEGER');
+
+  // CPGPS tables
+  addCol('cpgps_vehicles', 'unit_number', 'TEXT');
+  addCol('cpgps_trips', 'start_time', 'TEXT');
+  addCol('cpgps_locations', 'timestamp', 'TEXT');
+
+  // Warrant watch
+  addCol('warrant_watch_runs', 'created_at', 'TEXT');
+  addCol('warrant_watch_log', 'run_id', 'INTEGER');
+
+  // Record locks
+  addCol('record_locks', 'user_id', 'INTEGER');
+
+  // Utah statutes
+  addCol('utah_statutes', 'statute_code', 'TEXT');
+
   // Feature 26: Evidence intake extended fields
   addCol('forensic_exhibits', 'condition_on_receipt', 'TEXT');
   addCol('forensic_exhibits', 'packaging_type', 'TEXT');
@@ -3980,6 +4031,21 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_citations_incident ON citations(incident_id);
     CREATE INDEX IF NOT EXISTS idx_citations_call ON citations(call_id);
     CREATE INDEX IF NOT EXISTS idx_citations_created ON citations(created_at);
+
+    -- Citation payments table (was previously lazy-created in citations route)
+    CREATE TABLE IF NOT EXISTS citation_payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      citation_id INTEGER NOT NULL,
+      amount REAL NOT NULL,
+      payment_date TEXT,
+      payment_method TEXT,
+      reference_number TEXT,
+      notes TEXT,
+      recorded_by INTEGER,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (citation_id) REFERENCES citations(id),
+      FOREIGN KEY (recorded_by) REFERENCES users(id)
+    );
 
     -- Citation payments indexes
     CREATE INDEX IF NOT EXISTS idx_citation_payments_citation ON citation_payments(citation_id);

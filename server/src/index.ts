@@ -98,6 +98,8 @@ import mapSafetyRoutes from './routes/mapSafety';
 import mapGeofenceRoutes from './routes/mapGeofences';
 import webResearchRoutes from './routes/webResearch';
 import skiptracerV2Routes from './routes/skiptracer-v2';
+import ttsRoutes from './routes/tts';
+import aiRoutes from './routes/ai';
 import { authenticateToken } from './middleware/auth';
 
 const app = express();
@@ -187,6 +189,36 @@ app.get('/api/health', (_req, res) => {
       liveSync: true,
     },
   });
+});
+
+// ─── Weather Proxy ────────────────────────────────────
+// Proxies Open-Meteo API to avoid browser CSP/CORS issues
+let weatherCache: { data: any; fetchedAt: number } | null = null;
+const WEATHER_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
+app.get('/api/weather', async (_req, res) => {
+  try {
+    // Return cached data if fresh
+    if (weatherCache && Date.now() - weatherCache.fetchedAt < WEATHER_CACHE_TTL) {
+      res.json(weatherCache.data);
+      return;
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    const resp = await fetch(
+      'https://api.open-meteo.com/v1/forecast?latitude=40.7608&longitude=-111.891&current=temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m,wind_direction_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/Denver',
+      { signal: controller.signal }
+    );
+    clearTimeout(timeout);
+    if (!resp.ok) { res.status(502).json({ error: 'Weather API returned ' + resp.status }); return; }
+    const data = await resp.json();
+    weatherCache = { data, fetchedAt: Date.now() };
+    res.json(data);
+  } catch (err: any) {
+    // Return stale cache if available
+    if (weatherCache) { res.json(weatherCache.data); return; }
+    res.status(502).json({ error: 'Weather API unavailable' });
+  }
 });
 
 // Fix 75: Health check endpoint for map subsystem
@@ -348,6 +380,8 @@ app.use('/api/map/safety', mapSafetyRoutes);
 app.use('/api/map/geofences', mapGeofenceRoutes);
 app.use('/api/web-research', webResearchRoutes);
 app.use('/api/skiptracer-v2', skiptracerV2Routes);
+app.use('/api/tts', ttsRoutes);
+app.use('/api/ai', aiRoutes);
 app.use('/dispatch', intakeRoutes);        // Public dispatch endpoint (called by rmpgutahps.us)
 app.use('/intake', intakeRoutes);          // Legacy alias
 app.use('/api/intake', intakeRoutes);      // Also available under /api prefix
@@ -442,7 +476,7 @@ try {
     )`).run();
     const versionRow = db.prepare('SELECT version FROM migration_version WHERE id = 1').get() as any;
     if (!versionRow) {
-      db.prepare('INSERT INTO migration_version (id, version, last_migrated_at) VALUES (1, 1, datetime("now","localtime"))').run();
+      db.prepare("INSERT INTO migration_version (id, version, last_migrated_at) VALUES (1, 1, datetime('now','localtime'))").run();
       console.log('Database migration version initialized: v1');
     } else {
       console.log(`Database migration version: v${versionRow.version}`);

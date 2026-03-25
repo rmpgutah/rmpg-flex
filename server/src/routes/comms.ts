@@ -1148,4 +1148,275 @@ router.get('/radio/audio/:entryId', (req: Request, res: Response) => {
   }
 });
 
+// ── Upgrade 1: BOLO category statistics ─────────────────────────
+router.get('/bolos/stats', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+
+    // By category (type)
+    const byCategory = db.prepare(`
+      SELECT type as category, COUNT(*) as count,
+        SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_count,
+        SUM(CASE WHEN status = 'expired' THEN 1 ELSE 0 END) as expired_count,
+        SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_count
+      FROM bolos
+      GROUP BY type ORDER BY count DESC
+    `).all();
+
+    // By priority
+    const byPriority = db.prepare(`
+      SELECT priority, COUNT(*) as count FROM bolos
+      WHERE status = 'active' GROUP BY priority ORDER BY priority
+    `).all();
+
+    // Expiring soon (within 24 hours)
+    const expiringSoon = db.prepare(`
+      SELECT COUNT(*) as count FROM bolos
+      WHERE status = 'active' AND expires_at IS NOT NULL
+      AND expires_at > ? AND expires_at <= datetime(?, '+24 hours')
+    `).get(now, now) as any;
+
+    // Total active
+    const totalActive = db.prepare(`SELECT COUNT(*) as count FROM bolos WHERE status = 'active'`).get() as any;
+
+    // Average BOLO lifespan in hours
+    const avgLifespan = db.prepare(`
+      SELECT AVG(
+        (julianday(COALESCE(expired_at, archived_at, ?)) - julianday(created_at)) * 24
+      ) as avg_hours
+      FROM bolos WHERE status != 'active'
+    `).get(now) as any;
+
+    res.json({
+      byCategory,
+      byPriority,
+      totalActive: totalActive?.count || 0,
+      expiringSoon: expiringSoon?.count || 0,
+      avgLifespanHours: avgLifespan?.avg_hours ? Math.round(avgLifespan.avg_hours * 10) / 10 : null,
+    });
+  } catch (error: any) {
+    console.error('BOLO stats error:', error);
+    res.status(500).json({ error: 'Failed to get bolo stats', code: 'BOLO_STATS_ERROR' });
+  }
+});
+
+// ── Upgrade 2: BOLO broadcast count tracking ────────────────────
+router.post('/bolos/:id/broadcast', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const bolo = db.prepare('SELECT * FROM bolos WHERE id = ?').get(req.params.id) as any;
+    if (!bolo) { res.status(404).json({ error: 'BOLO not found', code: 'BOLO_NOT_FOUND' }); return; }
+
+    const now = localNow();
+    const broadcastCount = (bolo.broadcast_count || 0) + 1;
+    db.prepare('UPDATE bolos SET broadcast_count = ?, last_broadcast_at = ? WHERE id = ?')
+      .run(broadcastCount, now, bolo.id);
+
+    // Broadcast the BOLO alert
+    broadcastAlert({
+      type: 'bolo_rebroadcast',
+      bolo: { ...bolo, broadcast_count: broadcastCount },
+      by: req.user?.fullName,
+    });
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'bolo_broadcast', 'bolo', ?, ?, ?)`).run(
+      req.user!.userId, bolo.id, `Broadcast BOLO #${broadcastCount}: ${bolo.title}`, req.ip || 'unknown');
+
+    res.json({ broadcast_count: broadcastCount, last_broadcast_at: now });
+  } catch (error: any) {
+    console.error('BOLO broadcast error:', error);
+    res.status(500).json({ error: 'Failed to broadcast bolo', code: 'BOLO_BROADCAST_ERROR' });
+  }
+});
+
+// ── Upgrade 3: Auto-archive expired BOLOs (batch operation) ─────
+router.post('/bolos/auto-archive', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const { days_expired = 7 } = req.body;
+
+    // Archive BOLOs that expired more than X days ago
+    const result = db.prepare(`
+      UPDATE bolos SET archived_at = ?
+      WHERE status IN ('expired', 'cancelled')
+      AND archived_at IS NULL
+      AND (expired_at IS NOT NULL AND expired_at <= datetime(?, '-' || ? || ' days'))
+    `).run(now, now, days_expired);
+
+    res.json({ archived: result.changes });
+  } catch (error: any) {
+    console.error('Auto-archive error:', error);
+    res.status(500).json({ error: 'Failed to auto-archive bolos', code: 'AUTO_ARCHIVE_ERROR' });
+  }
+});
+
+// ── Upgrade 4: Message thread summary ───────────────────────────
+router.get('/messages/threads', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { limit = '20' } = req.query;
+    const limitNum = Math.min(100, parseInt(limit as string, 10) || 20);
+
+    const threads = db.prepare(`
+      SELECT
+        COALESCE(m.thread_id, m.id) as thread_root_id,
+        MIN(m.created_at) as started_at,
+        MAX(m.created_at) as last_activity,
+        COUNT(*) as message_count,
+        COUNT(CASE WHEN m.read_at IS NULL AND m.to_user_id = ? THEN 1 END) as unread_count,
+        GROUP_CONCAT(DISTINCT f.full_name) as participants
+      FROM messages m
+      LEFT JOIN users f ON m.from_user_id = f.id
+      WHERE (m.to_user_id = ? OR m.from_user_id = ? OR m.to_user_id IS NULL)
+        AND m.is_draft = 0
+        AND m.thread_id IS NOT NULL
+      GROUP BY thread_root_id
+      ORDER BY last_activity DESC
+      LIMIT ?
+    `).all(req.user!.userId, req.user!.userId, req.user!.userId, limitNum);
+
+    // Get root message content for each thread
+    const enriched = threads.map((t: any) => {
+      const root = db.prepare(`
+        SELECT id, subject, content, from_user_id, channel, priority
+        FROM messages WHERE id = ?
+      `).get(t.thread_root_id) as any;
+      return { ...t, root_subject: root?.subject, root_preview: root?.content?.substring(0, 100), root_channel: root?.channel, root_priority: root?.priority };
+    });
+
+    res.json({ data: enriched });
+  } catch (error: any) {
+    console.error('Thread list error:', error);
+    res.status(500).json({ error: 'Failed to get threads', code: 'GET_THREADS_ERROR' });
+  }
+});
+
+// ── Upgrade 5: Message priority statistics ──────────────────────
+router.get('/messages/priority-stats', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { days = '7' } = req.query;
+    const daysNum = Math.max(1, Math.min(365, parseInt(days as string, 10) || 7));
+
+    const stats = db.prepare(`
+      SELECT
+        priority,
+        COUNT(*) as total,
+        SUM(CASE WHEN read_at IS NOT NULL THEN 1 ELSE 0 END) as read_count,
+        AVG(CASE WHEN read_at IS NOT NULL
+          THEN (julianday(read_at) - julianday(created_at)) * 24 * 60
+          ELSE NULL END) as avg_read_time_minutes
+      FROM messages
+      WHERE created_at >= datetime('now', '-' || ? || ' days')
+        AND is_draft = 0
+      GROUP BY priority
+      ORDER BY CASE priority
+        WHEN 'emergency' THEN 1 WHEN 'urgent' THEN 2 WHEN 'routine' THEN 3 ELSE 4
+      END
+    `).all(daysNum);
+
+    const channelStats = db.prepare(`
+      SELECT channel, COUNT(*) as count
+      FROM messages
+      WHERE created_at >= datetime('now', '-' || ? || ' days') AND is_draft = 0
+      GROUP BY channel ORDER BY count DESC
+    `).all(daysNum);
+
+    res.json({ byPriority: stats, byChannel: channelStats });
+  } catch (error: any) {
+    console.error('Priority stats error:', error);
+    res.status(500).json({ error: 'Failed to get priority stats', code: 'PRIORITY_STATS_ERROR' });
+  }
+});
+
+// ── Upgrade 6: BOLO category filtering (enhanced) ──────────────
+router.get('/bolos/by-category', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { category } = req.query;
+
+    if (!category) {
+      res.status(400).json({ error: 'category parameter required', code: 'CATEGORY_REQUIRED' });
+      return;
+    }
+
+    const validCategories = ['vehicle', 'person', 'weapon', 'property', 'other'];
+    if (!validCategories.includes(category as string)) {
+      res.status(400).json({ error: 'Invalid category', valid: validCategories, code: 'INVALID_CATEGORY' });
+      return;
+    }
+
+    const bolos = db.prepare(`
+      SELECT b.*, u.full_name as issued_by_name
+      FROM bolos b
+      LEFT JOIN users u ON b.issued_by = u.id
+      WHERE b.type = ? AND b.archived_at IS NULL
+      ORDER BY
+        CASE b.priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 END,
+        b.created_at DESC
+      LIMIT 500
+    `).all(category);
+
+    res.json({ data: bolos, category, count: bolos.length });
+  } catch (error: any) {
+    console.error('BOLO by category error:', error);
+    res.status(500).json({ error: 'Failed to filter BOLOs by category', code: 'BOLO_CATEGORY_ERROR' });
+  }
+});
+
+// ── Upgrade 7: Read receipt summary for a message ───────────────
+router.get('/messages/:id/read-receipts', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const msg = db.prepare('SELECT read_receipts, to_user_id, channel, from_user_id FROM messages WHERE id = ?').get(req.params.id) as any;
+    if (!msg) { res.status(404).json({ error: 'Message not found', code: 'MESSAGE_NOT_FOUND' }); return; }
+
+    const receipts = JSON.parse(msg.read_receipts || '{}');
+    const receiptList = Object.entries(receipts).map(([uid, data]: [string, any]) => ({
+      user_id: parseInt(uid),
+      read_at: data.at,
+      name: data.name,
+    }));
+
+    res.json({ message_id: parseInt(req.params.id), receipts: receiptList, total_read: receiptList.length });
+  } catch (error: any) {
+    console.error('Read receipts error:', error);
+    res.status(500).json({ error: 'Failed to get read receipts', code: 'READ_RECEIPTS_ERROR' });
+  }
+});
+
+// ── Upgrade 8: BOLO watch list (BOLOs matching user criteria) ───
+router.get('/bolos/watch-list', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+
+    // Get active P1 and P2 BOLOs as the watch list
+    const watchList = db.prepare(`
+      SELECT b.id, b.bolo_number, b.type, b.title, b.priority,
+        b.subject_description, b.vehicle_description,
+        b.broadcast_count, b.last_broadcast_at, b.expires_at,
+        u.full_name as issued_by_name,
+        CASE
+          WHEN b.expires_at IS NOT NULL AND b.expires_at <= datetime(?, '+2 hours')
+          THEN 'expiring_soon'
+          ELSE 'active'
+        END as watch_status
+      FROM bolos b
+      LEFT JOIN users u ON b.issued_by = u.id
+      WHERE b.status = 'active' AND b.priority IN ('P1', 'P2')
+      ORDER BY b.priority ASC, b.created_at DESC
+      LIMIT 50
+    `).all(now);
+
+    res.json({ data: watchList, count: watchList.length });
+  } catch (error: any) {
+    console.error('Watch list error:', error);
+    res.status(500).json({ error: 'Failed to get watch list', code: 'WATCH_LIST_ERROR' });
+  }
+});
+
 export default router;

@@ -184,6 +184,8 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
+  if (loading && announcements.length === 0) return <LoadingSpinner />;
+
 
   if (loading && announcements.length === 0) return <LoadingSpinner />;
 

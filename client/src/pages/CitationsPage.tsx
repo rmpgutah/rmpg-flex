@@ -254,6 +254,12 @@ export default function CitationsPage() {
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
   const dupCheckTimer = useRef<ReturnType<typeof setTimeout>>();
 
+  // Data completeness
+  const [completeness, setCompleteness] = useState<{ score: number; grade: string; missing_required: string[]; missing_recommended: string[] } | null>(null);
+
+  // Payment summary
+  const [paymentSummary, setPaymentSummary] = useState<{ payment_count: number; payment_total: number; outstanding_amount: number; collection_rate: number } | null>(null);
+
   // Payment plan tracking
   const [paymentData, setPaymentData] = useState<{ payments: any[]; total_amount: number; total_paid: number; remaining: number } | null>(null);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
@@ -376,6 +382,27 @@ export default function CitationsPage() {
       } catch { setPaymentData(null); }
     })();
   }, [selectedCitation?.id, selectedCitation?.fine_amount]);
+
+  // ── Fetch completeness when citation selected (UPGRADE 39) ──
+  useEffect(() => {
+    if (!selectedCitation) { setCompleteness(null); return; }
+    (async () => {
+      try {
+        const res = await apiFetch<{ data: any }>(`/citations/${selectedCitation.id}/completeness`);
+        setCompleteness(res.data);
+      } catch { setCompleteness(null); }
+    })();
+  }, [selectedCitation?.id]);
+
+  // ── Fetch payment summary on mount (UPGRADE 40) ──
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiFetch<{ data: any }>('/citations/payment-summary');
+        setPaymentSummary(res.data);
+      } catch { setPaymentSummary(null); }
+    })();
+  }, []);
 
   const handleRecordPayment = async () => {
     if (!selectedCitation || !paymentForm.amount) return;
@@ -627,6 +654,11 @@ export default function CitationsPage() {
         <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase border panel-beveled bg-rmpg-800/40 text-rmpg-300 border-rmpg-600/50">
           <Clock size={10} /> Today: {stats.today_count}
         </span>
+        {paymentSummary && paymentSummary.collection_rate > 0 && (
+          <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase border panel-beveled bg-brand-900/20 text-brand-400 border-brand-700/40">
+            <Check size={10} /> Collection: {paymentSummary.collection_rate}%
+          </span>
+        )}
       </div>
     );
   };
@@ -646,7 +678,8 @@ export default function CitationsPage() {
               type="text"
               value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
-              placeholder="Search citations..." aria-label="Search citations..."
+              placeholder="Search citations..." aria-label="Search citations"
+              autoComplete="off"
               className={`input-dark w-full pl-8 pr-3 ${isMobile ? 'py-2.5 text-sm' : 'py-1.5 text-xs'}`}
               style={isMobile ? { minHeight: 44 } : undefined}
             />
@@ -678,9 +711,9 @@ export default function CitationsPage() {
       {/* List body */}
       <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
         {loading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 size={16} className="animate-spin text-brand-400 mr-2" />
-            <span className="text-xs text-rmpg-400">Loading...</span>
+          <div className="flex flex-col items-center justify-center py-12 gap-2">
+            <Loader2 size={20} className="animate-spin text-brand-400" role="status" aria-label="Loading" />
+            <span className="text-[10px] text-rmpg-500">Loading citations...</span>
           </div>
         ) : error ? (
           <div className="p-4 text-xs text-red-400 flex items-center gap-2">
@@ -884,6 +917,27 @@ export default function CitationsPage() {
                       <button type="button" onClick={() => setShowPaymentForm(false)} className="toolbar-btn text-[10px]">Cancel</button>
                     </div>
                   </div>
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* Data Completeness (UPGRADE 41) */}
+          {completeness && (
+            <section>
+              <h3 className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2 flex items-center gap-1">
+                <Check size={10} /> Data Completeness
+              </h3>
+              <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className={`text-sm font-bold px-2 py-0.5 rounded ${completeness.grade === 'A' ? 'bg-green-900/50 text-green-400' : completeness.grade === 'B' ? 'bg-blue-900/50 text-blue-400' : completeness.grade === 'C' ? 'bg-amber-900/50 text-amber-400' : 'bg-red-900/50 text-red-400'}`}>{completeness.grade}</div>
+                  <div className="flex-1 h-1.5 bg-rmpg-700 rounded-sm overflow-hidden">
+                    <div className={`h-full transition-all ${completeness.score >= 80 ? 'bg-green-500' : completeness.score >= 60 ? 'bg-blue-500' : completeness.score >= 40 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${completeness.score}%` }} />
+                  </div>
+                  <span className="text-[10px] text-rmpg-400">{completeness.score}%</span>
+                </div>
+                {completeness.missing_required.length > 0 && (
+                  <div className="text-[10px] text-amber-400">Missing: {completeness.missing_required.join(', ')}</div>
                 )}
               </div>
             </section>
@@ -1105,7 +1159,8 @@ export default function CitationsPage() {
                   value={personSearch}
                   onChange={e => handlePersonSearchChange(e.target.value)}
                   onFocus={() => { if (personResults.length > 0) setShowPersonDropdown(true); }}
-                  placeholder="Search by name or DL..." aria-label="Search by name or DL..."
+                  placeholder="Search by name or DL..." aria-label="Search by name or driver's license"
+                  autoComplete="off"
                   className="input-dark w-full py-2 pl-8 pr-8 text-xs min-h-[36px]"
                 />
                 {personSearching && <Loader2 size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-rmpg-400 animate-spin" />}
@@ -1146,6 +1201,7 @@ export default function CitationsPage() {
                 value={form.person_name}
                 onChange={e => updateField('person_name', e.target.value)}
                 placeholder="Last, First Middle"
+                autoComplete="off"
                 className={`input-dark w-full py-2 text-xs ${formErrors.person_name ? 'border-red-500' : ''}`}
               />
               {formErrors.person_name && <p className="text-red-400 text-[10px] mt-1">{formErrors.person_name}</p>}

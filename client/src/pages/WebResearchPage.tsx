@@ -283,7 +283,7 @@ export default function WebResearchPage() {
       {/* Header bar */}
       <div className="flex items-center gap-3 px-4 py-2 border-b border-rmpg-700" style={{ background: '#0d1520' }}>
         <Globe className="w-4 h-4 text-brand-400" />
-        <h1 className="text-sm font-bold text-white tracking-wide uppercase flex-1">Web Research</h1>
+        <h1 className="text-sm font-bold text-rmpg-100 tracking-wide uppercase flex-1">Web Research</h1>
 
         {/* Firecrawl status LED */}
         <div className="flex items-center gap-1.5">
@@ -303,7 +303,7 @@ export default function WebResearchPage() {
       </div>
 
       {/* Tab bar */}
-      <div className="flex border-b border-rmpg-700" style={{ background: '#0f1923' }}>
+      <div className="flex border-b border-rmpg-700 bg-surface-sunken">
         <button type="button"
           className={`px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
             activeTab === 'search'
@@ -326,7 +326,7 @@ export default function WebResearchPage() {
           <Save className="w-3 h-3 inline mr-1.5 -mt-0.5" />
           Saved Results
           {savedResults.length > 0 && (
-            <span className="ml-1.5 px-1.5 py-0.5 text-[9px] bg-brand-600/30 text-brand-300 rounded-full">
+            <span className="ml-1.5 px-1.5 py-0.5 text-[9px] bg-brand-600/30 text-brand-300 rounded-sm">
               {savedResults.length}
             </span>
           )}
@@ -699,6 +699,7 @@ export default function WebResearchPage() {
                 className="toolbar-btn toolbar-btn-primary flex items-center gap-1 px-3 text-xs"
                 disabled={linking || !linkId.trim()}
                 onClick={handleLink}
+                style={{ opacity: (linking || !linkId.trim()) ? 0.4 : 1 }}
               >
                 {linking ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Link2 className="w-3 h-3" />}
                 Link

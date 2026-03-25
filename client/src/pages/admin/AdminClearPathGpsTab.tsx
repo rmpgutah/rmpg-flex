@@ -448,11 +448,11 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
   // Set document title
   useEffect(() => { document.title = 'Admin - GPS \u2014 RMPG Flex'; }, []);
 
-  if (loading) return <LoadingSpinner />;
-
   // Units that are not already mapped
   const mappedUnitIds = new Set(mappings.map(m => m.unit_id));
   const availableUnits = units.filter(u => !mappedUnitIds.has(u.id));
+
+  if (loading) return <LoadingSpinner />;
 
   return (
     <div className="p-4 space-y-4">
