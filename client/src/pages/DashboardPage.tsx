@@ -347,6 +347,7 @@ export default function DashboardPage() {
   const [psoStats, setPsoStats] = useState<PsoStats | null>(null);
   const [shiftInfo, setShiftInfo] = useState<ShiftInfo>(getCurrentShift);
   const [weather, setWeather] = useState<WeatherData | null>(null);
+  const [weatherFetched, setWeatherFetched] = useState(false);
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const [showNewCallModal, setShowNewCallModal] = useState(false);
@@ -383,16 +384,18 @@ export default function DashboardPage() {
         { signal: controller.signal }
       );
       clearTimeout(timeout);
-      if (!resp.ok) { setWeather({ temperature: 0, weatherCode: -1, description: 'Unavailable', icon: Cloud }); return; }
+      if (!resp.ok) { setWeather(null); return; }
       const data = await resp.json();
       const temp = data?.current?.temperature_2m;
-      if (temp == null) { setWeather({ temperature: 0, weatherCode: -1, description: 'No data', icon: Cloud }); return; }
+      if (temp == null) { setWeather(null); return; }
       const code = data?.current?.weather_code ?? 0;
       const info = getWeatherInfo(code);
       setWeather({ temperature: Math.round(temp), weatherCode: code, description: info.description, icon: info.icon });
     } catch {
-      // Show unavailable instead of spinning forever
-      setWeather({ temperature: 0, weatherCode: -1, description: 'Unavailable', icon: Cloud });
+      // Set null instead of fake 0°F — prevents false freezing warnings
+      setWeather(null);
+    } finally {
+      setWeatherFetched(true);
     }
   }, []);
 
@@ -766,9 +769,18 @@ export default function DashboardPage() {
                 </div>
               );
             })() : (
-              <div className="flex flex-col items-center justify-center h-[100px] gap-2" role="status" aria-label="Loading weather data">
-                <Loader2 className="w-5 h-5 text-rmpg-500 animate-spin" aria-hidden="true" />
-                <span className="text-[10px] text-rmpg-500 animate-pulse select-none">Loading weather...</span>
+              <div className="flex flex-col items-center justify-center h-[100px] gap-2" role="status" aria-label={weatherFetched ? 'Weather unavailable' : 'Loading weather data'}>
+                {!weatherFetched ? (
+                  <>
+                    <Loader2 className="w-5 h-5 text-rmpg-500 animate-spin" aria-hidden="true" />
+                    <span className="text-[10px] text-rmpg-500 animate-pulse select-none">Loading weather...</span>
+                  </>
+                ) : (
+                  <>
+                    <Cloud className="w-6 h-6 text-rmpg-500 opacity-50" aria-hidden="true" />
+                    <span className="text-[10px] text-rmpg-500 select-none">Weather unavailable</span>
+                  </>
+                )}
               </div>
             )}
           </div>
