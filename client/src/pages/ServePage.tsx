@@ -7,11 +7,12 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Plus, RefreshCw, MapPin, BarChart3, List, Map as MapIcon,
-  Briefcase, Calendar, Route, Navigation, Loader2, X,
+  Briefcase, Calendar, Route, Navigation, Loader2, X, CheckCircle, Circle,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useAuth } from '../context/AuthContext';
 import { loadGoogleMaps, DARK_MAP_STYLE } from '../utils/googleMapsLoader';
 import ServeJobCard from '../components/serve/ServeJobCard';
 import ServeAttemptModal from '../components/serve/ServeAttemptModal';
@@ -24,7 +25,7 @@ import ExportButton from '../components/ExportButton';
 // ─── Constants ──────────────────────────────────────────────────────────
 
 const GMAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
-const TABS = ['Queue', 'Map', 'Stats'] as const;
+const TABS = ['Queue', 'Route', 'Map', 'Stats'] as const;
 type Tab = typeof TABS[number];
 type StatusFilter = 'all' | 'pending' | 'in_progress' | 'served' | 'failed';
 
@@ -73,10 +74,15 @@ interface StatsSummary {
 
 export default function ServePage() {
   const isMobile = useIsMobile();
+  const { user } = useAuth();
   // ── Core state ──────────────────────────────────────────────────────
   const [selectedDate, setSelectedDate] = useState(() => formatDate(new Date()));
   const [activeTab, setActiveTab] = useState<Tab>('Queue');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  // ── Officers for route planner ──────────────────────────────────────
+  const [officers, setOfficers] = useState<{ id: number; name: string }[]>([]);
+  // ── Saved route state ───────────────────────────────────────────────
+  const [savedRoute, setSavedRoute] = useState<any>(null);
 
   // ── Data ────────────────────────────────────────────────────────────
   const [jobs, setJobs] = useState<ServeJob[]>([]);
@@ -219,6 +225,31 @@ export default function ServePage() {
   // ── WebSocket live updates ─────────────────────────────────────────
   useLiveSync('process-server', refreshJobs);
 
+  // ── Fetch officers for route planner ─────────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch<any>('/personnel?status=active');
+        if (cancelled) return;
+        const list = Array.isArray(res) ? res : res?.data ?? [];
+        setOfficers(list.map((u: any) => ({ id: u.id, name: u.full_name || `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username })));
+      } catch { /* non-critical */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // ── Fetch saved route for today ──────────────────────────────────
+  const fetchSavedRoute = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const route = await apiFetch<any>(`/process-server/routes/${selectedDate}?officer_id=${Number(user.id)}`);
+      setSavedRoute(route);
+    } catch { setSavedRoute(null); }
+  }, [selectedDate, user?.id]);
+
+  useEffect(() => { fetchSavedRoute(); }, [fetchSavedRoute]);
+
   // ══════════════════════════════════════════════════════════════════════
   // Handlers
   // ══════════════════════════════════════════════════════════════════════
@@ -290,10 +321,11 @@ export default function ServePage() {
         body: JSON.stringify({ orderedIds: orderedJobIds }),
       });
       refreshJobs();
+      fetchSavedRoute(); // Refresh saved route for Route tab
     } catch {
       // reorder failed — local state still updated
     }
-  }, [refreshJobs]);
+  }, [refreshJobs, fetchSavedRoute]);
 
   const handleSkipTraceAddToRoute = useCallback((_addr: ServeSkipAddress) => {
     // Could update the job's address — for now just close and refresh
@@ -573,7 +605,7 @@ export default function ServePage() {
   }, []);
 
   return (
-    <div className="flex flex-col h-full bg-surface-base">
+    <div className="flex flex-col h-full bg-surface-base" role="main">
       {fetchError && (
         <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-[2px] text-red-400 text-xs flex items-center gap-2 animate-in fade-in duration-200">
           <span>⚠ {fetchError}</span>
@@ -584,10 +616,11 @@ export default function ServePage() {
       <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1e3048] bg-[#0d1520] flex-wrap" role="toolbar" aria-label="Process Server controls">
         <div className="flex items-center gap-1.5">
           <Briefcase size={16} className="text-[#d4a017]" />
-          {!isMobile && <span className="text-sm font-semibold text-white tracking-wide">Process Server</span>}
+          {!isMobile && <span className="text-sm font-semibold text-white tracking-wider">PROCESS SERVER</span>}
+          {!isMobile && <span className="block h-px w-full bg-[#d4a017]/30 mt-0.5" />}
         </div>
 
-        {/* Date picker */}
+        {/* Date picker + route stats */}
         <div className="flex items-center gap-1 ml-auto sm:ml-2">
           <Calendar size={14} className="text-rmpg-400" />
           <input
@@ -596,6 +629,27 @@ export default function ServePage() {
             onChange={e => setSelectedDate(e.target.value)}
             className="px-2 py-1 text-xs bg-[#141e2b] border border-[#1e3048] rounded-[2px] text-white focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
           />
+          {/* Route stats inline (Step 3.5) */}
+          {savedRoute && savedRoute.optimized_order_json && (() => {
+            const orderIds: number[] = (() => {
+              try {
+                return typeof savedRoute.optimized_order_json === 'string'
+                  ? JSON.parse(savedRoute.optimized_order_json)
+                  : savedRoute.optimized_order_json;
+              } catch { return []; }
+            })();
+            const stopCount = orderIds.length;
+            const dist = savedRoute.total_distance_miles;
+            const mins = savedRoute.total_time_minutes;
+            if (stopCount === 0) return null;
+            return (
+              <span className="font-mono tabular-nums text-[10px] ml-1.5 px-1.5 py-0.5 rounded-[2px]" style={{ color: '#d4a017', background: '#d4a01710', border: '1px solid #d4a01720' }}>
+                {stopCount} stops
+                {dist ? ` / ${Number(dist).toFixed(0)} mi` : ''}
+                {mins ? ` / ~${Math.floor(mins / 60)}h ${Math.round(mins % 60)}m` : ''}
+              </span>
+            );
+          })()}
         </div>
 
         {/* Action buttons */}
@@ -635,7 +689,7 @@ export default function ServePage() {
       {/* ─── Tab Bar ───────────────────────────────────────────────── */}
       <div className="flex items-center border-b border-[#1e3048] bg-[#0d1520]" role="tablist" aria-label="Process Server views">
         {TABS.map(tab => {
-          const Icon = tab === 'Queue' ? List : tab === 'Map' ? MapIcon : BarChart3;
+          const Icon = tab === 'Queue' ? List : tab === 'Route' ? Route : tab === 'Map' ? MapIcon : BarChart3;
           return (
             <button type="button"
               key={tab}
@@ -644,7 +698,7 @@ export default function ServePage() {
               onClick={() => setActiveTab(tab)}
               className={`flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-all duration-150 border-b-2 ${
                 activeTab === tab
-                  ? 'text-white border-[#1a5a9e] bg-[#1a5a9e]/5'
+                  ? 'text-[#d4a017] border-[#d4a017] bg-[#d4a017]/5'
                   : 'text-rmpg-400 border-transparent hover:text-rmpg-200 hover:border-rmpg-600 hover:bg-white/[0.02]'
               }`}
             >
@@ -665,6 +719,8 @@ export default function ServePage() {
               {STATUS_FILTERS.map(f => (
                 <button type="button"
                   key={f.value}
+                  role="button"
+                  aria-pressed={statusFilter === f.value}
                   onClick={() => setStatusFilter(f.value)}
                   className={`px-2.5 py-1 text-[11px] font-medium rounded-[2px] border transition-all duration-150 whitespace-nowrap focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 ${
                     statusFilter === f.value
@@ -674,7 +730,7 @@ export default function ServePage() {
                 >
                   {f.label}
                   {f.value !== 'all' && (
-                    <span className="ml-1 text-[10px] text-rmpg-500">
+                    <span className="ml-1 text-[10px] tabular-nums font-mono text-rmpg-500">
                       {jobs.filter(j => j.status === f.value).length}
                     </span>
                   )}
@@ -682,6 +738,8 @@ export default function ServePage() {
               ))}
               {/* Feature 1: Priority Sort Toggle */}
               <button type="button"
+                role="button"
+                aria-pressed={sortByUrgency}
                 onClick={() => setSortByUrgency(prev => !prev)}
                 className={`px-2.5 py-1 text-[11px] font-medium rounded-[2px] border transition-all duration-150 whitespace-nowrap ml-auto focus:outline-none focus:ring-1 focus:ring-amber-500/50 ${
                   sortByUrgency
@@ -714,7 +772,7 @@ export default function ServePage() {
                 </div>
               ) : filteredJobs.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-40 text-center">
-                  <div className="w-12 h-12 rounded-full bg-[#1a2636] flex items-center justify-center mb-3">
+                  <div className="w-12 h-12 rounded-full bg-[#0d1520] flex items-center justify-center mb-3">
                     <Briefcase size={20} className="text-rmpg-500" />
                   </div>
                   <p className="text-sm text-rmpg-400 font-medium">
@@ -747,6 +805,170 @@ export default function ServePage() {
                 ))
               )}
             </div>
+          </div>
+        )}
+
+        {/* ── Route Tab (Step 3.4) ──────────────────────────────── */}
+        {activeTab === 'Route' && (
+          <div className="h-full overflow-y-auto p-4 space-y-4 scrollbar-dark">
+            {savedRoute && savedRoute.optimized_order_json ? (() => {
+              const orderIds: number[] = (() => {
+                try {
+                  return typeof savedRoute.optimized_order_json === 'string'
+                    ? JSON.parse(savedRoute.optimized_order_json)
+                    : savedRoute.optimized_order_json;
+                } catch { return []; }
+              })();
+              const routeJobs = orderIds
+                .map(id => jobs.find(j => j.id === id))
+                .filter((j): j is ServeJob => !!j);
+              const completedCount = routeJobs.filter(j => j.status === 'served').length;
+              const totalStops = routeJobs.length;
+              const progressPct = totalStops > 0 ? Math.round((completedCount / totalStops) * 100) : 0;
+
+              return (
+                <>
+                  {/* Stats bar */}
+                  <div className="flex items-center gap-4 flex-wrap px-3 py-2 bg-[#0d1520] border border-[#1e3048] rounded-[2px]" role="status" aria-label="Route statistics">
+                    <div className="flex items-center gap-1.5 text-rmpg-400 text-xs">
+                      <MapPin size={12} className="text-blue-400" />
+                      <span className="font-mono tabular-nums text-white">{totalStops}</span> stops
+                    </div>
+                    <div className="flex items-center gap-1.5 text-rmpg-400 text-xs">
+                      <Navigation size={12} className="text-emerald-400" />
+                      <span className="font-mono tabular-nums text-white">
+                        {savedRoute.total_distance_miles ? `${Number(savedRoute.total_distance_miles).toFixed(1)} mi` : '--'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-rmpg-400 text-xs">
+                      <Calendar size={12} className="text-amber-400" />
+                      <span className="font-mono tabular-nums text-white">
+                        {savedRoute.total_time_minutes
+                          ? `~${Math.floor(savedRoute.total_time_minutes / 60)}h ${Math.round(savedRoute.total_time_minutes % 60)}m`
+                          : '--'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-rmpg-400 text-xs ml-auto">
+                      <span className="font-mono tabular-nums" style={{ color: '#d4a017' }}>
+                        {completedCount}/{totalStops} done ({progressPct}%)
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Progress bar */}
+                  <div className="w-full h-1.5 bg-[#1a2636] rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{
+                        width: `${progressPct}%`,
+                        background: progressPct === 100 ? '#22c55e' : '#d4a017',
+                        boxShadow: `0 0 6px ${progressPct === 100 ? '#22c55e' : '#d4a017'}40`,
+                      }}
+                    />
+                  </div>
+
+                  {/* Ordered stop list */}
+                  <div className="space-y-1">
+                    {routeJobs.map((job, idx) => {
+                      const isCompleted = job.status === 'served';
+                      const isFailed = job.status === 'failed';
+                      return (
+                        <div
+                          key={job.id}
+                          className={`flex items-center gap-3 px-3 py-2 rounded-[2px] border transition-all duration-150 ${
+                            isCompleted
+                              ? 'bg-green-900/10 border-green-800/30 opacity-60'
+                              : isFailed
+                                ? 'bg-red-900/10 border-red-800/30 opacity-60'
+                                : 'bg-[#141e2b] border-[#1e3048] hover:border-[#1a5a9e]/30'
+                          }`}
+                        >
+                          {/* Stop number */}
+                          <span
+                            className="w-6 h-6 flex items-center justify-center rounded-full text-[10px] font-bold text-white flex-shrink-0"
+                            style={{
+                              background: isCompleted ? '#22c55e' : isFailed ? '#ef4444' : job.status === 'in_progress' ? '#eab308' : '#3b82f6',
+                            }}
+                          >
+                            {idx + 1}
+                          </span>
+
+                          {/* Completion indicator */}
+                          {isCompleted ? (
+                            <CheckCircle size={14} className="text-green-400 flex-shrink-0" />
+                          ) : (
+                            <Circle size={14} className="text-rmpg-600 flex-shrink-0" />
+                          )}
+
+                          {/* Info */}
+                          <div className="flex-1 min-w-0">
+                            <div className={`text-xs font-medium truncate ${isCompleted ? 'text-rmpg-400 line-through' : 'text-white'}`}>
+                              {job.recipient_name}
+                            </div>
+                            <div className="text-[10px] text-rmpg-500 truncate">
+                              {job.recipient_address || 'No address'}
+                              {job.recipient_city ? `, ${job.recipient_city}` : ''}
+                            </div>
+                          </div>
+
+                          {/* Status badge */}
+                          <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded-[2px] flex-shrink-0" style={{
+                            background: isCompleted ? '#22c55e20' : isFailed ? '#ef444420' : job.status === 'in_progress' ? '#eab30820' : '#3b82f620',
+                            color: isCompleted ? '#4ade80' : isFailed ? '#f87171' : job.status === 'in_progress' ? '#facc15' : '#60a5fa',
+                            border: `1px solid ${isCompleted ? '#22c55e30' : isFailed ? '#ef444430' : job.status === 'in_progress' ? '#eab30830' : '#3b82f630'}`,
+                          }}>
+                            {job.status.replace('_', ' ')}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="flex items-center gap-2 pt-2">
+                    <button type="button"
+                      onClick={() => setRoutePlannerOpen(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-400 bg-blue-900/20 hover:bg-blue-900/40 border border-blue-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(59,130,246,0.15)] focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                      aria-label="Open Route Planner"
+                    >
+                      <Route size={12} />
+                      Open Route Planner
+                    </button>
+                    <button type="button"
+                      onClick={() => {
+                        // Build Google Maps URL with all waypoints
+                        const geocoded = routeJobs.filter(j => j.status !== 'served' && j.recipient_lat != null && j.recipient_lng != null);
+                        if (geocoded.length === 0) return;
+                        const dest = geocoded[geocoded.length - 1];
+                        const waypoints = geocoded.slice(0, -1).map(j => `${j.recipient_lat},${j.recipient_lng}`).join('|');
+                        const url = `https://www.google.com/maps/dir/?api=1&destination=${dest.recipient_lat},${dest.recipient_lng}${waypoints ? `&waypoints=${encodeURIComponent(waypoints)}` : ''}&travelmode=driving`;
+                        window.open(url, '_blank', 'noopener,noreferrer');
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-400 bg-emerald-900/20 hover:bg-emerald-900/40 border border-emerald-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(16,185,129,0.15)] focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
+                      aria-label="Start Navigation"
+                    >
+                      <Navigation size={12} />
+                      Start Navigation
+                    </button>
+                  </div>
+                </>
+              );
+            })() : (
+              <div className="flex flex-col items-center justify-center h-40 text-center">
+                <div className="w-12 h-12 rounded-full bg-[#1a2636] flex items-center justify-center mb-3">
+                  <Route size={20} className="text-rmpg-500" />
+                </div>
+                <p className="text-sm text-rmpg-400 font-medium mb-3">No route planned for this date.</p>
+                <button type="button"
+                  onClick={() => setRoutePlannerOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-400 bg-blue-900/20 hover:bg-blue-900/40 border border-blue-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(59,130,246,0.15)] focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                  aria-label="Open Route Planner"
+                >
+                  <Route size={12} />
+                  Plan a Route
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -815,7 +1037,7 @@ export default function ServePage() {
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
               <div className="px-4 py-3 bg-[#141e2b] border border-[#1e3048] rounded-[2px] transition-colors hover:border-[#1a5a9e]/30">
                 <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider mb-1">Mileage Today</div>
-                <div className="text-lg font-bold text-white font-mono">
+                <div className="text-lg font-bold text-white font-mono tabular-nums">
                   {routeData?.totalDistance
                     ? `${routeData.totalDistance.toFixed(1)} mi`
                     : stats?.mileage
@@ -831,7 +1053,7 @@ export default function ServePage() {
               </div>
               <div className="px-4 py-3 bg-[#141e2b] border border-[#1e3048] rounded-[2px] transition-colors hover:border-[#1a5a9e]/30">
                 <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider mb-1">Route Efficiency</div>
-                <div className="text-lg font-bold text-white font-mono">
+                <div className="text-lg font-bold text-white font-mono tabular-nums">
                   {routeData && stats?.planned_mileage && stats.planned_mileage > 0
                     ? `${Math.round((stats.planned_mileage / (routeData.totalDistance || 1)) * 100)}%`
                     : '--'
@@ -932,10 +1154,10 @@ export default function ServePage() {
                   <button type="button" onClick={() => setSuccessRates(null)} className="text-rmpg-500 hover:text-rmpg-300 text-xs transition-colors" aria-label="Close success rates">Close</button>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-                  <div><div className="text-lg font-bold text-green-400">{successRates.overall?.success_rate}%</div><div className="text-[9px] text-rmpg-400">Overall</div></div>
-                  <div><div className="text-lg font-bold text-white">{successRates.overall?.total}</div><div className="text-[9px] text-rmpg-400">Total Jobs</div></div>
-                  <div><div className="text-lg font-bold text-green-400">{successRates.overall?.served}</div><div className="text-[9px] text-rmpg-400">Served</div></div>
-                  <div><div className="text-lg font-bold text-white">{successRates.overall?.avg_attempts?.toFixed(1)}</div><div className="text-[9px] text-rmpg-400">Avg Attempts</div></div>
+                  <div><div className="text-lg font-bold tabular-nums font-mono text-green-400" style={{ textShadow: '0 0 4px currentColor' }}>{successRates.overall?.success_rate}%</div><div className="text-[9px] text-rmpg-400">Overall</div></div>
+                  <div><div className="text-lg font-bold tabular-nums font-mono text-white" style={{ textShadow: '0 0 4px currentColor' }}>{successRates.overall?.total}</div><div className="text-[9px] text-rmpg-400">Total Jobs</div></div>
+                  <div><div className="text-lg font-bold tabular-nums font-mono text-green-400" style={{ textShadow: '0 0 4px currentColor' }}>{successRates.overall?.served}</div><div className="text-[9px] text-rmpg-400">Served</div></div>
+                  <div><div className="text-lg font-bold tabular-nums font-mono text-white" style={{ textShadow: '0 0 4px currentColor' }}>{successRates.overall?.avg_attempts?.toFixed(1)}</div><div className="text-[9px] text-rmpg-400">Avg Attempts</div></div>
                 </div>
                 {successRates.by_officer?.length > 0 && (
                   <div>
@@ -974,6 +1196,8 @@ export default function ServePage() {
         isOpen={routePlannerOpen}
         onClose={() => setRoutePlannerOpen(false)}
         jobs={jobs.filter(j => j.status !== 'served' && j.status !== 'archived')}
+        officers={officers}
+        currentUserId={user?.id ? Number(user.id) : undefined}
         onRouteOptimized={handleRouteOptimized}
       />
 
@@ -1189,7 +1413,7 @@ export default function ServePage() {
               value={formData.service_instructions}
               onChange={e => handleFormChange('service_instructions', e.target.value)}
               rows={2}
-              className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-sm text-white focus:border-brand-500 focus:outline-none resize-none"
+              className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors resize-none"
               placeholder="Special instructions for service..."
             />
           </div>
@@ -1199,7 +1423,7 @@ export default function ServePage() {
               value={formData.notes}
               onChange={e => handleFormChange('notes', e.target.value)}
               rows={2}
-              className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-sm text-white focus:border-brand-500 focus:outline-none resize-none"
+              className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors resize-none"
               placeholder="Internal notes..."
             />
           </div>
@@ -1227,7 +1451,7 @@ function StatCard({
   return (
     <div className={`px-4 py-3 rounded-[2px] border ${bg} ${border} transition-all duration-150 hover:shadow-md hover:scale-[1.01]`}>
       <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider mb-1">{label}</div>
-      <div className={`text-2xl font-bold font-mono ${color}`}>{value}</div>
+      <div className={`text-2xl font-bold font-mono tabular-nums ${color}`} style={{ textShadow: '0 0 4px currentColor' }}>{value}</div>
     </div>
   );
 }

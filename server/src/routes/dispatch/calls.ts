@@ -7,9 +7,10 @@ import { sendCsv } from '../../utils/csvExport';
 import { localNow, localToday } from '../../utils/timeUtils';
 import { geocodeCallIfNeeded } from '../../utils/geocode';
 import { identifyBeat } from '../../utils/geofence';
-import { broadcastDispatchUpdate } from '../../utils/websocket';
+import { broadcast, broadcastDispatchUpdate } from '../../utils/websocket';
 import { createNotificationForRoles } from '../notifications';
 import { auditLog } from '../../utils/auditLogger';
+import { createServeQueueFromCall } from '../../utils/serveQueueLinker';
 import { analyzeCall, isAIAvailable } from '../../utils/groqAI';
 
 // ── Upgrade 1: Priority score calculation ──
@@ -616,6 +617,19 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         `${call.incident_type} — ${call.location_address || 'No address'}`,
         'call', call.id, 'critical', 'dispatch.call_priority_p1', req.user!.userId,
       );
+    }
+
+    // Auto-send to serve queue for PSO / process service calls
+    if (['pso_client_request', 'process_service'].includes(normalizedIncidentType)) {
+      try {
+        const newCall = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id) as any;
+        const serveJobId = createServeQueueFromCall(db, newCall, req.user!.userId);
+        if (serveJobId) {
+          broadcast('serve', 'serve_created', { id: serveJobId, call_id: call.id });
+        }
+      } catch (serveErr) {
+        console.error('[Dispatch] Auto-send to serve queue failed (non-fatal):', serveErr instanceof Error ? serveErr.message : serveErr);
+      }
     }
 
     // Upgrade 13: Include duplicate warning and estimated response time in response

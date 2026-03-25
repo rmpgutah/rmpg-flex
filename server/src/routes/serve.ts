@@ -11,6 +11,7 @@ import { validateParamId, validateParamIdMiddleware } from '../middleware/saniti
 import { auditLog } from '../utils/auditLogger';
 import { broadcast, broadcastDispatchUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
+import { notifyPortalStatusUpdate } from '../utils/portalCallback';
 import config from '../config';
 import { sendCsv } from '../utils/csvExport';
 
@@ -33,6 +34,25 @@ const WRITE_ROLES = ['admin', 'manager', 'supervisor', 'officer'];
 // ============================================================
 // Static routes FIRST (before /:id param route)
 // ============================================================
+
+// ── GET /linked-statuses — Batch serve status for dispatch call list ──
+router.get('/linked-statuses', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  try {
+    const { call_ids } = req.query;
+    if (!call_ids) { res.json({}); return; }
+    const ids = String(call_ids).split(',').map(Number).filter(n => !isNaN(n) && n > 0).slice(0, 200);
+    if (!ids.length) { res.json({}); return; }
+    const db = getDb();
+    const placeholders = ids.map(() => '?').join(',');
+    const rows = db.prepare(`SELECT call_id, status, attempt_count FROM serve_queue WHERE call_id IN (${placeholders})`).all(...ids) as any[];
+    const result: Record<number, { status: string; attempt_count: number }> = {};
+    for (const r of rows) result[r.call_id] = { status: r.status, attempt_count: r.attempt_count };
+    res.json(result);
+  } catch (err: any) {
+    console.error('[SERVE] linked-statuses error:', err);
+    res.status(500).json({ error: 'Failed to fetch linked statuses', code: 'FAILED_TO_FETCH_LINKED' });
+  }
+});
 
 // ── GET /stats/summary — Dashboard stats ────────────────────
 router.get('/stats/summary', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: Response) => {
@@ -704,6 +724,19 @@ router.post('/:id/attempt', validateParamIdMiddleware, requireRole(...WRITE_ROLE
     } catch (syncErr) {
       console.error('[Serve] Dispatch sync-back failed:', (syncErr as Error)?.message);
       // Sync failure must never prevent the attempt from being recorded
+    }
+
+    // Notify portal of serve attempt (fire-and-forget)
+    try {
+      const jobForPortal = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
+      if (jobForPortal?.call_id) {
+        const linkedCallForPortal = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(jobForPortal.call_id) as any;
+        if (linkedCallForPortal) {
+          notifyPortalStatusUpdate(linkedCallForPortal);
+        }
+      }
+    } catch (portalErr) {
+      console.error('[Serve] Portal notification failed (non-fatal):', (portalErr as Error)?.message);
     }
 
     res.status(201).json({ attempt, job: updatedJob, dueDiligenceComplete });
