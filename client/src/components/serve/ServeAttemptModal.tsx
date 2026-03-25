@@ -234,23 +234,23 @@ export default function ServeAttemptModal({
   // ─── Step Indicator ────────────────────────────────────────────────
 
   const StepIndicator = () => (
-    <div className="flex items-center justify-center gap-0 py-3 px-4">
+    <div className="flex items-center justify-center gap-0 py-3 px-4" role="navigation" aria-label="Step progress">
       {STEPS.map((label, i) => (
         <React.Fragment key={label}>
           {i > 0 && (
-            <div className={`h-0.5 w-8 sm:w-12 ${i <= step ? 'bg-green-500' : 'bg-rmpg-600'}`} />
+            <div className={`h-0.5 w-8 sm:w-12 transition-colors duration-300 ${i <= step ? 'bg-green-500' : 'bg-rmpg-600'}`} />
           )}
           <div className="flex flex-col items-center gap-1">
-            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors ${
+            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all duration-200 ${
               i < step
-                ? 'bg-green-600 border-green-500 text-white'
+                ? 'bg-green-600 border-green-500 text-white shadow-[0_0_6px_rgba(34,197,94,0.3)]'
                 : i === step
-                  ? 'bg-brand-700 border-brand-500 text-white'
+                  ? 'bg-[#1a5a9e] border-[#1a5a9e] text-white shadow-[0_0_6px_rgba(26,90,158,0.3)]'
                   : 'bg-rmpg-700 border-rmpg-500 text-rmpg-400'
             }`}>
               {i < step ? <CheckCircle className="w-4 h-4" /> : i + 1}
             </div>
-            <span className={`text-[10px] font-semibold ${
+            <span className={`text-[10px] font-semibold transition-colors duration-200 ${
               i <= step ? 'text-rmpg-200' : 'text-rmpg-500'
             }`}>{label}</span>
           </div>
@@ -313,16 +313,16 @@ export default function ServeAttemptModal({
             ) : (
               <div className="space-y-3">
                 <div className="grid grid-cols-3 gap-3">
-                  <div className="bg-rmpg-800 border border-rmpg-600 rounded-sm p-2">
-                    <div className="text-[10px] text-rmpg-400 uppercase font-semibold">Latitude</div>
+                  <div className="bg-[#0d1520] border border-[#1e3048] rounded-[2px] p-2">
+                    <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider">Latitude</div>
                     <div className="text-sm text-rmpg-100 font-mono">{gps.latitude?.toFixed(6)}</div>
                   </div>
-                  <div className="bg-rmpg-800 border border-rmpg-600 rounded-sm p-2">
-                    <div className="text-[10px] text-rmpg-400 uppercase font-semibold">Longitude</div>
+                  <div className="bg-[#0d1520] border border-[#1e3048] rounded-[2px] p-2">
+                    <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider">Longitude</div>
                     <div className="text-sm text-rmpg-100 font-mono">{gps.longitude?.toFixed(6)}</div>
                   </div>
-                  <div className="bg-rmpg-800 border border-rmpg-600 rounded-sm p-2">
-                    <div className="text-[10px] text-rmpg-400 uppercase font-semibold">Accuracy</div>
+                  <div className="bg-[#0d1520] border border-[#1e3048] rounded-[2px] p-2">
+                    <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider">Accuracy</div>
                     <div className="text-sm text-rmpg-100 font-mono">{gps.accuracy}m</div>
                   </div>
                 </div>
@@ -351,7 +351,7 @@ export default function ServeAttemptModal({
               <button type="button"
                 onClick={() => setStep(1)}
                 disabled={gps.loading}
-                className="px-4 py-2 text-sm font-semibold bg-brand-700 hover:bg-brand-600 text-white rounded-sm disabled:opacity-40 transition-colors"
+                className="px-4 py-2 text-sm font-semibold bg-[#1a5a9e] hover:bg-[#1a5a9e]/80 text-white rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 hover:shadow-[0_0_8px_rgba(26,90,158,0.2)]"
               >
                 Confirm Location
               </button>
@@ -374,12 +374,12 @@ export default function ServeAttemptModal({
                       setAttemptType(card.type);
                       if (card.type !== 'failed') setFailedReason(null);
                     }}
-                    className={`w-full text-left p-3 rounded-sm border-2 transition-colors ${
+                    className={`w-full text-left p-3 rounded-[2px] border-2 transition-all duration-150 ${
                       card.disabled
                         ? 'opacity-40 cursor-not-allowed border-rmpg-700 bg-rmpg-800'
                         : attemptType === card.type
-                          ? 'border-brand-500 bg-brand-900/30'
-                          : 'border-rmpg-600 bg-rmpg-800 hover:border-rmpg-400'
+                          ? 'border-[#1a5a9e] bg-[#1a5a9e]/10 shadow-[0_0_8px_rgba(26,90,158,0.15)]'
+                          : 'border-rmpg-600 bg-[#0d1520] hover:border-rmpg-400 hover:bg-[#141e2b]'
                     }`}
                   >
                     <div className="flex items-center gap-2 mb-1">
@@ -405,7 +405,7 @@ export default function ServeAttemptModal({
                 <select
                   value={failedReason || ''}
                   onChange={(e) => setFailedReason(e.target.value as FailedReason)}
-                  className="w-full bg-rmpg-800 border border-rmpg-600 rounded-sm px-3 py-2 text-sm text-rmpg-100 focus:outline-none focus:border-brand-500"
+                  className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-3 py-2 text-sm text-rmpg-100 focus:outline-none focus:border-[#1a5a9e] focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
                 >
                   <option value="">Select reason...</option>
                   <option value="no_answer">No Answer</option>
@@ -420,14 +420,14 @@ export default function ServeAttemptModal({
             <div className="flex justify-between pt-2">
               <button type="button"
                 onClick={() => setStep(0)}
-                className="px-4 py-2 text-sm font-semibold bg-rmpg-700 hover:bg-rmpg-600 text-rmpg-200 rounded-sm transition-colors"
+                className="px-4 py-2 text-sm font-semibold bg-[#1a2636] hover:bg-[#1e2d3f] text-rmpg-200 rounded-[2px] border border-[#1e3048] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50"
               >
                 Back
               </button>
               <button type="button"
                 onClick={() => setStep(2)}
                 disabled={!attemptType || (attemptType === 'failed' && !failedReason)}
-                className="px-4 py-2 text-sm font-semibold bg-brand-700 hover:bg-brand-600 text-white rounded-sm disabled:opacity-40 transition-colors"
+                className="px-4 py-2 text-sm font-semibold bg-[#1a5a9e] hover:bg-[#1a5a9e]/80 text-white rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 hover:shadow-[0_0_8px_rgba(26,90,158,0.2)]"
               >
                 Next
               </button>
@@ -438,7 +438,7 @@ export default function ServeAttemptModal({
       // ─── Step 3: Documentation ─────────────────────────────
       case 2:
         return (
-          <div className="space-y-4 p-4 max-h-[60vh] overflow-y-auto">
+          <div className="space-y-4 p-4 max-h-[60vh] overflow-y-auto scrollbar-dark">
             <h3 className="text-sm font-bold text-rmpg-200">Documentation</h3>
 
             {/* Camera input */}
@@ -487,7 +487,7 @@ export default function ServeAttemptModal({
 
             {/* Physical description for personal/substitute */}
             {(attemptType === 'personal' || attemptType === 'substitute') && (
-              <fieldset className="space-y-3 border border-rmpg-600 rounded-sm p-3">
+              <fieldset className="space-y-3 border border-[#1e3048] rounded-[2px] p-3">
                 <legend className="text-xs font-semibold text-rmpg-300 uppercase px-1">Physical Description</legend>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -495,7 +495,7 @@ export default function ServeAttemptModal({
                     <select
                       value={ageRange}
                       onChange={(e) => setAgeRange(e.target.value)}
-                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-sm px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-brand-500"
+                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#1a5a9e] focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
                     >
                       <option value="">Select...</option>
                       {AGE_RANGES.map(r => <option key={r} value={r}>{r}</option>)}
@@ -506,7 +506,7 @@ export default function ServeAttemptModal({
                     <select
                       value={hairColor}
                       onChange={(e) => setHairColor(e.target.value)}
-                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-sm px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-brand-500"
+                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#1a5a9e] focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
                     >
                       <option value="">Select...</option>
                       {HAIR_COLORS.map(c => <option key={c} value={c}>{c}</option>)}
@@ -519,7 +519,7 @@ export default function ServeAttemptModal({
                       value={height}
                       onChange={(e) => setHeight(e.target.value)}
                       placeholder="e.g., 5'10"
-                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-sm px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-brand-500"
+                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#1a5a9e] focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
                     />
                   </div>
                   <div>
@@ -529,7 +529,7 @@ export default function ServeAttemptModal({
                       value={weight}
                       onChange={(e) => setWeight(e.target.value)}
                       placeholder="e.g., 180 lbs"
-                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-sm px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-brand-500"
+                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#1a5a9e] focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
                     />
                   </div>
                 </div>
@@ -540,7 +540,7 @@ export default function ServeAttemptModal({
                     value={clothing}
                     onChange={(e) => setClothing(e.target.value)}
                     placeholder="Describe clothing worn"
-                    className="w-full bg-rmpg-800 border border-rmpg-600 rounded-sm px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-brand-500"
+                    className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#1a5a9e] focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
                   />
                 </div>
               </fieldset>
@@ -548,7 +548,7 @@ export default function ServeAttemptModal({
 
             {/* Substitute-only fields */}
             {attemptType === 'substitute' && (
-              <fieldset className="space-y-3 border border-rmpg-600 rounded-sm p-3">
+              <fieldset className="space-y-3 border border-[#1e3048] rounded-[2px] p-3">
                 <legend className="text-xs font-semibold text-rmpg-300 uppercase px-1">Person Served</legend>
                 <div>
                   <label className="block text-[10px] text-rmpg-400 uppercase mb-0.5">
@@ -559,7 +559,7 @@ export default function ServeAttemptModal({
                     value={personServedName}
                     onChange={(e) => setPersonServedName(e.target.value)}
                     placeholder="Full name of person served"
-                    className="w-full bg-rmpg-800 border border-rmpg-600 rounded-sm px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-brand-500"
+                    className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#1a5a9e] focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
                     required
                   />
                 </div>
@@ -568,7 +568,7 @@ export default function ServeAttemptModal({
                   <select
                     value={relationship}
                     onChange={(e) => setRelationship(e.target.value)}
-                    className="w-full bg-rmpg-800 border border-rmpg-600 rounded-sm px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-brand-500"
+                    className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#1a5a9e] focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
                   >
                     <option value="">Select...</option>
                     {RELATIONSHIPS.map(r => <option key={r} value={r}>{r}</option>)}
@@ -592,14 +592,14 @@ export default function ServeAttemptModal({
             <div className="flex justify-between pt-2">
               <button type="button"
                 onClick={() => setStep(1)}
-                className="px-4 py-2 text-sm font-semibold bg-rmpg-700 hover:bg-rmpg-600 text-rmpg-200 rounded-sm transition-colors"
+                className="px-4 py-2 text-sm font-semibold bg-[#1a2636] hover:bg-[#1e2d3f] text-rmpg-200 rounded-[2px] border border-[#1e3048] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50"
               >
                 Back
               </button>
               <button type="button"
                 onClick={() => setStep(3)}
                 disabled={attemptType === 'substitute' && !personServedName.trim()}
-                className="px-4 py-2 text-sm font-semibold bg-brand-700 hover:bg-brand-600 text-white rounded-sm disabled:opacity-40 transition-colors"
+                className="px-4 py-2 text-sm font-semibold bg-[#1a5a9e] hover:bg-[#1a5a9e]/80 text-white rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 hover:shadow-[0_0_8px_rgba(26,90,158,0.2)]"
               >
                 Next
               </button>
@@ -610,7 +610,7 @@ export default function ServeAttemptModal({
       // ─── Step 4: Review & Signature ────────────────────────
       case 3:
         return (
-          <div className="space-y-4 p-4 max-h-[60vh] overflow-y-auto">
+          <div className="space-y-4 p-4 max-h-[60vh] overflow-y-auto scrollbar-dark">
             {submitResult ? (
               // Post-submit result
               <div className="space-y-4 text-center py-4">
@@ -635,7 +635,7 @@ export default function ServeAttemptModal({
                 )}
                 <button type="button"
                   onClick={onClose}
-                  className="px-4 py-2 text-sm font-semibold bg-rmpg-700 hover:bg-rmpg-600 text-rmpg-200 rounded-sm transition-colors"
+                  className="px-4 py-2 text-sm font-semibold bg-[#1a2636] hover:bg-[#1e2d3f] text-rmpg-200 rounded-[2px] border border-[#1e3048] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50"
                 >
                   Close
                 </button>
@@ -645,7 +645,7 @@ export default function ServeAttemptModal({
                 <h3 className="text-sm font-bold text-rmpg-200">Review & Submit</h3>
 
                 {/* Summary card */}
-                <div className="bg-rmpg-800 border border-rmpg-600 rounded-sm p-3 space-y-2 text-sm">
+                <div className="bg-[#0d1520] border border-[#1e3048] rounded-[2px] p-3 space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-rmpg-400">Recipient</span>
                     <span className="text-rmpg-100 font-semibold">{job.recipient_name}</span>
@@ -714,14 +714,14 @@ export default function ServeAttemptModal({
                 <div className="flex justify-between pt-2">
                   <button type="button"
                     onClick={() => setStep(2)}
-                    className="px-4 py-2 text-sm font-semibold bg-rmpg-700 hover:bg-rmpg-600 text-rmpg-200 rounded-sm transition-colors"
+                    className="px-4 py-2 text-sm font-semibold bg-[#1a2636] hover:bg-[#1e2d3f] text-rmpg-200 rounded-[2px] border border-[#1e3048] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50"
                   >
                     Back
                   </button>
                   <button type="button"
                     onClick={handleSubmit}
                     disabled={submitting}
-                    className="px-4 py-2 text-sm font-semibold bg-green-700 hover:bg-green-600 text-white rounded-sm disabled:opacity-40 transition-colors flex items-center gap-2"
+                    className="px-4 py-2 text-sm font-semibold bg-green-700 hover:bg-green-600 text-white rounded-[2px] disabled:opacity-40 transition-all duration-150 flex items-center gap-2 focus:outline-none focus:ring-1 focus:ring-green-500/50 hover:shadow-[0_0_8px_rgba(34,197,94,0.2)]"
                   >
                     {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                     Submit Attempt
@@ -740,16 +740,17 @@ export default function ServeAttemptModal({
   // ─── Modal Shell ───────────────────────────────────────────────────
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
-      <div className="bg-[#141e2b] panel-beveled rounded-sm w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-label="Document Service Attempt">
+      <div className="bg-[#141e2b] panel-beveled rounded-[2px] w-full max-w-lg mx-4 max-h-[90vh] flex flex-col shadow-2xl shadow-black/40 animate-in zoom-in-95 duration-200">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-600">
-          <h2 className="text-sm font-bold text-rmpg-100">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e3048] bg-[#0d1520]">
+          <h2 className="text-sm font-bold text-rmpg-100 tracking-wide">
             Document Service Attempt — {job.recipient_name}
           </h2>
           <button type="button"
             onClick={onClose}
-            className="text-rmpg-400 hover:text-rmpg-200 transition-colors">
+            className="text-rmpg-400 hover:text-rmpg-200 transition-colors p-1 rounded-[2px] hover:bg-white/5 focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50"
+            aria-label="Close modal">
             <X className="w-4 h-4" />
           </button>
         </div>

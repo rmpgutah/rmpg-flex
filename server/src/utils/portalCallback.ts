@@ -52,7 +52,13 @@ function getPortalConfig(): { url: string; apiKey: string } | null {
       return null;
     }
 
-    const apiKey = decryptApiKey(keyRow.config_value);
+    let apiKey: string;
+    try {
+      apiKey = decryptApiKey(keyRow.config_value);
+    } catch (decryptErr) {
+      console.error('[PortalCallback] Failed to decrypt portal API key:', decryptErr instanceof Error ? decryptErr.message : decryptErr);
+      return null;
+    }
 
     // Get URL (default to production)
     const urlRow = db.prepare(
@@ -60,6 +66,12 @@ function getPortalConfig(): { url: string; apiKey: string } | null {
     ).get() as { config_value: string } | undefined;
 
     const url = urlRow?.config_value || 'https://rmpgutahps.us';
+
+    // Basic URL validation
+    if (!url.startsWith('https://')) {
+      console.error('[PortalCallback] Portal URL must use HTTPS:', url);
+      return null;
+    }
 
     return { url, apiKey };
   } catch (err) {
@@ -79,7 +91,12 @@ function getPortalConfig(): { url: string; apiKey: string } | null {
 export async function notifyPortalStatusUpdate(callData: any): Promise<void> {
   try {
     // Only notify for calls that came from the portal
-    if (callData.source !== 'online') return;
+    if (!callData || callData.source !== 'online') return;
+
+    if (!callData.status || typeof callData.status !== 'string') {
+      console.warn('[PortalCallback] Cannot notify: missing or invalid status in call', callData.id);
+      return;
+    }
 
     const sourceId = extractSourceId(callData);
     if (!sourceId) {

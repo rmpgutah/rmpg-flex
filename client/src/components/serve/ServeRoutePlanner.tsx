@@ -137,7 +137,7 @@ function TimeWindowBadge({ tw }: { tw: ServeJob['time_window'] }) {
     anytime: 'bg-rmpg-800/40 text-rmpg-400 border-rmpg-700/50',
   };
   return (
-    <span className={`text-[10px] px-1.5 py-0.5 rounded-sm border ${colors[tw] || colors.anytime}`}>
+    <span className={`text-[10px] px-1.5 py-0.5 rounded-[2px] border font-mono ${colors[tw] || colors.anytime}`}>
       {tw}
     </span>
   );
@@ -151,7 +151,7 @@ function PriorityBadge({ p }: { p: ServeJob['priority'] }) {
     low: 'bg-rmpg-800/30 text-rmpg-500 border-rmpg-700/30',
   };
   return (
-    <span className={`text-[10px] px-1.5 py-0.5 rounded-sm border ${colors[p] || colors.normal}`}>
+    <span className={`text-[10px] px-1.5 py-0.5 rounded-[2px] border font-mono uppercase ${colors[p] || colors.normal}`}>
       {p}
     </span>
   );
@@ -522,13 +522,13 @@ export default function ServeRoutePlanner({
   const fuelCost = totalDistance * IRS_MILEAGE_RATE;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" role="dialog" aria-modal="true">
-      <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm w-full h-full max-w-[1400px] max-h-[95vh] flex flex-col shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-label="Route Planner">
+      <div className="bg-[#141e2b] border border-[#1e3048] rounded-[2px] w-full h-full max-w-[1400px] max-h-[95vh] flex flex-col shadow-2xl shadow-black/40 animate-in zoom-in-95 duration-200">
         {/* ─── Header ─────────────────────────────────────────────── */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#1e3048] bg-[#0d1520]">
           <div className="flex items-center gap-2">
-            <Route size={16} className="text-blue-400" />
-            <h2 className="text-sm font-semibold text-white">Route Planner</h2>
+            <Route size={16} className="text-[#d4a017]" />
+            <h2 className="text-sm font-semibold text-white tracking-wide">Route Planner</h2>
             <span className="text-[11px] text-rmpg-500 ml-2">
               {selectedCount} of {stops.length} stops selected
             </span>
@@ -536,13 +536,14 @@ export default function ServeRoutePlanner({
           <div className="flex items-center gap-2">
             <button type="button"
               onClick={handleApplyAndClose}
-              className="px-3 py-1 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-sm border border-blue-500 transition-colors"
+              className="px-3 py-1 text-xs font-medium text-white bg-[#1a5a9e] hover:bg-[#1a5a9e]/80 rounded-[2px] border border-[#1a5a9e] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 hover:shadow-[0_0_8px_rgba(26,90,158,0.2)]"
             >
               Apply Route
             </button>
             <button type="button"
               onClick={onClose}
-              className="p-1 text-rmpg-500 hover:text-white transition-colors"
+              className="p-1 text-rmpg-500 hover:text-white transition-colors rounded-[2px] hover:bg-white/5 focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50"
+              aria-label="Close route planner"
             >
               <X size={16} />
             </button>
@@ -573,7 +574,7 @@ export default function ServeRoutePlanner({
               <button type="button"
                 onClick={optimizeRoute}
                 disabled={optimizing || selectedCount < 2}
-                className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-500 disabled:bg-rmpg-700 disabled:text-rmpg-500 rounded-sm border border-emerald-500 disabled:border-rmpg-600 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-500 disabled:bg-rmpg-700 disabled:text-rmpg-500 rounded-[2px] border border-emerald-500 disabled:border-rmpg-600 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 hover:shadow-[0_0_8px_rgba(16,185,129,0.2)]"
               >
                 {optimizing ? (
                   <><Loader2 size={12} className="animate-spin" /> Optimizing...</>
@@ -591,21 +592,22 @@ export default function ServeRoutePlanner({
             )}
 
             {/* Stop List */}
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto scrollbar-dark">
               {stops.length === 0 ? (
-                <div className="flex items-center justify-center h-32 text-xs text-rmpg-500">
+                <div className="flex flex-col items-center justify-center h-32 text-xs text-rmpg-500">
+                  <MapPin size={20} className="text-rmpg-600 mb-2" />
                   No geocoded stops available
                 </div>
               ) : (
                 stops.map((stop, idx) => (
                   <div
                     key={stop.job.id}
-                    className={`flex items-center gap-2 px-3 py-2 border-b border-[#1a2636]/50 hover:bg-[#1a2636]/50 transition-colors ${
+                    className={`flex items-center gap-2 px-3 py-2 border-b border-[#1a2636]/50 hover:bg-[#1a2636]/60 transition-all duration-100 ${
                       !stop.selected ? 'opacity-40' : ''
                     }`}
                   >
                     {/* Checkbox */}
-                    <button type="button" onClick={() => toggleStop(idx)} className="shrink-0 text-rmpg-400 hover:text-white">
+                    <button type="button" onClick={() => toggleStop(idx)} className="shrink-0 text-rmpg-400 hover:text-white transition-colors" aria-label={stop.selected ? 'Deselect stop' : 'Select stop'}>
                       {stop.selected ? (
                         <CheckSquare size={14} className="text-blue-400" />
                       ) : (
@@ -673,7 +675,7 @@ export default function ServeRoutePlanner({
         </div>
 
         {/* ─── Stats Bar ──────────────────────────────────────────── */}
-        <div className="flex items-center gap-6 px-4 py-2 border-t border-[#1e3048] bg-[#0d1520] text-xs">
+        <div className="flex items-center gap-6 px-4 py-2 border-t border-[#1e3048] bg-[#0d1520] text-xs" role="status" aria-label="Route statistics">
           <div className="flex items-center gap-1.5 text-rmpg-400">
             <MapPin size={12} className="text-blue-400" />
             <span>Total stops:</span>

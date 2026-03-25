@@ -52,7 +52,7 @@ function AddressTypeBadge({ type }: { type: string }) {
   else if (lower === 'previous') cls = 'bg-yellow-900/40 text-yellow-400 border-yellow-700/50';
 
   return (
-    <span className={`text-[10px] px-1.5 py-0.5 rounded-sm border ${cls}`}>
+    <span className={`text-[10px] px-1.5 py-0.5 rounded-[2px] border font-mono ${cls}`}>
       {type}
     </span>
   );
@@ -157,31 +157,36 @@ export default function ServeSkipTracePanel({
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-50 bg-black/40 transition-opacity"
+        className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px] transition-opacity animate-in fade-in duration-200"
         onClick={onClose}
+        aria-hidden="true"
       />
 
       {/* Panel */}
       <div
-        className="fixed top-0 right-0 z-50 h-full w-full sm:w-[400px] bg-[#141e2b] border-l border-[#1e3048] panel-beveled shadow-2xl flex flex-col animate-slide-in-right"
+        className="fixed top-0 right-0 z-50 h-full w-full sm:w-[400px] bg-[#141e2b] border-l border-[#1e3048] panel-beveled shadow-2xl shadow-black/40 flex flex-col"
         style={{ animation: 'slideInRight 0.2s ease-out' }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Skip Trace Lookup"
       >
         {/* ─── Header ─────────────────────────────────────────── */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e3048]">
           <div className="flex items-center gap-2">
-            <Search size={16} className="text-blue-400" />
-            <h2 className="text-sm font-semibold text-white">Skip Trace Lookup</h2>
+            <Search size={16} className="text-[#d4a017]" />
+            <h2 className="text-sm font-semibold text-white tracking-wide">Skip Trace Lookup</h2>
           </div>
           <button type="button"
             onClick={onClose}
-            className="p-1 text-rmpg-500 hover:text-white transition-colors"
+            className="p-1 text-rmpg-500 hover:text-white transition-colors rounded-[2px] hover:bg-white/5 focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50"
+            aria-label="Close skip trace panel"
           >
             <X size={16} />
           </button>
         </div>
 
         {/* ─── Scrollable Body ────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-dark">
           {/* Search Section */}
           <div className="space-y-3">
             <div>
@@ -190,7 +195,7 @@ export default function ServeSkipTracePanel({
                 type="text"
                 value={searchName}
                 onChange={e => setSearchName(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-sm text-white placeholder-rmpg-600 focus:border-blue-500 focus:outline-none"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white placeholder-rmpg-600 focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
                 placeholder="Recipient name"
               />
             </div>
@@ -200,14 +205,14 @@ export default function ServeSkipTracePanel({
                 type="text"
                 value={searchAddress}
                 onChange={e => setSearchAddress(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-sm text-white placeholder-rmpg-600 focus:border-blue-500 focus:outline-none"
+                className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded-[2px] text-white placeholder-rmpg-600 focus:border-[#1a5a9e] focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/40 transition-colors"
                 placeholder="Last known address"
               />
             </div>
             <button type="button"
               onClick={runLookup}
               disabled={loading || !searchName.trim()}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 disabled:bg-rmpg-700 disabled:text-rmpg-500 text-white rounded-sm transition-colors"
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium bg-[#1a5a9e] hover:bg-[#1a5a9e]/80 disabled:bg-rmpg-700 disabled:text-rmpg-500 text-white rounded-[2px] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50 hover:shadow-[0_0_8px_rgba(26,90,158,0.2)]"
             >
               {loading ? (
                 <Loader2 size={14} className="animate-spin" />
@@ -234,7 +239,7 @@ export default function ServeSkipTracePanel({
             <div className="space-y-4">
               {/* Result Count Badge */}
               <div className="flex items-center gap-2">
-                <span className="text-[11px] px-2 py-0.5 rounded-sm bg-blue-900/40 text-blue-400 border border-blue-700/50">
+                <span className="text-[11px] px-2 py-0.5 rounded-[2px] bg-[#1a5a9e]/20 text-blue-400 border border-[#1a5a9e]/40 font-mono">
                   {result.resultCount} person(s) found
                 </span>
               </div>
@@ -256,7 +261,7 @@ export default function ServeSkipTracePanel({
                   {result.persons.map((person, i) => (
                     <div
                       key={i}
-                      className="px-3 py-2 bg-[#0d1520] border border-[#1e3048] rounded-sm"
+                      className="px-3 py-2 bg-[#0d1520] border border-[#1e3048] rounded-[2px] transition-colors hover:bg-[#141e2b]"
                     >
                       <div className="flex items-center gap-2">
                         <User size={14} className="text-rmpg-400" />
@@ -278,7 +283,7 @@ export default function ServeSkipTracePanel({
               {/* Addresses */}
               {sortedAddresses.length > 0 && (
                 <div className="space-y-1">
-                  <h3 className="text-[11px] text-rmpg-400 font-semibold uppercase tracking-wider flex items-center gap-1">
+                  <h3 className="text-[11px] text-[#d4a017] font-semibold uppercase tracking-wider flex items-center gap-1">
                     <MapPin size={12} /> Addresses
                   </h3>
                   <div className="space-y-1.5">
@@ -287,9 +292,9 @@ export default function ServeSkipTracePanel({
                       return (
                         <div
                           key={i}
-                          className={`px-3 py-2 bg-[#0d1520] border rounded-sm text-sm ${
+                          className={`px-3 py-2 bg-[#0d1520] border rounded-[2px] text-sm transition-all duration-150 hover:bg-[#141e2b] ${
                             matches
-                              ? 'border-green-700/50 bg-green-900/10'
+                              ? 'border-green-700/50 bg-green-900/10 shadow-[0_0_6px_rgba(34,197,94,0.1)]'
                               : 'border-[#1e3048]'
                           }`}
                         >
@@ -314,7 +319,7 @@ export default function ServeSkipTracePanel({
                             </div>
                             <button type="button"
                               onClick={() => onAddToRoute(addr)}
-                              className="shrink-0 flex items-center gap-1 px-2 py-1 text-[10px] font-medium bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 border border-blue-700/40 rounded-sm transition-colors"
+                              className="shrink-0 flex items-center gap-1 px-2 py-1 text-[10px] font-medium bg-[#1a5a9e]/20 hover:bg-[#1a5a9e]/40 text-blue-400 border border-[#1a5a9e]/40 rounded-[2px] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#1a5a9e]/50"
                               title="Add to Route"
                             >
                               <Plus size={10} />
@@ -331,7 +336,7 @@ export default function ServeSkipTracePanel({
               {/* Phone Numbers */}
               {result.phones && result.phones.length > 0 && (
                 <div className="space-y-1">
-                  <h3 className="text-[11px] text-rmpg-400 font-semibold uppercase tracking-wider flex items-center gap-1">
+                  <h3 className="text-[11px] text-[#d4a017] font-semibold uppercase tracking-wider flex items-center gap-1">
                     <Phone size={12} /> Phone Numbers
                   </h3>
                   <div className="space-y-1">
@@ -358,7 +363,7 @@ export default function ServeSkipTracePanel({
               {/* Employment */}
               {result.employment && result.employment.length > 0 && (
                 <div className="space-y-1">
-                  <h3 className="text-[11px] text-rmpg-400 font-semibold uppercase tracking-wider flex items-center gap-1">
+                  <h3 className="text-[11px] text-[#d4a017] font-semibold uppercase tracking-wider flex items-center gap-1">
                     <Briefcase size={12} /> Employment
                   </h3>
                   <div className="space-y-1">
@@ -384,12 +389,13 @@ export default function ServeSkipTracePanel({
 
           {/* Previous Lookups Accordion */}
           {priorTraces.length > 0 && (
-            <div className="border border-[#1e3048] rounded-sm overflow-hidden">
+            <div className="border border-[#1e3048] rounded-[2px] overflow-hidden">
               <button type="button"
                 onClick={() => setHistoryOpen(v => !v)}
-                className="w-full flex items-center justify-between px-3 py-2 text-[11px] text-rmpg-400 hover:text-rmpg-300 bg-[#0d1520] transition-colors"
+                className="w-full flex items-center justify-between px-3 py-2 text-[11px] text-rmpg-400 hover:text-rmpg-300 bg-[#0d1520] transition-all duration-150 hover:bg-[#141e2b]"
+                aria-expanded={historyOpen}
               >
-                <span className="font-semibold uppercase tracking-wider">
+                <span className="font-semibold uppercase tracking-wider text-[#d4a017]">
                   Previous Lookups ({priorTraces.length})
                 </span>
                 {historyOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}

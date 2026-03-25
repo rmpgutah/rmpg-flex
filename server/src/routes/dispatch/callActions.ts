@@ -1204,15 +1204,15 @@ router.post('/calls/:id/send-to-serve', validateParamIdMiddleware, requireRole('
       return;
     }
 
-    if (call.incident_type !== 'pso_client_request') {
-      res.status(400).json({ error: 'Only PSO client request calls can be sent to the serve queue', code: 'ONLY_PSO_CLIENT_REQUEST' });
+    if (call.incident_type !== 'pso_client_request' && call.incident_type !== 'process_service') {
+      res.status(400).json({ error: 'Only PSO client request or process service calls can be sent to the serve queue', code: 'ONLY_PSO_CLIENT_REQUEST' });
       return;
     }
 
     // Block duplicate — check if already linked
     const existing = db.prepare('SELECT id FROM serve_queue WHERE call_id = ?').get(call.id) as any;
     if (existing) {
-      res.status(409).json({ error: 'This call already has a linked serve queue entry', serve_queue_id: existing.id });
+      res.status(409).json({ error: 'This call already has a linked serve queue entry', code: 'DUPLICATE_SERVE_ENTRY', serve_queue_id: existing.id });
       return;
     }
 
