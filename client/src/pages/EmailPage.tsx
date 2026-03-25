@@ -1851,6 +1851,9 @@ export default function EmailPage() {
     setContextMenu({ x: e.clientX, y: e.clientY, message: msg });
   };
 
+  // Set document title
+  useEffect(() => { document.title = 'Email \u2014 RMPG Flex'; }, []);
+
   // ─── Not Configured ───
 
   if (status && !status.configured) {
@@ -2001,9 +2004,6 @@ export default function EmailPage() {
   };
 
   // ─── Render ───
-
-  // Set document title
-  useEffect(() => { document.title = 'Email \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="flex h-full overflow-hidden">

@@ -136,6 +136,9 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
     return () => clearInterval(interval);
   }, [fetchHealth, fetchChangelog]);
 
+  // Set document title
+  useEffect(() => { document.title = 'Admin - Health \u2014 RMPG Flex'; }, []);
+
   if (loading && !health) return <LoadingSpinner />;
 
   const h = health;
@@ -179,9 +182,6 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
     if (type === 'minor') return 'bg-blue-900/30 text-blue-400 border-blue-800/40';
     return 'bg-green-900/30 text-green-400 border-green-800/40';
   };
-
-  // Set document title
-  useEffect(() => { document.title = 'Admin - Health \u2014 RMPG Flex'; }, []);
 
   return (
     <div className="p-4 space-y-4">

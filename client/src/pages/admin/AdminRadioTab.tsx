@@ -180,10 +180,6 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
     }
   };
 
-  if (loading) return <LoadingSpinner />;
-
-  const activeCount = channels.filter(c => c.is_active).length;
-
   // Keyboard shortcut: Escape to close modals
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -192,6 +188,10 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
+
+  if (loading) return <LoadingSpinner />;
+
+  const activeCount = channels.filter(c => c.is_active).length;
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">

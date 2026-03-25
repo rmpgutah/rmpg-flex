@@ -310,10 +310,6 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
     finally { setSyncing(false); }
   };
 
-  if (loading) return <LoadingSpinner />;
-
-  const totalPages = Math.ceil(recordsTotal / 25);
-
   // Set document title
   useEffect(() => { document.title = 'Admin - Arrests \u2014 RMPG Flex'; }, []);
 
@@ -325,6 +321,10 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
+
+  if (loading) return <LoadingSpinner />;
+
+  const totalPages = Math.ceil(recordsTotal / 25);
 
   return (
     <div className="p-4 space-y-4">
