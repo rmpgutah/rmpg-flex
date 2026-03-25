@@ -130,6 +130,8 @@ export default function AdminRetentionTab({ LoadingSpinner, error, setError }: P
   // Set document title
   useEffect(() => { document.title = 'Admin - Retention \u2014 RMPG Flex'; }, []);
 
+
+
   if (loading && policies.length === 0) return <LoadingSpinner />;
 
   return (

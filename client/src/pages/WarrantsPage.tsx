@@ -560,7 +560,7 @@ export default function WarrantsPage() {
   const fetchFeed = useCallback(async () => {
     setFeedLoading(true);
     try {
-      const res = await apiFetch<{ data: FeedEntry[] }>(`/warrants/dashboard/feed?range=${FEED_RANGE_PARAMS[feedRange]}`);
+      const res = await apiFetch<{ data: FeedEntry[] }>(`/warrants/dashboard/feed?range=${FEED_RANGE_PARAMS[feedRange]}&limit=50`);
       setFeedEntries(res.data || (Array.isArray(res) ? res : []));
     } catch { setFeedEntries([]); }
     finally { setFeedLoading(false); }

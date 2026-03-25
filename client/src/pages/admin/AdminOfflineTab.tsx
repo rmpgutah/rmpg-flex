@@ -145,8 +145,6 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
   if (loading) return <LoadingSpinner />;
 
 
-  if (loading) return <LoadingSpinner />;
-
   return (
     <div className="p-4 space-y-5 animate-fade-in">
       {/* ── Connection Status Card ─────────────────────────── */}

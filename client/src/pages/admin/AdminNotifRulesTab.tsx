@@ -188,8 +188,6 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
   if (loading && rules.length === 0) return <LoadingSpinner />;
 
 
-  if (loading && rules.length === 0) return <LoadingSpinner />;
-
   return (
     <div className="p-4 space-y-3">
       {/* Header */}

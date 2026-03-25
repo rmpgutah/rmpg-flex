@@ -323,6 +323,8 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
+  if (loading) return <LoadingSpinner />;
+
 
   if (loading) return <LoadingSpinner />;
 

@@ -176,6 +176,9 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
 
   if (loading) return <LoadingSpinner />;
 
+
+  if (loading) return <LoadingSpinner />;
+
   return (
     <div className="p-4 space-y-6 max-w-4xl">
       {/* Header */}

@@ -319,24 +319,24 @@ export default function ForensicLabPage() {
   const fetchTurnaroundData = async () => {
     setTurnaroundLoading(true);
     try { const r = await apiFetch<any>('/forensics/turnaround-times'); setTurnaroundData(r?.data || null); }
-    catch { /* silent */ } finally { setTurnaroundLoading(false); }
+    catch (err: any) { if (err?.name !== 'AbortError') addToast('Failed to load turnaround data', 'error'); } finally { setTurnaroundLoading(false); }
   };
 
   const fetchBacklogData = async () => {
     setBacklogLoading(true);
     try { const r = await apiFetch<any>('/forensics/metrics/backlog'); setBacklogData(r?.data || null); }
-    catch { /* silent */ } finally { setBacklogLoading(false); }
+    catch (err: any) { if (err?.name !== 'AbortError') addToast('Failed to load backlog data', 'error'); } finally { setBacklogLoading(false); }
   };
 
   const fetchQcHistory = async (caseId: number) => {
     setQcLoading(true);
     try { const r = await apiFetch<any>(`/forensics/${caseId}/qc-history`); setQcHistory(r?.data || []); }
-    catch { setQcHistory([]); } finally { setQcLoading(false); }
+    catch (err: any) { setQcHistory([]); if (err?.name !== 'AbortError') addToast('Failed to load QC history', 'error'); } finally { setQcLoading(false); }
   };
 
   const fetchAnalysisTemplates = async () => {
     try { const r = await apiFetch<any>('/forensics/analysis-templates'); setAnalysisTemplates(r?.data || null); }
-    catch { /* silent */ }
+    catch (err: any) { if (err?.name !== 'AbortError') addToast('Failed to load analysis templates', 'error'); }
   };
 
   const handleQcSubmit = async () => {
@@ -392,7 +392,7 @@ export default function ForensicLabPage() {
 
   // ── Fetch ──────────────────────────────────────────────
 
-  const fetchCases = useCallback(async (tab?: Tab) => {
+  const fetchCases = useCallback(async (tab?: Tab, signal?: AbortSignal) => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -402,34 +402,42 @@ export default function ForensicLabPage() {
       params.set('limit', '100');
 
       const [casesRes, statsRes] = await Promise.all([
-        apiFetch<{ data: ForensicCase[] }>(`/forensic-lab?${params}`),
-        apiFetch<Stats>('/forensic-lab/stats'),
+        apiFetch<{ data: ForensicCase[] }>(`/forensic-lab?${params}`, { signal }),
+        apiFetch<Stats>('/forensic-lab/stats', { signal }),
       ]);
       setCases(casesRes.data || []);
       setStats(statsRes);
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return;
       console.error('Fetch forensic cases error:', err);
+      addToast('Failed to load forensic cases', 'error');
     } finally {
       setLoading(false);
     }
-  }, [searchTerm, filterStatus, filterType]);
+  }, [searchTerm, filterStatus, filterType, addToast]);
 
-  useEffect(() => { fetchCases(); }, [fetchCases]);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchCases(undefined, controller.signal);
+    return () => controller.abort();
+  }, [fetchCases]);
   useLiveSync('forensic-lab', fetchCases);
 
-  const fetchCaseDetail = useCallback(async (id: number) => {
+  const fetchCaseDetail = useCallback(async (id: number, signal?: AbortSignal) => {
     try {
-      const detail = await apiFetch<ForensicCase>(`/forensic-lab/${id}`);
+      const detail = await apiFetch<ForensicCase>(`/forensic-lab/${id}`, { signal });
       setSelectedCase(detail);
       // Fetch links and hashes in parallel
-      apiFetch<any[]>(`/forensic-lab/${id}/links`).then(l => setCaseLinks(l || [])).catch(() => setCaseLinks([]));
-      apiFetch<{ hashes: any[]; stats: any }>(`/forensic-lab/${id}/hashes`)
+      apiFetch<any[]>(`/forensic-lab/${id}/links`, { signal }).then(l => setCaseLinks(l || [])).catch(() => setCaseLinks([]));
+      apiFetch<{ hashes: any[]; stats: any }>(`/forensic-lab/${id}/hashes`, { signal })
         .then(d => { setHashes(d.hashes || []); setHashStats(d.stats || null); })
         .catch(() => { setHashes([]); setHashStats(null); });
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return;
       console.error('Fetch case detail error:', err);
+      addToast('Failed to load case details', 'error');
     }
-  }, []);
+  }, [addToast]);
 
   // ── Wizard Submit ──────────────────────────────────────
 
@@ -666,8 +674,8 @@ export default function ForensicLabPage() {
     try {
       const links = await apiFetch<any[]>(`/forensic-lab/${id}/links`);
       setCaseLinks(links || []);
-    } catch { setCaseLinks([]); }
-  }, []);
+    } catch (err: any) { setCaseLinks([]); if (err?.name !== 'AbortError') addToast('Failed to load case links', 'error'); }
+  }, [addToast]);
 
   // ── Hashes ─────────────────────────────────────────────
 
@@ -676,8 +684,8 @@ export default function ForensicLabPage() {
       const data = await apiFetch<{ hashes: any[]; stats: { total: number; flagged: number; matched: number } }>(`/forensic-lab/${id}/hashes`);
       setHashes(data.hashes || []);
       setHashStats(data.stats || null);
-    } catch { setHashes([]); setHashStats(null); }
-  }, []);
+    } catch (err: any) { setHashes([]); setHashStats(null); if (err?.name !== 'AbortError') addToast('Failed to load hashes', 'error'); }
+  }, [addToast]);
 
   // ── Metadata helpers ─────────────────────────────────────
 
@@ -2015,9 +2023,26 @@ export default function ForensicLabPage() {
 
             {/* Case List */}
             {loading ? (
-              <div className="flex flex-col items-center justify-center py-12 gap-3">
-                <Loader2 size={18} className="animate-spin text-brand-400" />
-                <span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading cases...</span>
+              <div className="space-y-2">
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className="panel-beveled bg-surface-sunken p-3 border-l-[3px] border-[#1a1a1a]">
+                    <div className="flex items-start gap-3">
+                      <div className="flex-1 min-w-0 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <div className="h-3 w-24 bg-[#1a1a1a] animate-pulse rounded" />
+                          <div className="h-3 w-16 bg-[#1a1a1a] animate-pulse rounded" />
+                          <div className="h-3 w-14 bg-[#1a1a1a] animate-pulse rounded" />
+                        </div>
+                        <div className="h-3.5 w-48 bg-[#1a1a1a] animate-pulse rounded" />
+                        <div className="flex items-center gap-3">
+                          <div className="h-2.5 w-20 bg-[#1a1a1a] animate-pulse rounded" />
+                          <div className="h-2.5 w-28 bg-[#1a1a1a] animate-pulse rounded" />
+                        </div>
+                      </div>
+                      <div className="h-5 w-5 bg-[#1a1a1a] animate-pulse rounded" />
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : cases.length === 0 ? (
               <div className="panel-beveled bg-surface-sunken p-8 text-center">

@@ -516,11 +516,14 @@ export default function DispatchPage() {
   }, [showAttachUnitDropdown]);
 
   // Fetch calls and units on mount
-  const fetchData = useCallback(async (options?: { silent?: boolean }) => {
+  const fetchData = useCallback(async (options?: { silent?: boolean; signal?: AbortSignal }) => {
+    const controller = options?.signal ? undefined : new AbortController();
+    const signal = options?.signal || controller!.signal;
+    const timeout = controller ? setTimeout(() => controller.abort(), 15000) : undefined;
     try {
       const [callsRes, unitsRes] = await Promise.all([
-        apiFetch<any>('/dispatch/calls?limit=200'),
-        apiFetch<any[]>('/dispatch/units'),
+        apiFetch<any>('/dispatch/calls?limit=200', { signal }),
+        apiFetch<any[]>('/dispatch/units', { signal }),
       ]);
       const callsRaw = Array.isArray(callsRes?.data) ? callsRes.data : Array.isArray(callsRes) ? callsRes : [];
       const mappedCalls = callsRaw.map(mapDbCall);
@@ -532,12 +535,17 @@ export default function DispatchPage() {
         if (!prev) return mappedCalls[0] || null;
         return mappedCalls.find((c: CallForService) => c.id === prev.id) || mappedCalls[0] || null;
       });
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        if (!options?.silent) addToast('Dispatch data request timed out — retrying may help', 'error');
+        return;
+      }
       if (!options?.silent) {
         console.error('Failed to load dispatch data:', err);
         addToast('Failed to load dispatch data — check connection', 'error');
       }
     } finally {
+      if (timeout) clearTimeout(timeout);
       if (!options?.silent) setIsLoading(false);
     }
   }, [addToast]);

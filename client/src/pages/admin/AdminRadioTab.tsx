@@ -190,6 +190,8 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
+  if (loading) return <LoadingSpinner />;
+
 
   if (loading) return <LoadingSpinner />;
 

@@ -57,6 +57,7 @@ import FloatingSaveBar from '../components/FloatingSaveBar';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
 import { useIsMobile } from '../hooks/useIsMobile';
 import WarrantBadge from '../components/WarrantBadge';
+import NarrativeAssist from '../components/dispatch/NarrativeAssist';
 
 // ============================================================
 // Backend -> Frontend mapping
@@ -1427,12 +1428,22 @@ export default function IncidentsPage() {
         {/* Narrative */}
         <CollapsibleSection title="Narrative" icon={FileText} defaultOpen>
           {isEditing ? (
-            <textarea
-              ref={narrativeRef}
-              className="textarea-dark mt-1"
-              rows={8}
-              defaultValue={selectedIncident.narrative}
-            />
+            <>
+              <textarea
+                ref={narrativeRef}
+                className="textarea-dark mt-1"
+                rows={8}
+                defaultValue={selectedIncident.narrative}
+              />
+              <NarrativeAssist
+                notes={narrativeRef.current?.value || selectedIncident.narrative || ''}
+                incidentType={selectedIncident.type}
+                locationAddress={selectedIncident.location || ''}
+                onAccept={(narrative) => {
+                  if (narrativeRef.current) narrativeRef.current.value = narrative;
+                }}
+              />
+            </>
           ) : (
             <p className="text-sm text-rmpg-200 leading-relaxed whitespace-pre-wrap">
               {selectedIncident.narrative || <span className="text-rmpg-500 italic">No narrative</span>}

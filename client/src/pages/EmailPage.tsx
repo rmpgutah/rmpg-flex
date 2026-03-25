@@ -1488,6 +1488,7 @@ export default function EmailPage() {
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(false);
   const [page, setPage] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   // Selected message
   const [selectedMessage, setSelectedMessage] = useState<EmailMessage | null>(null);
@@ -1583,7 +1584,7 @@ export default function EmailPage() {
   }, []);
 
   const fetchMessages = useCallback(async (p = 1, folder = selectedFolder, q = search) => {
-    setLoading(true);
+    if (p === 1) setLoading(true); else setLoadingMore(true);
     try {
       const params = new URLSearchParams({ folder, page: String(p), per_page: '25' });
       if (q) params.set('search', q);
@@ -1591,7 +1592,7 @@ export default function EmailPage() {
       if (p === 1) setMessages(data.messages); else setMessages(prev => [...prev, ...data.messages]);
       setHasMore(data.hasMore || false);
       setPage(p);
-    } catch (e) { console.warn('[Email] fetch messages failed:', e); } finally { setLoading(false); }
+    } catch (e) { console.warn('[Email] fetch messages failed:', e); } finally { setLoading(false); setLoadingMore(false); }
   }, [selectedFolder, search]);
 
   const fetchFullMessage = useCallback(async (id: string) => {
@@ -2346,7 +2347,8 @@ export default function EmailPage() {
                 );
               })}
               {hasMore && (
-                <button type="button" onClick={() => fetchMessages(page + 1, selectedFolder, search)} className="w-full py-2 text-[10px] text-brand-400 hover:text-brand-300">Load more...</button>
+                <button type="button" onClick={() => fetchMessages(page + 1, selectedFolder, search)} disabled={loadingMore} className="w-full py-2 text-[10px] text-brand-400 hover:text-brand-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5">
+                  {loadingMore ? <><Loader2 size={10} className="animate-spin" /> Loading...</> : 'Load more...'}</button>
               )}
             </>
           )}

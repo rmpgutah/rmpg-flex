@@ -187,8 +187,6 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
   if (loading && announcements.length === 0) return <LoadingSpinner />;
 
 
-  if (loading && announcements.length === 0) return <LoadingSpinner />;
-
   return (
     <div className="p-4 space-y-3">
       {/* Header */}
