@@ -251,6 +251,48 @@ router.get('/cleanup/history', requireRole('admin'), (_req: Request, res: Respon
   }
 });
 
+// ─── POST /smart-search — parse natural language into structured search filters ───
+router.post('/smart-search', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (req: Request, res: Response) => {
+  try {
+    const { query, searchType } = req.body;
+    if (!query || typeof query !== 'string' || !query.trim()) {
+      res.status(400).json({ error: 'query is required' });
+      return;
+    }
+
+    const validTypes = ['persons', 'vehicles', 'incidents'];
+    const type = validTypes.includes(searchType) ? searchType : 'general';
+
+    const schemaHints: Record<string, string> = {
+      persons: 'For persons: { name, dob, race, gender, height, weight, hair, eyes, address }.',
+      vehicles: 'For vehicles: { plate, make, model, color, year_min, year_max }.',
+      incidents: 'For incidents: { type, date_from, date_to, location, status }.',
+      general: 'For persons: { name, dob, race, gender, height, weight, hair, eyes, address }. For vehicles: { plate, make, model, color, year_min, year_max }. For incidents: { type, date_from, date_to, location, status }.',
+    };
+
+    const result = await aiManager.chat(
+      `You are a police records search assistant. Parse the user's natural language search query into structured filters for a ${type} search. Return JSON with relevant filter fields. ${schemaHints[type]} Only include fields mentioned in the query. Return ONLY valid JSON, no markdown.`,
+      query,
+      { taskType: 'general', maxTokens: 200, jsonMode: true }
+    );
+
+    if (!result) {
+      res.json({ available: false, filters: null });
+      return;
+    }
+
+    try {
+      const filters = JSON.parse(result);
+      res.json({ available: true, filters });
+    } catch {
+      res.json({ available: false, filters: null });
+    }
+  } catch (err: any) {
+    console.error('[AI] /smart-search error:', err?.message || err);
+    res.status(500).json({ error: 'Smart search failed' });
+  }
+});
+
 // ─── Helpers ───
 
 function maskKey(key: string): string {

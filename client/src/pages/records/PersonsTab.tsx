@@ -32,6 +32,7 @@ import CollapsibleSection from '../../components/CollapsibleSection';
 import type { Person, RecordAlert, RecordEntityType } from '../../types';
 import type { PersonFormData } from '../../components/PersonFormModal';
 import WarrantBadge from '../../components/WarrantBadge';
+import AISearchButton from '../../components/AISearchButton';
 
 // ── DB Mapper ──────────────────────────────────────
 
@@ -384,20 +385,37 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
     <div className="h-full flex flex-col">
       {/* Search */}
       <div className="p-3 border-b border-rmpg-600" role="search">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" />
-          <input
-            type="text"
-            className="input-dark pl-9 w-full text-[11px] min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow"
-            placeholder="Search persons by name, address, flags..." aria-label="Search persons by name, address, flags..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" />
+            <input
+              type="text"
+              className="input-dark pl-9 w-full text-[11px] min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow"
+              placeholder="Search persons by name, address, flags..." aria-label="Search persons by name, address, flags..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white transition-colors" aria-label="Clear search">
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+          <AISearchButton
+            query={searchQuery}
+            searchType="persons"
+            onFiltersExtracted={(filters) => {
+              // Build a combined search string from AI-extracted filters
+              const parts: string[] = [];
+              if (filters.name) parts.push(filters.name);
+              if (filters.address) parts.push(filters.address);
+              if (filters.race) parts.push(filters.race);
+              if (filters.gender) parts.push(filters.gender);
+              if (filters.hair) parts.push(filters.hair);
+              if (filters.eyes) parts.push(filters.eyes);
+              if (parts.length > 0) setSearchQuery(parts.join(' '));
+            }}
           />
-          {searchQuery && (
-            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white transition-colors" aria-label="Clear search">
-              <X className="w-3 h-3" />
-            </button>
-          )}
         </div>
       </div>
 
