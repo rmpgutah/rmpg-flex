@@ -252,8 +252,8 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
         let coords: any;
         try {
           coords = JSON.parse(fence.polygon_coords);
-        } catch {
-          console.warn(`[GPS] Skipping geofence ${fence.id} — invalid polygon_coords JSON`);
+        } catch (parseErr) {
+          console.error(`[GPS] Skipping geofence ${fence.id} — invalid polygon_coords JSON:`, parseErr instanceof Error ? parseErr.message : parseErr);
           continue;
         }
         if (!Array.isArray(coords) || coords.length < 3) continue;

@@ -122,7 +122,6 @@ router.get('/export', requireRole('dispatcher', 'supervisor', 'admin', 'manager'
 
     const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${v}"`).join(','))].join('\n');
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Disposition', `attachment; filename="warrants_export_${new Date().toISOString().slice(0,10)}.csv"`);
     res.send(csv);
   } catch (error: any) {
@@ -650,7 +649,7 @@ router.get('/watch/runs', (req: Request, res: Response) => {
     res.json({ data: runs });
   } catch (error: any) {
     console.error('Watch runs error:', error);
-    res.status(500).json({ error: 'Failed to watch runs', code: 'WATCH_RUNS_ERROR' });
+    res.status(500).json({ error: 'Failed to get watch runs', code: 'WATCH_RUNS_ERROR' });
   }
 });
 
@@ -696,7 +695,7 @@ router.post('/check/:personId', (req: Request, res: Response) => {
       });
     } catch (error: any) {
       console.error('Manual warrant check error:', error);
-      res.status(500).json({ error: 'Failed to manual warrant check', code: 'MANUAL_WARRANT_CHECK_ERROR' });
+      res.status(500).json({ error: 'Failed to perform manual warrant check', code: 'MANUAL_WARRANT_CHECK_ERROR' });
     }
   })();
 });
@@ -731,7 +730,7 @@ router.get('/scan/status', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Scan status error:', error);
-    res.status(500).json({ error: 'Failed to scan status', code: 'SCAN_STATUS_ERROR' });
+    res.status(500).json({ error: 'Failed to get scan status', code: 'SCAN_STATUS_ERROR' });
   }
 });
 
@@ -1245,7 +1244,7 @@ router.get('/person-intel', (req: Request, res: Response) => {
     }
   } catch (error: any) {
     console.error('Person intel error:', error);
-    res.status(500).json({ error: 'Failed to person intel', code: 'PERSON_INTEL_ERROR' });
+    res.status(500).json({ error: 'Failed to get person intel', code: 'PERSON_INTEL_ERROR' });
   }
 });
 

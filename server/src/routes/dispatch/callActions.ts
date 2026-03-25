@@ -509,8 +509,8 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
         try {
           const parsed = JSON.parse(call.assigned_unit_ids || '[]');
           unitIds = Array.isArray(parsed) ? parsed : [];
-        } catch {
-          console.warn(`[Dispatch] Corrupted assigned_unit_ids for call ${call.call_number}: ${call.assigned_unit_ids}`);
+        } catch (parseErr) {
+          console.error(`[Dispatch] Corrupted assigned_unit_ids for call ${call.call_number}: ${call.assigned_unit_ids}`, parseErr instanceof Error ? parseErr.message : parseErr);
         }
 
         for (const unitId of unitIds) {

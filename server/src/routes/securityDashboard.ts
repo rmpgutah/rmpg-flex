@@ -95,7 +95,7 @@ router.get('/login-history', authenticateToken, (req: Request, res: Response) =>
     });
   } catch (error: any) {
     console.error('Login history error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Failed to login history', code: 'LOGIN_HISTORY_ERROR' });
+    res.status(500).json({ error: 'Failed to get login history', code: 'LOGIN_HISTORY_ERROR' });
   }
 });
 
@@ -116,7 +116,7 @@ router.get('/trusted-devices', authenticateToken, (req: Request, res: Response) 
     res.json(devices);
   } catch (error: any) {
     console.error('Trusted devices error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Failed to trusted devices', code: 'TRUSTED_DEVICES_ERROR' });
+    res.status(500).json({ error: 'Failed to get trusted devices', code: 'TRUSTED_DEVICES_ERROR' });
   }
 });
 
@@ -176,7 +176,7 @@ router.get('/notifications', authenticateToken, (req: Request, res: Response) =>
     res.json({ notifications: rows, total: total.count, limit, offset });
   } catch (error: any) {
     console.error('Security notifications error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Failed to security notifications', code: 'SECURITY_NOTIFICATIONS_ERROR' });
+    res.status(500).json({ error: 'Failed to get security notifications', code: 'SECURITY_NOTIFICATIONS_ERROR' });
   }
 });
 
@@ -283,7 +283,7 @@ router.get('/recent-threats', authenticateToken, requireRole('admin'), (_req: Re
     res.json(threats);
   } catch (error: any) {
     console.error('Recent threats error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Failed to recent threats', code: 'RECENT_THREATS_ERROR' });
+    res.status(500).json({ error: 'Failed to get recent threats', code: 'RECENT_THREATS_ERROR' });
   }
 });
 

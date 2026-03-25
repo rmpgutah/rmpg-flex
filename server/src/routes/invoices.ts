@@ -216,7 +216,7 @@ router.get('/', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Invoice list error:', error);
-    res.status(500).json({ error: 'Failed to invoice list', code: 'INVOICE_LIST_ERROR' });
+    res.status(500).json({ error: 'Failed to get invoice list', code: 'INVOICE_LIST_ERROR' });
   }
 });
 
@@ -254,7 +254,7 @@ router.get('/:id', (req: Request, res: Response) => {
     res.json({ data: { ...invoice, line_items, payments } });
   } catch (error: any) {
     console.error('Invoice detail error:', error);
-    res.status(500).json({ error: 'Failed to invoice detail', code: 'INVOICE_DETAIL_ERROR' });
+    res.status(500).json({ error: 'Failed to get invoice detail', code: 'INVOICE_DETAIL_ERROR' });
   }
 });
 
@@ -305,7 +305,7 @@ router.post('/', (req: Request, res: Response) => {
     res.status(201).json({ data: invoice });
   } catch (error: any) {
     console.error('Invoice create error:', error);
-    res.status(500).json({ error: 'Failed to invoice create', code: 'INVOICE_CREATE_ERROR' });
+    res.status(500).json({ error: 'Failed to create invoice', code: 'INVOICE_CREATE_ERROR' });
   }
 });
 
@@ -537,7 +537,7 @@ router.post('/:id/generate', (req: Request, res: Response) => {
     res.json({ data: { ...updated, line_items }, generated: count });
   } catch (error: any) {
     console.error('Invoice generate error:', error);
-    res.status(500).json({ error: 'Failed to invoice generate', code: 'INVOICE_GENERATE_ERROR' });
+    res.status(500).json({ error: 'Failed to generate invoice', code: 'INVOICE_GENERATE_ERROR' });
   }
 });
 
@@ -595,7 +595,7 @@ router.put('/:id', (req: Request, res: Response) => {
     res.json({ data: updated });
   } catch (error: any) {
     console.error('Invoice update error:', error);
-    res.status(500).json({ error: 'Failed to invoice update', code: 'INVOICE_UPDATE_ERROR' });
+    res.status(500).json({ error: 'Failed to update invoice', code: 'INVOICE_UPDATE_ERROR' });
   }
 });
 
@@ -656,7 +656,7 @@ router.put('/:id/status', (req: Request, res: Response) => {
     res.json({ data: updated });
   } catch (error: any) {
     console.error('Invoice status error:', error);
-    res.status(500).json({ error: 'Failed to invoice status', code: 'INVOICE_STATUS_ERROR' });
+    res.status(500).json({ error: 'Failed to update invoice status', code: 'INVOICE_STATUS_ERROR' });
   }
 });
 
@@ -873,7 +873,7 @@ router.get('/:id/pdf-data', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Invoice PDF data error:', error);
-    res.status(500).json({ error: 'Failed to invoice pdf data', code: 'INVOICE_PDF_DATA_ERROR' });
+    res.status(500).json({ error: 'Failed to get invoice PDF data', code: 'INVOICE_PDF_DATA_ERROR' });
   }
 });
 
@@ -961,7 +961,7 @@ router.get('/:id/person-chain', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Invoice person-chain error:', error);
-    res.status(500).json({ error: 'Failed to invoice person-chain', code: 'INVOICE_PERSONCHAIN_ERROR' });
+    res.status(500).json({ error: 'Failed to get invoice person chain', code: 'INVOICE_PERSONCHAIN_ERROR' });
   }
 });
 

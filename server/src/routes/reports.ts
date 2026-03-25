@@ -786,7 +786,7 @@ router.post('/custom', requireRole('admin', 'manager'), (req: Request, res: Resp
     res.json({ data: rows, columns: selectedCols, count: rows.length, sql: sql.replace(/\?/g, '…') });
   } catch (error: any) {
     console.error('Custom report error:', error);
-    res.status(500).json({ error: 'Failed to custom report', code: 'CUSTOM_REPORT_ERROR' });
+    res.status(500).json({ error: 'Failed to generate custom report', code: 'CUSTOM_REPORT_ERROR' });
   }
 });
 

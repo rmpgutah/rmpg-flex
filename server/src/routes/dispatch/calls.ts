@@ -938,7 +938,7 @@ router.post('/calls/:id/redispatch', validateParamIdMiddleware, requireRole('adm
     // Parse existing notes to append re-dispatch note
     let notes: any[] = [];
     if (call.notes) {
-      try { notes = JSON.parse(call.notes); } catch { notes = []; }
+      try { notes = JSON.parse(call.notes); } catch (parseErr) { console.error('[Calls] Failed to parse notes for redispatch:', parseErr instanceof Error ? parseErr.message : parseErr); notes = []; }
     }
     const { scheduled_note } = req.body || {};
     const noteText = scheduled_note

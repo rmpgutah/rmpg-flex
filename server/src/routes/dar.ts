@@ -295,7 +295,7 @@ router.put('/:id', (req: Request, res: Response) => {
     params.push(id);
     db.prepare(`UPDATE daily_activity_reports SET ${updates.join(', ')} WHERE id = ?`).run(...params);
     res.json({ data: { id } });
-  } catch (error: any) { res.status(500).json({ error: 'Failed to update DAR', code: 'UPDATE_DAR_ERROR' }); }
+  } catch (error: any) { console.error('Update DAR error:', error); res.status(500).json({ error: 'Failed to update DAR', code: 'UPDATE_DAR_ERROR' }); }
 });
 
 // ─── PUT /:id/submit ────────────────────────────────────
@@ -315,7 +315,7 @@ router.put('/:id/submit', (req: Request, res: Response) => {
 
     broadcastRecordUpdate({ type: 'dar_submitted', id });
     res.json({ data: { id, status: 'submitted' } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error', code: 'DAR_SUBMIT_ERROR' }); }
+  } catch (error: any) { console.error('Submit DAR error:', error); res.status(500).json({ error: 'Internal server error', code: 'DAR_SUBMIT_ERROR' }); }
 });
 
 // ─── PUT /:id/approve ───────────────────────────────────
@@ -334,7 +334,7 @@ router.put('/:id/approve', (req: Request, res: Response) => {
 
     broadcastRecordUpdate({ type: 'dar_approved', id: parseInt(req.params.id) });
     res.json({ data: { id: parseInt(req.params.id), status: 'approved' } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error', code: 'DAR_APPROVE_ERROR' }); }
+  } catch (error: any) { console.error('Approve DAR error:', error); res.status(500).json({ error: 'Internal server error', code: 'DAR_APPROVE_ERROR' }); }
 });
 
 // ─── PUT /:id/return ────────────────────────────────────
@@ -352,7 +352,7 @@ router.put('/:id/return', (req: Request, res: Response) => {
 
     broadcastRecordUpdate({ type: 'dar_returned', id: parseInt(req.params.id) });
     res.json({ data: { id: parseInt(req.params.id), status: 'returned' } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error', code: 'DAR_RETURN_ERROR' }); }
+  } catch (error: any) { console.error('Return DAR error:', error); res.status(500).json({ error: 'Internal server error', code: 'DAR_RETURN_ERROR' }); }
 });
 
 export default router;

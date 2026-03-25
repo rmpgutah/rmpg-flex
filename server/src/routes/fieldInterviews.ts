@@ -322,7 +322,7 @@ router.delete('/:id', (req: Request, res: Response) => {
 router.get('/map', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const days = parseInt(req.query.days as string, 10) || 90;
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 90));
 
     const interviews = db.prepare(`
       SELECT fi.id, fi.location, fi.latitude, fi.longitude, fi.date_time,

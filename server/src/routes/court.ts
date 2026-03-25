@@ -331,7 +331,8 @@ router.get('/events/:id/conflicts', (req: Request, res: Response) => {
     const evt = db.prepare('SELECT * FROM court_events WHERE id = ?').get(req.params.id) as any;
     if (!evt) return res.status(404).json({ error: 'Court event not found', code: 'COURT_EVENT_NOT_FOUND' });
 
-    const officers = JSON.parse(evt.officers_required || '[]');
+    let officers: any[] = [];
+    try { officers = JSON.parse(evt.officers_required || '[]'); } catch { officers = []; }
     const conflicts: any[] = [];
     for (const officerId of officers) {
       // Check schedules for conflicts
@@ -548,7 +549,8 @@ router.post('/events/generate-reminders', (req: Request, res: Response) => {
 
     let notificationsCreated = 0;
     for (const evt of events) {
-      const officers = JSON.parse(evt.officers_required || '[]');
+      let officers: any[] = [];
+    try { officers = JSON.parse(evt.officers_required || '[]'); } catch { officers = []; }
       for (const officerId of officers) {
         const id = typeof officerId === 'number' ? officerId : parseInt(officerId, 10);
         if (isNaN(id)) continue;
