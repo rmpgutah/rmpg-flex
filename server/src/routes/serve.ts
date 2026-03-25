@@ -314,12 +314,17 @@ router.get('/', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: R
     const params: any[] = [officerId, date];
 
     if (status && status !== 'all') {
+      const VALID_LIST_STATUSES = ['pending', 'in_progress', 'served', 'failed', 'on_hold', 'cancelled'];
+      if (!VALID_LIST_STATUSES.includes(status)) {
+        res.status(400).json({ error: `Invalid status filter. Must be one of: all, ${VALID_LIST_STATUSES.join(', ')}`, code: 'INVALID_STATUS_FILTER' });
+        return;
+      }
       sql = 'SELECT * FROM serve_queue WHERE officer_id = ? AND status = ?';
       params.length = 0;
       params.push(officerId, status);
     }
 
-    sql += ` ORDER BY sort_order ASC, priority DESC, COALESCE(deadline, '9999-12-31') ASC`;
+    sql += ` ORDER BY sort_order ASC, priority DESC, COALESCE(deadline, '9999-12-31') ASC LIMIT 2000`;
 
     const rows = db.prepare(sql).all(...params);
     res.json(rows);
@@ -353,7 +358,7 @@ router.post('/', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
     // Validate priority if provided
     const VALID_PRIORITIES = ['normal', 'urgent', 'rush', 'low'];
     if (priority !== undefined && !VALID_PRIORITIES.includes(priority)) {
-      return res.status(400).json({ error: `Invalid priority. Must be one of: ${VALID_PRIORITIES.join(', ')}` });
+      return res.status(400).json({ error: `Invalid priority. Must be one of: ${VALID_PRIORITIES.join(', ')}`, code: 'INVALID_PRIORITY' });
     }
 
     // Validate serve_date format if provided
@@ -434,11 +439,11 @@ router.get('/:id', validateParamIdMiddleware, requireRole(...WRITE_ROLES, 'dispa
     }
 
     const attempts = db.prepare(
-      'SELECT * FROM serve_attempts WHERE serve_queue_id = ? ORDER BY attempt_number ASC'
+      'SELECT * FROM serve_attempts WHERE serve_queue_id = ? ORDER BY attempt_number ASC LIMIT 1000'
     ).all(req.params.id);
 
     const skipTraces = db.prepare(
-      'SELECT * FROM serve_skip_traces WHERE serve_queue_id = ? ORDER BY searched_at DESC'
+      'SELECT * FROM serve_skip_traces WHERE serve_queue_id = ? ORDER BY searched_at DESC LIMIT 100'
     ).all(req.params.id);
 
     let linkedCall = null;
@@ -477,7 +482,7 @@ router.put('/:id', validateParamIdMiddleware, requireRole(...WRITE_ROLES), (req:
     // Validate status enum if provided
     const VALID_SERVE_STATUSES = ['pending', 'in_progress', 'served', 'failed', 'on_hold', 'cancelled'];
     if (req.body.status !== undefined && !VALID_SERVE_STATUSES.includes(req.body.status)) {
-      res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_SERVE_STATUSES.join(', ')}` });
+      res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_SERVE_STATUSES.join(', ')}`, code: 'INVALID_STATUS' });
       return;
     }
 
@@ -561,13 +566,13 @@ router.post('/:id/attempt', validateParamIdMiddleware, requireRole(...WRITE_ROLE
     // Validate result enum
     const VALID_RESULTS = ['served', 'no_answer', 'refused', 'posted', 'left_with', 'other', 'unable_to_locate'];
     if (result && !VALID_RESULTS.includes(result)) {
-      return res.status(400).json({ error: `Invalid result. Must be one of: ${VALID_RESULTS.join(', ')}` });
+      return res.status(400).json({ error: `Invalid result. Must be one of: ${VALID_RESULTS.join(', ')}`, code: 'INVALID_ATTEMPT_RESULT' });
     }
 
     // Validate method enum
     const VALID_METHODS = ['personal', 'substitute', 'posting', 'abode', 'mail', 'other'];
     if (method && !VALID_METHODS.includes(method)) {
-      return res.status(400).json({ error: `Invalid method. Must be one of: ${VALID_METHODS.join(', ')}` });
+      return res.status(400).json({ error: `Invalid method. Must be one of: ${VALID_METHODS.join(', ')}`, code: 'INVALID_ATTEMPT_METHOD' });
     }
 
     // Validate GPS coordinates for serve attempt location tracking
@@ -592,6 +597,7 @@ router.post('/:id/attempt', validateParamIdMiddleware, requireRole(...WRITE_ROLE
       if ((failedAttempts?.cnt || 0) < 2) {
         res.status(400).json({
           error: 'Posting requires at least 2 prior failed attempts for due diligence',
+          code: 'POSTING_REQUIRES_PRIOR_ATTEMPTS',
         });
         return;
       }
@@ -685,7 +691,7 @@ router.post('/:id/attempt', validateParamIdMiddleware, requireRole(...WRITE_ROLE
                 details: `Serve attempt #${attemptNumber}: ${result}${result === 'served' ? ` (${method || 'personal'})` : ''}`,
               });
               db.prepare('UPDATE calls_for_service SET activity_log = ? WHERE id = ?').run(JSON.stringify(activities), linkedCall.id);
-            } catch { /* activity log failure is non-fatal */ }
+            } catch (alErr) { console.error('[Serve] Activity log update failed (non-fatal):', alErr instanceof Error ? alErr.message : alErr); }
           });
 
           syncBack();
@@ -835,6 +841,7 @@ router.get('/export/csv', requireRole('admin', 'manager', 'supervisor'), (req: R
       { key: 'created_at', header: 'Created At' },
     ], rows);
   } catch (error: any) {
+    console.error('[SERVE] CSV export error:', error);
     res.status(500).json({ error: 'Export failed', code: 'EXPORT_FAILED' });
   }
 });
@@ -980,7 +987,7 @@ router.post('/auto-skip-trace', requireRole(...WRITE_ROLES), async (req: Request
 
           triggered.push({ job_id: job.id, recipient: job.recipient_name, addresses_found: addresses.length });
         }
-      } catch { /* skip failed skip traces */ }
+      } catch (stErr) { console.error(`[Serve] Auto skip-trace failed for job ${job.id}:`, stErr instanceof Error ? stErr.message : stErr); }
     }
 
     res.json({ triggered: triggered.length, jobs: triggered });
@@ -1074,7 +1081,7 @@ router.post('/:id/create-invoice-item', validateParamIdMiddleware, requireRole('
         totalAmount, job.id, now
       );
       lineItem.serve_queue_id = Number(info.lastInsertRowid);
-    } catch { /* table may not exist */ }
+    } catch (invoiceErr) { console.error('[Serve] Invoice line item insert failed (table may not exist):', invoiceErr instanceof Error ? invoiceErr.message : invoiceErr); }
 
     auditLog(req, 'CREATE', 'serve_queue', String(req.params.id), `Created billing item: $${totalAmount.toFixed(2)}`);
     res.json(lineItem);
@@ -1092,7 +1099,12 @@ router.get('/success-rates', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Re
   try {
     const db = getDb();
     const { days = '90' } = req.query;
-    const cutoff = new Date(Date.now() - parseInt(days as string, 10) * 24 * 60 * 60 * 1000).toISOString();
+    const parsedDays = parseInt(days as string, 10);
+    if (isNaN(parsedDays) || parsedDays < 1 || parsedDays > 3650) {
+      res.status(400).json({ error: 'days must be a number between 1 and 3650', code: 'INVALID_DAYS_PARAM' });
+      return;
+    }
+    const cutoff = new Date(Date.now() - parsedDays * 24 * 60 * 60 * 1000).toISOString();
 
     // Overall stats
     const overall = db.prepare(`
@@ -1149,7 +1161,7 @@ router.get('/success-rates', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Re
         success_rate: d.total > 0 ? Math.round((d.served / d.total) * 100) : 0,
       })),
       by_method: byMethod,
-      period_days: parseInt(days as string, 10),
+      period_days: parsedDays,
     });
   } catch (err: any) {
     console.error('[SERVE] Success rates error:', err);
@@ -1172,8 +1184,12 @@ router.post('/:id/substitute-service', validateParamIdMiddleware, requireRole(..
       substitute_age_estimate, gps_lat, gps_lng, notes, photo_url, signature_url,
     } = req.body;
 
-    if (!substitute_name) {
+    if (!substitute_name || typeof substitute_name !== 'string' || !substitute_name.trim()) {
       res.status(400).json({ error: 'substitute_name is required for substitute service', code: 'SUBSTITUTENAME_IS_REQUIRED_FOR' });
+      return;
+    }
+    if (substitute_name.length > 500) {
+      res.status(400).json({ error: 'substitute_name must be 500 characters or less', code: 'SUBSTITUTENAME_TOO_LONG' });
       return;
     }
 
@@ -1324,8 +1340,15 @@ router.post('/:id/notify-completion', validateParamIdMiddleware, requireRole(...
     const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
     if (!job) { res.status(404).json({ error: 'Serve job not found', code: 'SERVE_JOB_NOT_FOUND' }); return; }
 
-    // Import createNotificationForRoles
-    const { createNotificationForRoles } = require('./notifications');
+    // Import createNotificationForRoles (dynamic require — module may not exist)
+    let createNotificationForRoles: any;
+    try {
+      createNotificationForRoles = require('./notifications').createNotificationForRoles;
+    } catch (importErr) {
+      console.error('[Serve] notifications module not available:', importErr instanceof Error ? importErr.message : importErr);
+      res.status(500).json({ error: 'Notification system unavailable', code: 'NOTIFICATION_MODULE_UNAVAILABLE' });
+      return;
+    }
     createNotificationForRoles(
       ['admin', 'manager', 'supervisor'],
       'serve_completed',
@@ -1357,10 +1380,16 @@ router.post('/:id/push-status', validateParamIdMiddleware, requireRole('admin', 
     if (!job) { res.status(404).json({ error: 'Serve job not found', code: 'SERVE_JOB_NOT_FOUND' }); return; }
 
     const attempts = db.prepare(
-      'SELECT * FROM serve_attempts WHERE serve_queue_id = ? ORDER BY attempt_number ASC'
+      'SELECT * FROM serve_attempts WHERE serve_queue_id = ? ORDER BY attempt_number ASC LIMIT 1000'
     ).all(req.params.id) as any[];
 
-    const callbackUrl = 'https://rmpgutahps.us/api/serve-status-callback';
+    // Get callback URL from config, with sensible default
+    const callbackUrl = req.body.callback_url || 'https://rmpgutahps.us/api/serve-status-callback';
+    // Basic URL validation
+    if (typeof callbackUrl !== 'string' || !callbackUrl.startsWith('https://')) {
+      res.status(400).json({ error: 'callback_url must be a valid HTTPS URL', code: 'INVALID_CALLBACK_URL' });
+      return;
+    }
     const payload = {
       serve_job_id: job.id,
       case_number: job.case_number,
@@ -1419,7 +1448,7 @@ router.get('/:id/cost-estimate', validateParamIdMiddleware, requireRole(...WRITE
     if (!job) { res.status(404).json({ error: 'Serve job not found', code: 'SERVE_JOB_NOT_FOUND' }); return; }
 
     const attempts = db.prepare(
-      'SELECT * FROM serve_attempts WHERE serve_queue_id = ?'
+      'SELECT * FROM serve_attempts WHERE serve_queue_id = ? LIMIT 1000'
     ).all(req.params.id) as any[];
 
     // Default fee schedule (can be overridden by query params)
@@ -1440,7 +1469,7 @@ router.get('/:id/cost-estimate', validateParamIdMiddleware, requireRole(...WRITE
         try {
           const parsed = JSON.parse(att.notes);
           if (parsed.mileage) totalMileage += parseFloat(parsed.mileage) || 0;
-        } catch { /* not JSON notes */ }
+        } catch { /* notes is not JSON — skip mileage extraction */ }
       }
     }
 

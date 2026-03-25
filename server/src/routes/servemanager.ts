@@ -90,14 +90,14 @@ function initSmTables(): void {
   `);
 }
 
-try { initSmTables(); } catch { /* DB not ready yet — will init on first request */ }
+try { initSmTables(); } catch (err) { console.error('[ServeManager] Table init deferred:', err instanceof Error ? err.message : err); }
 
 // ============================================================
 // Helpers
 // ============================================================
 
 function ensureTables(): void {
-  try { initSmTables(); } catch { /* ignore */ }
+  try { initSmTables(); } catch (err) { console.error('[ServeManager] ensureTables failed:', err instanceof Error ? err.message : err); }
 }
 
 function requireApiKey(_req: Request, res: Response): boolean {
@@ -109,6 +109,10 @@ function requireApiKey(_req: Request, res: Response): boolean {
 }
 
 export function upsertJobFromApi(job: any): void {
+  if (!job || !job.id) {
+    console.warn('[ServeManager] upsertJobFromApi: skipping job with missing id');
+    return;
+  }
   ensureTables();
   const db = getDb();
   const now = localNow();
@@ -169,6 +173,10 @@ export function upsertJobFromApi(job: any): void {
 }
 
 export function upsertAttemptFromApi(attempt: any): void {
+  if (!attempt || !attempt.id || !attempt.job_id) {
+    console.warn('[ServeManager] upsertAttemptFromApi: skipping attempt with missing id or job_id');
+    return;
+  }
   ensureTables();
   const db = getDb();
   const now = localNow();
@@ -256,6 +264,10 @@ router.put('/api-key', requireRole('admin'), (req: Request, res: Response) => {
       res.status(400).json({ error: 'api_key is required', code: 'APIKEY_IS_REQUIRED' });
       return;
     }
+    if (api_key.trim().length > 500) {
+      res.status(400).json({ error: 'api_key must be 500 characters or less', code: 'APIKEY_TOO_LONG' });
+      return;
+    }
 
     const encrypted = encryptApiKey(api_key.trim());
 
@@ -314,9 +326,10 @@ router.get('/jobs', async (req: Request, res: Response) => {
     const { source = 'cache', page = '1', per_page = '50', q, status, service_status: svcStatus } = req.query;
 
     if (source === 'live') {
+      const cappedPerPage = Math.min(100, Math.max(1, parseInt(String(per_page), 10) || 50));
       const params: Record<string, string> = {
-        page: String(page),
-        per_page: String(per_page),
+        page: String(Math.max(1, parseInt(String(page), 10) || 1)),
+        per_page: String(cappedPerPage),
       };
       if (q) params.q = String(q);
       if (status) params['filter[job_status][]'] = String(status);
@@ -374,6 +387,10 @@ router.get('/jobs/:id', async (req: Request, res: Response) => {
 
     if (req.query.live === 'true') {
       const result = await smGet(`/jobs/${req.params.id}`);
+      if (!result.data) {
+        res.status(404).json({ error: 'Job not found on ServeManager', code: 'SM_JOB_NOT_FOUND' });
+        return;
+      }
       upsertJobFromApi(result.data);
       if (Array.isArray(result.data.attempts)) {
         for (const attempt of result.data.attempts) {
@@ -456,7 +473,9 @@ router.post('/jobs/:id/cancel', requireRole('admin', 'manager'), async (req: Req
     try {
       const refreshed = await smGet(`/jobs/${req.params.id}`);
       upsertJobFromApi(refreshed.data);
-    } catch { /* non-fatal */ }
+    } catch (refreshErr) {
+      console.error('[ServeManager] Non-fatal: failed to refresh cancelled job:', refreshErr instanceof Error ? refreshErr.message : refreshErr);
+    }
 
     const db = getDb();
     db.prepare(
@@ -495,7 +514,7 @@ router.get('/jobs/:jobId/attempts', async (req: Request, res: Response) => {
       return;
     }
 
-    const rows = db.prepare('SELECT * FROM sm_attempts WHERE job_id = ? ORDER BY sm_created_at DESC').all(req.params.jobId);
+    const rows = db.prepare('SELECT * FROM sm_attempts WHERE job_id = ? ORDER BY sm_created_at DESC LIMIT 1000').all(req.params.jobId);
     res.json({ data: rows });
   } catch (error: any) {
     if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message }); return; }
@@ -558,7 +577,8 @@ router.get('/companies', async (req: Request, res: Response) => {
     res.json(result);
   } catch (error: any) {
     if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message }); return; }
-    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
+    console.error('SM companies error:', error);
+    res.status(500).json({ error: 'Failed to fetch companies', code: 'SM_COMPANIES_ERROR' });
   }
 });
 
@@ -570,7 +590,8 @@ router.get('/courts', async (req: Request, res: Response) => {
     res.json(result);
   } catch (error: any) {
     if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message }); return; }
-    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
+    console.error('SM courts error:', error);
+    res.status(500).json({ error: 'Failed to fetch courts', code: 'SM_COURTS_ERROR' });
   }
 });
 
@@ -582,7 +603,8 @@ router.get('/employees', async (req: Request, res: Response) => {
     res.json(result);
   } catch (error: any) {
     if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message }); return; }
-    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
+    console.error('SM employees error:', error);
+    res.status(500).json({ error: 'Failed to fetch employees', code: 'SM_EMPLOYEES_ERROR' });
   }
 });
 
@@ -597,7 +619,8 @@ router.get('/court-cases', async (req: Request, res: Response) => {
     res.json(result);
   } catch (error: any) {
     if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message }); return; }
-    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
+    console.error('SM court-cases error:', error);
+    res.status(500).json({ error: 'Failed to fetch court cases', code: 'SM_COURT_CASES_ERROR' });
   }
 });
 
@@ -613,6 +636,11 @@ router.post('/sync', requireRole('admin', 'manager'), async (req: Request, res: 
     const db = getDb();
     const now = localNow();
     const { type = 'incremental' } = req.body;
+
+    if (!['incremental', 'full'].includes(type)) {
+      res.status(400).json({ error: 'sync type must be "incremental" or "full"', code: 'INVALID_SYNC_TYPE' });
+      return;
+    }
 
     const syncResult = db.prepare(
       'INSERT INTO sm_sync_log (sync_type, status, started_at) VALUES (?, ?, ?)'
@@ -711,6 +739,20 @@ router.put('/jobs/:id/link', requireRole('admin', 'manager'), (req: Request, res
 
     const job = db.prepare('SELECT id FROM sm_jobs WHERE id = ?').get(req.params.id);
     if (!job) { res.status(404).json({ error: 'Job not found in cache', code: 'JOB_NOT_FOUND_IN' }); return; }
+
+    // Validate link IDs are integers or null
+    if (linked_warrant_id !== undefined && linked_warrant_id !== null && (!Number.isInteger(linked_warrant_id) || linked_warrant_id < 0)) {
+      res.status(400).json({ error: 'linked_warrant_id must be a positive integer or null', code: 'INVALID_LINKED_WARRANT_ID' });
+      return;
+    }
+    if (linked_call_id !== undefined && linked_call_id !== null && (!Number.isInteger(linked_call_id) || linked_call_id < 0)) {
+      res.status(400).json({ error: 'linked_call_id must be a positive integer or null', code: 'INVALID_LINKED_CALL_ID' });
+      return;
+    }
+    if (notes_local !== undefined && notes_local !== null && typeof notes_local !== 'string') {
+      res.status(400).json({ error: 'notes_local must be a string', code: 'INVALID_NOTES_LOCAL' });
+      return;
+    }
 
     const updates: string[] = [];
     const values: any[] = [];

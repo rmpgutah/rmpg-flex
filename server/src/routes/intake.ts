@@ -137,8 +137,22 @@ router.post('/', (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Request body is required.', code: 'REQUEST_BODY_IS_REQUIRED' });
     }
 
-    if (!body.source_id) {
-      return res.status(400).json({ error: 'source_id is required.', code: 'SOURCEID_IS_REQUIRED' });
+    if (!body.source_id || typeof body.source_id !== 'string') {
+      return res.status(400).json({ error: 'source_id is required and must be a string.', code: 'SOURCEID_IS_REQUIRED' });
+    }
+
+    if (body.source_id.length > 500) {
+      return res.status(400).json({ error: 'source_id must be 500 characters or less.', code: 'SOURCEID_TOO_LONG' });
+    }
+
+    // Validate subject_name length
+    if (body.subject_name && typeof body.subject_name === 'string' && body.subject_name.length > 500) {
+      return res.status(400).json({ error: 'subject_name must be 500 characters or less.', code: 'SUBJECT_NAME_TOO_LONG' });
+    }
+
+    // Validate subject_address length
+    if (body.subject_address && typeof body.subject_address === 'string' && body.subject_address.length > 1000) {
+      return res.status(400).json({ error: 'subject_address must be 1000 characters or less.', code: 'SUBJECT_ADDRESS_TOO_LONG' });
     }
 
     const db = getDb();
@@ -151,6 +165,7 @@ router.post('/', (req: Request, res: Response) => {
     if (existing) {
       return res.status(409).json({
         error: 'Duplicate request. This case has already been dispatched.',
+        code: 'DUPLICATE_SOURCE_ID',
         call_id: existing.id,
         call_number: existing.call_number,
       });

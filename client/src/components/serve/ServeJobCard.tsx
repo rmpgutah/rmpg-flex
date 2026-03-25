@@ -106,23 +106,29 @@ export default React.memo(function ServeJobCard({
 
   return (
     <div
+      role="article"
+      aria-label={`Serve job: ${job.recipient_name}`}
       className={`
-        panel-beveled rounded-sm transition-all duration-100 hover:bg-surface-raised
+        panel-beveled rounded-[2px] transition-all duration-150 hover:bg-[#1e2d3f] hover:shadow-md
         ${isDueSoon ? 'ring-1 ring-red-500/60 animate-pulse' : ''}
-        ${isOverdue ? 'ring-1 ring-red-600/80' : ''}
+        ${isOverdue ? 'ring-1 ring-red-600/80 shadow-[0_0_8px_rgba(239,68,68,0.1)]' : ''}
       `}
       style={{ background: '#1a2636', borderColor: '#1e3048' }}
     >
       {/* Clickable header area */}
       <div
-        className="p-2 cursor-pointer"
+        className="p-2 cursor-pointer select-none"
         onClick={onToggleExpand}
+        role="button"
+        tabIndex={0}
+        aria-expanded={isExpanded}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggleExpand?.(); } }}
       >
         {/* Top row: name + attempt dots */}
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-2 min-w-0">
             {/* Status LED */}
-            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${STATUS_COLORS[job.status] || 'bg-rmpg-500'}`} />
+            <span className={`w-2 h-2 rounded-full flex-shrink-0 shadow-[0_0_4px_currentColor] ${STATUS_COLORS[job.status] || 'bg-rmpg-500'}`} aria-label={`Status: ${job.status}`} />
             <span className="text-sm font-bold text-white truncate">{job.recipient_name}</span>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -182,12 +188,12 @@ export default React.memo(function ServeJobCard({
 
       {/* Expandable details */}
       {isExpanded && (
-        <div className="px-2 pb-2 border-t border-rmpg-700/40 pt-2 space-y-2 text-xs">
+        <div className="px-2 pb-2 border-t border-rmpg-700/40 pt-2 space-y-2 text-xs animate-in fade-in slide-in-from-top-1 duration-150">
           {/* Linked Dispatch Call */}
           {linkedCall && (
-            <div className="p-2 rounded-sm border mb-2" style={{ background: '#1a5a9e10', borderColor: '#1a5a9e30' }}>
+            <div className="p-2 rounded-[2px] border mb-2" style={{ background: '#1a5a9e10', borderColor: '#1a5a9e30' }}>
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] font-bold text-blue-300 uppercase">Dispatch Link</span>
+                <span className="text-[10px] font-bold text-[#1a5a9e] uppercase tracking-wider">Dispatch Link</span>
                 <button type="button"
                   className="text-[10px] text-blue-400 hover:text-blue-300 underline"
                   onClick={(e) => { e.stopPropagation(); window.open(`/dispatch?call=${linkedCall.call_number}`, '_blank', 'noopener,noreferrer'); }}
@@ -271,7 +277,7 @@ export default React.memo(function ServeJobCard({
           {/* Service instructions */}
           {job.service_instructions && (
             <div>
-              <span className="text-[10px] font-bold text-rmpg-400 uppercase">Instructions</span>
+              <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Instructions</span>
               <p className="text-rmpg-300 mt-0.5">{job.service_instructions}</p>
             </div>
           )}
@@ -279,7 +285,7 @@ export default React.memo(function ServeJobCard({
           {/* Prior attempts timeline */}
           {job.attempts && job.attempts.length > 0 && (
             <div>
-              <span className="text-[10px] font-bold text-rmpg-400 uppercase">Prior Attempts</span>
+              <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Prior Attempts</span>
               <div className="mt-1 space-y-1">
                 {job.attempts.map((attempt) => (
                   <div
@@ -309,7 +315,7 @@ export default React.memo(function ServeJobCard({
           {/* Notes */}
           {job.notes && (
             <div>
-              <span className="text-[10px] font-bold text-rmpg-400 uppercase">Notes</span>
+              <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Notes</span>
               <p className="text-rmpg-300 mt-0.5">{job.notes}</p>
             </div>
           )}
@@ -320,32 +326,36 @@ export default React.memo(function ServeJobCard({
       <div className="flex items-center border-t border-rmpg-700/40 divide-x divide-rmpg-700/40">
         <button type="button"
           onClick={(e) => { e.stopPropagation(); onNavigate(job.id); }}
-          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-blue-400 hover:bg-blue-900/30 transition-colors"
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-blue-400 hover:bg-blue-900/30 transition-all duration-150 focus:outline-none focus:bg-blue-900/20"
           title="Navigate"
+          aria-label={`Navigate to ${job.recipient_name}`}
         >
           <MapPin className="w-3 h-3" />
           Navigate
         </button>
         <button type="button"
           onClick={(e) => { e.stopPropagation(); onAttempt(job.id); }}
-          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-green-400 hover:bg-green-900/30 transition-colors"
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-green-400 hover:bg-green-900/30 transition-all duration-150 focus:outline-none focus:bg-green-900/20"
           title="Attempt Service"
+          aria-label={`Attempt service for ${job.recipient_name}`}
         >
           <ClipboardCheck className="w-3 h-3" />
           Attempt
         </button>
         <button type="button"
           onClick={(e) => { e.stopPropagation(); onSkipTrace(job.id); }}
-          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-cyan-400 hover:bg-cyan-900/30 transition-colors"
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-cyan-400 hover:bg-cyan-900/30 transition-all duration-150 focus:outline-none focus:bg-cyan-900/20"
           title="Skip Trace"
+          aria-label={`Skip trace for ${job.recipient_name}`}
         >
           <Search className="w-3 h-3" />
           Skip Trace
         </button>
         <button type="button"
           onClick={(e) => { e.stopPropagation(); onFlagAddress(job.id); }}
-          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-amber-400 hover:bg-amber-900/30 transition-colors"
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-amber-400 hover:bg-amber-900/30 transition-all duration-150 focus:outline-none focus:bg-amber-900/20"
           title="Flag Bad Address"
+          aria-label={`Flag bad address for ${job.recipient_name}`}
         >
           <AlertTriangle className="w-3 h-3" />
           Flag
