@@ -698,7 +698,7 @@ export default function Layout() {
   const isMacElectron = isElectron && (window as any).electron?.platform === 'darwin';
 
   return (
-    <div className="flex flex-col h-screen text-white overflow-hidden" style={{ background: '#141e2b' }}>
+    <div className="flex flex-col text-white overflow-hidden" style={{ background: '#141e2b', height: '100dvh' }}>
       {/* Auto-Update Banner (Electron only) */}
       {isElectron && <UpdateBanner />}
 

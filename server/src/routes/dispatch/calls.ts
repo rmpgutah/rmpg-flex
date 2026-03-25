@@ -350,11 +350,30 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     const validStatuses = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived'];
     const status = customStatus && validStatuses.includes(customStatus) ? customStatus : 'pending';
 
-    // Auto-resolve client_id from property if not provided
+    // Auto-resolve client_id, lat/lng, and address from property if not provided
     let resolvedClientId = requestClientId || null;
-    if (!resolvedClientId && property_id) {
-      const prop = db.prepare('SELECT client_id FROM properties WHERE id = ?').get(property_id) as any;
-      if (prop) resolvedClientId = prop.client_id;
+    let resolvedLat = latitude != null ? Number(latitude) : null;
+    let resolvedLng = longitude != null ? Number(longitude) : null;
+    let resolvedAddress = location_address;
+    if (property_id) {
+      const prop = db.prepare('SELECT client_id, latitude, longitude, address, name, gate_code, alarm_code, access_instructions, hazard_notes FROM properties WHERE id = ?').get(property_id) as any;
+      if (prop) {
+        if (!resolvedClientId) resolvedClientId = prop.client_id;
+        // Auto-fill coordinates from property if not explicitly provided
+        if (resolvedLat == null && prop.latitude != null) resolvedLat = Number(prop.latitude);
+        if (resolvedLng == null && prop.longitude != null) resolvedLng = Number(prop.longitude);
+        // Auto-fill address from property if not explicitly provided
+        if (!resolvedAddress && prop.address) resolvedAddress = prop.address;
+        // Auto-populate description with property details for dispatch reference
+        if (!description && (prop.gate_code || prop.alarm_code || prop.access_instructions || prop.hazard_notes)) {
+          const details: string[] = [];
+          if (prop.gate_code) details.push(`Gate: ${prop.gate_code}`);
+          if (prop.alarm_code) details.push(`Alarm: ${prop.alarm_code}`);
+          if (prop.access_instructions) details.push(`Access: ${prop.access_instructions}`);
+          if (prop.hazard_notes) details.push(`HAZARD: ${prop.hazard_notes}`);
+          req.body.description = details.join(' | ');
+        }
+      }
     }
 
     // ── Auto-fill Beat / Zone / Sector from GPS coordinates + 3-Tier dispatch districts ──
@@ -367,9 +386,9 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     let autoZoneName: string | null = null;
     let autoBeatName: string | null = null;
     let autoBeatDescriptor: string | null = null;
-    if (latitude != null && longitude != null) {
+    if (resolvedLat != null && resolvedLng != null) {
       try {
-        const beat = identifyBeat(Number(latitude), Number(longitude));
+        const beat = identifyBeat(resolvedLat, resolvedLng);
         if (beat) {
           if (!autoZoneBeat) autoZoneBeat = beat.beat_code;
 
@@ -457,11 +476,11 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         caller_phone: caller_phone || null,
         caller_relationship: caller_relationship || null,
         caller_address: caller_address || null,
-        location_address,
+        location_address: resolvedAddress,
         property_id: property_id || null,
-        latitude: latitude ?? null,
-        longitude: longitude ?? null,
-        description: description || null,
+        latitude: resolvedLat ?? null,
+        longitude: resolvedLng ?? null,
+        description: req.body.description || description || null,
         notes: notes || null,
         source: source || 'phone',
         dispatcher_id: req.user!.userId,
