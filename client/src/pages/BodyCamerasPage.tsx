@@ -247,7 +247,7 @@ export default function BodyCamerasPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
         {loading && (
           <div className="flex items-center justify-center flex-1 py-20">
             <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading" />

@@ -167,9 +167,9 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center gap-2 text-rmpg-400 py-8 text-xs"><Loader2 className="w-4 h-4 animate-spin" role="status" aria-label="Loading" /> Loading attendance...</div>
+        <div className="flex items-center justify-center gap-2 text-rmpg-400 py-12 text-xs"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading attendance records" /> Loading attendance...</div>
       ) : (
-        <div className="space-y-1">
+        <div className="space-y-1" role="list" aria-label="Attendance records">
           {records.filter(r => {
             if (selectedOfficer && r.officer_id !== selectedOfficer) return false;
             if (searchQuery) {
@@ -178,7 +178,7 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
             }
             return true;
           }).map(r => (
-            <div key={r.id} className="panel-beveled p-2 flex items-center justify-between hover:bg-surface-raised/30 transition-colors">
+            <div key={r.id} role="listitem" className="panel-beveled p-2.5 flex items-center justify-between hover:bg-surface-raised/30 hover:shadow-sm transition-all duration-150">
               <div className="flex items-center gap-3">
                 <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${TYPE_COLORS[r.type] || TYPE_COLORS.absent}`}>{r.type.replace(/_/g, ' ')}</span>
                 <span className="text-xs text-white">{r.officer_name}</span>

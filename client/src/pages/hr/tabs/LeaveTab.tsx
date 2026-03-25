@@ -62,15 +62,15 @@ function BalanceCard({
   const pct = total > 0 ? Math.round((used / total) * 100) : 0;
 
   return (
-    <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-4">
+    <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-4 transition-all duration-200 hover:border-[#2a3f5a] hover:brightness-105">
       <div className="flex items-center gap-2 mb-2">
-        <Icon size={14} style={{ color }} />
-        <span className="text-xs text-rmpg-400 uppercase tracking-wide">{label}</span>
+        <Icon size={14} style={{ color }} aria-hidden="true" />
+        <span className="text-xs text-rmpg-400 uppercase tracking-wide font-medium">{label}</span>
       </div>
-      <div className="text-xl font-bold text-white mb-0.5">
-        {remaining} <span className="text-sm font-normal text-rmpg-400">of {total} hrs remaining</span>
+      <div className="text-xl font-bold text-white mb-0.5 font-mono">
+        {remaining} <span className="text-sm font-normal text-rmpg-400 font-sans">of {total} hrs remaining</span>
       </div>
-      <div className="h-2 bg-[#0d1520] rounded-full overflow-hidden mt-2">
+      <div className="h-2 bg-[#0d1520] rounded-full overflow-hidden mt-2" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${label}: ${pct}% used`}>
         <div
           className="h-full rounded-full transition-all duration-500"
           style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: color }}

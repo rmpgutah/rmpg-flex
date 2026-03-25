@@ -97,24 +97,30 @@ export default function AdminAuditTab({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Feature 23: Export toolbar */}
-      <div className="flex items-center gap-2 p-3 border-b border-rmpg-700 bg-surface-base flex-wrap">
-        <div className="flex items-center gap-1 px-2 py-1 panel-inset bg-surface-sunken">
-          <Search className="w-3 h-3 text-rmpg-500" />
+      {/* Export toolbar */}
+      <div className="flex items-center gap-2 p-3 border-b border-rmpg-700 bg-surface-sunken flex-wrap" role="toolbar" aria-label="Audit log filters">
+        <div className="flex items-center gap-1 px-2 py-1 panel-inset bg-surface-sunken relative">
+          <Search className="w-3 h-3 text-rmpg-500" aria-hidden="true" />
           <input
             type="text"
-            placeholder="Search logs..." aria-label="Search logs..."
+            placeholder="Search logs..." aria-label="Search audit logs"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="bg-transparent border-none outline-none text-xs text-white placeholder-rmpg-500 w-[120px]"
+            className="bg-transparent border-none outline-none text-xs text-white placeholder-rmpg-500 w-[140px]"
             autoComplete="off"
             spellCheck={false}
           />
+          {searchQuery && (
+            <button type="button" onClick={() => setSearchQuery('')} className="text-rmpg-500 hover:text-rmpg-300 transition-colors" aria-label="Clear search">
+              <Filter className="w-2.5 h-2.5" />
+            </button>
+          )}
         </div>
         <select
           value={filterAction}
           onChange={e => setFilterAction(e.target.value)}
-          className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-2 py-1 outline-none"
+          className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-2 py-1.5 outline-none focus:border-brand-500 transition-colors"
+          aria-label="Filter by action type"
         >
           <option value="">All Actions</option>
           {uniqueActions.map(a => <option key={a} value={a}>{a}</option>)}
@@ -123,44 +129,44 @@ export default function AdminAuditTab({
           type="date"
           value={exportDateFrom}
           onChange={e => setExportDateFrom(e.target.value)}
-          className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-2 py-1 outline-none"
-          placeholder="From"
+          className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-2 py-1.5 outline-none focus:border-brand-500 transition-colors"
+          aria-label="Export from date"
         />
         <input
           type="date"
           value={exportDateTo}
           onChange={e => setExportDateTo(e.target.value)}
-          className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-2 py-1 outline-none"
-          placeholder="To"
+          className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-2 py-1.5 outline-none focus:border-brand-500 transition-colors"
+          aria-label="Export to date"
         />
         <button type="button"
           onClick={handleExport}
           disabled={exporting}
-          className="toolbar-btn toolbar-btn-primary text-[10px]"
+          className="toolbar-btn toolbar-btn-primary text-[10px] disabled:opacity-50"
           aria-label="Export audit log to CSV"
         >
           <Download style={{ width: 11, height: 11 }} />
           {exporting ? 'Exporting...' : 'Export CSV'}
         </button>
-        <span className="text-[9px] text-rmpg-500 ml-auto">{filteredLog.length} entries</span>
+        <span className="text-[9px] text-rmpg-500 ml-auto tabular-nums">{filteredLog.length} entries</span>
       </div>
 
-      <div className="flex-1 overflow-auto">
-        <table className="table-dark">
+      <div className="flex-1 overflow-auto scrollbar-dark">
+        <table className="table-dark" aria-label="Audit log entries">
           <thead className="sticky top-0 z-10">
             <tr>
-              <th className="whitespace-nowrap">Timestamp</th>
-              <th className="whitespace-nowrap">User</th>
-              <th className="whitespace-nowrap">Action</th>
-              <th className="whitespace-nowrap">Details</th>
+              <th className="whitespace-nowrap" scope="col">Timestamp</th>
+              <th className="whitespace-nowrap" scope="col">User</th>
+              <th className="whitespace-nowrap" scope="col">Action</th>
+              <th className="whitespace-nowrap" scope="col">Details</th>
             </tr>
           </thead>
           <tbody>
-            {filteredLog.map((entry) => (
-              <tr key={entry.id}>
-                <td className="text-xs text-rmpg-300 font-mono whitespace-nowrap">
+            {filteredLog.map((entry, idx) => (
+              <tr key={entry.id} className={idx % 2 === 0 ? '' : 'bg-rmpg-800/15'}>
+                <td className="text-xs text-rmpg-300 font-mono whitespace-nowrap tabular-nums">
                   <div className="flex items-center gap-1.5">
-                    <Clock className="w-3 h-3 text-rmpg-400" />
+                    <Clock className="w-3 h-3 text-rmpg-400" aria-hidden="true" />
                     {new Date(entry.timestamp).toLocaleString('en-US', {
                       month: 'short',
                       day: 'numeric',
@@ -171,14 +177,17 @@ export default function AdminAuditTab({
                   </div>
                 </td>
                 <td className="text-xs font-semibold text-white">{entry.user}</td>
-                <td className="text-xs text-brand-400">{entry.action}</td>
+                <td className="text-xs text-brand-400 font-medium">{entry.action}</td>
                 <td className="text-xs text-rmpg-300 max-w-[300px] truncate" title={entry.details}>{entry.details}</td>
               </tr>
             ))}
             {filteredLog.length === 0 && !loadingAudit && (
               <tr>
-                <td colSpan={4} className="text-center text-rmpg-400 py-8">
-                  No audit log entries{searchQuery || filterAction ? ' matching filters' : ''}
+                <td colSpan={4} className="text-center text-rmpg-400 py-12">
+                  <div className="flex flex-col items-center gap-2">
+                    <Clock className="w-6 h-6 text-rmpg-600" />
+                    <span className="text-xs">No audit log entries{searchQuery || filterAction ? ' matching filters' : ''}</span>
+                  </div>
                 </td>
               </tr>
             )}

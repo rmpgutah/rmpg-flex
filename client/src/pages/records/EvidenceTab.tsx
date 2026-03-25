@@ -36,10 +36,10 @@ function renderInfoRow(label: string, value?: string | null, icon?: React.Elemen
   if (!value) return null;
   const Icon = icon;
   return (
-    <div className="flex items-start gap-2 text-xs">
+    <div className="flex items-start gap-2 text-xs group">
       {Icon && <Icon className="w-3 h-3 text-rmpg-400 mt-0.5 flex-shrink-0" />}
-      <span className="text-rmpg-400 min-w-[80px]">{label}:</span>
-      <span className="text-rmpg-200">{value}</span>
+      <span className="text-rmpg-400 min-w-[80px] select-none">{label}:</span>
+      <span className="text-rmpg-200 group-hover:text-white transition-colors">{value}</span>
     </div>
   );
 }
@@ -192,18 +192,18 @@ export function EvidenceTabList({ state }: { state: EvidenceTabState }) {
   return (
     <div className="h-full flex flex-col">
       {/* Search */}
-      <div className="p-3 border-b border-rmpg-600">
+      <div className="p-3 border-b border-rmpg-600" role="search">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" />
           <input
             type="text"
-            className="input-dark pl-9 w-full text-[11px] min-h-[36px]"
+            className="input-dark pl-9 w-full text-[11px] min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow"
             placeholder="Search by evidence #, description, serial #, incident..." aria-label="Search by evidence #, description, serial #, incident..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
           {searchQuery && (
-            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white">
+            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white transition-colors" aria-label="Clear search">
               <X className="w-3 h-3" />
             </button>
           )}
@@ -211,28 +211,32 @@ export function EvidenceTabList({ state }: { state: EvidenceTabState }) {
       </div>
 
       {/* Evidence List */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto scrollbar-dark" role="list" aria-label="Evidence records">
         {filteredEvidence.length === 0 && (
-          <div className="text-center py-12">
-            <Package className="w-8 h-8 text-rmpg-500 mx-auto mb-2" />
-            <p className="text-sm text-rmpg-400">{searchQuery ? 'No evidence matches your search.' : 'No evidence records found.'}</p>
-            <p className="text-xs text-rmpg-500 mt-1">Click "New Evidence" to add a record</p>
+          <div className="text-center py-16">
+            <Package className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
+            <p className="text-sm text-rmpg-400 font-medium">{searchQuery ? 'No evidence matches your search.' : 'No evidence records found.'}</p>
+            <p className="text-[10px] text-rmpg-600 mt-1">Click "New Evidence" to add a record</p>
           </div>
         )}
-        {filteredEvidence.map((ev: any) => {
+        {filteredEvidence.map((ev: any, idx: number) => {
           const hasLab = ev.lab_submitted;
           const isDisposed = !!ev.disposal_method;
           return (
             <div
               key={ev.id}
+              role="listitem"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedEvidence(selectedEvidence?.id === ev.id ? null : ev); } }}
               onClick={() => setSelectedEvidence(selectedEvidence?.id === ev.id ? null : ev)}
               className={`
-                px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-colors
+                px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-all duration-150
                 ${selectedEvidence?.id === ev.id
                   ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
-                  : 'hover:bg-rmpg-700/30 border-l-2 border-l-transparent'
+                  : `hover:bg-rmpg-700/30 border-l-2 border-l-transparent ${idx % 2 === 1 ? 'bg-rmpg-800/20' : ''}`
                 }
               `}
+              aria-selected={selectedEvidence?.id === ev.id}
             >
               <div className="flex items-center gap-3">
                 <div className={`flex-shrink-0 w-9 h-9 rounded-sm flex items-center justify-center border ${

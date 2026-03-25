@@ -123,15 +123,15 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
       )}
 
       {loading ? (
-        <div className="flex items-center justify-center gap-2 text-rmpg-400 py-8 text-xs"><Loader2 className="w-4 h-4 animate-spin" role="status" aria-label="Loading" /> Loading documents...</div>
+        <div className="flex items-center justify-center gap-2 text-rmpg-400 py-12 text-xs"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading documents" /> Loading documents...</div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-2" role="list" aria-label="HR documents">
           {docs.filter(doc => {
             if (!searchQuery) return true;
             const q = searchQuery.toLowerCase();
             return doc.title.toLowerCase().includes(q) || doc.description?.toLowerCase().includes(q) || doc.category.toLowerCase().includes(q);
           }).map(doc => (
-            <div key={doc.id} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedDocId(doc.id); }} className={`panel-beveled p-3 cursor-pointer transition-colors hover:bg-surface-raised/30 ${selectedDocId === doc.id ? 'border-brand-500' : ''}`} onClick={() => setSelectedDocId(doc.id)}>
+            <div key={doc.id} role="listitem" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedDocId(doc.id); }} className={`panel-beveled p-3 cursor-pointer transition-all duration-150 hover:bg-surface-raised/30 hover:shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-500/40 ${selectedDocId === doc.id ? 'border-brand-500 shadow-sm' : ''}`} onClick={() => setSelectedDocId(doc.id)}>
               <div className="flex items-center justify-between">
                 <div>
                   <div className="flex items-center gap-2">

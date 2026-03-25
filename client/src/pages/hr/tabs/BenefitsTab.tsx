@@ -144,9 +144,14 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
       )}
 
       {loading ? (
-        <div className="flex items-center justify-center gap-2 text-rmpg-400 py-8 text-xs"><Loader2 className="w-4 h-4 animate-spin" role="status" aria-label="Loading" /> Loading benefits...</div>
+        <div className="flex items-center justify-center gap-2 text-rmpg-400 py-12 text-xs"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading benefits" /> Loading benefits...</div>
       ) : Object.keys(grouped).length === 0 ? (
-        <div className="text-center text-rmpg-500 py-12 text-xs"><Heart className="w-5 h-5 mx-auto mb-2 text-rmpg-600" />{searchQuery ? 'No benefits match your search' : 'No benefits records found'}</div>
+        <div className="text-center py-16" role="status">
+          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+            <Heart className="w-7 h-7 text-rmpg-600" />
+          </div>
+          <p className="text-sm text-rmpg-400 font-medium">{searchQuery ? 'No benefits match your search' : 'No benefits records found'}</p>
+        </div>
       ) : (
         <div className="space-y-4">
           {Object.entries(grouped).map(([name, bens]) => (

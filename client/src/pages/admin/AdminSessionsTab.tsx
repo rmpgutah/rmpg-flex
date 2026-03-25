@@ -95,15 +95,15 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
       {/* Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
         <div className="panel-beveled p-3">
-          <div className="text-[20px] font-black text-green-400">{activeSessions.length}</div>
+          <div className="text-[20px] font-black text-green-400 tabular-nums">{activeSessions.length}</div>
           <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Active Sessions</div>
         </div>
         <div className="panel-beveled p-3">
-          <div className="text-[20px] font-black text-rmpg-400">{inactiveSessions.length}</div>
+          <div className="text-[20px] font-black text-rmpg-400 tabular-nums">{inactiveSessions.length}</div>
           <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Inactive/Expired</div>
         </div>
         <div className="panel-beveled p-3">
-          <div className="text-[20px] font-black text-blue-400">
+          <div className="text-[20px] font-black text-blue-400 tabular-nums">
             {new Set(activeSessions.map(s => s.user_id)).size}
           </div>
           <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Unique Users Online</div>
@@ -114,48 +114,51 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
       <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-2 flex items-center gap-2">
         <Shield style={{ width: 10, height: 10 }} />
         Active Sessions ({activeSessions.length})
-        <button type="button" onClick={fetchSessions} className="ml-auto text-rmpg-500 hover:text-white">
+        <button type="button" onClick={fetchSessions} className="ml-auto p-0.5 text-rmpg-500 hover:text-white transition-colors" aria-label="Refresh sessions">
           <RefreshCw style={{ width: 10, height: 10 }} />
         </button>
       </div>
-      <table className="w-full text-[10px] mb-6">
+      <table className="w-full text-[10px] mb-6" aria-label="Active sessions">
         <thead>
-          <tr className="text-rmpg-500 text-[9px] uppercase tracking-wider" style={{ background: '#0f1a28' }}>
-            <th className="text-left px-3 py-1.5 font-bold whitespace-nowrap">User</th>
-            <th className="text-left px-3 py-1.5 font-bold whitespace-nowrap">Role</th>
-            <th className="text-left px-3 py-1.5 font-bold whitespace-nowrap">Device</th>
-            <th className="text-left px-3 py-1.5 font-bold whitespace-nowrap">IP Address</th>
-            <th className="text-left px-3 py-1.5 font-bold whitespace-nowrap">Last Active</th>
-            <th className="text-left px-3 py-1.5 font-bold whitespace-nowrap">Expires</th>
-            <th className="text-right px-3 py-1.5 font-bold whitespace-nowrap">Actions</th>
+          <tr className="text-rmpg-500 text-[9px] uppercase tracking-wider sticky top-0 z-10" style={{ background: '#0f1a28' }}>
+            <th className="text-left px-3 py-2 font-bold whitespace-nowrap" scope="col">User</th>
+            <th className="text-left px-3 py-2 font-bold whitespace-nowrap" scope="col">Role</th>
+            <th className="text-left px-3 py-2 font-bold whitespace-nowrap" scope="col">Device</th>
+            <th className="text-left px-3 py-2 font-bold whitespace-nowrap" scope="col">IP Address</th>
+            <th className="text-left px-3 py-2 font-bold whitespace-nowrap" scope="col">Last Active</th>
+            <th className="text-left px-3 py-2 font-bold whitespace-nowrap" scope="col">Expires</th>
+            <th className="text-right px-3 py-2 font-bold whitespace-nowrap" scope="col">Actions</th>
           </tr>
         </thead>
         <tbody>
-          {activeSessions.map(s => {
+          {activeSessions.map((s, idx) => {
             const { device, icon: DeviceIcon } = parseUserAgent(s.user_agent);
             return (
-              <tr key={s.id} className="border-b border-rmpg-800/30 hover:bg-surface-raised/30 transition-colors">
+              <tr key={s.id} className={`border-b border-rmpg-800/30 hover:bg-surface-raised/30 transition-colors ${idx % 2 !== 0 ? 'bg-rmpg-800/10' : ''}`}>
                 <td className="px-3 py-2">
                   <span className="font-semibold text-white">{s.full_name}</span>
                   <span className="text-rmpg-500 ml-1">({s.username})</span>
                 </td>
                 <td className="px-3 py-2 text-rmpg-400">{toDisplayLabel(s.role)}</td>
-                <td className="px-3 py-2 text-rmpg-400 flex items-center gap-1">
-                  <DeviceIcon style={{ width: 10, height: 10 }} />
-                  {device}
-                </td>
-                <td className="px-3 py-2 text-rmpg-400 font-mono">{s.ip_address || '—'}</td>
                 <td className="px-3 py-2 text-rmpg-400">
+                  <span className="flex items-center gap-1">
+                    <DeviceIcon style={{ width: 10, height: 10 }} aria-hidden="true" />
+                    {device}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-rmpg-400 font-mono tabular-nums">{s.ip_address || '—'}</td>
+                <td className="px-3 py-2 text-rmpg-400 tabular-nums">
                   {s.last_used_at ? new Date(s.last_used_at).toLocaleString() : '—'}
                 </td>
-                <td className="px-3 py-2 text-rmpg-400">
+                <td className="px-3 py-2 text-rmpg-400 tabular-nums">
                   {new Date(s.expires_at).toLocaleString()}
                 </td>
                 <td className="px-3 py-2 text-right">
                   <button type="button"
                     onClick={() => handleRevoke(s.id)}
-                    className="text-rmpg-500 hover:text-red-400 transition-colors"
+                    className="p-1 text-rmpg-500 hover:text-red-400 hover:bg-red-900/20 transition-colors rounded-sm"
                     title="Revoke session"
+                    aria-label={`Revoke session for ${s.full_name}`}
                   >
                     <Trash2 style={{ width: 10, height: 10 }} />
                   </button>
@@ -164,7 +167,12 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
             );
           })}
           {activeSessions.length === 0 && (
-            <tr><td colSpan={7} className="px-3 py-6 text-center text-rmpg-500">No active sessions</td></tr>
+            <tr><td colSpan={7} className="px-3 py-8 text-center text-rmpg-500">
+              <div className="flex flex-col items-center gap-2">
+                <Shield className="w-5 h-5 text-rmpg-600" />
+                <span>No active sessions</span>
+              </div>
+            </td></tr>
           )}
         </tbody>
       </table>

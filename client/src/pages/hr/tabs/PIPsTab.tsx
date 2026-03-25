@@ -109,11 +109,11 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <div className="panel-beveled p-2 text-center"><p className="field-label">Active</p><p className="text-lg font-bold font-mono text-amber-400">{pips.filter(p => p.status === 'active').length}</p></div>
-        <div className="panel-beveled p-2 text-center"><p className="field-label">Completed</p><p className="text-lg font-bold font-mono text-green-400">{pips.filter(p => p.status === 'completed').length}</p></div>
-        <div className="panel-beveled p-2 text-center"><p className="field-label">Failed</p><p className="text-lg font-bold font-mono text-red-400">{pips.filter(p => p.status === 'failed').length}</p></div>
-        <div className="panel-beveled p-2 text-center"><p className="field-label">Total</p><p className="text-lg font-bold font-mono text-white">{pips.length}</p></div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2" role="group" aria-label="PIP statistics">
+        <div className="panel-beveled p-2.5 text-center border-t-2 border-t-amber-500 transition-colors duration-200 hover:brightness-110"><p className="field-label">Active</p><p className="text-lg font-bold font-mono text-amber-400">{pips.filter(p => p.status === 'active').length}</p></div>
+        <div className="panel-beveled p-2.5 text-center border-t-2 border-t-green-500 transition-colors duration-200 hover:brightness-110"><p className="field-label">Completed</p><p className="text-lg font-bold font-mono text-green-400">{pips.filter(p => p.status === 'completed').length}</p></div>
+        <div className="panel-beveled p-2.5 text-center border-t-2 border-t-red-500 transition-colors duration-200 hover:brightness-110"><p className="field-label">Failed</p><p className="text-lg font-bold font-mono text-red-400">{pips.filter(p => p.status === 'failed').length}</p></div>
+        <div className="panel-beveled p-2.5 text-center border-t-2 border-t-rmpg-500 transition-colors duration-200 hover:brightness-110"><p className="field-label">Total</p><p className="text-lg font-bold font-mono text-white">{pips.length}</p></div>
       </div>
 
       {showForm && isManager && (
@@ -157,16 +157,21 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
       )}
 
       {loading ? (
-        <div className="flex items-center justify-center gap-2 text-rmpg-400 py-8 text-xs"><Loader2 className="w-4 h-4 animate-spin" role="status" aria-label="Loading" /> Loading PIPs...</div>
+        <div className="flex items-center justify-center gap-2 text-rmpg-400 py-12 text-xs"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading PIPs" /> Loading PIPs...</div>
       ) : filtered.length === 0 ? (
-        <div className="text-center text-rmpg-500 py-12 text-xs"><TrendingUp className="w-5 h-5 mx-auto mb-2 text-rmpg-600" />{searchQuery || filterStatus !== 'all' ? 'No PIPs match your filters' : 'No PIPs found'}</div>
+        <div className="text-center py-16" role="status">
+          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+            <TrendingUp className="w-7 h-7 text-rmpg-600" />
+          </div>
+          <p className="text-sm text-rmpg-400 font-medium">{searchQuery || filterStatus !== 'all' ? 'No PIPs match your filters' : 'No PIPs found'}</p>
+        </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-3" role="list" aria-label="Performance improvement plans">
           {filtered.map(p => {
             const days = daysRemaining(p.end_date);
             const goalsCompleted = p.goals.filter(g => g.completed).length;
             return (
-              <div key={p.id} className="panel-beveled p-3 hover:bg-surface-raised/30 transition-colors">
+              <div key={p.id} role="listitem" className="panel-beveled p-3 hover:bg-surface-raised/30 hover:shadow-sm transition-all duration-150">
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="flex items-center gap-2 mb-1">

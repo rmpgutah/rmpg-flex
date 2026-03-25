@@ -93,24 +93,24 @@ export default function TrainingTab({ training, requirements, officers, loading,
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-        <div className="panel-beveled p-2.5 text-center bg-surface-base border-t-2 border-t-rmpg-500">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2" role="group" aria-label="Training summary">
+        <div className="panel-beveled p-2.5 text-center bg-surface-base border-t-2 border-t-rmpg-500 transition-colors duration-200 hover:brightness-110">
           <p className="text-lg font-bold font-mono text-rmpg-100">{training.length}</p>
           <p className="text-[8px] uppercase text-rmpg-400 font-bold tracking-wider">Total Records</p>
         </div>
-        <div className="panel-beveled p-2.5 text-center bg-[#0a1a0a] border-t-2 border-t-green-500">
+        <div className="panel-beveled p-2.5 text-center bg-[#0a1a0a] border-t-2 border-t-green-500 transition-colors duration-200 hover:brightness-110">
           <p className="text-lg font-bold font-mono text-green-400">{completed}</p>
           <p className="text-[8px] uppercase text-green-400/70 font-bold tracking-wider">Completed</p>
         </div>
-        <div className="panel-beveled p-2.5 text-center bg-[#0a0f1a] border-t-2 border-t-blue-500">
+        <div className="panel-beveled p-2.5 text-center bg-[#0a0f1a] border-t-2 border-t-blue-500 transition-colors duration-200 hover:brightness-110">
           <p className="text-lg font-bold font-mono text-blue-400">{inProgress}</p>
           <p className="text-[8px] uppercase text-blue-400/70 font-bold tracking-wider">In Progress</p>
         </div>
-        <div className="panel-beveled p-2.5 text-center bg-[#1a170a] border-t-2 border-t-amber-500">
+        <div className="panel-beveled p-2.5 text-center bg-[#1a170a] border-t-2 border-t-amber-500 transition-colors duration-200 hover:brightness-110">
           <p className="text-lg font-bold font-mono text-amber-400">{scheduled}</p>
           <p className="text-[8px] uppercase text-amber-400/70 font-bold tracking-wider">Scheduled</p>
         </div>
-        <div className="panel-beveled p-2.5 text-center bg-[#1a0a0a] border-t-2 border-t-red-500">
+        <div className="panel-beveled p-2.5 text-center bg-[#1a0a0a] border-t-2 border-t-red-500 transition-colors duration-200 hover:brightness-110">
           <p className="text-lg font-bold font-mono text-red-400">{overdue}</p>
           <p className="text-[8px] uppercase text-red-400/70 font-bold tracking-wider">Overdue</p>
         </div>
@@ -147,12 +147,12 @@ export default function TrainingTab({ training, requirements, officers, loading,
 
       {/* Table */}
       {filtered.length === 0 ? (
-        <div className="text-center py-12">
-          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-base">
-            <GraduationCap className="w-7 h-7 text-rmpg-600" />
+        <div className="text-center py-16" role="status">
+          <div className="w-16 h-16 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+            <GraduationCap className="w-8 h-8 text-rmpg-600" />
           </div>
-          <p className="text-xs text-rmpg-500">No training records found.</p>
-          <p className="text-[10px] text-rmpg-600 mt-1">Add training records or adjust the category filter.</p>
+          <p className="text-sm text-rmpg-400 font-medium">No training records found</p>
+          <p className="text-[10px] text-rmpg-600 mt-1">Add training records or adjust the category filter</p>
         </div>
       ) : (
         <div className="panel-beveled overflow-x-auto">

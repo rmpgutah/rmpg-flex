@@ -64,12 +64,12 @@ export default function FleetFuelTab({ fuelLogs, summary, onAddFuel, onEditFuel,
 
       {/* Fuel Log List */}
       {fuelLogs.length === 0 ? (
-        <div className="text-center py-10 panel-beveled bg-surface-base">
-          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center" style={{ background: '#0d1520' }}>
-            <Fuel className="w-7 h-7 text-rmpg-600" />
+        <div className="text-center py-12 panel-beveled bg-surface-base">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full border border-rmpg-700 flex items-center justify-center" style={{ background: '#0d1520' }}>
+            <Fuel className="w-8 h-8 text-rmpg-600" />
           </div>
-          <p className="text-[11px] text-rmpg-400 font-semibold">No Fuel Logs Recorded</p>
-          <p className="text-[9px] text-rmpg-600 mt-1 max-w-[260px] mx-auto">
+          <p className="text-xs text-rmpg-400 font-semibold">No Fuel Logs Recorded</p>
+          <p className="text-[10px] text-rmpg-600 mt-1.5 max-w-[280px] mx-auto leading-relaxed">
             Track fuel consumption, cost per gallon, and station visits to monitor fleet fuel efficiency.
           </p>
           <button type="button" className="toolbar-btn toolbar-btn-primary mt-3" onClick={onAddFuel}>

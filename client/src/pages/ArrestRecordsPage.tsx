@@ -544,17 +544,17 @@ export default function ArrestRecordsPage() {
       {/* Toolbar: search, filters, actions */}
       <div className="p-2 space-y-1.5 border-b border-rmpg-700/30">
         {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
+        <div className="relative" role="search">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
           <input
             type="text"
             value={searchTerm}
             onChange={e => { setSearchTerm(e.target.value); setRecordsPage(1); }}
-            placeholder="Search by name..." aria-label="Search by name..."
-            className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] pl-7 pr-8 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+            placeholder="Search by name..." aria-label="Search arrest records by name"
+            className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] pl-7 pr-8 py-1.5 rounded-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500/50 focus:outline-none transition-shadow"
           />
           {searchTerm && (
-            <button type="button" onClick={() => setSearchTerm('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300">
+            <button type="button" onClick={() => setSearchTerm('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300 transition-colors" aria-label="Clear search">
               <X className="w-3 h-3" />
             </button>
           )}
@@ -620,10 +620,11 @@ export default function ArrestRecordsPage() {
       </div>
 
       {/* Records list */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto scrollbar-dark" role="list" aria-label="Arrest records">
         {recordsLoading ? (
-          <div className="flex items-center gap-2 text-[10px] text-rmpg-500 py-8 justify-center">
-            <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Loading records...
+          <div className="flex flex-col items-center gap-3 text-[10px] text-rmpg-500 py-12 justify-center">
+            <Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading arrest records" />
+            <span className="animate-pulse">Loading records...</span>
           </div>
         ) : sortedRecords.length === 0 ? (
           <EmptyState icon={UserX} title="No records found" description="Adjust filters or create a new booking." />
@@ -637,12 +638,16 @@ export default function ArrestRecordsPage() {
               return (
                 <div
                   key={rec.id}
-                  className={`flex items-center gap-2 px-2 py-1.5 rounded-sm cursor-pointer transition-colors ${
+                  role="listitem"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedRecord(rec); } }}
+                  className={`flex items-center gap-2 px-2 py-1.5 rounded-sm cursor-pointer transition-all duration-150 ${
                     isSelected
                       ? 'bg-brand-900/30 border-l-2 border-brand-400'
-                      : 'bg-surface-sunken hover:bg-rmpg-800/30 border-l-2 border-transparent'
+                      : 'bg-surface-sunken hover:bg-rmpg-800/40 border-l-2 border-transparent'
                   }`}
                   onClick={() => setSelectedRecord(rec)}
+                  aria-selected={isSelected}
                 >
                   {/* County color indicator */}
                   <div className={`shrink-0 w-1 h-8 rounded-full ${COUNTY_BAR_COLORS[rec.source_id] || 'bg-rmpg-600'}`} />
@@ -709,7 +714,7 @@ export default function ArrestRecordsPage() {
     const isLinking = linkingId === rec.id;
 
     return (
-      <div className="h-full overflow-y-auto bg-surface-base">
+      <div className="h-full overflow-y-auto scrollbar-dark bg-surface-base">
         {/* Header */}
         <div className="p-4 border-b border-rmpg-700/30" style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)' }}>
           <div className="flex items-start justify-between gap-2">

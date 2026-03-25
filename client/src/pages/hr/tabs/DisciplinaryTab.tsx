@@ -227,7 +227,12 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
             <Loader2 size={20} className="animate-spin" />
           </div>
         ) : records.length === 0 ? (
-          <div className="text-center py-12 text-rmpg-500 text-sm">No records found.</div>
+          <div className="text-center py-16" role="status">
+            <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+              <Shield className="w-7 h-7 text-rmpg-600" />
+            </div>
+            <p className="text-sm text-rmpg-400 font-medium">No records found</p>
+          </div>
         ) : (
           <>
             {/* Commendations at top */}

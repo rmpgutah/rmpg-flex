@@ -243,7 +243,7 @@ export default function DashCamerasPage() {
 
   // ── Gallery View (Left Panel) ────────────
   const galleryView = (
-    <div className="h-full overflow-y-auto p-2">
+    <div className="h-full overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent p-2">
       {loading ? (
         <div className="flex items-center justify-center py-16 gap-2">
           <Loader2 className="w-4 h-4 animate-spin text-brand-400" role="status" aria-label="Loading" />
@@ -344,7 +344,7 @@ export default function DashCamerasPage() {
 
   // ── List View (Left Panel) ───────────────
   const listView = (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
       {loading ? (
         <div className="flex items-center justify-center py-16 gap-2">
           <Loader2 className="w-4 h-4 animate-spin text-brand-400" role="status" aria-label="Loading" />
@@ -373,7 +373,7 @@ export default function DashCamerasPage() {
             ) : filtered.map(v => (
               <tr key={v.id}
                 onClick={() => setSelectedVideo(v)}
-                className={`hover:bg-surface-hover cursor-pointer ${
+                className={`hover:bg-surface-hover cursor-pointer transition-colors ${
                   selectedVideo?.id === v.id ? 'bg-brand-500/10 border-l-2 border-l-brand-400' : ''
                 }`}
               >
@@ -423,7 +423,7 @@ export default function DashCamerasPage() {
 
   // ── Detail Panel (Right Panel) ───────────
   const detailPanel = selectedVideo ? (
-    <div className="flex flex-col h-full overflow-y-auto" style={{ background: '#0d1520' }}>
+    <div className="flex flex-col h-full overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent" style={{ background: '#0d1520' }}>
       {/* Detail Header */}
       <div className="flex items-center gap-2 px-2 py-1.5 flex-shrink-0"
         style={{ background: 'linear-gradient(180deg, #1e3048, #1a2636)', borderBottom: '1px solid #141e2b' }}>

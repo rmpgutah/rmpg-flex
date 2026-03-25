@@ -157,13 +157,18 @@ export default function GrievancesTab() {
       )}
 
       {loading ? (
-        <div className="flex items-center justify-center gap-2 text-rmpg-400 py-8 text-xs"><Loader2 className="w-4 h-4 animate-spin" role="status" aria-label="Loading" /> Loading grievances...</div>
+        <div className="flex items-center justify-center gap-2 text-rmpg-400 py-12 text-xs"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading grievances" /> Loading grievances...</div>
       ) : filtered.length === 0 ? (
-        <div className="text-center text-rmpg-500 py-12 text-xs"><AlertOctagon className="w-5 h-5 mx-auto mb-2 text-rmpg-600" />{searchQuery ? 'No grievances match your search' : 'No grievances found'}</div>
+        <div className="text-center py-16" role="status">
+          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+            <AlertOctagon className="w-7 h-7 text-rmpg-600" />
+          </div>
+          <p className="text-sm text-rmpg-400 font-medium">{searchQuery ? 'No grievances match your search' : 'No grievances found'}</p>
+        </div>
       ) : (
         <div className="space-y-2">
           {filtered.map(g => (
-            <div key={g.id} className="panel-beveled p-3 hover:bg-surface-raised/50 transition-colors">
+            <div key={g.id} className="panel-beveled p-3 hover:bg-surface-raised/50 hover:shadow-sm transition-all duration-150">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">

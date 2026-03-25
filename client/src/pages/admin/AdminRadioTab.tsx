@@ -205,19 +205,21 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-rmpg-400">
+          <span className="text-[10px] text-rmpg-400 tabular-nums">
             {activeCount} active / {channels.length} total
           </span>
           <button type="button"
             onClick={fetchChannels}
             className="p-1.5 text-rmpg-400 hover:text-brand-400 transition-colors"
-            title="Refresh"
+            title="Refresh channels"
+            aria-label="Refresh channels"
           >
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
           <button type="button"
             onClick={() => setShowAdd(!showAdd)}
             className="flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white text-[10px] font-bold uppercase tracking-wider transition-colors"
+            aria-label="Add new radio channel"
           >
             <Plus className="w-3 h-3" />
             Add Channel

@@ -240,10 +240,10 @@ export default function AdminClientsTab({
   return (
     <div className="flex h-full overflow-hidden">
       {/* Left: Client List */}
-      <div className={`${selectedClient ? 'w-[35%]' : 'w-full'} border-r border-rmpg-600 flex flex-col overflow-hidden transition-all`}>
-        <div className="px-4 py-3 flex items-center justify-between border-b border-rmpg-600 flex-shrink-0">
-          <span className="text-xs text-rmpg-300 font-bold uppercase tracking-wider">{clients.length} Clients</span>
-          <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={openAddClient}>
+      <div className={`${selectedClient ? 'w-[35%]' : 'w-full'} border-r border-rmpg-600 flex flex-col overflow-hidden transition-all duration-200`}>
+        <div className="px-4 py-3 flex items-center justify-between border-b border-rmpg-600 flex-shrink-0 bg-surface-sunken">
+          <span className="text-xs text-rmpg-300 font-bold uppercase tracking-wider tabular-nums">{clients.length} Clients</span>
+          <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={openAddClient} aria-label="Add new client">
             <Plus className="w-3.5 h-3.5" /> Add Client
           </button>
         </div>
@@ -251,15 +251,19 @@ export default function AdminClientsTab({
         {loadingClients ? (
           <LoadingSpinner />
         ) : (
-          <div className="flex-1 overflow-auto">
-            {clients.map((client) => (
+          <div className="flex-1 overflow-auto scrollbar-dark">
+            {clients.map((client, idx) => (
               <div
                 key={client.id}
                 onClick={() => { setSelectedClient(selectedClient?.id === client.id ? null : client); setClientDetailTab('profile'); }}
-                className={`px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-colors ${
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedClient(selectedClient?.id === client.id ? null : client); setClientDetailTab('profile'); } }}
+                aria-label={`Select ${client.name}`}
+                className={`px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-all duration-150 ${
                   selectedClient?.id === client.id
                     ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
-                    : 'hover:bg-rmpg-700/30 border-l-2 border-l-transparent'
+                    : `hover:bg-rmpg-700/30 border-l-2 border-l-transparent ${idx % 2 !== 0 ? 'bg-rmpg-800/10' : ''}`
                 }`}
               >
                 <div className="flex items-center gap-3">
@@ -280,32 +284,36 @@ export default function AdminClientsTab({
                     <div className="flex items-center gap-1">
                       <button type="button"
                         onClick={(e) => { e.stopPropagation(); openEditClient(client); }}
-                        className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors"
-                        title="Edit"
+                        className="p-1 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors rounded-sm"
+                        title="Edit client"
+                        aria-label={`Edit ${client.name}`}
                       >
                         <Edit className="w-3 h-3" />
                       </button>
                       {!(client as any).archived_at ? (
                         <button type="button"
                           onClick={(e) => { e.stopPropagation(); handleArchiveClient(client.id); }}
-                          className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-amber-400 transition-colors"
-                          title="Archive"
+                          className="p-1 hover:bg-rmpg-700 text-rmpg-500 hover:text-amber-400 transition-colors rounded-sm"
+                          title="Archive client"
+                          aria-label={`Archive ${client.name}`}
                         >
                           <Archive className="w-3 h-3" />
                         </button>
                       ) : (
                         <button type="button"
                           onClick={(e) => { e.stopPropagation(); handleUnarchiveClient(client.id); }}
-                          className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-green-400 transition-colors"
-                          title="Unarchive"
+                          className="p-1 hover:bg-rmpg-700 text-rmpg-500 hover:text-green-400 transition-colors rounded-sm"
+                          title="Unarchive client"
+                          aria-label={`Unarchive ${client.name}`}
                         >
                           <RotateCcw className="w-3 h-3" />
                         </button>
                       )}
                       <button type="button"
                         onClick={(e) => { e.stopPropagation(); openDeleteClient(client); }}
-                        className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400 transition-colors"
-                        title="Delete"
+                        className="p-1 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400 transition-colors rounded-sm"
+                        title="Delete client"
+                        aria-label={`Delete ${client.name}`}
                       >
                         <Trash2 className="w-3 h-3" />
                       </button>
@@ -315,7 +323,10 @@ export default function AdminClientsTab({
               </div>
             ))}
             {clients.length === 0 && !loadingClients && (
-              <div className="text-center text-rmpg-400 py-12">No clients found</div>
+              <div className="flex flex-col items-center justify-center text-center text-rmpg-400 py-16 gap-2">
+                <Building2 className="w-8 h-8 text-rmpg-600" />
+                <span className="text-xs">No clients found</span>
+              </div>
             )}
           </div>
         )}
@@ -343,7 +354,7 @@ export default function AdminClientsTab({
                 <button type="button" onClick={() => openEditClient(selectedClient)} className="toolbar-btn">
                   <Edit className="w-3.5 h-3.5" /> Edit
                 </button>
-                <button type="button" onClick={() => setSelectedClient(null)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors">
+                <button type="button" onClick={() => setSelectedClient(null)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors rounded-sm" aria-label="Close client details">
                   <XCircle className="w-4 h-4" />
                 </button>
               </div>
@@ -351,7 +362,7 @@ export default function AdminClientsTab({
           </div>
 
           {/* Detail Tabs */}
-          <div className="flex gap-1 px-4 pt-2 border-b border-rmpg-600 flex-shrink-0">
+          <div className="flex gap-0.5 px-4 pt-2 border-b border-rmpg-600 flex-shrink-0 overflow-x-auto scrollbar-dark" role="tablist" aria-label="Client detail sections">
             {([
               { id: 'profile' as const, label: 'Profile' },
               { id: 'billing' as const, label: 'Billing' },
@@ -363,8 +374,10 @@ export default function AdminClientsTab({
             ]).map((tab) => (
               <button type="button"
                 key={tab.id}
+                role="tab"
+                aria-selected={clientDetailTab === tab.id}
                 onClick={() => setClientDetailTab(tab.id)}
-                className={`px-3 py-1.5 text-[10px] font-medium transition-colors ${
+                className={`px-3 py-1.5 text-[10px] font-medium transition-all duration-150 whitespace-nowrap relative ${
                   clientDetailTab === tab.id
                     ? 'bg-rmpg-700 text-white border border-rmpg-600 border-b-rmpg-700'
                     : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'

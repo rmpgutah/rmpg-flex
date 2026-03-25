@@ -248,8 +248,9 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 size={24} className="animate-spin text-brand-500" />
+      <div className="flex flex-col items-center justify-center h-64 gap-2">
+        <Loader2 size={24} className="animate-spin text-brand-500" role="status" aria-label="Loading performance reviews" />
+        <span className="text-xs text-rmpg-400">Loading reviews...</span>
       </div>
     );
   }

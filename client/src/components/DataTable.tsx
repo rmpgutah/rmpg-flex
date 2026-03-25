@@ -99,7 +99,6 @@ export default function DataTable<T>({
     align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : 'text-left';
 
   return (
-    {/* 1: Dark scrollbar styling on table container */}
     <div className={`overflow-auto border border-rmpg-700/50 bg-surface-base scrollbar-dark ${className}`} role="region" aria-label={ariaLabel ? `${ariaLabel} region` : undefined}>
       <table className="w-full text-xs" aria-label={ariaLabel}>
         {/* 2: Sticky header with z-index so it stays on top during scroll */}
@@ -138,7 +137,7 @@ export default function DataTable<T>({
         </thead>
         <tbody>
           {loading ? (
-            <SkeletonRows columns={columns} />
+            <SkeletonRows columns={columns as Column<unknown>[]} />
           ) : data.length === 0 ? (
             <tr>
               <td colSpan={columns.length + (showRowNumbers ? 1 : 0)}>
@@ -157,7 +156,6 @@ export default function DataTable<T>({
                 <tr
                   key={key}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
-                  {/* 4: Striped rows with stronger contrast; 5: Selected row ring for clarity */}
                   className={`border-b border-rmpg-700/30 transition-colors duration-100 ${
                     isSelected
                       ? 'bg-brand-900/30 ring-1 ring-inset ring-brand-600/40'

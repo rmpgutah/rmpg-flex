@@ -154,7 +154,7 @@ export default function AdminRetentionTab({ LoadingSpinner, error, setError }: P
             disabled={running}
             className="toolbar-btn-primary text-[10px] flex items-center gap-1"
           >
-            {running ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Play className="w-3 h-3" />}
+            {running ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Running policies" /> : <Play className="w-3 h-3" />}
             Run Policies Now
           </button>
         </div>
@@ -178,17 +178,17 @@ export default function AdminRetentionTab({ LoadingSpinner, error, setError }: P
 
       {/* Policies Table */}
       <div className="panel-beveled bg-surface-base overflow-hidden">
-        <table className="table-dark w-full">
-          <thead>
+        <table className="table-dark w-full" aria-label="Retention policies">
+          <thead className="sticky top-0 z-10">
             <tr>
-              <th className="text-left px-3 py-2 text-[10px]">Entity Type</th>
-              <th className="text-center px-3 py-2 text-[10px]">Retention (Days)</th>
-              <th className="text-center px-3 py-2 text-[10px]">Auto Archive</th>
-              <th className="text-center px-3 py-2 text-[10px]">Auto Delete</th>
-              <th className="text-center px-3 py-2 text-[10px]">Impact Preview</th>
-              <th className="text-center px-3 py-2 text-[10px]">Last Run</th>
-              <th className="text-center px-3 py-2 text-[10px]">Active</th>
-              <th className="text-right px-3 py-2 text-[10px]">Actions</th>
+              <th className="text-left px-3 py-2 text-[10px]" scope="col">Entity Type</th>
+              <th className="text-center px-3 py-2 text-[10px]" scope="col">Retention (Days)</th>
+              <th className="text-center px-3 py-2 text-[10px]" scope="col">Auto Archive</th>
+              <th className="text-center px-3 py-2 text-[10px]" scope="col">Auto Delete</th>
+              <th className="text-center px-3 py-2 text-[10px]" scope="col">Impact Preview</th>
+              <th className="text-center px-3 py-2 text-[10px]" scope="col">Last Run</th>
+              <th className="text-center px-3 py-2 text-[10px]" scope="col">Active</th>
+              <th className="text-right px-3 py-2 text-[10px]" scope="col">Actions</th>
             </tr>
           </thead>
           <tbody>

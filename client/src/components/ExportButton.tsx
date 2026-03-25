@@ -4,7 +4,7 @@
 // ============================================================
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Download, Printer, ChevronDown } from 'lucide-react';
+import { Download, Printer, ChevronDown, Loader2 } from 'lucide-react';
 
 interface ExportButtonProps {
   exportUrl: string;        // e.g. '/dispatch/calls/export?format=csv'
@@ -108,7 +108,8 @@ export default function ExportButton({
         aria-expanded={isOpen}
         aria-haspopup="true"
       >
-        <Download className="w-3.5 h-3.5" />
+        {/* 45: Loading spinner during export instead of text-only indicator */}
+        {isExporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
         <span>{isExporting ? 'Exporting...' : 'Export'}</span>
         <ChevronDown
           className="w-3 h-3 ml-0.5 transition-transform"
@@ -121,7 +122,7 @@ export default function ExportButton({
         <div
           ref={dropdownRef}
           role="menu"
-          className="absolute z-50 mt-1"
+          className="absolute z-50 mt-1 animate-fade-in"
           style={{
             top: '100%',
             right: 0,
@@ -129,62 +130,34 @@ export default function ExportButton({
             background: '#1a2636',
             border: '1px solid #3a5070',
             borderRadius: 0,
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
+            boxShadow: '0 6px 20px rgba(0, 0, 0, 0.6)',
           }}
         >
-          {/* Export CSV */}
+          {/* 48: Export CSV — replaced inline hover handlers with Tailwind classes */}
           <button
             type="button"
             onClick={handleExportCSV}
-            className="w-full flex items-center gap-2 px-3 py-2 text-left transition-colors"
-            style={{
-              fontSize: '11px',
-              color: '#d4d4d4',
-              background: 'transparent',
-              border: 'none',
-              borderRadius: 0,
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.background = '#2a3e58';
-              (e.currentTarget as HTMLElement).style.color = '#ffffff';
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.background = 'transparent';
-              (e.currentTarget as HTMLElement).style.color = '#d4d4d4';
-            }}
+            role="menuitem"
+            className="w-full flex items-center gap-2 px-3 py-2 text-left text-[11px] text-rmpg-200 bg-transparent border-none hover:bg-[#2a3e58] hover:text-white transition-colors"
           >
-            <Download className="w-3.5 h-3.5 flex-shrink-0" />
-            <span className="font-bold uppercase tracking-wider" style={{ fontSize: '10px' }}>
+            <Download className="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
+            <span className="font-bold uppercase tracking-wider text-[10px]">
               Export CSV
             </span>
           </button>
 
-          {/* Divider */}
-          <div style={{ height: '1px', background: '#3a5070', margin: '0 8px' }} />
+          {/* 49: Divider with semantic hr */}
+          <hr className="border-0 mx-2" style={{ height: '1px', background: '#3a5070' }} />
 
-          {/* Print View */}
+          {/* 50: Print View — replaced inline hover handlers with Tailwind classes */}
           <button
             type="button"
             onClick={handlePrint}
-            className="w-full flex items-center gap-2 px-3 py-2 text-left transition-colors"
-            style={{
-              fontSize: '11px',
-              color: '#d4d4d4',
-              background: 'transparent',
-              border: 'none',
-              borderRadius: 0,
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.background = '#2a3e58';
-              (e.currentTarget as HTMLElement).style.color = '#ffffff';
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.background = 'transparent';
-              (e.currentTarget as HTMLElement).style.color = '#d4d4d4';
-            }}
+            role="menuitem"
+            className="w-full flex items-center gap-2 px-3 py-2 text-left text-[11px] text-rmpg-200 bg-transparent border-none hover:bg-[#2a3e58] hover:text-white transition-colors"
           >
-            <Printer className="w-3.5 h-3.5 flex-shrink-0" />
-            <span className="font-bold uppercase tracking-wider" style={{ fontSize: '10px' }}>
+            <Printer className="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
+            <span className="font-bold uppercase tracking-wider text-[10px]">
               Print View
             </span>
           </button>

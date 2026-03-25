@@ -207,10 +207,11 @@ export default function FileAttachments({
         Attachments ({attachments.length})
       </label>
 
+      {/* 51: Error banner with role="alert" for screen readers; 52: Animate error in */}
       {error && (
-        <div className="px-2 py-1 bg-red-900/40 border border-red-700/50 text-red-300 text-xs flex items-center justify-between">
-          {error}
-          <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300" aria-label="Dismiss error">
+        <div className="px-2 py-1.5 bg-red-900/40 border border-red-700/50 text-red-300 text-xs flex items-center justify-between animate-fade-in" role="alert">
+          <span>{error}</span>
+          <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300 hover:bg-red-900/40 p-0.5 transition-colors rounded-sm ml-2" aria-label="Dismiss error">
             <X className="w-3 h-3" />
           </button>
         </div>
@@ -376,18 +377,22 @@ export default function FileAttachments({
           )}
         </div>
       ) : (
+        /* 55: Empty state with icon and larger padding; 56: File icon for empty state */
         !readOnly && (
-          <p className="text-[10px] text-rmpg-500 text-center py-1">No files attached</p>
+          <div className="flex flex-col items-center gap-1 py-3 text-rmpg-500">
+            <Paperclip className="w-4 h-4 opacity-40" aria-hidden="true" />
+            <p className="text-[10px]">No files attached</p>
+          </div>
         )
       )}
 
-      {/* Preview Modal */}
+      {/* 53: Preview modal with backdrop-blur; 54: Animate modal entrance */}
       {previewAttachment && (
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="File preview"
-          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-8"
+          aria-label={`Preview: ${previewAttachment.original_name}`}
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-8 animate-fade-in"
           onClick={() => setPreviewAttachment(null)}
         >
           <div className="relative max-w-4xl max-h-full" onClick={(e) => e.stopPropagation()}>

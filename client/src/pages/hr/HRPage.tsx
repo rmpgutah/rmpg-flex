@@ -101,7 +101,7 @@ export default function HRPage() {
       </div>
 
       {/* Tab content */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto scrollbar-dark">
         {renderTab()}
       </div>
     </div>

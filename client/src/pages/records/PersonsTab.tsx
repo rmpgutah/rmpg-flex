@@ -137,10 +137,10 @@ function renderInfoRow(label: string, value?: string | null, icon?: React.Elemen
   if (!value) return null;
   const Icon = icon;
   return (
-    <div className="flex items-start gap-2 text-xs">
+    <div className="flex items-start gap-2 text-xs group">
       {Icon && <Icon className="w-3 h-3 text-rmpg-400 mt-0.5 flex-shrink-0" />}
-      <span className="text-rmpg-400 min-w-[80px]">{label}:</span>
-      <span className="text-rmpg-200">{value}</span>
+      <span className="text-rmpg-400 min-w-[80px] select-none">{label}:</span>
+      <span className="text-rmpg-200 group-hover:text-white transition-colors">{value}</span>
     </div>
   );
 }
@@ -396,6 +396,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
           {searchQuery && (
             <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white transition-colors" aria-label="Clear search">
               <X className="w-3 h-3" />
+            </button>
           )}
         </div>
       </div>
@@ -428,7 +429,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
             aria-selected={selectedPerson?.id === person.id}
           >
             <div className="flex items-center gap-3">
-              <div className="flex-shrink-0 w-9 h-9 rounded-full bg-rmpg-700 border border-rmpg-600 flex items-center justify-center text-xs font-bold text-rmpg-300">
+              <div className="flex-shrink-0 w-9 h-9 rounded-full bg-rmpg-700 border border-rmpg-600 flex items-center justify-center text-xs font-bold text-rmpg-300 select-none" aria-hidden="true">
                 {(person.first_name || '')[0]}{(person.last_name || '')[0]}
               </div>
               <div className="flex-1 min-w-0">

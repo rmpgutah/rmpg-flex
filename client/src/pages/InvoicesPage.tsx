@@ -525,7 +525,7 @@ export default function InvoicesPage() {
   // ── Create form panel ────────────────────────────────────
 
   const CreatePanel = () => (
-    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+    <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent p-4 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-bold text-white flex items-center gap-2">
           <Plus size={14} className="text-brand-400" /> New Invoice
@@ -546,7 +546,7 @@ export default function InvoicesPage() {
           <select
             value={createForm.client_id}
             onChange={e => setCreateForm(f => ({ ...f, client_id: e.target.value }))}
-            className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none"
+            className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none"
           >
             <option value="">-- Select Client --</option>
             {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -561,7 +561,7 @@ export default function InvoicesPage() {
               type="date"
               value={createForm.period_start}
               onChange={e => setCreateForm(f => ({ ...f, period_start: e.target.value }))}
-              className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none"
+              className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none"
             />
           </div>
           <div>
@@ -570,7 +570,7 @@ export default function InvoicesPage() {
               type="date"
               value={createForm.period_end}
               onChange={e => setCreateForm(f => ({ ...f, period_end: e.target.value }))}
-              className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none"
+              className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none"
             />
           </div>
         </div>
@@ -582,7 +582,7 @@ export default function InvoicesPage() {
             type="date"
             value={createForm.issue_date}
             onChange={e => setCreateForm(f => ({ ...f, issue_date: e.target.value }))}
-            className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none"
+            className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none"
           />
         </div>
 
@@ -593,7 +593,7 @@ export default function InvoicesPage() {
             value={createForm.notes}
             onChange={e => setCreateForm(f => ({ ...f, notes: e.target.value }))}
             rows={2}
-            className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none resize-none"
+            className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none resize-none"
           />
         </div>
 
@@ -604,7 +604,7 @@ export default function InvoicesPage() {
             value={createForm.internal_notes}
             onChange={e => setCreateForm(f => ({ ...f, internal_notes: e.target.value }))}
             rows={2}
-            className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none resize-none"
+            className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none resize-none"
           />
         </div>
 
@@ -636,7 +636,7 @@ export default function InvoicesPage() {
     const statusActions = getStatusActions(inv);
 
     return (
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent p-4 space-y-4">
         {/* Header */}
         <div className="flex items-start justify-between">
           <div>
@@ -788,7 +788,7 @@ export default function InvoicesPage() {
           {inv.line_items && inv.line_items.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-[#0d1520]">
                   <tr className="text-[9px] uppercase tracking-wider text-rmpg-500 border-b border-[#1e3048]">
                     <th className="text-left pb-1 pr-2">Type</th>
                     <th className="text-left pb-1 pr-2">Description</th>
@@ -800,7 +800,7 @@ export default function InvoicesPage() {
                 </thead>
                 <tbody>
                   {inv.line_items.map(item => (
-                    <tr key={item.id} className="border-b border-[#1e3048]/50 hover:bg-[#1a2636]/50">
+                    <tr key={item.id} className="border-b border-[#1e3048]/50 hover:bg-[#1a2636]/50 transition-colors">
                       <td className="py-1 pr-2">
                         <span className="text-[9px] text-rmpg-400">{LINE_TYPE_LABELS[item.line_type] || item.line_type}</span>
                       </td>
@@ -1024,7 +1024,7 @@ export default function InvoicesPage() {
                     placeholder="Search invoices..." aria-label="Search invoices..."
                     value={searchQuery}
                     onChange={e => handleSearchChange(e.target.value)}
-                    className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm pl-7 pr-2 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none"
+                    className="w-full bg-[#0d1520] border border-[#1e3048] rounded-sm pl-7 pr-2 py-1.5 text-xs text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none"
                   />
                 </div>
                 {canEdit && (
@@ -1048,20 +1048,20 @@ export default function InvoicesPage() {
             </div>
 
             {/* List */}
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
               {loading ? (
                 <div className="flex items-center justify-center gap-2 h-32"><Loader2 size={20} className="animate-spin text-brand-400" /><span className="text-xs text-rmpg-400">Loading invoices...</span></div>
               ) : error ? (
                 <div className="p-4 text-red-400 text-xs">{error}</div>
               ) : invoices.length === 0 ? (
-                <div className="p-4 text-center text-rmpg-500 text-xs">No invoices found.</div>
+                <div className="flex flex-col items-center justify-center py-12 text-rmpg-500"><DollarSign size={32} className="mb-2 opacity-30" /><p className="text-xs">No invoices found</p></div>
               ) : (
                 <div className="divide-y divide-[#1e3048]/40">
                   {invoices.map(inv => (
                     <div
                       key={inv.id}
                       onClick={() => selectInvoice(inv)}
-                      className="p-2 hover:bg-[#1a2636]/60 cursor-pointer"
+                      className="p-2 hover:bg-[#1a2636]/60 cursor-pointer transition-colors"
                     >
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-mono text-brand-300">{inv.invoice_number}</span>
@@ -1103,7 +1103,7 @@ export default function InvoicesPage() {
         </div>
         <StatsBar />
         <div className="flex items-center gap-2">
-          <button type="button" onClick={() => { fetchInvoices(); fetchStats(); }} className="text-rmpg-400 hover:text-white p-1" title="Refresh">
+          <button type="button" onClick={() => { fetchInvoices(); fetchStats(); }} className="text-rmpg-400 hover:text-white p-1 transition-colors" title="Refresh" aria-label="Refresh">
             <RefreshCw size={12} />
           </button>
           {canEdit && (
@@ -1127,7 +1127,7 @@ export default function InvoicesPage() {
             placeholder="Search..." aria-label="Search..."
             value={searchQuery}
             onChange={e => handleSearchChange(e.target.value)}
-            className="w-full bg-[#141e2b] border border-[#1e3048] rounded-sm pl-6 pr-2 py-1 text-[11px] text-white focus:border-brand-500 focus:outline-none"
+            className="w-full bg-[#141e2b] border border-[#1e3048] rounded-sm pl-6 pr-2 py-1 text-[11px] text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none"
           />
         </div>
         <select
@@ -1181,7 +1181,7 @@ export default function InvoicesPage() {
       <div className="flex-1 flex overflow-hidden">
         {/* Left: invoice list */}
         <div className="flex flex-col w-[55%] border-r border-[#1e3048] overflow-hidden">
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
             {loading ? (
               <div className="flex items-center justify-center gap-2 h-32"><Loader2 size={20} className="animate-spin text-brand-400" /><span className="text-xs text-rmpg-400">Loading invoices...</span></div>
             ) : invoices.length === 0 ? (
