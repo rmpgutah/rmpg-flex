@@ -35,7 +35,7 @@ let _lastRateLimitAt = 0;
 
 /** Get current scan delay based on rate-limit history */
 export function getAdaptiveScanDelay(): number {
-  const base = 5000; // 5 second base delay (was 3s — too aggressive)
+  const base = 8000; // 8 second base delay (was 5s — CloudFront WAF still blocking)
   if (_consecutiveRateLimits === 0) return base;
   // Exponential backoff: 5s → 10s → 20s → 40s, capped at 60s
   return Math.min(base * Math.pow(2, _consecutiveRateLimits), 60_000);
@@ -402,7 +402,7 @@ export function getUtahWarrantSyncStatus(): {
 // ══════════════════════════════════════════════════════════════
 
 /** Base delay between person searches (adaptive backoff applies on top) */
-const SCAN_DELAY_MS = 5000;
+const SCAN_DELAY_MS = 8000; // 8 second base delay between warrant checks
 
 /** Generate a unique run ID for each scan */
 function generateRunId(): string {
@@ -581,10 +581,11 @@ async function _runWarrantWatchScanImpl(): Promise<{
           }
         }
 
-        // Adaptive throttle — slows down when 403s are detected
+        // Adaptive throttle with jitter — avoids CloudFront WAF pattern detection
         if (personsChecked < persons.length) {
-          const delay = Math.max(SCAN_DELAY_MS, getAdaptiveScanDelay());
-          await sleep(delay);
+          const baseDelay = Math.max(SCAN_DELAY_MS, getAdaptiveScanDelay());
+          const jitter = Math.floor(Math.random() * 4000); // 0-4s random jitter
+          await sleep(baseDelay + jitter);
         }
       } catch (err: any) {
         errors++;
