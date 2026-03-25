@@ -1630,13 +1630,13 @@ router.get('/beat-activity', (req: Request, res: Response) => {
     `).all(offset) as any[];
 
     const citationsByBeat = db.prepare(`
-      SELECT COALESCE(beat, 'Unassigned') as beat, COUNT(*) as count
+      SELECT COALESCE(zone_beat, 'Unassigned') as beat, COUNT(*) as count
       FROM citations WHERE created_at >= DATE('now', ?)
       GROUP BY beat ORDER BY count DESC
     `).all(offset) as any[];
 
     const arrestsByBeat = db.prepare(`
-      SELECT COALESCE(beat, 'Unassigned') as beat, COUNT(*) as count
+      SELECT COALESCE(zone_beat, 'Unassigned') as beat, COUNT(*) as count
       FROM arrests WHERE created_at >= DATE('now', ?)
       GROUP BY beat ORDER BY count DESC
     `).all(offset) as any[];
@@ -1664,7 +1664,7 @@ router.get('/beat-activity', (req: Request, res: Response) => {
     res.json({ period_days: days, beats: Object.values(beatMap).sort((a: any, b: any) => b.calls - a.calls) });
   } catch (error: any) {
     console.error('Beat activity error:', error);
-    res.status(500).json({ error: 'Failed to beat activity', code: 'BEAT_ACTIVITY_ERROR' });
+    res.status(500).json({ error: 'Failed to get beat activity report', code: 'BEAT_ACTIVITY_ERROR' });
   }
 });
 
@@ -1877,7 +1877,7 @@ router.get('/arrest-demographics', requireRole('admin', 'manager', 'supervisor')
     `).all(offset);
 
     const byLocation = db.prepare(`
-      SELECT COALESCE(beat, 'Unknown') as location, COUNT(*) as count FROM arrests
+      SELECT COALESCE(zone_beat, 'Unknown') as location, COUNT(*) as count FROM arrests
       WHERE created_at >= DATE('now', ?) GROUP BY location ORDER BY count DESC LIMIT 15
     `).all(offset);
 
