@@ -114,7 +114,6 @@ export default function DataTable<T>({
               const isSortable = col.sortable && onSort;
               const isActive = sortKey === col.key;
               return (
-                {/* 33: Header cell with group class for child hover effects */}
                 <th
                   key={col.key}
                   className={`group px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-rmpg-400 whitespace-nowrap ${alignClass(col.align)} ${
