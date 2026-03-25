@@ -10,6 +10,7 @@ import { identifyBeat } from '../../utils/geofence';
 import { broadcastDispatchUpdate } from '../../utils/websocket';
 import { createNotificationForRoles } from '../notifications';
 import { auditLog } from '../../utils/auditLogger';
+import { analyzeCall, isAIAvailable } from '../../utils/groqAI';
 
 // ── Upgrade 1: Priority score calculation ──
 // Higher scores = more urgent. Used for sorting the dispatch queue.
@@ -608,6 +609,37 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     }
 
     res.status(201).json(response);
+
+    // Non-blocking AI analysis on new call
+    if (isAIAvailable()) {
+      const existingFlags: string[] = [];
+      if (call.weapons_involved) existingFlags.push('weapons_involved');
+      if (call.domestic_violence) existingFlags.push('domestic_violence');
+      if (call.mental_health_crisis) existingFlags.push('mental_health_crisis');
+      if (call.felony_in_progress) existingFlags.push('felony_in_progress');
+      if (call.officer_safety_caution) existingFlags.push('officer_safety_caution');
+      if (call.hazmat) existingFlags.push('hazmat');
+      if (call.gang_related) existingFlags.push('gang_related');
+
+      analyzeCall({
+        incident_type: call.incident_type,
+        description: call.description || undefined,
+        notes: call.notes || undefined,
+        location_address: call.location_address || undefined,
+        existing_flags: existingFlags,
+      }).then((analysis) => {
+        if (analysis && analysis.confidence > 0.7 && analysis.safetyBriefing) {
+          broadcastDispatchUpdate({
+            action: 'ai_analysis',
+            call_id: call.id,
+            call_number: call.call_number,
+            analysis,
+          });
+        }
+      }).catch((err) => {
+        console.error('AI analysis error (create):', err?.message || err);
+      });
+    }
   } catch (error: any) {
     console.error('Create call error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to create call', code: 'CREATE_CALL_ERROR' });
@@ -1080,6 +1112,41 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     broadcastDispatchUpdate({ action: 'call_updated', call: updated });
 
     res.json(updated);
+
+    // Non-blocking AI analysis when narrative (description/notes) changed
+    const narrativeChanged =
+      (description !== undefined && description !== call.description) ||
+      (notes !== undefined && notes !== call.notes);
+
+    if (narrativeChanged && isAIAvailable()) {
+      const existingFlags: string[] = [];
+      if (updated.weapons_involved) existingFlags.push('weapons_involved');
+      if (updated.domestic_violence) existingFlags.push('domestic_violence');
+      if (updated.mental_health_crisis) existingFlags.push('mental_health_crisis');
+      if (updated.felony_in_progress) existingFlags.push('felony_in_progress');
+      if (updated.officer_safety_caution) existingFlags.push('officer_safety_caution');
+      if (updated.hazmat) existingFlags.push('hazmat');
+      if (updated.gang_related) existingFlags.push('gang_related');
+
+      analyzeCall({
+        incident_type: updated.incident_type,
+        description: updated.description || undefined,
+        notes: updated.notes || undefined,
+        location_address: updated.location_address || undefined,
+        existing_flags: existingFlags,
+      }).then((analysis) => {
+        if (analysis && analysis.confidence > 0.7 && analysis.safetyBriefing) {
+          broadcastDispatchUpdate({
+            action: 'ai_analysis',
+            call_id: updated.id,
+            call_number: updated.call_number,
+            analysis,
+          });
+        }
+      }).catch((err) => {
+        console.error('AI analysis error (update):', err?.message || err);
+      });
+    }
   } catch (error: any) {
     console.error('Update call error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to update call', code: 'UPDATE_CALL_ERROR' });
