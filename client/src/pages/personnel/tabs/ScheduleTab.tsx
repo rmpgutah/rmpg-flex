@@ -120,18 +120,18 @@ export default function ScheduleTab({ officers, schedules, weekMonday, onWeekCha
 
       {/* No officers fallback */}
       {officersWithSchedules.length === 0 ? (
-        <div className="text-center py-12">
-          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-base">
-            <Calendar className="w-7 h-7 text-rmpg-600" />
+        <div className="text-center py-16" role="status">
+          <div className="w-16 h-16 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+            <Calendar className="w-8 h-8 text-rmpg-600" />
           </div>
-          <p className="text-xs text-rmpg-500">No officers or schedules to display.</p>
-          <p className="text-[10px] text-rmpg-600 mt-1">Add schedules to populate the weekly grid.</p>
+          <p className="text-sm text-rmpg-400 font-medium">No officers or schedules to display</p>
+          <p className="text-[10px] text-rmpg-600 mt-1">Add schedules to populate the weekly grid</p>
         </div>
       ) : (
-        <div className="panel-beveled overflow-x-auto bg-surface-sunken">
-          <div className="grid grid-cols-8 min-w-[700px]">
+        <div className="panel-beveled overflow-x-auto bg-surface-sunken scrollbar-dark">
+          <div className="grid grid-cols-8 min-w-[700px]" role="grid" aria-label="Weekly schedule grid">
             {/* Header Row */}
-            <div className="p-2 text-[9px] text-rmpg-400 uppercase font-bold tracking-wider border-b border-rmpg-700 bg-gradient-to-r from-rmpg-800 to-surface-base">
+            <div className="p-2 text-[9px] text-rmpg-400 uppercase font-bold tracking-wider border-b border-rmpg-700 bg-gradient-to-r from-rmpg-800 to-surface-base sticky left-0 z-10" role="columnheader">
               Officer
             </div>
             {weekDates.map((d, i) => {
@@ -158,7 +158,7 @@ export default function ScheduleTab({ officers, schedules, weekMonday, onWeekCha
             {officersWithSchedules.map((officer) => (
               <React.Fragment key={officer.id}>
                 {/* Officer name cell */}
-                <div className="p-2 border-b border-rmpg-700/50 flex items-center gap-1.5 bg-surface-sunken">
+                <div className="p-2 border-b border-rmpg-700/50 flex items-center gap-1.5 bg-surface-sunken sticky left-0 z-10">
                   <span className={officer.status === 'on_duty' ? 'led-dot led-green' : 'led-dot led-off'} />
                   <span className="text-[10px] text-rmpg-300 font-medium truncate">
                     {officer.last_name}, {officer.first_name?.[0] || ''}.

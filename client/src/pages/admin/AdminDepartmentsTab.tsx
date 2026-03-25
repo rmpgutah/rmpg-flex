@@ -161,12 +161,11 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search departments..." aria-label="Search departments"
-              autoComplete="off"
+              placeholder="Search..." aria-label="Search departments"
               className="input-dark text-[10px] pl-6 pr-2 py-1 w-40 min-h-[36px]"
             />
           </div>
-          <button type="button" onClick={openNew} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
+          <button type="button" onClick={openNew} className="toolbar-btn-primary text-[10px] flex items-center gap-1" aria-label="Create new department">
             <Plus className="w-3 h-3" />
             New Department
           </button>
@@ -176,8 +175,9 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
       {/* Departments Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {topLevel.length === 0 && (
-          <div className="col-span-2 text-center py-8 text-rmpg-500 text-xs">
-            No departments found. Create one to get started.
+          <div className="col-span-2 flex flex-col items-center justify-center py-12 text-rmpg-500 text-xs gap-2">
+            <Building2 className="w-6 h-6 text-rmpg-600" />
+            <span>No departments found. Create one to get started.</span>
           </div>
         )}
         {topLevel.map((dept) => {
@@ -197,8 +197,8 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button type="button" onClick={() => openEdit(dept)} className="toolbar-btn p-1"><Edit2 className="w-3 h-3" /></button>
-                  <button type="button" onClick={() => setDeleteTarget(dept)} className="toolbar-btn p-1 text-red-400 hover:text-red-300"><Trash2 className="w-3 h-3" /></button>
+                  <button type="button" onClick={() => openEdit(dept)} className="toolbar-btn p-1" aria-label={`Edit ${dept.name}`} title="Edit department"><Edit2 className="w-3 h-3" /></button>
+                  <button type="button" onClick={() => setDeleteTarget(dept)} className="toolbar-btn p-1 text-red-400 hover:text-red-300" aria-label={`Delete ${dept.name}`} title="Delete department"><Trash2 className="w-3 h-3" /></button>
                 </div>
               </div>
               <div className="flex items-center gap-3 text-[10px] text-rmpg-400">
@@ -232,13 +232,13 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
 
       {/* Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowForm(false)}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in" onClick={() => setShowForm(false)} role="dialog" aria-modal="true" aria-label={editing ? 'Edit department' : 'New department'}>
           <div className="bg-surface-base panel-beveled w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-rmpg-700">
               <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">
                 {editing ? 'Edit Department' : 'New Department'}
               </h3>
-              <button type="button" onClick={() => setShowForm(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+              <button type="button" onClick={() => setShowForm(false)} className="p-0.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700 transition-colors rounded-sm" aria-label="Close dialog"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4 space-y-3">
               <div>

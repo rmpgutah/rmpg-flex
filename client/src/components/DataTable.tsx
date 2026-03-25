@@ -137,7 +137,7 @@ export default function DataTable<T>({
         </thead>
         <tbody>
           {loading ? (
-            <SkeletonRows columns={columns} />
+            <SkeletonRows columns={columns as Column<unknown>[]} />
           ) : data.length === 0 ? (
             <tr>
               <td colSpan={columns.length + (showRowNumbers ? 1 : 0)}>

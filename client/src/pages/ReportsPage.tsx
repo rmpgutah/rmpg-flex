@@ -553,19 +553,19 @@ function CrimeTrendCard() {
         {data.trends?.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full text-[10px]">
-              <thead>
-                <tr className="border-b border-[#1e3048]">
-                  <th className="px-2 py-1.5 text-left text-rmpg-400 text-xs font-bold uppercase tracking-wider">Type</th>
-                  <th className="px-2 py-1.5 text-right text-rmpg-400 text-xs font-bold uppercase tracking-wider">Current</th>
-                  <th className="px-2 py-1.5 text-right text-rmpg-400 text-xs font-bold uppercase tracking-wider">Prev Month</th>
-                  <th className="px-2 py-1.5 text-right text-rmpg-400 text-xs font-bold uppercase tracking-wider">MoM %</th>
-                  <th className="px-2 py-1.5 text-right text-rmpg-400 text-xs font-bold uppercase tracking-wider">Last Year</th>
-                  <th className="px-2 py-1.5 text-right text-rmpg-400 text-xs font-bold uppercase tracking-wider">YoY %</th>
+              <thead className="sticky top-0 z-10 bg-[#0d1520]">
+                <tr className="border-b border-rmpg-600">
+                  <th className="px-2 py-1.5 text-left text-rmpg-400 font-bold uppercase">Type</th>
+                  <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Current</th>
+                  <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Prev Month</th>
+                  <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">MoM %</th>
+                  <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Last Year</th>
+                  <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">YoY %</th>
                 </tr>
               </thead>
               <tbody>
                 {data.trends.slice(0, 10).map((t: any) => (
-                  <tr key={t.type} className="border-b border-rmpg-700/50 hover:bg-surface-raised">
+                  <tr key={t.type} className="border-b border-rmpg-700/50 hover:bg-surface-raised transition-colors">
                     <td className="px-2 py-1.5 text-rmpg-200">{formatIncidentType(t.type)}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-rmpg-200">{t.current}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-rmpg-400">{t.previous}</td>
@@ -658,7 +658,7 @@ function BeatActivityCard() {
         {data.beats?.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-[10px]">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-[#0d1520]">
                 <tr className="border-b border-rmpg-600">
                   <th className="px-2 py-1.5 text-left text-rmpg-400 font-bold uppercase">Beat</th>
                   <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Calls</th>
@@ -670,7 +670,7 @@ function BeatActivityCard() {
               </thead>
               <tbody>
                 {data.beats.map((b: any) => (
-                  <tr key={b.beat} className="border-b border-rmpg-700/50 hover:bg-surface-raised">
+                  <tr key={b.beat} className="border-b border-rmpg-700/50 hover:bg-surface-raised transition-colors">
                     <td className="px-2 py-1.5 text-rmpg-200 font-mono font-bold">{b.beat}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-blue-400">{b.calls}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-rmpg-200">{b.incidents}</td>

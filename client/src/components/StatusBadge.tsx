@@ -92,13 +92,15 @@ function getGenericFallback(status: string): { label: string; classes: string } 
 export default React.memo(function StatusBadge({ status, type, size = 'md', className = '' }: StatusBadgeProps) {
   const config = type ? getConfig(status, type) : getGenericFallback(status);
 
-  const sizeClasses = size === 'sm' ? 'px-1.5 py-0.5 text-[9px]' : 'px-2 py-0.5 text-[10px]';
+  {/* 15: Consistent badge sizing with min-width for uniform appearance; 16: Leading-none for tight badges */}
+  const sizeClasses = size === 'sm' ? 'px-1.5 py-0.5 text-[9px] leading-none' : 'px-2 py-0.5 text-[10px] leading-tight';
 
   if (!config) {
     // Unknown status -- render with neutral gray styling
     const label = status.replace(/_/g, ' ');
+    {/* 17: Whitespace-nowrap on unknown badges to prevent wrapping */}
     return (
-      <span className={`inline-flex items-center font-bold tracking-wide uppercase panel-beveled ${sizeClasses} bg-rmpg-700 text-rmpg-300 border border-rmpg-600 ${className}`} role="status" aria-label={`Status: ${label}`}>
+      <span className={`inline-flex items-center font-bold tracking-wide uppercase whitespace-nowrap panel-beveled ${sizeClasses} bg-rmpg-700 text-rmpg-300 border border-rmpg-600 ${className}`} role="status" aria-label={`Status: ${label}`}>
         {label}
       </span>
     );
@@ -106,7 +108,7 @@ export default React.memo(function StatusBadge({ status, type, size = 'md', clas
 
   return (
     <span
-      className={`inline-flex items-center font-bold tracking-wide uppercase panel-beveled ${sizeClasses} ${config.classes} ${className}`}
+      className={`inline-flex items-center font-bold tracking-wide uppercase whitespace-nowrap panel-beveled transition-colors duration-150 ${sizeClasses} ${config.classes} ${className}`}
       role="status"
       aria-label={`Status: ${config.label}`}
     >

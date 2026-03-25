@@ -164,12 +164,12 @@ export default function DeploymentDetailTab({ deployments, loading, onAddDeploym
 
       {/* Empty State */}
       {deployments.length === 0 && (
-        <div className="text-center py-12">
-          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center" style={{ background: '#0d1520' }}>
-            <MapPinned className="w-7 h-7 text-rmpg-600" />
+        <div className="text-center py-16" role="status">
+          <div className="w-16 h-16 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+            <MapPinned className="w-8 h-8 text-rmpg-600" />
           </div>
-          <p className="text-xs text-rmpg-500">No deployment history for this officer.</p>
-          <p className="text-[10px] text-rmpg-600 mt-1">Click &quot;Add Deployment&quot; to assign a deployment.</p>
+          <p className="text-sm text-rmpg-400 font-medium">No deployment history for this officer</p>
+          <p className="text-[10px] text-rmpg-600 mt-1">Click "Add Deployment" to assign a deployment</p>
         </div>
       )}
     </div>

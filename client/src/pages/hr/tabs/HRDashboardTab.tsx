@@ -96,13 +96,13 @@ function MetricCard({
     <button type="button"
       onClick={onClick}
       disabled={!onClick}
-      className="bg-surface-base border border-rmpg-700 rounded-sm p-4 text-left transition-colors hover:border-rmpg-500 disabled:cursor-default"
+      className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-4 text-left transition-all duration-200 hover:border-[#2a3f5a] hover:shadow-lg hover:brightness-110 disabled:cursor-default focus:outline-none focus:ring-1 focus:ring-brand-500/40"
     >
       <div className="flex items-center gap-2 mb-2">
-        <Icon size={16} style={{ color: accent }} />
+        <Icon size={16} style={{ color: accent }} aria-hidden="true" />
         <span className="text-xs text-rmpg-400 uppercase tracking-wide">{label}</span>
       </div>
-      <div className="text-2xl font-bold text-white">{value}</div>
+      <div className="text-2xl font-bold text-white font-mono">{value}</div>
     </button>
   );
 }
@@ -168,7 +168,7 @@ function ManagerDashboard({
   return (
     <div className="space-y-4">
       {/* Top metrics */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" role="group" aria-label="HR metrics">
         <MetricCard icon={Users} label="Total Active" value={data.total_active} accent="#3b82f6" />
         <MetricCard icon={UserPlus} label="New Hires (30d)" value={data.new_hires_30d} accent="#22c55e" />
         <MetricCard icon={CalendarOff} label="On Leave Today" value={data.on_leave_today} accent="#f59e0b" />

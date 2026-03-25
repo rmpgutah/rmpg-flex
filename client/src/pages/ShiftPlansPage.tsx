@@ -60,8 +60,9 @@ function PlanStatusBadge({ status }: { status: string }) {
   const c = STATUS_COLORS[status] || STATUS_COLORS.draft;
   return (
     <span
-      className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5"
+      className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 transition-colors duration-150"
       style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}` }}
+      role="status"
     >
       {status}
     </span>
@@ -190,7 +191,8 @@ export default function ShiftPlansPage() {
             type="date"
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
-            className="bg-transparent text-white text-[11px] font-mono border border-rmpg-600 px-2 py-0.5 focus:border-blue-500 focus:outline-none"
+            aria-label="Select shift date"
+            className="bg-transparent text-white text-[11px] font-mono border border-rmpg-600 px-2 py-0.5 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30 transition-colors"
           />
           <button type="button"
             onClick={() => navigateDate(1)}
@@ -312,11 +314,15 @@ export default function ShiftPlansPage() {
                   <div
                     key={plan.id}
                     onClick={() => sp.setActivePlanId(plan.id)}
-                    className="px-3 py-2.5 cursor-pointer transition-colors border-b border-rmpg-700/50"
+                    className="px-3 py-2.5 cursor-pointer transition-all duration-150 border-b border-rmpg-800/50 hover:brightness-110"
                     style={{
                       background: isSelected ? 'rgba(59,130,246,0.08)' : 'transparent',
                       borderLeft: `3px solid ${shiftConfig?.color || '#5a6e80'}`,
                     }}
+                    role="button"
+                    tabIndex={0}
+                    aria-selected={isSelected}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') sp.setActivePlanId(plan.id); }}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -443,16 +449,16 @@ export default function ShiftPlansPage() {
                   </div>
                 ) : (
                   <div className={isMobile ? 'overflow-x-auto' : ''}>
-                  <table className="w-full text-[10px]">
-                    <thead>
+                  <table className="w-full text-[10px]" role="table">
+                    <thead className="sticky top-0 z-10">
                       <tr style={{ background: '#0f1a28' }} className="text-rmpg-500 text-[9px] uppercase tracking-wider">
-                        <th className="text-left px-4 py-1.5 font-bold whitespace-nowrap">Area</th>
-                        <th className="text-left px-4 py-1.5 font-bold whitespace-nowrap">Layer</th>
-                        <th className="text-left px-4 py-1.5 font-bold whitespace-nowrap">Officers</th>
-                        <th className="text-left px-4 py-1.5 font-bold whitespace-nowrap">Units</th>
-                        <th className="text-left px-4 py-1.5 font-bold whitespace-nowrap">Hours</th>
-                        <th className="text-left px-4 py-1.5 font-bold whitespace-nowrap">Notes</th>
-                        <th className="text-right px-4 py-1.5 font-bold whitespace-nowrap">Actions</th>
+                        <th className="text-left px-4 py-2 font-bold whitespace-nowrap" scope="col">Area</th>
+                        <th className="text-left px-4 py-2 font-bold whitespace-nowrap" scope="col">Layer</th>
+                        <th className="text-left px-4 py-2 font-bold whitespace-nowrap" scope="col">Officers</th>
+                        <th className="text-left px-4 py-2 font-bold whitespace-nowrap" scope="col">Units</th>
+                        <th className="text-left px-4 py-2 font-bold whitespace-nowrap" scope="col">Hours</th>
+                        <th className="text-left px-4 py-2 font-bold whitespace-nowrap" scope="col">Notes</th>
+                        <th className="text-right px-4 py-2 font-bold whitespace-nowrap" scope="col">Actions</th>
                       </tr>
                     </thead>
                     <tbody>

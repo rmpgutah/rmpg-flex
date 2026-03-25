@@ -88,10 +88,12 @@ export default React.memo(function UnitStatusBoard({
             className={`flex items-center gap-2 p-1.5 panel-beveled cursor-pointer hover:bg-surface-raised transition-colors ${isDraggable(unit) ? 'cursor-grab active:cursor-grabbing' : ''}`}
             style={{ background: '#141e2b' }}
           >
-            <span className={STATUS_LED_CLASSES[unit.status]} />
+            {/* 33: aria-hidden on decorative LED dot */}
+            <span className={STATUS_LED_CLASSES[unit.status]} aria-hidden="true" />
             <div className="min-w-0">
               <div className="text-xs font-bold text-white font-mono truncate">{unit.call_sign}</div>
-              <div className="text-[10px] text-rmpg-300 truncate">{unit.officer_name || 'Unassigned'}</div>
+              {/* 34: Italic unassigned label in compact mode */}
+              <div className={`text-[10px] truncate ${unit.officer_name ? 'text-rmpg-300' : 'text-rmpg-500 italic'}`}>{unit.officer_name || 'Unassigned'}</div>
             </div>
           </div>
         ))}
@@ -102,7 +104,7 @@ export default React.memo(function UnitStatusBoard({
   const colCount = 5 + (canAssign ? 1 : 0) + (hasActions ? 1 : 0);
 
   return (
-    <div className="overflow-auto">
+    <div className="overflow-auto scrollbar-dark">
       <table className="table-dark" aria-label="Unit status board">
         <thead>
           <tr>
@@ -138,7 +140,8 @@ export default React.memo(function UnitStatusBoard({
                   })()}
                 </div>
               </td>
-              <td className="text-rmpg-200">{unit.officer_name || <span className="text-rmpg-500">Unassigned</span>}</td>
+              {/* 29: Italic styling on unassigned officer for distinction */}
+              <td className="text-rmpg-200">{unit.officer_name || <span className="text-rmpg-500 italic">Unassigned</span>}</td>
               <td>
                 <StatusBadge status={unit.status} type="unit_status" size="sm" />
               </td>
@@ -157,11 +160,13 @@ export default React.memo(function UnitStatusBoard({
               </td>
               {canAssign && (
                 <td>
+                  {/* 30: Active press feedback on assign button */}
                   {unit.status === 'available' && !assignedUnitIds.includes(unit.id) ? (
                     <button type="button"
                       onClick={(e) => { e.stopPropagation(); onAssignUnit!(unit.id); }}
-                      className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-green-400 bg-green-900/30 border border-green-700/50 hover:bg-green-800/40 transition-colors"
+                      className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-green-400 bg-green-900/30 border border-green-700/50 hover:bg-green-800/40 active:bg-green-700/50 transition-colors"
                       title={`Assign ${unit.call_sign} to call`}
+                      aria-label={`Assign ${unit.call_sign} to call`}
                     >
                       <PlusCircle className="w-3 h-3" />
                       Assign
@@ -201,9 +206,10 @@ export default React.memo(function UnitStatusBoard({
           ))}
           {sorted.length === 0 && (
             <tr>
-              <td colSpan={colCount} className="text-center text-rmpg-400 py-8">
-                <div className="flex flex-col items-center gap-2">
-                  <Radio className="w-6 h-6 text-rmpg-500" />
+              {/* 31: Empty state with larger icon and fade-in; 32: aria-hidden on decorative icon */}
+            <td colSpan={colCount} className="text-center text-rmpg-400 py-8">
+                <div className="flex flex-col items-center gap-2 animate-fade-in">
+                  <Radio className="w-6 h-6 text-rmpg-500 opacity-50" aria-hidden="true" />
                   <p className="text-xs">No units configured</p>
                   {onCreateUnit && (
                     <button type="button"

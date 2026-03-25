@@ -362,10 +362,10 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={dialogRef}>
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={isSubmitting ? undefined : handleClose} />
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={isSubmitting ? undefined : handleClose} />
 
-      {/* Modal - Blocky */}
-      <div className="relative w-full max-w-2xl mx-4 bg-surface-base border border-rmpg-600 shadow-2xl animate-fade-in">
+      {/* 78: Modal with deeper shadow for elevation */}
+      <div className="relative w-full max-w-2xl mx-4 bg-surface-base border border-rmpg-600 animate-fade-in" style={{ boxShadow: '0 12px 48px rgba(0, 0, 0, 0.6)' }}>
         {/* Header - Toolbar style */}
         <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)' }}>
           <div className="flex items-center gap-2">
@@ -391,9 +391,12 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               )}
             </button>
           </div>
+          {/* 79: Close button with rounded-sm and aria-label; 80: Disabled during submit */}
           <button type="button"
             onClick={handleClose}
-            className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-white transition-colors">
+            disabled={isSubmitting}
+            className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-white transition-colors rounded-sm disabled:opacity-40"
+            aria-label="Close modal">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -410,7 +413,8 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
         )}
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+        {/* 81: Form with dark scrollbar; 82: Increased padding for readability */}
+        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto scrollbar-dark">
           {/* Row 1: Type + Source */}
           <div className={`grid gap-4 ${mode === 'full' ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
             <div>
@@ -1120,15 +1124,17 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
             </div>
           )}
 
-          {/* Actions */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-rmpg-700">
-            <button type="button" onClick={onClose} disabled={isSubmitting} className="toolbar-btn">
+          {/* 83: Actions bar with sticky bottom positioning */}
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-rmpg-700 sticky bottom-0 bg-surface-base pb-1">
+            {/* 84: Cancel button with explicit aria-label */}
+            <button type="button" onClick={onClose} disabled={isSubmitting} className="toolbar-btn" aria-label="Cancel and close">
               Cancel
             </button>
-            <button type="submit" disabled={isSubmitting} className="toolbar-btn toolbar-btn-primary">
+            {/* 85: Submit button with disabled cursor-not-allowed */}
+            <button type="submit" disabled={isSubmitting} className="toolbar-btn toolbar-btn-primary disabled:cursor-not-allowed">
               {isSubmitting ? (
                 <>
-                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
                   Saving...
                 </>
               ) : (

@@ -30,9 +30,12 @@ export default function DispositionPrompt({
   const [selected, setSelected] = useState('');
   const [createIncident, setCreateIncident] = useState(false);
 
+  // 39: role="alert" for screen reader announcement; 40: aria-live polite
   return (
     <div
       className="animate-fade-in"
+      role="alert"
+      aria-live="polite"
       style={{
         background: 'rgba(180, 130, 0, 0.12)',
         border: '1px solid #b48200',
@@ -47,20 +50,23 @@ export default function DispositionPrompt({
             Clear {callNumber} — Select Disposition
           </span>
         </div>
+        {/* 41: Close button with hover background and transition */}
         <button type="button"
           onClick={onCancel}
-          className="text-rmpg-500 hover:text-white"
+          className="text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 p-0.5 transition-colors rounded-sm"
           title="Cancel clear"
+          aria-label="Cancel disposition"
         >
           <X style={{ width: 12, height: 12 }} />
         </button>
       </div>
 
       <div className="flex items-center gap-2">
+        {/* 44: Focus ring on select input matching design system */}
         <select
           value={selected}
           onChange={(e) => setSelected(e.target.value)}
-          className="flex-1 bg-surface-base border border-rmpg-600 text-white text-[10px] px-2 py-1 font-mono focus:border-amber-500 focus:outline-none"
+          className="flex-1 bg-surface-base border border-rmpg-600 text-white text-[10px] px-2 py-1 font-mono focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 focus:outline-none transition-colors"
           aria-label="Disposition code"
           autoFocus
         >
@@ -72,15 +78,17 @@ export default function DispositionPrompt({
           ))}
         </select>
 
+        {/* 42: Hover/active states on confirm button; 43: Transition on background color */}
         <button type="button"
           onClick={() => selected && onConfirm(selected, createIncident)}
           disabled={!selected}
-          className="flex items-center gap-1 px-3 py-1 text-[10px] font-bold uppercase tracking-wider"
+          className="flex items-center gap-1 px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-all duration-150"
           style={{
             background: selected ? '#16a34a' : '#1e3048',
             color: selected ? '#fff' : '#5a6e80',
             border: `1px solid ${selected ? '#16a34a' : '#2a3e58'}`,
             cursor: selected ? 'pointer' : 'not-allowed',
+            opacity: selected ? 1 : 0.6,
           }}
         >
           <Check style={{ width: 10, height: 10 }} />

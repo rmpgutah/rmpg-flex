@@ -226,20 +226,24 @@ export default function AdminUsersTab({
   return (
     <div className="flex h-full overflow-hidden">
       {/* Left: User List */}
-      <div className={`${selectedUser ? 'w-[40%]' : 'w-full'} border-r border-rmpg-600 flex flex-col overflow-hidden transition-all`}>
-        <div className="px-4 py-3 flex items-center justify-between border-b border-rmpg-600 flex-shrink-0">
+      <div className={`${selectedUser ? 'w-[40%]' : 'w-full'} border-r border-rmpg-600 flex flex-col overflow-hidden transition-all duration-200`}>
+        <div className="px-4 py-3 flex items-center justify-between border-b border-rmpg-600 flex-shrink-0 bg-surface-sunken">
           <div className="relative w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" aria-hidden="true" />
             <input
               type="text"
               className="input-dark pl-9 text-xs min-h-[36px]"
               placeholder="Search users..." aria-label="Search users"
-              autoComplete="off"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
+            {searchQuery && (
+              <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-rmpg-500 hover:text-rmpg-300 transition-colors" aria-label="Clear search">
+                <XCircle className="w-3 h-3" />
+              </button>
+            )}
           </div>
-          <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={openAddUser}>
+          <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={openAddUser} aria-label="Add new user">
             <Plus className="w-3.5 h-3.5" /> Add User
           </button>
         </div>
@@ -247,7 +251,7 @@ export default function AdminUsersTab({
         {loadingUsers ? (
           <LoadingSpinner />
         ) : (
-          <div className="flex-1 overflow-auto">
+          <div className="flex-1 overflow-auto scrollbar-dark">
             {users
               .filter((u) => {
                 if (!searchQuery) return true;
@@ -255,23 +259,28 @@ export default function AdminUsersTab({
                 return (
                   u.username.toLowerCase().includes(q) ||
                   `${u.first_name} ${u.last_name}`.toLowerCase().includes(q) ||
-                  u.email.toLowerCase().includes(q)
+                  u.email.toLowerCase().includes(q) ||
+                  (u.badge_number || '').toLowerCase().includes(q)
                 );
               })
-              .map((user) => (
+              .map((user, idx) => (
                 <div
                   key={user.id}
                   onClick={() => { setSelectedUser(selectedUser?.id === user.id ? null : user); setUserDetailTab('profile'); }}
-                  className={`px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-colors ${
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedUser(selectedUser?.id === user.id ? null : user); setUserDetailTab('profile'); } }}
+                  aria-label={`Select ${user.first_name} ${user.last_name}`}
+                  className={`px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-all duration-150 ${
                     selectedUser?.id === user.id
                       ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
-                      : 'hover:bg-rmpg-700/30 border-l-2 border-l-transparent'
+                      : `hover:bg-rmpg-700/30 border-l-2 border-l-transparent ${idx % 2 === 0 ? '' : 'bg-rmpg-800/10'}`
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className={`flex-shrink-0 w-9 h-9 rounded-full border flex items-center justify-center text-xs font-bold ${
-                      user.is_active ? 'bg-rmpg-700 border-rmpg-600 text-rmpg-300' : 'bg-rmpg-800 border-rmpg-700 text-rmpg-500'
-                    }`}>
+                    <div className={`flex-shrink-0 w-9 h-9 rounded-full border flex items-center justify-center text-xs font-bold select-none transition-colors ${
+                      user.is_active ? 'bg-rmpg-700 border-rmpg-600 text-rmpg-300' : 'bg-rmpg-800 border-rmpg-700 text-rmpg-500 opacity-60'
+                    }`} aria-hidden="true">
                       {user.first_name?.[0]}{user.last_name?.[0]}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -312,8 +321,9 @@ export default function AdminUsersTab({
                       })()}
                       <button type="button"
                         onClick={(e) => { e.stopPropagation(); openEditUser(user); }}
-                        className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors"
-                        title="Edit"
+                        className="p-1 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors rounded-sm"
+                        title="Edit user"
+                        aria-label={`Edit ${user.first_name} ${user.last_name}`}
                       >
                         <Edit className="w-3 h-3" />
                       </button>
@@ -322,7 +332,10 @@ export default function AdminUsersTab({
                 </div>
               ))}
             {users.length === 0 && !loadingUsers && (
-              <div className="text-center text-rmpg-400 py-12">No users found</div>
+              <div className="flex flex-col items-center justify-center text-center text-rmpg-400 py-16 gap-2">
+                <Users className="w-8 h-8 text-rmpg-600" />
+                <span className="text-xs">No users found</span>
+              </div>
             )}
           </div>
         )}
@@ -410,7 +423,7 @@ export default function AdminUsersTab({
                 >
                   <Trash2 className="w-3.5 h-3.5" /> Terminate
                 </button>
-                <button type="button" onClick={() => setSelectedUser(null)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors">
+                <button type="button" onClick={() => setSelectedUser(null)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors rounded-sm" aria-label="Close user details">
                   <XCircle className="w-4 h-4" />
                 </button>
               </div>
@@ -418,7 +431,7 @@ export default function AdminUsersTab({
           </div>
 
           {/* Detail Tabs */}
-          <div className="flex gap-1 px-4 pt-2 border-b border-rmpg-600 flex-shrink-0">
+          <div className="flex gap-0.5 px-4 pt-2 border-b border-rmpg-600 flex-shrink-0 overflow-x-auto scrollbar-dark" role="tablist" aria-label="User detail sections">
             {([
               { id: 'profile' as const, label: 'Profile' },
               { id: 'personal' as const, label: 'Personal' },
@@ -429,20 +442,23 @@ export default function AdminUsersTab({
             ]).map((tab) => (
               <button type="button"
                 key={tab.id}
+                role="tab"
+                aria-selected={userDetailTab === tab.id}
                 onClick={() => setUserDetailTab(tab.id)}
-                className={`px-3 py-1.5 text-[10px] font-medium transition-colors ${
+                className={`px-3 py-1.5 text-[10px] font-medium transition-all duration-150 whitespace-nowrap relative ${
                   userDetailTab === tab.id
                     ? 'bg-rmpg-700 text-white border border-rmpg-600 border-b-rmpg-700'
                     : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'
                 }`}
               >
                 {tab.label}
+                {userDetailTab === tab.id && <div className="absolute bottom-0 left-1 right-1 h-[2px] bg-brand-500" />}
               </button>
             ))}
           </div>
 
           {/* Detail Content */}
-          <div className="flex-1 overflow-auto p-4 space-y-4">
+          <div className="flex-1 overflow-auto scrollbar-dark p-4 space-y-4" role="tabpanel">
             {/* Profile Tab */}
             {userDetailTab === 'profile' && (
               <>

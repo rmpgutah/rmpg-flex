@@ -115,10 +115,6 @@
   background: #3a5070;
 }
 
-::-webkit-scrollbar-corner {
-  background: var(--surface-base);
-}
-
 /* Firefox scrollbar */
 * {
   scrollbar-width: thin;
@@ -271,8 +267,24 @@
     animation: dropdown-appear 0.12s ease-out;
   }
 
-  .animate-scale-in {
-    animation: scale-in 0.15s ease-out;
+  /* Dark scrollbar for scrollable panels */
+  .scrollbar-dark {
+    scrollbar-width: thin;
+    scrollbar-color: #2a3e58 transparent;
+  }
+  .scrollbar-dark::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-dark::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-dark::-webkit-scrollbar-thumb {
+    background: #2a3e58;
+    border-radius: 3px;
+  }
+  .scrollbar-dark::-webkit-scrollbar-thumb:hover {
+    background: #3a5070;
   }
 }
 

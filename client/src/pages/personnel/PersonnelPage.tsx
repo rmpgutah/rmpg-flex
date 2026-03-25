@@ -926,11 +926,15 @@ export default function PersonnelPage() {
             <div
               key={officer.id}
               onClick={() => { setSelectedOfficer(officer); setDetailTab('profile'); }}
-              className={`panel-beveled mb-1 mx-2 p-3 cursor-pointer transition-all border-l-2 ${
+              className={`panel-beveled mb-1 mx-2 p-3 cursor-pointer transition-all duration-150 border-l-2 focus-within:ring-1 focus-within:ring-brand-500/40 ${
                 isSelected
-                  ? 'bg-brand-900/15 border-l-brand-500'
-                  : 'bg-surface-base hover:brightness-110 border-l-transparent'
+                  ? 'bg-brand-900/15 border-l-brand-500 shadow-sm'
+                  : 'bg-surface-base hover:brightness-110 hover:shadow-sm border-l-transparent'
               }`}
+              role="button"
+              tabIndex={0}
+              aria-selected={isSelected}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { setSelectedOfficer(officer); setDetailTab('profile'); } }}
             >
               <div className="flex items-center gap-3">
                 <OfficerAvatar officer={officer} size="md" />
@@ -970,9 +974,12 @@ export default function PersonnelPage() {
           );
         })}
         {filteredOfficers.length === 0 && (
-          <div className="panel-inset p-8 text-center mx-2 mt-2">
-            <Users className="w-8 h-8 text-rmpg-500 mx-auto mb-2" />
-            <p className="text-sm text-rmpg-400">{searchQuery ? 'No matching personnel' : 'No personnel records'}</p>
+          <div className="panel-inset p-10 text-center mx-2 mt-2" role="status">
+            <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+              <Users className="w-7 h-7 text-rmpg-600" />
+            </div>
+            <p className="text-sm text-rmpg-400 font-medium">{searchQuery ? 'No matching personnel' : 'No personnel records'}</p>
+            <p className="text-[10px] text-rmpg-600 mt-1">{searchQuery ? 'Try a different search term' : 'Add officers to get started'}</p>
           </div>
         )}
       </div>
@@ -1104,7 +1111,7 @@ export default function PersonnelPage() {
       </div>
 
       {/* Tab Navigation */}
-      <div className="tab-bar overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+      <div className="tab-bar overflow-x-auto scrollbar-dark" role="tablist" aria-label="Personnel management tabs" style={{ scrollbarWidth: 'none' }}>
         {MAIN_TABS.map(tab => {
           const Icon = tab.icon;
           const count = tab.id === 'roster' ? officers.length
@@ -1117,6 +1124,8 @@ export default function PersonnelPage() {
           return (
             <button type="button"
               key={tab.id}
+              role="tab"
+              aria-selected={isActive}
               onClick={() => { setActiveTab(tab.id); if (tab.id !== 'roster') setSelectedOfficer(null); }}
               className={`tab-bar-item ${isActive ? 'active' : ''}`}
             >

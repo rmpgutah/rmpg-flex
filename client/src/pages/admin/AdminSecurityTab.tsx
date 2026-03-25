@@ -150,7 +150,10 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
   const ToggleButton = ({ toggleKey, label, description }: { toggleKey: keyof SecurityConfig; label: string; description?: string }) => (
     <button type="button"
       onClick={() => toggleBool(toggleKey)}
-      className={`flex items-center gap-3 w-full p-3 border transition-colors text-left ${
+      role="switch"
+      aria-checked={config[toggleKey] === '1'}
+      aria-label={label}
+      className={`flex items-center gap-3 w-full p-3 border transition-all duration-150 text-left hover:brightness-110 ${
         config[toggleKey] === '1'
           ? 'bg-green-900/20 border-green-700/50'
           : 'bg-rmpg-900 border-rmpg-600'
@@ -179,7 +182,7 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 flex items-center justify-center bg-red-900/30 border border-red-700/50">
+          <div className="w-10 h-10 flex items-center justify-center bg-red-900/30 border border-red-700/50" aria-hidden="true">
             <ShieldAlert className="w-5 h-5 text-red-400" />
           </div>
           <div>
@@ -190,9 +193,10 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
         <button type="button"
           onClick={saveConfig}
           disabled={!dirty || saving}
-          className={`toolbar-btn ${dirty ? 'toolbar-btn-primary' : 'toolbar-btn'} flex items-center gap-1.5`}
+          className={`toolbar-btn ${dirty ? 'toolbar-btn-primary' : 'toolbar-btn'} flex items-center gap-1.5 disabled:opacity-50 transition-opacity`}
+          aria-label={saving ? 'Saving security settings' : 'Save security settings'}
         >
-          {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : saved ? <CheckCircle className="w-3 h-3 text-green-400" /> : <Save className="w-3 h-3" />}
+          {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Saving" /> : saved ? <CheckCircle className="w-3 h-3 text-green-400" /> : <Save className="w-3 h-3" />}
           {saving ? 'Saving...' : saved ? 'Saved' : 'Save Changes'}
         </button>
       </div>
@@ -401,10 +405,13 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
 
       {/* Save footer */}
       {dirty && (
-        <div className="sticky bottom-0 bg-rmpg-950/90 backdrop-blur-sm border-t border-rmpg-700 p-3 flex items-center justify-between -mx-4 px-4">
-          <span className="text-[10px] text-amber-400">You have unsaved changes</span>
-          <button type="button" onClick={saveConfig} disabled={saving} className="toolbar-btn toolbar-btn-primary flex items-center gap-1.5">
-            {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save className="w-3 h-3" />}
+        <div className="sticky bottom-0 bg-rmpg-950/90 backdrop-blur-sm border-t border-rmpg-700 p-3 flex items-center justify-between -mx-4 px-4 animate-fade-in" role="status">
+          <span className="text-[10px] text-amber-400 flex items-center gap-1.5">
+            <AlertTriangle className="w-3 h-3" aria-hidden="true" />
+            You have unsaved changes
+          </span>
+          <button type="button" onClick={saveConfig} disabled={saving} className="toolbar-btn toolbar-btn-primary flex items-center gap-1.5 disabled:opacity-50" aria-label="Save all security changes">
+            {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Saving" /> : <Save className="w-3 h-3" />}
             {saving ? 'Saving...' : 'Save All Changes'}
           </button>
         </div>

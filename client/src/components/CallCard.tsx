@@ -333,9 +333,9 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         })()}
       </div>
 
-      {/* Location */}
+      {/* 22: Location line with aria-hidden on decorative icon */}
       <div className="flex items-center gap-1.5 text-xs text-rmpg-300 mb-1">
-        <MapPin className="w-3 h-3 flex-shrink-0" />
+        <MapPin className="w-3 h-3 flex-shrink-0" aria-hidden="true" />
         <span className="truncate">{call.location}</span>
       </div>
       {call.latitude != null && call.longitude != null && (
@@ -344,10 +344,11 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         </div>
       )}
 
-      {/* Footer Row — status timer + units */}
-      <div className="flex items-center justify-between text-xs text-rmpg-400">
-        <div className="flex items-center gap-1 font-mono">
-          <Clock className="w-3 h-3" />
+      {/* 20: Footer row with top border separator for visual grouping */}
+      <div className="flex items-center justify-between text-xs text-rmpg-400 pt-1 border-t border-rmpg-700/20 mt-1">
+        {/* 21: Timer with tabular-nums for stable digit rendering */}
+        <div className="flex items-center gap-1 font-mono tabular-nums">
+          <Clock className="w-3 h-3" aria-hidden="true" />
           <span
             ref={timerRef}
             style={{ color: initState.color }}
@@ -364,9 +365,9 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         )}
       </div>
 
-      {/* Description preview */}
+      {/* 23: Description preview with italic styling for distinction; 24: Reduced line-clamp and softer border */}
       {call.description && (
-        <p className="mt-1.5 text-[11px] text-rmpg-300 line-clamp-2 border-t border-rmpg-700 pt-1.5">
+        <p className="mt-1.5 text-[11px] text-rmpg-400 italic line-clamp-2 border-t border-rmpg-700/40 pt-1.5">
           {call.description}
         </p>
       )}
@@ -418,9 +419,10 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
       )}
       {showQuickNote && onQuickNote && (
         <div className="mt-1.5 pt-1 border-t border-rmpg-700/50 flex gap-1" onClick={(e) => e.stopPropagation()}>
+          {/* 25: Focus ring on quick note input; 26: Transition on border color */}
           <input
             type="text"
-            className="flex-1 bg-surface-sunken border border-rmpg-600 text-[10px] text-rmpg-200 px-1.5 py-0.5 rounded-sm"
+            className="flex-1 bg-surface-sunken border border-rmpg-600 text-[10px] text-rmpg-200 px-1.5 py-0.5 rounded-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none transition-colors"
             placeholder="Add note..."
             maxLength={500}
             value={quickNoteText}
@@ -436,6 +438,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             aria-label="Quick note text"
             autoFocus
           />
+          {/* 27: Quick note Add button with hover and disabled states */}
           <button type="button"
             onClick={() => {
               if (quickNoteText.trim()) {
@@ -444,7 +447,8 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
                 setShowQuickNote(false);
               }
             }}
-            className="text-[8px] px-1.5 py-0.5 bg-brand-600 text-white border border-brand-500 rounded-sm"
+            disabled={!quickNoteText.trim()}
+            className="text-[8px] px-1.5 py-0.5 bg-brand-600 text-white border border-brand-500 rounded-sm hover:bg-brand-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Add
           </button>

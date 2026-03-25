@@ -212,7 +212,10 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
       {/* Rules List */}
       <div className="space-y-2">
         {filtered.length === 0 ? (
-          <div className="text-center py-8 text-rmpg-500 text-xs">No notification rules configured.</div>
+          <div className="flex flex-col items-center justify-center py-12 text-rmpg-500 text-xs gap-2">
+            <Zap className="w-6 h-6 text-rmpg-600" />
+            <span>No notification rules configured.</span>
+          </div>
         ) : filtered.map((r) => {
           const trigger = TRIGGER_EVENTS.find((t) => t.value === r.trigger_event);
           const NotifIcon = NOTIF_TYPE_ICONS[r.notification_type] || Bell;
@@ -268,13 +271,13 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
 
       {/* Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowForm(false)}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in" onClick={() => setShowForm(false)} role="dialog" aria-modal="true" aria-label={editing ? 'Edit notification rule' : 'New notification rule'}>
           <div className="bg-surface-base panel-beveled w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-rmpg-700">
               <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">
                 {editing ? 'Edit Notification Rule' : 'New Notification Rule'}
               </h3>
-              <button type="button" onClick={() => setShowForm(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+              <button type="button" onClick={() => setShowForm(false)} className="p-0.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700 transition-colors rounded-sm" aria-label="Close dialog"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4 space-y-3">
               <div>

@@ -268,23 +268,25 @@ export default function TrainingPage() {
       </div>
 
       {/* Tab Navigation */}
-      <div className="panel-inset mx-3 mt-3 p-1 flex items-center gap-1 flex-shrink-0">
+      <div className="panel-inset mx-3 mt-3 p-1 flex items-center gap-1 flex-shrink-0" role="tablist" aria-label="Training management tabs">
         {TABS.map(({ key, label, icon: Icon }) => (
           <button type="button"
             key={key}
+            role="tab"
+            aria-selected={activeTab === key}
             onClick={() => setActiveTab(key)}
-            className={`text-[10px] px-3 py-1.5 flex items-center gap-1.5 transition-colors ${
+            className={`text-[10px] px-3 py-1.5 flex items-center gap-1.5 transition-colors duration-150 ${
               activeTab === key ? 'toolbar-btn-primary' : 'toolbar-btn'
             }`}
           >
-            <Icon className="w-3 h-3" />
+            <Icon className="w-3 h-3" aria-hidden="true" />
             {label}
           </button>
         ))}
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto scrollbar-dark" role="tabpanel">
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" />
@@ -478,12 +480,12 @@ function DashboardTab({ records, requirements, officers }: {
   return (
     <div className="p-4 space-y-4">
       {/* Compliance Summary Banner */}
-      <div className="panel-beveled p-3 border-l-2 border-l-brand-500">
+      <div className="panel-beveled p-3 border-l-2 border-l-brand-500" role="region" aria-label="Compliance summary">
         <div className="flex items-center gap-2 mb-2">
-          <CheckCircle className="w-3.5 h-3.5 text-brand-400" />
+          <CheckCircle className="w-3.5 h-3.5 text-brand-400" aria-hidden="true" />
           <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Compliance Summary</span>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center" role="group" aria-label="Compliance metrics">
           <div>
             <p className="text-lg font-bold font-mono text-brand-300">{officers.length}</p>
             <p className="text-[8px] uppercase font-bold text-rmpg-500">Total Personnel</p>

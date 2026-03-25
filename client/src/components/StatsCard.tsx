@@ -86,10 +86,11 @@ export default function StatsCard({
         </div>
       </div>
 
+      {/* 14: Trend row with border-top separator and transition effect */}
       {(trend != null || (trendValue != null && trendValue !== '')) && (
-        <div className={`flex items-center gap-1 mt-2 ${TREND_COLOR_MAP[trendColor]}`}>
-          <TrendIcon className="w-3.5 h-3.5" />
-          {trendValue && <span className="text-xs font-medium">{trendValue}</span>}
+        <div className={`flex items-center gap-1 mt-2 pt-1.5 border-t border-rmpg-700/30 ${TREND_COLOR_MAP[trendColor]}`}>
+          <TrendIcon className="w-3.5 h-3.5" aria-hidden="true" />
+          {trendValue && <span className="text-xs font-medium tabular-nums">{trendValue}</span>}
         </div>
       )}
     </div>

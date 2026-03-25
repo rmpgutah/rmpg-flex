@@ -248,22 +248,25 @@ export default function DailyActivityReportsPage() {
         </div>
 
         {/* DAR List */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto scrollbar-dark" role="list" aria-label="Daily activity reports">
           {loading ? (
-            <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div>
+            <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading daily activity reports" /><span className="text-[10px] text-rmpg-500">Loading...</span></div>
           ) : dars.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-rmpg-500">
-              <ClipboardCheck className="w-8 h-8 mb-2 opacity-50" />
-              <p className="text-sm">No DARs found</p>
-              <p className="text-xs text-rmpg-600 mt-1">Try adjusting your filters or create a new one</p>
+            <div className="flex flex-col items-center justify-center py-16 text-rmpg-500" role="status">
+              <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+                <ClipboardCheck className="w-7 h-7 text-rmpg-600" />
+              </div>
+              <p className="text-sm font-medium text-rmpg-400">No DARs found</p>
+              <p className="text-[10px] text-rmpg-600 mt-1">Try adjusting your filters or create a new one</p>
             </div>
           ) : (
             dars.map(dar => (
               <button type="button"
                 key={dar.id}
+                role="listitem"
                 onClick={() => { setSelected(dar); setEditing(false); }}
-                className={`w-full text-left px-3 py-2 border-b border-rmpg-800 transition-colors ${
-                  selected?.id === dar.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'hover:bg-rmpg-800/40 border-l-2 border-l-transparent'
+                className={`w-full text-left px-3 py-2.5 border-b border-rmpg-800 transition-all duration-150 ${
+                  selected?.id === dar.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500 shadow-sm' : 'hover:bg-rmpg-800/40 hover:shadow-sm border-l-2 border-l-transparent'
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -387,15 +390,15 @@ export default function DailyActivityReportsPage() {
                     <div>
                       <label htmlFor="dar-narrative" className="text-[9px] text-rmpg-500">Narrative</label>
                       <p className="text-[8px] text-rmpg-600 mb-0.5">Describe all activities during this shift</p>
-                      <textarea id="dar-narrative" value={editNarrative} onChange={e => setEditNarrative(e.target.value)} rows={5} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
+                      <textarea id="dar-narrative" value={editNarrative} onChange={e => setEditNarrative(e.target.value)} rows={5} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none focus:border-brand-600 focus:ring-1 focus:ring-brand-500/30 transition-colors" />
                     </div>
                     <div>
                       <label htmlFor="dar-highlights" className="text-[9px] text-rmpg-500">Highlights</label>
-                      <textarea id="dar-highlights" value={editHighlights} onChange={e => setEditHighlights(e.target.value)} rows={2} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
+                      <textarea id="dar-highlights" value={editHighlights} onChange={e => setEditHighlights(e.target.value)} rows={2} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none focus:border-brand-600 focus:ring-1 focus:ring-brand-500/30 transition-colors" />
                     </div>
                     <div>
                       <label htmlFor="dar-issues" className="text-[9px] text-rmpg-500">Issues Encountered</label>
-                      <textarea id="dar-issues" value={editIssues} onChange={e => setEditIssues(e.target.value)} rows={2} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
+                      <textarea id="dar-issues" value={editIssues} onChange={e => setEditIssues(e.target.value)} rows={2} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none focus:border-brand-600 focus:ring-1 focus:ring-brand-500/30 transition-colors" />
                     </div>
                   </div>
                 ) : (

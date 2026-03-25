@@ -992,8 +992,7 @@ export default function DispatchPage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCall, filteredCalls, fetchData, setFilterTab]);
+  }, [selectedCall, filteredCalls, fetchData, handleStatusChange, handleClearWithDisposition, setFilterTab]);
 
   const handlePsoExpandToFullForm = (data: Record<string, any>) => {
     setShowQuickPsoModal(false);
@@ -1917,8 +1916,14 @@ export default function DispatchPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-6 h-6 text-brand-400 animate-spin" />
+      <div className="flex items-center justify-center h-full bg-[var(--surface-base)]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="relative">
+            <Loader2 className="w-8 h-8 text-[#1a5a9e] animate-spin" />
+            <div className="absolute inset-0 w-8 h-8 rounded-full" style={{ boxShadow: '0 0 12px 2px rgba(26,90,158,0.3)' }} />
+          </div>
+          <span className="text-[10px] font-mono uppercase tracking-widest text-[#6b7280] animate-pulse">Loading Dispatch Console</span>
+        </div>
       </div>
     );
   }
@@ -2532,7 +2537,7 @@ export default function DispatchPage() {
       {/* ============================================================ */}
       {/* LEFT PANEL - Call Queue (40%) */}
       {/* ============================================================ */}
-      <div className="w-[35%] border-r border-rmpg-600 flex flex-col bg-surface-base">
+      <div className="w-[35%] border-r border-[#1e3048] flex flex-col" style={{ background: 'var(--surface-base)' }}>
         {/* Header — PanelTitleBar + TabBar */}
         <PanelTitleBar title="DISPATCH QUEUE" icon={Radio}>
           <RmpgLogo height={16} iconOnly />
@@ -2599,13 +2604,13 @@ export default function DispatchPage() {
                 style={{
                   top: '100%',
                   left: 0,
-                  minWidth: '200px',
+                  minWidth: '220px',
                   maxHeight: '280px',
                   overflowY: 'auto',
                   background: '#1a2636',
-                  border: '1px solid #3a5070',
-                  borderRadius: 0,
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                  border: '1px solid #2a3e58',
+                  borderRadius: '2px',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
                 }}
               >
                 {templates.length === 0 ? (
@@ -2671,7 +2676,7 @@ export default function DispatchPage() {
         />
 
         {/* Dispatch Stats Strip */}
-        <div className="px-3 py-1 border-b border-rmpg-700/50 flex items-center gap-2 flex-wrap text-[9px] font-mono flex-shrink-0 bg-surface-sunken">
+        <div className="px-3 py-1.5 border-b border-[#1e3048] flex items-center gap-2.5 flex-wrap text-[9px] font-mono flex-shrink-0" style={{ background: '#0d1520' }}>
           {(() => {
             const activeCalls = calls.filter(c => ['dispatched', 'enroute', 'onscene', 'pending', 'on_hold'].includes(c.status));
             const p1Count = activeCalls.filter(c => c.priority === 'P1').length;
@@ -2680,8 +2685,9 @@ export default function DispatchPage() {
             return (
               <>
                 {p1Count > 0 && (
-                  <span className="flex items-center gap-1 px-1.5 py-0.5 bg-red-900/30 text-red-400 border border-red-700/40 font-bold animate-pulse">
-                    <AlertTriangle className="w-2.5 h-2.5" /> P1: {p1Count}
+                  <span className="flex items-center gap-1 px-1.5 py-0.5 font-bold animate-pulse" style={{ background: 'rgba(220,38,38,0.2)', border: '1px solid rgba(220,38,38,0.4)', color: '#f87171', boxShadow: '0 0 6px rgba(220,38,38,0.3)' }}>
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-500" style={{ boxShadow: '0 0 4px #ef4444' }} />
+                    P1: {p1Count}
                   </span>
                 )}
                 <span className="text-rmpg-400">P2: <strong className="text-amber-400">{p2Count}</strong></span>
@@ -2699,7 +2705,7 @@ export default function DispatchPage() {
                   const stacked = [...stackedLocations.entries()].filter(([, count]) => count > 1);
                   if (stacked.length > 0) {
                     return (
-                      <span className="flex items-center gap-1 px-1.5 py-0.5 bg-purple-900/30 text-purple-400 border border-purple-700/40 font-bold text-[9px]" title={`${stacked.length} location(s) with multiple active calls`}>
+                      <span className="flex items-center gap-1 px-1.5 py-0.5 font-bold text-[9px] rounded-sm" style={{ background: 'rgba(168,85,247,0.15)', color: '#c084fc', border: '1px solid rgba(168,85,247,0.3)' }} title={`${stacked.length} location(s) with multiple active calls`}>
                         <Link className="w-2.5 h-2.5" /> STACKED: {stacked.length}
                       </span>
                     );
@@ -2707,8 +2713,9 @@ export default function DispatchPage() {
                   return null;
                 })()}
                 {/* Feature 4: Unit availability counter */}
-                <span className="text-rmpg-400">
-                  Units: <strong className={unitAvailability.available > 0 ? 'text-green-400' : 'text-red-400'}>
+                <span className="flex items-center gap-1 text-[#6b7280]">
+                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: unitAvailability.available > 0 ? '#22c55e' : '#ef4444', boxShadow: `0 0 4px ${unitAvailability.available > 0 ? '#22c55e80' : '#ef444480'}` }} />
+                  Units: <strong style={{ color: unitAvailability.available > 0 ? '#4ade80' : '#f87171' }}>
                     {unitAvailability.available}/{unitAvailability.total}
                   </strong> avail
                 </span>
@@ -2722,7 +2729,7 @@ export default function DispatchPage() {
 
         {/* Feature 9: Call Type Statistics Bar */}
         {callTypeStats.length > 0 && (
-          <div className="px-3 py-1 border-b border-rmpg-700/30 flex items-center gap-1 flex-shrink-0 bg-surface-sunken/50">
+          <div className="px-3 py-1 border-b border-[#1e3048] flex items-center gap-1.5 flex-shrink-0" style={{ background: '#0d152080' }}>
             {callTypeStats.map(({ type, count }) => {
               const total = callTypeStats.reduce((sum, s) => sum + s.count, 0);
               const pct = total > 0 ? (count / total * 100) : 0;
@@ -2743,7 +2750,7 @@ export default function DispatchPage() {
 
         {/* Feature 14: Disposition Statistics (collapsed by default) */}
         {dispositionStats.length > 0 && filterTab === 'cleared' && (
-          <div className="px-3 py-1 border-b border-rmpg-700/30 flex items-center gap-2 flex-wrap text-[8px] font-mono flex-shrink-0 bg-surface-sunken/50">
+          <div className="px-3 py-1 border-b border-[#1e3048] flex items-center gap-2 flex-wrap text-[8px] font-mono flex-shrink-0" style={{ background: '#0d152080' }}>
             <span className="text-rmpg-500 font-bold">DISPS:</span>
             {dispositionStats.slice(0, 5).map(d => (
               <span key={d.disposition} className="text-rmpg-400">
@@ -2754,11 +2761,21 @@ export default function DispatchPage() {
         )}
 
         {/* Call List */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-2">
+        <div className="flex-1 overflow-y-auto p-2 space-y-1.5" style={{ scrollbarGutter: 'stable' }}>
           {filteredCalls.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-rmpg-400">
-              <Phone className="w-8 h-8 mb-2" />
-              <p className="text-sm">No calls in this category</p>
+            <div className="flex flex-col items-center justify-center py-16 text-[#6b7280]">
+              <div className="p-3 rounded-sm mb-3" style={{ background: '#0d152040', border: '1px solid #1e304830' }}>
+                <Phone className="w-8 h-8" style={{ opacity: 0.5 }} />
+              </div>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-1">No calls in this category</p>
+              <p className="text-[10px] text-[#4b5563]">
+                {filterTab === 'pending' ? 'All pending calls have been dispatched' :
+                 filterTab === 'active' ? 'No units are currently on active calls' :
+                 filterTab === 'cleared' ? 'No cleared calls to review' :
+                 filterTab === 'archived' ? 'No archived calls found' :
+                 filterTab === 'serve' ? 'No PSO client requests in queue' :
+                 'Press N to create a new call'}
+              </p>
             </div>
           ) : (
             filteredCalls.map((call) => (
@@ -2786,18 +2803,18 @@ export default function DispatchPage() {
         {/* ------------------------------------------------------------ */}
         {/* TOP - Call Detail (left) + Map (right) — ~65% height */}
         {/* ------------------------------------------------------------ */}
-        <div className="flex-1 flex border-b border-rmpg-600 min-h-0">
+        <div className="flex-1 flex border-b border-[#1e3048] min-h-0">
           {/* Call Detail Panel */}
           <div ref={callDetailRef} className={`flex-1 flex flex-col overflow-hidden min-w-0${isEditing ? ' edit-mode-active' : ''}`}>
           {selectedCall ? (
             <>
               {/* Detail Header — PanelTitleBar style */}
-              <div className="panel-title-bar flex-shrink-0">
-                <div className="flex items-center gap-3">
+              <div className="panel-title-bar flex-shrink-0" style={selectedCall.priority === 'P1' ? { borderLeft: '3px solid #ef4444', background: 'linear-gradient(90deg, rgba(239,68,68,0.08) 0%, transparent 30%)' } : selectedCall.priority === 'P2' ? { borderLeft: '3px solid #f59e0b' } : { borderLeft: '3px solid #1a5a9e' }}>
+                <div className="flex items-center gap-2">
                   {selectedCall.priority === 'P1' && (
-                    <AlertTriangle className="w-4 h-4 text-red-500 animate-emergency-blink" />
+                    <AlertTriangle className="w-4 h-4 text-red-500 animate-emergency-blink" style={{ filter: 'drop-shadow(0 0 4px rgba(239,68,68,0.5))' }} />
                   )}
-                  <span className="text-sm font-bold text-green-400 font-mono">{selectedCall.call_number}</span>
+                  <span className="text-sm font-bold text-green-400 font-mono tracking-wide" style={{ textShadow: '0 0 8px rgba(74,222,128,0.2)' }}>{selectedCall.call_number}</span>
                   {selectedCall.case_number && (
                     <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1.5 py-0.5">
                       CASE {selectedCall.case_number}
@@ -3023,8 +3040,9 @@ export default function DispatchPage() {
                       </button>
                     )}
                     {selectedCall.le_notified && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-green-900/50 text-green-400 border border-green-700/50">
-                        <CheckCircle style={{ width: 9, height: 9 }} /> LE NOTIFIED {selectedCall.le_agency ? `(${selectedCall.le_agency})` : ''}
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded-sm" style={{ background: 'rgba(34,197,94,0.15)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.3)', boxShadow: '0 0 4px rgba(34,197,94,0.1)' }}>
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#22c55e', boxShadow: '0 0 3px #22c55e80' }} />
+                        LE NOTIFIED {selectedCall.le_agency ? `(${selectedCall.le_agency})` : ''}
                       </span>
                     )}
                     {/* Archive — available on any non-archived status */}
@@ -3049,35 +3067,50 @@ export default function DispatchPage() {
 
               {/* Warning Tags / Caution Alerts — always visible above tabs */}
               {callWarnings.length > 0 && (
-                <div className="px-4 pt-2 pb-1 flex-shrink-0">
-                  <label className="text-[10px] font-bold text-red-400 uppercase tracking-wider flex items-center gap-1 mb-1">
-                    <AlertTriangle style={{ width: 10, height: 10 }} /> CAUTION / WARNINGS
+                <div className="px-4 pt-2 pb-1 flex-shrink-0" style={{ background: 'rgba(220,38,38,0.04)', borderBottom: '1px solid rgba(220,38,38,0.15)' }}>
+                  <label className="text-[9px] font-bold text-red-400 uppercase tracking-widest flex items-center gap-1.5 mb-1">
+                    <AlertTriangle style={{ width: 10, height: 10, filter: 'drop-shadow(0 0 3px rgba(239,68,68,0.4))' }} /> CAUTION / WARNINGS
                   </label>
                   <WarningTags warnings={callWarnings} />
                 </div>
               )}
 
               {/* Detail Tabs */}
-              <div className="flex border-b border-rmpg-600 flex-shrink-0 bg-surface-sunken">
+              <div className="flex border-b border-[#1e3048] flex-shrink-0" style={{ background: '#0d1520' }}>
                 {(['info', 'persons', 'timeline', 'notes', 'flags'] as const).map(tab => {
                   const labels: Record<string, string> = { info: 'Info', persons: 'Persons / Vehicles', timeline: 'Timeline', notes: 'Notes', flags: 'Flags' };
+                  const icons: Record<string, React.ReactNode> = {
+                    info: <FileText style={{ width: 9, height: 9 }} />,
+                    persons: <User style={{ width: 9, height: 9 }} />,
+                    timeline: <Clock style={{ width: 9, height: 9 }} />,
+                    notes: <MessageSquare style={{ width: 9, height: 9 }} />,
+                    flags: <Shield style={{ width: 9, height: 9 }} />,
+                  };
                   const counts: Record<string, number> = {
                     persons: callPersons.length + callVehicles.length,
                     timeline: activityEntries.length,
                     notes: (selectedCall?.notes || []).length,
                   };
                   const count = counts[tab];
+                  const isActive = detailTab === tab;
                   return (
                     <button
                       key={tab}
                       onClick={() => setDetailTab(tab)}
-                      className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors border-b-2 ${
-                        detailTab === tab
-                          ? 'border-brand-500 text-brand-400 bg-brand-900/10'
-                          : 'border-transparent text-rmpg-400 hover:text-rmpg-200 hover:bg-rmpg-700/30'
-                      }`}
+                      className="relative px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all duration-150"
+                      style={{
+                        color: isActive ? '#4a9ede' : '#6b7280',
+                        background: isActive ? 'rgba(26,90,158,0.08)' : 'transparent',
+                        borderBottom: isActive ? '2px solid #1a5a9e' : '2px solid transparent',
+                      }}
+                      onMouseEnter={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = '#9ca3af'; (e.currentTarget as HTMLElement).style.background = 'rgba(30,48,72,0.3)'; } }}
+                      onMouseLeave={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = '#6b7280'; (e.currentTarget as HTMLElement).style.background = 'transparent'; } }}
                     >
-                      {labels[tab]}{count ? ` (${count})` : ''}
+                      <span className="flex items-center gap-1">
+                        {icons[tab]}
+                        {labels[tab]}
+                        {count ? <span className="ml-0.5 px-1 py-px text-[8px] rounded-sm font-mono" style={{ background: isActive ? '#1a5a9e25' : '#1e304830', color: isActive ? '#4a9ede' : '#6b7280' }}>{count}</span> : ''}
+                      </span>
                     </button>
                   );
                 })}
@@ -3260,46 +3293,46 @@ export default function DispatchPage() {
                     {/* Timeline */}
                     <div>
                       <label className="field-label">Timeline:</label>
-                      <div className="space-y-1 mt-1">
-                        <div className="flex items-center gap-2 text-xs">
-                          <Clock className="w-3 h-3 text-rmpg-400" />
-                          <span className="text-rmpg-300">Created:</span>
-                          <span className="text-white font-mono">{formatTime(selectedCall.created_at)}</span>
-                          <span className="text-rmpg-400">({formatElapsed(selectedCall.created_at)} ago)</span>
+                      <div className="space-y-0 mt-1.5 relative" style={{ paddingLeft: '10px', borderLeft: '2px solid #1e3048' }}>
+                        <div className="flex items-center gap-2 text-xs py-0.5 relative">
+                          <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: '#6b7280', border: '2px solid #0d1520' }} />
+                          <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '62px' }}>Created</span>
+                          <span className="text-white font-mono text-[10px]">{formatTime(selectedCall.created_at)}</span>
+                          <span className="text-[#4b5563] text-[9px] font-mono">({formatElapsed(selectedCall.created_at)})</span>
                         </div>
                         {selectedCall.dispatched_at && (
-                          <div className="flex items-center gap-2 text-xs">
-                            <ArrowRight className="w-3 h-3 text-amber-400" />
-                            <span className="text-rmpg-300">Dispatched:</span>
-                            <span className="text-white font-mono">{formatTime(selectedCall.dispatched_at)}</span>
+                          <div className="flex items-center gap-2 text-xs py-0.5 relative">
+                            <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: '#f59e0b', border: '2px solid #0d1520' }} />
+                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '62px' }}>Dispatched</span>
+                            <span className="text-white font-mono text-[10px]">{formatTime(selectedCall.dispatched_at)}</span>
                           </div>
                         )}
                         {selectedCall.enroute_at && (
-                          <div className="flex items-center gap-2 text-xs">
-                            <ArrowRight className="w-3 h-3 text-brand-400" />
-                            <span className="text-rmpg-300">En Route:</span>
-                            <span className="text-white font-mono">{formatTime(selectedCall.enroute_at)}</span>
+                          <div className="flex items-center gap-2 text-xs py-0.5 relative">
+                            <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: '#3b82f6', border: '2px solid #0d1520' }} />
+                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '62px' }}>En Route</span>
+                            <span className="text-white font-mono text-[10px]">{formatTime(selectedCall.enroute_at)}</span>
                           </div>
                         )}
                         {selectedCall.onscene_at && (
-                          <div className="flex items-center gap-2 text-xs">
-                            <ArrowRight className="w-3 h-3 text-purple-400" />
-                            <span className="text-rmpg-300">On Scene:</span>
-                            <span className="text-white font-mono">{formatTime(selectedCall.onscene_at)}</span>
+                          <div className="flex items-center gap-2 text-xs py-0.5 relative">
+                            <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: '#a855f7', border: '2px solid #0d1520' }} />
+                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '62px' }}>On Scene</span>
+                            <span className="text-white font-mono text-[10px]">{formatTime(selectedCall.onscene_at)}</span>
                           </div>
                         )}
                         {selectedCall.cleared_at && (
-                          <div className="flex items-center gap-2 text-xs">
-                            <ArrowRight className="w-3 h-3 text-rmpg-300" />
-                            <span className="text-rmpg-300">Cleared:</span>
-                            <span className="text-white font-mono">{formatTime(selectedCall.cleared_at)}</span>
+                          <div className="flex items-center gap-2 text-xs py-0.5 relative">
+                            <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: '#22c55e', border: '2px solid #0d1520' }} />
+                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '62px' }}>Cleared</span>
+                            <span className="text-white font-mono text-[10px]">{formatTime(selectedCall.cleared_at)}</span>
                           </div>
                         )}
                         {selectedCall.archived_at && (
-                          <div className="flex items-center gap-2 text-xs">
-                            <Archive className="w-3 h-3 text-rmpg-400" />
-                            <span className="text-rmpg-300">Archived:</span>
-                            <span className="text-white font-mono">{formatTime(selectedCall.archived_at)}</span>
+                          <div className="flex items-center gap-2 text-xs py-0.5 relative">
+                            <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: '#6b7280', border: '2px solid #0d1520' }} />
+                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '62px' }}>Archived</span>
+                            <span className="text-white font-mono text-[10px]">{formatTime(selectedCall.archived_at)}</span>
                           </div>
                         )}
                       </div>
@@ -3396,11 +3429,11 @@ export default function DispatchPage() {
                             return (
                               <span
                                 key={unitIdStr}
-                                className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold font-mono"
-                                style={{ background: `${statusColor}15`, color: statusColor, border: `1px solid ${statusColor}50` }}
+                                className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[11px] font-bold font-mono rounded-sm transition-all duration-150 hover:brightness-110"
+                                style={{ background: `${statusColor}12`, color: statusColor, border: `1px solid ${statusColor}40`, boxShadow: `0 0 4px ${statusColor}10` }}
                                 title={unitObj ? `${displayName} — ${unitObj.officer_name || 'Unassigned'}${unitObj.badge_number ? ` #${unitObj.badge_number}` : ''} (${(unitObj.status || '').replace(/_/g, ' ')})` : displayName}
                               >
-                                <span className="rounded-full flex-shrink-0" style={{ width: 5, height: 5, background: statusColor }} />
+                                <span className="rounded-full flex-shrink-0" style={{ width: 5, height: 5, background: statusColor, boxShadow: `0 0 3px ${statusColor}80` }} />
                                 {displayName}
                                 {unitObj?.badge_number && <span style={{ fontSize: '8px', opacity: 0.7 }}>#{unitObj.badge_number}</span>}
                                 {statusLabel && <span style={{ fontSize: '8px', opacity: 0.8 }}>{statusLabel}</span>}
@@ -3423,11 +3456,13 @@ export default function DispatchPage() {
                       )}
                       {/* Inline ETA from route */}
                       {routeInfo && (
-                        <div className="mt-1.5 flex items-center gap-2 px-2 py-1" style={{ background: '#3b82f610', border: '1px solid #3b82f630' }}>
-                          <span className="text-[9px] font-mono font-bold text-blue-400">▶ ETA</span>
-                          <span className="text-[10px] font-mono font-bold text-white">{routeInfo.eta}</span>
-                          <span className="text-[9px] font-mono text-rmpg-400">{routeInfo.distance}</span>
-                          <span className="text-[8px] font-mono text-rmpg-500 ml-auto">{routeInfo.unitCallSign}</span>
+                        <div className="mt-2 flex items-center gap-2 px-2.5 py-1.5 rounded-sm" style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)', boxShadow: '0 0 6px rgba(59,130,246,0.06)' }}>
+                          <span className="flex items-center gap-1 text-[9px] font-mono font-bold text-blue-400">
+                            <Navigation style={{ width: 8, height: 8 }} /> ETA
+                          </span>
+                          <span className="text-[11px] font-mono font-bold text-white">{routeInfo.eta}</span>
+                          <span className="text-[9px] font-mono text-[#6b7280]">{routeInfo.distance}</span>
+                          <span className="text-[8px] font-mono text-[#4b5563] ml-auto">{routeInfo.unitCallSign}</span>
                         </div>
                       )}
                     </div>
@@ -3436,8 +3471,8 @@ export default function DispatchPage() {
 
                 {/* ── MILEAGE (primary unit) — Info tab ─── */}
                 {detailTab === 'info' && (isEditing || selectedCall.starting_mileage || selectedCall.ending_mileage) && (
-                  <div className="border-t border-rmpg-600 pt-3 mb-3">
-                    <label className="field-label !flex items-center gap-1.5 mb-2">
+                  <div className="border-t border-[#1e3048] pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <MapPin className="w-3 h-3" /> Primary Unit Mileage
                     </label>
                     {isEditing ? (
@@ -3467,8 +3502,8 @@ export default function DispatchPage() {
 
                 {/* ── EXTENDED DETAILS — Info tab ─── */}
                 {detailTab === 'info' && (isEditing || selectedCall.cross_street || selectedCall.location_building || selectedCall.location_floor || selectedCall.location_room || selectedCall.section_id || selectedCall.zone_id || selectedCall.beat_id || selectedCall.latitude || selectedCall.dispatch_code) && (
-                  <div className="border-t border-rmpg-600 pt-3 mb-3">
-                    <label className="field-label !flex items-center gap-1.5 mb-2">
+                  <div className="border-t border-[#1e3048] pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <MapPin className="w-3 h-3" /> Location Details
                     </label>
                     {isEditing ? (() => {
@@ -3550,8 +3585,8 @@ export default function DispatchPage() {
 
                 {/* ── SUBJECT/THREAT INFO — Persons tab ─── */}
                 {(detailTab === 'info' || detailTab === 'persons') && (isEditing || (selectedCall.weapons_involved && selectedCall.weapons_involved !== 'None') || selectedCall.injuries_reported || selectedCall.num_subjects || selectedCall.subject_description || selectedCall.vehicle_description || selectedCall.direction_of_travel || callPersons.length > 0 || callVehicles.length > 0) && (
-                  <div className="border-t border-rmpg-600 pt-3 mb-3">
-                    <label className="field-label !flex items-center gap-1.5 mb-2">
+                  <div className="border-t border-[#1e3048] pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Shield className="w-3 h-3" /> Subject / Threat Info
                     </label>
                     {isEditing ? (() => {
@@ -3734,8 +3769,8 @@ export default function DispatchPage() {
 
                 {/* ── SCENE DETAILS — Info tab ─── */}
                 {detailTab === 'info' && (isEditing || selectedCall.scene_safety || selectedCall.weather_conditions || selectedCall.lighting_conditions || selectedCall.alcohol_involved || selectedCall.drugs_involved || selectedCall.domestic_violence || selectedCall.le_notified || selectedCall.damage_estimate || selectedCall.action_taken) && (
-                  <div className="border-t border-rmpg-600 pt-3 mb-3">
-                    <label className="field-label !flex items-center gap-1.5 mb-2">
+                  <div className="border-t border-[#1e3048] pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Thermometer className="w-3 h-3" /> Scene / Additional
                     </label>
                     {isEditing ? (() => {
@@ -3822,7 +3857,7 @@ export default function DispatchPage() {
 
                 {/* ── PSO CLIENT REQUEST DETAILS — Info tab ─── */}
                 {detailTab === 'info' && (isEditing || selectedCall.pso_requestor_name || selectedCall.pso_service_type || selectedCall.pso_billing_code || selectedCall.pso_authorization || selectedCall.incident_type === 'pso_client_request') && (
-                  <div className="border-t border-rmpg-600 pt-3 mb-3">
+                  <div className="border-t border-[#1e3048] pt-3 mb-3">
                     <div className="flex items-center justify-between mb-2">
                       <label className="field-label !flex items-center gap-1.5">
                         <Building2 className="w-3 h-3" /> PSO Client Request Details
@@ -3970,8 +4005,8 @@ export default function DispatchPage() {
                   ? editData.pso_service_type === 'process_service'
                   : (selectedCall.pso_service_type === 'process_service' || selectedCall.process_service_type || selectedCall.process_served_to || selectedCall.process_attempts)
                 ) && (
-                  <div className="border-t border-rmpg-600 pt-3 mb-3">
-                    <label className="field-label !flex items-center gap-1.5 mb-2">
+                  <div className="border-t border-[#1e3048] pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <FileText className="w-3 h-3" /> Process Service Details
                       {!isEditing && selectedCall.process_service_result && (
                         <span className={`ml-1.5 px-1.5 py-0.5 text-[8px] font-bold rounded-sm ${
@@ -4051,8 +4086,8 @@ export default function DispatchPage() {
 
                 {/* ── VISIT HISTORY TIMELINE — PSO calls, Info tab ─── */}
                 {detailTab === 'info' && !isEditing && selectedCall.incident_type === 'pso_client_request' && selectedCall.visit_history && selectedCall.visit_history.length > 0 && (
-                  <div className="border-t border-rmpg-600 pt-3 mb-3">
-                    <label className="field-label !flex items-center gap-1.5 mb-2">
+                  <div className="border-t border-[#1e3048] pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Clock className="w-3 h-3" /> Visit History
                       <span className="ml-1 px-1.5 py-0.5 text-[8px] font-bold rounded-sm" style={{ background: '#3b82f620', border: '1px solid #3b82f640', color: '#60a5fa' }}>
                         {selectedCall.visit_history.length} PRIOR {selectedCall.visit_history.length === 1 ? 'VISIT' : 'VISITS'}
@@ -4112,8 +4147,8 @@ export default function DispatchPage() {
 
                 {/* ── QUICK-TOGGLE FLAGS — Flags tab ─── */}
                 {detailTab === 'flags' && !isEditing && (
-                  <div className="border-t border-rmpg-600 pt-3 mb-3">
-                    <label className="field-label !flex items-center gap-1.5 mb-2">
+                  <div className="border-t border-[#1e3048] pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Shield className="w-3 h-3" /> Quick Flags
                     </label>
                     <div className="flex flex-wrap gap-1.5">
@@ -4172,9 +4207,9 @@ export default function DispatchPage() {
                 )}
 
                 {/* ── ACTIVITY LOG / TIMELINE — Timeline tab ─── */}
-                <div className="border-t border-rmpg-600 pt-3 mb-3" style={{ display: detailTab === 'timeline' ? undefined : 'none' }}>
+                <div className="border-t border-[#1e3048] pt-3 mb-3" style={{ display: detailTab === 'timeline' ? undefined : 'none' }}>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="field-label !flex items-center gap-1.5">
+                    <label className="field-label !flex items-center gap-1.5" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Clock className="w-3 h-3" /> Activity Log
                     </label>
                     <button onClick={() => setShowAddTimeline(!showAddTimeline)} className="toolbar-btn" style={{ padding: '1px 6px', fontSize: '9px' }}>
@@ -4191,10 +4226,19 @@ export default function DispatchPage() {
                     </div>
                   )}
                   {activityEntries.length > 0 ? (
-                    <div className="space-y-1 max-h-36 overflow-y-auto">
-                      {activityEntries.map((entry: any) => (
-                        <div key={entry.id} className="group flex items-start gap-2 text-xs hover:bg-rmpg-700/30 px-1 py-0.5 transition-colors">
-                          <span className="text-rmpg-400 font-mono whitespace-nowrap" style={{ fontSize: '9px' }}>
+                    <div className="space-y-0 max-h-48 overflow-y-auto">
+                      {activityEntries.map((entry: any, idx: number) => {
+                        const actionColor = (entry.action || '').includes('dispatch') ? '#f59e0b' :
+                          (entry.action || '').includes('enroute') ? '#3b82f6' :
+                          (entry.action || '').includes('onscene') || (entry.action || '').includes('on_scene') ? '#a855f7' :
+                          (entry.action || '').includes('clear') ? '#22c55e' :
+                          (entry.action || '').includes('note') ? '#6b7280' :
+                          '#1a5a9e';
+                        return (
+                        <div key={entry.id} className="group flex items-start gap-2 text-xs hover:bg-[#1a263620] px-1.5 py-1 transition-colors relative" style={{ borderLeft: '2px solid #1e3048' }}>
+                          {/* Step connector dot */}
+                          <div className="absolute -left-[5px] top-[7px] w-2 h-2 rounded-full flex-shrink-0" style={{ background: actionColor, border: '2px solid #0d1520' }} />
+                          <span className="text-[#6b7280] font-mono whitespace-nowrap pl-1.5" style={{ fontSize: '9px', minWidth: '56px' }}>
                             {entry.created_at ? formatTime(entry.created_at) : '--'}
                           </span>
                           {editingTimelineId === String(entry.id) ? (
@@ -4213,46 +4257,58 @@ export default function DispatchPage() {
                             </div>
                           ) : (
                             <>
-                              <span className="text-rmpg-200 flex-1">{formatActivityDetails(entry.details || entry.description || '')}</span>
+                              <span className="text-[#e5e7eb] flex-1">{formatActivityDetails(entry.details || entry.description || '')}</span>
                               <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity">
-                                <button onClick={() => { setEditingTimelineId(String(entry.id)); setEditTimelineText(entry.details || entry.description || ''); }} className="p-0.5 hover:text-brand-400 text-rmpg-500" title="Edit">
+                                <button onClick={() => { setEditingTimelineId(String(entry.id)); setEditTimelineText(entry.details || entry.description || ''); }} className="p-0.5 hover:text-[#4a9ede] text-[#6b7280] transition-colors" title="Edit">
                                   <Edit3 style={{ width: 9, height: 9 }} />
                                 </button>
-                                <button onClick={() => handleDeleteTimeline(String(entry.id))} className="p-0.5 hover:text-red-400 text-rmpg-500" title="Delete">
+                                <button onClick={() => handleDeleteTimeline(String(entry.id))} className="p-0.5 hover:text-red-400 text-[#6b7280] transition-colors" title="Delete">
                                   <Trash2 style={{ width: 9, height: 9 }} />
                                 </button>
                               </div>
                             </>
                           )}
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : (
-                    <p className="text-[10px] text-rmpg-500 italic">No activity recorded — use Add Entry to start the log.</p>
+                    <div className="flex flex-col items-center py-6 text-[#4b5563]">
+                      <Clock className="w-6 h-6 mb-2" style={{ opacity: 0.3 }} />
+                      <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5">No Activity Recorded</p>
+                      <p className="text-[9px] text-[#374151]">Click "Add Entry" to start the activity log</p>
+                    </div>
                   )}
                 </div>
 
                 {/* Notes — fills remaining vertical space — Notes tab */}
-                <div className="border-t border-rmpg-600 pt-3 flex-1 flex flex-col min-h-0" style={{ display: detailTab === 'notes' ? undefined : 'none' }}>
-                  <label className="field-label !flex items-center gap-1.5 mb-2 flex-shrink-0">
+                <div className="border-t border-[#1e3048] pt-3 flex-1 flex flex-col min-h-0" style={{ display: detailTab === 'notes' ? undefined : 'none' }}>
+                  <label className="field-label !flex items-center gap-1.5 mb-2 flex-shrink-0" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                     <MessageSquare className="w-3 h-3" /> Notes
                   </label>
-                  <div className="space-y-1.5 mb-3 flex-1 overflow-y-auto">
-                    {(Array.isArray(selectedCall.notes) ? selectedCall.notes : []).map((note) => (
-                      <div key={note.id} className="flex items-start gap-2 text-xs">
-                        <span className="text-rmpg-400 font-mono whitespace-nowrap">{formatTime(note.timestamp)}</span>
-                        <span className="text-brand-400 font-semibold whitespace-nowrap">{note.author || 'System'}:</span>
-                        <span className="text-rmpg-200">{renderFormattedText(note.text || '')}</span>
+                  <div className="space-y-1 mb-3 flex-1 overflow-y-auto">
+                    {(Array.isArray(selectedCall.notes) ? selectedCall.notes : []).length === 0 ? (
+                      <div className="flex flex-col items-center py-6 text-[#4b5563]">
+                        <MessageSquare className="w-6 h-6 mb-2" style={{ opacity: 0.3 }} />
+                        <p className="text-[10px] font-semibold uppercase tracking-wider">No Notes Yet</p>
                       </div>
-                    ))}
+                    ) : (
+                      (Array.isArray(selectedCall.notes) ? selectedCall.notes : []).map((note) => (
+                      <div key={note.id} className="flex items-start gap-2 text-xs px-2 py-1.5 rounded-sm transition-colors hover:bg-[#1a263620]" style={{ borderLeft: '2px solid #1a5a9e40' }}>
+                        <span className="text-[#6b7280] font-mono whitespace-nowrap" style={{ fontSize: '9px', minWidth: '50px' }}>{formatTime(note.timestamp)}</span>
+                        <span className="text-[#d4a017] font-bold whitespace-nowrap text-[10px]">{note.author || 'System'}</span>
+                        <span className="text-[#e5e7eb] leading-relaxed">{renderFormattedText(note.text || '')}</span>
+                      </div>
+                      ))
+                    )}
                   </div>
                   <div className="flex-shrink-0">
                     {/* Formatting toolbar */}
-                    <div className="flex items-center gap-0.5 mb-1">
-                      <button type="button" title="Bold (Ctrl+B)" className="px-1.5 py-0.5 text-[9px] font-black text-rmpg-300 hover:text-white hover:bg-rmpg-600 border border-rmpg-600 transition-colors" onClick={() => wrapNoteSelection('**')}>B</button>
-                      <button type="button" title="Italic (Ctrl+I)" className="px-1.5 py-0.5 text-[9px] italic font-semibold text-rmpg-300 hover:text-white hover:bg-rmpg-600 border border-rmpg-600 transition-colors" onClick={() => wrapNoteSelection('*')}>I</button>
-                      <button type="button" title="Underline (Ctrl+U)" className="px-1.5 py-0.5 text-[9px] underline text-rmpg-300 hover:text-white hover:bg-rmpg-600 border border-rmpg-600 transition-colors" onClick={() => wrapNoteSelection('__')}>U</button>
-                      <span className="text-[8px] text-rmpg-500 ml-1">Shift+Enter to add</span>
+                    <div className="flex items-center gap-1 mb-1.5">
+                      <button type="button" title="Bold (Ctrl+B)" className="w-6 h-5 flex items-center justify-center text-[10px] font-black text-[#9ca3af] hover:text-white hover:bg-[#1a5a9e30] border border-[#1e3048] rounded-sm transition-all duration-100" onClick={() => wrapNoteSelection('**')}>B</button>
+                      <button type="button" title="Italic (Ctrl+I)" className="w-6 h-5 flex items-center justify-center text-[10px] italic font-semibold text-[#9ca3af] hover:text-white hover:bg-[#1a5a9e30] border border-[#1e3048] rounded-sm transition-all duration-100" onClick={() => wrapNoteSelection('*')}>I</button>
+                      <button type="button" title="Underline (Ctrl+U)" className="w-6 h-5 flex items-center justify-center text-[10px] underline text-[#9ca3af] hover:text-white hover:bg-[#1a5a9e30] border border-[#1e3048] rounded-sm transition-all duration-100" onClick={() => wrapNoteSelection('__')}>U</button>
+                      <span className="text-[8px] text-[#4b5563] ml-2 font-mono">Shift+Enter to submit</span>
                     </div>
                     <div className="flex gap-2">
                       <textarea
@@ -4303,18 +4359,21 @@ export default function DispatchPage() {
 
                 {/* Linked Incidents — Notes tab */}
                 {detailTab === 'notes' && linkedIncidents.length > 0 && (
-                  <div className="border-t border-rmpg-600 pt-3 flex-shrink-0">
-                    <label className="field-label !flex items-center gap-1.5 mb-2">
+                  <div className="border-t border-[#1e3048] pt-3 flex-shrink-0">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Link className="w-3 h-3" /> Linked Incidents
                     </label>
                     <div className="space-y-1 mt-1">
                       {linkedIncidents.map((inc: any) => (
                         <div
                           key={inc.id || inc.incident_number}
-                          className="flex items-center gap-3 px-2 py-1.5 hover:bg-rmpg-700/50 cursor-pointer transition-colors"
+                          className="flex items-center gap-3 px-2.5 py-1.5 cursor-pointer transition-all duration-100 rounded-sm"
+                          style={{ border: '1px solid transparent' }}
                           onClick={() => navigate(`/incidents/${inc.id}`)}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#1a263630'; (e.currentTarget as HTMLElement).style.borderColor = '#1e304840'; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.borderColor = 'transparent'; }}
                         >
-                          <span className="font-mono text-green-400 text-xs font-bold">{inc.incident_number}</span>
+                          <span className="font-mono text-green-400 text-xs font-bold" style={{ textShadow: '0 0 6px rgba(74,222,128,0.15)' }}>{inc.incident_number}</span>
                           <span className="text-xs text-rmpg-200 truncate">{formatIncidentType(inc.type || inc.incident_type || '--')}</span>
                           <span className="text-xs text-rmpg-400 uppercase font-semibold">{inc.status || '--'}</span>
                           {inc.officer_name && (
@@ -4366,18 +4425,25 @@ export default function DispatchPage() {
 
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-rmpg-400">
+            <div className="flex-1 flex items-center justify-center text-[#6b7280]">
               <div className="text-center">
-                <Radio className="w-10 h-10 mx-auto mb-3 text-rmpg-500" />
-                <p className="text-sm">Select a call to view details</p>
-                <p className="text-xs text-rmpg-500 mt-1">or create a new call for service</p>
+                <div className="mx-auto mb-4 w-14 h-14 flex items-center justify-center rounded-sm" style={{ background: '#0d152060', border: '1px solid #1e304840' }}>
+                  <Radio className="w-7 h-7" style={{ opacity: 0.4 }} />
+                </div>
+                <p className="text-xs font-semibold uppercase tracking-wider mb-1.5">Select a call to view details</p>
+                <p className="text-[10px] text-[#4b5563]">Click a call card or use arrow keys to navigate</p>
+                <div className="flex items-center justify-center gap-3 mt-3 text-[9px] font-mono text-[#4b5563]">
+                  <span className="px-1.5 py-0.5 border border-[#1e3048] rounded-sm">N</span><span>New Call</span>
+                  <span className="px-1.5 py-0.5 border border-[#1e3048] rounded-sm">P</span><span>Quick PSO</span>
+                  <span className="px-1.5 py-0.5 border border-[#1e3048] rounded-sm">R</span><span>Refresh</span>
+                </div>
               </div>
             </div>
           )}
           </div>
 
           {/* Dispatch Map Panel (right side, always visible) */}
-          <div className="w-[35%] border-l border-rmpg-600 flex flex-col bg-surface-deep overflow-hidden flex-shrink-0">
+          <div className="w-[35%] border-l border-[#1e3048] flex flex-col overflow-hidden flex-shrink-0" style={{ background: 'var(--surface-deep)' }}>
             {selectedCall?.latitude != null && selectedCall?.longitude != null ? (
               <DispatchMiniMap
                 call={selectedCall}
@@ -4386,11 +4452,13 @@ export default function DispatchPage() {
                 onRouteUpdate={setRouteInfo}
               />
             ) : (
-              <div className="flex-1 flex items-center justify-center text-rmpg-500">
+              <div className="flex-1 flex items-center justify-center text-[#4b5563]">
                 <div className="text-center">
-                  <MapPin className="w-8 h-8 mx-auto mb-2 text-rmpg-600" />
-                  <p className="text-[10px] font-mono">NO LOCATION DATA</p>
-                  <p className="text-[9px] text-rmpg-600 mt-0.5">Select a geolocated call</p>
+                  <div className="mx-auto mb-3 w-12 h-12 flex items-center justify-center rounded-sm" style={{ background: '#0d152050', border: '1px dashed #1e304850' }}>
+                    <MapPin className="w-6 h-6" style={{ opacity: 0.3 }} />
+                  </div>
+                  <p className="text-[9px] font-mono font-bold uppercase tracking-widest">No Location Data</p>
+                  <p className="text-[8px] text-[#374151] mt-1">Select a geolocated call to display map</p>
                 </div>
               </div>
             )}
@@ -4402,11 +4470,12 @@ export default function DispatchPage() {
         {/* ------------------------------------------------------------ */}
         <div className="h-[35%] flex flex-col overflow-hidden flex-shrink-0">
           <PanelTitleBar title="UNIT STATUS BOARD" icon={Radio}>
-            <span className="text-[9px] font-mono" style={{ color: '#22c55e' }}>
+            <span className="flex items-center gap-1 text-[9px] font-mono font-bold" style={{ color: '#4ade80' }}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#22c55e', boxShadow: '0 0 4px #22c55e80' }} />
               {units.filter((u) => u.status === 'available').length} AVAIL
             </span>
             <span className="toolbar-separator" />
-            <span className="text-[9px] font-mono" style={{ color: '#8a9aaa' }}>
+            <span className="text-[9px] font-mono" style={{ color: '#6b7280' }}>
               {units.filter((u) => u.status !== 'off_duty').length} ON DUTY
             </span>
             <span className="toolbar-separator" />
@@ -4444,8 +4513,8 @@ export default function DispatchPage() {
           }}
         >
           <div
-            className="py-1 min-w-[180px] shadow-xl"
-            style={{ background: '#1a2636', border: '1px solid #3a5070' }}
+            className="py-1 min-w-[180px]"
+            style={{ background: '#1a2636', border: '1px solid #2a3e58', boxShadow: '0 8px 24px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.05) inset', backdropFilter: 'blur(8px)' }}
             onMouseLeave={() => setContextMenu(null)}
           >
             {contextMenu.call.status === 'pending' && (
@@ -4499,10 +4568,10 @@ export default function DispatchPage() {
 
       {/* Quick Template Dialog — minimal address-only dispatch */}
       {quickTemplateData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" style={{ background: 'rgba(0,0,0,0.6)' }} onKeyDown={(e) => { if (e.key === 'Escape') setQuickTemplateData(null); }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }} onKeyDown={(e) => { if (e.key === 'Escape') setQuickTemplateData(null); }}>
           <form
-            className="panel-beveled bg-surface-raised"
-            style={{ width: '440px', border: '1px solid #3a5070' }}
+            className="panel-beveled bg-surface-raised animate-in"
+            style={{ width: '440px', border: '1px solid #2a3e58', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }}
             onSubmit={async (e) => {
               e.preventDefault();
               if (!quickTemplateAddress.trim() || quickTemplateSubmitting) return;
@@ -4630,8 +4699,8 @@ export default function DispatchPage() {
 
       {/* Create / Edit Unit Modal */}
       {showCreateUnitModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={unitModalTitleId} style={{ background: 'rgba(0,0,0,0.6)' }}>
-          <div className="panel-beveled bg-surface-raised" style={{ width: '420px', border: '1px solid #3a5070' }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={unitModalTitleId} style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}>
+          <div className="panel-beveled bg-surface-raised" style={{ width: '420px', border: '1px solid #2a3e58', boxShadow: '0 12px 40px rgba(0,0,0,0.5)' }}>
             <div className="panel-title-bar">
               <div className="flex items-center gap-2">
                 <Radio className="w-4 h-4 text-brand-400" />
@@ -4863,8 +4932,8 @@ export default function DispatchPage() {
 
       {/* Feature 5: Shift Handoff Notes Modal */}
       {showHandoffNotes && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowHandoffNotes(false)}>
-          <div className="bg-surface-raised border border-rmpg-600 rounded w-[500px] max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }} onClick={() => setShowHandoffNotes(false)}>
+          <div className="bg-surface-raised w-[500px] max-h-[80vh] flex flex-col rounded-sm" style={{ border: '1px solid #2a3e58', boxShadow: '0 12px 40px rgba(0,0,0,0.5)' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-3 border-b border-rmpg-600">
               <h3 className="text-sm font-bold text-white">Shift Handoff Notes</h3>
               <button onClick={() => setShowHandoffNotes(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>

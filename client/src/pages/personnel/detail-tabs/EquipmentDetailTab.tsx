@@ -280,9 +280,12 @@ export default function EquipmentDetailTab({
           ))}
         </div>
       ) : (
-        <div className="panel-beveled p-8 text-center bg-surface-base">
-          <Box className="w-8 h-8 text-rmpg-600 mx-auto mb-2" />
-          <p className="text-xs text-rmpg-400">No equipment issued</p>
+        <div className="panel-beveled p-10 text-center bg-surface-base" role="status">
+          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+            <Box className="w-7 h-7 text-rmpg-600" />
+          </div>
+          <p className="text-sm text-rmpg-400 font-medium">No equipment issued</p>
+          <p className="text-[10px] text-rmpg-600 mt-1">Click "Add Equipment" to issue gear</p>
         </div>
       )}
     </div>

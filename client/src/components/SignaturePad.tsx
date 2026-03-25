@@ -240,17 +240,19 @@ export default function SignaturePad({
         <div className="relative bg-white rounded-sm border border-rmpg-600 p-2 inline-block">
           <img src={value} alt="Signature" className="max-h-16 object-contain" />
           <div className="absolute top-1 right-1 flex gap-1">
+            {/* 65: Re-sign button with transition */}
             <button
               type="button"
               onClick={() => setShowPad(true)}
-              className="text-[10px] px-1.5 py-0.5 bg-brand-700 text-white rounded-sm hover:bg-brand-600"
+              className="text-[10px] px-1.5 py-0.5 bg-brand-700 text-white rounded-sm hover:bg-brand-600 active:bg-brand-500 transition-colors"
             >
               Re-sign
             </button>
+            {/* 66: Remove button with active state and transition */}
             <button
               type="button"
               onClick={handleRemove}
-              className="text-[10px] px-1.5 py-0.5 bg-red-700 text-white rounded-sm hover:bg-red-600"
+              className="text-[10px] px-1.5 py-0.5 bg-red-700 text-white rounded-sm hover:bg-red-600 active:bg-red-500 transition-colors"
             >
               Remove
             </button>
@@ -265,10 +267,11 @@ export default function SignaturePad({
     return (
       <div className="space-y-1">
         <label className="block text-xs font-semibold text-rmpg-300 uppercase">{label}</label>
+        {/* 63: Sign button with active press state and focus ring */}
         <button
           type="button"
           onClick={() => setShowPad(true)}
-          className="px-3 py-1.5 text-xs font-semibold bg-brand-800 text-brand-200 border border-brand-600 rounded-sm hover:bg-brand-700 transition-colors"
+          className="px-3 py-1.5 text-xs font-semibold bg-brand-800 text-brand-200 border border-brand-600 rounded-sm hover:bg-brand-700 active:bg-brand-600 focus-visible:ring-1 focus-visible:ring-brand-400 focus-visible:outline-none transition-colors"
         >
           Sign Document
         </button>
@@ -386,11 +389,12 @@ export default function SignaturePad({
           >
             <Eraser className="w-3 h-3" /> Clear
           </button>
+          {/* 64: Apply button with disabled cursor and active state */}
           <button
             type="button"
             onClick={handleSave}
             disabled={!canSave}
-            className="flex items-center gap-1 px-2 py-1 text-xs bg-green-800 text-green-200 rounded-sm hover:bg-green-700 disabled:opacity-40"
+            className="flex items-center gap-1 px-2 py-1 text-xs bg-green-800 text-green-200 rounded-sm hover:bg-green-700 active:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             <Check className="w-3 h-3" /> Apply
           </button>

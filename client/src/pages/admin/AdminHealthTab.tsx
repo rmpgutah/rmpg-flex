@@ -329,7 +329,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
             <Tag className="w-3.5 h-3.5" />
             Version History
           </div>
-          <div className="space-y-1 max-h-64 overflow-y-auto">
+          <div className="space-y-1 max-h-64 overflow-y-auto scrollbar-dark">
             {changelog.changelog.map((entry) => (
               <div key={entry.version} className="border border-rmpg-700/50 rounded-sm overflow-hidden">
                 <button type="button"
@@ -912,7 +912,7 @@ function MetricCard({ icon: Icon, label, value, sub, color }: {
         <Icon className={`w-4 h-4 ${color}`} />
         <span className="text-[10px] text-rmpg-400 uppercase tracking-wider font-bold">{label}</span>
       </div>
-      <div className="text-lg font-bold font-mono text-rmpg-100">{value}</div>
+      <div className="text-lg font-bold font-mono text-rmpg-100 tabular-nums">{value}</div>
       <div className="text-[10px] text-rmpg-500 mt-0.5">{sub}</div>
     </div>
   );

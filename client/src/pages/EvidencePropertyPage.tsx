@@ -509,12 +509,12 @@ export default function EvidencePropertyPage() {
         <div className="flex flex-col gap-1.5 px-3 py-2 border-b border-rmpg-700 bg-surface-base">
           <div className="flex gap-1.5">
             <div className="flex-1 relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" style={{ width: 12, height: 12 }} />
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500 pointer-events-none" style={{ width: 12, height: 12 }} />
               <input
                 value={searchQuery}
                 onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
                 placeholder="Search evidence..." aria-label="Search evidence..."
-                className="input-dark w-full pl-7 pr-2 py-1 text-xs min-h-[36px]"
+                className="input-dark w-full pl-7 pr-2 py-1 text-xs min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow"
               />
             </div>
             <select
@@ -527,16 +527,17 @@ export default function EvidencePropertyPage() {
             </select>
           </div>
           {/* Status filter chips */}
-          <div className="flex gap-1 flex-wrap">
+          <div className="flex gap-1 flex-wrap" role="group" aria-label="Filter by status">
             {STATUS_OPTIONS.map(opt => (
               <button type="button"
                 key={opt.value}
                 onClick={() => { setFilterStatus(opt.value); setPage(1); }}
-                className={`text-[9px] px-2 py-0.5 transition-colors ${
+                className={`text-[9px] px-2 py-0.5 transition-all duration-150 ${
                   filterStatus === opt.value
-                    ? 'bg-brand-600/30 text-brand-300 border border-brand-600/50'
-                    : 'toolbar-btn text-rmpg-500'
+                    ? 'bg-brand-600/30 text-brand-300 border border-brand-600/50 shadow-sm'
+                    : 'toolbar-btn text-rmpg-500 hover:text-rmpg-300'
                 }`}
+                aria-pressed={filterStatus === opt.value}
               >
                 {opt.label}
               </button>
@@ -545,14 +546,18 @@ export default function EvidencePropertyPage() {
         </div>
 
         {/* Item List */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto scrollbar-dark" role="list" aria-label="Evidence items">
           {loading ? (
-            <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div>
+            <div className="flex flex-col items-center justify-center h-40 gap-3">
+              <Loader2 className="w-6 h-6 animate-spin text-brand-400" role="status" aria-label="Loading evidence items" />
+              <span className="text-[10px] text-rmpg-500 animate-pulse">Loading evidence...</span>
+            </div>
           ) : items.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-rmpg-500">
-              <Package className="w-8 h-8 mb-2 text-rmpg-600" />
-              <p className="text-xs">No evidence items found</p>
-              <button type="button" onClick={() => setNewEvidenceOpen(true)} className="toolbar-btn text-[10px] mt-3 text-brand-400">
+            <div className="flex flex-col items-center justify-center py-16 text-rmpg-500">
+              <Package className="w-10 h-10 mb-3 text-rmpg-600" />
+              <p className="text-xs font-medium">No evidence items found</p>
+              <p className="text-[9px] text-rmpg-600 mt-1">Adjust your filters or create a new item</p>
+              <button type="button" onClick={() => setNewEvidenceOpen(true)} className="toolbar-btn toolbar-btn-primary text-[10px] mt-3">
                 <Plus style={{ width: 10, height: 10 }} /> Create Evidence Item
               </button>
             </div>
@@ -560,12 +565,14 @@ export default function EvidencePropertyPage() {
             items.map(item => (
               <button type="button"
                 key={item.id}
+                role="listitem"
                 onClick={() => { setSelected(item); setDetailTab('info'); }}
-                className={`w-full text-left px-3 py-2.5 border-b border-rmpg-700/60 transition-colors ${
+                className={`w-full text-left px-3 py-2.5 border-b border-rmpg-800/60 transition-all duration-150 ${
                   selected?.id === item.id
                     ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
-                    : 'hover:bg-rmpg-800/30 border-l-2 border-l-transparent'
+                    : 'hover:bg-rmpg-800/40 border-l-2 border-l-transparent'
                 }`}
+                aria-selected={selected?.id === item.id}
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[11px] font-mono font-bold text-white truncate">
@@ -630,7 +637,7 @@ export default function EvidencePropertyPage() {
             </PanelTitleBar>
 
             {/* Tabs */}
-            <div className="flex border-b border-rmpg-700 bg-surface-raised">
+            <div className="flex border-b border-rmpg-700 bg-surface-raised" role="tablist" aria-label="Evidence detail tabs">
               {([
                 { id: 'info' as DetailTab, label: 'Details', icon: FileText },
                 { id: 'chain' as DetailTab, label: 'Chain of Custody', icon: ArrowRightLeft },
@@ -643,11 +650,13 @@ export default function EvidencePropertyPage() {
                 return (
                   <button type="button"
                     key={tab.id}
+                    role="tab"
+                    aria-selected={detailTab === tab.id}
                     onClick={() => setDetailTab(tab.id)}
-                    className={`flex items-center gap-1.5 px-4 py-2 text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                    className={`flex items-center gap-1.5 px-4 py-2 text-[10px] font-bold uppercase tracking-wider transition-all duration-150 ${
                       detailTab === tab.id
                         ? 'text-white border-b-2 border-brand-500 bg-brand-900/10'
-                        : 'text-rmpg-500 hover:text-rmpg-300'
+                        : 'text-rmpg-500 hover:text-rmpg-300 hover:bg-rmpg-700/20'
                     }`}
                   >
                     <Icon style={{ width: 11, height: 11 }} />

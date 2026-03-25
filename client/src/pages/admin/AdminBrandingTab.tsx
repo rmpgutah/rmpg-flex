@@ -123,7 +123,7 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 flex items-center justify-center bg-purple-900/30 border border-purple-700/50">
+          <div className="w-10 h-10 flex items-center justify-center bg-purple-900/30 border border-purple-700/50" aria-hidden="true">
             <Palette className="w-5 h-5 text-purple-400" />
           </div>
           <div>
@@ -134,9 +134,10 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
         <button type="button"
           onClick={saveConfig}
           disabled={!dirty || saving}
-          className={`toolbar-btn ${dirty ? 'toolbar-btn-primary' : 'toolbar-btn'} flex items-center gap-1.5`}
+          className={`toolbar-btn ${dirty ? 'toolbar-btn-primary' : 'toolbar-btn'} flex items-center gap-1.5 disabled:opacity-50 transition-opacity`}
+          aria-label={saving ? 'Saving branding settings' : 'Save branding settings'}
         >
-          {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : saved ? <CheckCircle className="w-3 h-3 text-green-400" /> : <Save className="w-3 h-3" />}
+          {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Saving" /> : saved ? <CheckCircle className="w-3 h-3 text-green-400" /> : <Save className="w-3 h-3" />}
           {saving ? 'Saving...' : saved ? 'Saved' : 'Save Changes'}
         </button>
       </div>

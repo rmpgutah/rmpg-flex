@@ -199,12 +199,14 @@ export default function TrainingDocsPage() {
       </div>
 
       {/* Category Tabs */}
-      <div className="panel-inset mx-3 mt-3 p-1.5 flex items-center gap-1 flex-wrap flex-shrink-0">
+      <div className="panel-inset mx-3 mt-3 p-1.5 flex items-center gap-1 flex-wrap flex-shrink-0" role="tablist" aria-label="Document categories">
         {CATEGORIES.map((cat) => (
           <button type="button"
             key={cat.key}
+            role="tab"
+            aria-selected={category === cat.key}
             onClick={() => setCategory(cat.key)}
-            className={`text-[10px] px-2.5 py-1 ${
+            className={`text-[10px] px-2.5 py-1 transition-colors duration-150 ${
               category === cat.key ? 'toolbar-btn-primary' : 'toolbar-btn'
             }`}
           >
@@ -214,29 +216,29 @@ export default function TrainingDocsPage() {
       </div>
 
       {/* Document List */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2">
+      <div className="flex-1 overflow-y-auto p-3 space-y-2 scrollbar-dark" role="tabpanel">
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" />
             <span className="ml-2 text-xs text-rmpg-400">Loading documents...</span>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-16">
-            <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-base">
-              <BookOpen className="w-7 h-7 text-rmpg-600" />
+          <div className="text-center py-16" role="status">
+            <div className="w-16 h-16 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+              <BookOpen className="w-8 h-8 text-rmpg-600" />
             </div>
-            <p className="text-xs text-rmpg-500">
-              {search ? 'No documents match your search.' : 'No documents have been added yet.'}
+            <p className="text-sm text-rmpg-400 font-medium">
+              {search ? 'No documents match your search' : 'No documents have been added yet'}
             </p>
             {isAdmin && !search && (
-              <p className="text-[10px] text-rmpg-600 mt-1">Click "Add Document" to upload the first policy or training manual.</p>
+              <p className="text-[10px] text-rmpg-600 mt-1">Click "Add Document" to upload the first policy or training manual</p>
             )}
           </div>
         ) : (
           filtered.map((doc) => (
             <div
               key={doc.id}
-              className="panel-beveled p-3 bg-surface-base hover:bg-surface-raised/50 transition-colors border-l-2 border-l-brand-500/50"
+              className="panel-beveled p-3 bg-surface-base hover:bg-rmpg-800/30 hover:shadow-sm transition-all duration-150 border-l-2 border-l-brand-500/50"
             >
               <div className="flex items-start gap-3">
                 {/* Icon */}

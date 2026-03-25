@@ -246,17 +246,14 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
       })()
     : null;
 
-  // Set document title
-  useEffect(() => { document.title = 'HR - Reviews \u2014 RMPG Flex'; }, []);
-
-  // Keyboard shortcut: Escape to close modals
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setModalOpen(false); setEditReview(null); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-2">
+        <Loader2 size={24} className="animate-spin text-brand-500" role="status" aria-label="Loading performance reviews" />
+        <span className="text-xs text-rmpg-400">Loading reviews...</span>
+      </div>
+    );
+  }
 
   // ════════════════════════════════════════════════════════
   // OFFICER VIEW

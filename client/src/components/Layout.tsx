@@ -750,7 +750,7 @@ export default function Layout() {
             <button type="button"
               onClick={handleNameSetupSave}
               disabled={setupSaving || !setupFirstName.trim() || !setupLastName.trim()}
-              className="btn-primary w-full justify-center"
+              className="btn-primary w-full justify-center transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#1a5a9e] focus-visible:outline-none"
             >
               {setupSaving ? 'Saving...' : 'Continue'}
             </button>
@@ -1079,6 +1079,8 @@ export default function Layout() {
       {/* ============================================================ */}
       <div
         className="hidden md:flex items-center gap-0 px-1 select-none"
+        role="toolbar"
+        aria-label="Module navigation"
         style={{
           height: 46,
           background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
@@ -1144,8 +1146,9 @@ export default function Layout() {
                       window.open(url, '_blank', 'noopener,noreferrer');
                     }}
                     onMouseEnter={() => { if (openDropdown) setOpenDropdown(null); }}
-                    className="toolbar-btn"
+                    className="toolbar-btn transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#1a5a9e] focus-visible:outline-none"
                     title={`Open ${item.label}${item.shortcut ? ` (${item.shortcut})` : ''}`}
+                    aria-label={`Open ${item.label} in new window`}
                     style={{ height: 44, padding: '2px 6px' }}
                   >
                     <Icon style={{ width: 16, height: 16, color: '#5a6e80', marginBottom: 1 }} />
@@ -1218,13 +1221,14 @@ export default function Layout() {
                     {/* Email unread badge on Comms toolbar button */}
                     {item.path === '/communications' && emailUnreadCount > 0 && (
                       <span
-                        className="absolute flex items-center justify-center font-bold"
+                        className="absolute flex items-center justify-center font-bold animate-pulse"
                         style={{
                           top: 1, left: 30,
                           minWidth: 14, height: 14, padding: '0 3px',
                           fontSize: 8, lineHeight: 1,
                           background: '#dc2626', color: '#fff',
                           borderRadius: 7, border: '1px solid #141e2b',
+                          boxShadow: '0 0 6px rgba(220, 38, 38, 0.5)',
                         }}
                       >
                         {emailUnreadCount > 99 ? '99+' : emailUnreadCount}
@@ -1269,6 +1273,8 @@ export default function Layout() {
                   {hasChildren && isDropdownOpen && (
                     <div
                       className="absolute top-full left-0 z-50 py-1 animate-dropdown-appear"
+                      role="menu"
+                      aria-label={`${item.label} submenu`}
                       style={{
                         minWidth: 200,
                         background: '#1a2636',
@@ -1296,7 +1302,8 @@ export default function Layout() {
                                 navigate(child.path);
                               }
                             }}
-                            className="flex items-center gap-2.5 w-full px-3 py-1.5 text-left transition-colors"
+                            className="flex items-center gap-2.5 w-full px-3 py-1.5 text-left transition-colors duration-150 hover:bg-white/[0.06] focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#1a5a9e] focus-visible:outline-none"
+                            role="menuitem"
                             style={{
                               color: childActive ? '#ffffff' : '#b0bcc8',
                               background: childActive ? 'rgba(26,90,158,0.15)' : 'transparent',
@@ -1343,7 +1350,7 @@ export default function Layout() {
       {/* ============================================================ */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Page Content (recessed panel) */}
-        <main className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter" key={location.pathname} style={{ background: '#1a2636' }}>
+        <main className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark" key={location.pathname} style={{ background: '#1a2636' }}>
           {/* Feature 21: Password expiry warning banner */}
           {showPasswordExpiryWarning && (
             <div className="bg-amber-900/40 border-b border-amber-700/50 px-4 py-1.5 flex items-center gap-2">
@@ -1352,10 +1359,10 @@ export default function Layout() {
                 Your password expires in <strong>{passwordExpiryDays} day{passwordExpiryDays !== 1 ? 's' : ''}</strong>.
                 Please change it in your profile settings.
               </span>
-              <button type="button" onClick={() => { setProfileModalOpen(true); setProfileModalTab('password'); setShowPasswordExpiryWarning(false); }} className="ml-auto text-[10px] text-amber-400 hover:text-amber-200 font-bold">
+              <button type="button" onClick={() => { setProfileModalOpen(true); setProfileModalTab('password'); setShowPasswordExpiryWarning(false); }} className="ml-auto text-[10px] text-amber-400 hover:text-amber-200 font-bold transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-amber-400 focus-visible:outline-none">
                 Change Password
               </button>
-              <button type="button" onClick={() => setShowPasswordExpiryWarning(false)} className="text-amber-500 hover:text-amber-300"><X className="w-3 h-3" /></button>
+              <button type="button" onClick={() => setShowPasswordExpiryWarning(false)} className="text-amber-500 hover:text-amber-300 transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-amber-400 focus-visible:outline-none" aria-label="Dismiss password expiry warning"><X className="w-3 h-3" /></button>
             </div>
           )}
 
@@ -1409,14 +1416,15 @@ export default function Layout() {
 
       {/* Feature 24: Auto-logout idle warning dialog */}
       {showIdleDialog && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm" role="dialog" aria-modal="true">
-          <div className="bg-surface-base border border-rmpg-600 p-6 w-[350px] text-center shadow-2xl animate-scale-in" style={{ borderTop: '2px solid #f59e0b' }}>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Idle timeout warning">
+          <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-6 w-[350px] text-center animate-dropdown-appear">
             <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto mb-3" />
             <h3 className="text-white font-bold mb-2">Are you still there?</h3>
             <p className="text-sm text-rmpg-300 mb-4">You will be logged out in 5 minutes due to inactivity.</p>
             <button type="button"
               onClick={() => { lastActivityRef.current = Date.now(); setShowIdleDialog(false); }}
-              className="btn-primary px-4 py-2"
+              className="px-4 py-2 text-sm font-bold text-white bg-brand-600 hover:bg-brand-500 rounded-sm transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#1a5a9e] focus-visible:outline-none"
+              autoFocus
             >
               I'm still here
             </button>
@@ -1426,13 +1434,13 @@ export default function Layout() {
 
       {/* Keyboard Shortcut Help Modal */}
       {showShortcutHelp && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setShowShortcutHelp(false)}>
-          <div className="bg-[#141e2b] border border-[#2a3e58] w-full max-w-md mx-4 shadow-2xl animate-scale-in" style={{ borderTop: '2px solid #1a5a9e' }} onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" onClick={() => setShowShortcutHelp(false)}>
+          <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm w-full max-w-md mx-4 shadow-2xl animate-dropdown-appear" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#1e3048] bg-[#0d1520]">
-              <h3 className="text-xs font-bold text-white uppercase tracking-wider">Keyboard Shortcuts</h3>
-              <button type="button" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-500 hover:text-white"><X className="w-4 h-4" /></button>
+              <h3 className="text-sm font-semibold text-white">Keyboard Shortcuts</h3>
+              <button type="button" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-500 hover:text-white transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#1a5a9e] focus-visible:outline-none" aria-label="Close keyboard shortcuts"><X className="w-4 h-4" /></button>
             </div>
-            <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto">
+            <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto scrollbar-dark">
               <div className="space-y-1.5">
                 <div className="text-[10px] text-rmpg-400 font-bold uppercase tracking-wider mb-2">Module Navigation</div>
                 {TOOLBAR_NAV.filter(i => i.shortcut).map(item => (
@@ -1465,8 +1473,8 @@ export default function Layout() {
 
       {/* Command Palette */}
       {showCommandPalette && (
-        <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm" onClick={() => setShowCommandPalette(false)}>
-          <div className="bg-[#141e2b] border border-[#2a3e58] w-full max-w-lg mx-4 shadow-2xl animate-scale-in" style={{ borderTop: '2px solid #1a5a9e' }} onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Command palette" onClick={() => setShowCommandPalette(false)}>
+          <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm w-full max-w-lg mx-4 shadow-2xl animate-dropdown-appear" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-2 px-4 py-3 border-b border-[#1e3048]">
               <Search className="w-4 h-4 text-rmpg-500 flex-shrink-0" />
               <input
@@ -1486,7 +1494,7 @@ export default function Layout() {
               />
               <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-[#0d1520] border border-[#2a3e58] text-rmpg-500 rounded-sm">ESC</kbd>
             </div>
-            <div className="max-h-80 overflow-y-auto">
+            <div className="max-h-80 overflow-y-auto scrollbar-dark">
               {paletteQuery.trim() === '' ? (
                 <div className="p-4 text-center text-rmpg-500 text-xs">Type to search pages and modules...</div>
               ) : paletteResults.length === 0 ? (
@@ -1498,7 +1506,7 @@ export default function Layout() {
                     <button type="button"
                       key={`${result.path}-${idx}`}
                       onClick={() => { navigate(result.path); setShowCommandPalette(false); }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-brand-500/10 transition-colors border-b border-[#1e3048]/50 last:border-0"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-brand-500/10 transition-colors duration-150 border-b border-[#1e3048]/50 last:border-0 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#1a5a9e] focus-visible:outline-none"
                     >
                       <Icon className="w-4 h-4 text-brand-400 flex-shrink-0" />
                       <span className="text-sm text-white">{result.label}</span>

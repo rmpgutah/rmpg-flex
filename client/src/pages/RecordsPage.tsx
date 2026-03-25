@@ -407,24 +407,27 @@ export default function RecordsPage() {
       </PanelTitleBar>
 
       {/* Tab Row */}
-      <div className={`${isMobile ? 'px-2' : 'px-3'} py-1.5 border-b border-rmpg-600 flex items-center gap-1 ${isMobile ? 'overflow-x-auto' : ''}`}>
+      <div className={`${isMobile ? 'px-2' : 'px-3'} py-1.5 border-b border-rmpg-600 flex items-center gap-1 ${isMobile ? 'overflow-x-auto' : ''}`} role="tablist" aria-label="Record type tabs">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           return (
             <button type="button"
               key={tab.id}
+              role="tab"
+              aria-selected={activeTab === tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`
-                flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-medium transition-colors whitespace-nowrap
+                flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-medium transition-all duration-150 whitespace-nowrap relative
                 ${activeTab === tab.id
-                  ? 'bg-rmpg-700 text-white border border-rmpg-600 border-b-rmpg-700'
+                  ? 'bg-rmpg-700 text-white border border-rmpg-600 border-b-rmpg-700 shadow-sm'
                   : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'
                 }
               `}
             >
               <Icon className="w-3.5 h-3.5" />
               {tab.label}
-              <span className="text-[9px] text-rmpg-500">({tab.count})</span>
+              <span className={`text-[9px] font-mono ${activeTab === tab.id ? 'text-brand-400' : 'text-rmpg-500'}`}>({tab.count})</span>
+              {activeTab === tab.id && <span className="absolute bottom-0 left-1 right-1 h-[2px] bg-brand-500" />}
             </button>
           );
         })}
@@ -498,9 +501,10 @@ export default function RecordsPage() {
 
       {/* Error banner */}
       {error && (
-        <div className="px-3 py-2 bg-red-900/40 border-b border-red-700/50 text-red-300 text-xs flex items-center">
-          {error}
-          <button type="button" onClick={() => setError(null)} className="ml-2 underline text-red-400 hover:text-red-300">dismiss</button>
+        <div className="px-3 py-2 bg-red-900/40 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2" role="alert">
+          <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />
+          <span className="flex-1">{error}</span>
+          <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300 transition-colors underline" aria-label="Dismiss error">dismiss</button>
         </div>
       )}
 
@@ -517,11 +521,11 @@ export default function RecordsPage() {
       )}
 
       {/* Active TabList Content */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden" role="tabpanel" aria-label={`${activeTab} records`}>
         {isLoading && (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading" />
-            <span className="ml-2 text-sm text-rmpg-300">Loading records...</span>
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <Loader2 className="w-7 h-7 text-brand-400 animate-spin" role="status" aria-label="Loading records" />
+            <span className="text-sm text-rmpg-400 animate-pulse">Loading records...</span>
           </div>
         )}
         {activeTab === 'persons' && !loadingPersons && <PersonsTabList state={personsState} />}
@@ -565,7 +569,7 @@ export default function RecordsPage() {
       </PanelTitleBar>
 
       {/* Active TabDetail Content */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden scrollbar-dark">
         {activeTab === 'persons' && <PersonsTabDetail state={personsState} />}
         {activeTab === 'vehicles' && <VehiclesTabDetail state={vehiclesState} />}
         {activeTab === 'properties' && <PropertiesTabDetail state={propertiesState} />}

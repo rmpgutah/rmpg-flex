@@ -121,9 +121,13 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
 
   if (!extractedName || extractedName.length < 3) return null;
   if (loading) {
+    {/* 75: Loading state with Loader2 spinner */}
     return (
       <div className="safety-screening">
-        <span className="animate-pulse text-[10px] text-rmpg-400 font-mono">SCREENING NAME...</span>
+        <span className="flex items-center gap-1.5 text-[10px] text-rmpg-400 font-mono">
+          <span className="inline-block w-3 h-3 border border-rmpg-400 border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+          SCREENING NAME...
+        </span>
       </div>
     );
   }
@@ -136,8 +140,9 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
   const hasUtahWarrants = (result.utahWarrantHits || []).length > 0;
   const hasPremise = (result.premiseWarnings || []).length > 0;
 
+  {/* 73: role="alert" on safety screening for screen reader priority; 74: aria-live assertive */}
   return (
-    <div className={`safety-screening ${result.hasWarnings ? 'safety-screening-alert' : ''}`}>
+    <div className={`safety-screening ${result.hasWarnings ? 'safety-screening-alert' : ''}`} role="alert" aria-live="assertive">
       {/* Main warning banner */}
       {result.hasWarnings && (
         <div className="safety-warning-banner">
@@ -165,9 +170,10 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
             )}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedPerson(expandedPerson === item.person.id ? null : item.person.id); } }}
           >
-            <div className="flex items-center gap-1.5">
-              <User style={{ width: 10, height: 10, color: item.warrants.length > 0 ? '#ef4444' : '#f59e0b' }} />
-              <span className="text-[11px] font-bold text-white">
+            {/* 76: Person name with monospace styling for consistent readout */}
+          <div className="flex items-center gap-1.5">
+              <User style={{ width: 10, height: 10, color: item.warrants.length > 0 ? '#ef4444' : '#f59e0b' }} aria-hidden="true" />
+              <span className="text-[11px] font-bold text-white font-mono tracking-tight">
                 {item.person.last_name}, {item.person.first_name}
               </span>
               {item.person.dob && (

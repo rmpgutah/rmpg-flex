@@ -262,9 +262,9 @@ export default function PersonnelDetailPanel({
   const hasCredAlert = officerCreds.some(c => c.status === 'expired' || c.status === 'expiring_soon');
 
   return (
-    <div ref={personnelDetailRef} className="flex-1 flex flex-col overflow-hidden">
+    <div ref={personnelDetailRef} className="flex-1 flex flex-col overflow-hidden" role="region" aria-label={`Details for ${officer.first_name} ${officer.last_name}`}>
       {/* Detail Header */}
-      <div className="panel-beveled mx-2 mt-2 p-4">
+      <div className="panel-beveled mx-2 mt-2 p-4 transition-colors duration-200">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-4">
             <OfficerAvatar officer={officer} size="lg" />
@@ -388,7 +388,7 @@ export default function PersonnelDetailPanel({
       </div>
 
       {/* Quick Stats Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 px-4 py-2 border-b border-rmpg-700">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 px-4 py-2.5 border-b border-rmpg-700" role="group" aria-label="Officer quick stats">
         <div className={`panel-beveled p-2 text-center border-t-2 ${officer.status === 'on_duty' ? 'border-t-green-500' : 'border-t-rmpg-600'}`}>
           <p className="field-label">Status</p>
           <p className={`text-base font-bold font-mono ${officer.status === 'on_duty' ? 'text-green-400' : 'text-rmpg-400'}`}>
@@ -416,25 +416,27 @@ export default function PersonnelDetailPanel({
       </div>
 
       {/* Tab Bar */}
-      <div className="tab-bar">
+      <div className="tab-bar" role="tablist" aria-label="Officer detail tabs">
         {DETAIL_TABS.map(({ id, label, icon: Icon }) => {
           const alertBadge = id === 'credentials' && hasCredAlert;
           return (
             <button type="button"
               key={id}
+              role="tab"
+              aria-selected={activeTab === id}
               className={`tab-bar-item ${activeTab === id ? 'active' : ''}`}
               onClick={() => onTabChange(id)}
             >
               <Icon className="w-3 h-3" />
               {label}
-              {alertBadge && <span className="led-dot led-amber ml-1" />}
+              {alertBadge && <span className="led-dot led-amber ml-1" title="Credential alert" />}
             </button>
           );
         })}
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-y-auto min-h-0 p-4">
+      <div className="flex-1 overflow-y-auto min-h-0 p-4 scrollbar-dark" role="tabpanel">
         {activeTab === 'profile' && <ProfileDetailTab officer={officer} credentials={officerCreds} />}
         {activeTab === 'credentials' && (
           <CredentialsDetailTab

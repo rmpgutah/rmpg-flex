@@ -156,21 +156,21 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
         <div className="panel-beveled p-3">
-          <div className="text-[20px] font-black text-blue-400">{stats.total_officers}</div>
+          <div className="text-[20px] font-black text-blue-400 tabular-nums">{stats.total_officers}</div>
           <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Total Officers</div>
         </div>
         <div className="panel-beveled p-3">
-          <div className="text-[20px] font-black" style={{ color: stats.overall_compliance_rate >= 90 ? '#22c55e' : stats.overall_compliance_rate >= 70 ? '#f59e0b' : '#ef4444' }}>
+          <div className="text-[20px] font-black tabular-nums" style={{ color: stats.overall_compliance_rate >= 90 ? '#22c55e' : stats.overall_compliance_rate >= 70 ? '#f59e0b' : '#ef4444' }}>
             {stats.overall_compliance_rate}%
           </div>
           <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Compliance Rate</div>
         </div>
         <div className="panel-beveled p-3">
-          <div className="text-[20px] font-black text-red-400">{stats.total_overdue}</div>
+          <div className="text-[20px] font-black text-red-400 tabular-nums">{stats.total_overdue}</div>
           <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Overdue Items</div>
         </div>
         <div className="panel-beveled p-3">
-          <div className="text-[20px] font-black text-amber-400">{stats.expiring_soon}</div>
+          <div className="text-[20px] font-black text-amber-400 tabular-nums">{stats.expiring_soon}</div>
           <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Expiring (30d)</div>
         </div>
       </div>

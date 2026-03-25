@@ -203,12 +203,11 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search announcements..." aria-label="Search announcements"
-              autoComplete="off"
+              placeholder="Search..." aria-label="Search announcements"
               className="input-dark text-[10px] pl-6 pr-2 py-1 w-40 min-h-[36px]"
             />
           </div>
-          <button type="button" onClick={openNew} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
+          <button type="button" onClick={openNew} className="toolbar-btn-primary text-[10px] flex items-center gap-1" aria-label="Create new announcement">
             <Plus className="w-3 h-3" />
             New Announcement
           </button>
@@ -218,7 +217,10 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
       {/* Announcements List */}
       <div className="space-y-2">
         {filtered.length === 0 ? (
-          <div className="text-center py-8 text-rmpg-500 text-xs">No announcements found.</div>
+          <div className="flex flex-col items-center justify-center py-12 text-rmpg-500 text-xs gap-2">
+            <Megaphone className="w-6 h-6 text-rmpg-600" />
+            <span>No announcements found.</span>
+          </div>
         ) : filtered.map((a) => {
           const TypeIcon = TYPE_ICONS[a.type] || Info;
           const typeColor = TYPE_COLORS[a.type] || TYPE_COLORS.info;
@@ -270,13 +272,13 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
 
       {/* Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowForm(false)}>
-          <div className="bg-surface-base panel-beveled w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-rmpg-700">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in" onClick={() => setShowForm(false)} role="dialog" aria-modal="true" aria-label={editing ? 'Edit announcement' : 'New announcement'}>
+          <div className="bg-surface-base panel-beveled w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto scrollbar-dark" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-rmpg-700 sticky top-0 bg-surface-base z-10">
               <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">
                 {editing ? 'Edit Announcement' : 'New Announcement'}
               </h3>
-              <button type="button" onClick={() => setShowForm(false)} className="text-rmpg-400 hover:text-white">
+              <button type="button" onClick={() => setShowForm(false)} className="p-0.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700 transition-colors rounded-sm" aria-label="Close dialog">
                 <X className="w-4 h-4" />
               </button>
             </div>

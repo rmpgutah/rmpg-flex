@@ -70,8 +70,8 @@ import AdminIntegrationsTab from './admin/AdminIntegrationsTab';
 
 const LoadingSpinner: React.FC = () => (
   <div className="flex flex-col items-center justify-center py-20 gap-3" role="status" aria-label="Loading content">
-    <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading" />
-    <span className="text-xs text-rmpg-400 tracking-wide uppercase">Loading tab data...</span>
+    <Loader2 className="w-6 h-6 text-brand-400 animate-spin" />
+    <span className="text-xs text-rmpg-400 tracking-wide uppercase">Loading...</span>
   </div>
 );
 
@@ -710,8 +710,10 @@ export default function AdminPage() {
       {/* Mobile: horizontal scroll tabs */}
       {isMobile && (
         <div
-          className="flex overflow-x-auto flex-shrink-0 gap-1 px-2 py-1.5"
+          className="flex overflow-x-auto flex-shrink-0 gap-1 px-2 py-1.5 scrollbar-dark"
           style={{ background: '#0d1520', borderBottom: '1px solid #162236' }}
+          role="tablist"
+          aria-label="Admin sections"
         >
           {tabGroups.flatMap(g => g.tabs).map((tab) => {
             const Icon = tab.icon;
@@ -719,8 +721,10 @@ export default function AdminPage() {
             return (
               <button type="button"
                 key={tab.id}
+                role="tab"
+                aria-selected={isActive}
                 onClick={() => setActiveTab(tab.id)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold whitespace-nowrap shrink-0 transition-colors"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold whitespace-nowrap shrink-0 transition-all duration-150"
                 style={{
                   color: isActive ? '#ffffff' : '#8a9aaa',
                   background: isActive ? 'rgba(26, 90, 158, 0.15)' : 'transparent',
@@ -739,19 +743,22 @@ export default function AdminPage() {
       <div className="flex-1 flex overflow-hidden">
         {/* Desktop Sidebar */}
         {!isMobile && (
-          <div
-            className="flex-shrink-0 overflow-y-auto py-2"
+          <nav
+            className="flex-shrink-0 overflow-y-auto py-2 scrollbar-dark"
             style={{
               width: 200,
               background: '#0d1520',
               borderRight: '1px solid #162236',
             }}
+            aria-label="Admin navigation"
+            role="tablist"
           >
             {tabGroups.map((group) => (
-              <div key={group.category} className="mb-1">
+              <div key={group.category} className="mb-1.5">
                 <div
-                  className="px-3 py-1.5 text-[8px] font-bold uppercase tracking-[0.15em]"
+                  className="px-3 py-1.5 text-[8px] font-bold uppercase tracking-[0.15em] select-none"
                   style={{ color: '#5a6e80' }}
+                  aria-hidden="true"
                 >
                   {group.category}
                 </div>
@@ -761,26 +768,28 @@ export default function AdminPage() {
                   return (
                     <button type="button"
                       key={tab.id}
+                      role="tab"
+                      aria-selected={isActive}
                       onClick={() => setActiveTab(tab.id)}
-                      className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[11px] transition-colors"
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[11px] transition-all duration-150 hover:bg-[rgba(26,90,158,0.08)]"
                       style={{
                         color: isActive ? '#ffffff' : '#8a9aaa',
-                        background: isActive ? 'rgba(26, 90, 158, 0.12)' : 'transparent',
+                        background: isActive ? 'rgba(26, 90, 158, 0.12)' : undefined,
                         borderLeft: isActive ? '2px solid #1a5a9e' : '2px solid transparent',
                       }}
                     >
-                      <Icon style={{ width: 13, height: 13 }} className={isActive ? 'text-brand-400' : 'text-rmpg-600'} />
+                      <Icon style={{ width: 13, height: 13 }} className={`transition-colors duration-150 ${isActive ? 'text-brand-400' : 'text-rmpg-600'}`} />
                       {tab.label}
                     </button>
                   );
                 })}
               </div>
             ))}
-          </div>
+          </nav>
         )}
 
         {/* Content */}
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto scrollbar-dark" role="tabpanel">
         {activeTab === 'users' && (
           <AdminUsersTab
             users={users}
