@@ -547,7 +547,7 @@ router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
 
     const activeCalls = db.prepare(`
       SELECT COUNT(*) as count FROM calls_for_service
-      WHERE status IN ('pending', 'dispatched', 'enroute', 'onscene')
+      WHERE status IN ('pending', 'dispatched', 'enroute', 'onscene', 'on_hold')
     `).get() as any;
 
     const todayTotal = db.prepare(`

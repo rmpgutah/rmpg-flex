@@ -37,8 +37,8 @@ function buildCallMarker(label: string): HTMLElement {
   const tag = document.createElement('div');
   /* #54: Call marker with subtle shadow for depth */
   tag.style.cssText =
-    'background:#ef4444;color:#fff;font-size:9px;font-weight:900;' +
-    "padding:2px 5px;border:1px solid #fff;white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;box-shadow:0 2px 6px rgba(0,0,0,0.4);";
+    'background:#ef4444;color:#fff;font-size:7px;font-weight:900;' +
+    "padding:1px 3px;border:1px solid #fff;white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;box-shadow:0 1px 4px rgba(0,0,0,0.4);";
   tag.textContent = label;
 
   const caret = document.createElement('div');

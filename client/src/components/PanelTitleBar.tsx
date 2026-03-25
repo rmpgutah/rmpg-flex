@@ -38,7 +38,7 @@ export default function PanelTitleBar({
       <span id={id} className={`select-none ${titleClassName}`}>{title}</span>
       {children && (
         /* 38: Prevent children wrap from squishing title text */
-        <div className="ml-auto flex items-center gap-1 flex-wrap min-w-0 flex-shrink-0">
+        <div className="ml-auto flex items-center gap-1.5 min-w-0 overflow-x-auto scrollbar-dark whitespace-nowrap">
           {children}
         </div>
       )}

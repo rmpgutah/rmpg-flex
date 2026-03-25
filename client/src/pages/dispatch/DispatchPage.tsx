@@ -1906,14 +1906,21 @@ export default function DispatchPage() {
     }
   };
 
-  const tabCounts = useMemo(() => ({
-    all: calls.length,
-    pending: calls.filter((c) => c.status === 'pending').length,
-    active: calls.filter((c) => ['dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status)).length,
-    cleared: calls.filter((c) => ['cleared', 'closed', 'cancelled'].includes(c.status)).length,
-    archived: archivedCalls.length,
-    serve: calls.filter((c) => PSO_INCIDENT_TYPES.includes(c.incident_type)).length,
-  }), [calls, archivedCalls]);
+  const tabCounts = useMemo(() => {
+    const pending = calls.filter((c) => c.status === 'pending').length;
+    const active = calls.filter((c) => ['dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status)).length;
+    const cleared = calls.filter((c) => ['cleared', 'closed', 'cancelled'].includes(c.status)).length;
+    // ALL count: if user hides cleared calls, exclude them from the count to match the visible list
+    const allCount = userPrefs?.dispatch_show_cleared ? calls.length : calls.length - cleared;
+    return {
+      all: allCount,
+      pending,
+      active,
+      cleared,
+      archived: archivedCalls.length,
+      serve: calls.filter((c) => PSO_INCIDENT_TYPES.includes(c.incident_type)).length,
+    };
+  }, [calls, archivedCalls, userPrefs?.dispatch_show_cleared]);
 
   if (isLoading) {
     return (
@@ -2754,8 +2761,8 @@ export default function DispatchPage() {
                     className="h-2 rounded-sm bg-brand-500"
                     style={{ width: `${Math.max(pct * 0.8, 4)}px`, minWidth: 4, opacity: 0.7 + pct * 0.003 }}
                   />
-                  <span className="text-[7px] font-mono text-rmpg-400 truncate max-w-[60px] tabular-nums">
-                    {formatIncidentType(type).slice(0, 8)} {count}
+                  <span className="text-[7px] font-mono text-rmpg-400 truncate max-w-[80px] tabular-nums" title={formatIncidentType(type)}>
+                    {formatIncidentType(type).slice(0, 12)} {count}
                   </span>
                 </div>
               );
@@ -2856,7 +2863,7 @@ export default function DispatchPage() {
                     </span>
                   )}
                 </div>
-                  <div className="ml-auto flex items-center gap-1 flex-wrap">
+                  <div className="ml-auto flex items-center gap-1.5 overflow-x-auto whitespace-nowrap">
                     <PrintRecordButton
                       recordType="call"
                       recordData={{
