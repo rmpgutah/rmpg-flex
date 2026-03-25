@@ -64,6 +64,7 @@ export default function MapSidebar({
       }}
       aria-label="Map sidebar"
     >
+      {/* #1: Collapse/expand toggle with smooth icon rotation */}
       <button type="button"
         onClick={() => setSidebarOpen(!sidebarOpen)}
         className="toolbar-btn flex items-center justify-center h-7 hover:bg-[#1a2636] transition-colors duration-150"
@@ -71,7 +72,7 @@ export default function MapSidebar({
         aria-expanded={sidebarOpen}
         aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
       >
-        {sidebarOpen ? <ChevronUp className="w-3.5 h-3.5 text-rmpg-400 rotate-90" /> : <ChevronDown className="w-3.5 h-3.5 text-rmpg-400 -rotate-90" />}
+        <ChevronDown className="w-3.5 h-3.5 text-rmpg-400 transition-transform duration-200" style={{ transform: sidebarOpen ? 'rotate(90deg)' : 'rotate(-90deg)' }} />
       </button>
 
       {sidebarOpen && (
@@ -86,8 +87,9 @@ export default function MapSidebar({
               { label: 'BSY', count: unitsByStatus['busy'] || 0, color: '#ef4444' },
             ]).map(({ label, count, color }) => (
               <div key={label} className="flex items-center gap-0.5 transition-all duration-150 hover:scale-105" title={label}>
-                <div className="led-dot" style={{ backgroundColor: color, width: 6, height: 6 }} />
-                <span className="text-[8px] font-mono font-bold" style={{ color }}>{count}</span>
+                {/* #2: LED dots with subtle glow matching status color */}
+                <div className="led-dot" style={{ backgroundColor: color, width: 6, height: 6, boxShadow: count > 0 ? `0 0 4px ${color}80` : 'none' }} />
+                <span className="text-[8px] font-mono font-bold tabular-nums" style={{ color }}>{count}</span>
               </div>
             ))}
             <div className="w-px h-3 bg-rmpg-700" />
@@ -96,38 +98,43 @@ export default function MapSidebar({
             {callsByPriority['P3'] ? <span className="text-[8px] font-mono font-bold text-blue-400">P3:{callsByPriority['P3']}</span> : null}
           </div>
 
+          {/* #3: Tab bar with smooth active indicator transition */}
           <div className="tab-bar" role="tablist">
             <button type="button"
               onClick={() => setSidebarTab('units')}
-              className={`tab-bar-item flex items-center justify-center gap-1.5 transition-colors duration-150 ${sidebarTab === 'units' ? 'active border-b-2 border-[#60a5fa]' : ''}`}
+              className={`tab-bar-item flex items-center justify-center gap-1.5 transition-all duration-200 ${sidebarTab === 'units' ? 'active border-b-2 border-[#60a5fa] text-rmpg-100' : 'text-rmpg-400 hover:text-rmpg-200'}`}
               role="tab"
               aria-selected={sidebarTab === 'units'}
             >
-              {/* Fix 96: unit count in tab header */}
-              <Shield className="w-3 h-3" /> Units <span className="text-[8px] font-mono font-bold text-green-400">({sortedUnits.length})</span>
+              <Shield className="w-3 h-3" /> Units <span className="text-[8px] font-mono font-bold text-green-400 tabular-nums">({sortedUnits.length})</span>
             </button>
             <button type="button"
               onClick={() => setSidebarTab('calls')}
-              className={`tab-bar-item flex items-center justify-center gap-1.5 transition-colors duration-150 ${sidebarTab === 'calls' ? 'active border-b-2 border-[#60a5fa]' : ''}`}
+              className={`tab-bar-item flex items-center justify-center gap-1.5 transition-all duration-200 ${sidebarTab === 'calls' ? 'active border-b-2 border-[#60a5fa] text-rmpg-100' : 'text-rmpg-400 hover:text-rmpg-200'}`}
               role="tab"
               aria-selected={sidebarTab === 'calls'}
             >
-              {/* Fix 97: call count in tab header */}
-              <AlertTriangle className="w-3 h-3" /> Calls <span className="text-[8px] font-mono font-bold text-red-400">({sortedCalls.length})</span>
+              <AlertTriangle className="w-3 h-3" /> Calls <span className="text-[8px] font-mono font-bold text-red-400 tabular-nums">({sortedCalls.length})</span>
             </button>
           </div>
 
+          {/* #4: Search input with clear button and improved focus ring */}
           <div className="px-2 py-1.5" style={{ borderBottom: '1px solid #1e3048' }}>
             <div className="relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
               <input
                 type="text"
-                className="input-dark w-full text-[10px] py-1 pl-6 pr-2 focus:ring-1 focus:ring-[#1a5a9e] focus:border-[#1a5a9e] placeholder:text-[#5a6e80]"
+                className="input-dark w-full text-[10px] py-1 pl-6 pr-6 focus:ring-1 focus:ring-[#1a5a9e] focus:border-[#1a5a9e] placeholder:text-[#5a6e80] transition-shadow duration-150"
                 placeholder={sidebarTab === 'units' ? 'SEARCH UNITS...' : 'SEARCH CALLS...'}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 aria-label={sidebarTab === 'units' ? 'Search units' : 'Search calls'}
               />
+              {searchQuery && (
+                <button type="button" onClick={() => setSearchQuery('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 text-rmpg-500 hover:text-rmpg-300 transition-colors" aria-label="Clear search">
+                  <span className="text-[9px] font-bold">&times;</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -159,11 +166,16 @@ export default function MapSidebar({
                         {unit.gps_source === 'clearpathgps' && (
                           <span className="text-[7px] font-bold px-1 py-0 bg-blue-900/40 text-blue-400 border border-blue-700/30" title="ClearPathGPS Hardware Tracker">CPG</span>
                         )}
-                        {/* Fix 100: stale GPS indicator */}
+                        {/* #6: Stale GPS indicator with tooltip text */}
                         {isStale && (
-                          <span title="GPS position may be stale"><AlertCircle className="w-3 h-3 text-amber-500 shrink-0 animate-pulse" /></span>
+                          <span title="GPS stale (>5m)" className="flex items-center"><AlertCircle className="w-3 h-3 text-amber-500 shrink-0 animate-pulse" /></span>
                         )}
-                        <span className="text-[9px] font-mono ml-auto uppercase font-bold rounded-sm px-1" style={{ color: statusColor, background: `${statusColor}15` }}>{UNIT_STATUS_LABELS[unit.status]}</span>
+                        {/* #7: GPS active indicator for units with coords */}
+                        {hasCoords && !isStale && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" style={{ boxShadow: '0 0 3px #22c55e80' }} title="GPS active" />
+                        )}
+                        {/* #5: Status badge with border for better contrast */}
+                        <span className="text-[9px] font-mono ml-auto uppercase font-bold rounded-sm px-1 py-px" style={{ color: statusColor, background: `${statusColor}15`, border: `1px solid ${statusColor}30` }}>{UNIT_STATUS_LABELS[unit.status]}</span>
                       </div>
                       <div className="ml-5 mt-0.5">
                         <span className="text-[9px] text-rmpg-400">{unit.officer_name}</span>
@@ -206,8 +218,9 @@ export default function MapSidebar({
                       className={`w-full text-left px-3 py-2.5 hover:bg-[#1a2636] transition-colors duration-100 border-l-2 ${
                         hasCoords ? 'cursor-pointer' : 'cursor-default opacity-60'
                       }`}
-                      style={{ borderLeftColor: pColor }}
+                      style={{ borderLeftColor: pColor, borderLeftWidth: 3 }}
                     >
+                      {/* #8: Priority badge with improved left border width */}
                       <div className="flex items-center gap-2">
                         <span
                           className="text-[8px] font-mono font-bold px-1.5 py-0.5 rounded-sm"

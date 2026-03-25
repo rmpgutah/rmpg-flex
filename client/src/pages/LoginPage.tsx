@@ -339,6 +339,7 @@ export default function LoginPage() {
       <div
         className="w-full max-w-lg mb-2 sm:mb-3 px-3 sm:px-0 relative z-10"
         role="alert"
+        aria-label="Security warning"
       >
         <div
           style={{
@@ -354,8 +355,8 @@ export default function LoginPage() {
             <div className="w-1 h-1 rounded-full animate-pulse" style={{ background: '#ef4444', boxShadow: '0 0 4px #ef4444' }} />
           </div>
           <p className="text-[8px] sm:text-[9px] leading-relaxed font-medium" style={{ color: '#ef7a7a' }}>
-            RESTRICTED INTERNAL SYSTEM. AUTHORIZED USERS ONLY.
-            ALL ACTIVITY IS MONITORED. UNAUTHORIZED ACCESS IS PROHIBITED.
+            RESTRICTED INTERNAL SYSTEM &mdash; AUTHORIZED USERS ONLY.
+            ALL ACTIVITY IS MONITORED AND RECORDED. UNAUTHORIZED ACCESS IS PROHIBITED.
           </p>
         </div>
       </div>
@@ -375,9 +376,10 @@ export default function LoginPage() {
                 objectFit: 'contain',
               }}
               draggable={false}
+              loading="eager"
             />
           </div>
-          <div className="flex items-center justify-center gap-2 mt-0.5">
+          <div className="flex items-center justify-center gap-2 mt-1">
             <div className="h-px w-8 sm:w-12" style={{ background: 'linear-gradient(90deg, transparent, #124070)' }} />
             <p className="text-[7px] sm:text-[8px] tracking-[0.15em] uppercase font-bold" style={{ color: 'rgba(26, 90, 158, 0.65)' }}>
               Secure Authentication
@@ -387,7 +389,7 @@ export default function LoginPage() {
         </div>
 
         {/* ── Login Card ──────────────────────────────── */}
-        <div className="shadow-2xl relative overflow-hidden panel-beveled bg-surface-base">
+        <div className="shadow-2xl relative overflow-hidden panel-beveled bg-surface-base" role="form" aria-label="Authentication form">
           {/* Title bar */}
           <div className="panel-title-bar flex items-center gap-2">
             <ShieldCheck className="w-3 h-3" style={{ color: '#1a5a9e' }} />
@@ -404,21 +406,21 @@ export default function LoginPage() {
             </span>
             <div className="ml-auto flex items-center gap-1">
               {pending2FA && (
-                <div className="flex items-center gap-1 mr-2">
-                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#4ade80' }} />
+                <div className="flex items-center gap-1 mr-2" role="status">
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#4ade80' }} aria-hidden="true" />
                   <span className="text-[8px] uppercase tracking-wide" style={{ color: '#4ade80' }}>Password OK</span>
                 </div>
               )}
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2a3e58', border: '1px solid #3a5070', borderBottom: '1px solid #162236' }}>_</div>
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2a3e58', border: '1px solid #3a5070', borderBottom: '1px solid #162236' }}>□</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2a3e58', border: '1px solid #3a5070', borderBottom: '1px solid #162236' }} aria-hidden="true">_</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2a3e58', border: '1px solid #3a5070', borderBottom: '1px solid #162236' }} aria-hidden="true">&#9633;</div>
             </div>
           </div>
 
           <div className="p-4 sm:p-5">
             {/* Idle timeout message */}
             {showIdleMessage && (
-              <div className="mb-3 p-2.5 bg-amber-900/25 border border-amber-700/50 flex items-start gap-2">
-                <Lock className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
+              <div className="mb-3 p-2.5 bg-amber-900/25 border border-amber-700/50 flex items-start gap-2" role="status" aria-live="polite">
+                <Lock className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" aria-hidden="true" />
                 <div>
                   <p className="text-[10px] text-amber-300 font-semibold">Session Expired</p>
                   <p className="text-[9px] text-amber-400/80">You were automatically logged out due to inactivity.</p>
@@ -427,8 +429,8 @@ export default function LoginPage() {
             )}
             {/* Max session duration message */}
             {showSessionExpired && (
-              <div className="mb-3 p-2.5 bg-blue-900/25 border border-blue-700/50 flex items-start gap-2">
-                <Lock className="w-3.5 h-3.5 text-blue-400 flex-shrink-0 mt-0.5" />
+              <div className="mb-3 p-2.5 bg-blue-900/25 border border-blue-700/50 flex items-start gap-2" role="status" aria-live="polite">
+                <Lock className="w-3.5 h-3.5 text-blue-400 flex-shrink-0 mt-0.5" aria-hidden="true" />
                 <div>
                   <p className="text-[10px] text-blue-300 font-semibold">Session Duration Limit</p>
                   <p className="text-[9px] text-blue-400/80">Your session reached the maximum duration. Please sign in again.</p>
@@ -457,11 +459,11 @@ export default function LoginPage() {
 
             {/* Error message */}
             {error && (
-              <div className="flex items-center gap-2 p-2 mb-4 animate-fade-in" style={{
+              <div className="flex items-center gap-2 p-2.5 mb-4 animate-fade-in" role="alert" aria-live="assertive" style={{
                 background: error.includes('locked') ? 'rgba(239, 68, 68, 0.2)' : 'rgba(220, 38, 38, 0.15)',
                 border: error.includes('locked') ? '1px solid #ef4444' : '1px solid #991b1b',
               }}>
-                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#ef4444' }} />
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#ef4444' }} aria-hidden="true" />
                 <div>
                   <p className="text-xs" style={{ color: '#ef7a7a' }}>{error}</p>
                   {error.includes('attempt') && (
@@ -475,7 +477,7 @@ export default function LoginPage() {
             {isCredentialStep && (
               <form onSubmit={handleCredentialsSubmit} className="space-y-3">
                 <div>
-                  <label htmlFor="username" className="block text-[10px] font-bold uppercase mb-1 tracking-wide" style={{ color: '#8a9aaa' }}>
+                  <label htmlFor="username" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#8a9aaa' }}>
                     Username
                   </label>
                   <input
@@ -484,6 +486,7 @@ export default function LoginPage() {
                     type="text"
                     className="input-dark login-input-glow h-9"
                     placeholder="Enter your username"
+                    aria-required="true"
                     value={loginUsername}
                     onChange={(e) => setLoginUsername(e.target.value)}
                     autoComplete="username"
@@ -491,7 +494,7 @@ export default function LoginPage() {
                   />
                 </div>
                 <div>
-                  <label htmlFor="password" className="block text-[10px] font-bold uppercase mb-1 tracking-wide" style={{ color: '#8a9aaa' }}>
+                  <label htmlFor="password" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#8a9aaa' }}>
                     Password
                   </label>
                   <div className="relative">
@@ -504,6 +507,7 @@ export default function LoginPage() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       autoComplete="current-password"
+                      aria-required="true"
                       required
                     />
                     <button
@@ -523,12 +527,13 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loginBusy || !loginUsername.trim() || !password}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
+                  aria-busy={loginBusy}
                 >
                   {loginBusy ? (
                     <>
-                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Authenticating...
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" aria-hidden="true" />
+                      <span>Authenticating...</span>
                     </>
                   ) : (
                     'Sign In'
@@ -569,46 +574,49 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loginBusy || totpCode.replace(/\s/g, '').length < 6}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
+                  aria-busy={loginBusy}
                 >
                   {loginBusy ? (
                     <>
-                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Verifying...
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" aria-hidden="true" />
+                      <span>Verifying...</span>
                     </>
                   ) : (
                     <>
-                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />
                       VERIFY CODE
                     </>
                   )}
                 </button>
 
                 {/* Trust this device checkbox */}
-                <label className="flex items-center gap-2 cursor-pointer select-none py-1">
+                <label className="flex items-center gap-2 cursor-pointer select-none py-1 group">
                   <input
                     type="checkbox"
                     checked={trustThisDevice}
                     onChange={(e) => setTrustThisDevice(e.target.checked)}
-                    className="w-3.5 h-3.5 rounded-sm accent-[#1a5a9e] cursor-pointer"
+                    className="w-3.5 h-3.5 rounded-sm accent-[#1a5a9e] cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
                     style={{ accentColor: '#1a5a9e' }}
+                    aria-label="Trust this device for 30 days"
                   />
-                  <span className="text-[10px]" style={{ color: '#8a9aaa' }}>
+                  <span className="text-[10px] group-hover:text-rmpg-200 transition-colors" style={{ color: '#8a9aaa' }}>
                     Trust this device for 30 days
                   </span>
                 </label>
 
                 {/* Alternative methods */}
-                <div className="flex items-center justify-between pt-2">
+                <div className="flex items-center justify-between pt-2" style={{ borderTop: '1px solid #1e3048' }}>
                   <button
                     type="button"
                     onClick={handleBackWebAuthn}
-                    className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors"
+                    className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm px-1 py-0.5"
                     style={{ color: '#5a6e80' }}
                     onMouseEnter={(e) => { e.currentTarget.style.color = '#e0e0e0'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.color = '#5a6e80'; }}
+                    aria-label="Go back to credentials"
                   >
-                    <ArrowLeft className="w-3 h-3" />
+                    <ArrowLeft className="w-3 h-3" aria-hidden="true" />
                     Back
                   </button>
                   <div className="flex items-center gap-3">
@@ -616,21 +624,23 @@ export default function LoginPage() {
                       type="button"
                       onClick={() => { clearError(); handleSecurityKeyAuth(); }}
                       disabled={loginBusy}
-                      className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors"
+                      className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm px-1 py-0.5"
                       style={{ color: '#5a6e80' }}
                       onMouseEnter={(e) => { e.currentTarget.style.color = '#d97706'; }}
                       onMouseLeave={(e) => { e.currentTarget.style.color = '#5a6e80'; }}
+                      aria-label="Verify with YubiKey security key"
                     >
-                      <Usb className="w-3 h-3" />
+                      <Usb className="w-3 h-3" aria-hidden="true" />
                       YubiKey
                     </button>
                     <button
                       type="button"
                       onClick={() => { setTwoFactorMode('backup'); setUseBackupCode(true); clearError(); }}
-                      className="text-[10px] uppercase tracking-wide font-bold transition-colors"
+                      className="text-[10px] uppercase tracking-wide font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm px-1 py-0.5"
                       style={{ color: '#5a6e80' }}
                       onMouseEnter={(e) => { e.currentTarget.style.color = '#1a5a9e'; }}
                       onMouseLeave={(e) => { e.currentTarget.style.color = '#5a6e80'; }}
+                      aria-label="Use a backup recovery code"
                     >
                       Backup Code
                     </button>
@@ -653,16 +663,18 @@ export default function LoginPage() {
                   type="button"
                   onClick={handleSecurityKeyAuth}
                   disabled={loginBusy}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
+                  aria-busy={loginBusy}
+                  aria-label={webauthnError ? 'Retry security key authentication' : 'Activate security key'}
                 >
                   {loginBusy ? (
                     <>
-                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Waiting...
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" aria-hidden="true" />
+                      <span>Waiting...</span>
                     </>
                   ) : (
                     <>
-                      <KeyRound className="w-3.5 h-3.5" />
+                      <KeyRound className="w-3.5 h-3.5" aria-hidden="true" />
                       {webauthnError ? 'RETRY SECURITY KEY' : 'ACTIVATE SECURITY KEY'}
                     </>
                   )}
@@ -700,6 +712,9 @@ export default function LoginPage() {
                   onChange={(e) => setBackupCode(e.target.value)}
                   autoFocus
                   maxLength={9}
+                  aria-label="Backup recovery code"
+                  autoComplete="off"
+                  spellCheck={false}
                 />
 
                 <button
@@ -760,12 +775,13 @@ export default function LoginPage() {
                   type="button"
                   onClick={handleStartSetup}
                   disabled={loginBusy}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
+                  aria-busy={loginBusy}
                 >
                   {loginBusy ? (
                     <>
-                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Generating...
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" aria-hidden="true" />
+                      <span>Generating...</span>
                     </>
                   ) : (
                     'BEGIN SETUP'
@@ -793,8 +809,8 @@ export default function LoginPage() {
 
                 {qrCodeUri && (
                   <div className="flex justify-center">
-                    <div className="p-2" style={{ background: '#ffffff', borderRadius: '2px' }}>
-                      <img src={qrCodeUri} alt="2FA QR Code" className="w-44 h-44" draggable={false} />
+                    <div className="p-2.5 shadow-lg" style={{ background: '#ffffff', borderRadius: '2px' }}>
+                      <img src={qrCodeUri} alt="Scan this QR code with your authenticator app to set up two-factor authentication" className="w-44 h-44" draggable={false} />
                     </div>
                   </div>
                 )}
@@ -819,32 +835,35 @@ export default function LoginPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold uppercase mb-1 tracking-wide" style={{ color: '#8a9aaa' }}>
+                  <label htmlFor="setup-code" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#8a9aaa' }}>
                     Enter code from app to verify
                   </label>
                   <input
+                    id="setup-code"
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
                     maxLength={6}
-                    className="input-dark h-10 text-center text-lg tracking-[0.5em] font-mono"
+                    className="input-dark h-10 text-center text-lg tracking-[0.5em] font-mono login-input-glow"
                     placeholder="000000"
                     value={setupCode}
                     onChange={(e) => setSetupCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                     autoComplete="one-time-code"
                     autoFocus
+                    aria-label="6-digit verification code"
                   />
                 </div>
 
                 <button
                   type="submit"
                   disabled={loginBusy || setupCode.length !== 6}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
+                  aria-busy={loginBusy}
                 >
                   {loginBusy ? (
                     <>
-                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Verifying...
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" aria-hidden="true" />
+                      <span>Verifying...</span>
                     </>
                   ) : (
                     'VERIFY & ACTIVATE 2FA'
@@ -883,34 +902,38 @@ export default function LoginPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold uppercase mb-1 tracking-wide" style={{ color: '#8a9aaa' }}>
+                  <label htmlFor="new-pw" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#8a9aaa' }}>
                     New Password
                   </label>
                   <input
+                    id="new-pw"
                     type="password"
-                    className="input-dark h-9"
+                    className="input-dark login-input-glow h-9"
                     placeholder="Enter new password"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     autoComplete="new-password"
                     autoFocus
                     required
+                    aria-required="true"
                   />
                   <PasswordStrengthMeter password={newPassword} />
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold uppercase mb-1 tracking-wide" style={{ color: '#8a9aaa' }}>
+                  <label htmlFor="confirm-pw" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#8a9aaa' }}>
                     Confirm Password
                   </label>
                   <input
+                    id="confirm-pw"
                     type="password"
-                    className="input-dark h-9"
+                    className="input-dark login-input-glow h-9"
                     placeholder="Confirm new password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     autoComplete="new-password"
                     required
+                    aria-required="true"
                   />
                   {confirmPassword && newPassword !== confirmPassword && (
                     <p className="text-[9px] mt-1" style={{ color: '#ef4444' }}>Passwords do not match</p>
@@ -920,12 +943,13 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loginBusy || !newPassword || newPassword !== confirmPassword}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
+                  aria-busy={loginBusy}
                 >
                   {loginBusy ? (
                     <>
-                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Updating...
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" aria-hidden="true" />
+                      <span>Updating...</span>
                     </>
                   ) : (
                     'CHANGE PASSWORD & CONTINUE'
@@ -934,16 +958,16 @@ export default function LoginPage() {
               </form>
             )}
 
-            <div className="mt-3 pt-2" style={{ borderTop: '1px solid #1e3048' }} />
+            <div className="mt-3 pt-2" style={{ borderTop: '1px solid #1e3048' }} aria-hidden="true" />
           </div>
 
           {/* Status bar */}
-          <div className="status-bar">
+          <div className="status-bar" role="status" aria-label={`Login status: ${status.text}`}>
             <div className="status-bar-section">
-              <span className="led-dot" style={{ background: status.color, boxShadow: `0 0 4px ${status.color}` }} />
+              <span className="led-dot" style={{ background: status.color, boxShadow: `0 0 4px ${status.color}` }} aria-hidden="true" />
               <span>{status.text}</span>
             </div>
-            <div className="status-bar-section">
+            <div className="status-bar-section" aria-label="Connection encrypted">
               <span style={{ color: '#5a6e80' }}>ENCRYPTED</span>
             </div>
             <div className="status-bar-section border-r-0">
@@ -1023,13 +1047,13 @@ export default function LoginPage() {
         </div>
 
         {/* Footer with clock */}
-        <div className="text-center mt-2 flex items-center justify-center gap-3">
+        <div className="text-center mt-2 flex items-center justify-center gap-3" aria-label="Application footer">
           <p className="text-[7px] sm:text-[8px] tracking-wide" style={{ color: '#2a3e58' }}>
             RMPG Flex v{APP_VERSION} | Rocky Mountain Protective Group, LLC
           </p>
-          <div className="flex items-center gap-1">
-            <Clock className="w-2.5 h-2.5" style={{ color: '#2a3e58' }} />
-            <span className="text-[8px] font-mono" style={{ color: '#3a5070' }}>{clock} MT</span>
+          <div className="flex items-center gap-1" role="timer" aria-label="Current Mountain Time">
+            <Clock className="w-2.5 h-2.5" style={{ color: '#2a3e58' }} aria-hidden="true" />
+            <time className="text-[8px] font-mono tabular-nums" style={{ color: '#3a5070' }}>{clock} MT</time>
           </div>
         </div>
       </div>

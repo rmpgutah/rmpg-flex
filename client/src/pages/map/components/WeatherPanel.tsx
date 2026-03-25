@@ -191,8 +191,9 @@ export default function WeatherPanel({
               )}
             </div>
           </div>
+          {/* #43: Sunrise/sunset times with tabular-nums */}
           {sunriseSunset && (
-            <div className="flex gap-4 mt-2 text-[10px] text-white/40">
+            <div className="flex gap-4 mt-2 text-[10px] text-white/40 font-mono tabular-nums">
               <span>
                 <Sun size={10} className="inline mr-1 text-amber-400/60" />
                 {sunriseSunset.sunrise}
@@ -215,27 +216,28 @@ export default function WeatherPanel({
           </div>
           {hasHazards ? (
             <div className="flex flex-wrap gap-1.5">
+              {/* #44: Hazard badges with rounded-sm for consistency */}
               {weatherHazards.freezing && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30 animate-pulse">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30">
                   <Snowflake size={10} className="animate-[spin_4s_linear_infinite]" />
                   FREEZING
                 </span>
               )}
               {weatherHazards.highWind && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
                   <Wind size={10} />
                   HIGH WIND
                 </span>
               )}
               {weatherHazards.rain && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30 animate-pulse">
-                  <CloudRain size={10} className="animate-[bounce_2s_ease-in-out_infinite]" />
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                  <CloudRain size={10} />
                   RAIN
                 </span>
               )}
               {weatherHazards.snow && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold bg-sky-400/20 text-sky-200 border border-sky-400/30 animate-pulse">
-                  <CloudSnow size={10} className="animate-[bounce_3s_ease-in-out_infinite]" />
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[9px] font-semibold bg-sky-400/20 text-sky-200 border border-sky-400/30">
+                  <CloudSnow size={10} />
                   SNOW
                 </span>
               )}

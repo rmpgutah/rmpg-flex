@@ -397,7 +397,8 @@ function MetricCell({
       className="flex flex-col items-center justify-center py-2 px-1 rounded-sm panel-inset"
       style={{ background: '#0d1520', border: '1px solid #1e2a3a' }}
     >
-      <span className="text-[14px] font-mono font-bold leading-none tabular-nums" style={{ color }}>
+      {/* #52: Metric cell value with text shadow glow */}
+      <span className="text-[14px] font-mono font-bold leading-none tabular-nums" style={{ color, textShadow: `0 0 8px ${color}30` }}>
         {value}
       </span>
       <span className="text-[7px] font-mono uppercase tracking-widest text-rmpg-500 mt-1 text-center leading-tight">

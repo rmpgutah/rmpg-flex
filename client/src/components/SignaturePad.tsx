@@ -265,15 +265,14 @@ export default function SignaturePad({
   // No value — show "Sign" button or the pad
   if (!showPad) {
     return (
-      <div className="space-y-1">
-        <label className="block text-xs font-semibold text-rmpg-300 uppercase">{label}</label>
-        {/* 63: Sign button with active press state and focus ring */}
+    <div className="space-y-1">
+        <label className="block text-xs font-semibold text-rmpg-300 uppercase" style={{ letterSpacing: '0.06em' }}>{label}</label>
         <button
           type="button"
           onClick={() => setShowPad(true)}
-          className="px-3 py-1.5 text-xs font-semibold bg-brand-800 text-brand-200 border border-brand-600 rounded-sm hover:bg-brand-700 active:bg-brand-600 focus-visible:ring-1 focus-visible:ring-brand-400 focus-visible:outline-none transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-brand-800 text-brand-200 border border-brand-600 rounded-sm hover:bg-brand-700 active:bg-brand-600 focus-visible:ring-1 focus-visible:ring-brand-400 focus-visible:outline-none transition-colors duration-150"
         >
-          Sign Document
+          <PenTool className="w-3 h-3" /> Sign Document
         </button>
       </div>
     );
@@ -283,16 +282,17 @@ export default function SignaturePad({
   return (
     <div className="space-y-1">
       <label className="block text-xs font-semibold text-rmpg-300 uppercase">{label}</label>
-      <div className="bg-rmpg-800 border border-rmpg-600 rounded-sm p-2 inline-block">
-        {/* Mode toggle tabs */}
+      {/* 48: Signature pad container with top accent */}
+      <div className="bg-rmpg-800 border border-rmpg-600 rounded-sm p-2 inline-block" style={{ borderTop: '2px solid #1a5a9e' }}>
+        {/* 49: Mode toggle tabs with improved active state contrast */}
         <div className="flex gap-1 mb-2">
           <button
             type="button"
             onClick={() => setMode('draw')}
-            className={`flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded-sm transition-colors ${
+            className={`flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold rounded-sm transition-all duration-150 ${
               mode === 'draw'
-                ? 'bg-brand-700 text-white'
-                : 'bg-rmpg-700 text-rmpg-300 hover:bg-rmpg-600'
+                ? 'bg-brand-700 text-white shadow-sm'
+                : 'bg-rmpg-700 text-rmpg-300 hover:bg-rmpg-600 hover:text-rmpg-200'
             }`}
           >
             <PenTool className="w-3 h-3" /> Draw
@@ -300,10 +300,10 @@ export default function SignaturePad({
           <button
             type="button"
             onClick={() => setMode('type')}
-            className={`flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded-sm transition-colors ${
+            className={`flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold rounded-sm transition-all duration-150 ${
               mode === 'type'
-                ? 'bg-brand-700 text-white'
-                : 'bg-rmpg-700 text-rmpg-300 hover:bg-rmpg-600'
+                ? 'bg-brand-700 text-white shadow-sm'
+                : 'bg-rmpg-700 text-rmpg-300 hover:bg-rmpg-600 hover:text-rmpg-200'
             }`}
           >
             <Type className="w-3 h-3" /> Type
@@ -380,28 +380,27 @@ export default function SignaturePad({
           </div>
         )}
 
-        {/* Action buttons */}
-        <div className="flex items-center gap-2 mt-2">
+        {/* 50: Action buttons with improved spacing and transition effects */}
+        <div className="flex items-center gap-2 mt-2 pt-2 border-t border-rmpg-700/50">
           <button
             type="button"
             onClick={handleClear}
-            className="flex items-center gap-1 px-2 py-1 text-xs bg-rmpg-700 text-rmpg-200 rounded-sm hover:bg-rmpg-600"
+            className="flex items-center gap-1 px-2.5 py-1 text-xs bg-rmpg-700 text-rmpg-200 rounded-sm hover:bg-rmpg-600 transition-colors duration-150"
           >
             <Eraser className="w-3 h-3" /> Clear
           </button>
-          {/* 64: Apply button with disabled cursor and active state */}
           <button
             type="button"
             onClick={handleSave}
             disabled={!canSave}
-            className="flex items-center gap-1 px-2 py-1 text-xs bg-green-800 text-green-200 rounded-sm hover:bg-green-700 active:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="flex items-center gap-1 px-3 py-1 text-xs font-semibold bg-green-800 text-green-200 rounded-sm hover:bg-green-700 active:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-150"
           >
-            <Check className="w-3 h-3" /> Apply
+            <Check className="w-3 h-3" /> Apply Signature
           </button>
           <button
             type="button"
             onClick={() => { setShowPad(false); setTypedName(''); }}
-            className="flex items-center gap-1 px-2 py-1 text-xs bg-rmpg-700 text-rmpg-300 rounded-sm hover:bg-rmpg-600"
+            className="flex items-center gap-1 px-2.5 py-1 text-xs bg-rmpg-700 text-rmpg-300 rounded-sm hover:bg-rmpg-600 transition-colors duration-150 ml-auto"
           >
             <X className="w-3 h-3" /> Cancel
           </button>

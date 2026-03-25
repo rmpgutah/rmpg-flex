@@ -701,16 +701,19 @@ export default function Layout() {
           className="fixed inset-0 flex items-center justify-center"
           style={{ background: 'rgba(0,0,0,0.85)', zIndex: 99999, WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
+          {/* 18: Name setup modal with shield icon and improved shadow */}
           <div
             className="w-full max-w-sm mx-4 p-6 space-y-4"
             style={{
               background: '#141e2b',
               border: '1px solid #1e3048',
               borderTop: '3px solid #1a5a9e',
+              boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
               WebkitAppRegion: 'no-drag',
             } as React.CSSProperties}
           >
             <div className="text-center space-y-1">
+              <Shield className="w-8 h-8 text-brand-400 mx-auto mb-2" />
               <div className="text-lg font-bold text-white">Operator Identification Required</div>
               <div className="text-xs text-rmpg-400">
                 Enter your name to continue. This will appear in the OPR system and all reports.
@@ -812,14 +815,15 @@ export default function Layout() {
             WebkitAppRegion: isElectron ? 'drag' : undefined,
           } as React.CSSProperties}
         >
-          {/* Blue accent at very top */}
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e, #0e3359)', zIndex: 1 }} />
+          {/* 1: Blue accent line with subtle glow at top of brand bar */}
+          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e, #0e3359)', zIndex: 1, boxShadow: '0 1px 4px rgba(26,90,158,0.25)' }} />
 
           {/* Left — Logo + FLEX branding */}
           <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
             <div role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/'); }} onClick={() => navigate('/')} className="cursor-pointer flex items-center gap-2 transition-opacity duration-150 hover:opacity-90 focus-visible:ring-1 focus-visible:ring-[#1a5a9e] focus-visible:outline-none rounded-sm" title="Rocky Mountain Protective Group — Dashboard" aria-label="Go to Dashboard">
               <RmpgLogo height={44} />
-              <div className="flex flex-col">
+              {/* 2: Tighter line-height on app name for compact branding */}
+              <div className="flex flex-col" style={{ lineHeight: 1.1 }}>
                 <span className="text-[14px] font-bold tracking-wider text-white leading-none">RMPG</span>
                 <span className="text-[10px] font-bold tracking-[0.2em] leading-none" style={{ color: '#3b8ad4' }}>FLEX</span>
               </div>
@@ -827,7 +831,8 @@ export default function Layout() {
             {/* Page title */}
             <div className="flex items-center gap-1.5">
               <div className="w-px h-6" style={{ background: '#2a3e58' }} />
-              <span className="text-[11px] font-mono font-bold tracking-wider text-rmpg-400">
+              {/* 3: Page title with subtle letter-spacing and smoother color */}
+              <span className="text-[11px] font-mono font-bold tracking-wider text-rmpg-300" style={{ letterSpacing: '0.08em' }}>
                 {pageTitle.toUpperCase()}
               </span>
               {/* Pop-out button — opens current page in a new window */}
@@ -849,27 +854,27 @@ export default function Layout() {
           <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
             {/* Status indicators — compact inline */}
             <div className="hidden lg:flex items-center gap-1.5">
-              {/* Active Calls */}
+              {/* 4: Active Calls indicator with count highlight on non-zero */}
               <button type="button"
                 onClick={() => navigate('/dispatch')}
-                className="flex items-center gap-1 px-2 py-0.5 panel-inset cursor-pointer transition-colors duration-150 bg-surface-sunken hover:bg-rmpg-800 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#1a5a9e] focus-visible:outline-none"
+                className="flex items-center gap-1 px-2 py-0.5 panel-inset cursor-pointer transition-all duration-150 bg-surface-sunken hover:bg-rmpg-800 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#1a5a9e] focus-visible:outline-none"
                 aria-label={`Active calls: ${activeCallCount}. Click to open dispatch.`}
               >
-                <Phone style={{ width: 9, height: 9 }} className="text-red-500" />
+                <Phone style={{ width: 9, height: 9 }} className={activeCallCount > 0 ? 'text-red-500' : 'text-rmpg-500'} />
                 <span className="text-[9px] font-mono font-bold text-rmpg-400">CALLS:</span>
-                <span className="text-[9px] font-mono font-bold text-white">{activeCallCount}</span>
+                <span className={`text-[9px] font-mono font-bold tabular-nums ${activeCallCount > 0 ? 'text-red-400' : 'text-white'}`}>{activeCallCount}</span>
               </button>
 
-              {/* BOLO Indicator */}
+              {/* 5: BOLO Indicator with improved glow effect */}
               {activeBOLOs > 0 && (
                 <button type="button"
                   onClick={() => navigate('/communications')}
-                  className="flex items-center gap-1 px-2 py-0.5 cursor-pointer transition-colors duration-150 hover:brightness-125 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#1a5a9e] focus-visible:outline-none"
-                  style={{ background: 'rgba(220, 38, 38, 0.25)', border: '1px solid #991b1b' }}
+                  className="flex items-center gap-1 px-2 py-0.5 cursor-pointer transition-all duration-150 hover:brightness-125 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#1a5a9e] focus-visible:outline-none"
+                  style={{ background: 'rgba(220, 38, 38, 0.25)', border: '1px solid #991b1b', boxShadow: '0 0 8px rgba(220, 38, 38, 0.2)' }}
                   aria-label={`${activeBOLOs} active BOLOs. Click to open communications.`}
                 >
                   <span className="led-dot led-red animate-led-blink" />
-                  <span className="text-[9px] font-mono font-bold" style={{ color: '#ef7a7a' }}>
+                  <span className="text-[9px] font-mono font-bold tabular-nums" style={{ color: '#ef7a7a' }}>
                     BOLO: {activeBOLOs}
                   </span>
                 </button>
@@ -885,11 +890,11 @@ export default function Layout() {
                 {gps.isTracking && <span className="led-dot led-green animate-led-blink" />}
               </div>
 
-              {/* WS + Users */}
-              <div className="flex items-center gap-1 px-1.5 py-0.5 panel-inset bg-surface-sunken">
+              {/* 6: WS + Users with tabular-nums for stable count display */}
+              <div className="flex items-center gap-1 px-1.5 py-0.5 panel-inset bg-surface-sunken" title={`${isConnected ? 'Connected' : 'Disconnected'} - ${presence.count} users online`}>
                 <span className={`led-dot ${isConnected ? 'led-green' : 'led-red animate-led-blink'}`} />
                 <Users style={{ width: 9, height: 9 }} className="text-rmpg-500" />
-                <span className="text-[9px] font-mono font-bold text-rmpg-300">{presence.count}</span>
+                <span className="text-[9px] font-mono font-bold text-rmpg-300 tabular-nums">{presence.count}</span>
               </div>
 
               {/* Notifications */}
@@ -930,21 +935,23 @@ export default function Layout() {
                 aria-label="User profile menu"
               >
                 {/* Avatar icon only */}
+                {/* 7: Avatar with smooth ring transition on hover */}
                 {user?.profile_image ? (
                   <img
                     src={user.profile_image}
                     alt={user.first_name}
-                    className="w-8 h-8 object-cover"
-                    style={{ border: '2px solid #3a5070', borderRadius: '50%' }}
+                    className="w-8 h-8 object-cover transition-shadow duration-150"
+                    style={{ border: '2px solid #3a5070', borderRadius: '50%', boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(59,138,212,0.4)' : 'none' }}
                   />
                 ) : (
                   <div
-                    className="w-8 h-8 flex items-center justify-center text-[11px] font-bold"
+                    className="w-8 h-8 flex items-center justify-center text-[11px] font-bold transition-shadow duration-150"
                     style={{
                       background: 'linear-gradient(135deg, #124070, #1a5a9e)',
                       color: '#fff',
                       border: '2px solid #3b8ad4',
                       borderRadius: '50%',
+                      boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(59,138,212,0.4)' : 'none',
                     }}
                   >
                     {initials}
@@ -962,13 +969,13 @@ export default function Layout() {
                 />
               </button>
 
-              {/* Profile Dropdown */}
+              {/* 8: Profile Dropdown with enhanced shadow depth */}
               {profileDropdownOpen && (
                 <div
                   className="menu-dropdown absolute right-0 top-full mt-0.5 animate-dropdown-appear"
                   role="menu"
                   aria-label="User profile options"
-                  style={{ minWidth: 200, zIndex: 9995 }}
+                  style={{ minWidth: 220, zIndex: 9995, boxShadow: '0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)' }}
                 >
                   {/* User info header */}
                   <div className="px-3 py-2.5 border-b border-rmpg-700" style={{ background: 'rgba(13, 21, 32, 0.5)' }}>
@@ -1012,7 +1019,8 @@ export default function Layout() {
 
                   <div className="menu-separator" />
 
-                  <button type="button" role="menuitem" onClick={() => { setProfileDropdownOpen(false); logout(); }} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#1a5a9e] focus-visible:outline-none">
+                  {/* 9: Sign Out button with red hover bg for destructive emphasis */}
+                  <button type="button" role="menuitem" onClick={() => { setProfileDropdownOpen(false); logout(); }} className="menu-item w-full transition-colors duration-150 hover:bg-red-900/20 focus-visible:ring-1 focus-visible:ring-[#1a5a9e] focus-visible:outline-none">
                     <span className="menu-item-icon"><LogOut style={{ width: 12, height: 12, color: '#ef4444' }} /></span>
                     <span className="menu-item-label" style={{ color: '#ef4444' }}>Sign Out</span>
                   </button>
@@ -1065,10 +1073,10 @@ export default function Layout() {
           onRefreshData={fetchHeaderStats}
         />
 
-        {/* Right side — Operator info (persists name + badge from user profile) */}
+        {/* 19: Operator info with distinct badge highlight */}
         <div className="flex items-center gap-2 text-[10px] font-mono text-rmpg-400">
           <span>
-            OPR: {user?.badge_number ? `#${user.badge_number}` : '---'} {user?.last_name?.toUpperCase() || '---'}, {user?.first_name || '---'} | {toDisplayLabel(user?.role || '---').toUpperCase()}
+            OPR: <span className="text-rmpg-300">{user?.badge_number ? `#${user.badge_number}` : '---'}</span> {user?.last_name?.toUpperCase() || '---'}, {user?.first_name || '---'} <span className="text-rmpg-500">|</span> <span className="text-brand-400">{toDisplayLabel(user?.role || '---').toUpperCase()}</span>
           </span>
         </div>
       </div>
@@ -1270,17 +1278,18 @@ export default function Layout() {
                   </button>
 
                   {/* Dropdown menu for items with children */}
+                  {/* 10: Toolbar dropdown with stronger shadow + left-edge align fix */}
                   {hasChildren && isDropdownOpen && (
                     <div
                       className="absolute top-full left-0 z-50 py-1 animate-dropdown-appear"
                       role="menu"
                       aria-label={`${item.label} submenu`}
                       style={{
-                        minWidth: 200,
+                        minWidth: 210,
                         background: '#1a2636',
                         border: '1px solid #2a3e58',
                         borderTop: '2px solid #1a5a9e',
-                        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                        boxShadow: '0 12px 32px rgba(0,0,0,0.55), 0 4px 12px rgba(0,0,0,0.3)',
                       }}
                     >
                       {item.children!.filter(child => {
@@ -1321,8 +1330,9 @@ export default function Layout() {
                               }
                             }}
                           >
+                            {/* 11: Slightly larger child icon + semibold label for active items */}
                             <ChildIcon style={{ width: 14, height: 14, color: childActive ? '#3b8ad4' : '#5a6e80', flexShrink: 0 }} />
-                            <span className="text-[11px] font-medium">{child.label}</span>
+                            <span className={`text-[11px] ${childActive ? 'font-semibold' : 'font-medium'}`}>{child.label}</span>
                           </button>
                         );
                       })}
@@ -1350,7 +1360,8 @@ export default function Layout() {
       {/* ============================================================ */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Page Content (recessed panel) */}
-        <main className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark" key={location.pathname} style={{ background: '#1a2636' }}>
+        {/* 12: Main content area with subtle inset shadow for depth */}
+        <main className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark" key={location.pathname} style={{ background: '#1a2636', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}>
           {/* Feature 21: Password expiry warning banner */}
           {showPasswordExpiryWarning && (
             <div className="bg-amber-900/40 border-b border-amber-700/50 px-4 py-1.5 flex items-center gap-2">
@@ -1417,9 +1428,10 @@ export default function Layout() {
       {/* Feature 24: Auto-logout idle warning dialog */}
       {showIdleDialog && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Idle timeout warning">
-          <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-6 w-[350px] text-center animate-dropdown-appear">
+          {/* 13: Idle dialog with stronger visual hierarchy */}
+          <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-6 w-[350px] text-center animate-dropdown-appear" style={{ borderTop: '3px solid #d4a017', boxShadow: '0 16px 48px rgba(0,0,0,0.6)' }}>
             <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto mb-3" />
-            <h3 className="text-white font-bold mb-2">Are you still there?</h3>
+            <h3 className="text-white font-bold text-base mb-2">Are you still there?</h3>
             <p className="text-sm text-rmpg-300 mb-4">You will be logged out in 5 minutes due to inactivity.</p>
             <button type="button"
               onClick={() => { lastActivityRef.current = Date.now(); setShowIdleDialog(false); }}
@@ -1435,9 +1447,10 @@ export default function Layout() {
       {/* Keyboard Shortcut Help Modal */}
       {showShortcutHelp && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" onClick={() => setShowShortcutHelp(false)}>
-          <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm w-full max-w-md mx-4 shadow-2xl animate-dropdown-appear" onClick={e => e.stopPropagation()}>
+          {/* 14: Keyboard shortcuts modal with blue top accent */}
+          <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm w-full max-w-md mx-4 shadow-2xl animate-dropdown-appear" style={{ borderTop: '2px solid #1a5a9e' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#1e3048] bg-[#0d1520]">
-              <h3 className="text-sm font-semibold text-white">Keyboard Shortcuts</h3>
+              <h3 className="text-sm font-semibold text-white flex items-center gap-2"><span className="text-brand-400">?</span> Keyboard Shortcuts</h3>
               <button type="button" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-500 hover:text-white transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#1a5a9e] focus-visible:outline-none" aria-label="Close keyboard shortcuts"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto scrollbar-dark">
@@ -1474,9 +1487,10 @@ export default function Layout() {
       {/* Command Palette */}
       {showCommandPalette && (
         <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Command palette" onClick={() => setShowCommandPalette(false)}>
-          <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm w-full max-w-lg mx-4 shadow-2xl animate-dropdown-appear" onClick={e => e.stopPropagation()}>
+          {/* 15: Command palette with top accent and deeper shadow */}
+          <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm w-full max-w-lg mx-4 animate-dropdown-appear" style={{ borderTop: '2px solid #1a5a9e', boxShadow: '0 16px 48px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.4)' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-2 px-4 py-3 border-b border-[#1e3048]">
-              <Search className="w-4 h-4 text-rmpg-500 flex-shrink-0" />
+              <Search className="w-4 h-4 text-brand-400 flex-shrink-0" />
               <input
                 ref={paletteInputRef}
                 autoFocus
@@ -1496,7 +1510,7 @@ export default function Layout() {
             </div>
             <div className="max-h-80 overflow-y-auto scrollbar-dark">
               {paletteQuery.trim() === '' ? (
-                <div className="p-4 text-center text-rmpg-500 text-xs">Type to search pages and modules...</div>
+                <div className="p-4 text-center text-rmpg-500 text-xs">Type to search pages and modules<span className="text-rmpg-600 ml-1">-- start typing</span></div>
               ) : paletteResults.length === 0 ? (
                 <div className="p-4 text-center text-rmpg-500 text-xs">No results found</div>
               ) : (
@@ -1508,9 +1522,10 @@ export default function Layout() {
                       onClick={() => { navigate(result.path); setShowCommandPalette(false); }}
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-brand-500/10 transition-colors duration-150 border-b border-[#1e3048]/50 last:border-0 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#1a5a9e] focus-visible:outline-none"
                     >
+                      {/* 17: Command palette results with matched text style */}
                       <Icon className="w-4 h-4 text-brand-400 flex-shrink-0" />
-                      <span className="text-sm text-white">{result.label}</span>
-                      <span className="text-[10px] text-rmpg-500 ml-auto">{result.path}</span>
+                      <span className="text-sm text-white font-medium">{result.label}</span>
+                      <span className="text-[10px] text-rmpg-500 ml-auto font-mono">{result.path}</span>
                     </button>
                   );
                 })

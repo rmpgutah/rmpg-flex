@@ -124,8 +124,8 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
     const colors: Record<string, string> = { dispatch: '#3b82f6', broadcast: '#a855f7', direct: '#22c55e', zone: '#f59e0b' };
     return (
       <span
-        className="text-[7px] font-black uppercase px-1 py-px"
-        style={{ background: colors[ch] || '#5a6e80', color: '#000' }}
+        className="text-[7px] font-black uppercase px-1 py-px rounded-sm"
+        style={{ background: colors[ch] || '#5a6e80', color: '#000', letterSpacing: '0.05em' }}
       >
         {ch}
       </span>
@@ -174,8 +174,8 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
                 <div className="text-[10px] text-rmpg-200 mt-0.5">{msg.content}</div>
                 {msg.priority !== 'routine' && (
                   <span
-                    className="text-[7px] font-black uppercase px-1 py-px mt-1 inline-block"
-                    style={{ background: ps.color, color: '#000' }}
+                    className="text-[7px] font-black uppercase px-1 py-px mt-1 inline-block rounded-sm"
+                    style={{ background: ps.color, color: '#000', letterSpacing: '0.05em' }}
                   >
                     {msg.priority}
                   </span>
@@ -220,12 +220,12 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
             onChange={(e) => setComposeText(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
             placeholder="Type message..."
-            className="flex-1 bg-surface-base border border-rmpg-600 text-white text-[10px] px-2 py-1 focus:border-green-500 focus:outline-none"
+            className="flex-1 bg-surface-base border border-rmpg-600 text-white text-[10px] px-2 py-1 font-mono focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500/30 transition-colors"
           />
           <button type="button"
             onClick={handleSend}
             disabled={!composeText.trim()}
-            className="px-3 py-1 text-[9px] font-bold uppercase bg-green-900/50 text-green-400 border border-green-700/50 hover:bg-green-800/50 disabled:opacity-40"
+            className="px-3 py-1 text-[9px] font-bold uppercase bg-green-900/50 text-green-400 border border-green-700/50 hover:bg-green-800/50 disabled:opacity-40 transition-colors"
           >
             <Send style={{ width: 10, height: 10 }} />
           </button>
@@ -517,15 +517,15 @@ export default function MdtPage() {
     return (
       <div className="h-full flex items-center justify-center bg-surface-base">
         <div className="text-center">
-          <RefreshCw className="w-8 h-8 text-green-500 animate-spin mx-auto mb-3" />
-          <p className="text-rmpg-400 text-xs uppercase tracking-wider font-bold">Loading MDT...</p>
+          <Monitor className="w-8 h-8 text-green-500 animate-pulse mx-auto mb-3" />
+          <p className="text-rmpg-400 text-xs uppercase tracking-wider font-bold font-mono">Initializing MDT...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
+    <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden animate-fade-in">
       {/* ── Error Toast ── */}
       {errorToast && (
         <div className="absolute top-2 right-2 z-50 flex items-center gap-2 px-3 py-2 bg-red-900/90 border border-red-700 text-red-200 text-[10px] font-bold shadow-lg"
@@ -544,7 +544,9 @@ export default function MdtPage() {
         className={`${isMobile ? 'flex flex-col gap-1.5 px-3 py-2' : 'flex items-center justify-between px-4 py-2'} flex-shrink-0 bg-surface-sunken border-b border-rmpg-700`}
       >
         <div className="flex items-center gap-3">
-          <Monitor style={{ width: 16, height: 16, color: '#22c55e' }} />
+          <div className="flex items-center justify-center w-6 h-6" style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)' }}>
+            <Monitor style={{ width: 14, height: 14, color: '#22c55e' }} />
+          </div>
           <div>
             <span className="text-[11px] font-black text-green-400 tracking-wider font-mono">
               {myUnit?.call_sign || 'UNASSIGNED'}
@@ -556,7 +558,8 @@ export default function MdtPage() {
             )}
           </div>
           {!isMobile && (
-            <span className="text-[8px] text-rmpg-500 font-mono">
+            <span className="text-[8px] text-rmpg-500 font-mono flex items-center gap-1">
+              <span className={`w-1.5 h-1.5 rounded-full ${gps.latitude ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
               {gps.latitude ? `${gps.latitude.toFixed(4)}, ${gps.longitude?.toFixed(4)}` : 'NO GPS'}
             </span>
           )}
@@ -660,7 +663,7 @@ export default function MdtPage() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-mono font-black text-green-400">{myCalls[0].call_number}</span>
-              <span className="text-[9px] font-bold px-1 py-px" style={{ background: prioColor(myCalls[0].priority), color: '#fff' }}>{myCalls[0].priority}</span>
+              <span className="text-[9px] font-bold px-1 py-px rounded-sm" style={{ background: prioColor(myCalls[0].priority), color: '#fff' }}>{myCalls[0].priority}</span>
               <StatusBadge status={myCalls[0].status} type="call_status" size="sm" />
             </div>
             <div className="text-[10px] text-white font-semibold truncate">{formatIncidentType(myCalls[0].incident_type)}</div>
@@ -768,7 +771,7 @@ export default function MdtPage() {
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] font-mono font-bold text-amber-400">{call.call_number}</span>
                         <span
-                          className="text-[8px] font-black px-1"
+                          className="text-[8px] font-black px-1 rounded-sm"
                           style={{ background: prioColor(call.priority), color: '#fff' }}
                         >
                           {call.priority}
@@ -840,7 +843,7 @@ export default function MdtPage() {
                     </span>
                     <StatusBadge status={selectedCall.status} type="call_status" size="sm" />
                     <span
-                      className="text-[8px] font-black px-1 py-px"
+                      className="text-[8px] font-black px-1 py-px rounded-sm"
                       style={{ background: prioColor(selectedCall.priority), color: '#fff' }}
                     >
                       {selectedCall.priority}
@@ -896,7 +899,7 @@ export default function MdtPage() {
               <div className="flex-1 overflow-auto p-4 space-y-3">
                 {/* Location */}
                 <div>
-                  <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">Location</div>
+                  <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1" style={{ letterSpacing: '0.1em' }}>Location</div>
                   <div className="text-[11px] text-white flex items-center gap-1.5">
                     <MapPin style={{ width: 11, height: 11, color: '#22c55e' }} />
                     {selectedCall.location || 'No address'}
@@ -1029,9 +1032,10 @@ export default function MdtPage() {
           ) : (
             <div className="flex-1 flex items-center justify-center text-rmpg-500">
               <div className="text-center">
-                <Monitor className="w-10 h-10 mx-auto mb-3 text-rmpg-600" />
-                <p className="text-sm">Select a call to view details</p>
+                <Monitor className="w-10 h-10 mx-auto mb-3 text-rmpg-600 opacity-60" />
+                <p className="text-sm font-medium">Select a call to view details</p>
                 <p className="text-[10px] text-rmpg-600 mt-1">or self-dispatch from the Pending queue</p>
+                <div className="text-[8px] text-rmpg-600 mt-3 font-mono">MDT v5.3 ONLINE</div>
               </div>
             </div>
           )}

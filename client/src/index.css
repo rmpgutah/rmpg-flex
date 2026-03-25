@@ -41,45 +41,6 @@
   }
   body {
     background: var(--surface-base);
-    color: var(--text-primary);
-  }
-
-  /* Selection / highlight colors — themed blue */
-  ::selection {
-    background: rgba(26, 90, 158, 0.4);
-    color: #ffffff;
-  }
-  ::-moz-selection {
-    background: rgba(26, 90, 158, 0.4);
-    color: #ffffff;
-  }
-
-  /* Focus-visible ring — consistent blue theme */
-  :focus-visible {
-    outline: 2px solid rgba(59, 138, 212, 0.6);
-    outline-offset: 1px;
-  }
-
-  /* Remove focus ring for mouse clicks */
-  :focus:not(:focus-visible) {
-    outline: none;
-  }
-
-  /* Prevent light-mode leaks: ensure all backgrounds default to dark */
-  input, select, textarea, button {
-    color: inherit;
-  }
-
-  /* Autofill dark theme override (Chrome/Safari) */
-  input:-webkit-autofill,
-  input:-webkit-autofill:hover,
-  input:-webkit-autofill:focus,
-  textarea:-webkit-autofill,
-  select:-webkit-autofill {
-    -webkit-text-fill-color: #e5e7eb;
-    -webkit-box-shadow: 0 0 0 30px var(--surface-sunken) inset;
-    caret-color: #3b8ad4;
-    transition: background-color 5000s ease-in-out 0s;
   }
 }
 
@@ -296,11 +257,6 @@
 @keyframes dropdown-appear {
   from { opacity: 0; transform: translateY(-3px); }
   to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes scale-in {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
 }
 
 /* --- Nav dropdown animation --- */
@@ -542,7 +498,7 @@
 
   /* --- Input Styles (Blocky) --- Motorola Blue focus accent */
   .input-dark {
-    @apply w-full px-3 py-1.5 text-sm text-white placeholder-rmpg-500 focus:outline-none;
+    @apply w-full px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none;
     background: var(--surface-sunken);
     border: 1px solid var(--border-strong);
     border-top-color: #0d1520;
@@ -555,10 +511,6 @@
   .input-dark:focus {
     border-color: var(--brand-blue);
     box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.35);
-    outline: none;
-  }
-  .input-dark:focus-visible {
-    outline: none;
   }
 
   .select-dark {
@@ -587,7 +539,7 @@
   }
 
   .textarea-dark {
-    @apply w-full px-3 py-1.5 text-sm text-white placeholder-rmpg-500 focus:outline-none resize-none;
+    @apply w-full px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none resize-none;
     background: var(--surface-sunken);
     border: 1px solid var(--border-strong);
     border-top-color: #0d1520;
@@ -610,10 +562,6 @@
   }
   .btn-primary:hover:not(:disabled) {
     background: #1a5a9e;
-  }
-  .btn-primary:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 2px rgba(59, 138, 212, 0.5);
   }
 
   .btn-secondary {
@@ -779,12 +727,6 @@
     border-bottom: 2px solid var(--surface-raised);
   }
 
-  .tab-bar-item:focus-visible {
-    outline: none;
-    box-shadow: inset 0 0 0 1px rgba(59, 138, 212, 0.6);
-    color: #d0d8e0;
-  }
-
   /* --- Toolbar Buttons (Spillman Flex) --- */
   .toolbar-btn {
     display: inline-flex;
@@ -817,11 +759,6 @@
     border-left-color: #0d1520;
     border-bottom-color: #2a3e58;
     border-right-color: #2a3e58;
-  }
-
-  .toolbar-btn:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 1px rgba(59, 138, 212, 0.6);
   }
 
   .toolbar-btn:disabled {
@@ -889,16 +826,18 @@
   }
 
   /* --- Menu Bar Buttons (Spillman Flex top menu) --- */
+  /* 52: Menu bar button with smoother font weight transition */
   .menu-bar-btn {
     padding: 1px 10px;
     font-size: 10px;
+    font-weight: 500;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.05em;
     color: #8a9aaa;
     background: transparent;
     border: 1px solid transparent;
     cursor: pointer;
-    transition: background 0.1s, color 0.1s;
+    transition: background 0.15s, color 0.15s;
     position: relative;
     white-space: nowrap;
   }
@@ -906,18 +845,16 @@
     background: rgba(26, 90, 158, 0.15);
     color: #d0d8e0;
   }
-  .menu-bar-btn:focus-visible {
-    outline: none;
-    box-shadow: inset 0 0 0 1px rgba(59, 138, 212, 0.5);
-  }
+  /* 53: Active menu button with bottom highlight bar */
   .menu-bar-btn-active {
     background: var(--surface-base);
     color: #ffffff;
+    font-weight: 600;
     border-color: #1e3048;
     border-bottom-color: var(--surface-base);
   }
 
-  /* --- Dropdown Menu Container --- */
+  /* 57: Dropdown Menu Container with deeper shadow */
   .menu-dropdown {
     position: absolute;
     z-index: 9990;
@@ -928,7 +865,7 @@
     border-left-color: #3a5070;
     border-bottom-color: #0d1520;
     border-right-color: #0d1520;
-    box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.5);
+    box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.3);
     padding: 2px 0;
   }
   .menu-dropdown-root {
@@ -944,17 +881,18 @@
   .menu-item-container {
     position: relative;
   }
+  /* 54: Menu item with slightly more padding and smoother transition */
   .menu-item {
     display: flex;
     align-items: center;
     width: 100%;
-    padding: 4px 8px;
+    padding: 4px 10px;
     font-size: 11px;
     color: #d0d0d0;
     background: transparent;
     border: 1px solid transparent;
     cursor: pointer;
-    transition: background 0.08s, color 0.08s;
+    transition: background 0.12s, color 0.12s;
     text-align: left;
     gap: 6px;
     white-space: nowrap;
@@ -976,11 +914,6 @@
   }
   .menu-item-disabled:hover {
     background: transparent !important;
-  }
-  .menu-item:focus-visible {
-    outline: none;
-    background: linear-gradient(180deg, #1a5a9e 0%, #124070 100%);
-    color: #ffffff;
   }
   .menu-item-icon {
     width: 14px;
@@ -1007,20 +940,23 @@
     display: flex;
     align-items: center;
   }
+  /* 55: Menu toggle check with wider width for alignment */
   .menu-item-check {
-    width: 14px;
-    font-size: 11px;
+    width: 16px;
+    font-size: 12px;
     color: #22c55e;
     text-align: center;
     margin-left: auto;
     padding-left: 8px;
+    font-weight: 700;
   }
 
   /* --- Menu Separator --- */
+  /* 56: Menu separator with wider margin for visual breathing room */
   .menu-separator {
     height: 1px;
     margin: 4px 8px;
-    background: linear-gradient(90deg, transparent, #2a3e58 20%, #2a3e58 80%, transparent);
+    background: linear-gradient(90deg, transparent, #1e3048 15%, #1e3048 85%, transparent);
   }
 
   /* --- PANIC Button Styles --- */
@@ -1777,6 +1713,7 @@
 
 .ncic-welcome {
   color: #6a4a1a;
+  user-select: none;
 }
 
 .ncic-welcome pre {
@@ -1786,6 +1723,8 @@
 
 .ncic-entry {
   margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(212, 160, 23, 0.08);
 }
 
 .ncic-entry-cmd {
@@ -1894,6 +1833,8 @@
   gap: 8px;
   color: #d4a017;
   font-size: 11px;
+  padding: 8px 0;
+  letter-spacing: 0.1em;
 }
 
 .ncic-input-row {
@@ -1902,7 +1843,7 @@
   gap: 6px;
   padding: 8px 12px;
   background: #040810;
-  border-top: 1px solid #1e3048;
+  border-top: 2px solid #1e3048;
 }
 
 .ncic-prompt {
@@ -1910,6 +1851,7 @@
   font-family: 'Courier New', monospace;
   font-size: 14px;
   font-weight: bold;
+  text-shadow: 0 0 8px rgba(212, 160, 23, 0.3);
 }
 
 .ncic-input {

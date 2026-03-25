@@ -105,10 +105,11 @@ export default function AlertSystemPanel({
           <span className="text-[10px] uppercase tracking-widest font-semibold text-rmpg-300">
             Alert System
           </span>
+          {/* #37: Active alert count badge with border */}
           {activeAlerts.length > 0 && (
             <span
-              className="text-[9px] font-mono px-1 rounded-sm"
-              style={{ backgroundColor: '#ef444433', color: '#ef4444' }}
+              className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-sm tabular-nums"
+              style={{ backgroundColor: '#ef444425', color: '#ef4444', border: '1px solid #ef444440' }}
             >
               {activeAlerts.length}
             </span>

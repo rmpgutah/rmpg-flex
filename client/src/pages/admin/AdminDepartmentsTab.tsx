@@ -148,15 +148,19 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
   return (
     <div className="p-4 space-y-3">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
-          <Building2 className="w-4 h-4 text-brand-400" />
-          <h2 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">Departments & Divisions</h2>
-          <span className="text-[10px] text-rmpg-500 ml-1">({departments.length} total)</span>
+          <div className="w-7 h-7 flex items-center justify-center bg-brand-900/30 border border-brand-700/40 shrink-0" aria-hidden="true">
+            <Building2 className="w-3.5 h-3.5 text-brand-400" />
+          </div>
+          <div>
+            <h2 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">Departments & Divisions</h2>
+            <span className="text-[9px] text-rmpg-500">{departments.length} total</span>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" aria-hidden="true" />
             <input
               type="text"
               value={search}
@@ -165,8 +169,8 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
               className="input-dark text-[10px] pl-6 pr-2 py-1 w-40 min-h-[36px]"
             />
           </div>
-          <button type="button" onClick={openNew} className="toolbar-btn-primary text-[10px] flex items-center gap-1" aria-label="Create new department">
-            <Plus className="w-3 h-3" />
+          <button type="button" onClick={openNew} className="toolbar-btn-primary text-[10px] flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50" aria-label="Create new department">
+            <Plus className="w-3 h-3" aria-hidden="true" />
             New Department
           </button>
         </div>
@@ -175,9 +179,10 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
       {/* Departments Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {topLevel.length === 0 && (
-          <div className="col-span-2 flex flex-col items-center justify-center py-12 text-rmpg-500 text-xs gap-2">
-            <Building2 className="w-6 h-6 text-rmpg-600" />
-            <span>No departments found. Create one to get started.</span>
+          <div className="col-span-2 flex flex-col items-center justify-center py-16 text-rmpg-500 text-xs gap-2">
+            <Building2 className="w-7 h-7 text-rmpg-600" aria-hidden="true" />
+            <span className="font-medium text-rmpg-500">No departments found</span>
+            <span className="text-[9px] text-rmpg-600">Create one to organize your personnel structure</span>
           </div>
         )}
         {topLevel.map((dept) => {
@@ -234,11 +239,11 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
       {showForm && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in" onClick={() => setShowForm(false)} role="dialog" aria-modal="true" aria-label={editing ? 'Edit department' : 'New department'}>
           <div className="bg-surface-base panel-beveled w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-rmpg-700">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#162236]">
               <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">
                 {editing ? 'Edit Department' : 'New Department'}
               </h3>
-              <button type="button" onClick={() => setShowForm(false)} className="p-0.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700 transition-colors rounded-sm" aria-label="Close dialog"><X className="w-4 h-4" /></button>
+              <button type="button" onClick={() => setShowForm(false)} className="p-1 text-rmpg-400 hover:text-white hover:bg-rmpg-700 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50" aria-label="Close dialog"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4 space-y-3">
               <div>

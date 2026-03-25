@@ -380,7 +380,7 @@ export default function CodeEnforcementPage() {
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" style={{ width: 12, height: 12 }} />
                 <input value={vSearch} onChange={e => { setVSearch(e.target.value); setVPage(1); }} placeholder="Search violations..." aria-label="Search violations..." className={`w-full pl-7 pr-2 ${isMobile ? 'py-2.5 text-sm' : 'py-1 text-xs'} bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 outline-none`} style={isMobile ? { minHeight: 44 } : undefined} />
               </div>
-              <select value={vFilterStatus} onChange={e => { setVFilterStatus(e.target.value); setVPage(1); }} className={`${isMobile ? 'text-sm py-2' : 'text-[10px]'} select-dark`} style={isMobile ? { minHeight: 44 } : undefined}>
+              <select value={vFilterStatus} onChange={e => { setVFilterStatus(e.target.value); setVPage(1); }} className={`${isMobile ? 'text-sm py-2' : 'text-[10px]'} bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none`} style={isMobile ? { minHeight: 44 } : undefined}>
                 <option value="">All</option>
                 {Object.keys(VIOLATION_STATUS_COLORS).map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
               </select>
@@ -391,7 +391,7 @@ export default function CodeEnforcementPage() {
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" style={{ width: 12, height: 12 }} />
                 <input value={tSearch} onChange={e => { setTSearch(e.target.value); setTPage(1); }} placeholder="Search tows..." aria-label="Search tows..." className={`w-full pl-7 pr-2 ${isMobile ? 'py-2.5 text-sm' : 'py-1 text-xs'} bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 outline-none`} style={isMobile ? { minHeight: 44 } : undefined} />
               </div>
-              <select value={tFilterStatus} onChange={e => { setTFilterStatus(e.target.value); setTPage(1); }} className={`${isMobile ? 'text-sm py-2' : 'text-[10px]'} select-dark`} style={isMobile ? { minHeight: 44 } : undefined}>
+              <select value={tFilterStatus} onChange={e => { setTFilterStatus(e.target.value); setTPage(1); }} className={`${isMobile ? 'text-sm py-2' : 'text-[10px]'} bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none`} style={isMobile ? { minHeight: 44 } : undefined}>
                 <option value="">All</option>
                 {Object.keys(TOW_STATUS_COLORS).map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
               </select>
@@ -402,7 +402,7 @@ export default function CodeEnforcementPage() {
         {/* List */}
         <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
           {activeTab === 'violations' ? (
-            vLoading ? <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading violations...</span></div> :
+            vLoading ? <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div> :
             violations.length === 0 ? <div className="flex flex-col items-center justify-center py-12 text-rmpg-500"><p className="text-sm">No violations found</p><p className="text-xs text-rmpg-600 mt-1">Try adjusting your filters or create a new one</p></div> :
             violations.map(v => (
               <button type="button"
@@ -431,7 +431,7 @@ export default function CodeEnforcementPage() {
               </button>
             ))
           ) : (
-            tLoading ? <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading tow records...</span></div> :
+            tLoading ? <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div> :
             tows.length === 0 ? <div className="flex flex-col items-center justify-center py-12 text-rmpg-500"><p className="text-sm">No tows found</p><p className="text-xs text-rmpg-600 mt-1">Try adjusting your filters or create a new one</p></div> :
             tows.map(t => (
               <button type="button"
@@ -478,7 +478,7 @@ export default function CodeEnforcementPage() {
               </div>
               {/* Status actions */}
               <div className="panel-beveled p-3">
-                <div className="text-[9px] font-mono text-rmpg-500 uppercase mb-2">Actions</div>
+                <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider mb-2">Actions</div>
                 <div className={`flex flex-wrap ${isMobile ? 'gap-2' : 'gap-1'}`}>
                   {['notice_sent', 'reinspection', 'resolved', 'referred', 'voided'].filter(s => s !== selectedViolation.status).map(s => (
                     <button type="button" key={s} onClick={() => handleViolationStatus(selectedViolation.id, s)} className={`${isMobile ? 'text-xs px-3 py-2' : 'text-[10px] px-2 py-1'} border border-rmpg-600 text-rmpg-300 hover:bg-rmpg-700/40 transition-colors`} style={isMobile ? { minHeight: 48 } : undefined}>
@@ -490,7 +490,7 @@ export default function CodeEnforcementPage() {
               {/* Schedule Reinspection */}
               <div className="panel-beveled p-3">
                 <div className="flex items-center justify-between mb-2">
-                  <div className="text-[9px] font-mono text-rmpg-500 uppercase">Reinspection</div>
+                  <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">Reinspection</div>
                   <button type="button"
                     onClick={() => setShowReinspection(!showReinspection)}
                     className="text-[10px] px-2 py-1 border border-blue-700/50 text-blue-400 bg-blue-900/20 hover:bg-blue-900/40 transition-colors"
@@ -532,7 +532,7 @@ export default function CodeEnforcementPage() {
               {propertyHistory && (
                 <div className={`panel-beveled p-3 ${propertyHistory.is_repeat_offender ? 'border-red-700/50 bg-red-900/10' : ''}`}>
                   <div className="flex items-center justify-between mb-1">
-                    <div className="text-[9px] font-mono text-rmpg-500 uppercase">Property Violation History (12 mo)</div>
+                    <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">Property Violation History (12 mo)</div>
                     <span className={`text-[10px] font-bold px-2 py-0.5 border ${
                       propertyHistory.is_repeat_offender ? 'bg-red-900/50 text-red-400 border-red-700/50' : 'bg-rmpg-700/30 text-rmpg-300 border-rmpg-600/50'
                     }`}>
@@ -560,7 +560,7 @@ export default function CodeEnforcementPage() {
                   ['Created', selectedViolation.created_at ? new Date(selectedViolation.created_at).toLocaleString() : '—'],
                 ].map(([label, value]) => (
                   <div key={label as string}>
-                    <div className="text-[9px] font-mono text-rmpg-500 uppercase">{label}</div>
+                    <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">{label}</div>
                     <div className="text-xs text-white mt-0.5">{value || '—'}</div>
                   </div>
                 ))}
@@ -581,7 +581,7 @@ export default function CodeEnforcementPage() {
                 </span>
               </div>
               <div className="panel-beveled p-3">
-                <div className="text-[9px] font-mono text-rmpg-500 uppercase mb-2">Actions</div>
+                <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider mb-2">Actions</div>
                 <div className={`flex flex-wrap ${isMobile ? 'gap-2' : 'gap-1'}`}>
                   {['dispatched', 'in_progress', 'completed', 'released', 'cancelled'].filter(s => s !== selectedTow.status).map(s => (
                     <button type="button" key={s} onClick={() => handleTowStatus(selectedTow.id, s)} className={`${isMobile ? 'text-xs px-3 py-2' : 'text-[10px] px-2 py-1'} border border-rmpg-600 text-rmpg-300 hover:bg-rmpg-700/40 transition-colors`} style={isMobile ? { minHeight: 48 } : undefined}>
@@ -602,7 +602,7 @@ export default function CodeEnforcementPage() {
                   ['Storage Fee', selectedTow.storage_fee_daily && !isNaN(Number(selectedTow.storage_fee_daily)) ? `$${Number(selectedTow.storage_fee_daily).toFixed(2)}` : '—'],
                 ].map(([label, value]) => (
                   <div key={label as string}>
-                    <div className="text-[9px] font-mono text-rmpg-500 uppercase">{label}</div>
+                    <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">{label}</div>
                     <div className="text-xs text-white mt-0.5">{value || '—'}</div>
                   </div>
                 ))}
@@ -630,41 +630,41 @@ export default function CodeEnforcementPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Type</label>
-                  <select value={vFormData.violation_type} onChange={e => setVFormData(p => ({ ...p, violation_type: e.target.value as ViolationType }))} className="input-dark text-xs w-full mt-1">
+                  <select value={vFormData.violation_type} onChange={e => setVFormData(p => ({ ...p, violation_type: e.target.value as ViolationType }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600">
                     {VIOLATION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="field-label">Severity</label>
-                  <select value={vFormData.severity} onChange={e => setVFormData(p => ({ ...p, severity: e.target.value }))} className="input-dark text-xs w-full mt-1">
+                  <select value={vFormData.severity} onChange={e => setVFormData(p => ({ ...p, severity: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600">
                     <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option>
                   </select>
                 </div>
               </div>
               <div>
                 <label className="field-label">Location *</label>
-                <input value={vFormData.location} onChange={e => setVFormData(p => ({ ...p, location: e.target.value }))} className={`input-dark text-xs w-full mt-1 ${vFormErrors.location ? 'border-red-500' : 'border-rmpg-700'}`} />
+                <input value={vFormData.location} onChange={e => setVFormData(p => ({ ...p, location: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none ${vFormErrors.location ? 'border-red-500' : 'border-rmpg-700'}`} />
                 {vFormErrors.location && <p className="text-red-400 text-[10px] mt-0.5">{vFormErrors.location}</p>}
               </div>
               <div>
                 <label className="field-label">Description *</label>
-                <textarea value={vFormData.description} onChange={e => setVFormData(p => ({ ...p, description: e.target.value }))} rows={3} className={`input-dark text-xs w-full mt-1 resize-none ${vFormErrors.description ? 'border-red-500' : 'border-rmpg-700'}`} />
+                <textarea value={vFormData.description} onChange={e => setVFormData(p => ({ ...p, description: e.target.value }))} rows={3} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none resize-none ${vFormErrors.description ? 'border-red-500' : 'border-rmpg-700'}`} />
                 {vFormErrors.description && <p className="text-red-400 text-[10px] mt-0.5">{vFormErrors.description}</p>}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Code Section</label>
-                  <input value={vFormData.code_section} onChange={e => setVFormData(p => ({ ...p, code_section: e.target.value }))} className="input-dark text-xs w-full mt-1" />
+                  <input value={vFormData.code_section} onChange={e => setVFormData(p => ({ ...p, code_section: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
                 </div>
                 <div>
                   <label className="field-label">Fine Amount</label>
-                  <input value={vFormData.fine_amount} onChange={e => setVFormData(p => ({ ...p, fine_amount: e.target.value }))} type="number" className="input-dark text-xs w-full mt-1" />
+                  <input value={vFormData.fine_amount} onChange={e => setVFormData(p => ({ ...p, fine_amount: e.target.value }))} type="number" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="field-label">Section</label>
-                  <select className="input-dark text-xs w-full mt-1"
+                  <select className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600"
                     value={vFormData.section_id || ''} onChange={e => setVFormData(p => ({...p, section_id: e.target.value, zone_id: '', beat_id: ''}))}>
                     <option value="">—</option>
                     {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
@@ -672,7 +672,7 @@ export default function CodeEnforcementPage() {
                 </div>
                 <div>
                   <label className="field-label">Zone</label>
-                  <select className="input-dark text-xs w-full mt-1"
+                  <select className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600"
                     value={vFormData.zone_id || ''} onChange={e => setVFormData(p => ({...p, zone_id: e.target.value, beat_id: ''}))}>
                     <option value="">—</option>
                     {zonesForSection(vFormData.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
@@ -680,7 +680,7 @@ export default function CodeEnforcementPage() {
                 </div>
                 <div>
                   <label className="field-label">Beat</label>
-                  <select className="input-dark text-xs w-full mt-1"
+                  <select className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600"
                     value={vFormData.beat_id || ''} onChange={e => setVFormData(p => ({...p, beat_id: e.target.value}))}>
                     <option value="">—</option>
                     {beatsForZone(vFormData.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(vFormData.zone_id, b)}</option>)}
@@ -708,19 +708,19 @@ export default function CodeEnforcementPage() {
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <div><label className="field-label">Year</label><input value={tFormData.vehicle_year} onChange={e => setTFormData(p => ({ ...p, vehicle_year: e.target.value }))} className="input-dark text-xs w-full mt-1" /></div>
-                <div><label className="field-label">Make *</label><input value={tFormData.vehicle_make} onChange={e => setTFormData(p => ({ ...p, vehicle_make: e.target.value }))} className={`input-dark text-xs w-full mt-1 ${tFormErrors.vehicle_make ? 'border-red-500' : 'border-rmpg-700'}`} />{tFormErrors.vehicle_make && <p className="text-red-400 text-[10px] mt-0.5">{tFormErrors.vehicle_make}</p>}</div>
-                <div><label className="field-label">Model</label><input value={tFormData.vehicle_model} onChange={e => setTFormData(p => ({ ...p, vehicle_model: e.target.value }))} className="input-dark text-xs w-full mt-1" /></div>
-                <div><label className="field-label">Color</label><input value={tFormData.vehicle_color} onChange={e => setTFormData(p => ({ ...p, vehicle_color: e.target.value }))} className="input-dark text-xs w-full mt-1" /></div>
+                <div><label className="field-label">Year</label><input value={tFormData.vehicle_year} onChange={e => setTFormData(p => ({ ...p, vehicle_year: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" /></div>
+                <div><label className="field-label">Make *</label><input value={tFormData.vehicle_make} onChange={e => setTFormData(p => ({ ...p, vehicle_make: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none ${tFormErrors.vehicle_make ? 'border-red-500' : 'border-rmpg-700'}`} />{tFormErrors.vehicle_make && <p className="text-red-400 text-[10px] mt-0.5">{tFormErrors.vehicle_make}</p>}</div>
+                <div><label className="field-label">Model</label><input value={tFormData.vehicle_model} onChange={e => setTFormData(p => ({ ...p, vehicle_model: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" /></div>
+                <div><label className="field-label">Color</label><input value={tFormData.vehicle_color} onChange={e => setTFormData(p => ({ ...p, vehicle_color: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" /></div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><label className="field-label">Plate</label><input value={tFormData.vehicle_plate} onChange={e => setTFormData(p => ({ ...p, vehicle_plate: e.target.value }))} className={`input-dark text-xs w-full mt-1 ${tFormErrors.vehicle_plate ? 'border-red-500' : 'border-rmpg-700'}`} />{tFormErrors.vehicle_plate && <p className="text-red-400 text-[10px] mt-0.5">{tFormErrors.vehicle_plate}</p>}</div>
-                <div><label className="field-label">Reason</label><select value={tFormData.tow_reason} onChange={e => setTFormData(p => ({ ...p, tow_reason: e.target.value as TowReason }))} className="input-dark text-xs w-full mt-1">{TOW_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}</select></div>
+                <div><label className="field-label">Plate</label><input value={tFormData.vehicle_plate} onChange={e => setTFormData(p => ({ ...p, vehicle_plate: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none ${tFormErrors.vehicle_plate ? 'border-red-500' : 'border-rmpg-700'}`} />{tFormErrors.vehicle_plate && <p className="text-red-400 text-[10px] mt-0.5">{tFormErrors.vehicle_plate}</p>}</div>
+                <div><label className="field-label">Reason</label><select value={tFormData.tow_reason} onChange={e => setTFormData(p => ({ ...p, tow_reason: e.target.value as TowReason }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600">{TOW_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}</select></div>
               </div>
-              <div><label className="field-label">Tow From *</label><input value={tFormData.tow_from} onChange={e => setTFormData(p => ({ ...p, tow_from: e.target.value }))} className={`input-dark text-xs w-full mt-1 ${tFormErrors.tow_from ? 'border-red-500' : 'border-rmpg-700'}`} />{tFormErrors.tow_from && <p className="text-red-400 text-[10px] mt-0.5">{tFormErrors.tow_from}</p>}</div>
+              <div><label className="field-label">Tow From *</label><input value={tFormData.tow_from} onChange={e => setTFormData(p => ({ ...p, tow_from: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none ${tFormErrors.tow_from ? 'border-red-500' : 'border-rmpg-700'}`} />{tFormErrors.tow_from && <p className="text-red-400 text-[10px] mt-0.5">{tFormErrors.tow_from}</p>}</div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><label className="field-label">Tow Company</label><input value={tFormData.tow_company} onChange={e => setTFormData(p => ({ ...p, tow_company: e.target.value }))} className="input-dark text-xs w-full mt-1" /></div>
-                <div><label className="field-label">Tow Fee ($)</label><input value={tFormData.tow_fee} onChange={e => setTFormData(p => ({ ...p, tow_fee: e.target.value }))} type="number" className="input-dark text-xs w-full mt-1" /></div>
+                <div><label className="field-label">Tow Company</label><input value={tFormData.tow_company} onChange={e => setTFormData(p => ({ ...p, tow_company: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" /></div>
+                <div><label className="field-label">Tow Fee ($)</label><input value={tFormData.tow_fee} onChange={e => setTFormData(p => ({ ...p, tow_fee: e.target.value }))} type="number" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" /></div>
               </div>
               <div className={`flex ${isMobile ? 'flex-col gap-2' : 'justify-end gap-2'} pt-2 border-t border-rmpg-700`}>
                 <button type="button" onClick={handleCreateTow} disabled={submitting} className={`toolbar-btn toolbar-btn-primary ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>

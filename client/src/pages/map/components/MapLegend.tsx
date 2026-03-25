@@ -75,8 +75,9 @@ export default function MapLegend({ layers, showBreadcrumbs, breadcrumbColorMode
       {/* Header */}
       <div className="flex items-center justify-between px-2.5 py-1.5" style={{ borderBottom: '1px solid #1e3048' }}>
         <span className="text-[9px] font-mono font-black tracking-wider text-rmpg-300 uppercase">Legend</span>
+          {/* #12: Collapse chevron with rotation animation */}
         <button type="button" onClick={() => setExpanded(false)} aria-expanded={expanded} className="text-rmpg-400 hover:text-white transition-colors duration-150 p-0.5">
-          <ChevronDown className="w-3 h-3 transition-transform duration-200" />
+          <ChevronDown className="w-3 h-3 transition-transform duration-200" style={{ transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)' }} />
         </button>
       </div>
 
@@ -87,9 +88,10 @@ export default function MapLegend({ layers, showBreadcrumbs, breadcrumbColorMode
           <div className="space-y-0.5">
             {STATUS_ORDER.map((status) => (
               <div key={status} className="flex items-center gap-1.5 hover:bg-[#1a2636]/50 transition-colors duration-100 px-0.5 -mx-0.5 rounded-sm">
+                {/* #13: Legend swatches with consistent LED glow */}
                 <div
-                  className="w-3 h-3 rounded-sm shrink-0"
-                  style={{ backgroundColor: UNIT_STATUS_COLORS[status], boxShadow: `0 0 4px ${UNIT_STATUS_COLORS[status]}60`, width: 12, height: 12 }}
+                  className="rounded-sm shrink-0"
+                  style={{ backgroundColor: UNIT_STATUS_COLORS[status], boxShadow: `0 0 6px ${UNIT_STATUS_COLORS[status]}60`, width: 10, height: 10 }}
                 />
                 <span className="text-[9px] font-mono text-[#9ca3af]">{UNIT_STATUS_LABELS[status]}</span>
               </div>
@@ -104,7 +106,8 @@ export default function MapLegend({ layers, showBreadcrumbs, breadcrumbColorMode
           <div className="space-y-0.5">
             {PRIORITY_ORDER.map((p) => (
               <div key={p} className="flex items-center gap-1.5 hover:bg-[#1a2636]/50 transition-colors duration-100 px-0.5 -mx-0.5 rounded-sm">
-                <div className="shrink-0 rounded-sm" style={{ backgroundColor: PRIORITY_COLORS[p], width: 12, height: 12, borderRadius: 2 }} />
+                {/* #14: Priority legend swatches match swatch sizing */}
+              <div className="shrink-0 rounded-sm" style={{ backgroundColor: PRIORITY_COLORS[p], width: 10, height: 10, borderRadius: 2, boxShadow: `0 0 4px ${PRIORITY_COLORS[p]}50` }} />
                 <span className="text-[9px] font-mono text-[#9ca3af]">{p} - {PRIORITY_LABELS[p]}</span>
               </div>
             ))}
@@ -118,7 +121,8 @@ export default function MapLegend({ layers, showBreadcrumbs, breadcrumbColorMode
           <div className="space-y-0.5">
             {layers.properties && (
               <div className="flex items-center gap-1.5 hover:bg-[#1a2636]/50 transition-colors duration-100 px-0.5 -mx-0.5 rounded-sm">
-                <div className="shrink-0 rounded-sm" style={{ backgroundColor: '#d4a017', opacity: 0.8, width: 12, height: 12 }} />
+                {/* #15: Property swatch with gold glow */}
+              <div className="shrink-0 rounded-sm" style={{ backgroundColor: '#d4a017', opacity: 0.8, width: 10, height: 10, boxShadow: '0 0 4px #d4a01750' }} />
                 <span className="text-[9px] font-mono text-[#9ca3af]">Property</span>
               </div>
             )}

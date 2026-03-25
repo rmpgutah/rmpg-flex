@@ -86,7 +86,8 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
         ) : (
           <>
             <Download className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${light ? 'text-gray-600' : 'text-rmpg-300'}`} />
-            {!isMobile && <ChevronDown className={`w-3 h-3 ${light ? 'text-gray-500' : 'text-rmpg-400'} transition-transform ${open ? 'rotate-180' : ''}`} />}
+            {/* #23: Dropdown chevron with smooth rotation */}
+            {!isMobile && <ChevronDown className={`w-3 h-3 ${light ? 'text-gray-500' : 'text-rmpg-400'} transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />}
           </>
         )}
       </button>
@@ -107,25 +108,26 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
           minWidth: 180,
         }}
       >
+        {/* #21: Menu items with improved hover and icon styling */}
         <button type="button"
           role="menuitem"
           onClick={handleScreenshot}
-          className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors duration-100 active:scale-[0.97] ${textColor} hover:bg-[#1a2636]`}
+          className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors duration-100 active:scale-[0.97] ${textColor} ${hoverBg}`}
           style={{ borderBottom: borderBase }}
         >
-          <Camera className="w-3.5 h-3.5 shrink-0 opacity-70" />
+          <Camera className="w-3.5 h-3.5 shrink-0 opacity-80" />
           <div>
             <div className="text-xs font-medium">Screenshot Map</div>
             <div className={`text-[9px] ${light ? 'text-rmpg-400' : 'text-rmpg-500'}`}>Download as PNG</div>
           </div>
         </button>
-        <div style={{ borderBottom: borderBase }} />
+        {/* #22: Removed duplicate divider between items */}
         <button type="button"
           role="menuitem"
           onClick={handlePrint}
-          className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors duration-100 active:scale-[0.97] ${textColor} hover:bg-[#1a2636]`}
+          className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors duration-100 active:scale-[0.97] ${textColor} ${hoverBg}`}
         >
-          <Printer className="w-3.5 h-3.5 shrink-0 opacity-70" />
+          <Printer className="w-3.5 h-3.5 shrink-0 opacity-80" />
           <div>
             <div className="text-xs font-medium">Print Map</div>
             <div className={`text-[9px] ${light ? 'text-rmpg-400' : 'text-rmpg-500'}`}>Open print dialog</div>

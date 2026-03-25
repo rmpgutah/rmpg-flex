@@ -1166,7 +1166,7 @@ export default function WarrantsPage() {
                       </button>
                     ))}
                     <select
-                      className="input-dark text-[9px] py-0 px-1 w-24 ml-1 min-h-[36px]"
+                      className="input-dark text-[9px] py-0 px-1 w-24 ml-1 min-h-[22px]"
                       value={feedEventFilter}
                       onChange={(e) => setFeedEventFilter(e.target.value)}
                     >
@@ -1513,7 +1513,7 @@ export default function WarrantsPage() {
           <div className={`${isMobile ? (selectedWarrant ? 'flex-1' : 'hidden') : 'flex-1'} flex flex-col overflow-hidden`}>
             <div className={`flex ${isMobile ? 'flex-wrap gap-1' : 'items-center gap-1'} px-3 py-1 border-b border-[#1e3048] bg-[var(--grid-header-bg)]`}>
               <Gavel className="w-3 h-3 text-brand-400" />
-              <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Warrant Detail</span>
+              <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-widest">Warrant Detail</span>
               <span className="flex-1" />
               {isMobile && selectedWarrant && (
                 <button type="button" onClick={() => setSelectedWarrant(null)} className="toolbar-btn text-[9px]" style={isMobile ? { minHeight: 44 } : undefined}>&larr; Back</button>
@@ -1590,7 +1590,7 @@ export default function WarrantsPage() {
                   {/* Statute + Charge */}
                   {(selectedWarrant as any).statute_citation && (
                     <div className="mb-2">
-                      <span className="text-[10px] text-rmpg-400 uppercase font-bold">Statute</span>
+                      <span className="text-[10px] text-[#d4a017] uppercase font-bold tracking-wider">Statute</span>
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-brand-900/30 text-brand-300 border border-brand-700/40 text-xs font-mono font-bold">
                           <Scale className="w-3 h-3" />
@@ -1600,7 +1600,7 @@ export default function WarrantsPage() {
                     </div>
                   )}
                   <div className="mb-3">
-                    <span className="text-[10px] text-rmpg-400 uppercase font-bold">Charge Description</span>
+                    <span className="text-[10px] text-[#d4a017] uppercase font-bold tracking-wider">Charge Description</span>
                     <p className="text-sm text-white mt-0.5">{selectedWarrant.charge_description}</p>
                   </div>
 
@@ -1635,8 +1635,8 @@ export default function WarrantsPage() {
                 {/* Subject Info */}
                 {selectedWarrant.subject_name && (
                   <div className="panel-beveled p-4">
-                    <h3 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider flex items-center gap-2 mb-3">
-                      <User className="w-4 h-4 text-brand-400" /> Subject Information
+                    <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-widest flex items-center gap-2 mb-3">
+                      <User className="w-4 h-4 text-[#d4a017]" /> Subject Information
                     </h3>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                       <div>
@@ -1698,8 +1698,8 @@ export default function WarrantsPage() {
                 {/* Court Info */}
                 {(selectedWarrant.issuing_court || selectedWarrant.issuing_judge) && (
                   <div className="panel-beveled p-4">
-                    <h3 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider flex items-center gap-2 mb-3">
-                      <Gavel className="w-4 h-4 text-brand-400" /> Court Information
+                    <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-widest flex items-center gap-2 mb-3">
+                      <Gavel className="w-4 h-4 text-[#d4a017]" /> Court Information
                     </h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                       {selectedWarrant.issuing_court && (
@@ -1721,7 +1721,7 @@ export default function WarrantsPage() {
                 {/* Notes */}
                 {selectedWarrant.notes && (
                   <div className="panel-beveled p-4">
-                    <h3 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-2">Notes</h3>
+                    <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-widest mb-2">Notes</h3>
                     <p className="text-xs text-rmpg-200 whitespace-pre-wrap">{selectedWarrant.notes}</p>
                   </div>
                 )}
@@ -1729,8 +1729,8 @@ export default function WarrantsPage() {
                 {/* Activity Log */}
                 {selectedWarrant.activity && selectedWarrant.activity.length > 0 && (
                   <div className="panel-beveled p-4">
-                    <h3 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider flex items-center gap-2 mb-3">
-                      <Clock className="w-4 h-4 text-brand-400" /> Activity Log
+                    <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-widest flex items-center gap-2 mb-3">
+                      <Clock className="w-4 h-4 text-[#d4a017]" /> Activity Log
                     </h3>
                     <div className="space-y-2">
                       {selectedWarrant.activity.map((a) => (

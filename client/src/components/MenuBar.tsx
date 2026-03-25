@@ -526,6 +526,7 @@ export default function MenuBar({
       { type: 'separator' },
       { type: 'action', label: 'Report a Problem', icon: Bug, action: () => navigate('/admin') },
       { type: 'action', label: 'About RMPG Flex', icon: Info, action: () => navigate('/') },
+      // Version string with monospace for alignment
       { type: 'action', label: 'Version 5.3.9', icon: Shield, disabled: true, action: () => {} },
     ],
   };
@@ -570,10 +571,11 @@ export default function MenuBar({
           onMouseEnter={() => setActiveSubmenu(submenuId)}
           onMouseLeave={() => setActiveSubmenu(null)}
         >
-          <div className={`menu-item transition-colors duration-150 ${isDisabled ? 'menu-item-disabled' : ''}`}>
+          {/* 20: Submenu parent with highlight when open + smoother chevron rotation */}
+          <div className={`menu-item transition-colors duration-150 ${isDisabled ? 'menu-item-disabled' : ''} ${isSubmenuOpen ? 'bg-white/[0.04]' : ''}`}>
             <span className="menu-item-icon">{Icon && <Icon style={{ width: 11, height: 11 }} />}</span>
             <span className="menu-item-label">{item.label}</span>
-            <span className="menu-item-arrow"><ChevronRight style={{ width: 10, height: 10, transition: 'transform 0.15s', transform: isSubmenuOpen ? 'rotate(90deg)' : undefined }} /></span>
+            <span className="menu-item-arrow"><ChevronRight style={{ width: 10, height: 10, transition: 'transform 0.2s ease', transform: isSubmenuOpen ? 'rotate(90deg)' : 'rotate(0deg)' }} /></span>
           </div>
           {isSubmenuOpen && (
             <div className="menu-dropdown menu-submenu animate-dropdown-appear">
@@ -596,7 +598,8 @@ export default function MenuBar({
         >
           <span className="menu-item-icon">{Icon && <Icon style={{ width: 11, height: 11 }} />}</span>
           <span className="menu-item-label">{item.label}</span>
-          <span className="menu-item-check">{item.checked ? '✓' : ''}</span>
+          {/* 21: Toggle check with brand color when checked */}
+          <span className={`menu-item-check ${item.checked ? 'text-brand-400' : ''}`} style={{ fontWeight: item.checked ? 700 : 400 }}>{item.checked ? '✓' : ''}</span>
           {item.shortcut && <span className="menu-item-shortcut">{item.shortcut}</span>}
         </button>
       );
@@ -651,12 +654,14 @@ export default function MenuBar({
             style={{ background: '#141e2b' }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#0d1520' }}>
+            {/* 23: 10-codes header with top accent and version tag */}
+            <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#0d1520', borderTop: '2px solid #1a5a9e' }}>
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
                 <Radio className="w-4 h-4 text-brand-400" />
                 10-Codes Quick Reference
+                <span className="text-[8px] font-mono text-rmpg-500 bg-rmpg-800 px-1 py-0 border border-rmpg-700">APCO</span>
               </h2>
-              <button type="button" onClick={() => setShow10Codes(false)} className="text-rmpg-400 hover:text-white text-xs transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#1a5a9e] focus-visible:outline-none" aria-label="Close 10-codes reference">ESC</button>
+              <button type="button" onClick={() => setShow10Codes(false)} className="text-rmpg-400 hover:text-white text-xs transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#1a5a9e] focus-visible:outline-none px-2 py-0.5 border border-rmpg-600 hover:border-rmpg-500" aria-label="Close 10-codes reference">ESC</button>
             </div>
             <div className="flex-1 overflow-auto p-4 scrollbar-dark">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -896,8 +901,8 @@ function LawBooksModal({ onClose }: { onClose: () => void }) {
         style={{ background: '#141e2b' }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#0d1520' }}>
+        {/* 24: Law reference header with top accent */}
+        <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#0d1520', borderTop: '2px solid #1a5a9e' }}>
           <h2 className="text-sm font-bold text-white flex items-center gap-2">
             <Scale className="w-4 h-4 text-brand-400" />
             Law Reference — Criminal & Vehicle Code
@@ -973,7 +978,8 @@ function LawBooksModal({ onClose }: { onClose: () => void }) {
                     <span className="px-1 py-0 text-[8px] font-bold uppercase bg-rmpg-700/60 text-rmpg-300 border border-rmpg-600 leading-tight">
                       {s.state}
                     </span>
-                    <span className="text-xs font-mono text-brand-400 font-bold">{s.citation}</span>
+                    {/* 25: Citation with wider letter spacing for legal readability */}
+                    <span className="text-xs font-mono text-brand-400 font-bold" style={{ letterSpacing: '0.03em' }}>{s.citation}</span>
                     {s.offense_level && (
                       <span className={`px-1.5 py-0.5 text-[9px] font-bold uppercase border ${
                         OFFENSE_COLORS[s.offense_level] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'

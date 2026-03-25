@@ -785,9 +785,9 @@ export default function ForensicLabPage() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <span className="text-xs font-mono text-brand-400">{selectedCase.lab_case_number}</span>
-              <span className="text-xs px-1.5 py-0.5 rounded-sm font-bold" style={{ backgroundColor: sc.color + '20', color: sc.color }}>{sc.label}</span>
-              <span className="text-xs px-1.5 py-0.5 rounded-sm font-bold" style={{ backgroundColor: pc.color + '20', color: pc.color }}>{pc.label}</span>
-              {overdue && <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-red-900/30 text-red-400 font-bold">OVERDUE</span>}
+              <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: sc.color + '15', color: sc.color, borderColor: sc.color + '40' }}>{sc.label}</span>
+              <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: pc.color + '15', color: pc.color, borderColor: pc.color + '40' }}>{pc.label}</span>
+              {overdue && <span className="text-[9px] px-1.5 py-0.5 bg-red-900/30 text-red-400 font-bold border border-red-700/50 animate-pulse">OVERDUE</span>}
             </div>
             <div className="text-sm font-semibold text-white truncate">{selectedCase.title}</div>
           </div>
@@ -2015,8 +2015,9 @@ export default function ForensicLabPage() {
 
             {/* Case List */}
             {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 size={20} className="animate-spin text-brand-400" />
+              <div className="flex flex-col items-center justify-center py-12 gap-3">
+                <Loader2 size={18} className="animate-spin text-brand-400" />
+                <span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading cases...</span>
               </div>
             ) : cases.length === 0 ? (
               <div className="panel-beveled bg-surface-sunken p-8 text-center">
@@ -2044,9 +2045,9 @@ export default function ForensicLabPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-[10px] font-mono text-brand-400">{c.lab_case_number}</span>
-                            <span className="text-[9px] px-1.5 py-0.5 rounded-sm font-bold" style={{ backgroundColor: sc.color + '20', color: sc.color }}>{sc.label}</span>
-                            <span className="text-[9px] px-1.5 py-0.5 rounded-sm font-bold" style={{ backgroundColor: pc.color + '20', color: pc.color }}>{pc.label}</span>
-                            {overdue && <span className="text-[8px] px-1 py-0.5 rounded-sm bg-red-900/30 text-red-400 font-bold animate-pulse">OVERDUE</span>}
+                            <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: sc.color + '15', color: sc.color, borderColor: sc.color + '40' }}>{sc.label}</span>
+                            <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: pc.color + '15', color: pc.color, borderColor: pc.color + '40' }}>{pc.label}</span>
+                            {overdue && <span className="text-[8px] px-1 py-0.5 bg-red-900/30 text-red-400 font-bold border border-red-700/50 animate-pulse">OVERDUE</span>}
                           </div>
                           <div className="text-xs font-semibold text-rmpg-200 truncate">{c.title}</div>
                           <div className="flex items-center gap-3 mt-1 text-[10px] text-rmpg-400">
@@ -2057,7 +2058,7 @@ export default function ForensicLabPage() {
                         </div>
                         <div className="flex items-center gap-2 text-rmpg-500">
                           {(c.exhibit_count ?? 0) > 0 && (
-                            <span className="text-[9px] font-mono">{c.exhibit_count} exhibits</span>
+                            <span className="text-[9px] font-mono tabular-nums">{c.exhibit_count} exhibits</span>
                           )}
                           <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />
                         </div>

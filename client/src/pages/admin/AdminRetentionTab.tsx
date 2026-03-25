@@ -136,10 +136,15 @@ export default function AdminRetentionTab({ LoadingSpinner, error, setError }: P
   return (
     <div className="p-4 space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
-          <Archive className="w-4 h-4 text-brand-400" />
-          <h2 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">Data Retention Policies</h2>
+          <div className="w-7 h-7 flex items-center justify-center bg-brand-900/30 border border-brand-700/40 shrink-0" aria-hidden="true">
+            <Archive className="w-3.5 h-3.5 text-brand-400" />
+          </div>
+          <div>
+            <h2 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">Data Retention Policies</h2>
+            <span className="text-[9px] text-rmpg-500">{policies.length} policies configured</span>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button type="button"
@@ -198,7 +203,7 @@ export default function AdminRetentionTab({ LoadingSpinner, error, setError }: P
               const isSaving = saving === p.id;
 
               return (
-                <tr key={p.id} className="border-t border-rmpg-700 hover:bg-surface-raised transition-colors">
+                <tr key={p.id} className="border-t border-[#162236] hover:bg-surface-raised/50 transition-colors">
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-2">
                       <Database className="w-3 h-3 text-rmpg-500" />
@@ -254,8 +259,11 @@ export default function AdminRetentionTab({ LoadingSpinner, error, setError }: P
                   <td className="px-3 py-2 text-center">
                     <button type="button"
                       onClick={() => updatePolicy(p.id, { is_active: p.is_active ? 0 : 1 })}
-                      className={`text-[10px] px-2 py-0.5 rounded-sm font-bold ${
-                        p.is_active ? 'bg-green-900/40 text-green-400' : 'bg-rmpg-700 text-rmpg-500'
+                      role="switch"
+                      aria-checked={!!p.is_active}
+                      aria-label={`${ENTITY_LABELS[p.entity_type] || p.entity_type} retention policy`}
+                      className={`text-[10px] px-2.5 py-1 font-bold transition-colors ${
+                        p.is_active ? 'bg-green-900/40 text-green-400 border border-green-700/40' : 'bg-rmpg-700 text-rmpg-500 border border-rmpg-600'
                       }`}
                     >
                       {p.is_active ? 'ON' : 'OFF'}

@@ -721,8 +721,9 @@ export default function CitationsPage() {
           </div>
         ) : citations.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-rmpg-500">
-            <FileWarning size={32} className="mb-2 opacity-30" />
-            <p className="text-xs">No citations found</p>
+            <FileWarning size={28} className="mb-2 opacity-40" />
+            <p className="text-xs font-medium">No citations found</p>
+            <p className="text-[10px] text-rmpg-600 mt-1">Adjust filters or create a new citation</p>
           </div>
         ) : (
           citations.map(c => (
@@ -841,8 +842,8 @@ export default function CitationsPage() {
         <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent p-4 space-y-4">
           {/* Violation */}
           <section>
-            <h3 className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2 flex items-center gap-1">
-              <Scale size={10} /> Violation
+            <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
+              <Scale size={10} className="text-[#d4a017]" /> Violation
             </h3>
             <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
               {c.statute_citation && (
@@ -863,8 +864,8 @@ export default function CitationsPage() {
           {/* Payment Plan Tracking */}
           {c.fine_amount != null && c.fine_amount > 0 && paymentData && (
             <section>
-              <h3 className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2 flex items-center gap-1">
-                <DollarSign size={10} /> Payment Tracking
+              <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
+                <DollarSign size={10} className="text-[#d4a017]" /> Payment Tracking
               </h3>
               <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-2">
                 <div className="flex items-center gap-4 text-xs">
@@ -944,7 +945,7 @@ export default function CitationsPage() {
 
           {/* Subject */}
           <section>
-            <h3 className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2 flex items-center gap-1">
+            <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
               <User size={10} /> Subject
             </h3>
             <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
@@ -958,7 +959,7 @@ export default function CitationsPage() {
           {/* Vehicle */}
           {(c.vehicle_description || c.vehicle_plate) && (
             <section>
-              <h3 className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2 flex items-center gap-1">
+              <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
                 <Car size={10} /> Vehicle
               </h3>
               <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
@@ -970,7 +971,7 @@ export default function CitationsPage() {
 
           {/* Location & Time */}
           <section>
-            <h3 className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2 flex items-center gap-1">
+            <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
               <MapPin size={10} /> Location & Time
             </h3>
             <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
@@ -985,7 +986,7 @@ export default function CitationsPage() {
 
           {/* Officer */}
           <section>
-            <h3 className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2 flex items-center gap-1">
+            <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
               <User size={10} /> Issuing Officer
             </h3>
             <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
@@ -997,7 +998,7 @@ export default function CitationsPage() {
           {/* Court */}
           {(c.court_date || c.court_name) && (
             <section>
-              <h3 className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2 flex items-center gap-1">
+              <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1">
                 <Scale size={10} /> Court Information
               </h3>
               <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
@@ -1011,7 +1012,7 @@ export default function CitationsPage() {
           {/* Notes */}
           {c.notes && (
             <section>
-              <h3 className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2">Notes</h3>
+              <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2">Notes</h3>
               <div className="bg-surface-raised border border-rmpg-700 p-3 text-xs text-rmpg-200 whitespace-pre-wrap">{c.notes}</div>
             </section>
           )}
@@ -1065,7 +1066,7 @@ export default function CitationsPage() {
 
         {/* Type selector */}
         <section>
-          <h3 className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2">Citation Type</h3>
+          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2">Citation Type</h3>
           <div className={`flex ${isMobile ? 'flex-col' : 'flex-wrap'} gap-2`}>
             {CITATION_TYPES.map(t => (
               <button
@@ -1088,7 +1089,7 @@ export default function CitationsPage() {
         {/* Status (edit only) */}
         {isEdit && (
           <section>
-            <h3 className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2">Status</h3>
+            <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2">Status</h3>
             <select value={form.status} onChange={e => updateField('status', e.target.value)} className="input-dark w-full py-2 text-xs min-h-[36px]">
               {CITATION_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
@@ -1097,7 +1098,7 @@ export default function CitationsPage() {
 
         {/* Violation */}
         <section>
-          <h3 className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2 flex items-center gap-1.5">
+          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
             <Scale size={12} /> Violation
           </h3>
           <div className="space-y-3">
@@ -1145,7 +1146,7 @@ export default function CitationsPage() {
 
         {/* Subject */}
         <section>
-          <h3 className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2 flex items-center gap-1.5">
+          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
             <User size={12} /> Subject
           </h3>
           <div className="space-y-3">
@@ -1227,7 +1228,7 @@ export default function CitationsPage() {
         {/* Vehicle (traffic/parking only) */}
         {showVehicleSection && (
           <section>
-            <h3 className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2 flex items-center gap-1.5">
+            <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
               <Car size={12} /> Vehicle Information
             </h3>
             <div className="space-y-3">
@@ -1253,7 +1254,7 @@ export default function CitationsPage() {
 
         {/* Location & Time */}
         <section>
-          <h3 className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2 flex items-center gap-1.5">
+          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
             <Calendar size={12} /> Location & Time
           </h3>
           <div className="space-y-3">
@@ -1309,7 +1310,7 @@ export default function CitationsPage() {
 
         {/* Officer */}
         <section>
-          <h3 className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2 flex items-center gap-1.5">
+          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
             <User size={12} /> Issuing Officer
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1326,7 +1327,7 @@ export default function CitationsPage() {
 
         {/* Court */}
         <section>
-          <h3 className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2 flex items-center gap-1.5">
+          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
             <Scale size={12} /> Court Information
           </h3>
           <div className="space-y-3">
@@ -1347,7 +1348,7 @@ export default function CitationsPage() {
 
         {/* Notes */}
         <section>
-          <h3 className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2">Notes</h3>
+          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2">Notes</h3>
           <textarea
             value={form.notes}
             onChange={e => updateField('notes', e.target.value)}

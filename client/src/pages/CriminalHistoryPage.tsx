@@ -5,7 +5,7 @@
 // ============================================================
 
 import React, {useState, useCallback, useEffect} from 'react';
-import { Search, AlertTriangle, User, Shield, Calendar, MapPin, FileText, ChevronRight, Scale, List, Clock } from 'lucide-react';
+import { Search, AlertTriangle, User, Shield, Calendar, MapPin, FileText, ChevronRight, Scale, List, Clock, Loader2 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { toDisplayLabel } from '../utils/formatters';
@@ -192,13 +192,10 @@ export default function CriminalHistoryPage() {
   return (
     <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
       {fetchError && (
-        <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 text-red-400 text-xs flex items-center gap-2">
-          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
-          <span>{fetchError}</span>
-          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300 transition-colors">
-            <span className="sr-only">Dismiss</span>
-            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-          </button>
+        <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 text-red-400 text-xs flex items-center gap-2" role="alert">
+          <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />
+          <span className="flex-1">{fetchError}</span>
+          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300 text-[10px]" aria-label="Dismiss error">dismiss</button>
         </div>
       )}
       {!isMobile && <PanelTitleBar title="Criminal History" icon={Shield}>
@@ -218,8 +215,6 @@ export default function CriminalHistoryPage() {
               type="text"
               className="input-dark pl-7 text-[11px] w-64 min-h-[36px]"
               placeholder={searchType === 'name' ? 'Last, First...' : searchType === 'dob' ? 'YYYY-MM-DD...' : 'DL Number...'}
-              aria-label="Search persons"
-              autoComplete="off"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
@@ -248,8 +243,6 @@ export default function CriminalHistoryPage() {
               type="text"
               className="input-dark pl-6 text-[10px] w-full min-h-[36px]"
               placeholder={searchType === 'name' ? 'Last, First...' : searchType === 'dob' ? 'YYYY-MM-DD...' : 'DL Number...'}
-              aria-label="Search persons"
-              autoComplete="off"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
@@ -266,10 +259,9 @@ export default function CriminalHistoryPage() {
         <div className={`${isMobile ? (selectedPerson ? 'hidden' : 'w-full') : 'w-1/3'} border-r border-rmpg-700/50 overflow-auto`}>
           {persons.length === 0 && !loading && (
             <div className="flex items-center justify-center h-full text-rmpg-500 text-[10px]">
-              <div className="text-center space-y-1">
-                <Search className="w-8 h-8 mx-auto mb-2 text-rmpg-600" />
-                <p className="font-semibold text-rmpg-400">No persons found</p>
-                <p>Search by name, DOB, or driver's license number</p>
+              <div className="text-center">
+                <Search className="w-7 h-7 mx-auto mb-2 text-rmpg-600" />
+                <p className="font-mono uppercase tracking-wider">Search for a person to view criminal history</p>
               </div>
             </div>
           )}
@@ -277,8 +269,8 @@ export default function CriminalHistoryPage() {
             <button type="button"
               key={p.id}
               onClick={() => selectPerson(p)}
-              className={`w-full text-left px-3 py-2 border-b border-rmpg-800/30 hover:bg-rmpg-800/20 transition-colors ${
-                selectedPerson?.id === p.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''
+              className={`w-full text-left px-3 py-2 border-b border-rmpg-800/30 transition-all duration-150 ${
+                selectedPerson?.id === p.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'hover:bg-rmpg-800/20 border-l-2 border-l-transparent'
               }`}
             >
               <div className="flex items-center justify-between">
@@ -314,8 +306,8 @@ export default function CriminalHistoryPage() {
               {/* Mobile back button */}
               {isMobile && (
                 <button type="button" onClick={() => { setSelectedPerson(null); setHistory([]); }}
-                  className="text-rmpg-400 hover:text-white text-[10px] font-bold uppercase tracking-wider">
-                  ◀ Back to Results
+                  className="text-rmpg-400 hover:text-white text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                  <ChevronRight className="w-3 h-3 rotate-180" /> Back to Results
                 </button>
               )}
               {/* Person Card */}
@@ -387,9 +379,15 @@ export default function CriminalHistoryPage() {
                 </div>
 
                 {historyLoading ? (
-                  <p className="text-rmpg-400 text-[10px] text-center py-4">Loading history...</p>
+                  <div className="flex items-center justify-center gap-2 py-6">
+                    <Loader2 className="w-4 h-4 text-brand-400 animate-spin" />
+                    <span className="text-rmpg-400 text-[10px] font-mono uppercase tracking-wider animate-pulse">Loading history...</span>
+                  </div>
                 ) : history.length === 0 ? (
-                  <p className="text-rmpg-500 text-[10px] text-center py-4">No criminal history on file</p>
+                  <div className="text-center py-6">
+                    <Shield className="w-6 h-6 mx-auto mb-2 text-rmpg-600" />
+                    <p className="text-rmpg-500 text-[10px] font-mono uppercase tracking-wider">No criminal history on file</p>
+                  </div>
                 ) : viewMode === 'table' ? (
                   <div className="space-y-1">
                     {history.map((entry) => (

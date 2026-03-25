@@ -16,7 +16,11 @@ export default function NcicPage() {
 
   return (
     <div className="flex flex-col h-full animate-fade-in">
-      {!isMobile && <PanelTitleBar title="NCIC / NLETS TERMINAL" icon={Terminal} />}
+      {!isMobile && (
+        <PanelTitleBar title="NCIC / NLETS TERMINAL" icon={Terminal}>
+          <span className="text-[8px] font-mono text-rmpg-500 tracking-wider">SECURE CHANNEL</span>
+        </PanelTitleBar>
+      )}
       <div className="flex-1 overflow-hidden print:overflow-visible">
         <NcicQueryPanel isOpen={true} onClose={() => {}} embedded={true} />
       </div>

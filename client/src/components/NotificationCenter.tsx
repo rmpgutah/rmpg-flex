@@ -321,9 +321,10 @@ export default function NotificationCenter({ className = '' }: NotificationCente
         aria-haspopup="true"
       >
         <Bell className="w-4 h-4" aria-hidden="true" />
+        {/* 44: Notification badge with subtle glow and tabular-nums */}
         {unreadCount > 0 && (
           <span
-            className="absolute flex items-center justify-center"
+            className="absolute flex items-center justify-center tabular-nums"
             style={{
               top: 0,
               right: 0,
@@ -337,6 +338,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
               fontWeight: 700,
               lineHeight: 1,
               fontFamily: 'monospace',
+              boxShadow: '0 0 6px rgba(26,90,158,0.5)',
             }}
           >
             {unreadCount > 99 ? '99+' : unreadCount}
@@ -353,11 +355,12 @@ export default function NotificationCenter({ className = '' }: NotificationCente
             top: dropdownPos.top,
             left: dropdownPos.left,
             width: '360px',
-            maxHeight: '400px',
+            maxHeight: '420px',
             background: '#141e2b',
             display: 'flex',
             flexDirection: 'column',
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.6)',
+            boxShadow: '0 12px 40px rgba(0, 0, 0, 0.65), 0 4px 16px rgba(0, 0, 0, 0.3)',
+            borderTop: '2px solid #1a5a9e',
           }}
         >
           {/* Title Bar */}
@@ -457,10 +460,11 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                   tabIndex={0}
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleNotificationClick(notification); } }}
                   onClick={() => handleNotificationClick(notification)}
-                  className="group flex items-start gap-2 border-b border-rmpg-700/50 cursor-pointer transition-colors hover:bg-rmpg-800/60"
+                  className="group flex items-start gap-2 border-b border-rmpg-700/50 cursor-pointer transition-colors duration-150 hover:bg-rmpg-800/60"
                   style={{
                     padding: '6px 8px',
                     background: notification.is_read ? '#141e2b' : '#1a2636',
+                    borderLeft: notification.is_read ? '2px solid transparent' : '2px solid #1a5a9e',
                   }}
                   title={route ? `Click to go to ${notification.type.replace(/_/g, ' ')}` : undefined}
                 >
@@ -536,14 +540,19 @@ export default function NotificationCenter({ className = '' }: NotificationCente
               );
             })}
 
-            {/* Load More */}
+            {/* 47: Load More with improved loading state */}
             {hasMore && notifications.length > 0 && (
               <button type="button"
                 onClick={handleLoadMore}
                 disabled={loadingMore}
-                className="w-full py-2 text-center text-[10px] text-brand-400 hover:bg-rmpg-700/30 transition-colors font-bold uppercase tracking-wider"
+                className="w-full py-2.5 text-center text-[10px] text-brand-400 hover:bg-rmpg-700/30 transition-colors duration-150 font-bold uppercase tracking-wider border-t border-rmpg-700/30 disabled:opacity-50"
               >
-                {loadingMore ? 'Loading...' : 'Load Older Notifications'}
+                {loadingMore ? (
+                  <span className="flex items-center justify-center gap-1.5">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Loading...
+                  </span>
+                ) : 'Load Older Notifications'}
               </button>
             )}
           </div>

@@ -229,7 +229,7 @@ export default function SkipTracerPage() {
         {/* ─── Left Panel: Search Form ──────────────────────── */}
         <div
           className={`${isMobile ? 'flex-shrink-0' : 'w-80'} overflow-y-auto border-r border-rmpg-700`}
-          style={{ background: '#0d0d0d' }}
+          style={{ background: '#0d1520' }}
         >
           {/* Search Mode Selector */}
           <div className="p-3 space-y-3">
@@ -324,7 +324,7 @@ export default function SkipTracerPage() {
               <button type="button"
                 onClick={() => handleSearch()}
                 disabled={loading}
-                className="w-full flex items-center justify-center gap-2 py-2 text-[10px] font-bold uppercase tracking-wider bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 border border-blue-700"
+                className="w-full flex items-center justify-center gap-2 py-2 text-[10px] font-bold uppercase tracking-wider bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 border border-brand-700 transition-colors"
               >
                 {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Search className="w-3.5 h-3.5" />}
                 Search
@@ -333,15 +333,15 @@ export default function SkipTracerPage() {
 
             {/* Error */}
             {error && (
-              <div className="flex items-center gap-2 px-3 py-2 text-xs bg-red-900/20 text-red-400 border border-red-700/50">
+              <div className="flex items-center gap-2 px-3 py-2 text-xs bg-red-900/20 text-red-400 border border-red-700/50" role="alert">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                {error}
+                <span className="flex-1">{error}</span>
               </div>
             )}
 
             {/* Result count */}
             {results && !loading && (
-              <div className="text-[10px] text-rmpg-400 pt-1">
+              <div className="text-[10px] text-rmpg-400 pt-1 font-mono tabular-nums">
                 {resultItems.length > 0
                   ? `Found ${totalRecords} result${totalRecords !== 1 ? 's' : ''} — Page ${results?.Page || page}`
                   : 'No results found'}
@@ -475,7 +475,7 @@ export default function SkipTracerPage() {
                     <button type="button"
                       onClick={() => handleGetPersonDetails(selected['Person ID'])}
                       disabled={loadingDetail}
-                      className="flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-blue-700/20 text-blue-400 border border-blue-700/50 hover:bg-blue-700/40 disabled:opacity-50"
+                      className="flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-brand-700/20 text-brand-400 border border-brand-700/50 hover:bg-brand-700/40 disabled:opacity-50 transition-colors"
                     >
                       {loadingDetail ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <ExternalLink className="w-3 h-3" />}
                       Full Details

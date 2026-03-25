@@ -145,11 +145,11 @@ export default function PredictionsPanel({
                         </span>
                       </div>
 
-                      {/* Confidence bar */}
-                      <div className="h-1.5 rounded-full bg-rmpg-800 mb-1.5">
+                      {/* #28: Confidence bar with wider glow for high scores */}
+                      <div className="h-1.5 rounded-full bg-rmpg-800 mb-1.5 overflow-hidden">
                         <div
-                          className="h-full rounded-full transition-all duration-300"
-                          style={{ width: `${barWidth}%`, background: color, boxShadow: `0 0 4px ${color}40` }}
+                          className="h-full rounded-full transition-all duration-500 ease-out"
+                          style={{ width: `${barWidth}%`, background: `linear-gradient(90deg, ${color}cc, ${color})`, boxShadow: `0 0 6px ${color}50` }}
                         />
                       </div>
 

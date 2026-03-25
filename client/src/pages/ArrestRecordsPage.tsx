@@ -502,7 +502,7 @@ export default function ArrestRecordsPage() {
             { label: 'Released', value: stats.population_summary.total_released, color: 'text-green-400' },
           ].map(s => (
             <div key={s.label} className="text-center py-1">
-              <div className={`text-sm font-bold ${s.color}`}>{s.value.toLocaleString()}</div>
+              <div className={`text-sm font-bold tabular-nums ${s.color}`}>{s.value.toLocaleString()}</div>
               <div className="text-[7px] text-rmpg-500 uppercase">{s.label}</div>
             </div>
           ))}
@@ -615,7 +615,7 @@ export default function ArrestRecordsPage() {
           >
             <RefreshCw className="w-3 h-3" />
           </button>
-          <span className="text-[8px] text-rmpg-500">{recordsTotal.toLocaleString()}</span>
+          <span className="text-[8px] text-rmpg-500 tabular-nums font-mono">{recordsTotal.toLocaleString()}</span>
         </div>
       </div>
 
@@ -624,7 +624,7 @@ export default function ArrestRecordsPage() {
         {recordsLoading ? (
           <div className="flex flex-col items-center gap-3 text-[10px] text-rmpg-500 py-12 justify-center">
             <Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading arrest records" />
-            <span className="animate-pulse">Loading records...</span>
+            <span className="font-mono uppercase tracking-wider animate-pulse">Loading records...</span>
           </div>
         ) : sortedRecords.length === 0 ? (
           <EmptyState icon={UserX} title="No records found" description="Adjust filters or create a new booking." />
@@ -688,7 +688,7 @@ export default function ArrestRecordsPage() {
           >
             ← Prev
           </button>
-          <span className="text-rmpg-500">
+          <span className="text-rmpg-500 font-mono tabular-nums">
             {recordsPage} / {totalPages}
           </span>
           <button type="button"

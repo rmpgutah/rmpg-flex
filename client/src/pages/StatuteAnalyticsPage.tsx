@@ -5,7 +5,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { BarChart3, PieChart, TrendingUp, Search, RefreshCw } from 'lucide-react';
+import { BarChart3, PieChart, TrendingUp, Search, RefreshCw, Loader2 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -138,13 +138,14 @@ export default function StatuteAnalyticsPage() {
             <button type="button"
               key={d}
               onClick={() => setDays(d)}
-              className={`px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors ${
-                days === d ? 'bg-brand-900/50 text-brand-400 border border-brand-700/50' : 'text-rmpg-500 hover:text-rmpg-300'
+              className={`px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-all duration-150 ${
+                days === d ? 'bg-brand-900/50 text-brand-400 border border-brand-700/50 shadow-sm' : 'text-rmpg-500 hover:text-rmpg-300 border border-transparent hover:border-rmpg-600'
               }`}
             >
               {d}d
             </button>
           ))}
+          <div className="w-px h-4 bg-rmpg-600 mx-1" />
           <button type="button" onClick={handleLoadTopCharged} className="toolbar-btn" title="Top Charged">
             <BarChart3 className="w-3.5 h-3.5" />
           </button>
@@ -211,28 +212,29 @@ export default function StatuteAnalyticsPage() {
       )}
 
       {loading ? (
-        <div className="flex-1 flex items-center justify-center">
-          <p className="text-rmpg-400 text-xs">Loading statute data...</p>
+        <div className="flex-1 flex flex-col items-center justify-center gap-2">
+          <Loader2 className="w-6 h-6 text-brand-400 animate-spin" />
+          <p className="text-rmpg-500 text-[10px] uppercase tracking-wider">Loading statute data...</p>
         </div>
       ) : (
         <div className="flex-1 overflow-auto p-4 space-y-4">
           {/* Summary Cards */}
           <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-3`}>
-            <div className="panel-surface p-3">
+            <div className="panel-surface p-3 border-l-[3px] border-l-brand-500 hover:bg-surface-raised/50 transition-colors">
               <p className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Total Citations</p>
-              <p className="text-2xl font-black text-brand-400 mt-1">{totalCitations}</p>
+              <p className="text-2xl font-black text-brand-400 mt-1 font-mono tabular-nums">{totalCitations}</p>
             </div>
-            <div className="panel-surface p-3">
+            <div className="panel-surface p-3 border-l-[3px] border-l-amber-500 hover:bg-surface-raised/50 transition-colors">
               <p className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Unique Statutes</p>
-              <p className="text-2xl font-black text-amber-400 mt-1">{topStatutes.length}</p>
+              <p className="text-2xl font-black text-amber-400 mt-1 font-mono tabular-nums">{topStatutes.length}</p>
             </div>
-            <div className="panel-surface p-3">
+            <div className="panel-surface p-3 border-l-[3px] border-l-purple-500 hover:bg-surface-raised/50 transition-colors">
               <p className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Incident Statutes</p>
-              <p className="text-2xl font-black text-purple-400 mt-1">{incidentStatutes.length}</p>
+              <p className="text-2xl font-black text-purple-400 mt-1 font-mono tabular-nums">{incidentStatutes.length}</p>
             </div>
-            <div className="panel-surface p-3">
+            <div className="panel-surface p-3 border-l-[3px] border-l-green-500 hover:bg-surface-raised/50 transition-colors">
               <p className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Time Period</p>
-              <p className="text-2xl font-black text-green-400 mt-1">{days}d</p>
+              <p className="text-2xl font-black text-green-400 mt-1 font-mono">{days}d</p>
             </div>
           </div>
 
@@ -248,7 +250,7 @@ export default function StatuteAnalyticsPage() {
                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
                   <input
                     type="text"
-                    className="bg-surface-base border border-rmpg-600 text-white text-[10px] pl-6 pr-2 py-1 w-48 focus:border-brand-500 focus:outline-none"
+                    className="bg-surface-base border border-rmpg-600 text-white text-[10px] pl-6 pr-2 py-1 w-48 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500/30 transition-colors"
                     placeholder="Search statutes..." aria-label="Search statutes..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
@@ -259,7 +261,7 @@ export default function StatuteAnalyticsPage() {
                 {filteredStatutes.map((s, i) => (
                   <div key={i} className="flex items-center gap-2">
                     <span className="text-[9px] font-mono text-rmpg-400 w-24 shrink-0 truncate">{s.statute_number}</span>
-                    <div className="flex-1 relative h-5 bg-rmpg-700/40">
+                    <div className="flex-1 relative h-5 bg-rmpg-800/50">
                       <div
                         className="absolute inset-y-0 left-0 bg-brand-600/60 transition-all"
                         style={{ width: `${(s.count / maxCount) * 100}%` }}
@@ -281,7 +283,10 @@ export default function StatuteAnalyticsPage() {
                   </div>
                 ))}
                 {filteredStatutes.length === 0 && (
-                  <p className="text-rmpg-500 text-[10px] text-center py-4">No matching statutes</p>
+                  <div className="flex flex-col items-center justify-center py-8 text-rmpg-500">
+                    <Search className="w-5 h-5 text-rmpg-600 mb-2" />
+                    <p className="text-[10px]">No matching statutes</p>
+                  </div>
                 )}
               </div>
             </div>
@@ -303,8 +308,8 @@ export default function StatuteAnalyticsPage() {
                         <span className="text-[9px] text-rmpg-300 uppercase font-bold">{l.offense_level?.replace(/_/g, ' ') || 'Unknown'}</span>
                         <span className="text-[9px] font-mono font-bold" style={{ color }}>{l.count} ({pct}%)</span>
                       </div>
-                      <div className="h-2 bg-rmpg-700/40 overflow-hidden">
-                        <div className="h-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
+                      <div className="h-2 bg-rmpg-800/50 overflow-hidden" style={{ borderRadius: '2px' }}>
+                        <div className="h-full transition-all duration-300" style={{ width: `${pct}%`, backgroundColor: color, borderRadius: '2px' }} />
                       </div>
                     </div>
                   );
@@ -321,17 +326,20 @@ export default function StatuteAnalyticsPage() {
             </div>
             <div className="flex items-end gap-1 h-32">
               {trend.map((t, i) => (
-                <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                  <span className="text-[8px] font-mono text-brand-400 font-bold">{t.count}</span>
+                <div key={i} className="flex-1 flex flex-col items-center gap-1 group">
+                  <span className="text-[8px] font-mono text-brand-400 font-bold tabular-nums opacity-70 group-hover:opacity-100 transition-opacity">{t.count}</span>
                   <div
-                    className="w-full bg-brand-600/60 transition-all"
-                    style={{ height: `${(t.count / trendMax) * 100}%`, minHeight: 2 }}
+                    className="w-full bg-brand-600/60 group-hover:bg-brand-500/70 transition-all"
+                    style={{ height: `${(t.count / trendMax) * 100}%`, minHeight: 2, borderRadius: '2px 2px 0 0' }}
                   />
                   <span className="text-[7px] text-rmpg-500 font-mono">{t.month.slice(5)}</span>
                 </div>
               ))}
               {trend.length === 0 && (
-                <p className="text-rmpg-500 text-[10px] text-center py-4 w-full">No trend data</p>
+                <div className="flex flex-col items-center justify-center w-full py-4 text-rmpg-500">
+                  <TrendingUp className="w-5 h-5 text-rmpg-600 mb-1" />
+                  <p className="text-[10px]">No trend data available</p>
+                </div>
               )}
             </div>
           </div>

@@ -324,6 +324,11 @@ export default function FieldInterviewsPage() {
             value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
             style={isMobile ? { minHeight: 44 } : undefined}
           />
+          {searchQuery && (
+            <button type="button" onClick={() => { setSearchQuery(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white transition-colors" aria-label="Clear search">
+              <X className="w-3 h-3" />
+            </button>
+          )}
         </div>
         <div className={`flex items-center ${isMobile ? 'gap-2' : 'gap-2'}`}>
           <select className={`select-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs'}`} value={filterReason} onChange={e => { setFilterReason(e.target.value); setPage(1); }} style={isMobile ? { minHeight: 44 } : undefined}>
@@ -339,8 +344,9 @@ export default function FieldInterviewsPage() {
 
       {/* Error Banner */}
       {error && (
-        <div className="px-3 py-2 bg-red-900/40 border-b border-red-700 text-red-300 text-xs flex items-center justify-between">
-          <span>Failed to load field interviews: {error}</span>
+        <div className="px-3 py-2 bg-red-900/40 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2" role="alert">
+          <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />
+          <span className="flex-1">{error}</span>
           <button type="button" onClick={() => fetchFis()} className="text-red-200 hover:text-white underline text-[10px]">Retry</button>
         </div>
       )}
@@ -402,10 +408,10 @@ export default function FieldInterviewsPage() {
           )}
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className={`flex items-center justify-center gap-2 py-2 ${isMobile ? 'text-xs' : 'text-[10px]'} text-rmpg-400`}>
-              <button type="button" disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined, minWidth: isMobile ? 48 : undefined }}>Prev</button>
-              <span>Page {page} of {totalPages}</span>
-              <button type="button" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined, minWidth: isMobile ? 48 : undefined }}>Next</button>
+            <div className={`flex items-center justify-center gap-2 py-2 border-t border-rmpg-700/50 ${isMobile ? 'text-xs' : 'text-[10px]'} text-rmpg-400`}>
+              <button type="button" disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="toolbar-btn disabled:opacity-30" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined, minWidth: isMobile ? 48 : undefined }}>Prev</button>
+              <span className="tabular-nums font-mono">Page {page} of {totalPages}</span>
+              <button type="button" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="toolbar-btn disabled:opacity-30" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined, minWidth: isMobile ? 48 : undefined }}>Next</button>
             </div>
           )}
         </div>
@@ -463,18 +469,18 @@ export default function FieldInterviewsPage() {
               {((selectedFi as any).section_id || (selectedFi as any).zone_id || (selectedFi as any).beat_id) && (
                 <div className="col-span-2"><span className="text-rmpg-500 text-[10px] uppercase">Section / Zone / Beat</span><div className="text-white">{[(selectedFi as any).section_id, (selectedFi as any).zone_id, (selectedFi as any).beat_id].filter(Boolean).join(' / ') || '—'}</div></div>
               )}
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Contact Reason</span><div className="text-white capitalize">{selectedFi.contact_reason.replace(/_/g, ' ')}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Contact Type</span><div className="text-white capitalize">{selectedFi.contact_type}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Action Taken</span><div className="text-white capitalize">{selectedFi.action_taken}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Officer</span><div className="text-white">{selectedFi.officer_name || selectedFi.officer_display_name || '—'}</div></div>
+              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Contact Reason</span><div className="text-white mt-0.5 capitalize">{selectedFi.contact_reason.replace(/_/g, ' ')}</div></div>
+              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Contact Type</span><div className="text-white mt-0.5 capitalize">{selectedFi.contact_type}</div></div>
+              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Action Taken</span><div className="text-white mt-0.5 capitalize">{selectedFi.action_taken}</div></div>
+              <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Officer</span><div className="text-white mt-0.5">{selectedFi.officer_name || selectedFi.officer_display_name || '—'}</div></div>
               {selectedFi.vehicle_plate && <div><span className="text-rmpg-500 text-[10px] uppercase">Vehicle</span><div className="text-white">{selectedFi.vehicle_plate} {selectedFi.vehicle_description}</div></div>}
             </div>
 
             {/* Narrative */}
             {selectedFi.narrative && (
               <div className="mt-3 pt-2 border-t border-rmpg-700">
-                <span className="text-rmpg-500 text-[10px] uppercase">Narrative</span>
-                <p className="text-xs text-rmpg-200 mt-1 whitespace-pre-wrap">{selectedFi.narrative}</p>
+                <span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Narrative</span>
+                <p className="text-xs text-rmpg-200 mt-1 whitespace-pre-wrap leading-relaxed">{selectedFi.narrative}</p>
               </div>
             )}
           </div>

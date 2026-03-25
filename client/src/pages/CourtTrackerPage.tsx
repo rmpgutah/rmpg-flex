@@ -456,8 +456,8 @@ export default function CourtTrackerPage() {
 
         {fetchError && (
           <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
-            <span>! {fetchError}</span>
-            <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">x</button>
+            <AlertTriangle className="w-3 h-3 flex-shrink-0" /> <span>{fetchError}</span>
+            <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300"><X style={{ width: 12, height: 12 }} /></button>
           </div>
         )}
 
@@ -556,7 +556,7 @@ export default function CourtTrackerPage() {
               <>
                 {/* Totals */}
                 <div className="panel-beveled p-3">
-                  <div className="text-[9px] font-mono text-rmpg-500 uppercase mb-2">Overview (Last 12 Months)</div>
+                  <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider mb-2">Overview (Last 12 Months)</div>
                   <div className="grid grid-cols-2 gap-2">
                     {[
                       ['Total Events', stats.totals?.total || 0],
@@ -575,7 +575,7 @@ export default function CourtTrackerPage() {
 
                 {/* By Outcome */}
                 <div className="panel-beveled p-3">
-                  <div className="text-[9px] font-mono text-rmpg-500 uppercase mb-2">Outcomes</div>
+                  <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider mb-2">Outcomes</div>
                   {(stats.byOutcome || []).map((r: any) => (
                     <div key={r.outcome} className="flex items-center justify-between py-1 border-b border-rmpg-800 last:border-0">
                       <span className="text-[10px] text-rmpg-300">{(r.outcome || '').replace(/_/g, ' ')}</span>
@@ -594,7 +594,7 @@ export default function CourtTrackerPage() {
 
                 {/* By Type */}
                 <div className="panel-beveled p-3">
-                  <div className="text-[9px] font-mono text-rmpg-500 uppercase mb-2">By Event Type</div>
+                  <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider mb-2">By Event Type</div>
                   {(stats.byType || []).map((r: any) => (
                     <div key={r.event_type} className="flex items-center justify-between py-1 border-b border-rmpg-800 last:border-0">
                       <span className={`text-[10px] px-1.5 py-0.5 border ${EVENT_TYPE_COLORS[r.event_type] || ''}`}>
@@ -640,7 +640,7 @@ export default function CourtTrackerPage() {
                       <div className="flex items-center gap-1">
                         {/* Feature 9: Countdown with urgency colors */}
                         <span className={`text-[9px] font-bold ${countdown.color}`}>{countdown.text}</span>
-                        <span className={`text-[9px] px-1.5 py-0.5 border ${EVENT_TYPE_COLORS[evt.event_type] || ''}`}>
+                        <span className={`text-[9px] px-1.5 py-0.5 border rounded-sm ${EVENT_TYPE_COLORS[evt.event_type] || ''}`}>
                           {evt.event_type.toUpperCase()}
                         </span>
                       </div>
@@ -693,14 +693,14 @@ export default function CourtTrackerPage() {
             <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent p-4 space-y-4">
               {/* Badges */}
               <div className="flex items-center gap-2 flex-wrap">
-                <span className={`text-[10px] px-2 py-1 border font-bold ${EVENT_TYPE_COLORS[selected.event_type] || ''}`}>
+                <span className={`text-[10px] px-2 py-1 border rounded-sm font-bold ${EVENT_TYPE_COLORS[selected.event_type] || ''}`}>
                   {selected.event_type.toUpperCase()}
                 </span>
-                <span className={`text-[10px] px-2 py-1 border font-bold ${STATUS_COLORS[selected.status] || ''}`}>
+                <span className={`text-[10px] px-2 py-1 border rounded-sm font-bold ${STATUS_COLORS[selected.status] || ''}`}>
                   {selected.status.toUpperCase()}
                 </span>
                 {selected.outcome && (
-                  <span className="text-[10px] px-2 py-1 border bg-purple-900/50 text-purple-400 border-purple-700/50 font-bold">
+                  <span className="text-[10px] px-2 py-1 border rounded-sm bg-purple-900/50 text-purple-400 border-purple-700/50 font-bold">
                     {selected.outcome.replace(/_/g, ' ').toUpperCase()}
                   </span>
                 )}
@@ -751,7 +751,7 @@ export default function CourtTrackerPage() {
                   ['Prosecutor', selected.prosecutor || '--'],
                 ].map(([label, value]) => (
                   <div key={label as string}>
-                    <div className="text-[9px] font-mono text-rmpg-500 uppercase">{label}</div>
+                    <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">{label}</div>
                     <div className="text-xs text-white mt-0.5">{value || '--'}</div>
                   </div>
                 ))}
@@ -760,7 +760,7 @@ export default function CourtTrackerPage() {
               {/* Feature 6: Bail/Bond Info */}
               <div className="panel-beveled p-3">
                 <div className="flex items-center justify-between mb-2">
-                  <div className="text-[9px] font-mono text-rmpg-500 uppercase flex items-center gap-1">
+                  <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider flex items-center gap-1">
                     <DollarSign style={{ width: 10, height: 10 }} /> Bail / Bond
                   </div>
                   <button type="button" onClick={() => {
@@ -788,7 +788,7 @@ export default function CourtTrackerPage() {
                 if (!Array.isArray(officers) || officers.length === 0) return null;
                 return (
                   <div className="panel-beveled p-3">
-                    <div className="text-[9px] font-mono text-rmpg-500 uppercase mb-2 flex items-center gap-1">
+                    <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider mb-2 flex items-center gap-1">
                       <Shield style={{ width: 10, height: 10 }} /> Officer Confirmations
                     </div>
                     {officers.map((oid: any) => {
@@ -812,7 +812,7 @@ export default function CourtTrackerPage() {
               {/* Feature 8: Judge notes */}
               <div className="panel-beveled p-3">
                 <div className="flex items-center justify-between mb-1">
-                  <div className="text-[9px] font-mono text-rmpg-500 uppercase flex items-center gap-1">
+                  <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider flex items-center gap-1">
                     <BookOpen style={{ width: 10, height: 10 }} /> Judge Preferences / Notes
                   </div>
                   <button type="button" onClick={() => { setJudgeNotesText((selected as any).judge_notes || ''); setJudgeNotesOpen(true); }} className="toolbar-btn text-[9px]">Edit</button>
@@ -822,7 +822,7 @@ export default function CourtTrackerPage() {
 
               {/* Feature 7: Court documents */}
               <div className="panel-beveled p-3">
-                <div className="text-[9px] font-mono text-rmpg-500 uppercase mb-2 flex items-center gap-1">
+                <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider mb-2 flex items-center gap-1">
                   <FileText style={{ width: 10, height: 10 }} /> Court Documents
                 </div>
                 {(() => {
@@ -842,7 +842,7 @@ export default function CourtTrackerPage() {
               {/* Feature 7: Prosecutor Contact Info */}
               <div className="panel-beveled p-3">
                 <div className="flex items-center justify-between mb-1">
-                  <div className="text-[9px] font-mono text-rmpg-500 uppercase flex items-center gap-1">
+                  <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider flex items-center gap-1">
                     <User style={{ width: 10, height: 10 }} /> Prosecutor Contact
                   </div>
                   <button type="button" onClick={() => {
@@ -868,7 +868,7 @@ export default function CourtTrackerPage() {
               {/* Feature 8b: Court Fee Tracking */}
               <div className="panel-beveled p-3">
                 <div className="flex items-center justify-between mb-1">
-                  <div className="text-[9px] font-mono text-rmpg-500 uppercase flex items-center gap-1">
+                  <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider flex items-center gap-1">
                     <DollarSign style={{ width: 10, height: 10 }} /> Court Fees
                   </div>
                   <button type="button" onClick={() => {
@@ -896,7 +896,7 @@ export default function CourtTrackerPage() {
               {/* Feature 9: Witness List */}
               <div className="panel-beveled p-3">
                 <div className="flex items-center justify-between mb-1">
-                  <div className="text-[9px] font-mono text-rmpg-500 uppercase flex items-center gap-1">
+                  <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider flex items-center gap-1">
                     <Users style={{ width: 10, height: 10 }} /> Witnesses
                   </div>
                   <button type="button" onClick={() => {
@@ -936,7 +936,7 @@ export default function CourtTrackerPage() {
                 if (log.length === 0) return null;
                 return (
                   <div className="panel-beveled p-3">
-                    <div className="text-[9px] font-mono text-rmpg-500 uppercase mb-2">Continuance History</div>
+                    <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider mb-2">Continuance History</div>
                     {log.map((entry: any, i: number) => (
                       <div key={i} className="py-1 border-b border-rmpg-800 last:border-0">
                         <div className="text-[10px] text-amber-400 font-bold">#{i + 1}: {entry.reason}</div>
@@ -952,7 +952,7 @@ export default function CourtTrackerPage() {
               {/* Outcome section */}
               {selected.outcome && (
                 <div className="panel-beveled p-3">
-                  <div className="text-[9px] font-mono text-rmpg-500 uppercase mb-2">Outcome</div>
+                  <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider mb-2">Outcome</div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div><span className="text-[9px] text-rmpg-500">Verdict:</span> <span className="text-xs text-white font-bold">{selected.outcome.replace(/_/g, ' ')}</span></div>
                     {selected.sentence && <div><span className="text-[9px] text-rmpg-500">Sentence:</span> <span className="text-xs text-white">{selected.sentence}</span></div>}
@@ -963,7 +963,7 @@ export default function CourtTrackerPage() {
 
               {selected.notes && (
                 <div className="panel-beveled p-3">
-                  <div className="text-[9px] font-mono text-rmpg-500 uppercase mb-1">Notes</div>
+                  <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider mb-1">Notes</div>
                   <div className="text-xs text-rmpg-300 whitespace-pre-wrap">{selected.notes}</div>
                 </div>
               )}
@@ -990,7 +990,7 @@ export default function CourtTrackerPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Type</label>
-                  <select value={formData.event_type} onChange={e => setFormData(p => ({ ...p, event_type: e.target.value as CourtEventType }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
+                  <select value={formData.event_type} onChange={e => setFormData(p => ({ ...p, event_type: e.target.value as CourtEventType }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600">
                     {EVENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
@@ -1003,7 +1003,7 @@ export default function CourtTrackerPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                 <div>
                   <label className="field-label">Time</label>
-                  <input type="time" value={formData.event_time} onChange={e => setFormData(p => ({ ...p, event_time: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                  <input type="time" value={formData.event_time} onChange={e => setFormData(p => ({ ...p, event_time: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
                 </div>
                 <div>
                   <label className="field-label">Court *</label>
@@ -1012,17 +1012,17 @@ export default function CourtTrackerPage() {
                 </div>
                 <div>
                   <label className="field-label">Courtroom</label>
-                  <input value={formData.courtroom} onChange={e => setFormData(p => ({ ...p, courtroom: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                  <input value={formData.courtroom} onChange={e => setFormData(p => ({ ...p, courtroom: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Defendant Name</label>
-                  <input value={formData.defendant_name} onChange={e => setFormData(p => ({ ...p, defendant_name: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                  <input value={formData.defendant_name} onChange={e => setFormData(p => ({ ...p, defendant_name: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
                 </div>
                 <div>
                   <label className="field-label">Judge</label>
-                  <input value={formData.judge_name} onChange={e => setFormData(p => ({ ...p, judge_name: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                  <input value={formData.judge_name} onChange={e => setFormData(p => ({ ...p, judge_name: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
@@ -1047,18 +1047,18 @@ export default function CourtTrackerPage() {
             <div className="p-4 space-y-3">
               <div>
                 <label className="field-label">Outcome *</label>
-                <select value={outcomeData.outcome} onChange={e => setOutcomeData(p => ({ ...p, outcome: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
+                <select value={outcomeData.outcome} onChange={e => setOutcomeData(p => ({ ...p, outcome: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600">
                   <option value="">Select outcome...</option>
                   {OUTCOME_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
               <div>
                 <label className="field-label">Sentence</label>
-                <textarea value={outcomeData.sentence} onChange={e => setOutcomeData(p => ({ ...p, sentence: e.target.value }))} rows={2} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
+                <textarea value={outcomeData.sentence} onChange={e => setOutcomeData(p => ({ ...p, sentence: e.target.value }))} rows={2} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600 resize-none" />
               </div>
               <div>
                 <label className="field-label">Fine Amount ($)</label>
-                <input value={outcomeData.fine_amount} onChange={e => setOutcomeData(p => ({ ...p, fine_amount: e.target.value }))} type="number" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                <input value={outcomeData.fine_amount} onChange={e => setOutcomeData(p => ({ ...p, fine_amount: e.target.value }))} type="number" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setOutcomeOpen(false)} className="toolbar-btn">Cancel</button>
@@ -1082,16 +1082,16 @@ export default function CourtTrackerPage() {
             <div className="p-4 space-y-3">
               <div>
                 <label className="field-label">Reason *</label>
-                <textarea value={continuanceData.reason} onChange={e => setContinuanceData(p => ({ ...p, reason: e.target.value }))} rows={2} placeholder="Reason for continuance..." className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
+                <textarea value={continuanceData.reason} onChange={e => setContinuanceData(p => ({ ...p, reason: e.target.value }))} rows={2} placeholder="Reason for continuance..." className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600 resize-none" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">New Date</label>
-                  <input type="date" value={continuanceData.new_date} onChange={e => setContinuanceData(p => ({ ...p, new_date: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                  <input type="date" value={continuanceData.new_date} onChange={e => setContinuanceData(p => ({ ...p, new_date: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
                 </div>
                 <div>
                   <label className="field-label">New Time</label>
-                  <input type="time" value={continuanceData.new_time} onChange={e => setContinuanceData(p => ({ ...p, new_time: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                  <input type="time" value={continuanceData.new_time} onChange={e => setContinuanceData(p => ({ ...p, new_time: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
@@ -1116,11 +1116,11 @@ export default function CourtTrackerPage() {
             <div className="p-4 space-y-3">
               <div>
                 <label className="field-label">Bail Amount ($)</label>
-                <input type="number" value={bailData.bail_amount} onChange={e => setBailData(p => ({ ...p, bail_amount: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                <input type="number" value={bailData.bail_amount} onChange={e => setBailData(p => ({ ...p, bail_amount: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
               </div>
               <div>
                 <label className="field-label">Bond Status</label>
-                <select value={bailData.bond_status} onChange={e => setBailData(p => ({ ...p, bond_status: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
+                <select value={bailData.bond_status} onChange={e => setBailData(p => ({ ...p, bond_status: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600">
                   <option value="">Select...</option>
                   <option value="posted">Posted</option>
                   <option value="cash">Cash Bond</option>
@@ -1132,7 +1132,7 @@ export default function CourtTrackerPage() {
               </div>
               <div>
                 <label className="field-label">Surety Info</label>
-                <input value={bailData.surety_info} onChange={e => setBailData(p => ({ ...p, surety_info: e.target.value }))} placeholder="Bonding company, etc." className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                <input value={bailData.surety_info} onChange={e => setBailData(p => ({ ...p, surety_info: e.target.value }))} placeholder="Bonding company, etc." className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setBailOpen(false)} className="toolbar-btn">Cancel</button>
@@ -1154,7 +1154,7 @@ export default function CourtTrackerPage() {
               <button type="button" onClick={() => setJudgeNotesOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
-              <textarea value={judgeNotesText} onChange={e => setJudgeNotesText(e.target.value)} rows={6} placeholder="Judge preferences, courtroom rules, etc." className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
+              <textarea value={judgeNotesText} onChange={e => setJudgeNotesText(e.target.value)} rows={6} placeholder="Judge preferences, courtroom rules, etc." className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600 resize-none" />
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setJudgeNotesOpen(false)} className="toolbar-btn">Cancel</button>
                 <button type="button" onClick={handleJudgeNotesSubmit} disabled={judgeNotesSubmitting} className="toolbar-btn toolbar-btn-primary print:hidden">
@@ -1176,11 +1176,11 @@ export default function CourtTrackerPage() {
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div><label className="field-label">Name</label>
-                <input value={prosecutorData.prosecutor_name} onChange={e => setProsecutorData(p => ({ ...p, prosecutor_name: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
+                <input value={prosecutorData.prosecutor_name} onChange={e => setProsecutorData(p => ({ ...p, prosecutor_name: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" /></div>
               <div><label className="field-label">Phone</label>
-                <input value={prosecutorData.prosecutor_phone} onChange={e => setProsecutorData(p => ({ ...p, prosecutor_phone: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" placeholder="(555) 123-4567" /></div>
+                <input value={prosecutorData.prosecutor_phone} onChange={e => setProsecutorData(p => ({ ...p, prosecutor_phone: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" placeholder="(555) 123-4567" /></div>
               <div><label className="field-label">Email</label>
-                <input type="email" value={prosecutorData.prosecutor_email} onChange={e => setProsecutorData(p => ({ ...p, prosecutor_email: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
+                <input type="email" value={prosecutorData.prosecutor_email} onChange={e => setProsecutorData(p => ({ ...p, prosecutor_email: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" /></div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setProsecutorOpen(false)} className="toolbar-btn">Cancel</button>
                 <button type="button" onClick={handleSaveProsecutor} disabled={prosecutorSubmitting} className="toolbar-btn toolbar-btn-primary print:hidden">
@@ -1201,13 +1201,13 @@ export default function CourtTrackerPage() {
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div><label className="field-label">Filing Fee ($)</label>
-                <input type="number" step="0.01" value={feeData.filing_fee} onChange={e => setFeeData(p => ({ ...p, filing_fee: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
+                <input type="number" step="0.01" value={feeData.filing_fee} onChange={e => setFeeData(p => ({ ...p, filing_fee: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" /></div>
               <div><label className="field-label">Service Fee ($)</label>
-                <input type="number" step="0.01" value={feeData.service_fee} onChange={e => setFeeData(p => ({ ...p, service_fee: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
+                <input type="number" step="0.01" value={feeData.service_fee} onChange={e => setFeeData(p => ({ ...p, service_fee: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" /></div>
               <div><label className="field-label">Other Fees ($)</label>
-                <input type="number" step="0.01" value={feeData.other_fees} onChange={e => setFeeData(p => ({ ...p, other_fees: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
+                <input type="number" step="0.01" value={feeData.other_fees} onChange={e => setFeeData(p => ({ ...p, other_fees: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" /></div>
               <div><label className="field-label">Notes</label>
-                <textarea value={feeData.fee_notes} onChange={e => setFeeData(p => ({ ...p, fee_notes: e.target.value }))} rows={2} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" /></div>
+                <textarea value={feeData.fee_notes} onChange={e => setFeeData(p => ({ ...p, fee_notes: e.target.value }))} rows={2} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600 resize-none" /></div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setFeeOpen(false)} className="toolbar-btn">Cancel</button>
                 <button type="button" onClick={handleSaveFees} disabled={feeSubmitting} className="toolbar-btn toolbar-btn-primary print:hidden">
@@ -1231,8 +1231,8 @@ export default function CourtTrackerPage() {
                 {witnesses.map((w, i) => (
                   <div key={i} className="panel-beveled p-2 space-y-1">
                     <div className="flex gap-2">
-                      <input value={w.name} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, name: e.target.value } : ww))} placeholder="Name" className="flex-1 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
-                      <select value={w.contact_status} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, contact_status: e.target.value } : ww))} className="px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
+                      <input value={w.name} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, name: e.target.value } : ww))} placeholder="Name" className="flex-1 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                      <select value={w.contact_status} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, contact_status: e.target.value } : ww))} className="px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600">
                         <option value="pending">Pending</option>
                         <option value="contacted">Contacted</option>
                         <option value="confirmed">Confirmed</option>
@@ -1241,9 +1241,9 @@ export default function CourtTrackerPage() {
                       <button type="button" onClick={() => setWitnesses(ws => ws.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-300"><X style={{ width: 12, height: 12 }} /></button>
                     </div>
                     <div className="flex gap-2">
-                      <input value={w.phone || ''} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, phone: e.target.value } : ww))} placeholder="Phone" className="flex-1 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
-                      <input value={w.email || ''} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, email: e.target.value } : ww))} placeholder="Email" className="flex-1 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
-                      <input value={w.role || ''} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, role: e.target.value } : ww))} placeholder="Role" className="w-24 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                      <input value={w.phone || ''} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, phone: e.target.value } : ww))} placeholder="Phone" className="flex-1 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                      <input value={w.email || ''} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, email: e.target.value } : ww))} placeholder="Email" className="flex-1 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                      <input value={w.role || ''} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, role: e.target.value } : ww))} placeholder="Role" className="w-24 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
                     </div>
                   </div>
                 ))}
@@ -1274,7 +1274,7 @@ export default function CourtTrackerPage() {
                 <input value={citationSearchQ} onChange={e => setCitationSearchQ(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleSearchCitations()}
                   placeholder="Search by citation number, name, or statute..." aria-label="Search by citation number, name, or statute..."
-                  className="flex-1 px-2 py-1.5 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                  className="flex-1 px-2 py-1.5 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
                 <button type="button" onClick={handleSearchCitations} disabled={citationSearching} className="toolbar-btn-primary text-[10px] px-3">
                   {citationSearching ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Search style={{ width: 11, height: 11 }} />}
                   Search

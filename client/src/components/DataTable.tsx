@@ -34,7 +34,7 @@ export interface DataTableProps<T> {
 }
 
 // ── Skeleton loader rows ──────────────────────────────────────
-function SkeletonRows<T = unknown>({ columns, count = 6 }: { columns: Column<T>[]; count?: number }) {
+function SkeletonRows({ columns, count = 6 }: { columns: Column<unknown>[]; count?: number }) {
   return (
     <>
       {Array.from({ length: count }).map((_, i) => (
@@ -55,19 +55,20 @@ function SkeletonRows<T = unknown>({ columns, count = 6 }: { columns: Column<T>[
 }
 
 // ── Sort indicator ────────────────────────────────────────────
+{/* 32: Sort indicator with transition for smoother direction changes */}
 function SortIndicator({ active, dir }: { active: boolean; dir?: 'asc' | 'desc' }) {
   if (!active) {
     return (
-      <span className="inline-flex flex-col ml-1 opacity-25 transition-opacity group-hover:opacity-50">
+      <span className="inline-flex flex-col ml-1 opacity-20 transition-opacity group-hover:opacity-40">
         <ChevronUp size={10} />
         <ChevronDown size={10} className="-mt-1" />
       </span>
     );
   }
   return dir === 'asc' ? (
-    <ChevronUp size={12} className="ml-1 text-brand-400 drop-shadow-[0_0_3px_rgba(59,138,212,0.4)]" />
+    <ChevronUp size={12} className="ml-1 text-brand-400 transition-transform" />
   ) : (
-    <ChevronDown size={12} className="ml-1 text-brand-400 drop-shadow-[0_0_3px_rgba(59,138,212,0.4)]" />
+    <ChevronDown size={12} className="ml-1 text-brand-400 transition-transform" />
   );
 }
 
@@ -99,7 +100,8 @@ export default function DataTable<T>({
     align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : 'text-left';
 
   return (
-    <div className={`overflow-auto border border-rmpg-700/50 bg-surface-base panel-beveled scrollbar-dark ${className}`} role="region" aria-label={ariaLabel ? `${ariaLabel} region` : undefined}>
+    {/* 35: Table container with consistent rounded corners */}
+    <div className={`overflow-auto border border-rmpg-700/50 bg-surface-base scrollbar-dark ${className}`} role="region" aria-label={ariaLabel ? `${ariaLabel} region` : undefined} style={{ borderRadius: '2px' }}>
       <table className="w-full text-xs" aria-label={ariaLabel}>
         {/* 2: Sticky header with z-index so it stays on top during scroll */}
         <thead className="sticky top-0 z-10">
@@ -114,11 +116,12 @@ export default function DataTable<T>({
               const isSortable = col.sortable && onSort;
               const isActive = sortKey === col.key;
               return (
+                {/* 33: Header cell with group class for child hover effects */}
                 <th
                   key={col.key}
-                  className={`px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-rmpg-400 whitespace-nowrap group ${alignClass(col.align)} ${
-                    isSortable ? 'cursor-pointer select-none hover:text-rmpg-200 hover:bg-white/[0.03] transition-colors' : ''
-                  } ${isActive ? 'text-rmpg-200' : ''}`}
+                  className={`group px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-rmpg-400 whitespace-nowrap ${alignClass(col.align)} ${
+                    isSortable ? 'cursor-pointer select-none hover:text-rmpg-200 hover:bg-white/[0.02] transition-colors' : ''
+                  }`}
                   style={col.width ? { width: col.width } : undefined}
                   onClick={isSortable ? () => onSort!(col.key) : undefined}
                   aria-sort={isActive ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
@@ -153,19 +156,20 @@ export default function DataTable<T>({
               const key = getKey(row, idx);
               const isSelected = selectedKey !== undefined && selectedKey === key;
               return (
+                {/* 34: Row with improved selected state and group hover for actions */}
                 <tr
                   key={key}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
-                  className={`border-b border-rmpg-700/30 transition-colors duration-100 ${
+                  className={`group/row border-b border-rmpg-700/30 transition-colors duration-100 ${
                     isSelected
-                      ? 'bg-brand-900/30 border-l-2 border-l-brand-500 ring-1 ring-inset ring-brand-600/40'
+                      ? 'bg-brand-900/30 ring-1 ring-inset ring-brand-600/40'
                       : idx % 2 === 0
                         ? 'bg-transparent'
-                        : 'bg-rmpg-800/30'
+                        : 'bg-rmpg-800/20'
                   } ${
                     onRowClick
-                      ? 'cursor-pointer hover:bg-brand-900/20 active:bg-brand-900/30'
-                      : 'hover:bg-white/[0.02]'
+                      ? 'cursor-pointer hover:bg-brand-900/15 active:bg-brand-900/25'
+                      : ''
                   }`}
                   aria-selected={isSelected || undefined}
                 >

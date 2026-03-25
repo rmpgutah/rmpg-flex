@@ -6,7 +6,7 @@
 // ============================================================
 
 import React, {useState, useCallback, useEffect} from 'react';
-import { Search, CreditCard, User, MapPin, ChevronRight, Shield, Calendar, Database, Wifi, Plus } from 'lucide-react';
+import { Search, CreditCard, User, MapPin, ChevronRight, Shield, Calendar, Database, Wifi, Plus, AlertTriangle } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -208,16 +208,17 @@ export default function DlSearchPage() {
   return (
     <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
       {fetchError && (
-        <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
-          <span>⚠ {fetchError}</span>
-          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+        <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 text-red-400 text-xs flex items-center gap-2" role="alert">
+          <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />
+          <span className="flex-1">{fetchError}</span>
+          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300 text-[10px]" aria-label="Dismiss error">dismiss</button>
         </div>
       )}
       {!isMobile && <PanelTitleBar title="DL Search" icon={CreditCard}>{searchControls}</PanelTitleBar>}
 
       {/* Mobile search bar */}
       {isMobile && (
-        <div className="flex flex-col gap-1.5 px-3 py-2 flex-shrink-0" style={{ background: '#111', borderBottom: '1px solid #222' }}>
+        <div className="flex flex-col gap-1.5 px-3 py-2 flex-shrink-0" style={{ background: '#0d1520', borderBottom: '1px solid #1e3048' }}>
           <div className="flex items-center gap-1.5">
             <input className="input-dark text-[10px] flex-1 min-h-[36px]" placeholder="Last Name" value={lastName}
               onChange={(e) => setLastName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
@@ -262,8 +263,8 @@ export default function DlSearchPage() {
             <button type="button"
               key={`${r.dl_number}-${r.dl_state}-${idx}`}
               onClick={() => setSelected(r)}
-              className={`w-full text-left px-3 py-2 border-b border-rmpg-800/30 hover:bg-rmpg-800/20 transition-colors ${
-                selected?.dl_number === r.dl_number && selected?.dl_state === r.dl_state ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''
+              className={`w-full text-left px-3 py-2 border-b border-rmpg-800/30 transition-all duration-150 ${
+                selected?.dl_number === r.dl_number && selected?.dl_state === r.dl_state ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'hover:bg-rmpg-800/20 border-l-2 border-l-transparent'
               }`}
             >
               <div className="flex items-center justify-between">
@@ -284,7 +285,7 @@ export default function DlSearchPage() {
             </button>
           ))}
           {!loading && results.length > 0 && (
-            <div className="text-center text-[9px] text-rmpg-500 py-2 border-t border-rmpg-800/30">
+            <div className="text-center text-[9px] text-rmpg-500 py-2 border-t border-rmpg-800/30 font-mono tabular-nums">
               {results.length} result{results.length !== 1 ? 's' : ''} — Source: {source}
             </div>
           )}
@@ -297,8 +298,8 @@ export default function DlSearchPage() {
               {/* Mobile back button */}
               {isMobile && (
                 <button type="button" onClick={() => setSelected(null)}
-                  className="text-rmpg-400 hover:text-white text-[10px] font-bold uppercase tracking-wider">
-                  ◀ Back to Results
+                  className="text-rmpg-400 hover:text-white text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                  <ChevronRight className="w-3 h-3 rotate-180" /> Back to Results
                 </button>
               )}
 

@@ -821,11 +821,12 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
         <div className="ncic-header">
           <div className="flex items-center gap-2">
             <Terminal style={{ width: 14, height: 14, color: '#d4a017' }} />
-            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: '#d4a017' }}>
+            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: '#d4a017', letterSpacing: '0.1em' }}>
               NCIC / NLETS Terminal
             </span>
+            <span className="text-[7px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: 'rgba(212,160,23,0.1)', color: '#8a6a2a', border: '1px solid rgba(212,160,23,0.2)' }}>SECURE</span>
           </div>
-          <button type="button" onClick={onClose} className="ncic-close-btn">
+          <button type="button" onClick={onClose} className="ncic-close-btn" aria-label="Close terminal" title="Close terminal">
             <X style={{ width: 14, height: 14 }} />
           </button>
         </div>

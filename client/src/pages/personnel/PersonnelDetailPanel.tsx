@@ -169,12 +169,13 @@ function DutyToggle({ officerId, currentStatus }: { officerId: string; currentSt
     <button type="button"
       onClick={handleToggle}
       disabled={toggling}
-      className={`flex items-center gap-1.5 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider transition-all border ${
+      className={`flex items-center gap-1.5 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider transition-all duration-200 border focus-visible:ring-1 focus-visible:ring-brand-500/50 focus-visible:outline-none ${
         isOnDuty
           ? 'bg-green-900/50 text-green-400 border-green-700/50 hover:bg-red-900/50 hover:text-red-400 hover:border-red-700/50'
           : 'bg-surface-sunken text-rmpg-400 border-rmpg-600 hover:bg-green-900/50 hover:text-green-400 hover:border-green-700/50'
       } disabled:opacity-40`}
       title={isOnDuty ? 'Go Off Duty' : 'Go On Duty'}
+      aria-label={isOnDuty ? 'Toggle off duty' : 'Toggle on duty'}
     >
       <Radio className="w-3 h-3" />
       {toggling ? '...' : isOnDuty ? 'On Duty' : 'Off Duty'}
@@ -264,16 +265,16 @@ export default function PersonnelDetailPanel({
   return (
     <div ref={personnelDetailRef} className="flex-1 flex flex-col overflow-hidden" role="region" aria-label={`Details for ${officer.first_name} ${officer.last_name}`}>
       {/* Detail Header */}
-      <div className="panel-beveled mx-2 mt-2 p-4 transition-colors duration-200">
+      <div className="panel-beveled mx-2 mt-2 p-4 transition-all duration-200">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-4">
             <OfficerAvatar officer={officer} size="lg" />
             <div>
-              <h2 className="text-lg font-bold text-white">
+              <h2 className="text-lg font-bold text-white leading-tight">
                 {officer.last_name}, {officer.first_name}
                 {officer.middle_name && officer.middle_name.length > 0 ? ` ${officer.middle_name[0]}.` : ''}
               </h2>
-              <div className="w-16 h-0.5 bg-brand-500 mt-1 mb-1.5" />
+              <div className="w-16 h-0.5 bg-brand-500 mt-1 mb-1.5 transition-all duration-300" />
               <div className="flex items-center gap-3">
                 {officer.rank && (
                   <span className="text-xs text-rmpg-200 flex items-center gap-1">
@@ -364,7 +365,7 @@ export default function PersonnelDetailPanel({
             />
             {!isArchived && (
               <>
-                <button type="button" onClick={onEditOfficer} className="toolbar-btn text-[9px]" title="Edit officer">
+                <button type="button" onClick={onEditOfficer} className="toolbar-btn text-[9px]" title="Edit officer" aria-label="Edit officer record">
                   <Pencil className="w-3 h-3" /> Edit
                 </button>
                 <span className="toolbar-separator" />
@@ -388,28 +389,28 @@ export default function PersonnelDetailPanel({
       </div>
 
       {/* Quick Stats Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 px-4 py-2.5 border-b border-rmpg-700" role="group" aria-label="Officer quick stats">
-        <div className={`panel-beveled p-2 text-center border-t-2 ${officer.status === 'on_duty' ? 'border-t-green-500' : 'border-t-rmpg-600'}`}>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 px-4 py-2.5 border-b border-rmpg-700" role="group" aria-label="Officer quick statistics">
+        <div className={`panel-beveled p-2 text-center border-t-2 transition-colors duration-150 hover:brightness-110 ${officer.status === 'on_duty' ? 'border-t-green-500' : 'border-t-rmpg-600'}`}>
           <p className="field-label">Status</p>
           <p className={`text-base font-bold font-mono ${officer.status === 'on_duty' ? 'text-green-400' : 'text-rmpg-400'}`}>
             {officer.status === 'on_duty' ? 'ON DUTY' : 'OFF DUTY'}
           </p>
         </div>
-        <div className="panel-beveled p-2 text-center border-t-2 border-t-blue-500">
+        <div className="panel-beveled p-2 text-center border-t-2 border-t-blue-500 transition-colors duration-150 hover:brightness-110">
           <p className="field-label">Service</p>
           <p className="text-base font-bold font-mono text-white">{calcYearsOfService(officer.hire_date)}</p>
         </div>
-        <div className="panel-beveled p-2 text-center border-t-2 border-t-brand-500">
+        <div className="panel-beveled p-2 text-center border-t-2 border-t-brand-500 transition-colors duration-150 hover:brightness-110">
           <p className="field-label">Hours (Period)</p>
           <p className="text-base font-bold font-mono text-brand-400">{officerTotalHours.toFixed(1)}</p>
         </div>
-        <div className={`panel-beveled p-2 text-center border-t-2 ${officerCreds.some(c => c.status === 'expired') ? 'border-t-red-500' : hasCredAlert ? 'border-t-amber-500' : 'border-t-green-500'}`}>
+        <div className={`panel-beveled p-2 text-center border-t-2 transition-colors duration-150 hover:brightness-110 ${officerCreds.some(c => c.status === 'expired') ? 'border-t-red-500' : hasCredAlert ? 'border-t-amber-500' : 'border-t-green-500'}`}>
           <p className="field-label">Credentials</p>
           <p className={`text-base font-bold font-mono ${officerCreds.some(c => c.status === 'expired') ? 'text-red-400' : hasCredAlert ? 'text-amber-400' : 'text-green-400'}`}>
             {officerCreds.length} Active
           </p>
         </div>
-        <div className="panel-beveled p-2 text-center border-t-2 border-t-purple-500">
+        <div className="panel-beveled p-2 text-center border-t-2 border-t-purple-500 transition-colors duration-150 hover:brightness-110">
           <p className="field-label">Schedules</p>
           <p className="text-base font-bold font-mono text-purple-400">{officerSchedules.length}</p>
         </div>
@@ -436,7 +437,7 @@ export default function PersonnelDetailPanel({
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-y-auto min-h-0 p-4 scrollbar-dark" role="tabpanel">
+      <div className="flex-1 overflow-y-auto min-h-0 p-4 scrollbar-dark" role="tabpanel" aria-label={`${activeTab} tab content`}>
         {activeTab === 'profile' && <ProfileDetailTab officer={officer} credentials={officerCreds} />}
         {activeTab === 'credentials' && (
           <CredentialsDetailTab

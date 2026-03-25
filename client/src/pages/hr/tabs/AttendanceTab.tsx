@@ -157,8 +157,8 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
       {/* Filters */}
       <div className="flex items-center gap-2">
         <div className="relative">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
-          <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search records..." aria-label="Search records..." className="input-field text-xs py-1 pl-6 pr-2 w-48" />
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
+          <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search records..." aria-label="Search attendance records by officer or reason" className="input-field text-xs py-1 pl-6 pr-2 w-48 focus:ring-1 focus:ring-brand-500/50 transition-shadow duration-150" />
         </div>
         <select value={selectedOfficer ?? ''} onChange={e => setSelectedOfficer(e.target.value ? Number(e.target.value) : null)} className="input-field text-xs py-1 px-2">
           <option value="">All Officers</option>

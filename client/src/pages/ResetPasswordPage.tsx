@@ -86,11 +86,13 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: '#0a0e14' }}>
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: 'linear-gradient(180deg, #060c14 0%, #141e2b 100%)' }}>
       <div className="w-full max-w-sm">
         <div
           className="panel-beveled bg-surface-base relative overflow-hidden"
           style={{ boxShadow: '0 4px 40px rgba(26, 90, 158, 0.08), 0 0 0 1px rgba(26, 90, 158, 0.1)' }}
+          role="form"
+          aria-label="Password reset form"
         >
           {/* Accent line */}
           <div style={{ height: '2px', background: 'linear-gradient(90deg, transparent, #1a5a9e, transparent)' }} />
@@ -99,7 +101,7 @@ export default function ResetPasswordPage() {
           <div className="panel-title-bar flex items-center gap-2">
             <ShieldCheck className="w-3 h-3" style={{ color: '#4a9aee' }} />
             <span>SET NEW PASSWORD</span>
-            <div className="ml-auto flex items-center gap-1">
+            <div className="ml-auto flex items-center gap-1" aria-hidden="true">
               <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2a3e58', border: '1px solid #3a5070' }}>_</div>
               <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2a3e58', border: '1px solid #3a5070' }}>&#9633;</div>
             </div>
@@ -108,8 +110,8 @@ export default function ResetPasswordPage() {
           <div className="px-5 py-6">
             {/* Loading state */}
             {validating && (
-              <div className="text-center py-8">
-                <Loader2 className="w-6 h-6 mx-auto mb-3 animate-spin" style={{ color: '#4a9aee' }} />
+              <div className="text-center py-8" role="status" aria-live="polite">
+                <Loader2 className="w-6 h-6 mx-auto mb-3 animate-spin" style={{ color: '#4a9aee' }} aria-hidden="true" />
                 <p className="text-[10px]" style={{ color: '#8a9aaa' }}>Validating reset link...</p>
               </div>
             )}
@@ -126,7 +128,7 @@ export default function ResetPasswordPage() {
                 </p>
                 <a
                   href="/forgot-password"
-                  className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-white"
+                  className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-white transition-all duration-150 hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
                   style={{
                     background: 'linear-gradient(180deg, #1a5a9e 0%, #144a84 100%)',
                     border: '1px solid rgba(26, 90, 158, 0.5)',
@@ -154,7 +156,7 @@ export default function ResetPasswordPage() {
                 </div>
 
                 {error && (
-                  <div className="mb-3 px-3 py-2 text-[10px] font-medium text-red-400 bg-red-900/20 border border-red-700/30">
+                  <div className="mb-3 px-3 py-2.5 text-[10px] font-medium text-red-400 bg-red-900/20 border border-red-700/30 animate-fade-in" role="alert" aria-live="assertive">
                     {error}
                   </div>
                 )}
@@ -175,14 +177,16 @@ export default function ResetPasswordPage() {
                         onChange={(e) => setPassword(e.target.value)}
                         autoFocus
                         autoComplete="new-password"
+                        aria-required="true"
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 transition-colors"
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm"
                         style={{ color: '#5a6e80' }}
                         onMouseEnter={(e) => { e.currentTarget.style.color = '#e0e0e0'; }}
                         onMouseLeave={(e) => { e.currentTarget.style.color = '#5a6e80'; }}
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
                       >
                         {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                       </button>
@@ -203,21 +207,23 @@ export default function ResetPasswordPage() {
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         autoComplete="new-password"
+                        aria-required="true"
                       />
                     </div>
                   </div>
 
                   {/* Password requirements */}
                   {password.length > 0 && (
-                    <div className="space-y-1 py-2">
+                    <div className="space-y-1 py-2" role="list" aria-label="Password requirements">
                       {passwordChecks.map((check) => (
-                        <div key={check.label} className="flex items-center gap-2 text-[9px]">
+                        <div key={check.label} className="flex items-center gap-2 text-[9px] transition-colors duration-200" role="listitem">
                           {check.met ? (
-                            <CheckCircle className="w-3 h-3 text-green-400 flex-shrink-0" />
+                            <CheckCircle className="w-3 h-3 text-green-400 flex-shrink-0" aria-hidden="true" />
                           ) : (
-                            <XCircle className="w-3 h-3 flex-shrink-0" style={{ color: '#4a5568' }} />
+                            <XCircle className="w-3 h-3 flex-shrink-0" style={{ color: '#4a5568' }} aria-hidden="true" />
                           )}
                           <span style={{ color: check.met ? '#4ade80' : '#6b7a8a' }}>{check.label}</span>
+                          <span className="sr-only">{check.met ? '(met)' : '(not met)'}</span>
                         </div>
                       ))}
                     </div>
@@ -226,21 +232,22 @@ export default function ResetPasswordPage() {
                   <button
                     type="submit"
                     disabled={submitting || !allMet}
-                    className="w-full h-10 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="w-full h-10 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
                     style={{
                       background: 'linear-gradient(180deg, #1a5a9e 0%, #144a84 100%)',
                       border: '1px solid rgba(26, 90, 158, 0.5)',
                       borderRadius: '2px',
                     }}
+                    aria-busy={submitting}
                   >
                     {submitting ? (
                       <>
-                        <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        Resetting...
+                        <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" aria-hidden="true" />
+                        <span>Resetting...</span>
                       </>
                     ) : (
                       <>
-                        <ShieldCheck className="w-4 h-4" />
+                        <ShieldCheck className="w-4 h-4" aria-hidden="true" />
                         Set New Password
                       </>
                     )}
@@ -251,9 +258,9 @@ export default function ResetPasswordPage() {
 
             {/* Success */}
             {success && (
-              <div className="text-center py-4">
+              <div className="text-center py-4 animate-fade-in" role="status" aria-live="polite">
                 <div className="w-12 h-12 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ background: 'rgba(34, 197, 94, 0.15)', border: '1px solid rgba(34, 197, 94, 0.3)' }}>
-                  <CheckCircle className="w-6 h-6 text-green-400" />
+                  <CheckCircle className="w-6 h-6 text-green-400" aria-hidden="true" />
                 </div>
                 <h2 className="text-sm font-bold text-white mb-2">Password Reset Complete</h2>
                 <p className="text-[10px] leading-relaxed mb-1" style={{ color: '#8a9aaa' }}>
@@ -261,14 +268,14 @@ export default function ResetPasswordPage() {
                 </p>
                 <a
                   href="/login"
-                  className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-white"
+                  className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-white transition-all duration-150 hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
                   style={{
                     background: 'linear-gradient(180deg, #1a5a9e 0%, #144a84 100%)',
                     border: '1px solid rgba(26, 90, 158, 0.5)',
                     borderRadius: '2px',
                   }}
                 >
-                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />
                   Sign In
                 </a>
               </div>
@@ -277,12 +284,12 @@ export default function ResetPasswordPage() {
             <div className="mt-4 pt-3" style={{ borderTop: '1px solid #1e3048' }}>
               <a
                 href="/login"
-                className="flex items-center justify-center gap-1.5 text-[10px] font-medium transition-colors"
+                className="flex items-center justify-center gap-1.5 text-[10px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm py-1"
                 style={{ color: '#3a6a9e' }}
                 onMouseEnter={(e) => { e.currentTarget.style.color = '#5a9ade'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.color = '#3a6a9e'; }}
               >
-                <ArrowLeft className="w-3 h-3" />
+                <ArrowLeft className="w-3 h-3" aria-hidden="true" />
                 Back to Login
               </a>
             </div>

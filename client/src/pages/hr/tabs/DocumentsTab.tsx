@@ -86,8 +86,8 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
         <h2 className="text-sm font-bold text-white flex items-center gap-2"><FileText className="w-4 h-4" /> HR Document Library</h2>
         <div className="flex items-center gap-2">
           <div className="relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
-            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search documents..." aria-label="Search documents..." className="input-field text-xs py-1 pl-6 pr-2 w-48" />
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
+            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search documents..." aria-label="Search HR documents by name, category, or officer" className="input-field text-xs py-1 pl-6 pr-2 w-48 focus:ring-1 focus:ring-brand-500/50 transition-shadow duration-150" />
           </div>
           <select value={filterCat} onChange={e => setFilterCat(e.target.value)} className="input-field text-xs py-1 px-2">
             <option value="all">All Categories</option>

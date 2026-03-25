@@ -125,12 +125,13 @@ export default function CorridorAnalysisPanel({
                   <span className="text-[9px] font-mono text-rmpg-400 uppercase tracking-wider">
                     Segments
                   </span>
+                  {/* #36: Segment risk bars with glow */}
                   <div className="flex gap-0.5">
                     {corridorData.segments.map((seg, i) => (
                       <div
                         key={i}
-                        className="flex-1 h-2 rounded-sm"
-                        style={{ backgroundColor: getRiskColor(seg.risk_score) }}
+                        className="flex-1 h-2 rounded-sm transition-all duration-300"
+                        style={{ backgroundColor: getRiskColor(seg.risk_score), boxShadow: `0 0 4px ${getRiskColor(seg.risk_score)}40` }}
                         title={`Segment ${i + 1}: Risk ${seg.risk_score}${seg.traffic_label ? ` | ${seg.traffic_label}` : ''}`}
                       />
                     ))}

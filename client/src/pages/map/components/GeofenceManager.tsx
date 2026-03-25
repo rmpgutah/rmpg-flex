@@ -145,14 +145,15 @@ export default function GeofenceManager({
             Geofence Zones
           </span>
         </div>
+        {/* #26: Close button with hover highlight */}
         {onClose && (
           <button type="button"
             onClick={onClose}
-            className="toolbar-btn p-1"
+            className="toolbar-btn p-1 hover:bg-[#1a2636] transition-colors duration-150 rounded-sm"
             aria-label="Close"
             title="Close"
           >
-            <span className="text-rmpg-400 text-xs">&times;</span>
+            <span className="text-rmpg-400 hover:text-rmpg-200 text-xs">&times;</span>
           </button>
         )}
       </div>
@@ -161,8 +162,8 @@ export default function GeofenceManager({
       <div className="px-2 pt-2">
         <button type="button"
           onClick={onDraw}
-          className={`toolbar-btn flex items-center gap-1.5 px-3 py-1.5 text-xs w-full justify-center hover:shadow-md transition-all duration-150 active:scale-95 ${
-            drawingMode ? 'toolbar-btn-primary' : ''
+          className={`toolbar-btn flex items-center gap-1.5 px-3 py-1.5 text-xs w-full justify-center hover:shadow-md transition-all duration-150 active:scale-[0.97] ${
+            drawingMode ? 'toolbar-btn-primary ring-1 ring-blue-400/40' : ''
           }`}
           aria-label={drawingMode ? 'Stop drawing' : 'Draw geofence'}
           title={drawingMode ? 'Drawing mode active — click map to add vertices, double-click to finish' : 'Draw a new geofence zone'}

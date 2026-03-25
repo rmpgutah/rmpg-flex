@@ -40,56 +40,56 @@ export default function StatusBar({
 
   return (
     <div className="status-bar">
-      {/* Connection Status */}
-      <div className="status-bar-section">
+      {/* 26: Connection Status with uppercase tracking */}
+      <div className="status-bar-section" style={{ letterSpacing: '0.04em' }}>
         <span className={`led-dot ${isConnected ? 'led-green' : 'led-red animate-led-blink'}`} />
-        <span style={{ color: isConnected ? '#22c55e' : '#ef4444' }}>
+        <span style={{ color: isConnected ? '#22c55e' : '#ef4444', fontWeight: 700 }}>
           {isConnected ? 'CONNECTED' : 'OFFLINE'}
         </span>
       </div>
 
-      {/* Server */}
+      {/* 27: Server version with logo */}
       <div className="status-bar-section">
         <RmpgLogo height={12} iconOnly />
-        <span>RMPG-FLEX v{APP_VERSION}</span>
+        <span style={{ letterSpacing: '0.02em' }}>RMPG-FLEX v{APP_VERSION}</span>
       </div>
 
-      {/* Active Calls */}
+      {/* 28: Active Calls with tabular-nums and color highlight */}
       <div className="status-bar-section">
-        <span>CALLS: {activeCallCount}</span>
+        <span>CALLS: <span className="tabular-nums" style={activeCallCount > 0 ? { color: '#ef7a7a', fontWeight: 700 } : undefined}>{activeCallCount}</span></span>
       </div>
 
-      {/* BOLOs */}
+      {/* 29: BOLOs with tabular-nums */}
       <div className="status-bar-section">
         {activeBOLOs > 0 && (
           <span className="led-dot led-red animate-led-blink" />
         )}
-        <span style={activeBOLOs > 0 ? { color: '#ef4444' } : undefined}>
-          BOLO: {activeBOLOs}
+        <span style={activeBOLOs > 0 ? { color: '#ef4444', fontWeight: 700 } : undefined}>
+          BOLO: <span className="tabular-nums">{activeBOLOs}</span>
         </span>
       </div>
 
-      {/* GPS Status */}
+      {/* 30: GPS Status with tabular-nums for accuracy/time */}
       <div className="status-bar-section">
         {gpsTracking ? (
           <>
             <span className="led-dot led-green animate-led-blink" />
-            <span style={{ color: '#22c55e' }}>
+            <span style={{ color: '#22c55e', fontWeight: 700 }}>
               GPS: {gpsUnitCallSign || 'ON'}
             </span>
             {gpsAccuracy != null && (
-              <span style={{ color: '#5a6e80', marginLeft: 4 }}>
+              <span className="tabular-nums" style={{ color: '#5a6e80', marginLeft: 4 }}>
                 ±{Math.round(gpsAccuracy)}m
               </span>
             )}
             {gpsLastSent && (
-              <span style={{ color: '#5a6e80', marginLeft: 4 }}>
+              <span className="tabular-nums" style={{ color: '#505050', marginLeft: 4 }}>
                 {new Date(gpsLastSent).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
               </span>
             )}
           </>
         ) : (
-          <span style={{ color: '#5a6e80' }}>GPS: OFF</span>
+          <span style={{ color: '#3a4e60' }}>GPS: OFF</span>
         )}
       </div>
 
@@ -103,9 +103,9 @@ export default function StatusBar({
       {/* Battery */}
       <BatteryIndicator />
 
-      {/* Timestamp (right-aligned) */}
+      {/* 31: Timestamp with tabular-nums for stable clock rendering */}
       <div className="status-bar-section">
-        <span style={{ color: '#22c55e' }}>
+        <span className="tabular-nums" style={{ color: '#22c55e', fontWeight: 700, letterSpacing: '0.02em' }}>
           {now.toLocaleTimeString('en-US', { hour12: false })}
         </span>
         <span style={{ color: '#5a6e80', marginLeft: 8 }}>

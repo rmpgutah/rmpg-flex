@@ -686,10 +686,6 @@ export default function IncidentsPage() {
     under_review: incidents.filter(i => i.status === 'under_review').length,
     approved: incidents.filter(i => i.status === 'approved').length,
     returned: incidents.filter(i => i.status === 'returned').length,
-    // Upgrade: severity indicators
-    p1Count: incidents.filter(i => i.priority === 'P1').length,
-    weaponsInvolved: incidents.filter(i => (i as any).weapons_involved).length,
-    dvCount: incidents.filter(i => (i as any).domestic_violence).length,
   };
 
   // ============================================================
@@ -713,7 +709,7 @@ export default function IncidentsPage() {
           className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors border ${
             showArchived
               ? 'bg-amber-900/40 text-amber-400 border-amber-700/50 hover:bg-amber-900/60'
-              : 'bg-rmpg-700/50 text-rmpg-400 border-rmpg-700 hover:text-rmpg-200 hover:bg-rmpg-700'
+              : 'bg-rmpg-700/50 text-rmpg-400 border-rmpg-600 hover:text-rmpg-200 hover:bg-rmpg-700'
           }`}
         >
           <Archive className="w-3 h-3" />
@@ -726,7 +722,7 @@ export default function IncidentsPage() {
               className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors border ${
                 uofFilter
                   ? 'bg-red-900/40 text-red-400 border-red-700/50 hover:bg-red-900/60'
-                  : 'bg-rmpg-700/50 text-rmpg-400 border-rmpg-700 hover:text-rmpg-200 hover:bg-rmpg-700'
+                  : 'bg-rmpg-700/50 text-rmpg-400 border-rmpg-600 hover:text-rmpg-200 hover:bg-rmpg-700'
               }`}
             >
               <Shield className="w-3 h-3" />
@@ -765,22 +761,27 @@ export default function IncidentsPage() {
           <button type="button" onClick={() => setShowArchived(false)} className="ml-auto text-[10px] text-amber-400 hover:text-amber-300 underline">Exit Archives</button>
         </div>
       )}
-      <div className="px-4 py-2 border-b border-rmpg-700 flex-shrink-0">
+      <div className="px-4 py-2 border-b border-rmpg-600 flex-shrink-0">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-rmpg-300" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-500 pointer-events-none" />
           <input
             type="text"
-            className={`input-dark pl-9 ${isMobile ? 'min-h-[44px] text-sm' : ''}`}
+            className={`input-dark pl-9 w-full focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow ${isMobile ? 'min-h-[44px] text-sm' : ''}`}
             placeholder={showArchived ? "Search archived incidents..." : "Search incidents..."}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
+          {searchQuery && (
+            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white transition-colors" aria-label="Clear search">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
       {/* Quick Stats Bar */}
       {!showArchived && !loading && (
-        <div className={`px-4 py-1.5 border-b border-rmpg-700/50 flex ${isMobile ? 'flex-wrap gap-2' : 'items-center gap-4'} text-[10px] font-mono flex-shrink-0 bg-surface-sunken`}>
+        <div className={`px-4 py-1.5 border-b border-rmpg-700/50 flex ${isMobile ? 'flex-wrap gap-2' : 'items-center gap-4'} text-[10px] font-mono flex-shrink-0`} style={{ background: '#0d1520' }}>
           <div className="flex items-center gap-1">
             <div className="w-2 h-2 rounded-full bg-amber-500" />
             <span className="text-rmpg-400">Draft:</span>
@@ -808,24 +809,7 @@ export default function IncidentsPage() {
               <span className="text-red-400 font-bold">{incidentStats.returned}</span>
             </div>
           )}
-          {/* Upgrade: Severity indicators */}
-          {incidentStats.p1Count > 0 && (
-            <div className="flex items-center gap-1">
-              <Shield className="w-2.5 h-2.5 text-red-500" />
-              <span className="text-red-400 font-bold">{incidentStats.p1Count} P1</span>
-            </div>
-          )}
-          {incidentStats.weaponsInvolved > 0 && (
-            <div className="flex items-center gap-1">
-              <span className="text-red-300 font-bold">{incidentStats.weaponsInvolved} Armed</span>
-            </div>
-          )}
-          {incidentStats.dvCount > 0 && (
-            <div className="flex items-center gap-1">
-              <span className="text-orange-400 font-bold">{incidentStats.dvCount} DV</span>
-            </div>
-          )}
-          <span className="ml-auto text-rmpg-500">
+          <span className="ml-auto text-rmpg-500 tabular-nums">
             Showing {filtered.length} of {incidents.length}
           </span>
         </div>
@@ -846,9 +830,10 @@ export default function IncidentsPage() {
           </table>
         ) : error ? (
           <div className="flex flex-col items-center justify-center h-full gap-3">
-            <p className="text-sm text-red-400">{error}</p>
-            <button type="button" onClick={() => fetchIncidents()} className="toolbar-btn">
-              Retry
+            <AlertTriangle className="w-6 h-6 text-red-500/60" />
+            <p className="text-xs text-red-400">{error}</p>
+            <button type="button" onClick={() => fetchIncidents()} className="toolbar-btn text-[10px]">
+              <RotateCcw className="w-3 h-3" /> Retry
             </button>
           </div>
         ) : (
@@ -919,8 +904,9 @@ export default function IncidentsPage() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={isMobile ? 5 : 7} className="text-center text-rmpg-400 py-12">
-                    No incidents found
+                  <td colSpan={isMobile ? 5 : 7} className="text-center py-12">
+                    <FileText className="w-6 h-6 mx-auto mb-2 text-rmpg-600" />
+                    <span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider">No incidents found</span>
                   </td>
                 </tr>
               )}
@@ -1623,7 +1609,7 @@ export default function IncidentsPage() {
                           Chain of Custody ({custodyChain.length})
                         </button>
                         {isExpanded && (
-                          <div className="mt-1 ml-3 border-l border-rmpg-700 pl-3 space-y-1.5">
+                          <div className="mt-1 ml-3 border-l border-rmpg-600 pl-3 space-y-1.5">
                             {custodyChain.map((entry: any) => (
                               <div key={`${entry.timestamp}-${entry.action}`} className="flex flex-col gap-0.5">
                                 <span className="font-mono text-green-400" style={{ fontSize: '9px' }}>
@@ -1699,7 +1685,7 @@ export default function IncidentsPage() {
                 return (
                   <div key={sup.id || sup.report_number} className={`px-3 py-2.5 bg-surface-sunken border border-rmpg-700 border-l-2 ${statusColors[sup.status] || 'border-l-rmpg-600'}`}>
                     <div className="flex items-center gap-2">
-                      <span className="w-7 h-7 flex-shrink-0 flex items-center justify-center bg-rmpg-800 border border-rmpg-700 text-[8px] font-bold text-rmpg-300">
+                      <span className="w-7 h-7 flex-shrink-0 flex items-center justify-center bg-rmpg-800 border border-rmpg-600 text-[8px] font-bold text-rmpg-300">
                         {typeIcons[(sup.report_type || sup.type)] || 'SUP'}
                       </span>
                       <div className="flex-1 min-w-0">
@@ -1778,7 +1764,7 @@ export default function IncidentsPage() {
 
       {/* Sticky Action Bar */}
       <div
-        className="flex-shrink-0 px-4 py-2.5 border-t border-rmpg-700 flex items-center gap-2"
+        className="flex-shrink-0 px-4 py-2.5 border-t border-rmpg-600 flex items-center gap-2"
         style={{ background: 'linear-gradient(180deg, #141e2b 0%, #0d1520 100%)' }}
       >
         {!isEditing ? (
@@ -2009,11 +1995,11 @@ export default function IncidentsPage() {
       {custodyTransfer && (
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setCustodyTransfer(null)}>
           <div
-            className="bg-surface-raised border border-rmpg-700 shadow-xl w-[400px] max-w-[95vw]"
+            className="bg-surface-raised border border-rmpg-600 shadow-xl w-[400px] max-w-[95vw]"
             style={{ borderRadius: 2 }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-4 py-2.5 border-b border-rmpg-700 flex items-center justify-between">
+            <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
               <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">
                 Custody Action — {custodyTransfer.evidenceNumber}
               </h3>
@@ -2027,7 +2013,7 @@ export default function IncidentsPage() {
                 <select
                   value={custodyAction}
                   onChange={(e) => setCustodyAction(e.target.value)}
-                  className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[44px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-700 text-white`}
+                  className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[44px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-600 text-white`}
                   style={{ borderRadius: 2 }}
                 >
                   <option value="transfer">Transfer</option>
@@ -2055,7 +2041,7 @@ export default function IncidentsPage() {
                   value={custodyToLocation}
                   onChange={(e) => setCustodyToLocation(e.target.value)}
                   placeholder="Evidence room, lab, officer name..."
-                  className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[44px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500`}
+                  className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[44px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-600 text-white placeholder-rmpg-500`}
                   style={{ borderRadius: 2 }}
                   autoFocus
                 />
@@ -2067,12 +2053,12 @@ export default function IncidentsPage() {
                   onChange={(e) => setCustodyNotes(e.target.value)}
                   placeholder="Optional notes..."
                   rows={isMobile ? 3 : 2}
-                  className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[80px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 resize-none`}
+                  className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[80px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-600 text-white placeholder-rmpg-500 resize-none`}
                   style={{ borderRadius: 2 }}
                 />
               </div>
             </div>
-            <div className={`px-4 py-2.5 border-t border-rmpg-700 flex ${isMobile ? 'flex-col' : 'justify-end'} gap-2`}>
+            <div className={`px-4 py-2.5 border-t border-rmpg-600 flex ${isMobile ? 'flex-col' : 'justify-end'} gap-2`}>
               <button type="button"
                 onClick={() => setCustodyTransfer(null)}
                 className={`toolbar-btn ${isMobile ? 'w-full min-h-[48px] text-sm justify-center' : 'px-3 py-1.5 text-[11px]'}`}

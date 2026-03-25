@@ -190,15 +190,19 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
   return (
     <div className="p-4 space-y-3">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
-          <Megaphone className="w-4 h-4 text-brand-400" />
-          <h2 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">System Announcements</h2>
-          <span className="text-[10px] text-rmpg-500 ml-1">({announcements.filter((a) => a.is_active).length} active)</span>
+          <div className="w-7 h-7 flex items-center justify-center bg-brand-900/30 border border-brand-700/40 shrink-0" aria-hidden="true">
+            <Megaphone className="w-3.5 h-3.5 text-brand-400" />
+          </div>
+          <div>
+            <h2 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">System Announcements</h2>
+            <span className="text-[9px] text-rmpg-500">{announcements.filter((a) => a.is_active).length} active</span>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" aria-hidden="true" />
             <input
               type="text"
               value={search}
@@ -207,8 +211,8 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
               className="input-dark text-[10px] pl-6 pr-2 py-1 w-40 min-h-[36px]"
             />
           </div>
-          <button type="button" onClick={openNew} className="toolbar-btn-primary text-[10px] flex items-center gap-1" aria-label="Create new announcement">
-            <Plus className="w-3 h-3" />
+          <button type="button" onClick={openNew} className="toolbar-btn-primary text-[10px] flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50" aria-label="Create new announcement">
+            <Plus className="w-3 h-3" aria-hidden="true" />
             New Announcement
           </button>
         </div>
@@ -217,9 +221,10 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
       {/* Announcements List */}
       <div className="space-y-2">
         {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-rmpg-500 text-xs gap-2">
-            <Megaphone className="w-6 h-6 text-rmpg-600" />
-            <span>No announcements found.</span>
+          <div className="flex flex-col items-center justify-center py-16 text-rmpg-500 text-xs gap-2">
+            <Megaphone className="w-7 h-7 text-rmpg-600" aria-hidden="true" />
+            <span className="font-medium text-rmpg-500">No announcements found</span>
+            <span className="text-[9px] text-rmpg-600">{search ? 'Try a different search term' : 'Create one to communicate with your team'}</span>
           </div>
         ) : filtered.map((a) => {
           const TypeIcon = TYPE_ICONS[a.type] || Info;
@@ -254,13 +259,13 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <button type="button" onClick={() => toggleActive(a)} className="toolbar-btn p-1" title={a.is_active ? 'Deactivate' : 'Activate'}>
+                  <button type="button" onClick={() => toggleActive(a)} className="toolbar-btn p-1.5 transition-colors" title={a.is_active ? 'Deactivate' : 'Activate'} aria-label={a.is_active ? `Deactivate "${a.title}"` : `Activate "${a.title}"`}>
                     {a.is_active ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                   </button>
-                  <button type="button" onClick={() => openEdit(a)} className="toolbar-btn p-1" title="Edit">
+                  <button type="button" onClick={() => openEdit(a)} className="toolbar-btn p-1.5 transition-colors" title="Edit" aria-label={`Edit "${a.title}"`}>
                     <Edit2 className="w-3 h-3" />
                   </button>
-                  <button type="button" onClick={() => setDeleteId(a.id)} className="toolbar-btn p-1 text-red-400 hover:text-red-300" title="Delete">
+                  <button type="button" onClick={() => setDeleteId(a.id)} className="toolbar-btn p-1.5 text-red-400 hover:text-red-300 transition-colors" title="Delete" aria-label={`Delete "${a.title}"`}>
                     <Trash2 className="w-3 h-3" />
                   </button>
                 </div>
@@ -274,7 +279,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
       {showForm && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in" onClick={() => setShowForm(false)} role="dialog" aria-modal="true" aria-label={editing ? 'Edit announcement' : 'New announcement'}>
           <div className="bg-surface-base panel-beveled w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto scrollbar-dark" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-rmpg-700 sticky top-0 bg-surface-base z-10">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#162236] sticky top-0 bg-surface-base z-10">
               <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">
                 {editing ? 'Edit Announcement' : 'New Announcement'}
               </h3>

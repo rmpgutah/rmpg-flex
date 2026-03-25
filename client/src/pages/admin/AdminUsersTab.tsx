@@ -227,8 +227,8 @@ export default function AdminUsersTab({
   return (
     <div className="flex h-full overflow-hidden">
       {/* Left: User List */}
-      <div className={`${selectedUser ? 'w-[40%]' : 'w-full'} border-r border-rmpg-600 flex flex-col overflow-hidden transition-all duration-200`}>
-        <div className="px-4 py-3 flex items-center justify-between border-b border-rmpg-600 flex-shrink-0 bg-surface-sunken">
+      <div className={`${selectedUser ? 'w-[40%]' : 'w-full'} border-r border-[#162236] flex flex-col overflow-hidden transition-all duration-200`}>
+        <div className="px-4 py-3 flex items-center justify-between border-b border-[#162236] flex-shrink-0 bg-surface-sunken">
           <div className="relative w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" aria-hidden="true" />
             <input
@@ -244,8 +244,8 @@ export default function AdminUsersTab({
               </button>
             )}
           </div>
-          <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={openAddUser} aria-label="Add new user">
-            <Plus className="w-3.5 h-3.5" /> Add User
+          <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50" onClick={openAddUser} aria-label="Add new user">
+            <Plus className="w-3.5 h-3.5" aria-hidden="true" /> Add User
           </button>
         </div>
 
@@ -272,10 +272,10 @@ export default function AdminUsersTab({
                   tabIndex={0}
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedUser(selectedUser?.id === user.id ? null : user); setUserDetailTab('profile'); } }}
                   aria-label={`Select ${user.first_name} ${user.last_name}`}
-                  className={`px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-all duration-150 ${
+                  className={`px-4 py-3 border-b border-[#162236]/60 cursor-pointer transition-all duration-150 ${
                     selectedUser?.id === user.id
                       ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
-                      : `hover:bg-rmpg-700/30 border-l-2 border-l-transparent ${idx % 2 === 0 ? '' : 'bg-rmpg-800/10'}`
+                      : `hover:bg-[rgba(26,90,158,0.06)] border-l-2 border-l-transparent ${idx % 2 === 0 ? '' : 'bg-rmpg-800/10'}`
                   }`}
                 >
                   <div className="flex items-center gap-3">
@@ -334,8 +334,9 @@ export default function AdminUsersTab({
               ))}
             {users.length === 0 && !loadingUsers && (
               <div className="flex flex-col items-center justify-center text-center text-rmpg-400 py-16 gap-2">
-                <Users className="w-8 h-8 text-rmpg-600" />
-                <span className="text-xs">No users found</span>
+                <Users className="w-8 h-8 text-rmpg-600" aria-hidden="true" />
+                <span className="text-xs font-medium text-rmpg-500">No users found</span>
+                <span className="text-[9px] text-rmpg-600">{searchQuery ? 'Try a different search term' : 'Add personnel to get started'}</span>
               </div>
             )}
           </div>
@@ -346,7 +347,7 @@ export default function AdminUsersTab({
       {selectedUser && (
         <div className="w-[60%] flex flex-col overflow-hidden">
           {/* Detail Header */}
-          <div className="p-4 border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
+          <div className="p-4 border-b border-[#162236] bg-surface-sunken flex-shrink-0">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
                 {selectedUser.profile_image ? (
@@ -373,9 +374,10 @@ export default function AdminUsersTab({
               <div className="flex items-center gap-2">
                 <button type="button"
                   onClick={() => openEditUser(selectedUser)}
-                  className="toolbar-btn"
+                  className="toolbar-btn focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
+                  aria-label={`Edit ${selectedUser.first_name} ${selectedUser.last_name}`}
                 >
-                  <Edit className="w-3.5 h-3.5" /> Edit
+                  <Edit className="w-3.5 h-3.5" aria-hidden="true" /> Edit
                 </button>
                 {/* Suspend / Reactivate quick-actions */}
                 {(() => {
@@ -432,7 +434,7 @@ export default function AdminUsersTab({
           </div>
 
           {/* Detail Tabs */}
-          <div className="flex gap-0.5 px-4 pt-2 border-b border-rmpg-600 flex-shrink-0 overflow-x-auto scrollbar-dark" role="tablist" aria-label="User detail sections">
+          <div className="flex gap-0.5 px-4 pt-2 border-b border-[#162236] flex-shrink-0 overflow-x-auto scrollbar-dark" role="tablist" aria-label="User detail sections">
             {([
               { id: 'profile' as const, label: 'Profile' },
               { id: 'personal' as const, label: 'Personal' },
@@ -446,14 +448,14 @@ export default function AdminUsersTab({
                 role="tab"
                 aria-selected={userDetailTab === tab.id}
                 onClick={() => setUserDetailTab(tab.id)}
-                className={`px-3 py-1.5 text-[10px] font-medium transition-all duration-150 whitespace-nowrap relative ${
+                className={`px-3 py-1.5 text-[10px] font-medium transition-all duration-150 whitespace-nowrap relative focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 ${
                   userDetailTab === tab.id
-                    ? 'bg-rmpg-700 text-white border border-rmpg-600 border-b-rmpg-700'
-                    : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'
+                    ? 'bg-[#1a2636] text-white border border-[#162236] border-b-[#1a2636]'
+                    : 'text-rmpg-400 hover:text-white hover:bg-[rgba(26,90,158,0.08)]'
                 }`}
               >
                 {tab.label}
-                {userDetailTab === tab.id && <div className="absolute bottom-0 left-1 right-1 h-[2px] bg-brand-500" />}
+                {userDetailTab === tab.id && <div className="absolute bottom-0 left-1 right-1 h-[2px] bg-brand-500" aria-hidden="true" />}
               </button>
             ))}
           </div>
@@ -464,7 +466,7 @@ export default function AdminUsersTab({
             {userDetailTab === 'profile' && (
               <>
                 <div className="panel-beveled p-3 bg-surface-base">
-                  <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Employment Information</h3>
+                  <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3 border-b border-[#162236] pb-1.5">Employment Information</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                     <div><span className="text-rmpg-400">Department:</span> <span className="text-rmpg-200 ml-1">{selectedUser.department || '--'}</span></div>
                     <div><span className="text-rmpg-400">Rank:</span> <span className="text-rmpg-200 ml-1">{selectedUser.rank || '--'}</span></div>
