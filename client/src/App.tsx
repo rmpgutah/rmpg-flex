@@ -65,7 +65,7 @@ const RecordDetailWindow = lazy(() => import('./pages/detached/RecordDetailWindo
 /** Branded loading splash — matches login page design language */
 function LoadingSplash({ message = 'Initializing' }: { message?: string }) {
   return (
-    <div className="flex items-center justify-center h-screen bg-surface-base">
+    <div className="flex items-center justify-center bg-surface-base" style={{ height: '100dvh' }}>
       <div className="flex flex-col items-center">
         {/* Logo with blue glow — same treatment as login page */}
         <img

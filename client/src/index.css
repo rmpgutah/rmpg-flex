@@ -34,7 +34,8 @@
 /* --- Global Base Overrides --- */
 @layer base {
   html, body, #root {
-    height: 100%;
+    height: 100dvh;
+    height: 100%; /* fallback for older browsers */
     max-width: 100vw;
     overflow-x: hidden;
   }
@@ -44,6 +45,8 @@
   body {
     background: var(--surface-base);
     overflow-x: hidden;
+    /* iOS Safari: respect notch/home indicator safe areas */
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 }
 
