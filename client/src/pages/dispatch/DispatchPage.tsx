@@ -90,6 +90,8 @@ import {
 } from '../../utils/callOptions';
 import PersonFormModal, { type PersonFormData } from '../../components/PersonFormModal';
 import VehicleFormModal, { type VehicleFormData } from '../../components/VehicleFormModal';
+import AIDispatchSidebar from '../../components/dispatch/AIDispatchSidebar';
+import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
 
 export default function DispatchPage() {
   const unitModalTitleId = useId();
@@ -152,6 +154,9 @@ export default function DispatchPage() {
   const [isCreatingRecord, setIsCreatingRecord] = useState(false);
   const [serveLink, setServeLink] = useState<any>(null);
   const [sendingToServe, setSendingToServe] = useState(false);
+  // AI Dispatch analysis state
+  const [aiAnalyses, setAiAnalyses] = useState<Record<number, any>>({});
+  const [showAiSidebar, setShowAiSidebar] = useState(false);
 
   // ── Feature 1: Call priority sound alerts ──
   const [soundAlertsMuted, setSoundAlertsMuted] = useState(() => localStorage.getItem('rmpg_sound_alerts_muted') === 'true');
@@ -634,6 +639,9 @@ export default function DispatchPage() {
       } else if (data.action === 'units_dispatched' || data.action === 'unit_assigned' || data.action === 'unit_unassigned') {
         // Refresh the full list to keep unit assignments in sync
         fetchData({ silent: true });
+      } else if (data.action === 'ai_analysis' && data.call_id && data.analysis) {
+        setAiAnalyses(prev => ({ ...prev, [data.call_id]: data.analysis }));
+        setShowAiSidebar(true);
       }
       } catch (err) {
         console.error('[Dispatch] Error processing WS dispatch_update:', err);
@@ -3189,7 +3197,15 @@ export default function DispatchPage() {
                     <div>
                       <label className="field-label">Description:</label>
                       {isEditing ? (
-                        <textarea className="textarea-dark text-xs mt-0.5" rows={3} value={editData.description} onChange={(e) => updateEditField('description', e.target.value)} />
+                        <>
+                          <textarea className="textarea-dark text-xs mt-0.5" rows={3} value={editData.description} onChange={(e) => updateEditField('description', e.target.value)} />
+                          <NarrativeAssist
+                            notes={editData.description || ''}
+                            incidentType={editData.incident_type || selectedCall.incident_type}
+                            locationAddress={editData.location_address || selectedCall.location_address}
+                            onAccept={(narrative) => updateEditField('description', narrative)}
+                          />
+                        </>
                       ) : (
                         <p className="text-sm text-rmpg-200 leading-relaxed">{selectedCall.description}</p>
                       )}
@@ -4487,6 +4503,27 @@ export default function DispatchPage() {
             </div>
           )}
           </div>
+
+          {/* AI Dispatch Sidebar (conditionally shown between detail and map) */}
+          {showAiSidebar && selectedCall && (
+            <AIDispatchSidebar
+              selectedCall={selectedCall}
+              aiAnalyses={aiAnalyses}
+              onAcceptFlag={async (callId, flag) => {
+                try {
+                  await apiFetch(`/dispatch/calls/${callId}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ [flag]: true }),
+                  });
+                  const updated = { ...selectedCall, [flag]: 1 };
+                  setSelectedCall(updated);
+                  setCalls(prev => prev.map(c => c.id === callId ? updated : c));
+                  addToast(`Flag "${flag.replace(/_/g, ' ')}" accepted`, 'success');
+                } catch { addToast(`Failed to set flag`, 'error'); }
+              }}
+              onDismiss={() => setShowAiSidebar(false)}
+            />
+          )}
 
           {/* Dispatch Map Panel (right side, always visible) */}
           <div className="w-[35%] border-l border-[#1e3048] flex flex-col overflow-hidden flex-shrink-0" style={{ background: 'var(--surface-deep)' }}>
