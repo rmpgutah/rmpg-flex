@@ -680,6 +680,24 @@ export default function DispatchPage() {
       announcePanicAlert(data.user_name || data.userName);
     });
 
+    // Listen for serve queue events — update gold serve status panel in real time
+    const unsubServeCreated = subscribe('serve:created', (msg: any) => {
+      const data = msg.data || msg;
+      if (data?.call_id && selectedCallRef.current?.id === data.call_id) {
+        setServeLink(data);
+      }
+    });
+    const unsubServeAttempt = subscribe('serve:attempt', (msg: any) => {
+      const data = msg.data || msg;
+      if (data?.call_id && selectedCallRef.current?.id === data.call_id) {
+        // Refresh serve link to get updated attempt count + status
+        const callId = selectedCallRef.current!.id;
+        apiFetch(`/dispatch/calls/${callId}/serve-link`).then((res: any) => {
+          if (res) setServeLink(res);
+        }).catch(() => {});
+      }
+    });
+
     // Listen for warrant alerts on linked persons
     const unsubWarrant = subscribe('call:warrant_alert', (msg: any) => {
       const data = msg.data || msg;
@@ -688,7 +706,7 @@ export default function DispatchPage() {
       fetchData({ silent: true });
     });
 
-    return () => { unsubDispatch(); unsubUnit(); unsubPanic(); unsubWarrant(); };
+    return () => { unsubDispatch(); unsubUnit(); unsubPanic(); unsubServeCreated(); unsubServeAttempt(); unsubWarrant(); };
   }, [subscribe, fetchData, addToast, setFilterTab]);
 
   // When switching to the archived tab, fetch archived calls if not loaded
@@ -2323,36 +2341,91 @@ export default function DispatchPage() {
                       {selectedCall.disposition && <div><span className="text-rmpg-400">Disposition:</span> {selectedCall.disposition}</div>}
                     </div>
 
-                    {/* Serve Queue Integration */}
+                    {/* Serve Queue Integration — Gold Status Panel */}
                     {(
                       <div className="mt-2 pt-2 border-t border-rmpg-600">
                         {serveLink ? (
-                          <div className="space-y-1">
+                          <div
+                            className="rounded-[2px] p-2 space-y-1.5"
+                            style={{
+                              border: '1px solid #d4a017',
+                              background: '#d4a01708',
+                            }}
+                            role="status"
+                            aria-label={`Serve status: ${serveLink.status}`}
+                          >
                             <div className="flex items-center gap-2">
-                              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{
-                                background: serveLink.status === 'served' ? '#22c55e' : serveLink.status === 'failed' ? '#ef4444' : '#f59e0b'
-                              }} />
-                              <span className="text-[10px] font-bold text-rmpg-300 uppercase">Serve Queue</span>
-                              <span className="text-[10px] font-mono text-cyan-400">
-                                {serveLink.attempt_count}/{serveLink.max_attempts} attempts
+                              {/* LED indicator */}
+                              <span
+                                className="w-2 h-2 rounded-full flex-shrink-0"
+                                style={{
+                                  background: serveLink.status === 'served' ? '#22c55e'
+                                    : serveLink.status === 'failed' ? '#ef4444'
+                                    : serveLink.status === 'in_progress' ? '#eab308'
+                                    : '#f59e0b',
+                                  boxShadow: `0 0 4px ${
+                                    serveLink.status === 'served' ? '#22c55e'
+                                    : serveLink.status === 'failed' ? '#ef4444'
+                                    : serveLink.status === 'in_progress' ? '#eab308'
+                                    : '#f59e0b'
+                                  }`,
+                                }}
+                              />
+                              <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#d4a017' }}>
+                                Serve Queue
                               </span>
-                              <span className="text-[10px] font-mono px-1 rounded-sm" style={{
-                                background: serveLink.status === 'served' ? '#22c55e20' : serveLink.status === 'failed' ? '#dc262620' : '#f59e0b20',
-                                color: serveLink.status === 'served' ? '#4ade80' : serveLink.status === 'failed' ? '#f87171' : '#fbbf24',
-                              }}>
-                                {serveLink.status?.toUpperCase()}
+                              {serveLink.auto_sent && (
+                                <span className="text-[9px] font-bold px-1 py-0.5 rounded-sm" style={{ background: '#d4a01720', border: '1px solid #d4a01740', color: '#d4a017' }}>
+                                  AUTO-SENT
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {/* Status badge */}
+                              <span
+                                className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded-[2px] uppercase"
+                                style={{
+                                  background: serveLink.status === 'served' ? '#22c55e20'
+                                    : serveLink.status === 'failed' ? '#dc262620'
+                                    : serveLink.status === 'in_progress' ? '#eab30820'
+                                    : '#f59e0b20',
+                                  color: serveLink.status === 'served' ? '#4ade80'
+                                    : serveLink.status === 'failed' ? '#f87171'
+                                    : serveLink.status === 'in_progress' ? '#facc15'
+                                    : '#fbbf24',
+                                  border: `1px solid ${
+                                    serveLink.status === 'served' ? '#22c55e40'
+                                    : serveLink.status === 'failed' ? '#dc262640'
+                                    : serveLink.status === 'in_progress' ? '#eab30840'
+                                    : '#f59e0b40'
+                                  }`,
+                                }}
+                              >
+                                {serveLink.status === 'in_progress' ? 'IN PROGRESS' : serveLink.status?.toUpperCase()}
+                              </span>
+                              {/* Attempt counter */}
+                              <span className="text-[10px] font-mono tabular-nums" style={{ color: '#d4a017' }}>
+                                Attempts: {serveLink.attempt_count}/{serveLink.max_attempts}
                               </span>
                             </div>
+                            {/* View in Process Server link */}
                             <button type="button"
-                              className="text-[10px] text-blue-400 hover:text-blue-300 underline"
+                              className="flex items-center gap-1 text-[10px] font-medium rounded-[2px] px-2 py-1 transition-all duration-150 hover:shadow-[0_0_6px_rgba(212,160,23,0.2)]"
+                              style={{
+                                background: '#d4a01715',
+                                border: '1px solid #d4a01740',
+                                color: '#d4a017',
+                              }}
                               onClick={() => navigate('/serve')}
+                              aria-label="View in Process Server"
                             >
+                              <Briefcase style={{ width: 10, height: 10 }} />
                               View in Process Server
                             </button>
                           </div>
                         ) : (
                           <button type="button"
-                            className="w-full py-2 px-3 text-xs font-semibold rounded-sm flex items-center justify-center gap-2 transition-colors"
+                            className="w-full py-2 px-3 text-xs font-semibold rounded-[2px] flex items-center justify-center gap-2 transition-colors"
                             style={{
                               background: sendingToServe ? '#374151' : '#7c3aed20',
                               border: '1px solid #7c3aed50',
@@ -2376,6 +2449,7 @@ export default function DispatchPage() {
                                 setSendingToServe(false);
                               }
                             }}
+                            aria-label="Send to Serve Queue"
                           >
                             <Briefcase style={{ width: 14, height: 14 }} />
                             {sendingToServe ? 'Sending...' : 'Send to Serve Queue'}
