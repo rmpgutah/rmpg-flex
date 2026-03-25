@@ -129,6 +129,75 @@
   animation: page-enter 0.25s ease-out;
 }
 
+/* ============================================================
+   DISPLAY EFFECTS — Toggle via View > Display Effects menu
+   Each effect is controlled by a class on <body>
+   ============================================================ */
+
+/* --- CRT Vignette (dark corners) --- */
+body.fx-vignette::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 99998;
+  background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.35) 100%);
+}
+
+/* --- Phosphor Bloom (subtle glow on bright text) --- */
+body.fx-bloom {
+  --bloom-color: rgba(26, 90, 158, 0.08);
+}
+body.fx-bloom * {
+  text-shadow: 0 0 4px var(--bloom-color), 0 0 12px var(--bloom-color);
+}
+body.fx-bloom input,
+body.fx-bloom textarea,
+body.fx-bloom select {
+  text-shadow: none;
+}
+
+/* --- Amber Tint (warm CRT phosphor look) --- */
+body.fx-amber {
+  filter: sepia(0.12) saturate(1.1) hue-rotate(-5deg);
+}
+
+/* --- Green Phosphor (classic terminal) --- */
+body.fx-green {
+  filter: sepia(0.2) saturate(0.7) hue-rotate(80deg) brightness(0.95);
+}
+
+/* --- High Contrast (accessibility / bright daylight) --- */
+body.fx-highcontrast {
+  filter: contrast(1.25) brightness(1.05);
+}
+
+/* --- Noise/Film Grain overlay --- */
+@keyframes fx-noise-shift {
+  0%   { background-position: 0 0; }
+  25%  { background-position: -50% 50%; }
+  50%  { background-position: 50% -50%; }
+  75%  { background-position: -25% 25%; }
+  100% { background-position: 0 0; }
+}
+body.fx-noise::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 99997;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
+  animation: fx-noise-shift 0.5s steps(4) infinite;
+}
+
+/* --- Reduced Motion: disable animated effects --- */
+@media (prefers-reduced-motion: reduce) {
+  body.fx-noise::after { animation: none; }
+  body.fx-bloom * { text-shadow: none; }
+}
+
 /* Table row entrance animation (staggered) */
 .table-dark tbody tr {
   animation: fade-in 0.2s ease-out both;
