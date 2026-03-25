@@ -2015,9 +2015,26 @@ export default function ForensicLabPage() {
 
             {/* Case List */}
             {loading ? (
-              <div className="flex flex-col items-center justify-center py-12 gap-3">
-                <Loader2 size={18} className="animate-spin text-brand-400" />
-                <span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading cases...</span>
+              <div className="space-y-2">
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className="panel-beveled bg-surface-sunken p-3 border-l-[3px] border-[#1a1a1a]">
+                    <div className="flex items-start gap-3">
+                      <div className="flex-1 min-w-0 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <div className="h-3 w-24 bg-[#1a1a1a] animate-pulse rounded" />
+                          <div className="h-3 w-16 bg-[#1a1a1a] animate-pulse rounded" />
+                          <div className="h-3 w-14 bg-[#1a1a1a] animate-pulse rounded" />
+                        </div>
+                        <div className="h-3.5 w-48 bg-[#1a1a1a] animate-pulse rounded" />
+                        <div className="flex items-center gap-3">
+                          <div className="h-2.5 w-20 bg-[#1a1a1a] animate-pulse rounded" />
+                          <div className="h-2.5 w-28 bg-[#1a1a1a] animate-pulse rounded" />
+                        </div>
+                      </div>
+                      <div className="h-5 w-5 bg-[#1a1a1a] animate-pulse rounded" />
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : cases.length === 0 ? (
               <div className="panel-beveled bg-surface-sunken p-8 text-center">

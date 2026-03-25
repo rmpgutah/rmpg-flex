@@ -1087,6 +1087,12 @@ export default function ReportsPage() {
                 <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Incidents by Type</h3>
               </div>
               <div className="p-4">
+                {incidentsChartData.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                    <BarChart3 className="w-8 h-8 mb-2 opacity-50" />
+                    <p className="text-sm">No data for selected filters</p>
+                  </div>
+                ) : (
                 <div className={isMobile ? '' : 'flex items-start gap-4'}>
                   <ResponsiveContainer width={isMobile ? '100%' : '55%'} height={220}>
                     <PieChart>
@@ -1117,6 +1123,7 @@ export default function ReportsPage() {
                     ))}
                   </div>
                 </div>
+                )}
               </div>
             </div>
 
@@ -1127,6 +1134,12 @@ export default function ReportsPage() {
                 <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Calls by Priority</h3>
               </div>
               <div className="p-4">
+              {priorityChartData.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                  <BarChart3 className="w-8 h-8 mb-2 opacity-50" />
+                  <p className="text-sm">No data for selected filters</p>
+                </div>
+              ) : (
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={priorityChartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#2a3e58" />
@@ -1140,6 +1153,7 @@ export default function ReportsPage() {
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
+              )}
               </div>
             </div>
 
@@ -1150,6 +1164,12 @@ export default function ReportsPage() {
                 <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Response Time Trend (minutes)</h3>
               </div>
               <div className="p-4">
+              {responseTimeChartData.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                  <BarChart3 className="w-8 h-8 mb-2 opacity-50" />
+                  <p className="text-sm">No data for selected filters</p>
+                </div>
+              ) : (
               <ResponsiveContainer width="100%" height={280}>
                 <LineChart data={responseTimeChartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#2a3e58" />
@@ -1161,6 +1181,7 @@ export default function ReportsPage() {
                   <Line type="monotone" dataKey="targetMinutes" name="Target" stroke="#d4a017" strokeDasharray="5 5" strokeWidth={1} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
+              )}
               </div>
             </div>
 
@@ -1171,6 +1192,12 @@ export default function ReportsPage() {
                 <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Officer Activity Comparison</h3>
               </div>
               <div className="p-4">
+              {officerChartData.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                  <BarChart3 className="w-8 h-8 mb-2 opacity-50" />
+                  <p className="text-sm">No data for selected filters</p>
+                </div>
+              ) : (
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={officerChartData} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" stroke="#2a3e58" />
@@ -1182,6 +1209,7 @@ export default function ReportsPage() {
                   <Bar dataKey="incidents" name="Incidents" fill="#d4a017" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
+              )}
               </div>
             </div>
           </div>
