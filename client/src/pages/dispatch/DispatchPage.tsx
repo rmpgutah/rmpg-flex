@@ -155,7 +155,7 @@ export default function DispatchPage() {
   const [serveLink, setServeLink] = useState<any>(null);
   const [sendingToServe, setSendingToServe] = useState(false);
   // AI Dispatch analysis state
-  const [aiAnalyses, setAiAnalyses] = useState<Record<number, any>>({});
+  const [aiAnalyses, setAiAnalyses] = useState<Record<string, any>>({});
   const [showAiSidebar, setShowAiSidebar] = useState(false);
 
   // ── Feature 1: Call priority sound alerts ──
@@ -3202,7 +3202,7 @@ export default function DispatchPage() {
                           <NarrativeAssist
                             notes={editData.description || ''}
                             incidentType={editData.incident_type || selectedCall.incident_type}
-                            locationAddress={editData.location_address || selectedCall.location_address}
+                            locationAddress={editData.location_address || selectedCall.location || ''}
                             onAccept={(narrative) => updateEditField('description', narrative)}
                           />
                         </>

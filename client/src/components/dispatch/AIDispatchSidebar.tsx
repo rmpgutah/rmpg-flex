@@ -9,9 +9,9 @@ interface AIAnalysis {
 }
 
 interface AIDispatchSidebarProps {
-  selectedCall: { id: number; [key: string]: any } | null;
-  aiAnalyses: Record<number, AIAnalysis>;
-  onAcceptFlag: (callId: number, flag: string) => void;
+  selectedCall: { id: string; [key: string]: any } | null;
+  aiAnalyses: Record<string, AIAnalysis>;
+  onAcceptFlag: (callId: string, flag: string) => void;
   onDismiss: () => void;
 }
 
