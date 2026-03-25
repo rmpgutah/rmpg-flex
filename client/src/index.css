@@ -35,12 +35,15 @@
 @layer base {
   html, body, #root {
     height: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
   }
   html {
     font-size: 13px;
   }
   body {
     background: var(--surface-base);
+    overflow-x: hidden;
   }
 }
 
