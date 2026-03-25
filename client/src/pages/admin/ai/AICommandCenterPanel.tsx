@@ -179,7 +179,7 @@ export default function AICommandCenterPanel({ providerStatus, activeProvider, s
         <h3 className="text-xs font-semibold text-white uppercase tracking-wide mb-2 flex items-center gap-2">
           <RefreshCw className="w-3.5 h-3.5 text-brand-400" />
           Recent Activity
-          <button onClick={fetchActivity} disabled={activityLoading} className="ml-auto p-1 text-rmpg-500 hover:text-white transition-colors">
+          <button type="button" onClick={fetchActivity} disabled={activityLoading} className="ml-auto p-1 text-rmpg-500 hover:text-white transition-colors">
             {activityLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
           </button>
         </h3>
