@@ -337,27 +337,30 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           }
 
           // Fire all queries in parallel — allSettled so one failure doesn't block others
+          // Wrap each in a 15-second timeout to prevent infinite hang
+          const withTimeout = <T,>(p: Promise<T>, label: string): Promise<T> =>
+            Promise.race([p, new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`${label} timeout`)), 15000))]);
           const [personResult, warrantResult, dlResult, ofacResult, arrestResult, skipResult] = await Promise.allSettled([
-            apiFetch<{ results: Array<{ person: NcicPerson; criminalHistory: NcicCriminalHistory[]; warrants: NcicWarrant[] }> }>(
+            withTimeout(apiFetch<{ results: Array<{ person: NcicPerson; criminalHistory: NcicCriminalHistory[]; warrants: NcicWarrant[] }> }>(
               `/records/ncic-query?type=person&query=${encodeURIComponent(queryText)}`
-            ),
-            apiFetch<{ results: (NcicWarrant & { subject_first_name?: string; subject_last_name?: string; subject_dob?: string })[] }>(
+            ), 'PERSON'),
+            withTimeout(apiFetch<{ results: (NcicWarrant & { subject_first_name?: string; subject_last_name?: string; subject_dob?: string })[] }>(
               `/records/ncic-query?type=warrant&query=${encodeURIComponent(queryText)}`
-            ),
-            apiFetch<{ hit: boolean; subjects: NcicDlSubject[] }>(
+            ), 'WARRANT'),
+            withTimeout(apiFetch<{ hit: boolean; subjects: NcicDlSubject[] }>(
               '/microbilt/dl/search',
               { method: 'POST', body: JSON.stringify(xrefBody) }
-            ),
-            apiFetch<{ hit: boolean; subjects: NcicOfacSubject[] }>(
+            ), 'DL'),
+            withTimeout(apiFetch<{ hit: boolean; subjects: NcicOfacSubject[] }>(
               '/microbilt/ofac/search',
               { method: 'POST', body: JSON.stringify(xrefBody.firstName ? { lastName: xrefBody.lastName, firstName: xrefBody.firstName } : { fullName: queryText }) }
-            ),
-            apiFetch<{ hit: boolean; records: NcicArrestRecord[] }>(
+            ), 'OFAC'),
+            withTimeout(apiFetch<{ hit: boolean; records: NcicArrestRecord[] }>(
               `/arrests/search?name=${encodeURIComponent(queryText)}`
-            ),
-            apiFetch<{ PeopleDetails?: SkipTracerPerson[]; Records?: number }>(
+            ), 'ARREST'),
+            withTimeout(apiFetch<{ PeopleDetails?: SkipTracerPerson[]; Records?: number }>(
               `/skiptracer/search/byname?name=${encodeURIComponent(queryText)}&page=1`
-            ),
+            ), 'SKIP'),
           ]);
 
           // Collect results, track errors
