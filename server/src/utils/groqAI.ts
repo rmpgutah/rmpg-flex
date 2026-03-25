@@ -1,39 +1,14 @@
 /**
- * Groq AI Utility Module
+ * AI Utility Module — Call Analysis, Narrative Generation, Unit Suggestions
  *
- * Provides AI-powered call analysis, narrative generation, and unit
- * suggestion capabilities using Groq's LLaMA 3.3-70B model.
+ * Originally Groq-only, now delegates to the multi-provider aiManager
+ * so the same functions work with Groq, Gemini, OpenAI, or Ollama.
  *
- * Graceful degradation: all functions return null when GROQ_API_KEY
- * is not configured. The CAD system works fully without AI.
+ * Graceful degradation: all functions return null when no AI provider
+ * is configured. The CAD system works fully without AI.
  */
 
-import Groq from 'groq-sdk';
-
-// ---------------------------------------------------------------------------
-// Client setup — null when no API key
-// ---------------------------------------------------------------------------
-const apiKey = process.env.GROQ_API_KEY || '';
-const client = apiKey ? new Groq({ apiKey }) : null;
-const MODEL = 'llama-3.3-70b-versatile';
-
-// ---------------------------------------------------------------------------
-// Rate limiter — 25 req / 60 s (stays under Groq free-tier 30 RPM)
-// ---------------------------------------------------------------------------
-const RATE_LIMIT = 25;
-const RATE_WINDOW_MS = 60_000;
-const timestamps: number[] = [];
-
-function rateLimitOk(): boolean {
-  const now = Date.now();
-  // Remove expired timestamps
-  while (timestamps.length > 0 && timestamps[0] <= now - RATE_WINDOW_MS) {
-    timestamps.shift();
-  }
-  if (timestamps.length >= RATE_LIMIT) return false;
-  timestamps.push(now);
-  return true;
-}
+import aiManager from './aiManager';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -89,9 +64,9 @@ export interface UnitSuggestion {
 // Public API
 // ---------------------------------------------------------------------------
 
-/** Returns true when the Groq client is configured and ready. */
+/** Returns true when at least one AI provider is configured and ready. */
 export function isAIAvailable(): boolean {
-  return !!client;
+  return aiManager.getStatus().available;
 }
 
 /**
@@ -100,7 +75,8 @@ export function isAIAvailable(): boolean {
 export async function analyzeCall(
   callData: AnalyzeCallInput,
 ): Promise<CallAnalysis | null> {
-  if (!client || !rateLimitOk()) return null;
+  const status = aiManager.getStatus();
+  if (!status.available) return null;
 
   try {
     const userContent = [
@@ -115,28 +91,21 @@ export async function analyzeCall(
       .filter(Boolean)
       .join('\n');
 
-    const response = await client.chat.completions.create({
-      model: MODEL,
+    const systemPrompt =
+      'You are an experienced police dispatcher/analyst for RMPG, a private security company in Salt Lake City, Utah. ' +
+      'Analyze the CAD call and extract risk factors. Respond with JSON: ' +
+      '{ "suggestedFlags": string[] (e.g. "WEAPONS","MENTAL_HEALTH","OFFICER_SAFETY","K9","DV","WARRANT","HAZMAT"), ' +
+      '"safetyBriefing": string (1-2 sentence officer safety note), ' +
+      '"severityOverride": "moderate"|"major"|null, ' +
+      '"confidence": number 0-1 }. ' +
+      'Only suggest flags not already present. If nothing notable, return empty flags and null severity.';
+
+    const text = await aiManager.chat(systemPrompt, userContent, {
       temperature: 0.3,
-      max_tokens: 300,
-      response_format: { type: 'json_object' },
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You are an experienced police dispatcher/analyst for RMPG, a private security company in Salt Lake City, Utah. ' +
-            'Analyze the CAD call and extract risk factors. Respond with JSON: ' +
-            '{ "suggestedFlags": string[] (e.g. "WEAPONS","MENTAL_HEALTH","OFFICER_SAFETY","K9","DV","WARRANT","HAZMAT"), ' +
-            '"safetyBriefing": string (1-2 sentence officer safety note), ' +
-            '"severityOverride": "moderate"|"major"|null, ' +
-            '"confidence": number 0-1 }. ' +
-            'Only suggest flags not already present. If nothing notable, return empty flags and null severity.',
-        },
-        { role: 'user', content: userContent },
-      ],
+      maxTokens: 300,
+      jsonMode: true,
     });
 
-    const text = response.choices?.[0]?.message?.content?.trim();
     if (!text) return null;
 
     const parsed = JSON.parse(text);
@@ -173,7 +142,8 @@ export async function analyzeCall(
 export async function generateNarrative(
   input: GenerateNarrativeInput,
 ): Promise<string | null> {
-  if (!client || !rateLimitOk()) return null;
+  const status = aiManager.getStatus();
+  if (!status.available) return null;
 
   try {
     const userContent = [
@@ -184,24 +154,15 @@ export async function generateNarrative(
       .filter(Boolean)
       .join('\n');
 
-    const response = await client.chat.completions.create({
-      model: MODEL,
-      temperature: 0.4,
-      max_tokens: 200,
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You are a CAD narrative writer. Convert brief dispatcher notes into a professional CAD narrative. ' +
-            'Write in third person, use RP (reporting party) context where applicable, and keep it to 2-4 concise sentences. ' +
-            'Use law-enforcement standard language. Return only the narrative text, no labels or quotes.',
-        },
-        { role: 'user', content: userContent },
-      ],
-    });
+    const systemPrompt =
+      'You are a CAD narrative writer. Convert brief dispatcher notes into a professional CAD narrative. ' +
+      'Write in third person, use RP (reporting party) context where applicable, and keep it to 2-4 concise sentences. ' +
+      'Use law-enforcement standard language. Return only the narrative text, no labels or quotes.';
 
-    const text = response.choices?.[0]?.message?.content?.trim();
-    return text || null;
+    return await aiManager.chat(systemPrompt, userContent, {
+      temperature: 0.4,
+      maxTokens: 200,
+    });
   } catch (err) {
     console.error('[groqAI] generateNarrative error:', err);
     return null;
@@ -216,7 +177,8 @@ export async function generateNarrative(
 export async function suggestUnits(
   input: SuggestUnitsInput,
 ): Promise<UnitSuggestion[] | null> {
-  if (!client || !rateLimitOk()) return null;
+  const status = aiManager.getStatus();
+  if (!status.available) return null;
 
   try {
     const callDesc = [
@@ -242,28 +204,18 @@ export async function suggestUnits(
       })
       .join('\n');
 
-    const response = await client.chat.completions.create({
-      model: MODEL,
-      temperature: 0.2,
-      max_tokens: 200,
-      response_format: { type: 'json_object' },
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You are a dispatch supervisor for RMPG, a private security company in SLC, Utah. ' +
-            'Suggest the best units to dispatch based on proximity, availability, specialization, and workload. ' +
-            'Respond with JSON: { "suggestions": [{ "call_sign": string, "reason": string }] }. ' +
-            'Max 3 suggestions. Only suggest units with available or on-patrol status. Short reasons.',
-        },
-        {
-          role: 'user',
-          content: `CALL:\n${callDesc}\n\nAVAILABLE UNITS:\n${unitsList}`,
-        },
-      ],
-    });
+    const systemPrompt =
+      'You are a dispatch supervisor for RMPG, a private security company in SLC, Utah. ' +
+      'Suggest the best units to dispatch based on proximity, availability, specialization, and workload. ' +
+      'Respond with JSON: { "suggestions": [{ "call_sign": string, "reason": string }] }. ' +
+      'Max 3 suggestions. Only suggest units with available or on-patrol status. Short reasons.';
 
-    const text = response.choices?.[0]?.message?.content?.trim();
+    const text = await aiManager.chat(
+      systemPrompt,
+      `CALL:\n${callDesc}\n\nAVAILABLE UNITS:\n${unitsList}`,
+      { temperature: 0.2, maxTokens: 200, jsonMode: true },
+    );
+
     if (!text) return null;
 
     const parsed = JSON.parse(text);
