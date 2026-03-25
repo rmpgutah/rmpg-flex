@@ -25,7 +25,7 @@ import {
   announceAllUnits,
 } from '../utils/voiceAlerts';
 import { classifySeverity } from '../utils/alertSeverity';
-import { announceWithSeverity } from '../utils/edgeTTS';
+import { announceWithSeverity, isEdgeTTSEnabled } from '../utils/edgeTTS';
 import type { AlertBannerItem } from '../components/DispatchAlertBanner';
 
 /**
@@ -93,35 +93,41 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
 
         if (action === 'call_created' && data.call) {
           const call = normalizeCallForVoice(data.call);
-          announceNewCall(call);
-          announceCallAlerts(call);
-          // Edge-TTS severity pipeline
           const { severity } = classifySeverity('call_created', call);
-          const text = `New call: ${call.call_type || call.nature || 'Unknown'} at ${call.location || 'unknown location'}`;
-          announceWithSeverity(text, severity);
+          if (isEdgeTTSEnabled()) {
+            const text = `New call: ${call.call_type || call.nature || 'Unknown'} at ${call.location || 'unknown location'}`;
+            announceWithSeverity(text, severity);
+          } else {
+            announceNewCall(call);
+            announceCallAlerts(call);
+          }
           onAlert?.({ id: nextAlertId(), severity, title: 'New Call', message: call.description || call.narrative || call.call_type || '', timestamp: Date.now() });
         }
 
         if (action === 'call_status_changed' && data.call) {
           const call = normalizeCallForVoice(data.call);
           const status = data.status || call.status;
-          if (status) {
+          if (status && !isEdgeTTSEnabled()) {
             announceStatusChange(call, status);
           }
           if (status === 'dispatched') {
-            announceDispatchEvent(call);
-            // Edge-TTS severity pipeline
             const { severity } = classifySeverity('call_dispatched', call);
-            const units = Array.isArray(call.assigned_units) ? call.assigned_units.join(', ') : '';
-            const text = `Dispatched${units ? ` ${units}` : ''} to ${call.call_type || 'call'} at ${call.location || 'unknown location'}`;
-            announceWithSeverity(text, severity);
-            onAlert?.({ id: nextAlertId(), severity, title: 'Dispatched', message: `${units || 'Unit'} — ${call.call_type || call.nature || ''} at ${call.location || ''}`, timestamp: Date.now() });
+            if (isEdgeTTSEnabled()) {
+              const units = Array.isArray(call.assigned_units) ? call.assigned_units.join(', ') : '';
+              const text = `Dispatched${units ? ` ${units}` : ''} to ${call.call_type || 'call'} at ${call.location || 'unknown location'}`;
+              announceWithSeverity(text, severity);
+            } else {
+              announceDispatchEvent(call);
+            }
+            onAlert?.({ id: nextAlertId(), severity, title: 'Dispatched', message: `${call.assigned_units?.join(', ') || 'Unit'} — ${call.call_type || call.nature || ''} at ${call.location || ''}`, timestamp: Date.now() });
           }
         }
 
         if (action === 'units_dispatched') {
           const call = normalizeCallForVoice(data.call);
-          announceUnitDispatched(call, data.units);
+          if (!isEdgeTTSEnabled()) {
+            announceUnitDispatched(call, data.units);
+          }
         }
 
         if (action === 'ai_analysis' && data.analysis?.safetyBriefing && data.analysis.confidence > 0.7) {
@@ -146,10 +152,11 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
       subscribe('panic_alert', (msg) => {
         const data = (msg.data || msg.payload || msg) as any;
         const officerName = data.user_name || data.userName || data.officerName || 'Unknown officer';
-        announcePanicAlert(officerName);
-        // Edge-TTS severity pipeline — panic is always major
-        const text = `Panic alert! ${officerName} has activated panic.`;
-        announceWithSeverity(text, 'major');
+        if (isEdgeTTSEnabled()) {
+          announceWithSeverity(`Panic alert! ${officerName} has activated panic.`, 'major');
+        } else {
+          announcePanicAlert(officerName);
+        }
         onAlert?.({ id: nextAlertId(), severity: 'major', title: 'PANIC', message: officerName, timestamp: Date.now() });
       })
     );
@@ -159,10 +166,11 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
       subscribe('bolo_alert', (msg) => {
         const data = (msg.data || msg.payload || msg) as any;
         const boloTitle = data.title || data.subject || 'Alert';
-        announceBolo(boloTitle, data.priority);
-        // Edge-TTS severity pipeline — BOLO is always moderate
-        const text = `BOLO alert: ${boloTitle}`;
-        announceWithSeverity(text, 'moderate');
+        if (isEdgeTTSEnabled()) {
+          announceWithSeverity(`BOLO alert: ${boloTitle}`, 'moderate');
+        } else {
+          announceBolo(boloTitle, data.priority);
+        }
         onAlert?.({ id: nextAlertId(), severity: 'moderate', title: 'BOLO', message: boloTitle, timestamp: Date.now() });
       })
     );
@@ -172,10 +180,11 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
       subscribe('call:warrant_alert', (msg) => {
         const data = (msg.data || msg.payload || msg) as any;
         const subjectName = data.subject_name || data.name || 'Unknown subject';
-        announceWarrantHit(subjectName);
-        // Edge-TTS severity pipeline — warrant hit is moderate
-        const text = `Warrant hit on ${subjectName}`;
-        announceWithSeverity(text, 'moderate');
+        if (isEdgeTTSEnabled()) {
+          announceWithSeverity(`Warrant hit on ${subjectName}`, 'moderate');
+        } else {
+          announceWarrantHit(subjectName);
+        }
         onAlert?.({ id: nextAlertId(), severity: 'moderate', title: 'WARRANT HIT', message: subjectName, timestamp: Date.now() });
       })
     );
@@ -186,10 +195,11 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
         const data = (msg.data || msg.payload || msg) as any;
         const unit = data.call_sign || data.unit || 'Unknown unit';
         const loc = data.location || 'unknown location';
-        announceBackupRequest({ officer_name: unit, location: loc });
-        // Edge-TTS severity pipeline — backup is moderate
-        const text = `Backup requested by ${unit} at ${loc}`;
-        announceWithSeverity(text, 'moderate');
+        if (isEdgeTTSEnabled()) {
+          announceWithSeverity(`Backup requested by ${unit} at ${loc}`, 'moderate');
+        } else {
+          announceBackupRequest({ officer_name: unit, location: loc });
+        }
         onAlert?.({ id: nextAlertId(), severity: 'moderate', title: 'BACKUP', message: `${unit} — ${loc}`, timestamp: Date.now() });
       })
     );
@@ -200,10 +210,11 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
         const data = (msg.data || msg.payload || msg) as any;
         const unit = data.call_sign || data.unit || 'Unknown unit';
         const direction = data.direction || '';
-        announcePursuit({ officer_name: unit, direction });
-        // Edge-TTS severity pipeline — pursuit is major
-        const text = `Pursuit update: ${unit}${direction ? ` heading ${direction}` : ''}`;
-        announceWithSeverity(text, 'major');
+        if (isEdgeTTSEnabled()) {
+          announceWithSeverity(`Pursuit update: ${unit}${direction ? ` heading ${direction}` : ''}`, 'major');
+        } else {
+          announcePursuit({ officer_name: unit, direction });
+        }
         onAlert?.({ id: nextAlertId(), severity: 'major', title: 'PURSUIT', message: `${unit}${direction ? ` — ${direction}` : ''}`, timestamp: Date.now() });
       })
     );
@@ -212,7 +223,12 @@ export function useDispatchVoiceAlerts(options?: { onAlert?: (alert: AlertBanner
     unsubs.push(
       subscribe('all_units', (msg) => {
         const data = (msg.data || msg.payload || msg) as any;
-        announceAllUnits(data.message || data.text || '');
+        const allUnitsMsg = data.message || data.text || '';
+        if (isEdgeTTSEnabled()) {
+          announceWithSeverity(`All units: ${allUnitsMsg}`, 'moderate');
+        } else {
+          announceAllUnits(allUnitsMsg);
+        }
       })
     );
 
