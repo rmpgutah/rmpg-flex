@@ -77,7 +77,7 @@ export async function detectStaleCalls(): Promise<StaleCallReport> {
       status,
       ROUND((julianday('now') - julianday(COALESCE(updated_at, created_at))) * 24, 1) AS hours_in_status,
       incident_type,
-      COALESCE(location_address, location_text, '') AS location
+      COALESCE(location_address, '') AS location
     FROM calls_for_service
     WHERE
       (status = 'dispatched' AND (julianday('now') - julianday(COALESCE(updated_at, created_at))) * 24 > 2)
@@ -151,14 +151,13 @@ export async function detectIncompleteRecords(): Promise<IncompleteRecordReport>
       description,
       notes,
       location_address,
-      location_text,
       incident_type
     FROM calls_for_service
     WHERE created_at > datetime('now', '-7 days')
       AND status NOT IN ('closed', 'cancelled', 'completed')
       AND (
         (COALESCE(description, '') = '' AND COALESCE(notes, '') = '')
-        OR (COALESCE(location_address, '') = '' AND COALESCE(location_text, '') = '')
+        OR COALESCE(location_address, '') = ''
         OR COALESCE(incident_type, '') = ''
       )
     ORDER BY created_at DESC
@@ -168,7 +167,7 @@ export async function detectIncompleteRecords(): Promise<IncompleteRecordReport>
   const items: IncompleteRecordItem[] = rows.map(r => {
     const missing: string[] = [];
     if (!r.description && !r.notes) missing.push('description/notes');
-    if (!r.location_address && !r.location_text) missing.push('location');
+    if (!r.location_address) missing.push('location');
     if (!r.incident_type) missing.push('incident_type');
 
     return {
