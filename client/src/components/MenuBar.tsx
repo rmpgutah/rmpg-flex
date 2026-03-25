@@ -243,25 +243,49 @@ export default function MenuBar({
     document.body.classList.toggle('no-scanlines', !next);
   }, [scanLinesEnabled]);
 
-  // Generic display effect toggler
-  const toggleFx = useCallback((
-    cls: string, key: string,
-    current: boolean, setter: (v: boolean) => void,
-    mutuallyExclusive?: { cls: string; key: string; setter: (v: boolean) => void }[]
-  ) => {
-    const next = !current;
-    setter(next);
-    localStorage.setItem(key, String(next));
-    document.body.classList.toggle(cls, next);
-    // Turn off mutually exclusive effects (e.g., amber vs green)
-    if (next && mutuallyExclusive) {
-      for (const mx of mutuallyExclusive) {
-        mx.setter(false);
-        localStorage.setItem(mx.key, 'false');
-        document.body.classList.remove(mx.cls);
-      }
-    }
-  }, []);
+  const toggleVignette = useCallback(() => {
+    const next = !vignetteEnabled;
+    setVignetteEnabled(next);
+    localStorage.setItem('rmpg-fx-vignette', String(next));
+    document.body.classList.toggle('fx-vignette', next);
+  }, [vignetteEnabled]);
+
+  const toggleBloom = useCallback(() => {
+    const next = !bloomEnabled;
+    setBloomEnabled(next);
+    localStorage.setItem('rmpg-fx-bloom', String(next));
+    document.body.classList.toggle('fx-bloom', next);
+  }, [bloomEnabled]);
+
+  const toggleNoise = useCallback(() => {
+    const next = !noiseEnabled;
+    setNoiseEnabled(next);
+    localStorage.setItem('rmpg-fx-noise', String(next));
+    document.body.classList.toggle('fx-noise', next);
+  }, [noiseEnabled]);
+
+  const toggleAmber = useCallback(() => {
+    const next = !amberTintEnabled;
+    setAmberTintEnabled(next);
+    localStorage.setItem('rmpg-fx-amber', String(next));
+    document.body.classList.toggle('fx-amber', next);
+    if (next) { setGreenPhosphorEnabled(false); localStorage.setItem('rmpg-fx-green', 'false'); document.body.classList.remove('fx-green'); }
+  }, [amberTintEnabled]);
+
+  const toggleGreen = useCallback(() => {
+    const next = !greenPhosphorEnabled;
+    setGreenPhosphorEnabled(next);
+    localStorage.setItem('rmpg-fx-green', String(next));
+    document.body.classList.toggle('fx-green', next);
+    if (next) { setAmberTintEnabled(false); localStorage.setItem('rmpg-fx-amber', 'false'); document.body.classList.remove('fx-amber'); }
+  }, [greenPhosphorEnabled]);
+
+  const toggleHighContrast = useCallback(() => {
+    const next = !highContrastEnabled;
+    setHighContrastEnabled(next);
+    localStorage.setItem('rmpg-fx-highcontrast', String(next));
+    document.body.classList.toggle('fx-highcontrast', next);
+  }, [highContrastEnabled]);
 
   const toggleSound = useCallback(() => {
     const next = !soundEnabled;
@@ -404,14 +428,14 @@ export default function MenuBar({
         icon: Tv,
         items: [
           { type: 'toggle', label: 'CRT Scan Lines', icon: Activity, checked: scanLinesEnabled, action: toggleScanLines },
-          { type: 'toggle', label: 'CRT Vignette', icon: Eye, checked: vignetteEnabled, action: () => toggleFx('fx-vignette', 'rmpg-fx-vignette', vignetteEnabled, setVignetteEnabled) },
-          { type: 'toggle', label: 'Phosphor Bloom', icon: Sparkles, checked: bloomEnabled, action: () => toggleFx('fx-bloom', 'rmpg-fx-bloom', bloomEnabled, setBloomEnabled) },
-          { type: 'toggle', label: 'Film Grain', icon: Droplets, checked: noiseEnabled, action: () => toggleFx('fx-noise', 'rmpg-fx-noise', noiseEnabled, setNoiseEnabled) },
+          { type: 'toggle', label: 'CRT Vignette', icon: Eye, checked: vignetteEnabled, action: toggleVignette },
+          { type: 'toggle', label: 'Phosphor Bloom', icon: Sparkles, checked: bloomEnabled, action: toggleBloom },
+          { type: 'toggle', label: 'Film Grain', icon: Droplets, checked: noiseEnabled, action: toggleNoise },
           { type: 'separator' },
-          { type: 'toggle', label: 'Amber Phosphor', icon: Flame, checked: amberTintEnabled, action: () => toggleFx('fx-amber', 'rmpg-fx-amber', amberTintEnabled, setAmberTintEnabled, [{ cls: 'fx-green', key: 'rmpg-fx-green', setter: setGreenPhosphorEnabled }]) },
-          { type: 'toggle', label: 'Green Phosphor', icon: Leaf, checked: greenPhosphorEnabled, action: () => toggleFx('fx-green', 'rmpg-fx-green', greenPhosphorEnabled, setGreenPhosphorEnabled, [{ cls: 'fx-amber', key: 'rmpg-fx-amber', setter: setAmberTintEnabled }]) },
+          { type: 'toggle', label: 'Amber Phosphor', icon: Flame, checked: amberTintEnabled, action: toggleAmber },
+          { type: 'toggle', label: 'Green Phosphor', icon: Leaf, checked: greenPhosphorEnabled, action: toggleGreen },
           { type: 'separator' },
-          { type: 'toggle', label: 'High Contrast', icon: Contrast, checked: highContrastEnabled, action: () => toggleFx('fx-highcontrast', 'rmpg-fx-highcontrast', highContrastEnabled, setHighContrastEnabled) },
+          { type: 'toggle', label: 'High Contrast', icon: Contrast, checked: highContrastEnabled, action: toggleHighContrast },
         ],
       },
       {
