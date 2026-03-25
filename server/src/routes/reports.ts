@@ -938,12 +938,11 @@ router.get('/crime-analysis/export', (req: Request, res: Response) => {
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Disposition', `attachment; filename="crime-analysis_${new Date().toISOString().slice(0, 10)}.csv"`);
     res.send(csvRows.join('\r\n'));
   } catch (error: any) {
     console.error('Crime analysis export error:', error);
-    res.status(500).json({ error: 'Failed to crime analysis export', code: 'CRIME_ANALYSIS_EXPORT_ERROR' });
+    res.status(500).json({ error: 'Failed to export crime analysis', code: 'CRIME_ANALYSIS_EXPORT_ERROR' });
   }
 });
 

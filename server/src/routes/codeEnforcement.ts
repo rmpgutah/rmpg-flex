@@ -154,7 +154,7 @@ router.put('/violations/:id', (req: Request, res: Response) => {
     auditLog(req, 'UPDATE', 'code_violation', req.params.id, `Updated code violation #${req.params.id}`);
     broadcastRecordUpdate({ type: 'violation_updated', id: parseInt(req.params.id) });
     res.json({ data: { id: parseInt(req.params.id) } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error', code: 'UPDATE_VIOLATION_ERROR' }); }
+  } catch (error: any) { console.error('Update violation error:', error); res.status(500).json({ error: 'Internal server error', code: 'UPDATE_VIOLATION_ERROR' }); }
 });
 
 router.put('/violations/:id/status', (req: Request, res: Response) => {
@@ -180,7 +180,7 @@ router.put('/violations/:id/status', (req: Request, res: Response) => {
 
     broadcastRecordUpdate({ type: 'violation_status_changed', id, status });
     res.json({ data: { id, status } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error', code: 'VIOLATION_STATUS_ERROR' }); }
+  } catch (error: any) { console.error('Update violation status error:', error); res.status(500).json({ error: 'Internal server error', code: 'VIOLATION_STATUS_ERROR' }); }
 });
 
 // ════════════════════════════════════════════════════════
@@ -206,7 +206,7 @@ router.get('/tows', (req: Request, res: Response) => {
     const total = (db.prepare(`SELECT COUNT(*) as count FROM vehicle_tows ${where}`).get(...params) as any).count;
     const rows = db.prepare(`SELECT * FROM vehicle_tows ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...params, limitNum, offset);
     res.json({ data: rows, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
-  } catch (error: any) { res.status(500).json({ error: 'Failed to retrieve tows', code: 'LIST_TOWS_ERROR' }); }
+  } catch (error: any) { console.error('List tows error:', error); res.status(500).json({ error: 'Failed to retrieve tows', code: 'LIST_TOWS_ERROR' }); }
 });
 
 router.get('/tows/:id', (req: Request, res: Response) => {
@@ -217,7 +217,7 @@ router.get('/tows/:id', (req: Request, res: Response) => {
     const row = db.prepare('SELECT * FROM vehicle_tows WHERE id = ?').get(id);
     if (!row) return res.status(404).json({ error: 'Tow not found', code: 'TOW_NOT_FOUND' });
     res.json({ data: row });
-  } catch (error: any) { res.status(500).json({ error: 'Failed to retrieve tow record', code: 'GET_TOW_ERROR' }); }
+  } catch (error: any) { console.error('Get tow error:', error); res.status(500).json({ error: 'Failed to retrieve tow record', code: 'GET_TOW_ERROR' }); }
 });
 
 router.post('/tows', (req: Request, res: Response) => {
@@ -287,7 +287,7 @@ router.put('/tows/:id', (req: Request, res: Response) => {
     auditLog(req, 'UPDATE', 'vehicle_tow', req.params.id, `Updated tow #${req.params.id}`);
     broadcastRecordUpdate({ type: 'tow_updated', id: parseInt(req.params.id) });
     res.json({ data: { id: parseInt(req.params.id) } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error', code: 'UPDATE_TOW_ERROR' }); }
+  } catch (error: any) { console.error('Update tow error:', error); res.status(500).json({ error: 'Internal server error', code: 'UPDATE_TOW_ERROR' }); }
 });
 
 router.put('/tows/:id/status', (req: Request, res: Response) => {
@@ -310,7 +310,7 @@ router.put('/tows/:id/status', (req: Request, res: Response) => {
       VALUES (?, 'status_change', 'vehicle_tow', ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ status }), now);
 
     res.json({ data: { id: parseInt(req.params.id), status } });
-  } catch (error: any) { res.status(500).json({ error: 'Failed to update tow status', code: 'TOW_STATUS_ERROR' }); }
+  } catch (error: any) { console.error('Update tow status error:', error); res.status(500).json({ error: 'Failed to update tow status', code: 'TOW_STATUS_ERROR' }); }
 });
 
 // GET /property-history — Violation count for a property in last 12 months

@@ -1463,6 +1463,7 @@ router.get('/evidence/locations', (req: Request, res: Response) => {
     `).all();
     res.json({ data: locations });
   } catch (error: any) {
+    console.error('Get evidence storage locations error:', error);
     res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });
