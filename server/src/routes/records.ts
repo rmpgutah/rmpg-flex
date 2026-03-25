@@ -2859,7 +2859,7 @@ router.get('/ncic-query', (req: Request, res: Response) => {
         // Search warrants by subject name or warrant number
         const warrants = db.prepare(`
           SELECT w.*, p.first_name as subject_first_name, p.last_name as subject_last_name,
-            p.date_of_birth as subject_dob
+            p.dob as subject_dob
           FROM warrants w
           LEFT JOIN persons p ON w.subject_person_id = p.id
           WHERE w.status = 'active'
