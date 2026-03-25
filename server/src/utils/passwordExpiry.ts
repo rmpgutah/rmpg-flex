@@ -7,7 +7,10 @@ import config from '../config';
 
 export function isPasswordExpired(user: { password_expires_at?: string | null }): boolean {
   if (!user.password_expires_at) return false;
-  return new Date(user.password_expires_at) < new Date();
+  // [FIX 85] Validate the date string parses correctly before comparing
+  const expiresAt = new Date(user.password_expires_at);
+  if (isNaN(expiresAt.getTime())) return false;
+  return expiresAt < new Date();
 }
 
 // ─── Check if password is expiring soon (within warning period) ──
@@ -16,6 +19,8 @@ export function isPasswordExpiringSoon(user: { password_expires_at?: string | nu
   if (!user.password_expires_at) return false;
   const warningMs = config.password.expiryWarningDays * 24 * 60 * 60 * 1000;
   const expiresAt = new Date(user.password_expires_at).getTime();
+  // [FIX 86] Validate parsed date is valid before comparing
+  if (isNaN(expiresAt)) return false;
   const now = Date.now();
   return expiresAt > now && (expiresAt - now) < warningMs;
 }
@@ -23,6 +28,11 @@ export function isPasswordExpiringSoon(user: { password_expires_at?: string | nu
 // ─── Set password expiry from now ───────────────────────
 
 export function setPasswordExpiry(userId: number): void {
+  // [FIX 87] Validate userId before DB operation
+  if (!userId || typeof userId !== 'number' || userId < 1) {
+    console.error('[PASSWORD] setPasswordExpiry called with invalid userId:', userId);
+    return;
+  }
   const db = getDb();
   const expiresAt = new Date(
     Date.now() + config.password.expiryDays * 24 * 60 * 60 * 1000

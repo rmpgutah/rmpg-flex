@@ -520,7 +520,7 @@ router.get('/queue', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
     res.json(enriched);
   } catch (error: any) {
     console.error('[Dispatch] get queue error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'QUEUE_ERROR' });
   }
 });
 
@@ -613,9 +613,9 @@ router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
     `).all();
 
     res.json({
-      activeCalls: activeCalls.count,
-      todayTotal: todayTotal.count,
-      avgResponseMinutes: avgResponseTime.avg_minutes ? Math.round(avgResponseTime.avg_minutes * 10) / 10 : null,
+      activeCalls: activeCalls?.count ?? 0,
+      todayTotal: todayTotal?.count ?? 0,
+      avgResponseMinutes: avgResponseTime?.avg_minutes ? Math.round(avgResponseTime.avg_minutes * 10) / 10 : null,
       callsByStatus,
       callsByPriority,
       unitsByStatus,
@@ -630,7 +630,7 @@ router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
     });
   } catch (error: any) {
     console.error('[Dispatch] get stats error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'STATS_ERROR' });
   }
 });
 
@@ -768,16 +768,24 @@ router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', '
     // Validate panic input
     if (message !== undefined && message !== null) {
       if (typeof message !== 'string' || message.length > 500) {
-        res.status(400).json({ error: 'Message must be a string of 500 characters or less' });
+        res.status(400).json({ error: 'Message must be a string of 500 characters or less', code: 'INVALID_MESSAGE' });
         return;
       }
+    }
+    if (latitude != null && (isNaN(Number(latitude)) || Math.abs(Number(latitude)) > 90)) {
+      res.status(400).json({ error: 'Invalid latitude', code: 'INVALID_LATITUDE' });
+      return;
+    }
+    if (longitude != null && (isNaN(Number(longitude)) || Math.abs(Number(longitude)) > 180)) {
+      res.status(400).json({ error: 'Invalid longitude', code: 'INVALID_LONGITUDE' });
+      return;
     }
 
     const user = db.prepare('SELECT id, full_name, badge_number, role FROM users WHERE id = ?')
       .get(req.user!.userId) as any;
 
     if (!user) {
-      res.status(404).json({ error: 'User not found' });
+      res.status(404).json({ error: 'User not found', code: 'USER_NOT_FOUND' });
       return;
     }
 
@@ -793,7 +801,7 @@ router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', '
       try {
         const addr = await reverseGeocodeAddress(Number(latitude), Number(longitude));
         if (addr) locationAddress = addr;
-      } catch { /* keep GPS fallback */ }
+      } catch (geoErr) { console.error('[Panic] Reverse geocode failed, using GPS fallback:', geoErr instanceof Error ? geoErr.message : geoErr); }
     }
 
     // ── All DB writes in a single transaction for atomicity ──
@@ -902,7 +910,7 @@ router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', '
     });
   } catch (error: any) {
     console.error('[Dispatch] panic alert error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'PANIC_ERROR' });
   }
 });
 
@@ -914,12 +922,12 @@ router.get('/premise-history', requireRole('admin', 'manager', 'supervisor', 'of
     const { address } = req.query;
 
     if (!address || typeof address !== 'string' || address.length < 3) {
-      res.status(400).json({ error: 'Address must be at least 3 characters' });
+      res.status(400).json({ error: 'Address must be at least 3 characters', code: 'INVALID_ADDRESS' });
       return;
     }
 
     if (address.length > 300) {
-      res.status(400).json({ error: 'Address must be 300 characters or less' });
+      res.status(400).json({ error: 'Address must be 300 characters or less', code: 'ADDRESS_TOO_LONG' });
       return;
     }
 
@@ -970,7 +978,7 @@ router.get('/premise-history', requireRole('admin', 'manager', 'supervisor', 'of
         propertyHazard = prop.hazard_notes;
         if (!warningTypes.includes('PROPERTY_HAZARD')) warningTypes.push('PROPERTY_HAZARD');
       }
-    } catch { /* properties table may not have hazard_notes */ }
+    } catch (propErr) { console.error('[Premise History] Property hazard lookup error:', propErr instanceof Error ? propErr.message : propErr); }
 
     res.json({
       calls,
@@ -981,7 +989,7 @@ router.get('/premise-history', requireRole('admin', 'manager', 'supervisor', 'of
     });
   } catch (error: any) {
     console.error('[Dispatch] premise history error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'PREMISE_HISTORY_ERROR' });
   }
 });
 
@@ -997,7 +1005,7 @@ router.get('/safety-screen', requireRole('admin', 'manager', 'supervisor', 'offi
     }
 
     if (name.length > 200) {
-      res.status(400).json({ error: 'Name must be 200 characters or less' });
+      res.status(400).json({ error: 'Name must be 200 characters or less', code: 'NAME_TOO_LONG' });
       return;
     }
 
@@ -1095,7 +1103,7 @@ router.get('/safety-screen', requireRole('admin', 'manager', 'supervisor', 'offi
     });
   } catch (error: any) {
     console.error('[Dispatch] safety screen error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'SAFETY_SCREEN_ERROR' });
   }
 });
 
@@ -1111,8 +1119,8 @@ router.get('/districts', requireRole('admin', 'manager', 'supervisor', 'officer'
     let query = 'SELECT * FROM dispatch_districts';
     const params: any[] = [];
     if (search && typeof search === 'string' && search.length >= 1 && search.length <= 100) {
-      query += ` WHERE zone_name LIKE ? OR beat_name LIKE ? OR section_name LIKE ?`;
-      const s = `%${search}%`;
+      query += ` WHERE zone_name LIKE ? ESCAPE '\\' OR beat_name LIKE ? ESCAPE '\\' OR section_name LIKE ? ESCAPE '\\'`;
+      const s = `%${escapeLike(search)}%`;
       params.push(s, s, s);
     }
     query += ' ORDER BY section_id, zone_id, beat_id LIMIT ?';
@@ -1140,12 +1148,12 @@ router.get('/districts/lookup', requireRole('admin', 'manager', 'supervisor', 'o
     const { zone_id, beat_id } = req.query;
 
     if (!zone_id || typeof zone_id !== 'string' || zone_id.length > 50) {
-      res.status(400).json({ error: 'zone_id is required (max 50 chars)' });
+      res.status(400).json({ error: 'zone_id is required (max 50 chars)', code: 'INVALID_ZONE_ID' });
       return;
     }
 
     if (beat_id && (typeof beat_id !== 'string' || beat_id.length > 50)) {
-      res.status(400).json({ error: 'beat_id must be 50 characters or less' });
+      res.status(400).json({ error: 'beat_id must be 50 characters or less', code: 'INVALID_BEAT_ID' });
       return;
     }
 
@@ -1169,7 +1177,7 @@ router.get('/districts/lookup', requireRole('admin', 'manager', 'supervisor', 'o
     res.json({ found: true, district });
   } catch (error: any) {
     console.error('[Dispatch] district lookup error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'DISTRICT_LOOKUP_ERROR' });
   }
 });
 
@@ -1179,14 +1187,14 @@ router.get('/districts/identify', requireRole('admin', 'manager', 'supervisor', 
     const db = getDb();
     const { lat, lng } = req.query;
     if (!lat || !lng) {
-      res.status(400).json({ error: 'lat and lng are required' });
+      res.status(400).json({ error: 'lat and lng are required', code: 'MISSING_COORDINATES' });
       return;
     }
     const latNum = Number(lat);
     const lngNum = Number(lng);
     if (!Number.isFinite(latNum) || latNum < -90 || latNum > 90 ||
         !Number.isFinite(lngNum) || lngNum < -180 || lngNum > 180) {
-      res.status(400).json({ error: 'lat must be -90..90, lng must be -180..180' });
+      res.status(400).json({ error: 'lat must be -90..90, lng must be -180..180', code: 'INVALID_COORDINATES' });
       return;
     }
 
@@ -1224,7 +1232,7 @@ router.get('/districts/identify', requireRole('admin', 'manager', 'supervisor', 
     }
   } catch (error: any) {
     console.error('[Dispatch] district identify error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'DISTRICT_IDENTIFY_ERROR' });
   }
 });
 
@@ -1362,6 +1370,7 @@ router.get('/heatmap/predictions', requireRole('admin', 'manager', 'supervisor',
       FROM calls_for_service
       WHERE latitude IS NOT NULL AND longitude IS NOT NULL
         AND created_at >= datetime('now', 'localtime', '-90 days')
+      LIMIT 50000
     `).all() as any[];
 
     // Aggregate by grid cell
@@ -1602,7 +1611,7 @@ router.get('/analysis/summary', requireRole('admin', 'manager', 'supervisor', 'o
           AND (disposition LIKE '%arrest%' OR disposition LIKE '%cite%' OR disposition LIKE '%citation%')
       `).get() as any;
       enforcementTotal = enfRow?.cnt || 0;
-    } catch { /* table may not have disposition column */ }
+    } catch (enfErr) { console.error('[Analysis] Enforcement query error:', enfErr instanceof Error ? enfErr.message : enfErr); }
 
     const enfInPredicted = repeats.filter((r: any) => predGrid.has(`${r.lat},${r.lng}`)).length;
 
@@ -1626,7 +1635,7 @@ router.get('/analysis/summary', requireRole('admin', 'manager', 'supervisor', 'o
     try {
       const geoRow = db.prepare('SELECT COUNT(*) as cnt FROM geofences WHERE is_active = 1').get() as any;
       activeGeofences = geoRow?.cnt || 0;
-    } catch { /* table may not exist */ }
+    } catch (geoErr) { console.error('[Analysis] Geofence count error:', geoErr instanceof Error ? geoErr.message : geoErr); }
 
     // ── Repeat address count ────────────────────────────────
     const repeatCount = repeats.length;
@@ -1721,7 +1730,7 @@ router.get('/heatmap/enforcement', requireRole('admin', 'manager', 'supervisor',
     const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 90));
 
     if (!type || !['citations', 'arrests'].includes(type)) {
-      res.status(400).json({ error: 'type must be "citations" or "arrests"' });
+      res.status(400).json({ error: 'type must be "citations" or "arrests"', code: 'INVALID_ENFORCEMENT_TYPE' });
       return;
     }
 
@@ -1791,7 +1800,7 @@ router.get('/history-map', requireRole('admin', 'manager', 'supervisor', 'office
       ? String(req.query.status).split(',').filter(s => validStatuses.includes(s))
       : validStatuses;
     if (statusFilter.length === 0) {
-      res.status(400).json({ error: 'Invalid status filter' });
+      res.status(400).json({ error: 'Invalid status filter', code: 'INVALID_STATUS_FILTER' });
       return;
     }
 
@@ -1807,9 +1816,9 @@ router.get('/history-map', requireRole('admin', 'manager', 'supervisor', 'office
     const conditions: string[] = [
       'c.latitude IS NOT NULL',
       'c.longitude IS NOT NULL',
-      `c.created_at >= datetime('now', 'localtime', '-${days} days')`,
+      `c.created_at >= datetime('now', 'localtime', ? || ' days')`,
     ];
-    const params: any[] = [];
+    const params: any[] = [`-${days}`];
 
     // Status filter
     const statusPlaceholders = statusFilter.map(() => '?').join(',');
@@ -1876,7 +1885,7 @@ router.get('/history-map', requireRole('admin', 'manager', 'supervisor', 'office
               .filter(Boolean)
               .join(', ');
           }
-        } catch { /* ignore parse errors */ }
+        } catch (parseErr) { console.error('[Aggregates] Failed to parse assigned_unit_ids for history-map:', parseErr instanceof Error ? parseErr.message : parseErr); }
       }
       return {
         id: row.id,
@@ -1900,7 +1909,7 @@ router.get('/history-map', requireRole('admin', 'manager', 'supervisor', 'office
     res.json(results);
   } catch (error: any) {
     console.error('[Dispatch] history-map error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', code: 'HISTORY_MAP_ERROR' });
   }
 });
 

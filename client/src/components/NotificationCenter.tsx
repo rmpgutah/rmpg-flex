@@ -317,6 +317,8 @@ export default function NotificationCenter({ className = '' }: NotificationCente
         className="toolbar-btn relative"
         title="Notifications"
         aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
+        aria-expanded={isOpen}
+        aria-haspopup="true"
       >
         <Bell className="w-4 h-4" aria-hidden="true" />
         {unreadCount > 0 && (
@@ -519,6 +521,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                       marginTop: '2px',
                     }}
                     title="Dismiss"
+                    aria-label="Dismiss notification"
                   >
                     <Trash2 className="w-3 h-3 text-rmpg-400 hover:text-red-400" />
                   </button>

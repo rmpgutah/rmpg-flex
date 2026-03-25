@@ -91,7 +91,7 @@ export default React.memo(function UnitStatusBoard({
             <span className={STATUS_LED_CLASSES[unit.status]} />
             <div className="min-w-0">
               <div className="text-xs font-bold text-white font-mono truncate">{unit.call_sign}</div>
-              <div className="text-[10px] text-rmpg-300 truncate">{unit.officer_name}</div>
+              <div className="text-[10px] text-rmpg-300 truncate">{unit.officer_name || 'Unassigned'}</div>
             </div>
           </div>
         ))}
@@ -103,7 +103,7 @@ export default React.memo(function UnitStatusBoard({
 
   return (
     <div className="overflow-auto">
-      <table className="table-dark">
+      <table className="table-dark" aria-label="Unit status board">
         <thead>
           <tr>
             <th>Unit</th>

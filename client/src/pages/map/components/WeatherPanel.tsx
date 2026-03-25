@@ -122,13 +122,15 @@ export default function WeatherPanel({
 
   return (
     <div
-      className="panel-beveled rounded-sm flex flex-col select-none pointer-events-auto"
+      className="panel-beveled rounded-sm flex flex-col select-none pointer-events-auto transition-all duration-200 ease-out shadow-lg"
       style={{
         width: 320,
         background: '#141e2b',
         border: '1px solid #1e2a3a',
         boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
       }}
+      role="complementary"
+      aria-label="Weather and environment panel"
     >
       {/* ── Header ──────────────────────────────────────── */}
       <div
@@ -142,8 +144,9 @@ export default function WeatherPanel({
         <button type="button"
           onClick={onRefresh}
           disabled={loading}
-          className="p-1 rounded-sm text-white/40 hover:text-white/80 hover:bg-surface-raised/50 transition-colors disabled:opacity-40"
+          className="p-1 rounded-sm text-white/40 hover:text-white/80 hover:bg-[#1a2636] transition-all duration-150 active:scale-[0.97] disabled:opacity-40"
           title="Refresh weather data"
+          aria-label="Refresh weather data"
         >
           {loading ? (
             <Loader2 size={13} className="animate-spin" />
@@ -153,22 +156,23 @@ export default function WeatherPanel({
         </button>
         <button type="button"
           onClick={onClose}
-          className="p-1 rounded-sm text-white/40 hover:text-red-400 hover:bg-surface-raised/50 transition-colors"
+          className="p-1 rounded-sm text-white/40 hover:text-red-400 hover:bg-[#1a2636] transition-all duration-150 active:scale-[0.97]"
           title="Close panel"
+          aria-label="Close environment panel"
         >
           <X size={13} />
         </button>
       </div>
 
-      <div className="flex flex-col gap-0 overflow-y-auto" style={{ maxHeight: 480 }}>
+      <div className="flex flex-col gap-0 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent" style={{ maxHeight: 480 }}>
         {/* ── Section 1: Lighting ───────────────────────── */}
         <div className="px-3 py-2.5" style={{ borderBottom: '1px solid #1e2a3a' }}>
           <div className="text-[9px] uppercase tracking-widest text-white/30 mb-2">
             Lighting Conditions
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 panel-inset p-2 rounded-sm" style={{ background: '#0d1520', border: '1px solid #1e2a3a' }}>
             <div className={`p-2 rounded-sm ${lc.bg}`}>
-              <lc.Icon size={20} className={lc.color} />
+              <lc.Icon size={20} className={`${lc.color} transition-all duration-200`} />
             </div>
             <div className="flex-1">
               <div className={`text-[13px] font-bold tracking-wide ${lc.color}`}>
@@ -206,32 +210,32 @@ export default function WeatherPanel({
           <div className="text-[9px] uppercase tracking-widest text-white/30 mb-2">
             Weather
           </div>
-          <div className="text-[12px] text-white/80 font-medium mb-2">
+          <div className="text-[12px] text-white/80 font-medium mb-2 border-l-2 border-[#60a5fa] pl-2">
             {weatherHazards.description || 'No data'}
           </div>
           {hasHazards ? (
             <div className="flex flex-wrap gap-1.5">
               {weatherHazards.freezing && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                  <Snowflake size={10} />
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30 animate-pulse">
+                  <Snowflake size={10} className="animate-[spin_4s_linear_infinite]" />
                   FREEZING
                 </span>
               )}
               {weatherHazards.highWind && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">
                   <Wind size={10} />
                   HIGH WIND
                 </span>
               )}
               {weatherHazards.rain && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                  <CloudRain size={10} />
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30 animate-pulse">
+                  <CloudRain size={10} className="animate-[bounce_2s_ease-in-out_infinite]" />
                   RAIN
                 </span>
               )}
               {weatherHazards.snow && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold bg-sky-400/20 text-sky-200 border border-sky-400/30">
-                  <CloudSnow size={10} />
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold bg-sky-400/20 text-sky-200 border border-sky-400/30 animate-pulse">
+                  <CloudSnow size={10} className="animate-[bounce_3s_ease-in-out_infinite]" />
                   SNOW
                 </span>
               )}
@@ -250,7 +254,7 @@ export default function WeatherPanel({
             Wind
           </div>
           {windCondition ? (
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 panel-inset p-2 rounded-sm" style={{ background: '#0d1520', border: '1px solid #1e2a3a', borderLeft: '2px solid #22d3ee' }}>
               <div className="flex items-baseline gap-1">
                 <span className="text-[20px] font-bold font-mono tabular-nums text-white/90">
                   {Math.round(windCondition.speed)}
@@ -279,10 +283,10 @@ export default function WeatherPanel({
                   <span className="absolute right-1 text-[6px] text-white/20">E</span>
                   <Navigation
                     size={14}
-                    className="text-cyan-400"
+                    className="text-cyan-400 drop-shadow-[0_0_3px_rgba(34,211,238,0.5)]"
                     style={{
                       transform: `rotate(${windCondition.direction}deg)`,
-                      transition: 'transform 0.3s ease',
+                      transition: 'transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)',
                     }}
                   />
                 </div>
@@ -298,7 +302,7 @@ export default function WeatherPanel({
           <div className="text-[9px] uppercase tracking-widest text-white/30 mb-2">
             Visibility
           </div>
-          <div className="flex items-center gap-2 mb-1.5">
+          <div className="flex items-center gap-2 mb-1.5 border-l-2 border-[#60a5fa] pl-2">
             <Eye size={13} className={visibilityColor(visibilityRange)} />
             <span className={`text-[14px] font-bold font-mono tabular-nums ${visibilityColor(visibilityRange)}`}>
               {formatVisibility(visibilityRange)}

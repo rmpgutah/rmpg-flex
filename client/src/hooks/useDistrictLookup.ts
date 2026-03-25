@@ -139,5 +139,10 @@ export function useDistrictIdentify() {
     }
   }, []);
 
+  // Cleanup: abort any in-flight request on unmount
+  useEffect(() => {
+    return () => { abortRef.current?.abort(); };
+  }, []);
+
   return { identify, identifying };
 }

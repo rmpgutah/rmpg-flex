@@ -42,7 +42,7 @@ export default function MapMobileSheet({
   return (
     <>
       <button type="button"
-        className="mobile-fab"
+        className="mobile-fab transition-all duration-200 ease-out active:scale-[0.97] shadow-[0_4px_16px_rgba(0,0,0,0.4)]"
         style={{
           position: 'absolute',
           bottom: 'calc(88px + env(safe-area-inset-bottom))',
@@ -54,6 +54,8 @@ export default function MapMobileSheet({
           alignItems: 'center',
           justifyContent: 'center',
           background: 'rgba(13, 21, 32, 0.9)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
           border: '1px solid #1e3048',
           borderRadius: 2,
         }}
@@ -80,8 +82,9 @@ export default function MapMobileSheet({
                 onClick={() => setMobileSheetTab(id)}
                 role="tab"
                 aria-selected={mobileSheetTab === id}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all duration-150 active:scale-[0.97]"
                 style={{
+                  minHeight: 44,
                   color: mobileSheetTab === id ? color : '#6a7a8a',
                   background: mobileSheetTab === id ? `${color}10` : 'transparent',
                   borderBottom: mobileSheetTab === id ? `2px solid ${color}` : '2px solid transparent',
@@ -96,7 +99,7 @@ export default function MapMobileSheet({
       >
         {/* Layers Tab */}
         {mobileSheetTab === 'layers' && (
-          <div className="p-3 space-y-2">
+          <div className="px-4 py-3 space-y-2">
             {[
               { key: 'units' as const, icon: Shield, label: 'Units', color: '#22c55e' },
               { key: 'incidents' as const, icon: AlertTriangle, label: 'Active Calls', color: '#ef4444' },
@@ -106,49 +109,63 @@ export default function MapMobileSheet({
                 key={key}
                 onClick={() => toggleLayer(key)}
                 aria-label={`Toggle ${label} layer`}
-                className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
+                role="switch"
+                aria-checked={layers[key]}
+                className="flex items-center gap-3 w-full px-4 py-3 text-left transition-all duration-150 active:scale-[0.98] hover:bg-[#1a2636]"
                 style={{
                   background: layers[key] ? 'rgba(34,197,94,0.08)' : '#141e2b',
                   border: '1px solid #1e3048',
                   minHeight: 44,
+                  borderRadius: 2,
                 }}
               >
                 {layers[key] ? <Eye className="w-4 h-4 text-green-400" /> : <EyeOff className="w-4 h-4 text-rmpg-500" />}
                 <Icon style={{ width: 16, height: 16, color: layers[key] ? color : '#5a6e80' }} />
                 <span className="text-sm text-rmpg-200 flex-1">{label}</span>
+                {layers[key] && <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}80` }} />}
               </button>
             ))}
 
             <button type="button"
               onClick={() => setShowHeatmap(!showHeatmap)}
-              className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
+              role="switch"
+              aria-checked={showHeatmap}
+              aria-label="Toggle heat map"
+              className="flex items-center gap-3 w-full px-4 py-3 text-left transition-all duration-150 active:scale-[0.98] hover:bg-[#1a2636]"
               style={{
                 background: showHeatmap ? 'rgba(239,68,68,0.08)' : '#141e2b',
                 border: '1px solid #1e3048',
                 minHeight: 44,
+                borderRadius: 2,
               }}
             >
               {showHeatmap ? <Eye className="w-4 h-4 text-red-400" /> : <EyeOff className="w-4 h-4 text-rmpg-500" />}
               <Thermometer style={{ width: 16, height: 16 }} className="text-red-400" />
               <span className="text-sm text-rmpg-200 flex-1">Heat Map</span>
+              {showHeatmap && <div className="w-2 h-2 rounded-full bg-red-400" style={{ boxShadow: '0 0 6px rgba(239,68,68,0.8)' }} />}
             </button>
 
             <button type="button"
               onClick={() => setShowBreadcrumbs(!showBreadcrumbs)}
-              className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
+              role="switch"
+              aria-checked={showBreadcrumbs}
+              aria-label="Toggle breadcrumbs"
+              className="flex items-center gap-3 w-full px-4 py-3 text-left transition-all duration-150 active:scale-[0.98] hover:bg-[#1a2636]"
               style={{
                 background: showBreadcrumbs ? 'rgba(34,211,238,0.08)' : '#141e2b',
                 border: '1px solid #1e3048',
                 minHeight: 44,
+                borderRadius: 2,
               }}
             >
               {showBreadcrumbs ? <Eye className="w-4 h-4 text-cyan-400" /> : <EyeOff className="w-4 h-4 text-rmpg-500" />}
               <Route style={{ width: 16, height: 16 }} className="text-cyan-400" />
               <span className="text-sm text-rmpg-200 flex-1">Breadcrumbs</span>
+              {showBreadcrumbs && <div className="w-2 h-2 rounded-full bg-cyan-400" style={{ boxShadow: '0 0 6px rgba(34,211,238,0.8)' }} />}
             </button>
 
             {showBreadcrumbs && (
-              <div className="px-3 py-2 space-y-2" style={{ background: '#0d1520', border: '1px solid #1e3048' }}>
+              <div className="px-4 py-3 space-y-2" style={{ background: '#0d1520', border: '1px solid #1e3048', borderRadius: 2 }}>
                 <div className="flex gap-1">
                   {[2, 4, 8, 12, 24].map((h) => (
                     <button type="button"
@@ -183,7 +200,7 @@ export default function MapMobileSheet({
             )}
 
             {/* Map Style Selector (mobile) */}
-            <div className="px-3 py-2 space-y-1.5" style={{ background: '#0d1520', border: '1px solid #1e3048' }}>
+            <div className="px-4 py-3 space-y-1.5" style={{ background: '#0d1520', border: '1px solid #1e3048', borderRadius: 2 }}>
               <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-widest mb-1">Map Style</div>
               <div className="grid grid-cols-3 gap-1.5">
                 {(Object.entries(MAP_STYLE_LABELS) as [MapStyleId, string][]).map(([key, label]) => {
@@ -214,12 +231,14 @@ export default function MapMobileSheet({
                 }
               }}
               disabled={!gps?.latitude}
-              className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
+              aria-label="Center on my location"
+              className="flex items-center gap-3 w-full px-4 py-3 text-left transition-all duration-150 active:scale-[0.98] hover:bg-[#1a2636]"
               style={{
                 background: '#141e2b',
                 border: '1px solid #1e3048',
                 minHeight: 44,
                 opacity: !gps?.latitude ? 0.5 : 1,
+                borderRadius: 2,
               }}
             >
               <Navigation2 style={{ width: 16, height: 16 }} className="text-green-400" />
@@ -238,7 +257,7 @@ export default function MapMobileSheet({
                 <button type="button"
                   key={unit.id}
                   onClick={() => { if (hasCoords) { panTo(unit.latitude!, unit.longitude!); setMobileLayersOpen(false); } }}
-                  className={`w-full text-left px-3 py-3 transition-colors ${hasCoords ? 'active:bg-rmpg-700/30' : 'opacity-60'}`}
+                  className={`w-full text-left px-4 py-3 transition-all duration-150 ${hasCoords ? 'active:bg-rmpg-700/30 active:scale-[0.99]' : 'opacity-60'}`}
                   style={{ minHeight: 44 }}
                 >
                   <div className="flex items-center gap-2">
@@ -273,7 +292,7 @@ export default function MapMobileSheet({
                 <button type="button"
                   key={call.id}
                   onClick={() => { if (hasCoords) { panTo(call.latitude!, call.longitude!); setMobileLayersOpen(false); } }}
-                  className={`w-full text-left px-3 py-3 transition-colors ${hasCoords ? 'active:bg-rmpg-700/30' : 'opacity-60'}`}
+                  className={`w-full text-left px-4 py-3 transition-all duration-150 ${hasCoords ? 'active:bg-rmpg-700/30 active:scale-[0.99]' : 'opacity-60'}`}
                   style={{ minHeight: 44 }}
                 >
                   <div className="flex items-center gap-2">

@@ -159,7 +159,8 @@ export default function StatuteLookup({
             type="button"
             onClick={onClear}
             className="p-0.5 text-rmpg-400 hover:text-red-400 transition-colors"
-            title="Remove statute">
+            title="Remove statute"
+            aria-label="Remove statute selection">
             <X className="w-3.5 h-3.5" />
           </button>
         )}
@@ -175,6 +176,7 @@ export default function StatuteLookup({
         <input
           type="text"
           className="input-dark text-xs w-full pl-8 pr-3"
+          aria-label="Search statutes"
           placeholder={placeholder}
           value={query}
           onChange={(e) => {

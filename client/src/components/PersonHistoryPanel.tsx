@@ -525,6 +525,8 @@ export default function PersonHistoryPanel({
       {/* Panel Header */}
       <button type="button"
         onClick={() => setExpanded(!expanded)}
+        aria-expanded={expanded}
+        aria-label={`System history for ${personName}`}
         className="w-full flex items-center justify-between p-3 hover:bg-rmpg-700/20 transition-colors"
       >
         <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider flex items-center gap-1.5">

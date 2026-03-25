@@ -162,7 +162,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
     if (!canAcceptDrop) return;
     const unitId = e.dataTransfer.getData('text/unit-id');
     if (unitId) {
-      onUnitDrop(call.id, unitId);
+      onUnitDrop!(call.id, unitId);
     }
   };
 
@@ -321,7 +321,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         {/* Feature 3: Call duration */}
         <span ref={durationRef} className="font-mono">{call.created_at ? formatCallDuration(call.created_at) : ''}</span>
         {/* Feature 5: Stacked calls badge */}
-        {stackCount && stackCount > 1 && (
+        {stackCount != null && stackCount > 1 && (
           <span className="flex items-center gap-0.5 px-1 py-0 bg-purple-900/40 text-purple-300 border border-purple-700/40 font-bold text-[8px]">
             <Layers className="w-2.5 h-2.5" /> {stackCount}
           </span>
@@ -356,7 +356,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             {initState.label} {initState.formatted}
           </span>
         </div>
-        {call.assigned_units.length > 0 && (
+        {call.assigned_units?.length > 0 && (
           <div className="flex items-center gap-1">
             <Users className="w-3 h-3" />
             <span>{call.assigned_units.length} unit{call.assigned_units.length !== 1 ? 's' : ''}</span>
@@ -433,6 +433,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
               }
               if (e.key === 'Escape') { setShowQuickNote(false); setQuickNoteText(''); }
             }}
+            aria-label="Quick note text"
             autoFocus
           />
           <button type="button"

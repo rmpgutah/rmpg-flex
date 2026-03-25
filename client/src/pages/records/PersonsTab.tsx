@@ -383,43 +383,49 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
   return (
     <div className="h-full flex flex-col">
       {/* Search */}
-      <div className="p-3 border-b border-rmpg-600">
+      <div className="p-3 border-b border-rmpg-600" role="search">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" />
           <input
             type="text"
-            className="input-dark pl-9 w-full text-[11px] min-h-[36px]"
+            className="input-dark pl-9 w-full text-[11px] min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow"
             placeholder="Search persons by name, address, flags..." aria-label="Search persons by name, address, flags..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
           {searchQuery && (
-            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white">
+            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white transition-colors" aria-label="Clear search">
               <X className="w-3 h-3" />
-            </button>
           )}
         </div>
       </div>
 
       {/* Person List */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto scrollbar-dark" role="list" aria-label="Person records">
         {filteredPersons.length === 0 && (
-          <div className="text-center py-12">
-            <UserCircle className="w-8 h-8 text-rmpg-500 mx-auto mb-2" />
-            <p className="text-sm text-rmpg-400">{searchQuery ? 'No persons match your search.' : 'No person records found.'}</p>
+          <div className="text-center py-16">
+            <UserCircle className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
+            <p className="text-sm text-rmpg-400 font-medium">{searchQuery ? 'No persons match your search.' : 'No person records found.'}</p>
+            <p className="text-[10px] text-rmpg-600 mt-1">
+              {searchQuery ? 'Try broadening your search terms.' : 'Click "New Person" to create a record.'}
+            </p>
           </div>
         )}
-        {filteredPersons.map((person) => (
+        {filteredPersons.map((person, idx) => (
           <div
             key={person.id}
+            role="listitem"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedPerson(selectedPerson?.id === person.id ? null : person); setSSNRevealed(false); } }}
             onClick={() => { setSelectedPerson(selectedPerson?.id === person.id ? null : person); setSSNRevealed(false); }}
             className={`
-              px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-colors
+              px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-all duration-150
               ${selectedPerson?.id === person.id
                 ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
-                : 'hover:bg-rmpg-700/30 border-l-2 border-l-transparent'
+                : `hover:bg-rmpg-700/30 border-l-2 border-l-transparent ${idx % 2 === 1 ? 'bg-rmpg-800/20' : ''}`
               }
             `}
+            aria-selected={selectedPerson?.id === person.id}
           >
             <div className="flex items-center gap-3">
               <div className="flex-shrink-0 w-9 h-9 rounded-full bg-rmpg-700 border border-rmpg-600 flex items-center justify-center text-xs font-bold text-rmpg-300">

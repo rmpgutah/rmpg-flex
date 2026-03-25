@@ -185,6 +185,8 @@ export default function SplitPanel({
       {/* Draggable Divider */}
       {rightVisible && (
         <div
+          role="separator"
+          aria-orientation={isHorizontal ? 'vertical' : 'horizontal'}
           className={`flex-shrink-0 ${dividerClassName}`}
           style={{
             [isHorizontal ? 'width' : 'height']: '4px',

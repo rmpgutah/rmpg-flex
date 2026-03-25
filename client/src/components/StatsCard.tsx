@@ -64,11 +64,12 @@ export default function StatsCard({
       tabIndex={onClick ? 0 : undefined}
       onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
       aria-label={`${label}: ${value}`}
+      {/* 9: Hover scale effect on clickable cards; 10: Focus-visible ring for keyboard users */}
       className={`
         relative overflow-hidden p-3 border-l-4 panel-beveled
         ${ACCENT_COLORS[accent] || ACCENT_COLORS.blue}
         bg-surface-base
-        ${onClick ? 'cursor-pointer hover:bg-surface-raised transition-all duration-150' : ''}
+        ${onClick ? 'cursor-pointer hover:bg-surface-raised hover:brightness-110 transition-all duration-150 focus-visible:ring-1 focus-visible:ring-brand-500 focus-visible:outline-none active:scale-[0.98]' : ''}
         ${className}
       `}
     >
@@ -77,14 +78,16 @@ export default function StatsCard({
           <p className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">
             {label}
           </p>
-          <p className={`text-xl font-bold font-mono ${VALUE_COLORS[accent] || VALUE_COLORS.blue}`}>{value}</p>
+          {/* 11: Tabular-nums for consistent digit widths in stat values */}
+          <p className={`text-xl font-bold font-mono tabular-nums ${VALUE_COLORS[accent] || VALUE_COLORS.blue}`}>{value}</p>
         </div>
-        <div className={`p-1.5 panel-inset ${ICON_COLORS[accent] || ICON_COLORS.blue}`}>
-          <Icon className="w-4 h-4" />
+        {/* 12: Rounded icon container for visual weight; 13: aria-hidden on decorative icon */}
+        <div className={`p-1.5 rounded-sm panel-inset ${ICON_COLORS[accent] || ICON_COLORS.blue}`}>
+          <Icon className="w-4 h-4" aria-hidden="true" />
         </div>
       </div>
 
-      {(trend || trendValue) && (
+      {(trend != null || (trendValue != null && trendValue !== '')) && (
         <div className={`flex items-center gap-1 mt-2 ${TREND_COLOR_MAP[trendColor]}`}>
           <TrendIcon className="w-3.5 h-3.5" />
           {trendValue && <span className="text-xs font-medium">{trendValue}</span>}

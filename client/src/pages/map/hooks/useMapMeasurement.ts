@@ -27,6 +27,7 @@ function haversineMeters(
   lat1: number, lng1: number,
   lat2: number, lng2: number,
 ): number {
+  if (!Number.isFinite(lat1) || !Number.isFinite(lng1) || !Number.isFinite(lat2) || !Number.isFinite(lng2)) return 0;
   const R = 6371000;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLng = ((lng2 - lng1) * Math.PI) / 180;
@@ -42,27 +43,29 @@ function haversineMeters(
 // Approximation using spherical excess formula.
 
 function computeSphericalArea(path: google.maps.LatLngLiteral[]): number {
+  // Filter out non-finite coordinates
+  const validPath = path.filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+  if (validPath.length < 3) return 0;
   // Try the Google geometry library first
   if (
     typeof google !== 'undefined' &&
     google.maps?.geometry?.spherical?.computeArea
   ) {
-    const latLngs = path.map((p) => new google.maps.LatLng(p.lat, p.lng));
+    const latLngs = validPath.map((p) => new google.maps.LatLng(p.lat, p.lng));
     return google.maps.geometry.spherical.computeArea(latLngs);
   }
 
   // Fallback: spherical excess formula
-  if (path.length < 3) return 0;
   const R = 6371000;
   const toRad = (deg: number) => (deg * Math.PI) / 180;
 
   let total = 0;
-  for (let i = 0; i < path.length; i++) {
-    const j = (i + 1) % path.length;
-    const lat1 = toRad(path[i].lat);
-    const lng1 = toRad(path[i].lng);
-    const lat2 = toRad(path[j].lat);
-    const lng2 = toRad(path[j].lng);
+  for (let i = 0; i < validPath.length; i++) {
+    const j = (i + 1) % validPath.length;
+    const lat1 = toRad(validPath[i].lat);
+    const lng1 = toRad(validPath[i].lng);
+    const lat2 = toRad(validPath[j].lat);
+    const lng2 = toRad(validPath[j].lng);
     total += (lng2 - lng1) * (2 + Math.sin(lat1) + Math.sin(lat2));
   }
   return Math.abs((total * R * R) / 2);

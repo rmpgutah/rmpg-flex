@@ -38,6 +38,7 @@ function getScanStatus(checkpoint: CheckpointRecord): ScanStatus {
   if (!checkpoint.last_scanned) return 'red';
 
   const lastScan = new Date(checkpoint.last_scanned).getTime();
+  if (isNaN(lastScan)) return 'red';
   const now = Date.now();
   const elapsedMs = now - lastScan;
   const intervalMs = checkpoint.scan_required_interval_minutes * 60 * 1000;

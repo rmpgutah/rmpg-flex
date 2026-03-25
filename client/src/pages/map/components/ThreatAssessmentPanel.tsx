@@ -115,7 +115,7 @@ export default function ThreatAssessmentPanel({
 
   return (
     <div
-      className="panel-beveled bg-surface-base flex flex-col overflow-hidden rounded-sm"
+      className="panel-beveled bg-surface-base flex flex-col overflow-hidden rounded-sm transition-all duration-200 ease-out shadow-lg backdrop-blur-sm"
       style={{ maxWidth: 300, maxHeight: '80vh' }}
     >
       {/* Header */}
@@ -129,14 +129,14 @@ export default function ThreatAssessmentPanel({
             Threat Assessment
           </span>
         </div>
-        <button type="button" onClick={onClose} className="toolbar-btn p-1" title="Close">
+        <button type="button" onClick={onClose} className="toolbar-btn p-1 hover:bg-[#1a2636] transition-colors duration-150 rounded-sm" title="Close" aria-label="Close threat assessment">
           <X size={12} className="text-rmpg-400" />
         </button>
       </div>
 
       {/* Scrollable body */}
       <div
-        className="flex-1 overflow-y-auto p-2 space-y-2"
+        className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent"
         style={{ scrollbarWidth: 'thin' }}
       >
         {/* ── Action Buttons ──────────────────────────────── */}
@@ -144,8 +144,9 @@ export default function ThreatAssessmentPanel({
           <button type="button"
             onClick={onAssessCenter}
             disabled={loading}
-            className="flex-1 flex items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-rmpg-200 transition-colors hover:text-white disabled:opacity-50"
+            className="flex-1 flex items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-rmpg-200 transition-all duration-150 hover:text-white disabled:opacity-50 active:scale-[0.97]"
             style={{ background: '#1a2636', border: '1px solid #1e2a3a' }}
+            aria-label="Assess threat at map center"
           >
             {loading ? (
               <Loader2 size={11} className="animate-spin" />
@@ -187,29 +188,38 @@ export default function ThreatAssessmentPanel({
           <>
             {/* Threat Score */}
             <Section title="Threat Score">
-              <div className="flex items-center gap-3">
-                <div className="flex items-baseline gap-0.5">
-                  <span
-                    className="text-2xl font-bold tabular-nums font-mono"
-                    style={{ color: scoreColor(assessment.score) }}
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-baseline gap-0.5 rounded-sm px-2 py-1" style={{ background: `${scoreColor(assessment.score)}15` }}>
+                    <span
+                      className={`text-2xl font-bold tabular-nums font-mono ${assessment.level === 'critical' ? 'animate-pulse' : ''}`}
+                      style={{ color: scoreColor(assessment.score), textShadow: `0 0 10px ${scoreColor(assessment.score)}30` }}
+                    >
+                      {assessment.score}
+                    </span>
+                    <span className="text-[10px] text-rmpg-600">/100</span>
+                  </div>
+                  <div
+                    className="rounded-sm px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+                    style={{
+                      background: levelStyle?.bg,
+                      color: levelStyle?.text,
+                      border: `1px solid ${levelStyle?.border}`,
+                    }}
                   >
-                    {assessment.score}
+                    {assessment.level}
+                  </div>
+                  <span className="text-[10px] text-rmpg-500 ml-auto tabular-nums font-bold text-white">
+                    {assessment.recent_incidents} <span className="text-rmpg-500 font-normal">recent</span>
                   </span>
-                  <span className="text-[10px] text-rmpg-600">/100</span>
                 </div>
-                <div
-                  className="rounded-sm px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-                  style={{
-                    background: levelStyle?.bg,
-                    color: levelStyle?.text,
-                    border: `1px solid ${levelStyle?.border}`,
-                  }}
-                >
-                  {assessment.level}
+                {/* Threat gauge bar */}
+                <div className="h-1.5 rounded-sm overflow-hidden" style={{ background: '#1e2a3a' }}>
+                  <div
+                    className="h-full rounded-sm transition-all duration-500"
+                    style={{ width: `${Math.min(assessment.score, 100)}%`, background: scoreColor(assessment.score) }}
+                  />
                 </div>
-                <span className="text-[10px] text-rmpg-500 ml-auto tabular-nums">
-                  {assessment.recent_incidents} recent
-                </span>
               </div>
             </Section>
 
@@ -284,7 +294,7 @@ export default function ThreatAssessmentPanel({
                   {assessment.armed_history.map((entry, i) => (
                     <div
                       key={`armed-${i}`}
-                      className="flex items-center gap-1.5 text-[9px] font-mono"
+                      className="flex items-center gap-1.5 text-[9px] font-mono hover:bg-[#1a2636]/50 rounded-sm px-1 -mx-1 transition-colors duration-150"
                     >
                       <span className="led-dot" style={{ background: '#ef4444' }} />
                       <span className="text-red-300 font-semibold tabular-nums">
@@ -332,8 +342,9 @@ export default function ThreatAssessmentPanel({
                 <button type="button"
                   onClick={onGetApproachRoutes}
                   disabled={loading}
-                  className="w-full flex items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-rmpg-300 hover:text-white transition-colors disabled:opacity-50"
+                  className="w-full flex items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-rmpg-300 hover:text-white transition-all duration-150 disabled:opacity-50 active:scale-[0.97]"
                   style={{ background: '#1a2636', border: '1px solid #1e2a3a' }}
+                  aria-label="Get approach routes"
                 >
                   {loading ? (
                     <Loader2 size={11} className="animate-spin" />

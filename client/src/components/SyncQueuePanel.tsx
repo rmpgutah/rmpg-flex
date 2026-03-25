@@ -139,7 +139,7 @@ export default function SyncQueuePanel({ onClose }: SyncQueuePanelProps) {
           ) : (
             <div className="divide-y divide-[#1e3048]">
               {[...pendingItems, ...failedItems].map((item) => {
-                const typeInfo = TYPE_LABELS[item.type] || { label: item.type.toUpperCase(), color: '#8ba2b8' };
+                const typeInfo = TYPE_LABELS[item.type] || { label: (item.type || 'unknown').toUpperCase(), color: '#8ba2b8' };
                 const isFailed = item.status === 'failed';
 
                 return (

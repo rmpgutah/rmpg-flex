@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { WebSocketProvider } from './context/WebSocketContext';
@@ -11,53 +11,55 @@ import ErrorBoundary from './components/ErrorBoundary';
 import WebUpdateBanner from './components/WebUpdateBanner';
 import AndroidUpdateChecker from './components/AndroidUpdateChecker';
 import LoginPage from './pages/LoginPage';
+// Core pages loaded eagerly (most used)
 import DashboardPage from './pages/DashboardPage';
 import DispatchPage from './pages/dispatch';
 import MapPage from './pages/map';
-import IncidentsPage from './pages/IncidentsPage';
-import RecordsPage from './pages/RecordsPage';
-import PersonnelPage from './pages/personnel';
-import CommunicationsPage from './pages/CommunicationsPage';
-import ReportsPage from './pages/ReportsPage';
-import AdminPage from './pages/AdminPage';
-import AuditLogPage from './pages/AuditLogPage';
-import PatrolPage from './pages/PatrolPage';
-import FleetPage from './pages/fleet';
-import WarrantsPage from './pages/WarrantsPage';
-import CitationsPage from './pages/CitationsPage';
-import FieldInterviewsPage from './pages/FieldInterviewsPage';
-import TrespassOrdersPage from './pages/TrespassOrdersPage';
-import RadioPage from './pages/RadioPage';
-import MdtPage from './pages/MdtPage';
-import ShiftPlansPage from './pages/ShiftPlansPage';
-import StatuteAnalyticsPage from './pages/StatuteAnalyticsPage';
-import CustomReportBuilder from './pages/CustomReportBuilder';
-import CriminalHistoryPage from './pages/CriminalHistoryPage';
-import EvidencePropertyPage from './pages/EvidencePropertyPage';
-import CaseManagementPage from './pages/CaseManagementPage';
-import CrimeAnalysisPage from './pages/CrimeAnalysisPage';
-import CodeEnforcementPage from './pages/CodeEnforcementPage';
-import CourtTrackerPage from './pages/CourtTrackerPage';
-import DailyActivityReportsPage from './pages/DailyActivityReportsPage';
-import OffenderRegistryPage from './pages/OffenderRegistryPage';
-import SexOffenderRegistryPage from './pages/SexOffenderRegistryPage';
-import NcicPage from './pages/NcicPage';
-import DlSearchPage from './pages/DlSearchPage';
-import BodyCamerasPage from './pages/BodyCamerasPage';
-import DashCamerasPage from './pages/DashCamerasPage';
-import TrainingDocsPage from './pages/TrainingDocsPage';
-import TrainingPage from './pages/TrainingPage';
-import ForensicsPage from './pages/ForensicsPage';
-import ForensicLabPage from './pages/ForensicLabPage';
-import SkipTracerPage from './pages/SkipTracerPage';
-import ArrestRecordsPage from './pages/ArrestRecordsPage';
-import EmailPage from './pages/EmailPage';
-import CrmPage from './pages/CrmPage';
-import ServePage from './pages/ServePage';
-import WebResearchPage from './pages/WebResearchPage';
-import HRPage from './pages/hr/HRPage';
-import IncidentDetailWindow from './pages/detached/IncidentDetailWindow';
-import RecordDetailWindow from './pages/detached/RecordDetailWindow';
+// Lazy-loaded pages (less frequently accessed)
+const IncidentsPage = lazy(() => import('./pages/IncidentsPage'));
+const RecordsPage = lazy(() => import('./pages/RecordsPage'));
+const PersonnelPage = lazy(() => import('./pages/personnel'));
+const CommunicationsPage = lazy(() => import('./pages/CommunicationsPage'));
+const ReportsPage = lazy(() => import('./pages/ReportsPage'));
+const AdminPage = lazy(() => import('./pages/AdminPage'));
+const AuditLogPage = lazy(() => import('./pages/AuditLogPage'));
+const PatrolPage = lazy(() => import('./pages/PatrolPage'));
+const FleetPage = lazy(() => import('./pages/fleet'));
+const WarrantsPage = lazy(() => import('./pages/WarrantsPage'));
+const CitationsPage = lazy(() => import('./pages/CitationsPage'));
+const FieldInterviewsPage = lazy(() => import('./pages/FieldInterviewsPage'));
+const TrespassOrdersPage = lazy(() => import('./pages/TrespassOrdersPage'));
+const RadioPage = lazy(() => import('./pages/RadioPage'));
+const MdtPage = lazy(() => import('./pages/MdtPage'));
+const ShiftPlansPage = lazy(() => import('./pages/ShiftPlansPage'));
+const StatuteAnalyticsPage = lazy(() => import('./pages/StatuteAnalyticsPage'));
+const CustomReportBuilder = lazy(() => import('./pages/CustomReportBuilder'));
+const CriminalHistoryPage = lazy(() => import('./pages/CriminalHistoryPage'));
+const EvidencePropertyPage = lazy(() => import('./pages/EvidencePropertyPage'));
+const CaseManagementPage = lazy(() => import('./pages/CaseManagementPage'));
+const CrimeAnalysisPage = lazy(() => import('./pages/CrimeAnalysisPage'));
+const CodeEnforcementPage = lazy(() => import('./pages/CodeEnforcementPage'));
+const CourtTrackerPage = lazy(() => import('./pages/CourtTrackerPage'));
+const DailyActivityReportsPage = lazy(() => import('./pages/DailyActivityReportsPage'));
+const OffenderRegistryPage = lazy(() => import('./pages/OffenderRegistryPage'));
+const SexOffenderRegistryPage = lazy(() => import('./pages/SexOffenderRegistryPage'));
+const NcicPage = lazy(() => import('./pages/NcicPage'));
+const DlSearchPage = lazy(() => import('./pages/DlSearchPage'));
+const BodyCamerasPage = lazy(() => import('./pages/BodyCamerasPage'));
+const DashCamerasPage = lazy(() => import('./pages/DashCamerasPage'));
+const TrainingDocsPage = lazy(() => import('./pages/TrainingDocsPage'));
+const TrainingPage = lazy(() => import('./pages/TrainingPage'));
+const ForensicsPage = lazy(() => import('./pages/ForensicsPage'));
+const ForensicLabPage = lazy(() => import('./pages/ForensicLabPage'));
+const SkipTracerPage = lazy(() => import('./pages/SkipTracerPage'));
+const ArrestRecordsPage = lazy(() => import('./pages/ArrestRecordsPage'));
+const EmailPage = lazy(() => import('./pages/EmailPage'));
+const CrmPage = lazy(() => import('./pages/CrmPage'));
+const ServePage = lazy(() => import('./pages/ServePage'));
+const WebResearchPage = lazy(() => import('./pages/WebResearchPage'));
+const HRPage = lazy(() => import('./pages/hr/HRPage'));
+const IncidentDetailWindow = lazy(() => import('./pages/detached/IncidentDetailWindow'));
+const RecordDetailWindow = lazy(() => import('./pages/detached/RecordDetailWindow'));
 
 
 /** Branded loading splash — matches login page design language */
@@ -135,6 +137,24 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/** 404 Not Found page */
+function NotFoundPage() {
+  return (
+    <div className="flex items-center justify-center h-full p-8">
+      <div className="text-center">
+        <h1 className="text-4xl font-bold text-rmpg-300 mb-2">404</h1>
+        <p className="text-sm text-rmpg-400 mb-4">Page not found</p>
+        <a href="/" className="btn-primary">Return to Dashboard</a>
+      </div>
+    </div>
+  );
+}
+
+/** Per-route error boundary wrapper for lazy-loaded routes */
+function RouteErrorBoundary({ children }: { children: React.ReactNode }) {
+  return <ErrorBoundary>{children}</ErrorBoundary>;
+}
+
 function AppRoutes() {
   const { isAuthenticated, isLoading } = useAuth();
 
@@ -146,75 +166,79 @@ function AppRoutes() {
     <>
       {isAuthenticated && <GlobalSearch />}
       {isAuthenticated && <KeyboardShortcuts />}
-      <Routes>
-        {/* Public */}
-        <Route
-          path="/login"
-          element={isAuthenticated ? <Navigate to={window.location.hostname === 'crm.rmpgutah.us' ? '/crm' : '/'} replace /> : <LoginPage />}
-        />
+      <Suspense fallback={<LoadingSplash message="Loading module" />}>
+        <Routes>
+          {/* Public */}
+          <Route
+            path="/login"
+            element={isAuthenticated ? <Navigate to={window.location.hostname === 'crm.rmpgutah.us' ? '/crm' : '/'} replace /> : <LoginPage />}
+          />
 
-        {/* Detached windows — no Layout wrapper */}
-        <Route path="/detached/incident/:id" element={<ProtectedRoute><IncidentDetailWindow /></ProtectedRoute>} />
-        <Route path="/detached/record/:type/:id" element={<ProtectedRoute><RecordDetailWindow /></ProtectedRoute>} />
+          {/* Detached windows — no Layout wrapper */}
+          <Route path="/detached/incident/:id" element={<ProtectedRoute><RouteErrorBoundary><IncidentDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
+          <Route path="/detached/record/:type/:id" element={<ProtectedRoute><RouteErrorBoundary><RecordDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
 
-        {/* Protected routes with Layout */}
-        <Route
-          element={
-            <ProtectedRoute>
-              <Layout />
-            </ProtectedRoute>
-          }
-        >
-          <Route path="/" element={window.location.hostname === 'crm.rmpgutah.us' ? <Navigate to="/crm" replace /> : <DashboardPage />} />
-          <Route path="/dispatch" element={<DispatchPage />} />
-          <Route path="/map" element={<MapPage />} />
-          <Route path="/incidents" element={<IncidentsPage />} />
-          <Route path="/records" element={<RecordsPage />} />
-          <Route path="/personnel" element={<PersonnelPage />} />
-          <Route path="/communications" element={<CommunicationsPage />} />
-          <Route path="/radio" element={<RadioPage />} />
-          <Route path="/reports" element={<ReportsPage />} />
-          <Route path="/patrol" element={<PatrolPage />} />
-          <Route path="/fleet" element={<FleetPage />} />
-          <Route path="/body-cameras" element={<BodyCamerasPage />} />
-          <Route path="/dash-cameras" element={<DashCamerasPage />} />
-          <Route path="/warrants" element={<WarrantsPage />} />
-          <Route path="/citations" element={<CitationsPage />} />
-          <Route path="/field-interviews" element={<FieldInterviewsPage />} />
-          <Route path="/trespass-orders" element={<TrespassOrdersPage />} />
-          <Route path="/mdt" element={<MdtPage />} />
-          <Route path="/shift-plans" element={<ShiftPlansPage />} />
-          <Route path="/statute-analytics" element={<StatuteAnalyticsPage />} />
-          <Route path="/reports/custom" element={<CustomReportBuilder />} />
-          <Route path="/criminal-history" element={<CriminalHistoryPage />} />
-          <Route path="/evidence" element={<EvidencePropertyPage />} />
-          <Route path="/cases" element={<CaseManagementPage />} />
-          <Route path="/crime-analysis" element={<CrimeAnalysisPage />} />
-          <Route path="/code-enforcement" element={<CodeEnforcementPage />} />
-          <Route path="/court" element={<CourtTrackerPage />} />
-          <Route path="/dar" element={<DailyActivityReportsPage />} />
-          <Route path="/offender-registry" element={<OffenderRegistryPage />} />
-          <Route path="/sex-offender-registry" element={<SexOffenderRegistryPage />} />
-          <Route path="/ncic" element={<NcicPage />} />
-          <Route path="/dl-search" element={<DlSearchPage />} />
-          <Route path="/audit" element={<AuditLogPage />} />
-          <Route path="/training" element={<TrainingPage />} />
-          <Route path="/training-docs" element={<TrainingDocsPage />} />
-          <Route path="/forensics" element={<ForensicsPage />} />
-          <Route path="/forensic-lab" element={<ForensicLabPage />} />
-          <Route path="/skip-tracer" element={<SkipTracerPage />} />
-          <Route path="/arrest-records" element={<ArrestRecordsPage />} />
-          <Route path="/email" element={<EmailPage />} />
-          <Route path="/crm" element={<CrmPage />} />
-          <Route path="/serve" element={<ServePage />} />
-          <Route path="/web-research" element={<WebResearchPage />} />
-          <Route path="/hr" element={<HRPage />} />
-          <Route path="/admin" element={<AdminPage />} />
-        </Route>
+          {/* Protected routes with Layout */}
+          <Route
+            element={
+              <ProtectedRoute>
+                <Layout />
+              </ProtectedRoute>
+            }
+          >
+            <Route path="/" element={window.location.hostname === 'crm.rmpgutah.us' ? <Navigate to="/crm" replace /> : <DashboardPage />} />
+            <Route path="/dispatch" element={<DispatchPage />} />
+            <Route path="/map" element={<MapPage />} />
+            <Route path="/incidents" element={<RouteErrorBoundary><IncidentsPage /></RouteErrorBoundary>} />
+            <Route path="/records" element={<RouteErrorBoundary><RecordsPage /></RouteErrorBoundary>} />
+            <Route path="/personnel" element={<RouteErrorBoundary><PersonnelPage /></RouteErrorBoundary>} />
+            <Route path="/communications" element={<RouteErrorBoundary><CommunicationsPage /></RouteErrorBoundary>} />
+            <Route path="/radio" element={<RouteErrorBoundary><RadioPage /></RouteErrorBoundary>} />
+            <Route path="/reports" element={<RouteErrorBoundary><ReportsPage /></RouteErrorBoundary>} />
+            <Route path="/patrol" element={<RouteErrorBoundary><PatrolPage /></RouteErrorBoundary>} />
+            <Route path="/fleet" element={<RouteErrorBoundary><FleetPage /></RouteErrorBoundary>} />
+            <Route path="/body-cameras" element={<RouteErrorBoundary><BodyCamerasPage /></RouteErrorBoundary>} />
+            <Route path="/dash-cameras" element={<RouteErrorBoundary><DashCamerasPage /></RouteErrorBoundary>} />
+            <Route path="/warrants" element={<RouteErrorBoundary><WarrantsPage /></RouteErrorBoundary>} />
+            <Route path="/citations" element={<RouteErrorBoundary><CitationsPage /></RouteErrorBoundary>} />
+            <Route path="/field-interviews" element={<RouteErrorBoundary><FieldInterviewsPage /></RouteErrorBoundary>} />
+            <Route path="/trespass-orders" element={<RouteErrorBoundary><TrespassOrdersPage /></RouteErrorBoundary>} />
+            <Route path="/mdt" element={<RouteErrorBoundary><MdtPage /></RouteErrorBoundary>} />
+            <Route path="/shift-plans" element={<RouteErrorBoundary><ShiftPlansPage /></RouteErrorBoundary>} />
+            <Route path="/statute-analytics" element={<RouteErrorBoundary><StatuteAnalyticsPage /></RouteErrorBoundary>} />
+            <Route path="/reports/custom" element={<RouteErrorBoundary><CustomReportBuilder /></RouteErrorBoundary>} />
+            <Route path="/criminal-history" element={<RouteErrorBoundary><CriminalHistoryPage /></RouteErrorBoundary>} />
+            <Route path="/evidence" element={<RouteErrorBoundary><EvidencePropertyPage /></RouteErrorBoundary>} />
+            <Route path="/cases" element={<RouteErrorBoundary><CaseManagementPage /></RouteErrorBoundary>} />
+            <Route path="/crime-analysis" element={<RouteErrorBoundary><CrimeAnalysisPage /></RouteErrorBoundary>} />
+            <Route path="/code-enforcement" element={<RouteErrorBoundary><CodeEnforcementPage /></RouteErrorBoundary>} />
+            <Route path="/court" element={<RouteErrorBoundary><CourtTrackerPage /></RouteErrorBoundary>} />
+            <Route path="/dar" element={<RouteErrorBoundary><DailyActivityReportsPage /></RouteErrorBoundary>} />
+            <Route path="/offender-registry" element={<RouteErrorBoundary><OffenderRegistryPage /></RouteErrorBoundary>} />
+            <Route path="/sex-offender-registry" element={<RouteErrorBoundary><SexOffenderRegistryPage /></RouteErrorBoundary>} />
+            <Route path="/ncic" element={<RouteErrorBoundary><NcicPage /></RouteErrorBoundary>} />
+            <Route path="/dl-search" element={<RouteErrorBoundary><DlSearchPage /></RouteErrorBoundary>} />
+            <Route path="/audit" element={<RouteErrorBoundary><AuditLogPage /></RouteErrorBoundary>} />
+            <Route path="/training" element={<RouteErrorBoundary><TrainingPage /></RouteErrorBoundary>} />
+            <Route path="/training-docs" element={<RouteErrorBoundary><TrainingDocsPage /></RouteErrorBoundary>} />
+            <Route path="/forensics" element={<RouteErrorBoundary><ForensicsPage /></RouteErrorBoundary>} />
+            <Route path="/forensic-lab" element={<RouteErrorBoundary><ForensicLabPage /></RouteErrorBoundary>} />
+            <Route path="/skip-tracer" element={<RouteErrorBoundary><SkipTracerPage /></RouteErrorBoundary>} />
+            <Route path="/arrest-records" element={<RouteErrorBoundary><ArrestRecordsPage /></RouteErrorBoundary>} />
+            <Route path="/email" element={<RouteErrorBoundary><EmailPage /></RouteErrorBoundary>} />
+            <Route path="/crm" element={<RouteErrorBoundary><CrmPage /></RouteErrorBoundary>} />
+            <Route path="/serve" element={<RouteErrorBoundary><ServePage /></RouteErrorBoundary>} />
+            <Route path="/web-research" element={<RouteErrorBoundary><WebResearchPage /></RouteErrorBoundary>} />
+            <Route path="/hr" element={<RouteErrorBoundary><HRPage /></RouteErrorBoundary>} />
+            <Route path="/admin" element={<RouteErrorBoundary><AdminPage /></RouteErrorBoundary>} />
+            {/* 404 within layout */}
+            <Route path="*" element={<NotFoundPage />} />
+          </Route>
 
-        {/* Catch-all */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+          {/* Catch-all outside layout */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
     </>
   );
 }
