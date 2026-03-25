@@ -992,7 +992,8 @@ export default function DispatchPage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedCall, filteredCalls, fetchData, handleStatusChange, handleClearWithDisposition, setFilterTab]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCall, filteredCalls, fetchData, setFilterTab]);
 
   const handlePsoExpandToFullForm = (data: Record<string, any>) => {
     setShowQuickPsoModal(false);
