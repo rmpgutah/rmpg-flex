@@ -319,24 +319,24 @@ export default function ForensicLabPage() {
   const fetchTurnaroundData = async () => {
     setTurnaroundLoading(true);
     try { const r = await apiFetch<any>('/forensics/turnaround-times'); setTurnaroundData(r?.data || null); }
-    catch { /* silent */ } finally { setTurnaroundLoading(false); }
+    catch (err: any) { if (err?.name !== 'AbortError') addToast('Failed to load turnaround data', 'error'); } finally { setTurnaroundLoading(false); }
   };
 
   const fetchBacklogData = async () => {
     setBacklogLoading(true);
     try { const r = await apiFetch<any>('/forensics/metrics/backlog'); setBacklogData(r?.data || null); }
-    catch { /* silent */ } finally { setBacklogLoading(false); }
+    catch (err: any) { if (err?.name !== 'AbortError') addToast('Failed to load backlog data', 'error'); } finally { setBacklogLoading(false); }
   };
 
   const fetchQcHistory = async (caseId: number) => {
     setQcLoading(true);
     try { const r = await apiFetch<any>(`/forensics/${caseId}/qc-history`); setQcHistory(r?.data || []); }
-    catch { setQcHistory([]); } finally { setQcLoading(false); }
+    catch (err: any) { setQcHistory([]); if (err?.name !== 'AbortError') addToast('Failed to load QC history', 'error'); } finally { setQcLoading(false); }
   };
 
   const fetchAnalysisTemplates = async () => {
     try { const r = await apiFetch<any>('/forensics/analysis-templates'); setAnalysisTemplates(r?.data || null); }
-    catch { /* silent */ }
+    catch (err: any) { if (err?.name !== 'AbortError') addToast('Failed to load analysis templates', 'error'); }
   };
 
   const handleQcSubmit = async () => {
@@ -392,7 +392,7 @@ export default function ForensicLabPage() {
 
   // ── Fetch ──────────────────────────────────────────────
 
-  const fetchCases = useCallback(async (tab?: Tab) => {
+  const fetchCases = useCallback(async (tab?: Tab, signal?: AbortSignal) => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -402,34 +402,42 @@ export default function ForensicLabPage() {
       params.set('limit', '100');
 
       const [casesRes, statsRes] = await Promise.all([
-        apiFetch<{ data: ForensicCase[] }>(`/forensic-lab?${params}`),
-        apiFetch<Stats>('/forensic-lab/stats'),
+        apiFetch<{ data: ForensicCase[] }>(`/forensic-lab?${params}`, { signal }),
+        apiFetch<Stats>('/forensic-lab/stats', { signal }),
       ]);
       setCases(casesRes.data || []);
       setStats(statsRes);
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return;
       console.error('Fetch forensic cases error:', err);
+      addToast('Failed to load forensic cases', 'error');
     } finally {
       setLoading(false);
     }
-  }, [searchTerm, filterStatus, filterType]);
+  }, [searchTerm, filterStatus, filterType, addToast]);
 
-  useEffect(() => { fetchCases(); }, [fetchCases]);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchCases(undefined, controller.signal);
+    return () => controller.abort();
+  }, [fetchCases]);
   useLiveSync('forensic-lab', fetchCases);
 
-  const fetchCaseDetail = useCallback(async (id: number) => {
+  const fetchCaseDetail = useCallback(async (id: number, signal?: AbortSignal) => {
     try {
-      const detail = await apiFetch<ForensicCase>(`/forensic-lab/${id}`);
+      const detail = await apiFetch<ForensicCase>(`/forensic-lab/${id}`, { signal });
       setSelectedCase(detail);
       // Fetch links and hashes in parallel
-      apiFetch<any[]>(`/forensic-lab/${id}/links`).then(l => setCaseLinks(l || [])).catch(() => setCaseLinks([]));
-      apiFetch<{ hashes: any[]; stats: any }>(`/forensic-lab/${id}/hashes`)
+      apiFetch<any[]>(`/forensic-lab/${id}/links`, { signal }).then(l => setCaseLinks(l || [])).catch(() => setCaseLinks([]));
+      apiFetch<{ hashes: any[]; stats: any }>(`/forensic-lab/${id}/hashes`, { signal })
         .then(d => { setHashes(d.hashes || []); setHashStats(d.stats || null); })
         .catch(() => { setHashes([]); setHashStats(null); });
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return;
       console.error('Fetch case detail error:', err);
+      addToast('Failed to load case details', 'error');
     }
-  }, []);
+  }, [addToast]);
 
   // ── Wizard Submit ──────────────────────────────────────
 
@@ -666,8 +674,8 @@ export default function ForensicLabPage() {
     try {
       const links = await apiFetch<any[]>(`/forensic-lab/${id}/links`);
       setCaseLinks(links || []);
-    } catch { setCaseLinks([]); }
-  }, []);
+    } catch (err: any) { setCaseLinks([]); if (err?.name !== 'AbortError') addToast('Failed to load case links', 'error'); }
+  }, [addToast]);
 
   // ── Hashes ─────────────────────────────────────────────
 
@@ -676,8 +684,8 @@ export default function ForensicLabPage() {
       const data = await apiFetch<{ hashes: any[]; stats: { total: number; flagged: number; matched: number } }>(`/forensic-lab/${id}/hashes`);
       setHashes(data.hashes || []);
       setHashStats(data.stats || null);
-    } catch { setHashes([]); setHashStats(null); }
-  }, []);
+    } catch (err: any) { setHashes([]); setHashStats(null); if (err?.name !== 'AbortError') addToast('Failed to load hashes', 'error'); }
+  }, [addToast]);
 
   // ── Metadata helpers ─────────────────────────────────────
 
