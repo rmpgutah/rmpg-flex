@@ -1097,7 +1097,7 @@ router.get('/:caseId/links', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const links = db.prepare(`
-      SELECT * FROM forensic_case_links WHERE case_id = ? ORDER BY created_at DESC
+      SELECT * FROM forensic_case_links WHERE forensic_case_id = ? ORDER BY linked_at DESC
     
       LIMIT 1000
     `).all(req.params.caseId);
@@ -1118,7 +1118,7 @@ router.post('/:caseId/links', (req: Request, res: Response) => {
       return;
     }
     const result = db.prepare(`
-      INSERT INTO forensic_case_links (case_id, linked_type, linked_id, linked_label)
+      INSERT INTO forensic_case_links (forensic_case_id, linked_type, linked_id, relationship)
       VALUES (?, ?, ?, ?)
     `).run(req.params.caseId, linked_type, linked_id, linked_label || null);
     res.status(201).json({ id: result.lastInsertRowid });
