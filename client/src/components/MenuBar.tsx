@@ -405,16 +405,12 @@ export default function MenuBar({
           { type: 'action', label: 'Test Voice Alerts', icon: Sparkles, action: () => demoAllVoiceAlerts() },
           { type: 'separator' },
           { type: 'toggle', label: `Voice Engine: ${voiceEngine === 'edge-tts' ? 'Neural AI' : 'Browser'}`, icon: AudioLines, checked: voiceEngine === 'edge-tts', action: toggleVoiceEngine },
-          {
-            type: 'submenu',
-            label: 'Alert Audio Level',
-            icon: SlidersHorizontal,
-            items: [
-              { type: 'toggle', label: 'All Alerts', icon: Bell, checked: alertMinTier === 'minor', action: () => setAlertTier('minor') },
-              { type: 'toggle', label: 'Important Only', icon: Bell, checked: alertMinTier === 'moderate', action: () => setAlertTier('moderate') },
-              { type: 'toggle', label: 'Emergencies Only', icon: Bell, checked: alertMinTier === 'major', action: () => setAlertTier('major') },
-            ],
-          },
+          { type: 'separator' },
+          { type: 'action', label: `Alert Level: ${alertMinTier === 'minor' ? 'All Alerts' : alertMinTier === 'moderate' ? 'Important Only' : 'Emergencies Only'}`, icon: SlidersHorizontal, action: () => {
+            // Cycle through tiers: minor → moderate → major → minor
+            const next = alertMinTier === 'minor' ? 'moderate' : alertMinTier === 'moderate' ? 'major' : 'minor';
+            setAlertTier(next);
+          }},
           { type: 'separator' },
           { type: 'toggle', label: 'AI Dispatch Assistant', icon: Brain, checked: aiAssistEnabled, action: toggleAiAssist },
         ],
