@@ -96,7 +96,8 @@ function MetricCard({
     <button type="button"
       onClick={onClick}
       disabled={!onClick}
-      className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-4 text-left transition-all duration-200 hover:border-[#2a3f5a] hover:shadow-lg hover:brightness-110 disabled:cursor-default focus:outline-none focus:ring-1 focus:ring-brand-500/40"
+      className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-4 text-left transition-all duration-200 hover:border-[#2a3f5a] hover:shadow-lg hover:brightness-110 disabled:cursor-default focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
+      aria-label={`${label}: ${value}`}
     >
       <div className="flex items-center gap-2 mb-2">
         <Icon size={16} style={{ color: accent }} aria-hidden="true" />
@@ -141,12 +142,12 @@ function BalanceCard({
   const pct = total > 0 ? Math.round((used / total) * 100) : 0;
 
   return (
-    <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-4">
+    <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-4 transition-all duration-200 hover:border-[#2a3f5a] hover:brightness-105">
       <div className="text-xs text-rmpg-400 uppercase tracking-wide mb-1">{label}</div>
-      <div className="text-2xl font-bold text-white mb-1">
-        {remaining} <span className="text-sm font-normal text-rmpg-400">/ {total} remaining</span>
+      <div className="text-2xl font-bold text-white mb-1 font-mono">
+        {remaining} <span className="text-sm font-normal text-rmpg-400 font-sans">/ {total} remaining</span>
       </div>
-      <div className="h-2 bg-[#0d1520] rounded-full overflow-hidden">
+      <div className="h-2 bg-[#0d1520] rounded-full overflow-hidden" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${label}: ${pct}% used`}>
         <div
           className="h-full rounded-full transition-all duration-500"
           style={{ width: `${pct}%`, backgroundColor: color }}
@@ -223,7 +224,7 @@ function ManagerDashboard({
               return (
                 <div
                   key={item.id}
-                  className="flex items-start gap-3 bg-[#0d1520] border border-[#1e3048] rounded-sm p-2.5"
+                  className="flex items-start gap-3 bg-[#0d1520] border border-[#1e3048] rounded-sm p-2.5 transition-colors duration-150 hover:border-[#2a3f5a]"
                 >
                   <div
                     className="w-1 self-stretch rounded-full flex-shrink-0"
@@ -291,7 +292,7 @@ function OfficerDashboard({
       {/* Quick actions */}
       <button type="button"
         onClick={onNavigateToLeave}
-        className="flex items-center gap-2 bg-[#141e2b] border border-[#1e3048] rounded-sm px-4 py-3 text-sm text-white hover:border-brand-500 transition-colors w-full md:w-auto"
+        className="flex items-center gap-2 bg-[#141e2b] border border-[#1e3048] rounded-sm px-4 py-3 text-sm text-white hover:border-brand-500 transition-all duration-200 hover:shadow-lg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 w-full md:w-auto"
       >
         <CalendarOff size={14} className="text-amber-400" />
         Request Time Off

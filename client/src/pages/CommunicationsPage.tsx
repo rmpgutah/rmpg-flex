@@ -16,6 +16,7 @@ import {
   Reply,
   Inbox,
   ArrowLeft,
+  CheckCircle,
 } from 'lucide-react';
 import type {
   Message,
@@ -745,17 +746,17 @@ export default function CommunicationsPage() {
                 key={panel.id}
                 onClick={() => { setActivePanel(panel.id); setSelectedThreadId(null); }}
                 className={`
-                  flex items-center gap-2 px-3 py-1.5 text-xs font-medium transition-colors
+                  flex items-center gap-2 px-3 py-1.5 text-xs font-medium transition-all
                   ${activePanel === panel.id
-                    ? 'bg-rmpg-700 text-white border border-rmpg-600'
-                    : 'text-rmpg-300 hover:text-white hover:bg-rmpg-700/50'
+                    ? 'bg-rmpg-700 text-white border border-rmpg-600 shadow-sm'
+                    : 'text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 border border-transparent'
                   }
                 `}
               >
                 <Icon className="w-3.5 h-3.5" />
                 {panel.label}
                 {panel.badge ? (
-                  <span className="px-1.5 py-0.5 text-[10px] font-bold bg-red-600 text-white">
+                  <span className="px-1.5 py-0.5 text-[10px] font-bold bg-red-600 text-white rounded-sm min-w-[20px] text-center">
                     {panel.badge}
                   </span>
                 ) : null}
@@ -795,9 +796,12 @@ export default function CommunicationsPage() {
 
       {/* Error Banner */}
       {error && (
-        <div className="mx-4 mt-2 px-3 py-2 bg-red-900/40 border border-red-700/50 text-red-300 text-xs flex items-center justify-between">
-          <span>{error}</span>
-          <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300">
+        <div className="mx-4 mt-2 px-3 py-2 bg-red-900/40 border border-red-700/50 text-red-300 text-xs flex items-center justify-between rounded-sm animate-fade-in">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+          <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300 ml-2">
             <X className="w-3 h-3" />
           </button>
         </div>
@@ -843,20 +847,20 @@ export default function CommunicationsPage() {
                           {/* Row 1: Participants + timestamp */}
                           <div className="flex items-center justify-between mb-0.5">
                             <div className="flex items-center gap-2 min-w-0 flex-1">
-                              {thread.hasUnread && <div className="w-2 h-2 rounded-full bg-brand-400 flex-shrink-0" />}
+                              {thread.hasUnread && <div className="w-2 h-2 rounded-full bg-brand-400 flex-shrink-0 shadow-sm shadow-brand-400/50" />}
                               <span className={`text-xs truncate ${thread.hasUnread ? 'font-bold text-white' : 'font-medium text-rmpg-200'}`}>
                                 {thread.participants.filter((p) => p !== user?.full_name).join(', ') || thread.participants[0]}
                               </span>
                               {thread.isBroadcast && (
-                                <span className="text-[9px] px-1 py-0.5 bg-brand-900/30 text-brand-400 border border-brand-700/30 flex-shrink-0">ALL</span>
+                                <span className="text-[9px] px-1 py-0.5 bg-brand-900/30 text-brand-400 border border-brand-700/30 flex-shrink-0 rounded-sm font-bold">ALL</span>
                               )}
                             </div>
                             <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
                               {thread.highestPriority === 'emergency' && (
-                                <span className="px-1 py-0.5 text-[9px] font-bold bg-red-900/50 text-red-400 border border-red-700/50 animate-pulse">!</span>
+                                <span className="px-1 py-0.5 text-[9px] font-bold bg-red-900/50 text-red-400 border border-red-700/50 animate-pulse rounded-sm">!</span>
                               )}
                               {thread.highestPriority === 'urgent' && (
-                                <span className="px-1 py-0.5 text-[9px] font-bold bg-red-900/30 text-red-400 border border-red-700/30">!</span>
+                                <span className="px-1 py-0.5 text-[9px] font-bold bg-amber-900/30 text-amber-400 border border-amber-700/30 rounded-sm">!</span>
                               )}
                               <span className="text-[10px] text-rmpg-500 font-mono">
                                 {formatShortTime(lastMsg.created_at)}
@@ -870,7 +874,7 @@ export default function CommunicationsPage() {
                               {thread.subject}
                             </p>
                             {msgCount > 1 && (
-                              <span className="text-[9px] font-mono px-1.5 py-0.5 bg-rmpg-700/50 text-rmpg-300 flex-shrink-0">{msgCount}</span>
+                              <span className="text-[9px] font-mono px-1.5 py-0.5 bg-rmpg-700/50 text-rmpg-300 flex-shrink-0 rounded-sm">{msgCount}</span>
                             )}
                           </div>
 
@@ -903,10 +907,10 @@ export default function CommunicationsPage() {
                         </p>
                       </div>
                       {selectedThread.highestPriority !== 'normal' && (
-                        <span className={`px-1.5 py-0.5 text-[10px] font-bold border ${
+                        <span className={`px-1.5 py-0.5 text-[10px] font-bold border rounded-sm ${
                           selectedThread.highestPriority === 'emergency'
                             ? 'bg-red-900/50 text-red-400 border-red-700/50 animate-pulse'
-                            : 'bg-red-900/30 text-red-400 border-red-700/30'
+                            : 'bg-amber-900/30 text-amber-400 border-amber-700/30'
                         }`}>
                           {selectedThread.highestPriority.toUpperCase()}
                         </span>
@@ -978,7 +982,7 @@ export default function CommunicationsPage() {
                                         addToast('Message acknowledged', 'success');
                                       } catch { addToast('Failed to acknowledge', 'error'); }
                                     }}
-                                    className="text-[9px] px-2 py-0.5 border border-green-700/50 bg-green-900/20 text-green-400 hover:bg-green-900/40 transition-colors"
+                                    className="text-[9px] px-2 py-0.5 border border-green-700/50 bg-green-900/20 text-green-400 hover:bg-green-900/40 transition-colors font-bold tracking-wider rounded-sm"
                                     title="Acknowledge this message"
                                   >
                                     ACK
@@ -988,7 +992,7 @@ export default function CommunicationsPage() {
                               {/* Feature 11: Read receipt indicator for own messages */}
                               {msg.from_user_id === currentUserId && msg.is_read && (
                                 <div className="pl-8 mt-1">
-                                  <span className="text-[9px] text-green-500">Read</span>
+                                  <span className="text-[9px] text-green-500 flex items-center gap-1"><CheckCircle className="w-2.5 h-2.5" /> Read</span>
                                 </div>
                               )}
                             </div>
@@ -1032,7 +1036,7 @@ export default function CommunicationsPage() {
                           </button>
                         </div>
                       </div>
-                      <span className="text-[9px] text-rmpg-600 mt-1 block">Ctrl+Enter to send</span>
+                      <span className="text-[9px] text-rmpg-600 mt-1 block font-mono">Ctrl+Enter to send</span>
                     </div>
                   </div>
                 )}
@@ -1062,7 +1066,7 @@ export default function CommunicationsPage() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Title:</label>
+                    <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block tracking-wider">Title:</label>
                     <input type="text" className="input-dark min-h-[36px]" placeholder="BOLO title" value={boloTitle} onChange={(e) => setBoloTitle(e.target.value)} required />
                   </div>
                   <div>
@@ -1140,7 +1144,7 @@ export default function CommunicationsPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <StatusBadge status={bolo.priority} type="priority" size="sm" />
-                      <span className={`px-2 py-0.5 text-[10px] font-bold uppercase ${bolo.status === 'active' ? 'bg-red-900/50 text-red-400 border border-red-700/50' : 'bg-rmpg-700 text-rmpg-300'}`}>
+                      <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded-sm ${bolo.status === 'active' ? 'bg-red-900/50 text-red-400 border border-red-700/50' : 'bg-rmpg-700 text-rmpg-300 border border-rmpg-600'}`}>
                         {toDisplayLabel(bolo.status)}
                       </span>
                     </div>
@@ -1204,7 +1208,7 @@ export default function CommunicationsPage() {
             <div className="panel-beveled h-full flex flex-col bg-surface-base">
               <div className="px-4 py-3 border-b border-rmpg-600 flex items-center gap-2">
                 <Activity className="w-4 h-4 text-brand-400" />
-                <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Real-Time Activity Feed</span>
+                <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider" style={{ letterSpacing: '0.1em' }}>Real-Time Activity Feed</span>
                 {!activitiesLoading && (
                   <span className="text-xs text-rmpg-400">({activities.length} of {activitiesTotal} entries)</span>
                 )}

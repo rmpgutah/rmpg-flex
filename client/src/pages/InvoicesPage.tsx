@@ -491,7 +491,7 @@ export default function InvoicesPage() {
   // ── Render helpers ───────────────────────────────────────
 
   const StatusBadge = ({ status }: { status: string }) => (
-    <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-sm ${STATUS_BADGE[status] || 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/40'}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border ${STATUS_BADGE[status] || 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/40'}`} style={{ borderRadius: '2px' }}>
       {toDisplayLabel(status)}
     </span>
   );
@@ -508,13 +508,13 @@ export default function InvoicesPage() {
       { label: 'Drafts', value: stats.draft_count, color: 'text-rmpg-400' },
     ];
     return (
-      <div className="flex items-center gap-4 px-3 py-1.5 bg-[#0d1520] border border-[#1e3048] rounded-sm text-[10px]">
+      <div className="flex items-center gap-4 px-3 py-1.5 bg-[#0d1520] border border-[#1e3048] text-[10px]" style={{ borderRadius: '2px' }}>
         {items.map((it, i) => (
           <React.Fragment key={it.label}>
-            {i > 0 && <div className="w-px h-3 bg-[#1e3048]" />}
+            {i > 0 && <div className="w-px h-3.5 bg-[#1e3048]" />}
             <div className="flex items-center gap-1.5">
-              <span className="text-rmpg-500 uppercase tracking-wider">{it.label}</span>
-              <span className={`font-mono font-bold ${it.color}`}>{it.value}</span>
+              <span className="text-rmpg-500 uppercase tracking-wider font-bold">{it.label}</span>
+              <span className={`font-mono font-bold tabular-nums ${it.color}`}>{it.value}</span>
             </div>
           </React.Fragment>
         ))}
@@ -827,7 +827,7 @@ export default function InvoicesPage() {
               </table>
             </div>
           ) : (
-            <p className="text-xs text-rmpg-500 italic">No line items yet.</p>
+            <p className="text-xs text-rmpg-500 text-center py-3">No line items yet. {canEdit && inv.status === 'draft' ? 'Click + Add to create one.' : ''}</p>
           )}
         </div>
 
@@ -946,7 +946,7 @@ export default function InvoicesPage() {
               ))}
             </div>
           ) : (
-            <p className="text-xs text-rmpg-500 italic">No payments recorded.</p>
+            <p className="text-xs text-rmpg-500 text-center py-3">No payments recorded yet.</p>
           )}
         </div>
 
@@ -994,8 +994,8 @@ export default function InvoicesPage() {
         <td className="py-1.5 px-2 font-mono text-brand-300 whitespace-nowrap">{inv.invoice_number}</td>
         <td className="py-1.5 px-2 text-white truncate max-w-[140px]">{inv.client_name}</td>
         <td className="py-1.5 px-2"><StatusBadge status={inv.status} /></td>
-        <td className="py-1.5 px-2 text-right font-mono text-white">{formatCurrency(inv.total)}</td>
-        <td className="py-1.5 px-2 text-right font-mono text-rmpg-300 hidden lg:table-cell">{formatCurrency(inv.balance_due)}</td>
+        <td className="py-1.5 px-2 text-right font-mono text-white tabular-nums">{formatCurrency(inv.total)}</td>
+        <td className="py-1.5 px-2 text-right font-mono text-rmpg-300 hidden lg:table-cell tabular-nums">{formatCurrency(inv.balance_due)}</td>
         <td className="py-1.5 px-2 text-rmpg-400 whitespace-nowrap hidden md:table-cell">{inv.due_date}</td>
         <td className="py-1.5 px-2 text-rmpg-500 whitespace-nowrap hidden xl:table-cell">{inv.issue_date}</td>
       </tr>
@@ -1133,14 +1133,14 @@ export default function InvoicesPage() {
         <select
           value={filterStatus}
           onChange={e => { setFilterStatus(e.target.value as any); setPage(1); }}
-          className="bg-[#141e2b] border border-[#1e3048] rounded-sm px-2 py-1 text-[11px] text-white focus:outline-none"
+          className="bg-[#141e2b] border border-[#1e3048] rounded-sm px-2 py-1 text-[11px] text-white focus:outline-none focus:border-brand-500 transition-colors"
         >
           {STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
         <select
           value={filterClientId}
           onChange={e => { setFilterClientId(e.target.value); setPage(1); }}
-          className="bg-[#141e2b] border border-[#1e3048] rounded-sm px-2 py-1 text-[11px] text-white focus:outline-none max-w-[160px]"
+          className="bg-[#141e2b] border border-[#1e3048] rounded-sm px-2 py-1 text-[11px] text-white focus:outline-none focus:border-brand-500 transition-colors max-w-[160px]"
         >
           <option value="">All Clients</option>
           {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -1162,9 +1162,9 @@ export default function InvoicesPage() {
         {(filterStatus || filterClientId || dateFrom || dateTo || searchQuery) && (
           <button type="button"
             onClick={() => { setFilterStatus(''); setFilterClientId(''); setDateFrom(''); setDateTo(''); setSearchQuery(''); setPage(1); }}
-            className="text-rmpg-500 hover:text-white text-[10px] flex items-center gap-0.5"
+            className="text-rmpg-500 hover:text-red-400 text-[10px] flex items-center gap-0.5 px-1.5 py-0.5 hover:bg-red-900/20 border border-transparent hover:border-red-700/30 transition-colors"
           >
-            <X size={10} /> Clear
+            <X size={10} /> Clear All
           </button>
         )}
       </div>
@@ -1185,9 +1185,12 @@ export default function InvoicesPage() {
             {loading ? (
               <div className="flex items-center justify-center gap-2 h-32"><Loader2 size={20} className="animate-spin text-brand-400" /><span className="text-xs text-rmpg-400">Loading invoices...</span></div>
             ) : invoices.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-32 text-rmpg-500 text-xs">
-                <FileText size={20} className="mb-2 opacity-40" />
-                No invoices found.
+              <div className="flex flex-col items-center justify-center h-40 text-rmpg-500 text-xs">
+                <div className="w-12 h-12 mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+                  <FileText size={20} className="text-rmpg-600" />
+                </div>
+                <p className="font-medium text-rmpg-400">No invoices found</p>
+                <p className="text-[10px] text-rmpg-600 mt-1">Try adjusting your filters</p>
               </div>
             ) : (
               <table className="w-full">

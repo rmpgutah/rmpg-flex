@@ -9,6 +9,7 @@ import {
   Database,
   MapPin,
   FileText,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   BarChart,
@@ -99,13 +100,15 @@ const PRIORITY_COLORS: Record<string, string> = {
 
 const CHART_TOOLTIP_STYLE = {
   contentStyle: {
-    backgroundColor: 'var(--surface-base)',
-    border: '1px solid #2a3e58',
-    borderRadius: '0px',
+    backgroundColor: '#0d1520',
+    border: '1px solid #1e3048',
+    borderRadius: '2px',
     color: '#e0e0e0',
     fontSize: '11px',
     fontFamily: 'monospace',
+    boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
   },
+  cursor: { fill: 'rgba(26,90,158,0.08)' },
 };
 
 // ============================================================
@@ -717,7 +720,10 @@ function ReportSchedulesCard() {
         </div>
         <div className="p-3">
           {schedules.length === 0 ? (
-            <div className="text-[10px] text-rmpg-500 text-center py-4">No scheduled reports configured</div>
+            <div className="flex flex-col items-center justify-center py-6 text-rmpg-500">
+              <Calendar className="w-6 h-6 text-rmpg-600 mb-2" />
+              <span className="text-[10px]">No scheduled reports configured</span>
+            </div>
           ) : (
             <div className="space-y-1.5">
               {schedules.map((s: any) => (
@@ -740,7 +746,10 @@ function ReportSchedulesCard() {
         </div>
         <div className="p-3">
           {templates.length === 0 ? (
-            <div className="text-[10px] text-rmpg-500 text-center py-4">No report templates saved</div>
+            <div className="flex flex-col items-center justify-center py-6 text-rmpg-500">
+              <FileText className="w-6 h-6 text-rmpg-600 mb-2" />
+              <span className="text-[10px]">No report templates saved</span>
+            </div>
           ) : (
             <div className="space-y-1.5">
               {templates.map((t: any) => (
@@ -958,15 +967,18 @@ export default function ReportsPage() {
 
       {/* Error Banner */}
       {error && (
-        <div className="bg-red-900/40 border border-red-700/50 text-red-300 px-3 py-2 text-xs flex items-center gap-2">
-          <strong>Error:</strong> {error}
+        <div className="bg-red-900/30 border border-red-700/50 text-red-300 px-3 py-2 text-xs flex items-center gap-2 rounded-sm">
+          <AlertTriangle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+          <span className="flex-1">{error}</span>
+          <button type="button" onClick={() => setError(null)} className="text-red-500 hover:text-red-300 ml-2 text-[10px]">Dismiss</button>
         </div>
       )}
 
       {/* Loading State */}
       {loading ? (
-        <div className="flex items-center justify-center h-96">
+        <div className="flex flex-col items-center justify-center h-96 gap-3">
           <Loader2 className="w-8 h-8 text-brand-400 animate-spin" role="status" aria-label="Loading" />
+          <span className="text-[10px] text-rmpg-500 uppercase tracking-wider">Loading analytics data...</span>
         </div>
       ) : (
         <>
@@ -979,9 +991,9 @@ export default function ReportsPage() {
               { label: 'SLA Met', value: stats.slaMet, color: '#8b5cf6', border: 'border-l-purple-500' },
               { label: 'Active Officers', value: stats.activeOfficers, color: '#ef4444', border: 'border-l-red-500' },
             ].map((s) => (
-              <div key={s.label} className={`bg-surface-base panel-beveled p-3 border-l-[3px] ${s.border} hover:bg-surface-raised transition-all duration-150`}>
-                <p className="text-2xl font-black font-mono" style={{ color: s.color }}>{s.value}</p>
-                <p className="text-[9px] text-rmpg-400 uppercase mt-0.5 font-bold tracking-wider">{s.label}</p>
+              <div key={s.label} className={`bg-surface-base panel-beveled p-3 border-l-[3px] ${s.border} hover:bg-surface-raised transition-all duration-200 group cursor-default`}>
+                <p className="text-2xl font-black font-mono group-hover:brightness-110 transition-all" style={{ color: s.color }}>{s.value}</p>
+                <p className="text-[9px] text-rmpg-400 uppercase mt-1 font-bold tracking-wider">{s.label}</p>
               </div>
             ))}
           </div>
@@ -1026,10 +1038,10 @@ export default function ReportsPage() {
                   {/* Legend */}
                   <div className={`${isMobile ? 'mt-2' : 'mt-2 flex-1'} space-y-1.5`}>
                     {incidentsChartData.map((entry) => (
-                      <div key={entry.name} className="flex items-center gap-2">
-                        <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: entry.fill }} />
+                      <div key={entry.name} className="flex items-center gap-2 py-0.5 hover:bg-surface-raised/30 px-1 -mx-1 transition-colors rounded-sm">
+                        <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: entry.fill }} />
                         <span className="text-[10px] text-rmpg-200 truncate flex-1">{entry.name}</span>
-                        <span className="text-[10px] text-rmpg-400 font-mono font-bold">{entry.value}</span>
+                        <span className="text-[10px] text-rmpg-400 font-mono font-bold tabular-nums">{entry.value}</span>
                       </div>
                     ))}
                   </div>
@@ -1050,7 +1062,7 @@ export default function ReportsPage() {
                   <XAxis dataKey="priority" tick={{ fill: '#8a9aaa', fontSize: 12 }} />
                   <YAxis tick={{ fill: '#8a9aaa', fontSize: 12 }} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
-                  <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                  <Bar dataKey="count" radius={[2, 2, 0, 0]}>
                     {priorityChartData.map((entry, i) => (
                       <Cell key={i} fill={entry.fill} />
                     ))}
@@ -1073,7 +1085,7 @@ export default function ReportsPage() {
                   <XAxis dataKey="date" tick={{ fill: '#8a9aaa', fontSize: 10 }} />
                   <YAxis tick={{ fill: '#8a9aaa', fontSize: 12 }} domain={[0, 'auto']} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
-                  <Legend wrapperStyle={{ color: '#8a9aaa', fontSize: '11px' }} />
+                  <Legend wrapperStyle={{ color: '#8a9aaa', fontSize: '10px', fontFamily: 'monospace' }} />
                   <Line type="monotone" dataKey="avgMinutes" name="Avg Response" stroke="#1a5a9e" strokeWidth={2} dot={{ fill: '#1a5a9e', r: 3 }} />
                   <Line type="monotone" dataKey="targetMinutes" name="Target" stroke="#d4a017" strokeDasharray="5 5" strokeWidth={1} dot={false} />
                 </LineChart>
@@ -1094,7 +1106,7 @@ export default function ReportsPage() {
                   <XAxis type="number" tick={{ fill: '#8a9aaa', fontSize: 12 }} />
                   <YAxis type="category" dataKey="name" tick={{ fill: '#8a9aaa', fontSize: 11 }} width={70} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
-                  <Legend wrapperStyle={{ color: '#8a9aaa', fontSize: '11px' }} />
+                  <Legend wrapperStyle={{ color: '#8a9aaa', fontSize: '10px', fontFamily: 'monospace' }} />
                   <Bar dataKey="calls" name="Calls" fill="#1a5a9e" radius={[0, 4, 4, 0]} />
                   <Bar dataKey="incidents" name="Incidents" fill="#d4a017" radius={[0, 4, 4, 0]} />
                 </BarChart>
@@ -1152,7 +1164,7 @@ export default function ReportsPage() {
                   <XAxis dataKey="priority" tick={{ fill: '#8a9aaa', fontSize: 12 }} />
                   <YAxis tick={{ fill: '#8a9aaa', fontSize: 12 }} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
-                  <Legend wrapperStyle={{ color: '#8a9aaa', fontSize: '11px' }} />
+                  <Legend wrapperStyle={{ color: '#8a9aaa', fontSize: '10px', fontFamily: 'monospace' }} />
                   <Bar dataKey="avgMinutes" name="Avg Response (min)" radius={[4, 4, 0, 0]}>
                     {responseTimesData.byPriority.map((item, i) => (
                       <Cell key={i} fill={PRIORITY_COLORS[item.priority] || '#6b7280'} />

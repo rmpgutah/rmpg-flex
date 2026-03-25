@@ -62,7 +62,8 @@ export default function MapMobileSheet({
         onClick={() => setMobileLayersOpen(!mobileLayersOpen)}
         aria-label="Toggle layers"
       >
-        <Layers style={{ width: 22, height: 22, color: '#3b82f6' }} />
+        {/* #49: FAB icon with consistent sizing */}
+        <Layers style={{ width: 20, height: 20, color: '#3b82f6' }} />
       </button>
 
       <MobileBottomSheet
@@ -122,7 +123,8 @@ export default function MapMobileSheet({
                 {layers[key] ? <Eye className="w-4 h-4 text-green-400" /> : <EyeOff className="w-4 h-4 text-rmpg-500" />}
                 <Icon style={{ width: 16, height: 16, color: layers[key] ? color : '#5a6e80' }} />
                 <span className="text-sm text-rmpg-200 flex-1">{label}</span>
-                {layers[key] && <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}80` }} />}
+                {/* #50: Layer active indicator with LED glow */}
+                {layers[key] && <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color, boxShadow: `0 0 8px ${color}80` }} />}
               </button>
             ))}
 

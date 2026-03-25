@@ -826,16 +826,18 @@
   }
 
   /* --- Menu Bar Buttons (Spillman Flex top menu) --- */
+  /* 52: Menu bar button with smoother font weight transition */
   .menu-bar-btn {
     padding: 1px 10px;
     font-size: 10px;
+    font-weight: 500;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.05em;
     color: #8a9aaa;
     background: transparent;
     border: 1px solid transparent;
     cursor: pointer;
-    transition: background 0.1s, color 0.1s;
+    transition: background 0.15s, color 0.15s;
     position: relative;
     white-space: nowrap;
   }
@@ -843,14 +845,16 @@
     background: rgba(26, 90, 158, 0.15);
     color: #d0d8e0;
   }
+  /* 53: Active menu button with bottom highlight bar */
   .menu-bar-btn-active {
     background: var(--surface-base);
     color: #ffffff;
+    font-weight: 600;
     border-color: #1e3048;
     border-bottom-color: var(--surface-base);
   }
 
-  /* --- Dropdown Menu Container --- */
+  /* 57: Dropdown Menu Container with deeper shadow */
   .menu-dropdown {
     position: absolute;
     z-index: 9990;
@@ -861,7 +865,7 @@
     border-left-color: #3a5070;
     border-bottom-color: #0d1520;
     border-right-color: #0d1520;
-    box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.5);
+    box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.3);
     padding: 2px 0;
   }
   .menu-dropdown-root {
@@ -877,17 +881,18 @@
   .menu-item-container {
     position: relative;
   }
+  /* 54: Menu item with slightly more padding and smoother transition */
   .menu-item {
     display: flex;
     align-items: center;
     width: 100%;
-    padding: 4px 8px;
+    padding: 4px 10px;
     font-size: 11px;
     color: #d0d0d0;
     background: transparent;
     border: 1px solid transparent;
     cursor: pointer;
-    transition: background 0.08s, color 0.08s;
+    transition: background 0.12s, color 0.12s;
     text-align: left;
     gap: 6px;
     white-space: nowrap;
@@ -935,20 +940,23 @@
     display: flex;
     align-items: center;
   }
+  /* 55: Menu toggle check with wider width for alignment */
   .menu-item-check {
-    width: 14px;
-    font-size: 11px;
+    width: 16px;
+    font-size: 12px;
     color: #22c55e;
     text-align: center;
     margin-left: auto;
     padding-left: 8px;
+    font-weight: 700;
   }
 
   /* --- Menu Separator --- */
+  /* 56: Menu separator with wider margin for visual breathing room */
   .menu-separator {
     height: 1px;
-    margin: 3px 6px;
-    background: linear-gradient(90deg, transparent, #1e3048 20%, #1e3048 80%, transparent);
+    margin: 4px 8px;
+    background: linear-gradient(90deg, transparent, #1e3048 15%, #1e3048 85%, transparent);
   }
 
   /* --- PANIC Button Styles --- */
@@ -1705,6 +1713,7 @@
 
 .ncic-welcome {
   color: #6a4a1a;
+  user-select: none;
 }
 
 .ncic-welcome pre {
@@ -1714,6 +1723,8 @@
 
 .ncic-entry {
   margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(212, 160, 23, 0.08);
 }
 
 .ncic-entry-cmd {
@@ -1822,6 +1833,8 @@
   gap: 8px;
   color: #d4a017;
   font-size: 11px;
+  padding: 8px 0;
+  letter-spacing: 0.1em;
 }
 
 .ncic-input-row {
@@ -1830,7 +1843,7 @@
   gap: 6px;
   padding: 8px 12px;
   background: #040810;
-  border-top: 1px solid #1e3048;
+  border-top: 2px solid #1e3048;
 }
 
 .ncic-prompt {
@@ -1838,6 +1851,7 @@
   font-family: 'Courier New', monospace;
   font-size: 14px;
   font-weight: bold;
+  text-shadow: 0 0 8px rgba(212, 160, 23, 0.3);
 }
 
 .ncic-input {

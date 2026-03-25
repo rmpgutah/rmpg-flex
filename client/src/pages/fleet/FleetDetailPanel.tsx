@@ -184,7 +184,7 @@ export default function FleetDetailPanel({
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Detail header */}
-      <div className="flex-shrink-0 px-4 py-3 border-b border-rmpg-700 flex items-start justify-between bg-surface-sunken">
+      <div className="flex-shrink-0 px-4 py-3 border-b border-rmpg-700 flex items-start justify-between bg-surface-sunken transition-colors duration-200">
         <div>
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 rounded-sm flex items-center justify-center border ${
@@ -281,8 +281,9 @@ export default function FleetDetailPanel({
             </>
           )}
           <button type="button"
-            className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors"
-            onClick={onClose}>
+            className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
+            onClick={onClose}
+            aria-label="Close vehicle details">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -297,10 +298,10 @@ export default function FleetDetailPanel({
             key={key}
             role="tab"
             aria-selected={isActive}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-[9px] uppercase font-bold tracking-wider transition-all duration-150 border-b-2 ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-[9px] uppercase font-bold tracking-wider whitespace-nowrap transition-all duration-200 border-b-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 ${
               isActive
                 ? 'text-white border-brand-500 bg-brand-900/10'
-                : 'text-rmpg-400 border-transparent hover:text-rmpg-200 hover:bg-rmpg-700/20'
+                : 'text-rmpg-400 border-transparent hover:text-rmpg-200 hover:bg-rmpg-700/20 hover:border-rmpg-500/50'
             }`}
             onClick={() => onTabChange(key)}
           >

@@ -92,8 +92,8 @@ export default function MapScaleBar({ mapInstance }: MapScaleBarProps) {
         padding: '4px 8px 5px',
       }}
     >
-      {/* Distance label */}
-      <div className="font-mono text-[10px] font-bold text-rmpg-200 tracking-wider text-center mb-1 cursor-pointer hover:text-[#60a5fa] transition-colors" style={{ width: barWidth }}>
+      {/* #19: Distance label with tabular-nums for stable width */}
+      <div className="font-mono text-[10px] font-bold text-rmpg-200 tracking-wider text-center mb-1 cursor-pointer hover:text-[#60a5fa] transition-colors tabular-nums" style={{ width: barWidth }}>
         {label}
       </div>
       {/* Alternating bar segments with gradient */}
@@ -111,10 +111,10 @@ export default function MapScaleBar({ mapInstance }: MapScaleBarProps) {
           />
         ))}
       </div>
-      {/* End ticks (caps) */}
-      <div className="relative" style={{ width: barWidth, height: 4 }}>
-        <div className="absolute left-0 top-0 w-px h-full bg-white" />
-        <div className="absolute right-0 top-0 w-px h-full bg-white" />
+      {/* #20: End ticks with softer caps */}
+      <div className="relative" style={{ width: barWidth, height: 5 }}>
+        <div className="absolute left-0 top-0 w-px h-full bg-white/80" />
+        <div className="absolute right-0 top-0 w-px h-full bg-white/80" />
       </div>
     </div>
   );

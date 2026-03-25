@@ -177,8 +177,8 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
       <div className="panel-beveled bg-surface-base p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-sm" style={{ background: 'rgba(59, 130, 246, 0.15)' }}>
-              <Search className="w-5 h-5 text-blue-400" />
+            <div className="w-9 h-9 flex items-center justify-center bg-blue-900/25 border border-blue-700/40" aria-hidden="true">
+              <Search className="w-4 h-4 text-blue-400" />
             </div>
             <div>
               <h2 className="text-sm font-bold text-rmpg-100 tracking-wider uppercase">
@@ -191,11 +191,11 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
           </div>
           <div className="flex items-center gap-2">
             {status?.configured ? (
-              <span className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-green-900/30 text-green-400 border border-green-700/50">
-                <CheckCircle2 className="w-3 h-3" /> Connected
+              <span className="flex items-center gap-1 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider bg-green-900/25 text-green-400 border border-green-700/40" role="status">
+                <CheckCircle2 className="w-3 h-3" aria-hidden="true" /> Connected
               </span>
             ) : (
-              <span className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-yellow-900/30 text-yellow-400 border border-yellow-700/50">
+              <span className="flex items-center gap-1 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider bg-yellow-900/25 text-yellow-400 border border-yellow-700/40" role="status">
                 Not Configured
               </span>
             )}

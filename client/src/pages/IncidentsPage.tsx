@@ -763,14 +763,19 @@ export default function IncidentsPage() {
       )}
       <div className="px-4 py-2 border-b border-rmpg-600 flex-shrink-0">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-rmpg-300" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-500 pointer-events-none" />
           <input
             type="text"
-            className={`input-dark pl-9 ${isMobile ? 'min-h-[44px] text-sm' : ''}`}
+            className={`input-dark pl-9 w-full focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow ${isMobile ? 'min-h-[44px] text-sm' : ''}`}
             placeholder={showArchived ? "Search archived incidents..." : "Search incidents..."}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
+          {searchQuery && (
+            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white transition-colors" aria-label="Clear search">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -804,7 +809,7 @@ export default function IncidentsPage() {
               <span className="text-red-400 font-bold">{incidentStats.returned}</span>
             </div>
           )}
-          <span className="ml-auto text-rmpg-500">
+          <span className="ml-auto text-rmpg-500 tabular-nums">
             Showing {filtered.length} of {incidents.length}
           </span>
         </div>
@@ -825,9 +830,10 @@ export default function IncidentsPage() {
           </table>
         ) : error ? (
           <div className="flex flex-col items-center justify-center h-full gap-3">
-            <p className="text-sm text-red-400">{error}</p>
-            <button type="button" onClick={() => fetchIncidents()} className="toolbar-btn">
-              Retry
+            <AlertTriangle className="w-6 h-6 text-red-500/60" />
+            <p className="text-xs text-red-400">{error}</p>
+            <button type="button" onClick={() => fetchIncidents()} className="toolbar-btn text-[10px]">
+              <RotateCcw className="w-3 h-3" /> Retry
             </button>
           </div>
         ) : (
@@ -898,8 +904,9 @@ export default function IncidentsPage() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={isMobile ? 5 : 7} className="text-center text-rmpg-400 py-12">
-                    No incidents found
+                  <td colSpan={isMobile ? 5 : 7} className="text-center py-12">
+                    <FileText className="w-6 h-6 mx-auto mb-2 text-rmpg-600" />
+                    <span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider">No incidents found</span>
                   </td>
                 </tr>
               )}

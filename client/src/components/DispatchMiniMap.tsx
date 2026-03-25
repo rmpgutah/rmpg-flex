@@ -35,9 +35,10 @@ function buildCallMarker(label: string): HTMLElement {
   wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;';
 
   const tag = document.createElement('div');
+  /* #54: Call marker with subtle shadow for depth */
   tag.style.cssText =
     'background:#ef4444;color:#fff;font-size:9px;font-weight:900;' +
-    "padding:2px 5px;border:1px solid #fff;white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;";
+    "padding:2px 5px;border:1px solid #fff;white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;box-shadow:0 2px 6px rgba(0,0,0,0.4);";
   tag.textContent = label;
 
   const caret = document.createElement('div');
@@ -52,9 +53,10 @@ function buildCallMarker(label: string): HTMLElement {
 /** Build a unit marker DOM element (blue chip) */
 function buildUnitMarker(callSign: string): HTMLElement {
   const el = document.createElement('div');
+  /* #55: Unit marker with shadow */
   el.style.cssText =
     'background:#3b82f6;color:#fff;font-size:8px;font-weight:900;' +
-    "padding:1px 4px;border:1px solid #1e3a5f;white-space:nowrap;font-family:'JetBrains Mono',monospace;border-radius:2px;";
+    "padding:1px 4px;border:1px solid #1e3a5f;white-space:nowrap;font-family:'JetBrains Mono',monospace;border-radius:2px;box-shadow:0 2px 6px rgba(0,0,0,0.4);";
   el.textContent = callSign;
   return el;
 }

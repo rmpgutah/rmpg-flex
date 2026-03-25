@@ -53,6 +53,7 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
         boxShadow: hovered ? '0 0 12px rgba(212,160,23,0.3)' : undefined,
         transition: 'box-shadow 0.2s ease',
       }}
+      onClick={() => { if (mapInstance) mapInstance.setHeading?.(0); }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -78,8 +79,8 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
         <line x1="10.1" y1="29.9" x2="11.5" y2="28.5" stroke="#3a4f66" strokeWidth="0.5" />
         <line x1="10.1" y1="10.1" x2="11.5" y2="11.5" stroke="#3a4f66" strokeWidth="0.5" />
 
-        {/* North arrow (gold) */}
-        <polygon points="20,4 17.5,18 20,16 22.5,18" fill={hovered ? '#d4a017' : '#d4a017'} opacity={hovered ? 0.9 : 1} />
+        {/* #16: North arrow with brighter hover state */}
+        <polygon points="20,4 17.5,18 20,16 22.5,18" fill={hovered ? '#e8c44a' : '#d4a017'} opacity={1} />
         {/* South arrow (dim white) */}
         <polygon points="20,36 17.5,22 20,24 22.5,22" fill="#5a6e80" />
         {/* East arrow */}
@@ -93,8 +94,10 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
         <text x="39" y="21.5" textAnchor="middle" fill="#5a6e80" fontSize="4.5" fontFamily="monospace" fontWeight="bold">E</text>
         <text x="1" y="21.5" textAnchor="middle" fill="#5a6e80" fontSize="4.5" fontFamily="monospace" fontWeight="bold">W</text>
 
-        {/* Center dot */}
-        <circle cx="20" cy="20" r="2" fill="#d4a017" opacity="0.75" />
+        {/* #17: Center dot with hover glow */}
+        <circle cx="20" cy="20" r="2" fill="#d4a017" opacity={hovered ? 1 : 0.75}>
+          {hovered && <animate attributeName="r" values="2;2.5;2" dur="1.5s" repeatCount="indefinite" />}
+        </circle>
       </svg>
     </div>
   );

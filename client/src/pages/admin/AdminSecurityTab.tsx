@@ -155,20 +155,20 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
       role="switch"
       aria-checked={config[toggleKey] === '1'}
       aria-label={label}
-      className={`flex items-center gap-3 w-full p-3 border transition-all duration-150 text-left hover:brightness-110 ${
+      className={`flex items-center gap-3 w-full p-3 border transition-all duration-150 text-left hover:brightness-110 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 ${
         config[toggleKey] === '1'
-          ? 'bg-green-900/20 border-green-700/50'
-          : 'bg-rmpg-900 border-rmpg-600'
+          ? 'bg-green-900/15 border-green-700/40'
+          : 'bg-[#0d1520] border-[#1a2636]'
       }`}
     >
       {config[toggleKey] === '1' ? (
-        <ToggleRight className="w-5 h-5 text-green-400 flex-shrink-0" />
+        <ToggleRight className="w-5 h-5 text-green-400 flex-shrink-0" aria-hidden="true" />
       ) : (
-        <ToggleLeft className="w-5 h-5 text-rmpg-500 flex-shrink-0" />
+        <ToggleLeft className="w-5 h-5 text-rmpg-600 flex-shrink-0" aria-hidden="true" />
       )}
-      <div>
-        <span className={`text-xs font-medium ${config[toggleKey] === '1' ? 'text-green-300' : 'text-rmpg-400'}`}>{label}</span>
-        {description && <p className="text-[9px] text-rmpg-500 mt-0.5">{description}</p>}
+      <div className="min-w-0">
+        <span className={`text-[11px] font-medium block ${config[toggleKey] === '1' ? 'text-green-300' : 'text-rmpg-400'}`}>{label}</span>
+        {description && <p className="text-[9px] text-rmpg-500 mt-0.5 leading-relaxed">{description}</p>}
       </div>
     </button>
   );
@@ -225,7 +225,7 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
           </div>
         </div>
 
-        <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1 mt-4">Complexity Requirements</div>
+        <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-[#162236] pb-1.5 mt-4 tracking-wider">Complexity Requirements</div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <ToggleButton toggleKey="require_uppercase" label="Require Uppercase" description="At least one uppercase letter" />
           <ToggleButton toggleKey="require_numbers" label="Require Numbers" description="At least one numeric digit" />
@@ -404,13 +404,13 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
 
       {/* Save footer */}
       {dirty && (
-        <div className="sticky bottom-0 bg-rmpg-950/90 backdrop-blur-sm border-t border-rmpg-700 p-3 flex items-center justify-between -mx-4 px-4 animate-fade-in" role="status">
-          <span className="text-[10px] text-amber-400 flex items-center gap-1.5">
-            <AlertTriangle className="w-3 h-3" aria-hidden="true" />
+        <div className="sticky bottom-0 bg-[#0d1520]/95 backdrop-blur-sm border-t border-amber-700/30 p-3 flex items-center justify-between -mx-4 px-4 animate-fade-in" role="status" aria-live="polite">
+          <span className="text-[10px] text-amber-400 flex items-center gap-1.5 font-medium">
+            <AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" />
             You have unsaved changes
           </span>
-          <button type="button" onClick={saveConfig} disabled={saving} className="toolbar-btn toolbar-btn-primary flex items-center gap-1.5 disabled:opacity-50" aria-label="Save all security changes">
-            {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Saving" /> : <Save className="w-3 h-3" />}
+          <button type="button" onClick={saveConfig} disabled={saving} className="toolbar-btn toolbar-btn-primary flex items-center gap-1.5 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50" aria-label="Save all security changes">
+            {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Saving" /> : <Save className="w-3 h-3" aria-hidden="true" />}
             {saving ? 'Saving...' : 'Save All Changes'}
           </button>
         </div>

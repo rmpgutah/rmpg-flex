@@ -754,15 +754,17 @@ export default function FleetPage() {
         </PanelTitleBar>
 
         {/* Stats Bar — compact inline row */}
-        <div className="px-4 py-2 flex items-center gap-4">
+        <div className="px-4 py-2 flex items-center gap-4" role="group" aria-label="Fleet statistics">
           {/* Status Gauges */}
           <div className="flex items-center gap-2">
             {VEHICLE_STATUSES.map(({ value, label }) => (
               <button type="button"
                 key={value}
-                className={`panel-beveled px-2.5 py-1.5 flex items-center gap-2 cursor-pointer transition-all ${
+                className={`panel-beveled px-2.5 py-1.5 flex items-center gap-2 cursor-pointer transition-all duration-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 ${
                   filterStatus === value ? 'ring-1 ring-brand-500 bg-brand-900/10' : 'bg-surface-base hover:border-rmpg-400'
                 }`}
+                aria-label={`Filter by ${label}: ${statusCounts[value] || 0} vehicles`}
+                aria-pressed={filterStatus === value}
                 onClick={() => setFilterStatus(filterStatus === value ? 'all' : value)}
               >
                 <GaugeRing
@@ -851,10 +853,10 @@ export default function FleetPage() {
               ))}
             </select>
             <div className="flex-1 relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
               <input
-                className="input-dark w-full text-[10px] py-1 pl-6 pr-2 min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow"
-                placeholder="Search vehicles..." aria-label="Search fleet vehicles"
+                className="input-dark w-full text-[10px] py-1 pl-6 pr-2 min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow duration-150"
+                placeholder="Search vehicles..." aria-label="Search fleet vehicles by number, make, model, or plate"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -884,7 +886,7 @@ export default function FleetPage() {
                   role="listitem"
                   tabIndex={0}
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedId(v.id); } }}
-                  className={`px-3 py-2.5 cursor-pointer border-b border-rmpg-700 transition-all duration-150 ${
+                  className={`px-3 py-2.5 cursor-pointer border-b border-rmpg-700 transition-all duration-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-brand-500/50 ${
                     isSelected ? 'panel-inset' : `hover:bg-rmpg-800 ${idx % 2 === 1 ? 'bg-rmpg-800/15' : ''}`
                   }`}
                   style={isSelected ? { background: '#141e2b', borderLeft: `3px solid ${statusColor}` } : { borderLeft: '3px solid transparent' }}
@@ -965,9 +967,9 @@ export default function FleetPage() {
                         <span>UTILIZATION</span>
                         <span className="font-mono">{Math.min(100, Math.round((v.current_mileage / 150000) * 100))}%</span>
                       </div>
-                      <div className="w-full h-1 bg-rmpg-700 overflow-hidden">
+                      <div className="w-full h-1 bg-rmpg-700 overflow-hidden" role="progressbar" aria-valuenow={Math.min(100, Math.round((v.current_mileage / 150000) * 100))} aria-valuemin={0} aria-valuemax={100} aria-label={`Vehicle utilization: ${Math.min(100, Math.round((v.current_mileage / 150000) * 100))}%`}>
                         <div
-                          className="h-full transition-all duration-300"
+                          className="h-full transition-all duration-500"
                           style={{
                             width: `${Math.min(100, (v.current_mileage / 150000) * 100)}%`,
                             background: v.current_mileage < 75000 ? '#22c55e'

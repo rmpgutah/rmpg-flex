@@ -112,12 +112,14 @@ export default function PerimeterToolsPanel({
                         {pct}%
                       </span>
                     </div>
+                    {/* #35: Coverage bars with gradient fill and glow */}
                     <div className="h-1.5 rounded-sm bg-rmpg-700/50 overflow-hidden">
                       <div
-                        className="h-full rounded-sm transition-all duration-300"
+                        className="h-full rounded-sm transition-all duration-500 ease-out"
                         style={{
                           width: `${Math.min(pct, 100)}%`,
-                          backgroundColor: getCoverageColor(pct),
+                          background: `linear-gradient(90deg, ${getCoverageColor(pct)}cc, ${getCoverageColor(pct)})`,
+                          boxShadow: `0 0 4px ${getCoverageColor(pct)}40`,
                         }}
                       />
                     </div>

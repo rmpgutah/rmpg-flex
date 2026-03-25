@@ -1916,13 +1916,16 @@ export default function DispatchPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full bg-[var(--surface-base)]">
-        <div className="flex flex-col items-center gap-3">
-          <div className="relative">
+      <div className="flex items-center justify-center h-full" style={{ background: 'var(--surface-base)' }}>
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative w-10 h-10 flex items-center justify-center">
             <Loader2 className="w-8 h-8 text-[#1a5a9e] animate-spin" />
-            <div className="absolute inset-0 w-8 h-8 rounded-full" style={{ boxShadow: '0 0 12px 2px rgba(26,90,158,0.3)' }} />
+            <div className="absolute inset-0 rounded-sm" style={{ boxShadow: '0 0 16px 3px rgba(26,90,158,0.25)' }} />
           </div>
-          <span className="text-[10px] font-mono uppercase tracking-widest text-[#6b7280] animate-pulse">Loading Dispatch Console</span>
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-[#6b7280] animate-pulse">Loading Dispatch Console</span>
+            <span className="text-[8px] font-mono text-[#4b5563]">Connecting to dispatch services...</span>
+          </div>
         </div>
       </div>
     );
@@ -1979,7 +1982,7 @@ export default function DispatchPage() {
                   {call.priority === 'P1' && (
                     <AlertTriangle className="w-4 h-4 text-red-500 animate-emergency-blink" />
                   )}
-                  <span className="text-base font-bold text-green-400 font-mono">{call.call_number}</span>
+                  <span className="text-base font-bold text-green-400 font-mono tabular-nums">{call.call_number}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <StatusBadge status={call.priority} type="priority" size="sm" />
@@ -1997,12 +2000,12 @@ export default function DispatchPage() {
               </div>
               {/* Footer */}
               <div className="flex items-center justify-between text-sm text-rmpg-400">
-                <div className="flex items-center gap-1.5 font-mono">
+                <div className="flex items-center gap-1.5 font-mono tabular-nums">
                   <Clock className="w-3.5 h-3.5" />
                   <span>{formatElapsed(call.created_at)}</span>
                 </div>
                 {call.assigned_units.length > 0 && (
-                  <span className="font-mono">{call.assigned_units.length} unit{call.assigned_units.length !== 1 ? 's' : ''}</span>
+                  <span className="font-mono tabular-nums">{call.assigned_units.length} unit{call.assigned_units.length !== 1 ? 's' : ''}</span>
                 )}
               </div>
             </div>
@@ -2188,30 +2191,30 @@ export default function DispatchPage() {
                   <div className="space-y-1.5 text-xs">
                     <div className="flex justify-between">
                       <span className="text-rmpg-400">Created</span>
-                      <span className="font-mono text-rmpg-200">{formatTime(selectedCall.created_at)}</span>
+                      <span className="font-mono text-rmpg-200 tabular-nums">{formatTime(selectedCall.created_at)}</span>
                     </div>
                     {selectedCall.dispatched_at && (
                       <div className="flex justify-between">
                         <span className="text-rmpg-400">Dispatched</span>
-                        <span className="font-mono text-rmpg-200">{formatTime(selectedCall.dispatched_at)}</span>
+                        <span className="font-mono text-rmpg-200 tabular-nums">{formatTime(selectedCall.dispatched_at)}</span>
                       </div>
                     )}
                     {selectedCall.enroute_at && (
                       <div className="flex justify-between">
                         <span className="text-rmpg-400">Enroute</span>
-                        <span className="font-mono text-rmpg-200">{formatTime(selectedCall.enroute_at)}</span>
+                        <span className="font-mono text-rmpg-200 tabular-nums">{formatTime(selectedCall.enroute_at)}</span>
                       </div>
                     )}
                     {selectedCall.onscene_at && (
                       <div className="flex justify-between">
                         <span className="text-rmpg-400">On Scene</span>
-                        <span className="font-mono text-rmpg-200">{formatTime(selectedCall.onscene_at)}</span>
+                        <span className="font-mono text-rmpg-200 tabular-nums">{formatTime(selectedCall.onscene_at)}</span>
                       </div>
                     )}
                     {selectedCall.cleared_at && (
                       <div className="flex justify-between">
                         <span className="text-rmpg-400">Cleared</span>
-                        <span className="font-mono text-rmpg-200">{formatTime(selectedCall.cleared_at)}</span>
+                        <span className="font-mono text-rmpg-200 tabular-nums">{formatTime(selectedCall.cleared_at)}</span>
                       </div>
                     )}
                   </div>
@@ -2537,7 +2540,7 @@ export default function DispatchPage() {
       {/* ============================================================ */}
       {/* LEFT PANEL - Call Queue (40%) */}
       {/* ============================================================ */}
-      <div className="w-[35%] border-r border-[#1e3048] flex flex-col" style={{ background: 'var(--surface-base)' }}>
+      <div className="w-[35%] min-w-[320px] border-r border-[#1e3048] flex flex-col" style={{ background: 'var(--surface-base)' }}>
         {/* Header — PanelTitleBar + TabBar */}
         <PanelTitleBar title="DISPATCH QUEUE" icon={Radio}>
           <RmpgLogo height={16} iconOnly />
@@ -2572,14 +2575,25 @@ export default function DispatchPage() {
               Archive Cleared
             </button>
           )}
-          <input
-            type="text"
-            placeholder="Search calls..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="input-dark text-xs flex-1"
-            style={{ minWidth: '100px', maxWidth: '160px' }}
-          />
+          <div className="relative flex items-center" style={{ minWidth: '100px', maxWidth: '170px' }}>
+            <Search className="absolute left-2 w-3 h-3 text-[#4b5563] pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search calls..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="input-dark text-xs w-full pl-6 pr-6"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-1.5 w-4 h-4 flex items-center justify-center text-[#6b7280] hover:text-white transition-colors"
+                title="Clear search"
+              >
+                <X style={{ width: 10, height: 10 }} />
+              </button>
+            )}
+          </div>
           <button onClick={() => { setTemplateInitialData(undefined); setShowNewCallModal(true); }} className="toolbar-btn toolbar-btn-primary">
             <Plus style={{ width: 10, height: 10 }} />
             New Call
@@ -2614,7 +2628,7 @@ export default function DispatchPage() {
                 }}
               >
                 {templates.length === 0 ? (
-                  <div className="px-3 py-2 text-xs text-rmpg-400">No templates available</div>
+                  <div className="px-3 py-3 text-xs text-rmpg-400 text-center italic">No templates available</div>
                 ) : (
                   templates.map((tpl: any) => (
                     <button
@@ -2676,7 +2690,7 @@ export default function DispatchPage() {
         />
 
         {/* Dispatch Stats Strip */}
-        <div className="px-3 py-1.5 border-b border-[#1e3048] flex items-center gap-2.5 flex-wrap text-[9px] font-mono flex-shrink-0" style={{ background: '#0d1520' }}>
+        <div className="px-3 py-1.5 border-b border-[#1e3048] flex items-center gap-3 flex-wrap text-[9px] font-mono flex-shrink-0 tabular-nums" style={{ background: '#0d1520' }}>
           {(() => {
             const activeCalls = calls.filter(c => ['dispatched', 'enroute', 'onscene', 'pending', 'on_hold'].includes(c.status));
             const p1Count = activeCalls.filter(c => c.priority === 'P1').length;
@@ -2729,7 +2743,7 @@ export default function DispatchPage() {
 
         {/* Feature 9: Call Type Statistics Bar */}
         {callTypeStats.length > 0 && (
-          <div className="px-3 py-1 border-b border-[#1e3048] flex items-center gap-1.5 flex-shrink-0" style={{ background: '#0d152080' }}>
+          <div className="px-3 py-1 border-b border-[#1e3048] flex items-center gap-2 flex-shrink-0" style={{ background: '#0d152080' }}>
             {callTypeStats.map(({ type, count }) => {
               const total = callTypeStats.reduce((sum, s) => sum + s.count, 0);
               const pct = total > 0 ? (count / total * 100) : 0;
@@ -2739,7 +2753,7 @@ export default function DispatchPage() {
                     className="h-2 rounded-sm bg-brand-500"
                     style={{ width: `${Math.max(pct * 0.8, 4)}px`, minWidth: 4, opacity: 0.7 + pct * 0.003 }}
                   />
-                  <span className="text-[7px] font-mono text-rmpg-400 truncate max-w-[60px]">
+                  <span className="text-[7px] font-mono text-rmpg-400 truncate max-w-[60px] tabular-nums">
                     {formatIncidentType(type).slice(0, 8)} {count}
                   </span>
                 </div>
@@ -2761,14 +2775,14 @@ export default function DispatchPage() {
         )}
 
         {/* Call List */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-1.5" style={{ scrollbarGutter: 'stable' }}>
+        <div className="flex-1 overflow-y-auto p-2 space-y-1" style={{ scrollbarGutter: 'stable' }}>
           {filteredCalls.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-[#6b7280]">
-              <div className="p-3 rounded-sm mb-3" style={{ background: '#0d152040', border: '1px solid #1e304830' }}>
-                <Phone className="w-8 h-8" style={{ opacity: 0.5 }} />
+              <div className="p-3.5 rounded-sm mb-3" style={{ background: '#0d152050', border: '1px solid #1e304830' }}>
+                <Phone className="w-7 h-7" style={{ opacity: 0.35 }} />
               </div>
-              <p className="text-xs font-semibold uppercase tracking-wider mb-1">No calls in this category</p>
-              <p className="text-[10px] text-[#4b5563]">
+              <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5">No calls in this category</p>
+              <p className="text-[10px] text-[#4b5563] max-w-[200px] text-center leading-relaxed">
                 {filterTab === 'pending' ? 'All pending calls have been dispatched' :
                  filterTab === 'active' ? 'No units are currently on active calls' :
                  filterTab === 'cleared' ? 'No cleared calls to review' :
@@ -2776,6 +2790,14 @@ export default function DispatchPage() {
                  filterTab === 'serve' ? 'No PSO client requests in queue' :
                  'Press N to create a new call'}
               </p>
+              {filterTab === 'all' && (
+                <button
+                  onClick={() => { setTemplateInitialData(undefined); setShowNewCallModal(true); }}
+                  className="mt-4 toolbar-btn toolbar-btn-primary text-[10px]"
+                >
+                  <Plus style={{ width: 10, height: 10 }} /> New Call
+                </button>
+              )}
             </div>
           ) : (
             filteredCalls.map((call) => (
@@ -2814,7 +2836,7 @@ export default function DispatchPage() {
                   {selectedCall.priority === 'P1' && (
                     <AlertTriangle className="w-4 h-4 text-red-500 animate-emergency-blink" style={{ filter: 'drop-shadow(0 0 4px rgba(239,68,68,0.5))' }} />
                   )}
-                  <span className="text-sm font-bold text-green-400 font-mono tracking-wide" style={{ textShadow: '0 0 8px rgba(74,222,128,0.2)' }}>{selectedCall.call_number}</span>
+                  <span className="text-sm font-bold text-green-400 font-mono tracking-wide tabular-nums" style={{ textShadow: '0 0 8px rgba(74,222,128,0.2)' }}>{selectedCall.call_number}</span>
                   {selectedCall.case_number && (
                     <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1.5 py-0.5">
                       CASE {selectedCall.case_number}
@@ -3067,8 +3089,8 @@ export default function DispatchPage() {
 
               {/* Warning Tags / Caution Alerts — always visible above tabs */}
               {callWarnings.length > 0 && (
-                <div className="px-4 pt-2 pb-1 flex-shrink-0" style={{ background: 'rgba(220,38,38,0.04)', borderBottom: '1px solid rgba(220,38,38,0.15)' }}>
-                  <label className="text-[9px] font-bold text-red-400 uppercase tracking-widest flex items-center gap-1.5 mb-1">
+                <div className="px-4 pt-2 pb-1.5 flex-shrink-0" style={{ background: 'rgba(220,38,38,0.05)', borderBottom: '1px solid rgba(220,38,38,0.15)' }}>
+                  <label className="text-[9px] font-bold text-red-400 uppercase tracking-[0.1em] flex items-center gap-1.5 mb-1.5">
                     <AlertTriangle style={{ width: 10, height: 10, filter: 'drop-shadow(0 0 3px rgba(239,68,68,0.4))' }} /> CAUTION / WARNINGS
                   </label>
                   <WarningTags warnings={callWarnings} />
@@ -3097,19 +3119,19 @@ export default function DispatchPage() {
                     <button
                       key={tab}
                       onClick={() => setDetailTab(tab)}
-                      className="relative px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all duration-150"
+                      className="relative px-3 py-2 text-[10px] font-bold uppercase tracking-wider transition-all duration-150"
                       style={{
                         color: isActive ? '#4a9ede' : '#6b7280',
-                        background: isActive ? 'rgba(26,90,158,0.08)' : 'transparent',
+                        background: isActive ? 'rgba(26,90,158,0.1)' : 'transparent',
                         borderBottom: isActive ? '2px solid #1a5a9e' : '2px solid transparent',
                       }}
                       onMouseEnter={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = '#9ca3af'; (e.currentTarget as HTMLElement).style.background = 'rgba(30,48,72,0.3)'; } }}
                       onMouseLeave={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = '#6b7280'; (e.currentTarget as HTMLElement).style.background = 'transparent'; } }}
                     >
-                      <span className="flex items-center gap-1">
+                      <span className="flex items-center gap-1.5">
                         {icons[tab]}
                         {labels[tab]}
-                        {count ? <span className="ml-0.5 px-1 py-px text-[8px] rounded-sm font-mono" style={{ background: isActive ? '#1a5a9e25' : '#1e304830', color: isActive ? '#4a9ede' : '#6b7280' }}>{count}</span> : ''}
+                        {count ? <span className="ml-0.5 min-w-[16px] text-center px-1 py-px text-[8px] rounded-sm font-mono tabular-nums" style={{ background: isActive ? '#1a5a9e25' : '#1e304830', color: isActive ? '#4a9ede' : '#6b7280' }}>{count}</span> : ''}
                       </span>
                     </button>
                   );
@@ -3117,7 +3139,7 @@ export default function DispatchPage() {
               </div>
 
               {/* Detail Body — Scrollable, tab-controlled */}
-              <div className="flex-1 overflow-y-auto p-4 flex flex-col">
+              <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col">
                 {/* ── CALL INFO SECTION (Info + Persons tab) ─── */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4 flex-shrink-0" style={{ display: detailTab === 'info' || detailTab === 'persons' ? undefined : 'none' }}>
                   {/* Left Column: Core Info */}
@@ -3239,7 +3261,7 @@ export default function DispatchPage() {
                       <div>
                         <label className="field-label">Disposition:</label>
                         <p className="text-sm text-rmpg-200">
-                          <span className="inline-block px-1.5 py-0.5 bg-brand-900/40 text-brand-300 text-[11px] uppercase font-bold border border-brand-600/40 mr-1">
+                          <span className="inline-block px-2 py-0.5 bg-brand-900/40 text-brand-300 text-[11px] uppercase font-bold border border-brand-600/40 mr-1.5 rounded-sm tracking-wide">
                             {selectedCall.disposition}
                           </span>
                           {(() => {
@@ -3293,46 +3315,46 @@ export default function DispatchPage() {
                     {/* Timeline */}
                     <div>
                       <label className="field-label">Timeline:</label>
-                      <div className="space-y-0 mt-1.5 relative" style={{ paddingLeft: '10px', borderLeft: '2px solid #1e3048' }}>
+                      <div className="space-y-0.5 mt-1.5 relative" style={{ paddingLeft: '12px', borderLeft: '2px solid #1e3048' }}>
                         <div className="flex items-center gap-2 text-xs py-0.5 relative">
                           <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: '#6b7280', border: '2px solid #0d1520' }} />
-                          <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '62px' }}>Created</span>
-                          <span className="text-white font-mono text-[10px]">{formatTime(selectedCall.created_at)}</span>
-                          <span className="text-[#4b5563] text-[9px] font-mono">({formatElapsed(selectedCall.created_at)})</span>
+                          <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>Created</span>
+                          <span className="text-white font-mono text-[10px] tabular-nums">{formatTime(selectedCall.created_at)}</span>
+                          <span className="text-[#4b5563] text-[9px] font-mono tabular-nums">({formatElapsed(selectedCall.created_at)})</span>
                         </div>
                         {selectedCall.dispatched_at && (
                           <div className="flex items-center gap-2 text-xs py-0.5 relative">
                             <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: '#f59e0b', border: '2px solid #0d1520' }} />
-                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '62px' }}>Dispatched</span>
-                            <span className="text-white font-mono text-[10px]">{formatTime(selectedCall.dispatched_at)}</span>
+                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>Dispatched</span>
+                            <span className="text-white font-mono text-[10px] tabular-nums">{formatTime(selectedCall.dispatched_at)}</span>
                           </div>
                         )}
                         {selectedCall.enroute_at && (
                           <div className="flex items-center gap-2 text-xs py-0.5 relative">
                             <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: '#3b82f6', border: '2px solid #0d1520' }} />
-                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '62px' }}>En Route</span>
-                            <span className="text-white font-mono text-[10px]">{formatTime(selectedCall.enroute_at)}</span>
+                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>En Route</span>
+                            <span className="text-white font-mono text-[10px] tabular-nums">{formatTime(selectedCall.enroute_at)}</span>
                           </div>
                         )}
                         {selectedCall.onscene_at && (
                           <div className="flex items-center gap-2 text-xs py-0.5 relative">
                             <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: '#a855f7', border: '2px solid #0d1520' }} />
-                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '62px' }}>On Scene</span>
-                            <span className="text-white font-mono text-[10px]">{formatTime(selectedCall.onscene_at)}</span>
+                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>On Scene</span>
+                            <span className="text-white font-mono text-[10px] tabular-nums">{formatTime(selectedCall.onscene_at)}</span>
                           </div>
                         )}
                         {selectedCall.cleared_at && (
                           <div className="flex items-center gap-2 text-xs py-0.5 relative">
                             <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: '#22c55e', border: '2px solid #0d1520' }} />
-                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '62px' }}>Cleared</span>
-                            <span className="text-white font-mono text-[10px]">{formatTime(selectedCall.cleared_at)}</span>
+                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>Cleared</span>
+                            <span className="text-white font-mono text-[10px] tabular-nums">{formatTime(selectedCall.cleared_at)}</span>
                           </div>
                         )}
                         {selectedCall.archived_at && (
                           <div className="flex items-center gap-2 text-xs py-0.5 relative">
                             <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: '#6b7280', border: '2px solid #0d1520' }} />
-                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '62px' }}>Archived</span>
-                            <span className="text-white font-mono text-[10px]">{formatTime(selectedCall.archived_at)}</span>
+                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>Archived</span>
+                            <span className="text-white font-mono text-[10px] tabular-nums">{formatTime(selectedCall.archived_at)}</span>
                           </div>
                         )}
                       </div>
@@ -3452,16 +3474,16 @@ export default function DispatchPage() {
                           })}
                         </div>
                       ) : (
-                        <p className="text-xs text-rmpg-400 mt-1">No units assigned</p>
+                        <p className="text-xs text-rmpg-400 mt-1 italic">No units assigned</p>
                       )}
                       {/* Inline ETA from route */}
                       {routeInfo && (
-                        <div className="mt-2 flex items-center gap-2 px-2.5 py-1.5 rounded-sm" style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)', boxShadow: '0 0 6px rgba(59,130,246,0.06)' }}>
+                        <div className="mt-2 flex items-center gap-2.5 px-2.5 py-1.5 rounded-sm" style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)', boxShadow: '0 0 8px rgba(59,130,246,0.06)' }}>
                           <span className="flex items-center gap-1 text-[9px] font-mono font-bold text-blue-400">
-                            <Navigation style={{ width: 8, height: 8 }} /> ETA
+                            <Navigation style={{ width: 9, height: 9 }} /> ETA
                           </span>
-                          <span className="text-[11px] font-mono font-bold text-white">{routeInfo.eta}</span>
-                          <span className="text-[9px] font-mono text-[#6b7280]">{routeInfo.distance}</span>
+                          <span className="text-[11px] font-mono font-bold text-white tabular-nums">{routeInfo.eta}</span>
+                          <span className="text-[9px] font-mono text-[#6b7280] tabular-nums">{routeInfo.distance}</span>
                           <span className="text-[8px] font-mono text-[#4b5563] ml-auto">{routeInfo.unitCallSign}</span>
                         </div>
                       )}
@@ -3488,10 +3510,10 @@ export default function DispatchPage() {
                       </div>
                     ) : (
                       <div className="flex flex-wrap gap-x-6 gap-y-1 mt-1 text-xs">
-                        {selectedCall.starting_mileage && <span className="text-rmpg-200"><span className="text-rmpg-400">Start:</span> {Number(selectedCall.starting_mileage).toLocaleString()} mi</span>}
-                        {selectedCall.ending_mileage && <span className="text-rmpg-200"><span className="text-rmpg-400">End:</span> {Number(selectedCall.ending_mileage).toLocaleString()} mi</span>}
+                        {selectedCall.starting_mileage && <span className="text-rmpg-200 tabular-nums"><span className="text-rmpg-400">Start:</span> {Number(selectedCall.starting_mileage).toLocaleString()} mi</span>}
+                        {selectedCall.ending_mileage && <span className="text-rmpg-200 tabular-nums"><span className="text-rmpg-400">End:</span> {Number(selectedCall.ending_mileage).toLocaleString()} mi</span>}
                         {selectedCall.starting_mileage && selectedCall.ending_mileage && (
-                          <span className="text-blue-400 font-semibold">
+                          <span className="text-blue-400 font-semibold tabular-nums">
                             Total: {((Number(selectedCall.ending_mileage) || 0) - (Number(selectedCall.starting_mileage) || 0)).toFixed(1)} mi
                           </span>
                         )}
@@ -3566,7 +3588,7 @@ export default function DispatchPage() {
                         {selectedCall.location_floor && <span className="text-rmpg-200"><span className="text-rmpg-400">Floor:</span> {selectedCall.location_floor}</span>}
                         {selectedCall.location_room && <span className="text-rmpg-200"><span className="text-rmpg-400">Rm:</span> {selectedCall.location_room}</span>}
                         {selectedCall.dispatch_code && (
-                          <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1.5 py-0.5 rounded-sm tracking-wide">
+                          <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-2 py-0.5 rounded-sm tracking-wider tabular-nums" style={{ textShadow: '0 0 6px rgba(251,191,36,0.15)' }}>
                             {selectedCall.dispatch_code}
                           </span>
                         )}
@@ -3574,7 +3596,7 @@ export default function DispatchPage() {
                         {selectedCall.zone_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Zone:</span> {selectedCall.zone_id} — {zoneLabels.get(selectedCall.zone_id) || ''}</span>}
                         {selectedCall.beat_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Beat:</span> {getBeatLabel(selectedCall.zone_id || '', selectedCall.beat_id)}</span>}
                         {selectedCall.latitude != null && selectedCall.longitude != null && (
-                          <span className="text-rmpg-400 font-mono text-[9px]">
+                          <span className="text-rmpg-400 font-mono text-[9px] tabular-nums select-all">
                             GPS: {Number(selectedCall.latitude).toFixed(5)}, {Number(selectedCall.longitude).toFixed(5)}
                           </span>
                         )}
@@ -4101,10 +4123,10 @@ export default function DispatchPage() {
                           ? (visit.ending_mileage - visit.starting_mileage).toFixed(1)
                           : null;
                         return (
-                          <div key={visit.id} className="bg-rmpg-800/60 border border-rmpg-600/50 rounded-sm px-2.5 py-1.5">
+                          <div key={visit.id} className="bg-rmpg-800/60 border border-rmpg-600/50 rounded-sm px-2.5 py-2">
                             <div className="flex items-center justify-between mb-1">
                               <div className="flex items-center gap-2">
-                                <span className="text-[9px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1 py-0">
+                                <span className="text-[9px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1.5 py-0 tabular-nums">
                                   VISIT #{visit.visit_number}
                                 </span>
                                 <span className={`text-[8px] font-bold px-1 py-0 rounded-sm ${
@@ -4226,7 +4248,7 @@ export default function DispatchPage() {
                     </div>
                   )}
                   {activityEntries.length > 0 ? (
-                    <div className="space-y-0 max-h-48 overflow-y-auto">
+                    <div className="space-y-0 max-h-60 overflow-y-auto">
                       {activityEntries.map((entry: any, idx: number) => {
                         const actionColor = (entry.action || '').includes('dispatch') ? '#f59e0b' :
                           (entry.action || '').includes('enroute') ? '#3b82f6' :
@@ -4238,7 +4260,7 @@ export default function DispatchPage() {
                         <div key={entry.id} className="group flex items-start gap-2 text-xs hover:bg-[#1a263620] px-1.5 py-1 transition-colors relative" style={{ borderLeft: '2px solid #1e3048' }}>
                           {/* Step connector dot */}
                           <div className="absolute -left-[5px] top-[7px] w-2 h-2 rounded-full flex-shrink-0" style={{ background: actionColor, border: '2px solid #0d1520' }} />
-                          <span className="text-[#6b7280] font-mono whitespace-nowrap pl-1.5" style={{ fontSize: '9px', minWidth: '56px' }}>
+                          <span className="text-[#6b7280] font-mono whitespace-nowrap pl-1.5 tabular-nums" style={{ fontSize: '9px', minWidth: '60px' }}>
                             {entry.created_at ? formatTime(entry.created_at) : '--'}
                           </span>
                           {editingTimelineId === String(entry.id) ? (
@@ -4273,8 +4295,10 @@ export default function DispatchPage() {
                       })}
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center py-6 text-[#4b5563]">
-                      <Clock className="w-6 h-6 mb-2" style={{ opacity: 0.3 }} />
+                    <div className="flex flex-col items-center py-8 text-[#4b5563]">
+                      <div className="p-2.5 rounded-sm mb-2.5" style={{ background: '#0d152040', border: '1px solid #1e304830' }}>
+                        <Clock className="w-5 h-5" style={{ opacity: 0.3 }} />
+                      </div>
                       <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5">No Activity Recorded</p>
                       <p className="text-[9px] text-[#374151]">Click "Add Entry" to start the activity log</p>
                     </div>
@@ -4288,16 +4312,19 @@ export default function DispatchPage() {
                   </label>
                   <div className="space-y-1 mb-3 flex-1 overflow-y-auto">
                     {(Array.isArray(selectedCall.notes) ? selectedCall.notes : []).length === 0 ? (
-                      <div className="flex flex-col items-center py-6 text-[#4b5563]">
-                        <MessageSquare className="w-6 h-6 mb-2" style={{ opacity: 0.3 }} />
-                        <p className="text-[10px] font-semibold uppercase tracking-wider">No Notes Yet</p>
+                      <div className="flex flex-col items-center py-8 text-[#4b5563]">
+                        <div className="p-2.5 rounded-sm mb-2.5" style={{ background: '#0d152040', border: '1px solid #1e304830' }}>
+                          <MessageSquare className="w-5 h-5" style={{ opacity: 0.3 }} />
+                        </div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5">No Notes Yet</p>
+                        <p className="text-[9px] text-[#374151]">Add a note below to get started</p>
                       </div>
                     ) : (
                       (Array.isArray(selectedCall.notes) ? selectedCall.notes : []).map((note) => (
                       <div key={note.id} className="flex items-start gap-2 text-xs px-2 py-1.5 rounded-sm transition-colors hover:bg-[#1a263620]" style={{ borderLeft: '2px solid #1a5a9e40' }}>
-                        <span className="text-[#6b7280] font-mono whitespace-nowrap" style={{ fontSize: '9px', minWidth: '50px' }}>{formatTime(note.timestamp)}</span>
+                        <span className="text-[#6b7280] font-mono whitespace-nowrap tabular-nums" style={{ fontSize: '9px', minWidth: '54px' }}>{formatTime(note.timestamp)}</span>
                         <span className="text-[#d4a017] font-bold whitespace-nowrap text-[10px]">{note.author || 'System'}</span>
-                        <span className="text-[#e5e7eb] leading-relaxed">{renderFormattedText(note.text || '')}</span>
+                        <span className="text-[#e5e7eb] leading-relaxed flex-1 min-w-0">{renderFormattedText(note.text || '')}</span>
                       </div>
                       ))
                     )}
@@ -4305,10 +4332,10 @@ export default function DispatchPage() {
                   <div className="flex-shrink-0">
                     {/* Formatting toolbar */}
                     <div className="flex items-center gap-1 mb-1.5">
-                      <button type="button" title="Bold (Ctrl+B)" className="w-6 h-5 flex items-center justify-center text-[10px] font-black text-[#9ca3af] hover:text-white hover:bg-[#1a5a9e30] border border-[#1e3048] rounded-sm transition-all duration-100" onClick={() => wrapNoteSelection('**')}>B</button>
-                      <button type="button" title="Italic (Ctrl+I)" className="w-6 h-5 flex items-center justify-center text-[10px] italic font-semibold text-[#9ca3af] hover:text-white hover:bg-[#1a5a9e30] border border-[#1e3048] rounded-sm transition-all duration-100" onClick={() => wrapNoteSelection('*')}>I</button>
-                      <button type="button" title="Underline (Ctrl+U)" className="w-6 h-5 flex items-center justify-center text-[10px] underline text-[#9ca3af] hover:text-white hover:bg-[#1a5a9e30] border border-[#1e3048] rounded-sm transition-all duration-100" onClick={() => wrapNoteSelection('__')}>U</button>
-                      <span className="text-[8px] text-[#4b5563] ml-2 font-mono">Shift+Enter to submit</span>
+                      <button type="button" title="Bold (Ctrl+B)" className="w-6 h-5 flex items-center justify-center text-[10px] font-black text-[#9ca3af] hover:text-white hover:bg-[#1a5a9e30] border border-[#1e3048] rounded-sm transition-all duration-100 active:bg-[#1a5a9e50]" onClick={() => wrapNoteSelection('**')}>B</button>
+                      <button type="button" title="Italic (Ctrl+I)" className="w-6 h-5 flex items-center justify-center text-[10px] italic font-semibold text-[#9ca3af] hover:text-white hover:bg-[#1a5a9e30] border border-[#1e3048] rounded-sm transition-all duration-100 active:bg-[#1a5a9e50]" onClick={() => wrapNoteSelection('*')}>I</button>
+                      <button type="button" title="Underline (Ctrl+U)" className="w-6 h-5 flex items-center justify-center text-[10px] underline text-[#9ca3af] hover:text-white hover:bg-[#1a5a9e30] border border-[#1e3048] rounded-sm transition-all duration-100 active:bg-[#1a5a9e50]" onClick={() => wrapNoteSelection('__')}>U</button>
+                      <span className="text-[8px] text-[#4b5563] ml-2 font-mono select-none">Shift+Enter to submit</span>
                     </div>
                     <div className="flex gap-2">
                       <textarea
@@ -4373,7 +4400,7 @@ export default function DispatchPage() {
                           onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#1a263630'; (e.currentTarget as HTMLElement).style.borderColor = '#1e304840'; }}
                           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.borderColor = 'transparent'; }}
                         >
-                          <span className="font-mono text-green-400 text-xs font-bold" style={{ textShadow: '0 0 6px rgba(74,222,128,0.15)' }}>{inc.incident_number}</span>
+                          <span className="font-mono text-green-400 text-xs font-bold tabular-nums" style={{ textShadow: '0 0 6px rgba(74,222,128,0.15)' }}>{inc.incident_number}</span>
                           <span className="text-xs text-rmpg-200 truncate">{formatIncidentType(inc.type || inc.incident_type || '--')}</span>
                           <span className="text-xs text-rmpg-400 uppercase font-semibold">{inc.status || '--'}</span>
                           {inc.officer_name && (
@@ -4428,14 +4455,23 @@ export default function DispatchPage() {
             <div className="flex-1 flex items-center justify-center text-[#6b7280]">
               <div className="text-center">
                 <div className="mx-auto mb-4 w-14 h-14 flex items-center justify-center rounded-sm" style={{ background: '#0d152060', border: '1px solid #1e304840' }}>
-                  <Radio className="w-7 h-7" style={{ opacity: 0.4 }} />
+                  <Radio className="w-7 h-7" style={{ opacity: 0.3 }} />
                 </div>
-                <p className="text-xs font-semibold uppercase tracking-wider mb-1.5">Select a call to view details</p>
-                <p className="text-[10px] text-[#4b5563]">Click a call card or use arrow keys to navigate</p>
-                <div className="flex items-center justify-center gap-3 mt-3 text-[9px] font-mono text-[#4b5563]">
-                  <span className="px-1.5 py-0.5 border border-[#1e3048] rounded-sm">N</span><span>New Call</span>
-                  <span className="px-1.5 py-0.5 border border-[#1e3048] rounded-sm">P</span><span>Quick PSO</span>
-                  <span className="px-1.5 py-0.5 border border-[#1e3048] rounded-sm">R</span><span>Refresh</span>
+                <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5">Select a call to view details</p>
+                <p className="text-[10px] text-[#4b5563] max-w-[220px] mx-auto leading-relaxed">Click a call card or use arrow keys to navigate</p>
+                <div className="flex items-center justify-center gap-4 mt-4 text-[9px] font-mono text-[#4b5563]">
+                  <div className="flex items-center gap-1.5">
+                    <kbd className="px-1.5 py-0.5 border border-[#1e3048] rounded-sm bg-[#0d152040] text-[#6b7280]">N</kbd>
+                    <span>New Call</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <kbd className="px-1.5 py-0.5 border border-[#1e3048] rounded-sm bg-[#0d152040] text-[#6b7280]">P</kbd>
+                    <span>Quick PSO</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <kbd className="px-1.5 py-0.5 border border-[#1e3048] rounded-sm bg-[#0d152040] text-[#6b7280]">R</kbd>
+                    <span>Refresh</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -4454,11 +4490,11 @@ export default function DispatchPage() {
             ) : (
               <div className="flex-1 flex items-center justify-center text-[#4b5563]">
                 <div className="text-center">
-                  <div className="mx-auto mb-3 w-12 h-12 flex items-center justify-center rounded-sm" style={{ background: '#0d152050', border: '1px dashed #1e304850' }}>
-                    <MapPin className="w-6 h-6" style={{ opacity: 0.3 }} />
+                  <div className="mx-auto mb-3 w-14 h-14 flex items-center justify-center rounded-sm" style={{ background: '#0d152050', border: '1px dashed #1e304840' }}>
+                    <MapPin className="w-6 h-6" style={{ opacity: 0.25 }} />
                   </div>
-                  <p className="text-[9px] font-mono font-bold uppercase tracking-widest">No Location Data</p>
-                  <p className="text-[8px] text-[#374151] mt-1">Select a geolocated call to display map</p>
+                  <p className="text-[10px] font-mono font-bold uppercase tracking-widest mb-1">No Location Data</p>
+                  <p className="text-[8px] text-[#374151] leading-relaxed max-w-[160px] mx-auto">Select a geolocated call to display the dispatch map</p>
                 </div>
               </div>
             )}
@@ -4470,12 +4506,12 @@ export default function DispatchPage() {
         {/* ------------------------------------------------------------ */}
         <div className="h-[35%] flex flex-col overflow-hidden flex-shrink-0">
           <PanelTitleBar title="UNIT STATUS BOARD" icon={Radio}>
-            <span className="flex items-center gap-1 text-[9px] font-mono font-bold" style={{ color: '#4ade80' }}>
+            <span className="flex items-center gap-1 text-[9px] font-mono font-bold tabular-nums" style={{ color: '#4ade80' }}>
               <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#22c55e', boxShadow: '0 0 4px #22c55e80' }} />
               {units.filter((u) => u.status === 'available').length} AVAIL
             </span>
             <span className="toolbar-separator" />
-            <span className="text-[9px] font-mono" style={{ color: '#6b7280' }}>
+            <span className="text-[9px] font-mono tabular-nums" style={{ color: '#6b7280' }}>
               {units.filter((u) => u.status !== 'off_duty').length} ON DUTY
             </span>
             <span className="toolbar-separator" />
@@ -4513,7 +4549,7 @@ export default function DispatchPage() {
           }}
         >
           <div
-            className="py-1 min-w-[180px]"
+            className="py-1 min-w-[190px] rounded-sm"
             style={{ background: '#1a2636', border: '1px solid #2a3e58', boxShadow: '0 8px 24px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.05) inset', backdropFilter: 'blur(8px)' }}
             onMouseLeave={() => setContextMenu(null)}
           >
@@ -4570,7 +4606,7 @@ export default function DispatchPage() {
       {quickTemplateData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }} onKeyDown={(e) => { if (e.key === 'Escape') setQuickTemplateData(null); }}>
           <form
-            className="panel-beveled bg-surface-raised animate-in"
+            className="panel-beveled bg-surface-raised animate-in rounded-sm"
             style={{ width: '440px', border: '1px solid #2a3e58', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }}
             onSubmit={async (e) => {
               e.preventDefault();
@@ -4700,11 +4736,11 @@ export default function DispatchPage() {
       {/* Create / Edit Unit Modal */}
       {showCreateUnitModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={unitModalTitleId} style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}>
-          <div className="panel-beveled bg-surface-raised" style={{ width: '420px', border: '1px solid #2a3e58', boxShadow: '0 12px 40px rgba(0,0,0,0.5)' }}>
+          <div className="panel-beveled bg-surface-raised" style={{ width: '420px', border: '1px solid #2a3e58', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }}>
             <div className="panel-title-bar">
               <div className="flex items-center gap-2">
                 <Radio className="w-4 h-4 text-brand-400" />
-                <span id={unitModalTitleId} className="text-sm font-bold text-white">{editingUnit ? 'Edit Dispatch Unit' : 'Create Dispatch Unit'}</span>
+                <span id={unitModalTitleId} className="text-sm font-bold text-white tracking-wide">{editingUnit ? 'Edit Dispatch Unit' : 'Create Dispatch Unit'}</span>
               </div>
               <button onClick={() => { setShowCreateUnitModal(false); setEditingUnit(null); setNewUnitCallSign(''); setNewUnitOfficerId(''); setNewUnitStatus('available'); }} className="toolbar-btn ml-auto">
                 <X style={{ width: 12, height: 12 }} />
@@ -4933,10 +4969,13 @@ export default function DispatchPage() {
       {/* Feature 5: Shift Handoff Notes Modal */}
       {showHandoffNotes && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }} onClick={() => setShowHandoffNotes(false)}>
-          <div className="bg-surface-raised w-[500px] max-h-[80vh] flex flex-col rounded-sm" style={{ border: '1px solid #2a3e58', boxShadow: '0 12px 40px rgba(0,0,0,0.5)' }} onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-3 border-b border-rmpg-600">
-              <h3 className="text-sm font-bold text-white">Shift Handoff Notes</h3>
-              <button onClick={() => setShowHandoffNotes(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+          <div className="bg-surface-raised w-[500px] max-h-[80vh] flex flex-col rounded-sm" style={{ border: '1px solid #2a3e58', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-600" style={{ background: '#0d1520' }}>
+              <div className="flex items-center gap-2">
+                <Briefcase className="w-4 h-4 text-brand-400" />
+                <h3 className="text-sm font-bold text-white">Shift Handoff Notes</h3>
+              </div>
+              <button onClick={() => setShowHandoffNotes(false)} className="text-rmpg-400 hover:text-white transition-colors"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-3 flex-1 overflow-auto">
               {handoffMeta.updated_by && (

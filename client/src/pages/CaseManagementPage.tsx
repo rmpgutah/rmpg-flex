@@ -458,9 +458,10 @@ export default function CaseManagementPage() {
         </PanelTitleBar>
 
         {fetchError && (
-          <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
-            <span>⚠ {fetchError}</span>
-            <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+          <div className="mx-3 mt-2 p-2 bg-red-900/30 border border-red-700/50 text-red-400 text-xs flex items-center gap-2" role="alert">
+            <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />
+            <span className="flex-1">{fetchError}</span>
+            <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300 text-[10px]" aria-label="Dismiss error">dismiss</button>
           </div>
         )}
 
@@ -469,15 +470,15 @@ export default function CaseManagementPage() {
           <div className="flex gap-2 px-2 py-1.5 border-b border-rmpg-700 bg-surface-sunken overflow-x-auto">
             <div className="text-center px-2">
               <div className="text-[10px] font-mono text-rmpg-500">TOTAL</div>
-              <div className="text-sm font-bold text-white">{stats.total || 0}</div>
+              <div className="text-sm font-bold text-white tabular-nums">{stats.total || 0}</div>
             </div>
             <div className="text-center px-2">
               <div className="text-[10px] font-mono text-rmpg-500">ACTIVE</div>
-              <div className="text-sm font-bold text-green-400">{(stats.by_status?.open || 0) + (stats.by_status?.active || 0) + (stats.by_status?.assigned || 0)}</div>
+              <div className="text-sm font-bold text-green-400 tabular-nums">{(stats.by_status?.open || 0) + (stats.by_status?.active || 0) + (stats.by_status?.assigned || 0)}</div>
             </div>
             <div className="text-center px-2">
               <div className="text-[10px] font-mono text-rmpg-500">SOLVABILITY</div>
-              <div className="text-sm font-bold text-amber-400">{stats.avg_solvability || 0}%</div>
+              <div className="text-sm font-bold text-amber-400 tabular-nums">{stats.avg_solvability || 0}%</div>
             </div>
           </div>
         )}
@@ -485,13 +486,18 @@ export default function CaseManagementPage() {
         {/* Filters */}
         <div className="flex flex-wrap gap-1 p-1.5 border-b border-rmpg-700 bg-surface-base">
           <div className="flex-1 min-w-[120px] relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" style={{ width: 12, height: 12 }} />
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500 pointer-events-none" style={{ width: 12, height: 12 }} />
             <input
               value={searchQuery}
               onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
               placeholder="Search cases..." aria-label="Search cases..."
-              className="w-full pl-7 pr-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 outline-none"
+              className="w-full pl-7 pr-7 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 outline-none transition-shadow"
             />
+            {searchQuery && (
+              <button type="button" onClick={() => { setSearchQuery(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white transition-colors" aria-label="Clear search">
+                <X style={{ width: 10, height: 10 }} />
+              </button>
+            )}
           </div>
           <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 py-1 outline-none">
             <option value="">All Status</option>
@@ -506,7 +512,7 @@ export default function CaseManagementPage() {
         {/* Case List */}
         <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
           {loading ? (
-            <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div>
+            <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading cases...</span></div>
           ) : cases.length === 0 ? (
             <EmptyState
               icon={FolderOpen}
@@ -547,9 +553,9 @@ export default function CaseManagementPage() {
 
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-3 py-1.5 border-t border-rmpg-700 bg-surface-base">
-            <button type="button" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="text-[10px] text-rmpg-400 disabled:opacity-30">← Prev</button>
-            <span className="text-[9px] font-mono text-rmpg-500">Page {page}/{totalPages}</span>
-            <button type="button" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="text-[10px] text-rmpg-400 disabled:opacity-30">Next →</button>
+            <button type="button" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="text-[10px] text-rmpg-400 disabled:opacity-30 hover:text-white transition-colors">Prev</button>
+            <span className="text-[9px] font-mono text-rmpg-500 tabular-nums">Page {page}/{totalPages}</span>
+            <button type="button" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="text-[10px] text-rmpg-400 disabled:opacity-30 hover:text-white transition-colors">Next</button>
           </div>
         )}
       </div>

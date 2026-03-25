@@ -145,8 +145,9 @@ function SectionHeader({ children }: { children: React.ReactNode }) {
   );
 }
 
+{/* #38: Section divider with subtler gradient */}
 function SectionDivider() {
-  return <div style={{ height: 1, background: 'linear-gradient(to right, transparent, #1e3048, transparent)' }} />;
+  return <div className="mx-2" style={{ height: 1, background: 'linear-gradient(to right, transparent, #1e3048 30%, #1e3048 70%, transparent)' }} />;
 }
 
 // ─── Component ──────────────────────────────────────────────

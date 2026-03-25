@@ -201,14 +201,14 @@ export default function ClosestUnitPanel({
                     </div>
                   </div>
 
-                  {/* Distance + ETA */}
+                  {/* #42: Distance + ETA with tabular-nums for alignment */}
                   <div className="text-right shrink-0">
-                    <div className="text-[10px] font-bold font-mono" style={{ color: '#60a5fa' }}>
+                    <div className="text-[10px] font-bold font-mono tabular-nums" style={{ color: '#60a5fa' }}>
                       {distanceMiles < 0.1
                         ? '<0.1 mi'
                         : `${distanceMiles.toFixed(1)} mi`}
                     </div>
-                    <div className="text-[8px] font-semibold font-mono" style={{ color: estimatedMinutes < 5 ? '#f59e0b' : '#9ca3af' }}>
+                    <div className="text-[8px] font-semibold font-mono tabular-nums" style={{ color: estimatedMinutes < 5 ? '#f59e0b' : '#9ca3af' }}>
                       ~{estimatedMinutes < 1
                         ? '<1 min'
                         : `${Math.round(estimatedMinutes)} min`}

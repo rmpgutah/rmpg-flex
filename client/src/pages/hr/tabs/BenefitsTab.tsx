@@ -82,8 +82,8 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
         <h2 className="text-sm font-bold text-white flex items-center gap-2"><Heart className="w-4 h-4" /> Benefits Enrollment</h2>
         <div className="flex items-center gap-2">
           <div className="relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
-            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search benefits..." aria-label="Search benefits..." className="input-field text-xs py-1 pl-6 pr-2 w-48" />
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
+            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search benefits..." aria-label="Search benefits by officer, type, or plan" className="input-field text-xs py-1 pl-6 pr-2 w-48 focus:ring-1 focus:ring-brand-500/50 transition-shadow duration-150" />
           </div>
           {isManager && <button type="button" onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> Add Benefit</button>}
         </div>
@@ -159,7 +159,7 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
               <h3 className="text-xs font-bold text-white mb-2">{name}</h3>
               <div className="space-y-1">
                 {bens.map(b => (
-                  <div key={b.id} className="flex items-center justify-between text-[10px] py-1.5 border-b border-rmpg-700 last:border-0 hover:bg-surface-raised/30 transition-colors">
+                  <div key={b.id} className="flex items-center justify-between text-[10px] py-1.5 border-b border-rmpg-700 last:border-0 hover:bg-surface-raised/30 transition-colors duration-150">
                     <div className="flex items-center gap-3">
                       <span className="text-white font-bold uppercase">{b.benefit_type === '401k' ? '401(k)' : b.benefit_type === 'hsa' ? 'HSA' : b.benefit_type === 'fsa' ? 'FSA' : b.benefit_type}</span>
                       <span className="text-rmpg-300">{b.plan_name}</span>

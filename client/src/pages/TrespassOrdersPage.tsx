@@ -443,10 +443,10 @@ export default function TrespassOrdersPage() {
                 <div className="flex items-center justify-between mb-0.5">
                   <span className="text-[11px] font-bold font-mono text-brand-400">{order.order_number}</span>
                   <div className="flex items-center gap-1">
-                    <span className={`text-[8px] font-bold px-1.5 py-0 border ${TYPE_COLORS[order.order_type] || TYPE_COLORS.trespass_warning}`}>
+                    <span className={`text-[8px] font-bold px-1.5 py-0 border rounded-sm ${TYPE_COLORS[order.order_type] || TYPE_COLORS.trespass_warning}`}>
                       {(order.order_type || '').replace(/_/g, ' ').toUpperCase()}
                     </span>
-                    <span className={`text-[8px] font-bold px-1.5 py-0 border ${STATUS_COLORS[order.status]}`}>
+                    <span className={`text-[8px] font-bold px-1.5 py-0 border rounded-sm ${STATUS_COLORS[order.status]}`}>
                       {(order.status || '').toUpperCase()}
                     </span>
                   </div>
@@ -552,19 +552,19 @@ export default function TrespassOrdersPage() {
 
             {selectedOrder.reason && (
               <div className="mt-3 pt-2 border-t border-rmpg-700">
-                <span className="text-rmpg-500 text-[10px] uppercase">Reason</span>
+                <span className="text-[#d4a017] text-[10px] uppercase font-bold tracking-wider">Reason</span>
                 <p className="text-xs text-rmpg-200 mt-1">{selectedOrder.reason}</p>
               </div>
             )}
             {selectedOrder.conditions && (
               <div className="mt-2">
-                <span className="text-rmpg-500 text-[10px] uppercase">Conditions</span>
+                <span className="text-[#d4a017] text-[10px] uppercase font-bold tracking-wider">Conditions</span>
                 <p className="text-xs text-rmpg-200 mt-1">{selectedOrder.conditions}</p>
               </div>
             )}
             {selectedOrder.notes && (
               <div className="mt-2">
-                <span className="text-rmpg-500 text-[10px] uppercase">Notes</span>
+                <span className="text-[#d4a017] text-[10px] uppercase font-bold tracking-wider">Notes</span>
                 <p className="text-xs text-rmpg-200 mt-1 whitespace-pre-wrap">{selectedOrder.notes}</p>
               </div>
             )}
@@ -577,7 +577,7 @@ export default function TrespassOrdersPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setFormOpen(false)}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#141e2b' }}>
-              <span className="text-xs font-bold text-white uppercase">{editingOrder ? 'Edit' : 'New'} Trespass Order</span>
+              <span className="text-xs font-bold text-[#d4a017] uppercase tracking-wider">{editingOrder ? 'Edit' : 'New'} Trespass Order</span>
               <button type="button" onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white"><X style={{ width: 14, height: 14 }} /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-4 space-y-3">

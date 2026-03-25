@@ -402,7 +402,7 @@ export default function CourtRecordsPage() {
         ) : (
           <>
             {/* Table header */}
-            <div className="sticky top-0 z-10 grid grid-cols-[100px_1fr_110px_130px_120px_90px_1fr] gap-px bg-[#0d1520] border-b border-[#1e3048] text-[9px] font-bold text-rmpg-400 uppercase tracking-wider">
+            <div className="sticky top-0 z-10 grid grid-cols-[100px_1fr_110px_130px_120px_90px_1fr] gap-px bg-[#0d1520] border-b border-[#1e3048] text-[9px] font-bold text-rmpg-400 uppercase tracking-widest">
               <div className="px-2 py-1.5 bg-[#141e2b]">Event #</div>
               <div className="px-2 py-1.5 bg-[#141e2b]">Defendant</div>
               <div className="px-2 py-1.5 bg-[#141e2b]">Court Date</div>
@@ -439,7 +439,7 @@ export default function CourtRecordsPage() {
                     <div className="px-2 py-1.5 text-[10px] text-rmpg-300 truncate">{eventTypeLabel(ev.event_type)}</div>
                     <div className="px-2 py-1.5 text-[10px] text-rmpg-300 truncate">{ev.judge_name || '--'}</div>
                     <div className="px-2 py-1.5">
-                      <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-bold border ${STATUS_COLORS[ev.status] || 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50'}`}>
+                      <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-bold rounded-sm border ${STATUS_COLORS[ev.status] || 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50'}`}>
                         <StatusIcon className="w-2.5 h-2.5" />
                         {ev.status?.toUpperCase()}
                       </span>
@@ -456,7 +456,7 @@ export default function CourtRecordsPage() {
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         {/* Column 1: Event Details */}
                         <div className="space-y-2">
-                          <h4 className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider flex items-center gap-1">
+                          <h4 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-widest flex items-center gap-1">
                             <Calendar className="w-3 h-3" /> Event Details
                           </h4>
                           <div className="space-y-1 text-[10px]">
@@ -474,7 +474,7 @@ export default function CourtRecordsPage() {
 
                         {/* Column 2: Parties & References */}
                         <div className="space-y-2">
-                          <h4 className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider flex items-center gap-1">
+                          <h4 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-widest flex items-center gap-1">
                             <User className="w-3 h-3" /> Parties & References
                           </h4>
                           <div className="space-y-1 text-[10px]">
@@ -489,7 +489,7 @@ export default function CourtRecordsPage() {
                           {/* Outcome section */}
                           {ev.outcome && (
                             <div className="mt-3 pt-2 border-t border-[#1e3048]">
-                              <h4 className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider flex items-center gap-1 mb-1">
+                              <h4 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-widest flex items-center gap-1 mb-1">
                                 <Scale className="w-3 h-3" /> Outcome
                               </h4>
                               <div className="space-y-1 text-[10px]">
@@ -505,7 +505,7 @@ export default function CourtRecordsPage() {
 
                         {/* Column 3: Notes & Actions */}
                         <div className="space-y-2">
-                          <h4 className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider flex items-center gap-1">
+                          <h4 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-widest flex items-center gap-1">
                             <FileText className="w-3 h-3" /> Notes
                           </h4>
                           {ev.notes ? (

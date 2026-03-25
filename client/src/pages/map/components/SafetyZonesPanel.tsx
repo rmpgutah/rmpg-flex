@@ -124,14 +124,15 @@ export default function SafetyZonesPanel({
             {/* ── Risk summary ────────────────────────────── */}
             <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-3">
+                {/* #51: Risk summary dots with LED glow */}
                 <div className="flex items-center gap-1">
-                  <span className="inline-block h-2.5 w-2.5 rounded-full animate-pulse" style={{ background: '#ef4444' }} />
-                  <span className="text-[10px] font-mono font-bold text-red-400">{highCount}</span>
+                  <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: '#ef4444', boxShadow: '0 0 6px #ef444480' }} />
+                  <span className="text-[10px] font-mono font-bold text-red-400 tabular-nums">{highCount}</span>
                   <span className="text-[8px] text-rmpg-500">HIGH</span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: '#f59e0b' }} />
-                  <span className="text-[10px] font-mono font-bold text-amber-400">{moderateCount}</span>
+                  <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: '#f59e0b', boxShadow: '0 0 6px #f59e0b80' }} />
+                  <span className="text-[10px] font-mono font-bold text-amber-400 tabular-nums">{moderateCount}</span>
                   <span className="text-[8px] text-rmpg-500">MOD</span>
                 </div>
               </div>

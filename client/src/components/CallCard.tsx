@@ -226,7 +226,8 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           {isEmergency && (
             <AlertTriangle className="w-4 h-4 text-red-500 animate-emergency-blink" />
           )}
-          <span className="text-sm font-bold text-green-400 font-mono">{call.call_number}</span>
+          {/* 39: Call number with letter-spacing for CAD readability */}
+          <span className="text-sm font-bold text-green-400 font-mono tabular-nums" style={{ letterSpacing: '0.04em' }}>{call.call_number}</span>
           {hasActiveWarrant && (
             <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-red-100 bg-red-600 px-1 py-0 rounded-sm animate-pulse" title="Person on this call has active warrant(s)">
               <ShieldAlert style={{ width: 9, height: 9 }} /> WRN
@@ -333,13 +334,13 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         })()}
       </div>
 
-      {/* 22: Location line with aria-hidden on decorative icon */}
+      {/* 40: Location with improved pin icon color and coords as tabular-nums */}
       <div className="flex items-center gap-1.5 text-xs text-rmpg-300 mb-1">
-        <MapPin className="w-3 h-3 flex-shrink-0" aria-hidden="true" />
+        <MapPin className="w-3 h-3 flex-shrink-0 text-rmpg-500" aria-hidden="true" />
         <span className="truncate">{call.location}</span>
       </div>
       {call.latitude != null && call.longitude != null && (
-        <div className="text-[9px] font-mono text-rmpg-400 ml-[18px] mb-2">
+        <div className="text-[9px] font-mono text-rmpg-400 ml-[18px] mb-2 tabular-nums">
           {Number(call.latitude).toFixed(5)}, {Number(call.longitude).toFixed(5)}
         </div>
       )}
@@ -365,9 +366,9 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         )}
       </div>
 
-      {/* 23: Description preview with italic styling for distinction; 24: Reduced line-clamp and softer border */}
+      {/* 41: Description with smoother transition and better truncation */}
       {call.description && (
-        <p className="mt-1.5 text-[11px] text-rmpg-400 italic line-clamp-2 border-t border-rmpg-700/40 pt-1.5">
+        <p className="mt-1.5 text-[11px] text-rmpg-400 italic line-clamp-2 border-t border-rmpg-700/30 pt-1.5" style={{ lineHeight: '1.4' }}>
           {call.description}
         </p>
       )}
@@ -455,10 +456,11 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         </div>
       )}
 
-      {/* Quick Status Advance Buttons — visible on hover */}
+      {/* 42: Quick Status Advance Buttons with smoother reveal */}
       {onStatusChange && !['closed', 'cancelled', 'archived'].includes(call.status) && (
-        <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5 z-10"
+        <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-all duration-200 flex gap-0.5 z-10"
           onClick={(e) => e.stopPropagation()}
+          style={{ backdropFilter: 'blur(2px)' }}
         >
           {call.status === 'pending' && (
             <button type="button" onClick={() => onStatusChange(call.id, 'dispatched')} className="px-1.5 py-0.5 text-[8px] font-bold bg-amber-900/60 text-amber-300 border border-amber-700/50 hover:bg-amber-800/80 transition-colors" title="Dispatch" aria-label="Dispatch call">D</button>
@@ -476,11 +478,11 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         </div>
       )}
 
-      {/* Drop to assign indicator */}
+      {/* 43: Drop-to-assign indicator with glow effect */}
       {isDragOver && canAcceptDrop && (
-        <div className="absolute inset-0 flex items-center justify-center bg-green-900/30 pointer-events-none rounded-sm">
-          <span className="text-xs font-bold text-green-400 bg-green-950/80 px-2 py-1 rounded-sm border border-green-600/50">
-            Drop to assign
+        <div className="absolute inset-0 flex items-center justify-center bg-green-900/30 pointer-events-none rounded-sm" style={{ boxShadow: 'inset 0 0 12px rgba(34, 197, 94, 0.2)' }}>
+          <span className="text-xs font-bold text-green-400 bg-green-950/80 px-3 py-1.5 rounded-sm border border-green-600/50" style={{ boxShadow: '0 2px 8px rgba(34, 197, 94, 0.3)' }}>
+            Drop to assign unit
           </span>
         </div>
       )}

@@ -441,10 +441,10 @@ export default function CrmPage() {
     <div className="flex h-full">
       {/* ── Sidebar ────────────────────────────────────── */}
       <div className="w-48 border-r border-rmpg-600 bg-surface-sunken flex flex-col flex-shrink-0">
-        <div className="px-3 py-2 border-b border-rmpg-600">
+        <div className="px-3 py-2.5 border-b border-rmpg-600" style={{ background: '#0d1520' }}>
           <div className="flex items-center gap-2">
             <RmpgLogo height={14} iconOnly />
-            <span className="text-xs font-bold text-brand-400 tracking-wider">OVERWATCH</span>
+            <span className="text-xs font-bold text-brand-400 tracking-wider uppercase">Overwatch</span>
           </div>
         </div>
         <nav className="flex-1 py-1">
@@ -455,16 +455,16 @@ export default function CrmPage() {
               <button type="button"
                 key={item.id}
                 onClick={() => setActiveSection(item.id)}
-                className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors ${
+                className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-all duration-150 ${
                   isActive
-                    ? 'bg-brand-600/20 text-brand-400 border-l-2 border-brand-400'
+                    ? 'bg-brand-600/20 text-brand-400 border-l-2 border-brand-400 font-medium'
                     : 'text-rmpg-300 hover:bg-rmpg-700/30 hover:text-rmpg-200 border-l-2 border-transparent'
                 }`}
               >
                 <Icon className="w-3.5 h-3.5 flex-shrink-0" />
                 {item.label}
                 {item.id === 'tasks' && tasks.filter(t => t.status === 'pending' || t.status === 'in_progress').length > 0 && (
-                  <span className="ml-auto text-[9px] font-mono px-1 py-0.5 bg-amber-900/30 text-amber-400 border border-amber-700/50">
+                  <span className="ml-auto text-[8px] font-mono font-bold px-1.5 py-0.5 bg-amber-900/30 text-amber-400 border border-amber-700/50 tabular-nums" style={{ borderRadius: '2px' }}>
                     {tasks.filter(t => t.status === 'pending' || t.status === 'in_progress').length}
                   </span>
                 )}
@@ -477,9 +477,10 @@ export default function CrmPage() {
       {/* ── Main Content ──────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {fetchError && (
-          <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
-            <span>⚠ {fetchError}</span>
-            <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+          <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2 shadow-lg">
+            <AlertTriangle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+            <span className="flex-1">{fetchError}</span>
+            <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300 text-[10px]">Dismiss</button>
           </div>
         )}
         {activeSection === 'dashboard' && renderDashboard()}
@@ -555,7 +556,7 @@ export default function CrmPage() {
                 </div>
               )}
             </div>
-            <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
+            <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600 bg-surface-sunken/50">
               <button type="button" onClick={() => setShowTaskModal(false)} className="toolbar-btn">Cancel</button>
               <button type="button" onClick={saveTask} className="toolbar-btn toolbar-btn-primary print:hidden" disabled={!taskForm.title?.trim()}>
                 <Save className="w-3 h-3" /> {editingTask ? 'Update' : 'Create'}
@@ -688,10 +689,10 @@ export default function CrmPage() {
                   {(pipelineSummary.stages || []).map((s: any) => {
                     const stageColors: Record<string, string> = { new: 'bg-rmpg-600', contacted: 'bg-blue-700', qualified: 'bg-cyan-700', proposal: 'bg-amber-700', negotiation: 'bg-orange-700', won: 'bg-green-700', lost: 'bg-red-700' };
                     return (
-                      <div key={s.pipeline_stage} className={`flex-1 ${stageColors[s.pipeline_stage] || 'bg-rmpg-700'} px-2 py-2 text-center rounded-sm`}>
-                        <div className="text-sm font-bold text-white">{s.count}</div>
-                        <div className="text-[8px] text-white/70 uppercase">{s.pipeline_stage}</div>
-                        {s.total_value > 0 && <div className="text-[8px] text-white/50">{formatCurrency(s.total_value)}</div>}
+                      <div key={s.pipeline_stage} className={`flex-1 ${stageColors[s.pipeline_stage] || 'bg-rmpg-700'} px-2 py-2 text-center hover:brightness-110 transition-all cursor-default`} style={{ borderRadius: '2px' }}>
+                        <div className="text-sm font-bold text-white font-mono tabular-nums">{s.count}</div>
+                        <div className="text-[8px] text-white/70 uppercase font-bold tracking-wider">{s.pipeline_stage}</div>
+                        {s.total_value > 0 && <div className="text-[8px] text-white/50 font-mono">{formatCurrency(s.total_value)}</div>}
                       </div>
                     );
                   })}
@@ -765,8 +766,8 @@ export default function CrmPage() {
                     {(sourceAnalytics.data || []).slice(0, 8).map((s: any) => (
                       <div key={s.source} className="flex items-center gap-2 text-[10px]">
                         <span className="w-24 text-rmpg-300 truncate capitalize">{s.source.replace(/_/g, ' ')}</span>
-                        <div className="flex-1 bg-rmpg-700 h-2 rounded-sm overflow-hidden">
-                          <div className="h-full bg-brand-500" style={{ width: `${Math.min(100, (s.total_leads / (sourceAnalytics.data[0]?.total_leads || 1)) * 100)}%` }} />
+                        <div className="flex-1 bg-rmpg-700 h-2 overflow-hidden" style={{ borderRadius: '2px' }}>
+                          <div className="h-full bg-brand-500 transition-all duration-300" style={{ width: `${Math.min(100, (s.total_leads / (sourceAnalytics.data[0]?.total_leads || 1)) * 100)}%`, borderRadius: '2px' }} />
                         </div>
                         <span className="text-white w-6 text-right">{s.total_leads}</span>
                         <span className="text-green-400 w-10 text-right">{s.conversion_rate}%</span>
@@ -854,8 +855,10 @@ export default function CrmPage() {
           <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
             {filteredClients.length === 0 && !isLoading && (
               <div className="text-center py-12 text-rmpg-500">
-                <Building2 size={32} className="mx-auto mb-2 opacity-30" />
-                <p className="text-sm">{clientSearch ? 'No clients match your search' : 'No clients yet'}</p>
+                <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+                  <Building2 size={24} className="text-rmpg-600" />
+                </div>
+                <p className="text-sm font-medium text-rmpg-400">{clientSearch ? 'No clients match your search' : 'No clients yet'}</p>
                 <p className="text-xs text-rmpg-600 mt-1">{clientSearch ? 'Try a different search term' : 'Click "New" to add your first client'}</p>
               </div>
             )}
@@ -1169,7 +1172,13 @@ export default function CrmPage() {
         </PanelTitleBar>
         <div className="p-4">
           {tasks.length === 0 ? (
-            <div className="text-center py-12 text-rmpg-400 text-sm">No tasks found</div>
+            <div className="text-center py-12 text-rmpg-500">
+              <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+                <CheckSquare className="w-7 h-7 text-rmpg-600" />
+              </div>
+              <p className="text-sm font-medium text-rmpg-400">No tasks found</p>
+              <p className="text-[10px] text-rmpg-600 mt-1">Click "New Task" to create one</p>
+            </div>
           ) : (
             <div className="space-y-2">
               {tasks.map(task => (
@@ -1226,13 +1235,13 @@ export default function CrmPage() {
 // ── Stat Card Component ──────────────────────────────────
 function StatCard({ icon: Icon, label, value, sub, color }: { icon: React.ElementType; label: string; value: string | number; sub?: string; color: string }) {
   return (
-    <div className="panel-inset p-3">
+    <div className="panel-inset p-3 hover:bg-surface-raised/30 transition-colors group cursor-default">
       <div className="flex items-center gap-2 mb-1">
         <Icon className={`w-3.5 h-3.5 ${color}`} />
-        <span className="text-[10px] text-rmpg-400 uppercase tracking-wider">{label}</span>
+        <span className="text-[10px] text-rmpg-400 uppercase tracking-wider font-bold">{label}</span>
       </div>
-      <div className={`text-lg font-bold font-mono ${color}`}>{value}</div>
-      {sub && <div className="text-[10px] text-rmpg-400 mt-0.5">{sub}</div>}
+      <div className={`text-lg font-bold font-mono tabular-nums ${color}`}>{value}</div>
+      {sub && <div className="text-[10px] text-rmpg-500 mt-0.5">{sub}</div>}
     </div>
   );
 }

@@ -55,8 +55,8 @@ function PlanStatusBadge({ status }: { status: string }) {
   const c = STATUS_COLORS[status] || STATUS_COLORS.draft;
   return (
     <span
-      className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 transition-colors duration-150"
-      style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}` }}
+      className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 transition-colors duration-150 inline-flex items-center"
+      style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}`, borderRadius: '2px' }}
       role="status"
     >
       {status}
@@ -160,7 +160,8 @@ export default function ShiftPlansPage() {
           <Calendar style={{ width: 14, height: 14, color: '#3b82f6' }} />
           <button type="button"
             onClick={() => navigateDate(-1)}
-            className="text-[10px] text-rmpg-400 hover:text-white px-1"
+            className="text-[10px] text-rmpg-400 hover:text-white px-1.5 py-0.5 hover:bg-rmpg-700/30 transition-colors"
+            aria-label="Previous day"
           >
             ◀
           </button>
@@ -173,14 +174,15 @@ export default function ShiftPlansPage() {
           />
           <button type="button"
             onClick={() => navigateDate(1)}
-            className="text-[10px] text-rmpg-400 hover:text-white px-1"
+            className="text-[10px] text-rmpg-400 hover:text-white px-1.5 py-0.5 hover:bg-rmpg-700/30 transition-colors"
+            aria-label="Next day"
           >
             ▶
           </button>
           <span className="text-[11px] font-semibold text-rmpg-300">{formatDate(selectedDate)}</span>
           <button type="button"
             onClick={() => setSelectedDate(todayStr())}
-            className="text-[9px] text-blue-400 hover:text-blue-300 uppercase font-bold tracking-wider"
+            className="text-[9px] text-blue-400 hover:text-blue-300 uppercase font-bold tracking-wider px-1.5 py-0.5 hover:bg-blue-900/30 transition-colors border border-transparent hover:border-blue-700/30"
           >
             Today
           </button>
@@ -238,7 +240,7 @@ export default function ShiftPlansPage() {
                 value={newPlanName}
                 onChange={(e) => setNewPlanName(e.target.value)}
                 placeholder="Plan name..."
-                className="w-full bg-surface-base border border-rmpg-600 text-white text-[10px] px-2 py-1 mb-2 focus:border-blue-500 focus:outline-none"
+                className="w-full bg-surface-base border border-rmpg-600 text-white text-[10px] px-2 py-1.5 mb-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30 transition-colors"
                 autoFocus
                 onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
               />
@@ -273,11 +275,13 @@ export default function ShiftPlansPage() {
             {plansForDate.length === 0 ? (
               <div className="flex items-center justify-center h-full text-rmpg-500 text-[10px]">
                 <div className="text-center">
-                  <Calendar className="w-8 h-8 mx-auto mb-2 text-rmpg-600" />
-                  <p>No shift plans for this date</p>
+                  <div className="w-12 h-12 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+                    <Calendar className="w-6 h-6 text-rmpg-600" />
+                  </div>
+                  <p className="text-rmpg-400 font-medium">No shift plans for this date</p>
                   <button type="button"
                     onClick={() => setShowCreateForm(true)}
-                    className="text-blue-400 hover:text-blue-300 text-[10px] mt-2"
+                    className="text-blue-400 hover:text-blue-300 text-[10px] mt-2 hover:underline"
                   >
                     + Create one
                   </button>
@@ -419,8 +423,10 @@ export default function ShiftPlansPage() {
                 {sp.activePlan.assignments.length === 0 ? (
                   <div className="flex items-center justify-center py-16 text-rmpg-500 text-[10px]">
                     <div className="text-center">
-                      <MapPin className="w-8 h-8 mx-auto mb-2 text-rmpg-600" />
-                      <p>No area assignments yet</p>
+                      <div className="w-12 h-12 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+                        <MapPin className="w-6 h-6 text-rmpg-600" />
+                      </div>
+                      <p className="text-rmpg-400 font-medium">No area assignments yet</p>
                       <p className="text-[9px] text-rmpg-600 mt-1">Use the Map page's shift planning overlay to select areas</p>
                     </div>
                   </div>
@@ -502,23 +508,23 @@ export default function ShiftPlansPage() {
                   <div className="px-4 py-3" style={{ background: '#0d1520', borderTop: '1px solid #1e3048' }}>
                     <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-2">Coverage Summary</div>
                     <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-4`}>
-                      <div className="p-2" style={{ background: '#0f1a28', border: '1px solid #1e3048' }}>
-                        <div className="text-[18px] font-black text-blue-400">{stats.assigned}</div>
-                        <div className="text-[9px] text-rmpg-500 uppercase">Areas Covered</div>
+                      <div className="p-2.5" style={{ background: '#0f1a28', border: '1px solid #1e3048', borderRadius: '2px' }}>
+                        <div className="text-[18px] font-black text-blue-400 font-mono tabular-nums">{stats.assigned}</div>
+                        <div className="text-[9px] text-rmpg-500 uppercase tracking-wider font-bold mt-0.5">Areas Covered</div>
                       </div>
-                      <div className="p-2" style={{ background: '#0f1a28', border: '1px solid #1e3048' }}>
-                        <div className="text-[18px] font-black text-green-400">{stats.officers}</div>
-                        <div className="text-[9px] text-rmpg-500 uppercase">Officers Assigned</div>
+                      <div className="p-2.5" style={{ background: '#0f1a28', border: '1px solid #1e3048', borderRadius: '2px' }}>
+                        <div className="text-[18px] font-black text-green-400 font-mono tabular-nums">{stats.officers}</div>
+                        <div className="text-[9px] text-rmpg-500 uppercase tracking-wider font-bold mt-0.5">Officers Assigned</div>
                       </div>
-                      <div className="p-2" style={{ background: '#0f1a28', border: '1px solid #1e3048' }}>
-                        <div className="text-[18px] font-black text-purple-400">{stats.units}</div>
-                        <div className="text-[9px] text-rmpg-500 uppercase">Units Deployed</div>
+                      <div className="p-2.5" style={{ background: '#0f1a28', border: '1px solid #1e3048', borderRadius: '2px' }}>
+                        <div className="text-[18px] font-black text-purple-400 font-mono tabular-nums">{stats.units}</div>
+                        <div className="text-[9px] text-rmpg-500 uppercase tracking-wider font-bold mt-0.5">Units Deployed</div>
                       </div>
-                      <div className="p-2" style={{ background: '#0f1a28', border: '1px solid #1e3048' }}>
-                        <div className="text-[18px] font-black text-amber-400">
+                      <div className="p-2.5" style={{ background: '#0f1a28', border: '1px solid #1e3048', borderRadius: '2px' }}>
+                        <div className="text-[18px] font-black text-amber-400 font-mono">
                           {SHIFT_TYPES[sp.activePlan.shiftType]?.defaultStart}
                         </div>
-                        <div className="text-[9px] text-rmpg-500 uppercase">Shift Start</div>
+                        <div className="text-[9px] text-rmpg-500 uppercase tracking-wider font-bold mt-0.5">Shift Start</div>
                       </div>
                     </div>
                   </div>
@@ -528,8 +534,10 @@ export default function ShiftPlansPage() {
           ) : (
             <div className="flex-1 flex items-center justify-center text-rmpg-500">
               <div className="text-center">
-                <BarChart3 className="w-10 h-10 mx-auto mb-3 text-rmpg-600" />
-                <p className="text-sm">Select a shift plan to view details</p>
+                <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+                  <BarChart3 className="w-7 h-7 text-rmpg-600" />
+                </div>
+                <p className="text-sm font-medium text-rmpg-400">Select a shift plan to view details</p>
                 <p className="text-[10px] text-rmpg-600 mt-1">or create a new plan for {formatDate(selectedDate)}</p>
               </div>
             </div>

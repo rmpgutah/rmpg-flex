@@ -417,16 +417,16 @@ export default function RecordsPage() {
               aria-selected={activeTab === tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`
-                flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-medium transition-all duration-150 whitespace-nowrap relative
+                flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all duration-150 whitespace-nowrap relative
                 ${activeTab === tab.id
                   ? 'bg-rmpg-700 text-white border border-rmpg-600 border-b-rmpg-700 shadow-sm'
-                  : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'
+                  : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 border border-transparent'
                 }
               `}
             >
-              <Icon className="w-3.5 h-3.5" />
+              <Icon className={`w-3.5 h-3.5 ${activeTab === tab.id ? 'text-brand-400' : ''}`} />
               {tab.label}
-              <span className={`text-[9px] font-mono ${activeTab === tab.id ? 'text-brand-400' : 'text-rmpg-500'}`}>({tab.count})</span>
+              <span className={`text-[9px] font-mono tabular-nums ${activeTab === tab.id ? 'text-brand-400' : 'text-rmpg-500'}`}>({tab.count})</span>
               {activeTab === tab.id && <span className="absolute bottom-0 left-1 right-1 h-[2px] bg-brand-500" />}
             </button>
           );
@@ -446,7 +446,7 @@ export default function RecordsPage() {
       </div>
 
       {/* Compact Stats Strip */}
-      <div className={`${isMobile ? 'px-2 overflow-x-auto' : 'px-3'} py-1.5 border-b border-rmpg-600 flex items-center gap-4 text-[9px] font-mono uppercase tracking-wider`}>
+      <div className={`${isMobile ? 'px-2 overflow-x-auto' : 'px-3'} py-1.5 border-b border-rmpg-600 flex items-center gap-4 text-[9px] font-mono uppercase tracking-wider`} style={{ background: '#0d1520' }}>
         <div className="flex items-center gap-1">
           <UserCircle className="w-2.5 h-2.5 text-brand-400" />
           <span className="text-rmpg-400">P:</span>
@@ -524,8 +524,8 @@ export default function RecordsPage() {
       <div className="flex-1 overflow-hidden" role="tabpanel" aria-label={`${activeTab} records`}>
         {isLoading && (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
-            <Loader2 className="w-7 h-7 text-brand-400 animate-spin" role="status" aria-label="Loading records" />
-            <span className="text-sm text-rmpg-400 animate-pulse">Loading records...</span>
+            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading records" />
+            <span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading records...</span>
           </div>
         )}
         {activeTab === 'persons' && !loadingPersons && <PersonsTabList state={personsState} />}

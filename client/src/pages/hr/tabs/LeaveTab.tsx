@@ -62,7 +62,7 @@ function BalanceCard({
   const pct = total > 0 ? Math.round((used / total) * 100) : 0;
 
   return (
-    <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-4 transition-all duration-200 hover:border-[#2a3f5a] hover:brightness-105">
+    <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm p-4 transition-all duration-200 hover:border-[#2a3f5a] hover:brightness-105" role="group" aria-label={`${label} leave balance`}>
       <div className="flex items-center gap-2 mb-2">
         <Icon size={14} style={{ color }} aria-hidden="true" />
         <span className="text-xs text-rmpg-400 uppercase tracking-wide font-medium">{label}</span>
@@ -70,13 +70,13 @@ function BalanceCard({
       <div className="text-xl font-bold text-white mb-0.5 font-mono">
         {remaining} <span className="text-sm font-normal text-rmpg-400 font-sans">of {total} hrs remaining</span>
       </div>
-      <div className="h-2 bg-[#0d1520] rounded-full overflow-hidden mt-2" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${label}: ${pct}% used`}>
+      <div className="h-2 bg-[#0d1520] rounded-full overflow-hidden mt-2" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${label}: ${pct}% used, ${remaining} hours remaining`}>
         <div
-          className="h-full rounded-full transition-all duration-500"
+          className="h-full rounded-full transition-all duration-700 ease-out"
           style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: color }}
         />
       </div>
-      <div className="text-xs text-rmpg-500 mt-1">{used} hrs used</div>
+      <div className="text-xs text-rmpg-500 mt-1.5">{used} hrs used</div>
     </div>
   );
 }
@@ -292,16 +292,16 @@ export default function LeaveTab() {
         </div>
 
         {/* Request History Table */}
-        <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm overflow-x-auto">
-          <table className="w-full text-xs">
+        <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm overflow-x-auto scrollbar-dark">
+          <table className="w-full text-xs" role="table" aria-label="Leave requests">
             <thead>
               <tr className="border-b border-[#1e3048] bg-[#0d1520]">
-                <th className="text-left px-3 py-2 text-rmpg-400 font-medium">Type</th>
-                <th className="text-left px-3 py-2 text-rmpg-400 font-medium">Dates</th>
-                <th className="text-left px-3 py-2 text-rmpg-400 font-medium">Hours</th>
-                <th className="text-left px-3 py-2 text-rmpg-400 font-medium">Status</th>
-                <th className="text-left px-3 py-2 text-rmpg-400 font-medium">Submitted</th>
-                <th className="text-right px-3 py-2 text-rmpg-400 font-medium">Actions</th>
+                <th scope="col" className="text-left px-3 py-2 text-rmpg-400 font-medium">Type</th>
+                <th scope="col" className="text-left px-3 py-2 text-rmpg-400 font-medium">Dates</th>
+                <th scope="col" className="text-left px-3 py-2 text-rmpg-400 font-medium">Hours</th>
+                <th scope="col" className="text-left px-3 py-2 text-rmpg-400 font-medium">Status</th>
+                <th scope="col" className="text-left px-3 py-2 text-rmpg-400 font-medium">Submitted</th>
+                <th scope="col" className="text-right px-3 py-2 text-rmpg-400 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -315,7 +315,7 @@ export default function LeaveTab() {
                 requests.map((req, i) => (
                   <tr
                     key={req.id}
-                    className={`border-b border-[#1e3048] ${i % 2 === 0 ? 'bg-[#141e2b]' : 'bg-[#121a27]'}`}
+                    className={`border-b border-[#1e3048] transition-colors duration-150 hover:brightness-110 ${i % 2 === 0 ? 'bg-[#141e2b]' : 'bg-[#121a27]'}`}
                   >
                     <td className="px-3 py-2 text-white"><TypePill type={req.type} /></td>
                     <td className="px-3 py-2 text-rmpg-200">
@@ -466,7 +466,7 @@ export default function LeaveTab() {
                 {balances.map((bal, i) => (
                   <tr
                     key={bal.id}
-                    className={`border-b border-[#1e3048] ${i % 2 === 0 ? 'bg-[#141e2b]' : 'bg-[#121a27]'}`}
+                    className={`border-b border-[#1e3048] transition-colors duration-150 hover:brightness-110 ${i % 2 === 0 ? 'bg-[#141e2b]' : 'bg-[#121a27]'}`}
                   >
                     <td className="px-3 py-2 text-white font-medium">{bal.officer_name || `Officer #${bal.officer_id}`}</td>
                     <td className="px-3 py-2">
@@ -572,7 +572,7 @@ export default function LeaveTab() {
                 requests.map((req, i) => (
                   <tr
                     key={req.id}
-                    className={`border-b border-[#1e3048] ${i % 2 === 0 ? 'bg-[#141e2b]' : 'bg-[#121a27]'}`}
+                    className={`border-b border-[#1e3048] transition-colors duration-150 hover:brightness-110 ${i % 2 === 0 ? 'bg-[#141e2b]' : 'bg-[#121a27]'}`}
                   >
                     <td className="px-3 py-2 text-white">{req.officer_name || `#${req.officer_id}`}</td>
                     <td className="px-3 py-2"><TypePill type={req.type} /></td>

@@ -88,7 +88,7 @@ function SignatureEditor({ onClose }: { onClose: () => void }) {
   return (
     <div className="border-t border-border-subtle pt-2 mt-2 space-y-1.5">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider">Email Signature</span>
+        <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider" style={{ letterSpacing: '0.1em' }}>Email Signature</span>
         <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-3 h-3" /></button>
       </div>
       <textarea value={signature} onChange={e => setSignature(e.target.value)} rows={4}
@@ -1224,7 +1224,7 @@ Drag & drop files to attach • Ctrl+Enter to send" />
               </button>
             )}
             <button type="button" onClick={handleSend} disabled={sending}
-              className="px-5 py-1.5 text-xs font-semibold bg-brand-500 hover:bg-brand-600 text-white rounded-sm transition-colors flex items-center gap-1.5 shadow-sm shadow-brand-500/30 disabled:opacity-40">
+              className="px-5 py-1.5 text-xs font-semibold bg-brand-500 hover:bg-brand-600 text-white rounded-sm transition-all flex items-center gap-1.5 shadow-sm shadow-brand-500/30 hover:shadow-md hover:shadow-brand-500/40 disabled:opacity-40">
               {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Send className="w-3.5 h-3.5" />}
               {sending ? 'Sending...' : 'Send'}
             </button>
@@ -1395,7 +1395,7 @@ function InlineReply({ messageId, onSent, onError }: { messageId: string; onSent
       <div className="border-t border-[#1e3048] bg-[#0d1520]">
         <div onClick={() => { setExpanded(true); setTimeout(() => inputRef.current?.focus(), 50); }}
           className="mx-4 my-3 flex items-center gap-2 px-4 py-2.5 border border-[#1e3048] rounded-sm cursor-text text-xs text-rmpg-500 hover:border-brand-500/40 hover:text-rmpg-300 transition-all hover:shadow-lg hover:shadow-brand-500/5">
-          <Reply className="w-3.5 h-3.5 text-rmpg-600" />
+          <Reply className="w-3.5 h-3.5 text-rmpg-600 group-hover:text-brand-400 transition-colors" />
           <span>Click here to reply...</span>
         </div>
       </div>
@@ -1410,7 +1410,7 @@ function InlineReply({ messageId, onSent, onError }: { messageId: string; onSent
           rows={4} className="w-full bg-transparent text-xs text-rmpg-200 p-3 resize-none focus:outline-none placeholder:text-rmpg-600 leading-relaxed"
           placeholder="Type your reply..." autoFocus />
         <div className="flex items-center justify-between px-3 py-2 bg-[#0d1520]/50">
-          <span className="text-[9px] text-rmpg-600">Ctrl+Enter to send • Esc to cancel</span>
+          <span className="text-[9px] text-rmpg-600 font-mono">Ctrl+Enter to send &middot; Esc to cancel</span>
           <div className="flex items-center gap-1.5">
             <button type="button" onClick={() => { setExpanded(false); setBody(''); }} className="px-2.5 py-1 text-[10px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors">Cancel</button>
             <button type="button" onClick={handleSend} disabled={sending || !body.trim()}
@@ -1857,10 +1857,10 @@ export default function EmailPage() {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center space-y-4 max-w-md panel-beveled bg-surface-base p-8">
-          <div className="w-16 h-16 mx-auto rounded-full bg-red-500/10 flex items-center justify-center">
+          <div className="w-16 h-16 mx-auto rounded-full bg-red-500/10 flex items-center justify-center border border-red-500/20">
             <WifiOff className="w-8 h-8 text-red-400/60" />
           </div>
-          <h2 className="text-sm font-semibold text-white">Email Not Configured</h2>
+          <h2 className="text-sm font-semibold text-white tracking-wide">Email Not Configured</h2>
           <p className="text-xs text-rmpg-400 leading-relaxed">
             Microsoft 365 email integration needs to be set up by an administrator.
           </p>
@@ -1882,10 +1882,10 @@ export default function EmailPage() {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center space-y-4 max-w-md panel-beveled bg-surface-base p-8">
-          <div className="w-16 h-16 mx-auto rounded-full bg-amber-500/10 flex items-center justify-center">
+          <div className="w-16 h-16 mx-auto rounded-full bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
             <AlertTriangle className="w-8 h-8 text-amber-400/60" />
           </div>
-          <h2 className="text-sm font-semibold text-white">Authorization Required</h2>
+          <h2 className="text-sm font-semibold text-white tracking-wide">Authorization Required</h2>
           <p className="text-xs text-rmpg-400 leading-relaxed">
             Microsoft email credentials are configured, but OAuth authorization hasn't been completed yet.
             An administrator needs to sign in with the Microsoft 365 account.
@@ -1988,7 +1988,7 @@ export default function EmailPage() {
           )}
 
           {f.unreadItemCount > 0 && (
-            <span className={`text-[9px] font-bold bg-brand-500/20 text-brand-400 px-1.5 rounded-full ${folderCollapsed ? 'absolute top-0 right-0 mt-0.5 mr-0.5' : ''}`}>
+            <span className={`text-[9px] font-bold bg-brand-500/20 text-brand-400 px-1.5 rounded-full min-w-[18px] text-center ${folderCollapsed ? 'absolute top-0 right-0 mt-0.5 mr-0.5' : ''}`}>
               {f.unreadItemCount}
             </span>
           )}
@@ -2015,7 +2015,7 @@ export default function EmailPage() {
             {folderCollapsed ? <PanelLeftOpen className="w-3.5 h-3.5" /> : <PanelLeftClose className="w-3.5 h-3.5" />}
           </button>
           {!folderCollapsed && (
-            <button type="button" onClick={() => setComposing('new')} className="flex-1 text-xs py-1.5 flex items-center justify-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-sm transition-colors shadow-sm shadow-brand-500/20">
+            <button type="button" onClick={() => setComposing('new')} className="flex-1 text-xs py-1.5 flex items-center justify-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-sm transition-all shadow-sm shadow-brand-500/20 hover:shadow-md hover:shadow-brand-500/30">
               <Plus className="w-3.5 h-3.5" /> Compose
             </button>
           )}
@@ -2086,9 +2086,9 @@ export default function EmailPage() {
               {notificationsOn ? <Bell className="w-3 h-3 text-brand-400" /> : <BellOff className="w-3 h-3" />}
               {notificationsOn ? 'Notifications on' : 'Notifications off'}
             </button>
-            <div className="text-[8px] text-rmpg-600 space-y-0.5">
-              <div>Ctrl+N New • Ctrl+R Reply</div>
-              <div>Ctrl+F Forward • ↑↓ Navigate</div>
+            <div className="text-[8px] text-rmpg-600 space-y-0.5 font-mono">
+              <div>Ctrl+N New &middot; Ctrl+R Reply</div>
+              <div>Ctrl+F Forward &middot; &#x2191;&#x2193; Navigate</div>
             </div>
           </div>
         )}
@@ -2237,7 +2237,7 @@ export default function EmailPage() {
             <div className="flex flex-col items-center justify-center py-12 gap-2"><Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading data...</span></div>
           ) : messages.length === 0 ? (
             <div className="text-center py-12 text-rmpg-500 text-xs">
-              <Mail className="w-8 h-8 mx-auto mb-2 opacity-40" />
+              <Mail className="w-8 h-8 mx-auto mb-3 opacity-40" />
               {search ? (<><div>No results for &ldquo;{search}&rdquo;</div><button type="button" onClick={handleClearSearch} className="text-brand-400 hover:text-brand-300 mt-1">Clear search</button></>) : 'No messages'}
             </div>
           ) : (
@@ -2292,7 +2292,7 @@ export default function EmailPage() {
                               </button>
                             )}
                             {!msg.isRead && !selectedIds.has(msg.id) && (
-                              <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-brand-400 border-2 border-surface-sunken" />
+                              <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-brand-400 border-2 border-surface-sunken shadow-sm shadow-brand-400/50" />
                             )}
                           </div>
 
@@ -2302,7 +2302,7 @@ export default function EmailPage() {
                                 {msg.fromName || msg.fromAddress}
                               </span>
                               {isMulti && !isExpanded && (
-                                <span className="text-[8px] bg-brand-500/15 text-brand-400 px-1.5 py-0.5 rounded-full font-mono font-bold">{thread.messages.length}</span>
+                                <span className="text-[8px] bg-brand-500/15 text-brand-400 px-1.5 py-0.5 rounded-full font-mono font-bold min-w-[18px] text-center">{thread.messages.length}</span>
                               )}
                               <span className="text-[9px] text-rmpg-500 flex-shrink-0 tabular-nums">{formatDate(msg.receivedAt)}</span>
                             </div>
@@ -2312,17 +2312,17 @@ export default function EmailPage() {
                             {(msg.hasAttachments || msg.isFlagged || msg.importance === 'high') && (
                               <div className="flex items-center gap-1.5 mt-1">
                                 {msg.hasAttachments && (
-                                  <span className="inline-flex items-center gap-0.5 text-[8px] text-rmpg-400 bg-rmpg-700/50 px-1.5 py-0.5 rounded-sm">
+                                  <span className="inline-flex items-center gap-0.5 text-[8px] text-rmpg-400 bg-rmpg-700/50 px-1.5 py-0.5 rounded-sm border border-rmpg-600/30">
                                     <Paperclip className="w-2.5 h-2.5" /> Attachment
                                   </span>
                                 )}
                                 {msg.isFlagged && (
-                                  <span className="inline-flex items-center gap-0.5 text-[8px] text-yellow-400 bg-yellow-900/20 px-1.5 py-0.5 rounded-sm">
+                                  <span className="inline-flex items-center gap-0.5 text-[8px] text-yellow-400 bg-yellow-900/20 px-1.5 py-0.5 rounded-sm border border-yellow-700/20">
                                     <Flag className="w-2.5 h-2.5" /> Flagged
                                   </span>
                                 )}
                                 {msg.importance === 'high' && (
-                                  <span className="inline-flex items-center gap-0.5 text-[8px] text-red-400 bg-red-900/20 px-1.5 py-0.5 rounded-sm">
+                                  <span className="inline-flex items-center gap-0.5 text-[8px] text-red-400 bg-red-900/20 px-1.5 py-0.5 rounded-sm border border-red-700/20">
                                     <AlertTriangle className="w-2.5 h-2.5" /> Important
                                   </span>
                                 )}
@@ -2354,7 +2354,7 @@ export default function EmailPage() {
       </div>
 
       {/* ─── Resize Handle ─── */}
-      <div className="w-1 flex-shrink-0 cursor-col-resize hover:bg-brand-500/30 active:bg-brand-500/50 transition-colors hidden md:block"
+      <div className="w-1 flex-shrink-0 cursor-col-resize hover:bg-brand-500/30 active:bg-brand-500/50 transition-colors hidden md:block hover:w-1.5"
         onMouseDown={() => { resizingRef.current = true; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; }} />
 
       {/* ─── Reading Pane ─── */}
@@ -2368,7 +2368,7 @@ export default function EmailPage() {
                 <button type="button" onClick={() => { setSelectedMessage(null); setFullMessage(null); setMobileView('list'); }} className="md:hidden p-1 text-rmpg-400 hover:text-white flex-shrink-0"><ChevronLeft className="w-4 h-4" /></button>
                 <h2 className="text-sm font-semibold text-white flex-1 truncate">{fullMessage.subject || '(no subject)'}</h2>
                 {fullMessage.importance === 'high' && (
-                  <span className="text-[8px] px-1.5 py-0.5 bg-red-900/20 text-red-400 rounded-sm font-bold uppercase flex-shrink-0">Important</span>
+                  <span className="text-[8px] px-1.5 py-0.5 bg-red-900/20 text-red-400 rounded-sm font-bold uppercase flex-shrink-0 border border-red-700/20 tracking-wider">Important</span>
                 )}
               </div>
 
@@ -2434,7 +2434,7 @@ export default function EmailPage() {
               {/* Attachments */}
               {attachments.length > 0 && (
                 <div className="px-4 py-2 border-t border-border-subtle/50">
-                  <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">
+                  <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5" style={{ letterSpacing: '0.1em' }}>
                     Attachments ({attachments.filter(a => !a.isInline).length})
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -2492,7 +2492,7 @@ export default function EmailPage() {
         ) : (
           <div className="flex items-center justify-center h-full">
             <div className="text-center space-y-3 max-w-xs">
-              <div className="w-16 h-16 mx-auto rounded-full bg-brand-500/10 flex items-center justify-center">
+              <div className="w-16 h-16 mx-auto rounded-full bg-brand-500/10 flex items-center justify-center border border-brand-500/15">
                 <Mail className="w-8 h-8 text-brand-500/40" />
               </div>
               <div>

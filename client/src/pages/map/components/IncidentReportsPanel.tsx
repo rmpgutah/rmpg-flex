@@ -116,10 +116,11 @@ export default function IncidentReportsPanel({
           <span className="text-[10px] font-bold uppercase tracking-wider text-rmpg-200 font-mono">
             Incident Reports
           </span>
+          {/* #41: Incident count badge with border */}
           {!loading && (
             <span
-              className="text-[9px] font-mono font-bold text-emerald-300 bg-emerald-900/40 px-1.5 py-0.5 rounded"
-              style={{ minWidth: 20, textAlign: 'center' }}
+              className="text-[9px] font-mono font-bold text-emerald-300 bg-emerald-900/40 px-1.5 py-0.5 rounded-sm tabular-nums"
+              style={{ minWidth: 20, textAlign: 'center', border: '1px solid rgba(16,185,129,0.3)' }}
             >
               {count}
             </span>

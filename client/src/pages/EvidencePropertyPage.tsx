@@ -335,9 +335,10 @@ export default function EvidencePropertyPage() {
         </PanelTitleBar>
 
         {fetchError && (
-          <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
-            <span>⚠ {fetchError}</span>
-            <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+          <div className="mx-3 mt-2 p-2 bg-red-900/30 border border-red-700/50 text-red-400 text-xs flex items-center gap-2" role="alert">
+            <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />
+            <span className="flex-1">{fetchError}</span>
+            <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300 text-[10px]" aria-label="Dismiss error">dismiss</button>
           </div>
         )}
 
@@ -352,7 +353,7 @@ export default function EvidencePropertyPage() {
             ].map(s => (
               <div key={s.label} className="panel-beveled px-3 py-1.5 text-center min-w-0">
                 <div className="text-[9px] font-mono text-rmpg-500 tracking-wider">{s.label}</div>
-                <div className={`text-sm font-bold ${s.color}`}>{s.value}</div>
+                <div className={`text-sm font-bold tabular-nums ${s.color}`}>{s.value}</div>
               </div>
             ))}
           </div>
@@ -402,8 +403,8 @@ export default function EvidencePropertyPage() {
         <div className="flex-1 overflow-y-auto scrollbar-dark" role="list" aria-label="Evidence items">
           {loading ? (
             <div className="flex flex-col items-center justify-center h-40 gap-3">
-              <Loader2 className="w-6 h-6 animate-spin text-brand-400" role="status" aria-label="Loading evidence items" />
-              <span className="text-[10px] text-rmpg-500 animate-pulse">Loading evidence...</span>
+              <Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading evidence items" />
+              <span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading evidence...</span>
             </div>
           ) : items.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-rmpg-500">
@@ -465,7 +466,7 @@ export default function EvidencePropertyPage() {
             <button type="button" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="text-[10px] text-rmpg-400 disabled:opacity-30 hover:text-white transition-colors">
               ← Prev
             </button>
-            <span className="text-[9px] font-mono text-rmpg-500">
+            <span className="text-[9px] font-mono text-rmpg-500 tabular-nums">
               Page {page} / {totalPages} &bull; {totalCount} items
             </span>
             <button type="button" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="text-[10px] text-rmpg-400 disabled:opacity-30 hover:text-white transition-colors">

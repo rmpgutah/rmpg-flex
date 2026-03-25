@@ -213,11 +213,12 @@ export default function DailyActivityReportsPage() {
   };
 
   return (
-    <div className={`h-full flex ${isMobile ? 'flex-col' : ''}`}>
+    <div className={`h-full flex ${isMobile ? 'flex-col' : ''} bg-surface-base`}>
       {fetchError && (
-        <div className="absolute left-0 right-0 z-10 mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
-          <span>⚠ {fetchError}</span>
-          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+        <div className="absolute left-0 right-0 z-10 mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2 shadow-lg">
+          <AlertTriangle style={{ width: 12, height: 12, flexShrink: 0 }} />
+          <span className="flex-1">{fetchError}</span>
+          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300 text-[10px]">Dismiss</button>
         </div>
       )}
       {/* ── Left Panel ── */}
@@ -233,13 +234,13 @@ export default function DailyActivityReportsPage() {
         </PanelTitleBar>
 
         {/* Filters */}
-        <div className="flex gap-1 p-1.5 border-b border-rmpg-700 bg-surface-base">
+        <div className="flex gap-1.5 p-1.5 border-b border-rmpg-700 bg-surface-sunken">
           <div className="flex-1 relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" style={{ width: 12, height: 12 }} />
-            <input value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }} placeholder="Search DARs..." aria-label="Search DARs..." className="w-full pl-7 pr-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 outline-none" />
+            <input value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }} placeholder="Search DARs..." aria-label="Search DARs..." className="w-full pl-7 pr-2 py-1.5 text-xs bg-surface-base border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 focus:ring-1 focus:ring-brand-500/30 outline-none transition-colors" />
           </div>
-          <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none">
-            <option value="">All</option>
+          <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }} className="text-[10px] bg-surface-base border border-rmpg-700 text-rmpg-300 px-2 outline-none focus:border-brand-600 transition-colors">
+            <option value="">All Status</option>
             <option value="draft">Draft</option>
             <option value="submitted">Submitted</option>
             <option value="approved">Approved</option>
@@ -291,10 +292,10 @@ export default function DailyActivityReportsPage() {
         </div>
 
         {totalPages > 1 && (
-          <div className="flex items-center justify-between px-3 py-1.5 border-t border-rmpg-700 bg-surface-base">
-            <button type="button" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="text-[10px] text-rmpg-400 disabled:opacity-30">← Prev</button>
-            <span className="text-[9px] font-mono text-rmpg-500">Page {page}/{totalPages}</span>
-            <button type="button" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="text-[10px] text-rmpg-400 disabled:opacity-30">Next →</button>
+          <div className="flex items-center justify-between px-3 py-1.5 border-t border-rmpg-700 bg-surface-sunken">
+            <button type="button" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="text-[10px] text-rmpg-400 hover:text-white disabled:opacity-30 disabled:hover:text-rmpg-400 transition-colors">← Prev</button>
+            <span className="text-[9px] font-mono text-rmpg-500 tabular-nums">Page {page}/{totalPages}</span>
+            <button type="button" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="text-[10px] text-rmpg-400 hover:text-white disabled:opacity-30 disabled:hover:text-rmpg-400 transition-colors">Next →</button>
           </div>
         )}
       </div>
@@ -350,9 +351,9 @@ export default function DailyActivityReportsPage() {
                   ['Citations', parseJson(selected.citations_issued).length, 'text-amber-400'],
                   ['Patrols', parseJson(selected.patrols_completed).length, 'text-green-400'],
                 ].map(([label, count, color]) => (
-                  <div key={label as string} className="panel-beveled p-2 text-center">
-                    <div className="text-[9px] font-mono text-rmpg-500">{label}</div>
-                    <div className={`text-lg font-bold ${color}`}>{count}</div>
+                  <div key={label as string} className="panel-beveled p-2.5 text-center hover:bg-surface-raised/30 transition-colors">
+                    <div className="text-[9px] font-mono text-rmpg-500 uppercase tracking-wider">{label}</div>
+                    <div className={`text-lg font-bold font-mono tabular-nums ${color}`}>{count}</div>
                   </div>
                 ))}
               </div>
@@ -422,8 +423,11 @@ export default function DailyActivityReportsPage() {
         ) : (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
-              <ClipboardCheck className="w-10 h-10 text-rmpg-600 mx-auto mb-2" />
-              <div className="text-xs text-rmpg-500">Select a DAR to view details</div>
+              <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+                <ClipboardCheck className="w-7 h-7 text-rmpg-600" />
+              </div>
+              <div className="text-sm font-medium text-rmpg-400">Select a DAR to view details</div>
+              <div className="text-[10px] text-rmpg-600 mt-1">or create a new one with the + New button</div>
             </div>
           </div>
         )}
@@ -431,8 +435,8 @@ export default function DailyActivityReportsPage() {
 
       {/* ── New DAR Modal ── */}
       {createFormOpen && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
-          <div className="panel-surface w-full max-w-md mx-4">
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setCreateFormOpen(false)}>
+          <div className="panel-surface w-full max-w-md mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
             <PanelTitleBar title="New Daily Activity Report" icon={Plus}>
               <button type="button" onClick={() => setCreateFormOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
             </PanelTitleBar>

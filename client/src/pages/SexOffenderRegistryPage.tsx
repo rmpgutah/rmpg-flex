@@ -371,9 +371,10 @@ export default function SexOffenderRegistryPage() {
             <Loader2 size={20} className="animate-spin mr-2" /> Loading...
           </div>
         ) : records.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-32 text-rmpg-500 text-xs">
-            <UserX size={24} className="mb-2 opacity-50" />
-            No records found
+          <div className="flex flex-col items-center justify-center h-32 text-rmpg-500">
+            <UserX size={24} className="mb-2 opacity-40" />
+            <p className="text-xs font-medium">No records found</p>
+            <p className="text-[10px] text-rmpg-600 mt-1">Adjust filters or add a new entry</p>
           </div>
         ) : (
           <div className="divide-y divide-rmpg-800/50">
@@ -846,14 +847,14 @@ export default function SexOffenderRegistryPage() {
 
       {/* ── Link Person Modal ──────────────────────────────── */}
       {showLinkPerson && selected && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowLinkPerson(false)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setShowLinkPerson(false)}>
           <div
             className="bg-surface-raised border border-rmpg-600 shadow-xl w-[440px] max-w-[95vw]"
             style={{ borderRadius: 2 }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
-              <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">
+              <h3 className="text-xs font-bold text-[#d4a017] uppercase tracking-widest">
                 Link to Person Record
               </h3>
               <button type="button" onClick={() => setShowLinkPerson(false)} className="text-rmpg-400 hover:text-white">
@@ -920,7 +921,7 @@ export default function SexOffenderRegistryPage() {
 function DetailSection({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="px-4 py-3" style={{ borderBottom: '1px solid #1e3048' }}>
-      <h3 className="flex items-center gap-1.5 text-[11px] font-bold text-rmpg-400 uppercase tracking-wider mb-2">
+      <h3 className="flex items-center gap-1.5 text-[11px] font-bold text-[#d4a017] uppercase tracking-widest mb-2">
         {icon} {title}
       </h3>
       {children}
@@ -991,15 +992,15 @@ function RecordFormModal({
   const set = (key: string, val: any) => setForm((f: any) => ({ ...f, [key]: val }));
 
   return (
-    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={onClose}>
+    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={onClose}>
       <div
         className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-sm shadow-2xl"
         style={{ background: '#141e2b', border: '1px solid #2a3e58' }}
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-3" style={{ background: '#1a2636', borderBottom: '1px solid #2a3e58' }}>
-          <h2 className="text-sm font-bold text-white flex items-center gap-2">
-            <ShieldAlert size={14} className="text-red-400" />
+          <h2 className="text-sm font-bold text-[#d4a017] flex items-center gap-2 uppercase tracking-wider">
+            <ShieldAlert size={14} className="text-[#d4a017]" />
             {record ? 'Edit Registry Entry' : 'New Registry Entry'}
           </h2>
           <button type="button" onClick={onClose} className="toolbar-btn p-1"><X size={14} /></button>
@@ -1155,15 +1156,15 @@ function ImportModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={onClose}>
+    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={onClose}>
       <div
         className="w-full max-w-xl max-h-[70vh] overflow-y-auto rounded-sm shadow-2xl"
         style={{ background: '#141e2b', border: '1px solid #2a3e58' }}
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-3" style={{ background: '#1a2636', borderBottom: '1px solid #2a3e58' }}>
-          <h2 className="text-sm font-bold text-white flex items-center gap-2">
-            <Upload size={14} /> Import Records
+          <h2 className="text-sm font-bold text-[#d4a017] flex items-center gap-2 uppercase tracking-wider">
+            <Upload size={14} className="text-[#d4a017]" /> Import Records
           </h2>
           <button type="button" onClick={onClose} className="toolbar-btn p-1"><X size={14} /></button>
         </div>

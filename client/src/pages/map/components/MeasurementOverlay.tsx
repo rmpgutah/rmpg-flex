@@ -48,16 +48,17 @@ export default function MeasurementOverlay({
         <span className="text-[9px] text-[#5a6e80] uppercase tracking-widest font-bold leading-none">
           {measureMode === 'distance' ? 'Distance' : 'Area'}
         </span>
+        {/* #25: Measurement value with tabular-nums */}
         <span
-          className="text-base font-mono font-bold text-[#60a5fa] leading-tight"
+          className="text-base font-mono font-bold text-[#60a5fa] leading-tight tabular-nums"
         >
           {measureDisplay}
         </span>
       </div>
 
-      {/* Hint text */}
+      {/* #24: Hint text with subtle pulsing to draw attention */}
       {measuring && (
-        <span className="text-[8px] text-rmpg-500 font-mono max-w-[100px] leading-tight">
+        <span className="text-[8px] text-rmpg-500 font-mono max-w-[100px] leading-tight animate-pulse">
           Click to add points. Double-click to finish.
         </span>
       )}

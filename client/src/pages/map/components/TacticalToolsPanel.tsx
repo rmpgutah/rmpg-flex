@@ -96,8 +96,8 @@ export default function TacticalToolsPanel({
         </button>
       </div>
 
-      {/* Rally Point */}
-      <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5" style={{ borderLeft: '2px solid #d4a017' }}>
+      {/* #30: Rally point section with left accent border glow */}
+      <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5" style={{ borderLeft: '3px solid #d4a017', background: 'rgba(212,160,23,0.03)' }}>
         <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-rmpg-300 font-semibold">
           <Star size={11} className="text-yellow-400" />
           Rally Point
@@ -128,8 +128,8 @@ export default function TacticalToolsPanel({
         </div>
       </div>
 
-      {/* Command Rings */}
-      <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5" style={{ borderLeft: '2px solid #3b82f6' }}>
+      {/* #31: Command rings section with blue accent */}
+      <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5" style={{ borderLeft: '3px solid #3b82f6', background: 'rgba(59,130,246,0.03)' }}>
         <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-rmpg-300 font-semibold">
           <Circle size={11} className="text-blue-400" />
           Command Rings
@@ -153,8 +153,8 @@ export default function TacticalToolsPanel({
         </div>
       </div>
 
-      {/* K9 Deployment Radius */}
-      <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5" style={{ borderLeft: '2px solid #22c55e' }}>
+      {/* #32: K9 section with green accent */}
+      <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5" style={{ borderLeft: '3px solid #22c55e', background: 'rgba(34,197,94,0.03)' }}>
         <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-rmpg-300 font-semibold">
           <Dog size={11} className="text-green-400" />
           K9 Deployment Radius

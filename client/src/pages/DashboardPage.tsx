@@ -507,7 +507,7 @@ export default function DashboardPage() {
 
   if (loading && stats === DEFAULT_STATS) {
     return (
-      <div className="p-4 space-y-4 animate-fade-in" role="status" aria-label="Loading dashboard">
+      <div className="p-4 space-y-4 animate-fade-in" role="status" aria-label="Loading dashboard" aria-busy="true">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {Array.from({ length: 4 }).map((_, i) => <StatsCardSkeleton key={i} />)}
         </div>
@@ -549,8 +549,8 @@ export default function DashboardPage() {
                 {isMobile ? 'C&C Dashboard' : 'Command & Control Dashboard'}
               </h1>
               <div className="hidden sm:flex items-center gap-1.5" role="status" aria-label="System status: operational">
-                <span className={`led-dot ${stats.active_calls > 0 ? 'led-green animate-led-pulse' : 'led-green'}`} />
-                <span className="text-[9px] font-mono font-bold text-green-500 tracking-wider">OPERATIONAL</span>
+                <span className={`led-dot ${stats.active_calls > 0 ? 'led-green animate-led-pulse' : 'led-green'}`} aria-hidden="true" />
+                <span className="text-[9px] font-mono font-bold text-green-500 tracking-wider select-none">OPERATIONAL</span>
               </div>
             </div>
             {!isMobile && (
@@ -570,7 +570,7 @@ export default function DashboardPage() {
       {error && (
         <div className="bg-red-900/30 border border-red-700/60 rounded-sm p-2.5 flex items-center justify-between animate-fade-in shadow-md shadow-red-900/20" role="alert" aria-live="assertive">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 animate-pulse" />
+            <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 animate-pulse" aria-hidden="true" />
             <span className="text-xs text-red-300 font-medium">{error}</span>
           </div>
           <button type="button"
@@ -649,7 +649,7 @@ export default function DashboardPage() {
               <div className={`${isMobile ? 'text-2xl' : 'text-lg'} font-bold font-mono tabular-nums`} style={{ color: valueColor }}>{count}</div>
               <div className={`${isMobile ? 'text-[10px]' : 'text-[9px]'} text-rmpg-400 uppercase font-bold tracking-wide truncate`}>{label}</div>
             </div>
-            <ArrowRight className="w-3 h-3 text-rmpg-500 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+            <ArrowRight className="w-3 h-3 text-rmpg-500 opacity-0 group-hover:opacity-100 transition-opacity duration-200" aria-hidden="true" />
           </div>
         ))}
       </div>
@@ -730,7 +730,7 @@ export default function DashboardPage() {
                   {/* Road Conditions Warning */}
                   {isFreezing && (
                     <div className="flex items-center gap-2 p-2.5 bg-blue-900/20 border border-blue-700/30 rounded-sm animate-fade-in" role="alert">
-                      <Snowflake className="w-4 h-4 text-blue-400 flex-shrink-0 animate-pulse" />
+                      <Snowflake className="w-4 h-4 text-blue-400 flex-shrink-0 animate-pulse" aria-hidden="true" />
                       <div>
                         <div className="text-[10px] font-bold text-blue-300 uppercase tracking-wider">Road Conditions Warning</div>
                         <div className="text-[10px] text-blue-400/80 mt-0.5">Temperature below freezing — watch for ice</div>
@@ -748,9 +748,9 @@ export default function DashboardPage() {
                 </div>
               );
             })() : (
-              <div className="flex flex-col items-center justify-center h-[100px] gap-2">
-                <Loader2 className="w-5 h-5 text-rmpg-500 animate-spin" role="status" aria-label="Loading weather data" />
-                <span className="text-[10px] text-rmpg-500 animate-pulse">Loading weather...</span>
+              <div className="flex flex-col items-center justify-center h-[100px] gap-2" role="status" aria-label="Loading weather data">
+                <Loader2 className="w-5 h-5 text-rmpg-500 animate-spin" aria-hidden="true" />
+                <span className="text-[10px] text-rmpg-500 animate-pulse select-none">Loading weather...</span>
               </div>
             )}
           </div>
@@ -772,11 +772,13 @@ export default function DashboardPage() {
                 <button type="button"
                   key={label}
                   onClick={() => action ? action() : navigate(path)}
-                  className={`flex flex-col items-center justify-center gap-1.5 ${isMobile ? 'p-3 min-h-[64px]' : 'p-2.5'} panel-beveled bg-surface-sunken hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 transition-all duration-150 cursor-pointer group border border-transparent hover:border-[#2a3e58] focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50`}
+                  className={`flex flex-col items-center justify-center gap-1.5 ${isMobile ? 'p-3 min-h-[64px]' : 'p-2.5'} panel-beveled bg-surface-sunken hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 active:scale-[0.98] transition-all duration-150 cursor-pointer group border border-transparent hover:border-[#2a3e58] focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50`}
+                  aria-label={label}
                 >
                   <ActionIcon
                     className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} transition-transform duration-200 group-hover:scale-110 drop-shadow-sm`}
                     style={{ color }}
+                    aria-hidden="true"
                   />
                   <span className={`${isMobile ? 'text-[10px]' : 'text-[9px]'} font-bold text-rmpg-300 uppercase tracking-wider group-hover:text-rmpg-100 transition-colors duration-200 text-center leading-tight select-none`}>
                     {label}
@@ -797,18 +799,18 @@ export default function DashboardPage() {
             <span className="text-[10px] font-bold text-red-400 uppercase tracking-wider">Active BOLOs</span>
             <span className="ml-auto text-[9px] font-mono font-bold text-red-400/80 bg-red-900/30 px-1.5 py-0.5 rounded-sm">{bolos.length}</span>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-2" role="list" aria-label="Active BOLO entries">
           {bolos.map((bolo) => (
-            <div key={bolo.id} className="flex items-start gap-3 p-1.5 rounded-sm hover:bg-red-900/20 transition-colors">
+            <div key={bolo.id} className="flex items-start gap-3 p-2 rounded-sm hover:bg-red-900/20 transition-colors duration-150" role="listitem">
               <span className="badge badge-p2 flex-shrink-0 mt-0.5">{bolo.priority}</span>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-red-300 truncate">{bolo.title}</p>
                 <p className="text-xs text-rmpg-300 mt-0.5 truncate">{bolo.vehicle_description || bolo.subject_description}</p>
-                <p className="text-[10px] text-rmpg-400 mt-0.5 font-mono">
+                <p className="text-[10px] text-rmpg-400 mt-0.5 font-mono tabular-nums">
                   Issued by {bolo.issued_by}
                 </p>
               </div>
-              <ArrowRight className="w-3 h-3 text-red-500/50 flex-shrink-0 mt-1" />
+              <ArrowRight className="w-3 h-3 text-red-500/50 flex-shrink-0 mt-1" aria-hidden="true" />
             </div>
           ))}
           </div>
@@ -918,9 +920,9 @@ export default function DashboardPage() {
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="flex flex-col items-center justify-center h-[140px] gap-2">
-                  <Shield className="w-6 h-6 text-rmpg-600" />
-                  <span className="text-[10px] text-rmpg-500 uppercase tracking-wider">No calls today</span>
+                <div className="flex flex-col items-center justify-center h-[140px] gap-2" role="status">
+                  <Shield className="w-6 h-6 text-rmpg-600" aria-hidden="true" />
+                  <span className="text-[10px] text-rmpg-500 uppercase tracking-wider select-none">No calls today</span>
                 </div>
               );
             })()}
@@ -1178,11 +1180,11 @@ export default function DashboardPage() {
           <PanelTitleBar title="UPCOMING COURT — NEXT 7 DAYS" icon={Gavel} />
           <div className="p-3">
             {(upcomingCourt?.upcoming?.length || 0) === 0 ? (
-              <div className="flex flex-col items-center gap-2 py-4 justify-center">
-                <Gavel className="w-5 h-5 text-rmpg-600" />
+              <div className="flex flex-col items-center gap-2 py-4 justify-center" role="status">
+                <Gavel className="w-5 h-5 text-rmpg-600" aria-hidden="true" />
                 <div className="flex items-center gap-1.5">
-                  <span className="led-dot led-green" />
-                  <span className="text-xs text-rmpg-300">No upcoming court appearances</span>
+                  <span className="led-dot led-green" aria-hidden="true" />
+                  <span className="text-xs text-rmpg-300 select-none">No upcoming court appearances</span>
                 </div>
               </div>
             ) : (
@@ -1363,9 +1365,9 @@ export default function DashboardPage() {
           </PanelTitleBar>
           <div className="p-3">
             {activities.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 gap-2">
-                <Activity className="w-6 h-6 text-rmpg-600" />
-                <span className="text-[10px] text-rmpg-500 uppercase tracking-wider">No recent activity</span>
+              <div className="flex flex-col items-center justify-center py-8 gap-2" role="status">
+                <Activity className="w-6 h-6 text-rmpg-600" aria-hidden="true" />
+                <span className="text-[10px] text-rmpg-500 uppercase tracking-wider select-none">No recent activity</span>
               </div>
             ) : (
               <ActivityFeed entries={activities} maxHeight="320px" />
@@ -1452,11 +1454,11 @@ export default function DashboardPage() {
         <PanelTitleBar title="CREDENTIAL ALERTS" icon={Shield} />
         <div className="p-3">
           {expiringCredentials.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 py-6 justify-center">
-              <Shield className="w-6 h-6 text-green-600/50" />
+            <div className="flex flex-col items-center gap-2 py-6 justify-center" role="status">
+              <Shield className="w-6 h-6 text-green-600/50" aria-hidden="true" />
               <div className="flex items-center gap-1.5">
-                <span className="led-dot led-green" />
-                <span className="text-xs text-rmpg-300 font-medium">All credentials current</span>
+                <span className="led-dot led-green" aria-hidden="true" />
+                <span className="text-xs text-rmpg-300 font-medium select-none">All credentials current</span>
               </div>
             </div>
           ) : (

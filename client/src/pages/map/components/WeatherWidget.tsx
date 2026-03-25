@@ -52,11 +52,12 @@ export default function WeatherWidget({ weather }: WeatherWidgetProps) {
       ) : (
         <>
           <span className="text-[13px] transition-all duration-200">{icon}</span>
-          <span className="font-medium tabular-nums">{temp ?? '—'}°F</span>
-          <span className="text-white/40">|</span>
-          <span className="text-white/50 tabular-nums">{windSpeed ?? '—'} mph</span>
-          <span className="hidden group-hover:inline text-white/40">|</span>
-          <span className="hidden group-hover:inline text-white/50 tabular-nums">{humidity ?? '—'}%</span>
+          {/* #45: Weather values with font-mono for alignment */}
+          <span className="font-medium font-mono tabular-nums">{temp ?? '—'}°F</span>
+          <span className="text-white/30 text-[9px]">|</span>
+          <span className="text-white/50 font-mono tabular-nums">{windSpeed ?? '—'} mph</span>
+          <span className="hidden group-hover:inline text-white/30 text-[9px]">|</span>
+          <span className="hidden group-hover:inline text-white/50 font-mono tabular-nums">{humidity ?? '—'}%</span>
         </>
       )}
     </div>

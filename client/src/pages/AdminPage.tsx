@@ -691,11 +691,11 @@ export default function AdminPage() {
       {!isMobile && (
         <div className="panel-beveled bg-surface-base overflow-hidden">
           <div className="flex items-center gap-4 px-4 py-2.5 relative">
-            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e 30%, #1a5a9e 70%, #0e3359)' }} />
+            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e 30%, #1a5a9e 70%, #0e3359)' }} aria-hidden="true" />
             <RmpgLogo height={64} />
-            <div className="flex-1">
-              <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: '#d0d0d0' }}>System Administration</h1>
-              <p className="text-[9px] tracking-wide" style={{ color: '#3a5070' }}>Rocky Mountain Protective Group, LLC</p>
+            <div className="flex-1 min-w-0">
+              <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: '#d0d0d0', letterSpacing: '0.12em' }}>System Administration</h1>
+              <p className="text-[9px] tracking-wide mt-0.5" style={{ color: '#3a5070' }}>Rocky Mountain Protective Group, LLC</p>
             </div>
           </div>
         </div>
@@ -724,14 +724,15 @@ export default function AdminPage() {
                 role="tab"
                 aria-selected={isActive}
                 onClick={() => setActiveTab(tab.id)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold whitespace-nowrap shrink-0 transition-all duration-150"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold whitespace-nowrap shrink-0 transition-all duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
                 style={{
                   color: isActive ? '#ffffff' : '#8a9aaa',
                   background: isActive ? 'rgba(26, 90, 158, 0.15)' : 'transparent',
                   border: isActive ? '1px solid rgba(26,90,158,0.4)' : '1px solid transparent',
+                  borderBottom: isActive ? '2px solid #1a5a9e' : '2px solid transparent',
                 }}
               >
-                <Icon style={{ width: 12, height: 12 }} className={isActive ? 'text-brand-400' : 'text-rmpg-600'} />
+                <Icon style={{ width: 12, height: 12 }} className={isActive ? 'text-brand-400' : 'text-rmpg-600'} aria-hidden="true" />
                 {tab.label}
               </button>
             );
@@ -753,11 +754,11 @@ export default function AdminPage() {
             aria-label="Admin navigation"
             role="tablist"
           >
-            {tabGroups.map((group) => (
-              <div key={group.category} className="mb-1.5">
+            {tabGroups.map((group, gi) => (
+              <div key={group.category} className={gi > 0 ? 'mt-2' : ''}>
                 <div
-                  className="px-3 py-1.5 text-[8px] font-bold uppercase tracking-[0.15em] select-none"
-                  style={{ color: '#5a6e80' }}
+                  className="px-3 py-1.5 text-[8px] font-bold uppercase tracking-[0.18em] select-none border-b border-[#162236]/60 mb-0.5"
+                  style={{ color: '#4a6278' }}
                   aria-hidden="true"
                 >
                   {group.category}
@@ -770,16 +771,19 @@ export default function AdminPage() {
                       key={tab.id}
                       role="tab"
                       aria-selected={isActive}
+                      id={`admin-tab-${tab.id}`}
+                      aria-controls={`admin-tabpanel-${tab.id}`}
                       onClick={() => setActiveTab(tab.id)}
-                      className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[11px] transition-all duration-150 hover:bg-[rgba(26,90,158,0.08)]"
+                      className="w-full flex items-center gap-2 px-3 py-[5px] text-left text-[11px] transition-all duration-150 hover:bg-[rgba(26,90,158,0.08)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
                       style={{
                         color: isActive ? '#ffffff' : '#8a9aaa',
-                        background: isActive ? 'rgba(26, 90, 158, 0.12)' : undefined,
+                        background: isActive ? 'rgba(26, 90, 158, 0.14)' : undefined,
                         borderLeft: isActive ? '2px solid #1a5a9e' : '2px solid transparent',
+                        fontWeight: isActive ? 600 : 400,
                       }}
                     >
-                      <Icon style={{ width: 13, height: 13 }} className={`transition-colors duration-150 ${isActive ? 'text-brand-400' : 'text-rmpg-600'}`} />
-                      {tab.label}
+                      <Icon style={{ width: 13, height: 13 }} className={`transition-colors duration-150 shrink-0 ${isActive ? 'text-brand-400' : 'text-rmpg-600'}`} aria-hidden="true" />
+                      <span className="truncate">{tab.label}</span>
                     </button>
                   );
                 })}
@@ -789,7 +793,7 @@ export default function AdminPage() {
         )}
 
         {/* Content */}
-        <div className="flex-1 overflow-auto scrollbar-dark" role="tabpanel">
+        <div className="flex-1 overflow-auto scrollbar-dark" role="tabpanel" id={`admin-tabpanel-${activeTab}`} aria-labelledby={`admin-tab-${activeTab}`}>
         {activeTab === 'users' && (
           <AdminUsersTab
             users={users}

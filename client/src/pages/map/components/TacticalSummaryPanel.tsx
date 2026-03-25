@@ -49,11 +49,12 @@ interface TacticalSummaryPanelProps {
 
 // ─── Helpers ────────────────────────────────────────────────
 
+{/* #33: DotIndicator with LED glow matching color */}
 function DotIndicator({ color }: { color: string }) {
   return (
     <span
       className="inline-block w-[6px] h-[6px] rounded-full flex-shrink-0"
-      style={{ backgroundColor: color }}
+      style={{ backgroundColor: color, boxShadow: `0 0 4px ${color}80` }}
     />
   );
 }

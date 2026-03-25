@@ -78,7 +78,7 @@ export default function HRPage() {
       <PanelTitleBar icon={UserCog} title="HR Console" />
 
       {/* Tab bar */}
-      <div className="flex items-center border-b border-[#1e3048] bg-[#0d1520] px-2 overflow-x-auto print:hidden" role="tablist" aria-label="HR Console tabs">
+      <div className="flex items-center border-b border-[#1e3048] bg-[#0d1520] px-2 overflow-x-auto scrollbar-dark print:hidden" role="tablist" aria-label="HR Console tabs" style={{ scrollbarWidth: 'none' }}>
         {HR_TABS.map(tab => {
           const Icon = tab.icon;
           return (
@@ -86,11 +86,12 @@ export default function HRPage() {
               key={tab.key}
               role="tab"
               aria-selected={activeTab === tab.key}
+              aria-controls={`hr-tabpanel-${tab.key}`}
               onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors border-b-2 ${
+              className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-all duration-200 border-b-2 whitespace-nowrap focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 ${
                 activeTab === tab.key
                   ? 'text-white border-brand-500'
-                  : 'text-rmpg-400 border-transparent hover:text-rmpg-200'
+                  : 'text-rmpg-400 border-transparent hover:text-rmpg-200 hover:border-rmpg-500/50'
               }`}
             >
               <Icon size={14} aria-hidden="true" />
@@ -101,7 +102,7 @@ export default function HRPage() {
       </div>
 
       {/* Tab content */}
-      <div className="flex-1 overflow-auto scrollbar-dark">
+      <div className="flex-1 overflow-auto scrollbar-dark" role="tabpanel" id={`hr-tabpanel-${activeTab}`} aria-label={`${activeTab} tab content`}>
         {renderTab()}
       </div>
     </div>

@@ -102,8 +102,9 @@ export default function MapOverlays({
           }}
         >
           <div className="flex items-center gap-0.5 px-1.5 py-1">
+            {/* #9: Connection status LED with glow effect */}
             <div className="flex items-center gap-1 px-2 py-0.5" style={{ borderRight: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.1)' : '1px solid #1e3048' }}>
-              <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
+              <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} style={{ boxShadow: isConnected ? '0 0 6px #22c55e80' : '0 0 6px #ef444480' }} />
               <span className={`text-[9px] font-mono font-black tracking-wider ${isConnected ? (isLightMapStyle(mapStyle) ? 'text-green-700' : 'text-green-400') : 'text-red-400'}`}>
                 {isConnected ? 'LIVE' : 'DISC'}
               </span>
@@ -111,14 +112,15 @@ export default function MapOverlays({
 
             <div className="flex items-center gap-1 px-2 py-0.5" style={{ borderRight: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.1)' : '1px solid #1e3048' }}>
               <Siren className={`w-3 h-3 shrink-0 ${isLightMapStyle(mapStyle) ? 'text-red-600' : 'text-red-400'}`} />
-              <span className={`text-[13px] font-mono font-black ${isLightMapStyle(mapStyle) ? 'text-gray-900' : 'text-white'}`}>{callsWithCoords.length}</span>
-              {callsByPriority['P1'] ? <span className="text-[8px] font-mono font-bold text-red-500 bg-red-500/15 px-1 rounded-sm">P1:{callsByPriority['P1']}</span> : null}
-              {callsByPriority['P2'] ? <span className="text-[8px] font-mono font-bold text-amber-500 bg-amber-500/15 px-1 rounded-sm">P2:{callsByPriority['P2']}</span> : null}
+              {/* #10: Tabular-nums for monospaced number alignment in stats bar */}
+              <span className={`text-[13px] font-mono font-black tabular-nums ${isLightMapStyle(mapStyle) ? 'text-gray-900' : 'text-white'}`}>{callsWithCoords.length}</span>
+              {callsByPriority['P1'] ? <span className="text-[8px] font-mono font-bold tabular-nums text-red-500 bg-red-500/15 px-1 rounded-sm">P1:{callsByPriority['P1']}</span> : null}
+              {callsByPriority['P2'] ? <span className="text-[8px] font-mono font-bold tabular-nums text-amber-500 bg-amber-500/15 px-1 rounded-sm">P2:{callsByPriority['P2']}</span> : null}
             </div>
 
             <div className="flex items-center gap-1 px-2 py-0.5">
               <Shield className={`w-3 h-3 shrink-0 ${isLightMapStyle(mapStyle) ? 'text-green-600' : 'text-green-400'}`} />
-              <span className={`text-[13px] font-mono font-black ${isLightMapStyle(mapStyle) ? 'text-gray-900' : 'text-white'}`}>{unitsWithCoords.length}</span>
+              <span className={`text-[13px] font-mono font-black tabular-nums ${isLightMapStyle(mapStyle) ? 'text-gray-900' : 'text-white'}`}>{unitsWithCoords.length}</span>
               <div className="flex items-center gap-1.5 ml-1">
                 {([
                   { key: 'available', label: 'AVL', color: '#22c55e' },
@@ -212,7 +214,8 @@ export default function MapOverlays({
               aria-label="Zoom in"
               title="Zoom in"
             >
-              <Plus className="w-5 h-5 text-white/80" />
+              {/* #11: Consistent zoom button icon weight */}
+              <Plus className="w-5 h-5 text-white/80" strokeWidth={2.5} />
             </button>
             <button type="button"
               onClick={() => {
@@ -224,7 +227,7 @@ export default function MapOverlays({
               aria-label="Zoom out"
               title="Zoom out"
             >
-              <Minus className="w-5 h-5 text-white/80" />
+              <Minus className="w-5 h-5 text-white/80" strokeWidth={2.5} />
             </button>
           </div>
         )}

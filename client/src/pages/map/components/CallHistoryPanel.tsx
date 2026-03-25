@@ -96,7 +96,7 @@ export default function CallHistoryPanel({
 
   return (
     <div
-      className="panel-beveled bg-surface-base overflow-hidden shadow-xl transition-all duration-200 ease-out shadow-lg"
+      className="panel-beveled bg-surface-base overflow-hidden shadow-xl transition-all duration-200 ease-out"
       style={{ width: 300 }}
       role="complementary"
       aria-label="Call history panel"
@@ -111,9 +111,10 @@ export default function CallHistoryPanel({
           <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-300">
             Call History
           </span>
+          {/* #40: Call count badge with border */}
           <span
-            className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm"
-            style={{ background: '#164e63', color: '#22d3ee' }}
+            className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-sm tabular-nums"
+            style={{ background: '#164e63', color: '#22d3ee', border: '1px solid #0e7490' }}
           >
             {loading ? '...' : stats.total}
           </span>

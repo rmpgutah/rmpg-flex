@@ -114,16 +114,13 @@ function Section({
 
   return (
     <div>
+      {/* #29: Section toggle with smooth chevron rotation */}
       <button type="button"
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1 w-full text-left py-1 transition-all duration-150 active:scale-[0.97]"
+        className="flex items-center gap-1 w-full text-left py-1 transition-all duration-150 active:scale-[0.97] hover:bg-[#1a2636]/30 rounded-sm"
         aria-expanded={open}
       >
-        {open ? (
-          <ChevronDown size={10} className="text-rmpg-500" />
-        ) : (
-          <ChevronRight size={10} className="text-rmpg-500" />
-        )}
+        <ChevronRight size={10} className="text-rmpg-500 transition-transform duration-200" style={{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }} />
         <span className="text-[10px] font-bold uppercase tracking-wider text-rmpg-400">
           {title}
         </span>

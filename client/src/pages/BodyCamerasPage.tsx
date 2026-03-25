@@ -236,10 +236,10 @@ export default function BodyCamerasPage() {
         <PanelTitleBar title="BODY CAMERAS" icon={Video}>
           <RmpgLogo height={16} iconOnly />
           <span className="toolbar-separator" />
-          <div className="flex items-center gap-2 text-[10px] font-mono text-rmpg-400 mr-3">
-            <Video className="w-3 h-3" />
+          <div className="flex items-center gap-2 text-[10px] font-mono text-rmpg-400 mr-3" role="group" aria-label="Body camera statistics">
+            <Video className="w-3 h-3" aria-hidden="true" />
             <span>Cameras: <strong className="text-white">{cameras.length}</strong></span>
-            <span className="text-rmpg-600">|</span>
+            <span className="text-rmpg-600" aria-hidden="true">|</span>
             <span>Videos: <strong className="text-brand-400">{videos.length}</strong></span>
           </div>
           <PrintButton />
@@ -247,7 +247,7 @@ export default function BodyCamerasPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
+      <div className="flex-1 overflow-y-auto scrollbar-dark">
         {loading && (
           <div className="flex items-center justify-center flex-1 py-20">
             <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading" />

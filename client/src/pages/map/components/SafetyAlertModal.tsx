@@ -198,7 +198,7 @@ export default function SafetyAlertModal({
           maxWidth: '95vw',
           maxHeight: '90vh',
           border: '1px solid #1e2a3a',
-          borderTop: `2px solid ${selectedType ? (ALERT_TYPES.find(a => a.type === selectedType)?.color ?? '#ef4444') : '#ef4444'}`,
+          borderTop: `3px solid ${selectedType ? (ALERT_TYPES.find(a => a.type === selectedType)?.color ?? '#ef4444') : '#ef4444'}`,
         }}
       >
         {/* Header */}

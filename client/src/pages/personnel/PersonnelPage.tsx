@@ -891,16 +891,16 @@ export default function PersonnelPage() {
       <div className="p-3 border-b border-rmpg-600">
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" aria-hidden="true" />
             <input
               type="text"
-              className="input-dark pl-9 w-full text-[11px] min-h-[36px]"
-              placeholder="Search by name, badge, rank, department..." aria-label="Search by name, badge, rank, department..."
+              className="input-dark pl-9 w-full text-[11px] min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow duration-150"
+              placeholder="Search by name, badge, rank, department..." aria-label="Search personnel by name, badge, rank, or department"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
             />
             {searchQuery && (
-              <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white">
+              <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white transition-colors duration-150" aria-label="Clear search">
                 <X className="w-3 h-3" />
               </button>
             )}
@@ -916,7 +916,7 @@ export default function PersonnelPage() {
       </div>
 
       {/* Officer List */}
-      <div className="flex-1 overflow-auto py-1">
+      <div className="flex-1 overflow-auto scrollbar-dark py-1" role="listbox" aria-label="Personnel roster">
         {filteredOfficers.map(officer => {
           const officerCreds = credentials.filter(c => c.officer_id === officer.id);
           const hasExpired = officerCreds.some(c => c.status === 'expired');
@@ -926,15 +926,16 @@ export default function PersonnelPage() {
             <div
               key={officer.id}
               onClick={() => { setSelectedOfficer(officer); setDetailTab('profile'); }}
-              className={`panel-beveled mb-1 mx-2 p-3 cursor-pointer transition-all duration-150 border-l-2 focus-within:ring-1 focus-within:ring-brand-500/40 ${
+              className={`panel-beveled mb-1 mx-2 p-3 cursor-pointer transition-all duration-200 border-l-2 focus-visible:ring-1 focus-visible:ring-brand-500/50 focus-visible:outline-none ${
                 isSelected
                   ? 'bg-brand-900/15 border-l-brand-500 shadow-sm'
-                  : 'bg-surface-base hover:brightness-110 hover:shadow-sm border-l-transparent'
+                  : 'bg-surface-base hover:brightness-110 hover:shadow-sm hover:border-rmpg-500 border-l-transparent'
               }`}
-              role="button"
+              role="option"
               tabIndex={0}
               aria-selected={isSelected}
-              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { setSelectedOfficer(officer); setDetailTab('profile'); } }}
+              aria-label={`${officer.first_name} ${officer.last_name}, ${officer.role}, ${officer.status === 'on_duty' ? 'on duty' : 'off duty'}`}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedOfficer(officer); setDetailTab('profile'); } }}
             >
               <div className="flex items-center gap-3">
                 <OfficerAvatar officer={officer} size="md" />
@@ -1076,35 +1077,35 @@ export default function PersonnelPage() {
       </PanelTitleBar>
 
       {/* Stats Bar — compact stat cards */}
-      <div className={`panel-inset ${isMobile ? 'px-3 overflow-x-auto' : 'px-4'} py-1.5 border-b border-rmpg-600 flex items-center gap-3`}>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono">
-          <span className="led-dot led-green" />
+      <div className={`panel-inset ${isMobile ? 'px-3 overflow-x-auto' : 'px-4'} py-1.5 border-b border-rmpg-600 flex items-center gap-3`} role="group" aria-label="Personnel statistics">
+        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono transition-colors duration-150 hover:border-green-700/40">
+          <span className="led-dot led-green" aria-hidden="true" />
           <span className="text-rmpg-400 uppercase tracking-wider">Active</span>
           <span className="text-green-400 font-bold text-base ml-0.5">{onDutyCount}</span>
         </div>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono">
-          <span className="led-dot led-off" />
+        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono transition-colors duration-150 hover:border-rmpg-500">
+          <span className="led-dot led-off" aria-hidden="true" />
           <span className="text-rmpg-400 uppercase tracking-wider">Off Duty</span>
           <span className="text-rmpg-200 font-bold text-base ml-0.5">{offDutyCount}</span>
         </div>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono">
-          <Clock className="w-3 h-3 text-brand-400" />
+        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono transition-colors duration-150 hover:border-brand-600/40">
+          <Clock className="w-3 h-3 text-brand-400" aria-hidden="true" />
           <span className="text-rmpg-400 uppercase tracking-wider">Clocked In</span>
           <span className="text-brand-400 font-bold text-base ml-0.5">{clockedInCount}</span>
         </div>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono">
-          <BarChart3 className="w-3 h-3 text-rmpg-300" />
+        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono transition-colors duration-150 hover:border-rmpg-500">
+          <BarChart3 className="w-3 h-3 text-rmpg-300" aria-hidden="true" />
           <span className="text-rmpg-400 uppercase tracking-wider">Hours</span>
           <span className="text-white font-bold text-base ml-0.5">{totalHoursThisPeriod.toFixed(1)}</span>
         </div>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono">
-          <Users className="w-3 h-3 text-rmpg-300" />
+        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono transition-colors duration-150 hover:border-rmpg-500">
+          <Users className="w-3 h-3 text-rmpg-300" aria-hidden="true" />
           <span className="text-rmpg-400 uppercase tracking-wider">Total</span>
           <span className="text-white font-bold text-base ml-0.5">{officers.length}</span>
         </div>
         {expiringCreds > 0 && (
-          <div className="flex items-center gap-1.5 ml-auto px-2.5 py-1 panel-beveled border-l-2 border-l-amber-500 text-[10px]">
-            <span className="led-dot led-amber" />
+          <div className="flex items-center gap-1.5 ml-auto px-2.5 py-1 panel-beveled border-l-2 border-l-amber-500 text-[10px]" role="alert">
+            <span className="led-dot led-amber" aria-hidden="true" />
             <span className="text-amber-400 font-bold font-mono">{expiringCreds} credential alert{expiringCreds !== 1 ? 's' : ''}</span>
           </div>
         )}
@@ -1145,7 +1146,7 @@ export default function PersonnelPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto flex">
+      <div className="flex-1 overflow-y-auto scrollbar-dark flex">
         {/* Loading state */}
         {loading && (
           <div className="flex items-center justify-center flex-1">

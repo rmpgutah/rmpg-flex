@@ -191,11 +191,15 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
   return (
     <div className="p-4 space-y-3">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
-          <Zap className="w-4 h-4 text-brand-400" />
-          <h2 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">Notification Rules</h2>
-          <span className="text-[10px] text-rmpg-500 ml-1">({rules.filter((r) => r.is_active).length} active)</span>
+          <div className="w-7 h-7 flex items-center justify-center bg-amber-900/30 border border-amber-700/40 shrink-0" aria-hidden="true">
+            <Zap className="w-3.5 h-3.5 text-amber-400" />
+          </div>
+          <div>
+            <h2 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">Notification Rules</h2>
+            <span className="text-[9px] text-rmpg-500">{rules.filter((r) => r.is_active).length} active</span>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">

@@ -97,8 +97,8 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
         <h2 className="text-sm font-bold text-white flex items-center gap-2"><TrendingUp className="w-4 h-4" /> Performance Improvement Plans</h2>
         <div className="flex items-center gap-2">
           <div className="relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
-            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search PIPs..." aria-label="Search PIPs..." className="input-field text-xs py-1 pl-6 pr-2 w-44" />
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
+            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search PIPs..." aria-label="Search performance improvement plans" className="input-field text-xs py-1 pl-6 pr-2 w-44 focus:ring-1 focus:ring-brand-500/50 transition-shadow duration-150" />
           </div>
           <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="input-field text-xs py-1 px-2">
             <option value="all">All Statuses</option>
@@ -171,7 +171,7 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
             const days = daysRemaining(p.end_date);
             const goalsCompleted = p.goals.filter(g => g.completed).length;
             return (
-              <div key={p.id} role="listitem" className="panel-beveled p-3 hover:bg-surface-raised/30 hover:shadow-sm transition-all duration-150">
+              <div key={p.id} role="listitem" className="panel-beveled p-3 hover:bg-surface-raised/30 hover:shadow-sm hover:border-rmpg-500 transition-all duration-200">
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="flex items-center gap-2 mb-1">

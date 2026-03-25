@@ -196,9 +196,11 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-3">
-          <Radio className="w-5 h-5 text-brand-400" />
+          <div className="w-9 h-9 flex items-center justify-center bg-green-900/30 border border-green-700/40 shrink-0" aria-hidden="true">
+            <Radio className="w-4 h-4 text-green-400" />
+          </div>
           <div>
             <h2 className="text-sm font-bold text-rmpg-100 uppercase tracking-wider">Radio Channel Administration</h2>
             <p className="text-[10px] text-rmpg-400 mt-0.5">Manage PTT radio channels available to officers</p>
@@ -229,7 +231,7 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
 
       {/* Add Form */}
       {showAdd && (
-        <div className="panel-surface border border-rmpg-600 p-4 space-y-3">
+        <div className="panel-surface border border-[#1a2636] p-4 space-y-3 animate-fade-in">
           <h3 className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">New Radio Channel</h3>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
@@ -239,7 +241,7 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
                 value={newId}
                 onChange={(e) => setNewId(e.target.value)}
                 placeholder="e.g. tac-4"
-                className="w-full px-2 py-1.5 bg-rmpg-800 border border-rmpg-600 text-rmpg-100 text-xs focus:border-brand-500 outline-none"
+                className="input-dark w-full text-xs min-h-[36px]"
               />
             </div>
             <div>
@@ -249,7 +251,7 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
                 value={newLabel}
                 onChange={(e) => setNewLabel(e.target.value)}
                 placeholder="e.g. TAC-4"
-                className="w-full px-2 py-1.5 bg-rmpg-800 border border-rmpg-600 text-rmpg-100 text-xs focus:border-brand-500 outline-none"
+                className="input-dark w-full text-xs min-h-[36px]"
               />
             </div>
             <div>
@@ -259,7 +261,7 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
                 value={newFreq}
                 onChange={(e) => setNewFreq(e.target.value)}
                 placeholder="e.g. 156.500"
-                className="w-full px-2 py-1.5 bg-rmpg-800 border border-rmpg-600 text-rmpg-100 text-xs focus:border-brand-500 outline-none"
+                className="input-dark w-full text-xs min-h-[36px]"
               />
             </div>
           </div>

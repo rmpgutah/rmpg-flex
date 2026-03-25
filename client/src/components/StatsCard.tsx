@@ -68,17 +68,17 @@ export default function StatsCard({
         relative overflow-hidden p-3 border-l-4 panel-beveled
         ${ACCENT_COLORS[accent] || ACCENT_COLORS.blue}
         bg-surface-base
-        ${onClick ? 'cursor-pointer hover:bg-surface-raised hover:brightness-110 transition-all duration-150 focus-visible:ring-1 focus-visible:ring-brand-500 focus-visible:outline-none active:scale-[0.98]' : ''}
+        ${onClick ? 'cursor-pointer hover:bg-surface-raised hover:shadow-lg transition-all duration-200 focus-visible:ring-1 focus-visible:ring-brand-500 focus-visible:outline-none active:scale-[0.98]' : ''}
         ${className}
       `}
     >
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">
+          {/* 37: Label with wider letter-spacing; value with text-shadow for readability */}
+          <p className="text-[10px] font-bold text-rmpg-400 uppercase mb-1" style={{ letterSpacing: '0.08em' }}>
             {label}
           </p>
-          {/* 11: Tabular-nums for consistent digit widths in stat values */}
-          <p className={`text-xl font-bold font-mono tabular-nums ${VALUE_COLORS[accent] || VALUE_COLORS.blue}`}>{value}</p>
+          <p className={`text-xl font-bold font-mono tabular-nums ${VALUE_COLORS[accent] || VALUE_COLORS.blue}`} style={{ textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}>{value}</p>
         </div>
         {/* 12: Rounded icon container for visual weight; 13: aria-hidden on decorative icon */}
         <div className={`p-1.5 rounded-sm panel-inset ${ICON_COLORS[accent] || ICON_COLORS.blue}`}>
@@ -86,11 +86,11 @@ export default function StatsCard({
         </div>
       </div>
 
-      {/* 14: Trend row with border-top separator and transition effect */}
+      {/* 38: Trend row with smoother separator and direction indicator */}
       {(trend != null || (trendValue != null && trendValue !== '')) && (
-        <div className={`flex items-center gap-1 mt-2 pt-1.5 border-t border-rmpg-700/30 ${TREND_COLOR_MAP[trendColor]}`}>
-          <TrendIcon className="w-3.5 h-3.5" aria-hidden="true" />
-          {trendValue && <span className="text-xs font-medium tabular-nums">{trendValue}</span>}
+        <div className={`flex items-center gap-1.5 mt-2 pt-1.5 border-t border-rmpg-700/20 ${TREND_COLOR_MAP[trendColor]}`}>
+          <TrendIcon className="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
+          {trendValue && <span className="text-[11px] font-medium tabular-nums">{trendValue}</span>}
         </div>
       )}
     </div>

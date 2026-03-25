@@ -243,16 +243,16 @@ export default function DashCamerasPage() {
 
   // ── Gallery View (Left Panel) ────────────
   const galleryView = (
-    <div className="h-full overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent p-2">
+    <div className="h-full overflow-y-auto scrollbar-dark p-2">
       {loading ? (
         <div className="flex items-center justify-center py-16 gap-2">
-          <Loader2 className="w-4 h-4 animate-spin text-brand-400" role="status" aria-label="Loading" />
+          <Loader2 className="w-4 h-4 animate-spin text-brand-400" role="status" aria-label="Loading videos" />
           <span className="text-[10px] text-rmpg-400">Loading videos...</span>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-16">
+        <div className="text-center py-16" role="status">
           <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-base">
-            <Film className="w-7 h-7 text-rmpg-600" />
+            <Film className="w-7 h-7 text-rmpg-600" aria-hidden="true" />
           </div>
           <p className="text-xs text-rmpg-400">No dash camera videos found</p>
           {canManage && (
@@ -268,9 +268,14 @@ export default function DashCamerasPage() {
             <div
               key={v.id}
               onClick={() => setSelectedVideo(v)}
-              className={`panel-beveled cursor-pointer transition-all duration-150 hover:border-brand-400 ${
+              className={`panel-beveled cursor-pointer transition-all duration-200 hover:border-brand-400 hover:shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 ${
                 selectedVideo?.id === v.id ? 'border-brand-400 ring-1 ring-brand-500/30' : ''
               }`}
+              tabIndex={0}
+              role="button"
+              aria-selected={selectedVideo?.id === v.id}
+              aria-label={`Video: ${v.title}`}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedVideo(v); } }}
             >
               {/* Thumbnail area */}
               <div className="relative aspect-video bg-surface-sunken overflow-hidden group">
@@ -344,7 +349,7 @@ export default function DashCamerasPage() {
 
   // ── List View (Left Panel) ───────────────
   const listView = (
-    <div className="h-full overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
+    <div className="h-full overflow-y-auto scrollbar-dark">
       {loading ? (
         <div className="flex items-center justify-center py-16 gap-2">
           <Loader2 className="w-4 h-4 animate-spin text-brand-400" role="status" aria-label="Loading" />
@@ -662,12 +667,12 @@ export default function DashCamerasPage() {
 
         {/* View toggle */}
         <div className="flex items-center">
-          <button type="button" onClick={() => setViewMode('gallery')} title="Gallery view"
-            className={`p-1 ${viewMode === 'gallery' ? 'toolbar-btn-primary' : 'toolbar-btn'}`}>
+          <button type="button" onClick={() => setViewMode('gallery')} title="Gallery view" aria-label="Gallery view" aria-pressed={viewMode === 'gallery'}
+            className={`p-1 transition-colors duration-150 ${viewMode === 'gallery' ? 'toolbar-btn-primary' : 'toolbar-btn'}`}>
             <Grid className="w-3 h-3" />
           </button>
-          <button type="button" onClick={() => setViewMode('list')} title="List view"
-            className={`p-1 ${viewMode === 'list' ? 'toolbar-btn-primary' : 'toolbar-btn'}`}>
+          <button type="button" onClick={() => setViewMode('list')} title="List view" aria-label="List view" aria-pressed={viewMode === 'list'}
+            className={`p-1 transition-colors duration-150 ${viewMode === 'list' ? 'toolbar-btn-primary' : 'toolbar-btn'}`}>
             <List className="w-3 h-3" />
           </button>
         </div>
@@ -684,7 +689,7 @@ export default function DashCamerasPage() {
       </PanelTitleBar>
 
       {/* ── Stats Strip ──────────────────── */}
-      <div className="panel-inset flex items-center h-8 overflow-x-auto flex-shrink-0"
+      <div className="panel-inset flex items-center h-8 overflow-x-auto flex-shrink-0" role="group" aria-label="Video statistics"
         style={{ borderBottom: '1px solid #141e2b' }}>
         <div className="px-3 flex items-center gap-1.5 whitespace-nowrap">
           <Film className="w-3 h-3 text-cyan-400" />
@@ -738,11 +743,11 @@ export default function DashCamerasPage() {
         style={{ borderBottom: '1px solid #141e2b' }}>
         {/* Search */}
         <div className="relative flex-1 min-w-[160px] max-w-[260px]">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
           <input type="text" value={search}
             onChange={e => { setSearch(e.target.value); setPage(0); }}
-            placeholder="Search title, case #, unit..." aria-label="Search title, case #, unit..."
-            className="input-dark text-[10px] pl-7 pr-2 py-1 w-full min-h-[36px]" />
+            placeholder="Search title, case #, unit..." aria-label="Search dash camera videos by title, case number, or unit"
+            className="input-dark text-[10px] pl-7 pr-2 py-1 w-full min-h-[36px] focus:ring-1 focus:ring-brand-500/50 transition-shadow duration-150" />
         </div>
 
         <div className="h-4 w-px bg-rmpg-700" />

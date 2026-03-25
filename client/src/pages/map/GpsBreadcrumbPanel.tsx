@@ -515,7 +515,8 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
             <div className="panel-inset bg-surface-deep px-2 py-1.5 space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-mono font-bold text-amber-400">{trail.call_sign}</span>
-                <span className="text-[9px] font-mono text-rmpg-400">{trail.points.length.toLocaleString()} points</span>
+                {/* #48: Point count with tabular-nums */}
+                <span className="text-[9px] font-mono text-rmpg-400 tabular-nums">{trail.points.length.toLocaleString()} points</span>
               </div>
               {trail.officer_name && (
                 <div className="text-[10px] font-mono text-rmpg-300">{trail.officer_name} {trail.badge_number ? `(${trail.badge_number})` : ''}</div>
@@ -557,14 +558,14 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
               </span>
             </div>
 
-            {/* Trail color gradient strip */}
+            {/* #46: Trail color gradient strip with taller bar and labels */}
             <div className="px-1">
-              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'linear-gradient(to right, #6b7280, #22c55e, #eab308, #f97316, #ef4444)' }} />
+              <div className="h-2 rounded-full overflow-hidden" style={{ background: 'linear-gradient(to right, #6b7280, #22c55e, #eab308, #f97316, #ef4444)', boxShadow: '0 0 4px rgba(234,179,8,0.2)' }} />
               <div className="flex justify-between mt-0.5">
-                <span className="text-[6px] text-rmpg-500 font-mono">0</span>
-                <span className="text-[6px] text-rmpg-500 font-mono">15</span>
-                <span className="text-[6px] text-rmpg-500 font-mono">35</span>
-                <span className="text-[6px] text-rmpg-500 font-mono">55+</span>
+                <span className="text-[6px] text-rmpg-500 font-mono tabular-nums">0</span>
+                <span className="text-[6px] text-rmpg-500 font-mono tabular-nums">15</span>
+                <span className="text-[6px] text-rmpg-500 font-mono tabular-nums">35</span>
+                <span className="text-[6px] text-rmpg-500 font-mono tabular-nums">55+</span>
               </div>
             </div>
 
@@ -572,11 +573,11 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
             <div className="panel-inset bg-surface-deep px-2 py-2 space-y-1.5">
               <div className="text-[8px] font-mono font-bold text-brand-gold-400 uppercase tracking-wider mb-1">Playback</div>
 
-              {/* Progress bar */}
+              {/* #47: Progress bar with glow and smoother animation */}
               <div className="relative w-full h-1.5 bg-rmpg-800 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-[#1a5a9e] to-[#60a5fa] transition-all duration-200"
-                  style={{ width: `${totalPts > 0 ? ((playbackIdx + 1) / totalPts) * 100 : 0}%` }}
+                  className="h-full bg-gradient-to-r from-[#1a5a9e] to-[#60a5fa] transition-all duration-150 ease-out"
+                  style={{ width: `${totalPts > 0 ? ((playbackIdx + 1) / totalPts) * 100 : 0}%`, boxShadow: '0 0 6px rgba(96,165,250,0.4)' }}
                 />
               </div>
 
