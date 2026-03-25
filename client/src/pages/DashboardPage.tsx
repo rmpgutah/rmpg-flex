@@ -538,7 +538,9 @@ export default function DashboardPage() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
-  if (loading && stats === DEFAULT_STATS) {
+  const isInitialLoading = loading && stats === DEFAULT_STATS;
+
+  if (isInitialLoading) {
     return (
       <div className="p-4 space-y-4 animate-fade-in" role="status" aria-label="Loading dashboard" aria-busy="true">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">

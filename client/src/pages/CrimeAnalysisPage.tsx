@@ -71,9 +71,9 @@ export default function CrimeAnalysisPage() {
   useLiveSync('incidents', fetchData);
 
   /* ── Derived data ──────────────────────────────────────────── */
-  const totalIncidents = data.topOffenses?.reduce((a: number, b: any) => a + b.count, 0) || 0;
+  const totalIncidents = data?.topOffenses?.reduce((a: number, b: any) => a + b.count, 0) || 0;
 
-  const offenseData = (data.topOffenses || []).slice(0, 10).map((o: any) => ({
+  const offenseData = (data?.topOffenses || []).slice(0, 10).map((o: any) => ({
     name: (o.offense_type || 'Unknown').slice(0, 20),
     fullName: o.offense_type || 'Unknown',
     count: o.count ?? 0,
