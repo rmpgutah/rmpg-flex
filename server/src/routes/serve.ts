@@ -1340,10 +1340,11 @@ router.post('/:id/notify-completion', validateParamIdMiddleware, requireRole(...
     const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
     if (!job) { res.status(404).json({ error: 'Serve job not found', code: 'SERVE_JOB_NOT_FOUND' }); return; }
 
-    // Import createNotificationForRoles (dynamic require — module may not exist)
+    // Dynamic import for notifications module (may not exist)
     let createNotificationForRoles: any;
     try {
-      createNotificationForRoles = require('./notifications').createNotificationForRoles;
+      const notifModule = await import('./notifications.js');
+      createNotificationForRoles = notifModule.createNotificationForRoles;
     } catch (importErr) {
       console.error('[Serve] notifications module not available:', importErr instanceof Error ? importErr.message : importErr);
       res.status(500).json({ error: 'Notification system unavailable', code: 'NOTIFICATION_MODULE_UNAVAILABLE' });

@@ -1,4 +1,6 @@
 import { Router, Request, Response } from 'express';
+import path from 'path';
+import fs from 'fs';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
@@ -1133,8 +1135,7 @@ router.get('/radio/audio/:entryId', (req: Request, res: Response) => {
     if (!entry) { res.status(404).json({ error: 'Audio entry not found', code: 'AUDIO_ENTRY_NOT_FOUND' }); return; }
 
     if (entry.audio_path) {
-      const path = require('path');
-      const fs = require('fs');
+      // path, fs imported at top of file
       const audioPath = path.resolve(entry.audio_path);
       if (fs.existsSync(audioPath)) {
         res.sendFile(audioPath);

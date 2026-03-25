@@ -1,7 +1,14 @@
 import { Router, Request, Response } from 'express';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+import { fileURLToPath } from 'url';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
+
+const __filename_admin = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename_admin);
 
 const router = Router();
 
@@ -1046,8 +1053,7 @@ router.get('/api-stats', (req: Request, res: Response) => {
 router.get('/backup-status', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const fs = require('fs');
-    const path = require('path');
+    // fs, path imported at top of file
     const DATA_DIR = process.env.RMPG_DATA_DIR || path.resolve(__dirname, '../../data');
     const dbPath = path.join(DATA_DIR, 'rmpg-flex.db');
 
@@ -1262,9 +1268,7 @@ router.delete('/record-locks/:entity_type/:entity_id', (req: Request, res: Respo
 router.get('/system-health', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const fs = require('fs');
-    const path = require('path');
-    const os = require('os');
+    // fs, path, os imported at top of file
 
     // Database size
     const DATA_DIR = process.env.RMPG_DATA_DIR || path.resolve(__dirname, '../../data');

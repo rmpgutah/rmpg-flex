@@ -283,7 +283,6 @@ app.get('/api/presence', (_req, res) => {
 // ── Feature 25: System status page (public) ────────────────────
 app.get('/api/system-status', (_req, res) => {
   try {
-    const { getDb } = require('./models/database');
     const db = getDb();
     const uptime = process.uptime();
 
