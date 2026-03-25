@@ -28,7 +28,7 @@ router.get('/employees', (_req: Request, res: Response) => {
     res.json(users);
   } catch (error: any) {
     console.error('HR employees list error:', error);
-    res.status(500).json({ error: 'Failed to hr employees list', code: 'HR_EMPLOYEES_LIST_ERROR' });
+    res.status(500).json({ error: 'Failed to list HR employees', code: 'HR_EMPLOYEES_LIST_ERROR' });
   }
 });
 
@@ -38,12 +38,14 @@ router.get('/review-cycles', (_req: Request, res: Response) => {
     const db = getDb();
     // Check if review_cycles table exists, otherwise return empty
     try {
-      const cycles = db.prepare('SELECT * FROM review_cycles ORDER BY start_date DESC').all();
+      const cycles = db.prepare('SELECT * FROM review_cycles ORDER BY start_date DESC LIMIT 100').all();
       res.json(cycles);
-    } catch {
+    } catch (e) {
+      console.warn('review_cycles table not found:', (e as Error).message);
       res.json([]);
     }
   } catch (error: any) {
+    console.error('HR review-cycles error:', error);
     res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
   }
 });

@@ -123,7 +123,6 @@ router.get('/export', requireRole('dispatcher', 'supervisor', 'admin', 'manager'
     const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${v}"`).join(','))].join('\n');
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Disposition', `attachment; filename="warrants_export_${new Date().toISOString().slice(0,10)}.csv"`);
     res.send(csv);
   } catch (error: any) {
@@ -190,7 +189,7 @@ router.put('/batch-update', requireRole('admin', 'manager', 'supervisor'), (req:
       return;
     }
     if (!status || !validStatuses.includes(status)) {
-      res.status(400).json({ error: `status must be one of: ${validStatuses.join(', ')}` });
+      res.status(400).json({ error: `status must be one of: ${validStatuses.join(', ')}`, code: 'INVALID_STATUS' });
       return;
     }
     const now = localNow();
@@ -322,7 +321,7 @@ router.get('/dashboard/stats', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Dashboard stats error:', error);
-    res.status(500).json({ error: 'Failed to dashboard stats', code: 'DASHBOARD_STATS_ERROR' });
+    res.status(500).json({ error: 'Failed to get dashboard stats', code: 'DASHBOARD_STATS_ERROR' });
   }
 });
 
@@ -372,7 +371,7 @@ router.get('/dashboard/feed', (req: Request, res: Response) => {
     res.json({ data: feed });
   } catch (error: any) {
     console.error('Dashboard feed error:', error);
-    res.status(500).json({ error: 'Failed to dashboard feed', code: 'DASHBOARD_FEED_ERROR' });
+    res.status(500).json({ error: 'Failed to get dashboard feed', code: 'DASHBOARD_FEED_ERROR' });
   }
 });
 
@@ -405,7 +404,7 @@ router.get('/dashboard/priority', (req: Request, res: Response) => {
     res.json({ data: warrants });
   } catch (error: any) {
     console.error('Priority warrants error:', error);
-    res.status(500).json({ error: 'Failed to priority warrants', code: 'PRIORITY_WARRANTS_ERROR' });
+    res.status(500).json({ error: 'Failed to get priority warrants', code: 'PRIORITY_WARRANTS_ERROR' });
   }
 });
 
@@ -528,7 +527,7 @@ router.get('/unified', (req: Request, res: Response) => {
     res.json({ warrants: paged, total });
   } catch (error: any) {
     console.error('Unified warrants error:', error);
-    res.status(500).json({ error: 'Failed to unified warrants', code: 'UNIFIED_WARRANTS_ERROR' });
+    res.status(500).json({ error: 'Failed to get unified warrants', code: 'UNIFIED_WARRANTS_ERROR' });
   }
 });
 
@@ -584,7 +583,7 @@ router.get('/person/:personId/profile', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Person warrant profile error:', error);
-    res.status(500).json({ error: 'Failed to person warrant profile', code: 'PERSON_WARRANT_PROFILE_ERROR' });
+    res.status(500).json({ error: 'Failed to get person warrant profile', code: 'PERSON_WARRANT_PROFILE_ERROR' });
   }
 });
 
@@ -632,7 +631,7 @@ router.get('/scraped/status', (req: Request, res: Response) => {
     res.json({ data: allSources });
   } catch (error: any) {
     console.error('Scraped status error:', error);
-    res.status(500).json({ error: 'Failed to scraped status', code: 'SCRAPED_STATUS_ERROR' });
+    res.status(500).json({ error: 'Failed to get scraped status', code: 'SCRAPED_STATUS_ERROR' });
   }
 });
 

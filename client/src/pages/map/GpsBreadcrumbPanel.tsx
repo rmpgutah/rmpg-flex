@@ -105,8 +105,11 @@ const formatHeadingDir = (deg: number | null) => {
 // Component
 // ============================================================
 
-const timeAgo = (date: string) => {
-  const ms = Date.now() - new Date(date).getTime();
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;
@@ -404,7 +407,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
 
   return (
     <div
-      className="absolute top-[70px] left-2 z-[500] panel-beveled bg-surface-raised w-[300px] flex flex-col"
+      className="absolute top-[70px] left-2 z-[500] panel-beveled bg-surface-raised w-[300px] flex flex-col transition-all duration-200"
       style={{ borderRadius: 2, maxHeight: 'calc(100vh - 180px)' }}
     >
       {/* Header */}
@@ -418,7 +421,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
         </button>
       </div>
 
-      <div className="p-2.5 space-y-2 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 240px)' }}>
+      <div className="p-2.5 space-y-2 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048]" style={{ maxHeight: 'calc(100vh - 240px)' }}>
         {/* Unit selector */}
         <div className="space-y-1">
           <label className="text-[9px] font-mono font-bold text-brand-gold-400 uppercase tracking-wider">Unit / Officer</label>
@@ -426,7 +429,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
             value={selectedUnit ?? ''}
             onChange={(e) => setSelectedUnit(e.target.value ? Number(e.target.value) : null)}
             aria-label="Select unit for trail playback"
-            className="w-full input-dark text-[11px] font-mono px-2 py-1.5 min-h-[36px]"
+            className="w-full input-dark text-[11px] font-mono px-2 py-1.5 min-h-[36px] bg-[#0d1520] border-[#1e3048] rounded-sm"
             style={{ borderRadius: 2 }}
           >
             <option value="">Select unit...</option>
@@ -554,6 +557,17 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
               </span>
             </div>
 
+            {/* Trail color gradient strip */}
+            <div className="px-1">
+              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'linear-gradient(to right, #6b7280, #22c55e, #eab308, #f97316, #ef4444)' }} />
+              <div className="flex justify-between mt-0.5">
+                <span className="text-[6px] text-rmpg-500 font-mono">0</span>
+                <span className="text-[6px] text-rmpg-500 font-mono">15</span>
+                <span className="text-[6px] text-rmpg-500 font-mono">35</span>
+                <span className="text-[6px] text-rmpg-500 font-mono">55+</span>
+              </div>
+            </div>
+
             {/* Playback controls */}
             <div className="panel-inset bg-surface-deep px-2 py-2 space-y-1.5">
               <div className="text-[8px] font-mono font-bold text-brand-gold-400 uppercase tracking-wider mb-1">Playback</div>
@@ -561,7 +575,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
               {/* Progress bar */}
               <div className="relative w-full h-1.5 bg-rmpg-800 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-amber-500 transition-all duration-100"
+                  className="h-full bg-gradient-to-r from-[#1a5a9e] to-[#60a5fa] transition-all duration-200"
                   style={{ width: `${totalPts > 0 ? ((playbackIdx + 1) / totalPts) * 100 : 0}%` }}
                 />
               </div>
@@ -619,7 +633,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                       playbackMarkerRef.current.setPosition({ lat: trail.points[0].lat, lng: trail.points[0].lng });
                     }
                   }}
-                  className="p-1 rounded-sm hover:bg-rmpg-700/50 transition-colors"
+                  className="p-1.5 rounded-sm hover:bg-[#1a2636] transition-colors duration-150 w-7 h-7 flex items-center justify-center"
                   title="Go to start"
                 >
                   <SkipBack className="w-3 h-3 text-rmpg-300" />
@@ -635,7 +649,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                       setIsPlaying(true);
                     }
                   }}
-                  className="p-1 rounded-sm hover:bg-rmpg-700/50 transition-colors"
+                  className="p-1.5 rounded-sm hover:bg-[#1a2636] transition-colors duration-150 active:scale-[0.95] w-8 h-8 flex items-center justify-center"
                   title={isPlaying ? 'Pause' : 'Play'}
                 >
                   {isPlaying ? (
@@ -654,7 +668,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                       playbackMarkerRef.current.setPosition({ lat: trail.points[lastIdx].lat, lng: trail.points[lastIdx].lng });
                     }
                   }}
-                  className="p-1 rounded-sm hover:bg-rmpg-700/50 transition-colors"
+                  className="p-1.5 rounded-sm hover:bg-[#1a2636] transition-colors duration-150 w-7 h-7 flex items-center justify-center"
                   title="Go to end"
                 >
                   <SkipForward className="w-3 h-3 text-rmpg-300" />
@@ -668,8 +682,8 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                       onClick={() => setPlaybackSpeed(s)}
                       className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
                         playbackSpeed === s
-                          ? 'bg-amber-900/50 text-amber-400 border border-amber-700/50'
-                          : 'text-rmpg-500 hover:text-rmpg-300'
+                          ? 'bg-[#0d1520] text-amber-400 border border-[#1e3048]'
+                          : 'text-rmpg-500 hover:text-rmpg-300 bg-[#0d1520]/50 border border-transparent'
                       }`}
                     >
                       {s}x

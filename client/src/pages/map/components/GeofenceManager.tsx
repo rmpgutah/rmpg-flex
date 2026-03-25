@@ -133,7 +133,7 @@ export default function GeofenceManager({
   }
 
   return (
-    <div className="panel-beveled bg-surface-base overflow-hidden" style={{ width: 280 }}>
+    <div className="panel-beveled bg-surface-base overflow-hidden transition-all duration-200" style={{ width: 280 }}>
       {/* Header */}
       <div
         className="flex items-center justify-between px-3 py-2"
@@ -161,7 +161,7 @@ export default function GeofenceManager({
       <div className="px-2 pt-2">
         <button type="button"
           onClick={onDraw}
-          className={`toolbar-btn flex items-center gap-1.5 px-3 py-1.5 text-xs w-full justify-center ${
+          className={`toolbar-btn flex items-center gap-1.5 px-3 py-1.5 text-xs w-full justify-center hover:shadow-md transition-all duration-150 active:scale-95 ${
             drawingMode ? 'toolbar-btn-primary' : ''
           }`}
           aria-label={drawingMode ? 'Stop drawing' : 'Draw geofence'}
@@ -182,17 +182,19 @@ export default function GeofenceManager({
       </div>
 
       {/* Geofence list */}
-      <div className="p-2 space-y-1 max-h-[400px] overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
+      <div className="p-2 space-y-1 max-h-[400px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048]" style={{ scrollbarWidth: 'thin' }}>
         {loading && (
-          <div className="flex items-center justify-center py-6 text-rmpg-500">
+          <div className="flex items-center justify-center py-6 text-rmpg-500 animate-pulse">
             <Loader2 size={16} className="animate-spin" />
             <span className="ml-2 text-xs">Loading geofences...</span>
           </div>
         )}
 
         {!loading && geofences.length === 0 && (
-          <div className="text-center py-6 text-rmpg-600 text-xs">
-            No geofence zones configured.
+          <div className="text-center py-6">
+            <MapPin size={20} className="mx-auto mb-2 text-rmpg-600 opacity-50" />
+            <div className="text-xs text-rmpg-500">No geofences defined.</div>
+            <div className="text-[10px] text-rmpg-600 mt-0.5">Draw one to get started.</div>
           </div>
         )}
 
@@ -208,10 +210,11 @@ export default function GeofenceManager({
           return (
             <div
               key={fence.id}
-              className="rounded-sm"
+              className="rounded-sm hover:bg-[#1a2636]/50 transition-colors duration-100 cursor-pointer"
               style={{
                 background: '#0d1520',
                 border: '1px solid #1e2a3a',
+                borderLeft: `2px solid ${fence.color || typeStyle.text}`,
                 opacity: isActive ? 1 : 0.5,
               }}
             >
@@ -222,11 +225,7 @@ export default function GeofenceManager({
                 title={expanded ? 'Collapse' : 'Expand details'}
               >
                 <div className="flex items-center gap-1.5 min-w-0">
-                  {expanded ? (
-                    <ChevronDown size={10} className="text-rmpg-500 flex-shrink-0" />
-                  ) : (
-                    <ChevronRight size={10} className="text-rmpg-500 flex-shrink-0" />
-                  )}
+                  <ChevronRight size={10} className={`text-rmpg-500 flex-shrink-0 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`} />
                   <div
                     className="w-2 h-2 rounded-sm flex-shrink-0"
                     style={{ background: fence.color || '#3b82f6' }}
@@ -242,6 +241,7 @@ export default function GeofenceManager({
                       background: typeStyle.bg,
                       border: `1px solid ${typeStyle.border}`,
                       color: typeStyle.text,
+                      boxShadow: `0 0 4px ${typeStyle.text}20`,
                     }}
                   >
                     {fence.zone_type || 'custom'}
@@ -274,9 +274,10 @@ export default function GeofenceManager({
                   {/* Alert history */}
                   {alerts && alertCount > 0 && (
                     <div className="space-y-0.5">
-                      <div className="flex items-center gap-1 text-[9px] font-mono text-amber-400/70 uppercase">
+                      <div className="flex items-center gap-1 text-[9px] font-mono text-amber-400/70 uppercase border-b border-[#1e3048]/50 pb-0.5 mb-1">
                         <Bell size={8} />
-                        Recent alerts ({alertCount})
+                        <span className="flex-1">Recent alerts</span>
+                        <span className="text-[8px] font-bold text-amber-400 bg-amber-900/30 px-1 py-0.5 rounded-sm">{alertCount}</span>
                       </div>
                       {fenceAlerts.slice(0, 2).map((a, i) => (
                         <div
@@ -298,7 +299,10 @@ export default function GeofenceManager({
                   <div className="flex items-center gap-1">
                     <button type="button"
                       onClick={() => onToggle(fence.id)}
-                      className="toolbar-btn flex-1 py-1 text-[10px]"
+                      className="toolbar-btn flex-1 py-1 text-[10px] transition-colors duration-200"
+                      role="switch"
+                      aria-checked={isActive}
+                      aria-label={`Toggle ${fence.name} ${isActive ? 'off' : 'on'}`}
                       title={isActive ? 'Deactivate zone' : 'Activate zone'}
                     >
                       {isActive ? 'Active' : 'Inactive'}
@@ -314,8 +318,9 @@ export default function GeofenceManager({
                     )}
                     <button type="button"
                       onClick={() => { if (window.confirm('Delete this geofence?')) onDelete(fence.id); }}
-                      className="toolbar-btn p-1 text-red-400 hover:text-red-300"
-                      title="Delete zone"
+                      className="toolbar-btn p-1 text-red-400 hover:text-red-300 hover:bg-red-900/30 transition-colors duration-150"
+                      aria-label={`Delete ${fence.name}`}
+                      title="Delete geofence"
                     >
                       <Trash2 size={12} />
                     </button>

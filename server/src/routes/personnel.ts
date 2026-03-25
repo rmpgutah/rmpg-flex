@@ -122,6 +122,7 @@ router.get('/', (req: Request, res: Response) => {
       LEFT JOIN units un ON un.officer_id = u.id
       ${whereClause.replace(/\bstatus\b/g, 'u.status').replace(/\brole\b/g, 'u.role').replace(/\barchived_at\b/g, 'u.archived_at')}
       ORDER BY u.full_name
+      LIMIT 500
     `).all(...params);
 
     res.json(users);
@@ -206,6 +207,22 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
 
     if (!username || !password || !full_name || !role) {
       res.status(400).json({ error: 'username, password, full_name, and role are required', code: 'USERNAME_PASSWORD_FULLNAME_AND' });
+      return;
+    }
+
+    const validRoles = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
+    if (!validRoles.includes(role)) {
+      res.status(400).json({ error: `role must be one of: ${validRoles.join(', ')}`, code: 'INVALID_ROLE' });
+      return;
+    }
+
+    if (typeof username !== 'string' || username.trim().length < 3 || username.length > 50) {
+      res.status(400).json({ error: 'username must be 3-50 characters', code: 'INVALID_USERNAME' });
+      return;
+    }
+
+    if (typeof password !== 'string' || password.length < 6) {
+      res.status(400).json({ error: 'password must be at least 6 characters', code: 'INVALID_PASSWORD' });
       return;
     }
 

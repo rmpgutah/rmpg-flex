@@ -45,8 +45,11 @@ const EMPTY_FORM = {
   section_id: '', zone_id: '', beat_id: '',
 };
 
-const timeAgo = (date: string) => {
-  const ms = Date.now() - new Date(date).getTime();
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;
@@ -102,7 +105,7 @@ export default function TrespassOrdersPage() {
       setOrders(res.data || []);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
-    } catch (err: any) { setError(err.message); } finally { setLoading(false); }
+    } catch (err: any) { setError(err?.message || 'Operation failed'); } finally { setLoading(false); }
   }, [page, searchQuery, filterStatus, showArchived]);
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
@@ -230,7 +233,7 @@ export default function TrespassOrdersPage() {
         addToast('Trespass order created', 'success');
       }
       setFormOpen(false); setEditingOrder(null); await fetchOrders();
-    } catch (err: any) { setError(err.message); } finally { setSubmitting(false); }
+    } catch (err: any) { setError(err?.message || 'Operation failed'); } finally { setSubmitting(false); }
   };
 
   const handleServe = async (order: TrespassOrder) => {
@@ -242,7 +245,7 @@ export default function TrespassOrdersPage() {
         const updated = await apiFetch<TrespassOrder>(`/trespass-orders/${order.id}`);
         setSelectedOrder(updated);
       }
-    } catch (err: any) { setError(err.message); }
+    } catch (err: any) { setError(err?.message || 'Operation failed'); }
   };
 
   const handleLift = async (order: TrespassOrder) => {
@@ -254,7 +257,7 @@ export default function TrespassOrdersPage() {
         const updated = await apiFetch<TrespassOrder>(`/trespass-orders/${order.id}`);
         setSelectedOrder(updated);
       }
-    } catch (err: any) { setError(err.message); }
+    } catch (err: any) { setError(err?.message || 'Operation failed'); }
   };
 
   const handleViolate = async (order: TrespassOrder) => {
@@ -266,7 +269,7 @@ export default function TrespassOrdersPage() {
         const updated = await apiFetch<TrespassOrder>(`/trespass-orders/${order.id}`);
         setSelectedOrder(updated);
       }
-    } catch (err: any) { setError(err.message); }
+    } catch (err: any) { setError(err?.message || 'Operation failed'); }
   };
 
   const handleRenew = async (order: TrespassOrder) => {

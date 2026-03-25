@@ -27,7 +27,8 @@ function generateInvoiceNumber(): string {
   let seq = 1;
   if (last) {
     const parts = last.invoice_number.split('-');
-    seq = parseInt(parts[2], 10) + 1;
+    const parsed = parseInt(parts[2], 10);
+    seq = isNaN(parsed) ? 1 : parsed + 1;
   }
   return `${prefix}${String(seq).padStart(4, '0')}`;
 }
@@ -146,7 +147,7 @@ router.get('/stats', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Invoice stats error:', error);
-    res.status(500).json({ error: 'Failed to invoice stats', code: 'INVOICE_STATS_ERROR' });
+    res.status(500).json({ error: 'Failed to get invoice stats', code: 'INVOICE_STATS_ERROR' });
   }
 });
 

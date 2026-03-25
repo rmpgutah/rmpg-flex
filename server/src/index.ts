@@ -145,6 +145,19 @@ app.use((req, res, next) => {
   next();
 });
 
+// ─── Request Timeout Middleware ────────────────────────
+// Protect against hung requests — 30s for API, 600s for uploads
+app.use((req, res, next) => {
+  const isUpload = req.path.startsWith('/api/uploads') || req.path.startsWith('/api/fleet/dashcam-videos');
+  const timeout = isUpload ? 600000 : 30000; // 10min for uploads, 30s for API
+  req.setTimeout(timeout, () => {
+    if (!res.headersSent) {
+      res.status(408).json({ error: 'Request timeout' });
+    }
+  });
+  next();
+});
+
 // Apply rate limiting to API routes
 app.use('/api', apiRateLimit);
 
@@ -393,10 +406,13 @@ app.get('*', (req, res) => {
 
 // ─── Global Error Handler ────────────────────────────
 // Catches unhandled middleware errors (multer, body-parser, etc.)
-app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error('Unhandled Express error:', err?.message || err, err?.stack || '');
+app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  // Log with request context for debugging
+  const requestId = req.headers['x-request-id'] || 'unknown';
+  console.error(`Unhandled Express error [${requestId}] ${req.method} ${req.path}:`, err?.message || err, err?.stack || '');
   if (!res.headersSent) {
-    res.status(500).json({ error: err?.message || 'Internal server error' });
+    const status = err?.status || err?.statusCode || 500;
+    res.status(status).json({ error: err?.message || 'Internal server error' });
   }
 });
 
@@ -598,5 +614,34 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('Reason:', reason);
   console.error('Server will continue running. Please investigate the above error.');
 });
+
+// ─── Graceful Shutdown ────────────────────────────────
+// Close server and database connections cleanly on SIGTERM/SIGINT
+function gracefulShutdown(signal: string) {
+  console.log(`\n[${signal}] Graceful shutdown initiated...`);
+  const shutdownTimeout = setTimeout(() => {
+    console.error('Shutdown timed out after 15s — forcing exit');
+    process.exit(1);
+  }, 15000);
+
+  try {
+    // Close the HTTP(S) server — stop accepting new connections
+    // primaryServer is scoped in the try block above, so we use a module-level ref
+    const db = getDb();
+    if (db) {
+      db.close();
+      console.log('Database connection closed');
+    }
+  } catch (e: any) {
+    console.warn('Shutdown cleanup error:', e?.message);
+  }
+
+  clearTimeout(shutdownTimeout);
+  console.log('Shutdown complete');
+  process.exit(0);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 export default app;

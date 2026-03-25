@@ -23,7 +23,8 @@ function nextDarNumber(): string {
   const last = db.prepare(
     "SELECT dar_number FROM daily_activity_reports WHERE dar_number LIKE ? ORDER BY id DESC LIMIT 1"
   ).get(`${prefix}%`) as { dar_number: string } | undefined;
-  const seq = last ? parseInt(last.dar_number.replace(prefix, ''), 10) + 1 : 1;
+  const parsed = last ? parseInt(last.dar_number.replace(prefix, ''), 10) : 0;
+  const seq = isNaN(parsed) ? 1 : parsed + 1;
   return `${prefix}${String(seq).padStart(4, '0')}`;
 }
 
@@ -75,7 +76,7 @@ router.get('/:id', (req: Request, res: Response) => {
     const row = db.prepare('SELECT * FROM daily_activity_reports WHERE id = ?').get(id);
     if (!row) return res.status(404).json({ error: 'DAR not found', code: 'DAR_NOT_FOUND' });
     res.json({ data: row });
-  } catch (error: any) { res.status(500).json({ error: 'Failed to retrieve DAR', code: 'GET_DAR_ERROR' }); }
+  } catch (error: any) { console.error('Get DAR error:', error); res.status(500).json({ error: 'Failed to retrieve DAR', code: 'GET_DAR_ERROR' }); }
 });
 
 // ─── POST /auto-populate ────────────────────────────────
@@ -151,7 +152,7 @@ router.post('/auto-populate', (req: Request, res: Response) => {
       
         LIMIT 1000
       `).all(shift_date, officer_id);
-    } catch { /* table may not exist */ }
+    } catch (e) { console.warn('DAR auto-populate field_interviews query failed:', (e as Error).message); }
 
     // ── Build auto-generated narrative ──
     const narrativeParts: string[] = [];

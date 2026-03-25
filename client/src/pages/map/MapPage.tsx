@@ -251,15 +251,16 @@ export default function MapPage() {
   const isDataStale = Date.now() - lastDataUpdate.getTime() > dataStaleThresholdMs;
 
   // Fix 42: auto-refresh stale overlay data when tab becomes visible
+  const fetchAllDataRef = useRef<((options?: { silent?: boolean }) => Promise<void>) | null>(null);
   useEffect(() => {
     const handleVisibility = () => {
       if (document.visibilityState === 'visible' && Date.now() - lastDataUpdate.getTime() > dataStaleThresholdMs) {
-        fetchAllData?.({ silent: true });
+        fetchAllDataRef.current?.({ silent: true });
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [lastDataUpdate]);
+  }, [lastDataUpdate, dataStaleThresholdMs]);
 
   // Data state
   const [units, setUnits] = useState<Unit[]>([]);
@@ -566,12 +567,13 @@ export default function MapPage() {
 
   // Geofence alerts — show toast when triggered
   useEffect(() => {
-    if (!geofences.alerts.length) return;
+    if (!geofences.alerts?.length) return;
     const latest = geofences.alerts[geofences.alerts.length - 1];
     if (latest) {
       addToast(`Geofence: ${latest.unitCallSign} ${latest.eventType} ${latest.geofenceName}`, 'warning');
     }
-  }, [geofences.alerts.length]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [geofences.alerts.length, addToast]);
 
   // Shift risk data for safety dashboard
   const [shiftRisk, setShiftRisk] = useState<Record<string, any> | null>(null);
@@ -591,13 +593,14 @@ export default function MapPage() {
 
   // Safety alert toasts
   useEffect(() => {
-    if (alerts.activeAlerts?.length > 0) {
+    if (alerts.activeAlerts && alerts.activeAlerts.length > 0) {
       const latest = alerts.activeAlerts[alerts.activeAlerts.length - 1];
       if (latest && !latest.acknowledged) {
         addToast(`SAFETY ALERT: ${latest.type.replace(/_/g, ' ').toUpperCase()} — ${latest.details || 'No details'}`, 'error', 15000);
       }
     }
-  }, [alerts.activeAlerts?.length]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alerts.activeAlerts?.length, addToast]);
 
   // ============================================================
   // Data Fetching
@@ -606,7 +609,7 @@ export default function MapPage() {
   const fetchUnits = useCallback(async () => {
     try {
       const data = await apiFetch<Unit[]>('/dispatch/units');
-      setUnits(data || []);
+      setUnits(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error fetching units:', err);
       setError('Failed to load units');
@@ -616,7 +619,7 @@ export default function MapPage() {
   const fetchCalls = useCallback(async () => {
     try {
       const data = await apiFetch<ActiveCall[]>('/dispatch/queue');
-      setCalls(data || []);
+      setCalls(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error fetching calls:', err);
       setError('Failed to load active calls');
@@ -626,7 +629,7 @@ export default function MapPage() {
   const fetchProperties = useCallback(async () => {
     try {
       const data = await apiFetch<Property[]>('/records/properties');
-      setProperties(data || []);
+      setProperties(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error fetching properties:', err);
       setError('Failed to load properties');
@@ -639,6 +642,7 @@ export default function MapPage() {
     if (!options?.silent) setLoading(false);
     setLastDataUpdate(new Date()); // Fix 40: track last data update timestamp
   }, [fetchUnits, fetchCalls, fetchProperties]);
+  useEffect(() => { fetchAllDataRef.current = fetchAllData; }, [fetchAllData]);
 
   // ============================================================
   // Initial Load & Auto-Refresh
@@ -715,7 +719,7 @@ export default function MapPage() {
     let url = `/dispatch/heatmap?days=${heatmapDays}&mode=${heatmapMode}`;
     if (heatmapMode === 'type' && heatmapTypeFilter) url += `&type=${encodeURIComponent(heatmapTypeFilter)}`;
     apiFetch<HeatmapPoint[]>(url)
-      .then((data) => { if (!cancelled) setHeatmapData(data || []); })
+      .then((data) => { if (!cancelled) setHeatmapData(Array.isArray(data) ? data : []); })
       .catch(() => { if (!cancelled) setHeatmapData([]); });
     return () => { cancelled = true; };
   }, [showHeatmap, heatmapDays, heatmapMode, heatmapTypeFilter, advancedHeatmapEnabled]);
@@ -725,7 +729,7 @@ export default function MapPage() {
     if (!showHeatmap) return;
     let cancelled = false;
     apiFetch<{ incident_type: string; count: number }[]>('/dispatch/heatmap/types')
-      .then((data) => { if (!cancelled) setHeatmapTypes(data || []); })
+      .then((data) => { if (!cancelled) setHeatmapTypes(Array.isArray(data) ? data : []); })
       .catch((err) => { console.warn('[MapPage] fetch heatmap types failed:', err); });
     return () => { cancelled = true; };
   }, [showHeatmap]);
@@ -1847,45 +1851,45 @@ export default function MapPage() {
     if (u.status === 'off_duty') return false;
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
-    return u.call_sign.toLowerCase().includes(q) || (u.officer_name || '').toLowerCase().includes(q);
+    return (u.call_sign || '').toLowerCase().includes(q) || (u.officer_name || '').toLowerCase().includes(q);
   }), [units, searchQuery]);
 
   const filteredCalls = useMemo(() => calls.filter(c => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
-    return c.call_number.toLowerCase().includes(q) || (c.incident_type || '').toLowerCase().includes(q) || (c.location_address || '').toLowerCase().includes(q);
+    return (c.call_number || '').toLowerCase().includes(q) || (c.incident_type || '').toLowerCase().includes(q) || (c.location_address || '').toLowerCase().includes(q);
   }), [calls, searchQuery]);
 
   // Memoized SafetyDashboardPanel props
   const safetyEnvironmentProp = useMemo(() => ({
     lighting: environment?.lighting || 'unknown',
     sunriseSunset: environment?.sunriseSunset ? {
-      sunrise: environment.sunriseSunset.sunrise,
-      sunset: environment.sunriseSunset.sunset,
-      minutesToTransition: environment.sunriseSunset?.minutesToNextTransition,
-      nextTransition: environment.sunriseSunset?.nextTransition,
+      sunrise: environment.sunriseSunset.sunrise ?? '',
+      sunset: environment.sunriseSunset.sunset ?? '',
+      minutesToTransition: environment.sunriseSunset?.minutesToNextTransition ?? 0,
+      nextTransition: environment.sunriseSunset?.nextTransition ?? '',
     } : null,
-    lowVisibility: environment?.lowVisibility,
+    lowVisibility: environment?.lowVisibility ?? false,
     weatherHazards: [
       environment?.weatherHazards?.freezing && 'Freezing',
       environment?.weatherHazards?.highWind && 'High Wind',
       environment?.weatherHazards?.rain && 'Rain',
       environment?.weatherHazards?.snow && 'Snow',
     ].filter(Boolean) as string[],
-    icyRoad: environment?.icyRoad,
+    icyRoad: environment?.icyRoad ?? false,
     windCondition: environment?.windCondition ? {
-      speed: environment.windCondition.speed,
-      direction: environment.windCondition.cardinal,
+      speed: environment.windCondition.speed ?? 0,
+      direction: environment.windCondition.cardinal ?? '',
     } : null,
-    visibilityRange: environment?.visibilityRange,
-    schoolZoneActive: environment?.schoolZoneActive,
+    visibilityRange: environment?.visibilityRange ?? null,
+    schoolZoneActive: environment?.schoolZoneActive ?? false,
   }), [environment]);
 
   const safetyUnitSafetyProp = useMemo(() => ({
-    loneOfficers: unitSafety.loneOfficers,
-    exposureWarnings: unitSafety.exposureWarnings,
-    stationaryUnits: unitSafety.stationaryUnits,
-    speedAnomalies: unitSafety.speedAnomalies,
+    loneOfficers: unitSafety.loneOfficers ?? [],
+    exposureWarnings: unitSafety.exposureWarnings ?? [],
+    stationaryUnits: unitSafety.stationaryUnits ?? [],
+    speedAnomalies: unitSafety.speedAnomalies ?? [],
     coveragePercent: unitSafety.coveragePercent ?? 0,
   }), [unitSafety]);
 

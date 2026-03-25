@@ -73,7 +73,7 @@ router.post('/sync/pull', (req: Request, res: Response) => {
     const db = getDb();
 
     if (!table || !SYNC_TABLES[table]) {
-      res.status(400).json({ error: `Invalid table: ${table}. Allowed: ${Object.keys(SYNC_TABLES).join(', ')}` });
+      res.status(400).json({ error: `Invalid table: ${table}. Allowed: ${Object.keys(SYNC_TABLES).join(', ')}`, code: 'INVALID_TABLE' });
       return;
     }
 

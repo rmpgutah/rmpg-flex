@@ -155,8 +155,8 @@ export default function BodyCameraDetailTab({
                 </div>
                 <div>
                   <p className="field-label">Condition</p>
-                  <p className={`text-xs font-medium capitalize ${EQUIPMENT_CONDITION_COLORS[cam.condition] || 'text-rmpg-400'}`}>
-                    {cam.condition}
+                  <p className={`text-xs font-medium capitalize ${(cam.condition && EQUIPMENT_CONDITION_COLORS[cam.condition]) || 'text-rmpg-400'}`}>
+                    {cam.condition || '-'}
                   </p>
                 </div>
               </div>

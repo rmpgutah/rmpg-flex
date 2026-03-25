@@ -215,6 +215,9 @@ export type AuditEntityType =
  * @param entityId   The ID of the affected entity
  * @param details    Human-readable description of the action
  */
+// [FIX 48] Max detail string length to prevent oversized audit entries
+const MAX_DETAILS_LENGTH = 4000;
+
 export function auditLog(
   req: Request,
   action: AuditAction,
@@ -225,12 +228,20 @@ export function auditLog(
   try {
     const db = getDb();
     const userId = req.user?.userId ?? null;
-    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+
+    // [FIX 49] Truncate details to prevent oversized DB rows
+    const truncatedDetails = details && details.length > MAX_DETAILS_LENGTH
+      ? details.substring(0, MAX_DETAILS_LENGTH) + '... [truncated]'
+      : details;
+
+    // [FIX 50] Sanitize entityId to string safely (handle undefined/null)
+    const safeEntityId = entityId != null ? String(entityId) : '';
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(userId, action, entityType, String(entityId), details, ip, localNow());
+    `).run(userId, action, entityType, safeEntityId, truncatedDetails || '', ip, localNow());
   } catch (err) {
     // Never let audit logging break the actual operation
     console.error('[AUDIT] Failed to log:', action, entityType, entityId, err);
@@ -248,10 +259,16 @@ export function auditLogSystem(
 ): void {
   try {
     const db = getDb();
+    // [FIX 51] Truncate system audit details too
+    const truncatedDetails = details && details.length > MAX_DETAILS_LENGTH
+      ? details.substring(0, MAX_DETAILS_LENGTH) + '... [truncated]'
+      : details;
+    const safeEntityId = entityId != null ? String(entityId) : '';
+
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (NULL, ?, ?, ?, ?, 'system', ?)
-    `).run(action, entityType, String(entityId), details, localNow());
+    `).run(action, entityType, safeEntityId, truncatedDetails || '', localNow());
   } catch (err) {
     console.error('[AUDIT] Failed to log system action:', action, entityType, entityId, err);
   }
@@ -281,9 +298,17 @@ export function auditLogBatch(
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
 
+    // [FIX 52] Limit batch size to prevent extremely large transactions
+    const MAX_BATCH = 500;
+    const limitedEntries = entries.slice(0, MAX_BATCH);
+
     const batchInsert = db.transaction(() => {
-      for (const entry of entries) {
-        stmt.run(userId, entry.action, entry.entityType, String(entry.entityId), entry.details, ip, now);
+      for (const entry of limitedEntries) {
+        // [FIX 53] Truncate batch entry details
+        const truncated = entry.details && entry.details.length > MAX_DETAILS_LENGTH
+          ? entry.details.substring(0, MAX_DETAILS_LENGTH) + '... [truncated]'
+          : entry.details;
+        stmt.run(userId, entry.action, entry.entityType, String(entry.entityId ?? ''), truncated || '', ip, now);
       }
     });
 

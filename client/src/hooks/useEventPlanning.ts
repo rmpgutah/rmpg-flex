@@ -127,8 +127,8 @@ export function useEventPlanning({ map, infoWindow }: UseEventPlanningOptions) {
 
   const startDrawing = useCallback((type: PlanItemType) => {
     if (!map || !activePlanId) return;
-    // Cancel any existing draw
-    cancelDrawing();
+    // Cancel any existing draw (use ref to avoid circular dependency)
+    cancelDrawingRef.current();
     setDrawMode(type);
 
     if (type === 'staging' || type === 'annotation') {
@@ -195,7 +195,7 @@ export function useEventPlanning({ map, infoWindow }: UseEventPlanningOptions) {
     if (!drawMode || !activePlanId) return;
     const points = drawPointsRef.current;
     if (points.length < 2) {
-      cancelDrawing();
+      cancelDrawingRef.current();
       return;
     }
 

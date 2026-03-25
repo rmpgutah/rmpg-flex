@@ -68,7 +68,7 @@ router.post('/calls/archive-bulk', requireRole('admin', 'manager', 'dispatcher')
 
         // Free up any assigned units
         let unitIds: number[] = [];
-        try { const p = JSON.parse(call.assigned_unit_ids || '[]'); unitIds = Array.isArray(p) ? p : []; } catch { /* ignore */ }
+        try { const p = JSON.parse(call.assigned_unit_ids || '[]'); unitIds = Array.isArray(p) ? p : []; } catch (parseErr) { console.error('[CallLifecycle] Failed to parse assigned_unit_ids for bulk archive:', parseErr instanceof Error ? parseErr.message : parseErr); }
         for (const unitId of unitIds) {
           freeUnitStmt.run(now, unitId, call.id);
         }
@@ -115,7 +115,7 @@ router.post('/calls/:id/archive', validateParamIdMiddleware, requireRole('admin'
       try {
         const parsed = JSON.parse(call.assigned_unit_ids || '[]');
         unitIds = Array.isArray(parsed) ? parsed : [];
-      } catch { /* ignore */ }
+      } catch (parseErr) { console.error('[CallLifecycle] Failed to parse assigned_unit_ids for archive:', parseErr instanceof Error ? parseErr.message : parseErr); }
       for (const unitId of unitIds) {
         db.prepare(`UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ? AND current_call_id = ?`)
           .run(now, unitId, call.id);
@@ -183,7 +183,7 @@ router.delete('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'man
     const deleteTx = db.transaction(() => {
       // If call has active units assigned, free them first
       let unitIds: number[] = [];
-      try { const p = JSON.parse(call.assigned_unit_ids || '[]'); unitIds = Array.isArray(p) ? p : []; } catch { /* ignore */ }
+      try { const p = JSON.parse(call.assigned_unit_ids || '[]'); unitIds = Array.isArray(p) ? p : []; } catch (parseErr) { console.error('[CallLifecycle] Failed to parse assigned_unit_ids for delete:', parseErr instanceof Error ? parseErr.message : parseErr); }
       for (const unitId of unitIds) {
         db.prepare(`
           UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ? AND current_call_id = ?
@@ -191,12 +191,12 @@ router.delete('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'man
       }
 
       // Nullify FK references in related tables before deleting the call
-      try { db.prepare('UPDATE incidents SET call_id = NULL WHERE call_id = ?').run(call.id); } catch { /* ignore */ }
-      try { db.prepare('UPDATE units SET current_call_id = NULL WHERE current_call_id = ?').run(call.id); } catch { /* ignore */ }
-      try { db.prepare('DELETE FROM record_links WHERE (source_type = ? AND source_id = ?) OR (target_type = ? AND target_id = ?)').run('call', String(call.id), 'call', String(call.id)); } catch { /* ignore */ }
+      try { db.prepare('UPDATE incidents SET call_id = NULL WHERE call_id = ?').run(call.id); } catch (e) { console.error('[CallLifecycle] Failed to nullify incidents FK:', e instanceof Error ? e.message : e); }
+      try { db.prepare('UPDATE units SET current_call_id = NULL WHERE current_call_id = ?').run(call.id); } catch (e) { console.error('[CallLifecycle] Failed to nullify units FK:', e instanceof Error ? e.message : e); }
+      try { db.prepare('DELETE FROM record_links WHERE (source_type = ? AND source_id = ?) OR (target_type = ? AND target_id = ?)').run('call', String(call.id), 'call', String(call.id)); } catch (e) { console.error('[CallLifecycle] Failed to delete record_links:', e instanceof Error ? e.message : e); }
 
       // Delete related activity log entries
-      try { db.prepare('DELETE FROM activity_log WHERE entity_type = ? AND entity_id = ?').run('call', call.id); } catch { /* ignore */ }
+      try { db.prepare('DELETE FROM activity_log WHERE entity_type = ? AND entity_id = ?').run('call', call.id); } catch (e) { console.error('[CallLifecycle] Failed to delete activity_log entries:', e instanceof Error ? e.message : e); }
 
       db.prepare('DELETE FROM calls_for_service WHERE id = ?').run(call.id);
 
@@ -213,7 +213,7 @@ router.delete('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'man
     const msg = error?.code === 'SQLITE_CONSTRAINT_FOREIGNKEY'
       ? 'Cannot delete: this call has linked records. Unlink them first.'
       : 'Failed to delete call';
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: msg, code: 'CALLLIFECYCLE_DELETE_CALL_ERROR' });
   }
 });
 
@@ -571,7 +571,7 @@ router.get('/calls/:id/warnings', validateParamIdMiddleware, requireRole('admin'
           warnings.push({ type: 'PTS', label: 'PRE-TRIAL SUPERVISION', severity: 'high', source: `${person.first_name} ${person.last_name}` });
         }
       }
-    } catch { /* linked persons table may not exist */ }
+    } catch (lpErr) { console.error('[CallLifecycle] Linked persons lookup error:', lpErr instanceof Error ? lpErr.message : lpErr); }
 
     // Check for active warrants at location
     try {
@@ -598,7 +598,7 @@ router.get('/calls/:id/warnings', validateParamIdMiddleware, requireRole('admin'
           source: `${warrant.first_name || ''} ${warrant.last_name || ''}`.trim() || warrant.warrant_number
         });
       }
-    } catch { /* warrants table may not exist */ }
+    } catch (wErr) { console.error('[CallLifecycle] Warrants lookup error:', wErr instanceof Error ? wErr.message : wErr); }
 
     // Check property hazard notes
     if (call.property_id) {
@@ -607,7 +607,7 @@ router.get('/calls/:id/warnings', validateParamIdMiddleware, requireRole('admin'
         if (property?.hazard_notes) {
           warnings.push({ type: 'HAZARD', label: 'PROPERTY HAZARD', severity: 'high', source: 'Property file' });
         }
-      } catch { /* ignore */ }
+      } catch (propErr) { console.error('[CallLifecycle] Property hazard lookup error:', propErr instanceof Error ? propErr.message : propErr); }
     }
 
     // Incident type-based warnings
@@ -642,6 +642,14 @@ router.put('/calls/:id/mileage', validateParamIdMiddleware, requireRole('admin',
     }
 
     const { starting_mileage, ending_mileage } = req.body;
+
+    // Validate mileage values
+    if (starting_mileage !== undefined && starting_mileage !== null && (isNaN(Number(starting_mileage)) || Number(starting_mileage) < 0 || Number(starting_mileage) > 9999999)) {
+      res.status(400).json({ error: 'Invalid starting mileage', code: 'INVALID_STARTING_MILEAGE' }); return;
+    }
+    if (ending_mileage !== undefined && ending_mileage !== null && (isNaN(Number(ending_mileage)) || Number(ending_mileage) < 0 || Number(ending_mileage) > 9999999)) {
+      res.status(400).json({ error: 'Invalid ending mileage', code: 'INVALID_ENDING_MILEAGE' }); return;
+    }
 
     const updates: string[] = [];
     const params: any[] = [];

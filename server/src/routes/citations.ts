@@ -240,6 +240,9 @@ router.post('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
 
+    const validTypes = ['traffic', 'criminal', 'parking', 'warning'];
+    const validStatuses = ['issued', 'paid', 'contested', 'dismissed', 'warrant_issued', 'payment_plan'];
+
     const {
       type = 'traffic',
       status = 'issued',
@@ -275,6 +278,12 @@ router.post('/', (req: Request, res: Response) => {
       return;
     }
 
+    // Validate type enum
+    if (!validTypes.includes(type)) {
+      res.status(400).json({ error: `type must be one of: ${validTypes.join(', ')}`, code: 'INVALID_TYPE' });
+      return;
+    }
+
     if (!violation_date) {
       res.status(400).json({ error: 'violation_date is required', code: 'MISSING_DATE' });
       return;
@@ -303,7 +312,8 @@ router.post('/', (req: Request, res: Response) => {
     let seq = 1;
     if (lastCit) {
       const parts = lastCit.citation_number.split('-');
-      seq = parseInt(parts[2], 10) + 1;
+      const parsed = parseInt(parts[2], 10);
+      seq = isNaN(parsed) ? 1 : parsed + 1;
     }
     const citation_number = `CIT-${year}-${String(seq).padStart(4, '0')}`;
 
@@ -502,13 +512,15 @@ try {
       created_at TEXT NOT NULL
     )
   `);
-} catch { /* table may already exist */ }
+} catch (e) { console.warn('citation_payments table init:', (e as Error).message); }
 
 // GET /api/citations/:id/payments — Get payment history for a citation
 router.get('/:id/payments', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const citation = db.prepare('SELECT id, fine_amount, status FROM citations WHERE id = ?').get(req.params.id) as any;
+    const paymentCitId = parseInt(req.params.id, 10);
+    if (isNaN(paymentCitId)) { res.status(400).json({ error: 'Invalid citation ID', code: 'INVALID_CITATION_ID' }); return; }
+    const citation = db.prepare('SELECT id, fine_amount, status FROM citations WHERE id = ?').get(paymentCitId) as any;
     if (!citation) { res.status(404).json({ error: 'Citation not found', code: 'CITATION_NOT_FOUND' }); return; }
 
     const payments = db.prepare(
@@ -536,7 +548,9 @@ router.get('/:id/payments', (req: Request, res: Response) => {
 router.post('/:id/payments', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const citation = db.prepare('SELECT id, fine_amount, status FROM citations WHERE id = ?').get(req.params.id) as any;
+    const payCitId = parseInt(req.params.id, 10);
+    if (isNaN(payCitId)) { res.status(400).json({ error: 'Invalid citation ID', code: 'INVALID_CITATION_ID' }); return; }
+    const citation = db.prepare('SELECT id, fine_amount, status FROM citations WHERE id = ?').get(payCitId) as any;
     if (!citation) { res.status(404).json({ error: 'Citation not found', code: 'CITATION_NOT_FOUND' }); return; }
 
     const { amount, payment_date, payment_method, reference_number, notes } = req.body;

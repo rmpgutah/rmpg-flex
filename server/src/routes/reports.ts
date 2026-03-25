@@ -146,7 +146,8 @@ router.get('/incidents-summary', (req: Request, res: Response) => {
       priority: 'priority',
       officer: 'officer_id',
     };
-    const groupColumn = columnMap[groupBy as string] || 'incident_type';
+    const validGroupBy = typeof groupBy === 'string' && groupBy in columnMap ? groupBy : 'type';
+    const groupColumn = columnMap[validGroupBy];
 
     const summary = db.prepare(`
       SELECT ${groupColumn} as group_key, COUNT(*) as count

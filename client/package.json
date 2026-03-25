@@ -9,6 +9,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "lint": "tsc --noEmit",
     "cap:ios": "npx cap sync ios",
     "cap:open:ios": "npx cap open ios",
     "cap:android": "npx cap sync android",

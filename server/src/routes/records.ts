@@ -61,8 +61,8 @@ router.get('/persons', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { page = '1', limit = '50', flags, archived } = req.query;
-    const pageNum = parseInt(page as string, 10);
-    const limitNum = parseInt(limit as string, 10);
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
     let whereClause = 'WHERE 1=1';
@@ -175,7 +175,9 @@ router.get('/persons/export', (req: Request, res: Response) => {
 router.get('/persons/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    let person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
+    const personId = parseInt(req.params.id, 10);
+    if (isNaN(personId)) { res.status(400).json({ error: 'Invalid person ID', code: 'INVALID_PERSON_ID' }); return; }
+    let person = db.prepare('SELECT * FROM persons WHERE id = ?').get(personId) as any;
 
     if (!person) {
       res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' });
@@ -204,7 +206,9 @@ router.get('/persons/:id', (req: Request, res: Response) => {
       
         LIMIT 1000
       `).all(person.id);
-    } catch { /* table might not exist yet */ }
+    } catch (e) {
+      console.warn('Get person linked_clients query failed:', (e as Error).message);
+    }
 
     res.json({ ...person, vehicles, linked_clients });
   } catch (error: any) {
@@ -664,8 +668,8 @@ router.get('/vehicles', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { page = '1', limit = '50', archived } = req.query;
-    const pageNum = parseInt(page as string, 10);
-    const limitNum = parseInt(limit as string, 10);
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
     let whereClause = 'WHERE 1=1';

@@ -343,7 +343,11 @@ router.get('/:id', (req: Request, res: Response) => {
     }
 
     const db = getDb();
-    const { id } = req.params;
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id) || id < 1) {
+      res.status(400).json({ error: 'Invalid vehicle ID', code: 'INVALID_VEHICLE_ID' });
+      return;
+    }
 
     const vehicle = db.prepare(`
       SELECT

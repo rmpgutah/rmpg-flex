@@ -19,7 +19,8 @@ function generateOrderNumber(db: ReturnType<typeof getDb>): string {
   let seq = 1;
   if (row) {
     const parts = row.order_number.split('-');
-    seq = parseInt(parts[2], 10) + 1;
+    const parsed = parseInt(parts[2], 10);
+    seq = isNaN(parsed) ? 1 : parsed + 1;
   }
   return `${prefix}${String(seq).padStart(4, '0')}`;
 }
@@ -70,7 +71,7 @@ router.get('/', (req: Request, res: Response) => {
     });
   } catch (err: any) {
     console.error('[TrespassOrders] Error:', err?.message);
-    res.status(500).json({ error: 'Failed to [trespassorders]', code: 'TRESPASSORDERS_ERROR' });
+    res.status(500).json({ error: 'Failed to process trespass orders', code: 'TRESPASSORDERS_ERROR' });
   }
 });
 
@@ -107,7 +108,7 @@ router.get('/check', (req: Request, res: Response) => {
     res.json({ orders: rows, count: rows.length });
   } catch (err: any) {
     console.error('[TrespassOrders] Error:', err?.message);
-    res.status(500).json({ error: 'Failed to [trespassorders]', code: 'TRESPASSORDERS_ERROR' });
+    res.status(500).json({ error: 'Failed to process trespass orders', code: 'TRESPASSORDERS_ERROR' });
   }
 });
 
@@ -133,7 +134,7 @@ router.get('/:id', (req: Request, res: Response) => {
     res.json({ data: row });
   } catch (err: any) {
     console.error('[TrespassOrders] Error:', err?.message);
-    res.status(500).json({ error: 'Failed to [trespassorders]', code: 'TRESPASSORDERS_ERROR' });
+    res.status(500).json({ error: 'Failed to process trespass orders', code: 'TRESPASSORDERS_ERROR' });
   }
 });
 
@@ -282,7 +283,7 @@ router.put('/:id/lift', (req: Request, res: Response) => {
     res.json({ data: updated });
   } catch (err: any) {
     console.error('[TrespassOrders] Error:', err?.message);
-    res.status(500).json({ error: 'Failed to [trespassorders]', code: 'TRESPASSORDERS_ERROR' });
+    res.status(500).json({ error: 'Failed to process trespass orders', code: 'TRESPASSORDERS_ERROR' });
   }
 });
 
@@ -302,7 +303,7 @@ router.put('/:id/violate', (req: Request, res: Response) => {
     res.json({ data: updated });
   } catch (err: any) {
     console.error('[TrespassOrders] Error:', err?.message);
-    res.status(500).json({ error: 'Failed to [trespassorders]', code: 'TRESPASSORDERS_ERROR' });
+    res.status(500).json({ error: 'Failed to process trespass orders', code: 'TRESPASSORDERS_ERROR' });
   }
 });
 
@@ -356,7 +357,7 @@ router.post('/:id/renew', (req: Request, res: Response) => {
     res.status(201).json({ data: created });
   } catch (err: any) {
     console.error('[TrespassOrders] Error:', err?.message);
-    res.status(500).json({ error: 'Failed to [trespassorders]', code: 'TRESPASSORDERS_ERROR' });
+    res.status(500).json({ error: 'Failed to process trespass orders', code: 'TRESPASSORDERS_ERROR' });
   }
 });
 
@@ -441,7 +442,7 @@ router.get('/detect-violation', (req: Request, res: Response) => {
     });
   } catch (err: any) {
     console.error('[TrespassOrders] Error:', err?.message);
-    res.status(500).json({ error: 'Failed to [trespassorders]', code: 'TRESPASSORDERS_ERROR' });
+    res.status(500).json({ error: 'Failed to process trespass orders', code: 'TRESPASSORDERS_ERROR' });
   }
 });
 
@@ -480,7 +481,7 @@ router.get('/expiration-calendar', (req: Request, res: Response) => {
     res.json({ expiring_orders: expiring, by_month: byMonth, total: expiring.length });
   } catch (err: any) {
     console.error('[TrespassOrders] Error:', err?.message);
-    res.status(500).json({ error: 'Failed to [trespassorders]', code: 'TRESPASSORDERS_ERROR' });
+    res.status(500).json({ error: 'Failed to process trespass orders', code: 'TRESPASSORDERS_ERROR' });
   }
 });
 
@@ -537,7 +538,7 @@ router.post('/bulk', (req: Request, res: Response) => {
     res.status(201).json({ created: created.length, orders: created });
   } catch (err: any) {
     console.error('[TrespassOrders] Error:', err?.message);
-    res.status(500).json({ error: 'Failed to [trespassorders]', code: 'TRESPASSORDERS_ERROR' });
+    res.status(500).json({ error: 'Failed to process trespass orders', code: 'TRESPASSORDERS_ERROR' });
   }
 });
 
@@ -602,7 +603,7 @@ router.get('/:id/pdf-data', (req: Request, res: Response) => {
     res.json(pdfData);
   } catch (err: any) {
     console.error('[TrespassOrders] Error:', err?.message);
-    res.status(500).json({ error: 'Failed to [trespassorders]', code: 'TRESPASSORDERS_ERROR' });
+    res.status(500).json({ error: 'Failed to process trespass orders', code: 'TRESPASSORDERS_ERROR' });
   }
 });
 

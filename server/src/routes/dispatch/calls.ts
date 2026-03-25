@@ -44,7 +44,7 @@ try {
   const db = getDb();
   db.prepare(`CREATE INDEX IF NOT EXISTS idx_calls_lat_lng_created
     ON calls_for_service(latitude, longitude, created_at)`).run();
-} catch { /* table may not exist yet at import time */ }
+} catch (err) { console.error('[Calls] Index creation skipped (table may not exist yet):', err instanceof Error ? err.message : err); }
 
 // GET /api/dispatch/calls - List calls with filters
 router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
@@ -65,12 +65,12 @@ router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
     // Validate enum query filters
     const VALID_CALL_STATUSES = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived'];
     if (status && !VALID_CALL_STATUSES.includes(status as string)) {
-      res.status(400).json({ error: `Invalid status filter` });
+      res.status(400).json({ error: 'Invalid status filter', code: 'INVALID_STATUS_FILTER' });
       return;
     }
     const VALID_CALL_PRIORITIES = ['P1', 'P2', 'P3', 'P4'];
     if (priority && !VALID_CALL_PRIORITIES.includes((priority as string).toUpperCase())) {
-      res.status(400).json({ error: `Invalid priority filter` });
+      res.status(400).json({ error: 'Invalid priority filter', code: 'INVALID_PRIORITY_FILTER' });
       return;
     }
     if (propertyId) {
@@ -308,7 +308,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
             if (!autoSectionId) autoSectionId = beat.district_letter;
           }
         }
-      } catch { /* geofence not configured, skip */ }
+      } catch (geoErr) { console.error('[Calls] Geofence lookup error (non-critical):', geoErr instanceof Error ? geoErr.message : geoErr); }
     }
 
     // If S/Z/B are set but dispatch_code wasn't resolved (no GPS), look up district table
@@ -453,6 +453,17 @@ router.get('/calls/export', requireRole('admin', 'manager', 'supervisor'), (req:
     const db = getDb();
     const { status, priority, startDate, endDate } = req.query;
 
+    // Validate export query params
+    if (status && typeof status === 'string' && status.length > 50) {
+      res.status(400).json({ error: 'Invalid status filter', code: 'INVALID_STATUS' }); return;
+    }
+    if (startDate && typeof startDate === 'string' && isNaN(new Date(startDate).getTime())) {
+      res.status(400).json({ error: 'Invalid startDate', code: 'INVALID_START_DATE' }); return;
+    }
+    if (endDate && typeof endDate === 'string' && isNaN(new Date(endDate).getTime())) {
+      res.status(400).json({ error: 'Invalid endDate', code: 'INVALID_END_DATE' }); return;
+    }
+
     let whereClause = 'WHERE 1=1';
     const params: any[] = [];
 
@@ -568,7 +579,7 @@ router.get('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
           LIMIT 1000
         `).all(...unitIds);
       }
-    } catch { /* ignore parse errors */ }
+    } catch (parseErr) { console.error(`[Calls] Failed to parse assigned_unit_ids for call ${call.id}:`, parseErr instanceof Error ? parseErr.message : parseErr); }
 
     // Get related incidents
     const incidents = db.prepare(`
@@ -703,14 +714,14 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
             }
           }
         }
-      } catch { /* geofence not configured, skip */ }
+      } catch (geoErr) { console.error('[Calls] Geofence lookup error (non-critical):', geoErr instanceof Error ? geoErr.message : geoErr); }
     }
 
     // Validate priority if being updated
     if (priority !== undefined) {
       const VALID_PRIORITIES = ['P1', 'P2', 'P3', 'P4'];
       if (!VALID_PRIORITIES.includes(String(priority).toUpperCase())) {
-        res.status(400).json({ error: `Invalid priority. Must be one of: ${VALID_PRIORITIES.join(', ')}` });
+        res.status(400).json({ error: `Invalid priority. Must be one of: ${VALID_PRIORITIES.join(', ')}`, code: 'INVALID_PRIORITY' });
         return;
       }
     }
@@ -903,7 +914,7 @@ router.post('/calls/:id/redispatch', validateParamIdMiddleware, requireRole('adm
         `).all(...unitIds) as any[];
         assignedCallSigns = units.map((u: any) => u.call_sign).filter(Boolean);
       }
-    } catch { /* ignore parse errors */ }
+    } catch (parseErr) { console.error(`[Calls] Failed to parse assigned_unit_ids for redispatch:`, parseErr instanceof Error ? parseErr.message : parseErr); }
 
     // Classify this visit's time window for PSO compliance tracking
     const attemptTime = call.onscene_at || call.cleared_at || call.closed_at || now;
@@ -1011,7 +1022,7 @@ router.get('/calls/:id/pso-compliance', validateParamIdMiddleware, requireRole('
 
     let windows = { early_morning: false, daytime: false, evening: false, weekend: false };
     if (call.pso_service_windows) {
-      try { windows = JSON.parse(call.pso_service_windows); } catch { /* use defaults */ }
+      try { windows = JSON.parse(call.pso_service_windows); } catch (parseErr) { console.error('[Calls] Failed to parse PSO service windows:', parseErr instanceof Error ? parseErr.message : parseErr); }
     }
 
     const compliant = windows.early_morning && windows.daytime && windows.evening && windows.weekend;

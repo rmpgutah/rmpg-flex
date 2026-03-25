@@ -54,7 +54,7 @@ router.get('/status', authenticateToken, (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Security status error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Failed to security status', code: 'SECURITY_STATUS_ERROR' });
+    res.status(500).json({ error: 'Failed to get security status', code: 'SECURITY_STATUS_ERROR' });
   }
 });
 

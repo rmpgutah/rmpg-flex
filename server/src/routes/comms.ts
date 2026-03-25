@@ -28,6 +28,10 @@ router.post('/messages', (req: Request, res: Response) => {
       res.status(400).json({ error: 'content cannot be empty', code: 'EMPTY_CONTENT' });
       return;
     }
+    if (typeof content === 'string' && content.length > 10000) {
+      res.status(400).json({ error: 'content must be 10000 characters or less', code: 'CONTENT_TOO_LONG' });
+      return;
+    }
 
     const validChannels = ['direct', 'dispatch', 'broadcast', 'zone'];
     const msgChannel = channel || 'direct';
@@ -198,6 +202,8 @@ router.delete('/messages/:id', (req: Request, res: Response) => {
     }
 
     db.prepare('DELETE FROM messages WHERE id = ?').run(id);
+
+    auditLog(req, 'message_deleted', 'message', id, `Deleted ${message.channel} message (id: ${id})`);
     res.json({ success: true, id });
   } catch (error: any) {
     console.error('Delete message error:', error);
@@ -346,12 +352,14 @@ router.get('/bolos/check', (req: Request, res: Response) => {
 router.get('/bolos/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const boloId = parseInt(req.params.id, 10);
+    if (isNaN(boloId)) { res.status(400).json({ error: 'Invalid BOLO ID', code: 'INVALID_BOLO_ID' }); return; }
     const bolo = db.prepare(`
       SELECT b.*, u.full_name as issued_by_name
       FROM bolos b
       LEFT JOIN users u ON b.issued_by = u.id
       WHERE b.id = ?
-    `).get(req.params.id) as any;
+    `).get(boloId) as any;
 
     if (!bolo) {
       res.status(404).json({ error: 'BOLO not found', code: 'BOLO_NOT_FOUND' });
@@ -384,7 +392,8 @@ router.post('/bolos', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     let nextNum = 1;
     if (lastBolo) {
       const parts = lastBolo.bolo_number.split('-');
-      nextNum = parseInt(parts[1], 10) + 1;
+      const parsed = parseInt(parts[1], 10);
+      nextNum = isNaN(parsed) ? 1 : parsed + 1;
     }
     const boloNumber = `BOLO-${String(nextNum).padStart(3, '0')}`;
 

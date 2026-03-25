@@ -57,7 +57,8 @@ function parsePsoWindows(json: string | null | undefined): PsoServiceWindows {
       evening: !!parsed.evening,
       weekend: !!parsed.weekend,
     };
-  } catch {
+  } catch (parseErr) {
+    console.error('[CallActions] Failed to parse PSO service windows JSON:', parseErr instanceof Error ? parseErr.message : parseErr);
     return { early_morning: false, daytime: false, evening: false, weekend: false };
   }
 }
@@ -305,7 +306,7 @@ router.post('/calls/:id/unassign-unit', validateParamIdMiddleware, requireRole('
       let currentUnits: number[] = [];
       try {
         currentUnits = JSON.parse(freshCall?.assigned_unit_ids || '[]');
-      } catch { /* ignore */ }
+      } catch (parseErr) { console.error('[CallActions] Failed to parse assigned_unit_ids:', parseErr instanceof Error ? parseErr.message : parseErr); }
       currentUnits = currentUnits.filter((id) => id !== Number(unit_id));
 
       // Update call: remove unit from assigned_unit_ids
@@ -365,7 +366,7 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
 
     const validStatuses = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived', 'on_hold'];
     if (!validStatuses.includes(status)) {
-      res.status(400).json({ error: 'Invalid status', valid: validStatuses });
+      res.status(400).json({ error: 'Invalid status', code: 'INVALID_STATUS', valid: validStatuses });
       return;
     }
 
@@ -599,7 +600,7 @@ router.post('/calls/:id/revert-status', validateParamIdMiddleware, requireRole('
 
     const previousStatus = statusChain[call.status];
     if (!previousStatus) {
-      res.status(400).json({ error: `Cannot revert from status "${call.status}"` });
+      res.status(400).json({ error: `Cannot revert from status "${call.status}"`, code: 'CANNOT_REVERT_STATUS' });
       return;
     }
 
@@ -637,7 +638,7 @@ router.post('/calls/:id/revert-status', validateParamIdMiddleware, requireRole('
         try {
           const parsed = JSON.parse(call.assigned_unit_ids || '[]');
           unitIds = Array.isArray(parsed) ? parsed : [];
-        } catch { /* ignore */ }
+        } catch (parseErr) { console.error('[CallActions] Failed to parse assigned_unit_ids for revert:', parseErr instanceof Error ? parseErr.message : parseErr); }
 
         for (const unitId of unitIds) {
           const prevUnitStatus = previousStatus === 'onscene' ? 'onscene' : previousStatus === 'enroute' ? 'enroute' : 'dispatched';
@@ -692,19 +693,23 @@ router.post('/calls/:id/hold', validateParamIdMiddleware, requireRole('admin', '
     // Only active statuses can be held (not cleared/closed/cancelled/archived)
     const holdable = ['pending', 'dispatched', 'enroute', 'onscene'];
     if (!holdable.includes(call.status)) {
-      res.status(400).json({ error: `Cannot hold a call with status "${call.status}"` });
+      res.status(400).json({ error: `Cannot hold a call with status "${call.status}"`, code: 'CANNOT_HOLD_STATUS' });
       return;
     }
 
-    db.prepare(`
-      UPDATE calls_for_service SET status = 'on_hold', previous_status = ? WHERE id = ?
-    `).run(call.status, call.id);
+    // Transaction: update call + log activity atomically
+    const holdTx = db.transaction(() => {
+      db.prepare(`
+        UPDATE calls_for_service SET status = 'on_hold', previous_status = ? WHERE id = ?
+      `).run(call.status, call.id);
 
-    // Log activity
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'call_held', 'call', ?, ?, ?)
-    `).run(req.user!.userId, call.id, `${call.call_number} put on hold from ${call.status}`, req.ip || 'unknown');
+      // Log activity
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'call_held', 'call', ?, ?, ?)
+      `).run(req.user!.userId, call.id, `${call.call_number} put on hold from ${call.status}`, req.ip || 'unknown');
+    });
+    holdTx();
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
     broadcastDispatchUpdate({ action: 'call_status_changed', call: updated, status: 'on_hold' });
@@ -736,15 +741,19 @@ router.post('/calls/:id/resume', validateParamIdMiddleware, requireRole('admin',
     }
     const restoreStatus = call.previous_status || 'pending';
 
-    db.prepare(`
-      UPDATE calls_for_service SET status = ?, previous_status = NULL WHERE id = ?
-    `).run(restoreStatus, call.id);
+    // Transaction: update call + log activity atomically
+    const resumeTx = db.transaction(() => {
+      db.prepare(`
+        UPDATE calls_for_service SET status = ?, previous_status = NULL WHERE id = ?
+      `).run(restoreStatus, call.id);
 
-    // Log activity
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'call_resumed', 'call', ?, ?, ?)
-    `).run(req.user!.userId, call.id, `${call.call_number} resumed to ${restoreStatus}`, req.ip || 'unknown');
+      // Log activity
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'call_resumed', 'call', ?, ?, ?)
+      `).run(req.user!.userId, call.id, `${call.call_number} resumed to ${restoreStatus}`, req.ip || 'unknown');
+    });
+    resumeTx();
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
     broadcastDispatchUpdate({ action: 'call_status_changed', call: updated, status: restoreStatus });
@@ -766,40 +775,46 @@ router.post('/calls/:id/promote-to-incident', validateParamIdMiddleware, require
     // Generate incident number
     const incidentNumber = generateIncidentNumber(db, call.incident_type || 'general');
 
-    const result = db.prepare(`
-      INSERT INTO incidents (incident_number, call_id, incident_type, priority, status,
-        location_address, property_id, latitude, longitude, narrative, officer_id,
-        zone_beat, section_id, zone_id, beat_id, domestic_violence, weapons_involved,
-        injuries)
-      VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      incidentNumber,
-      call.id,
-      call.incident_type || 'general',
-      call.priority || 'P3',
-      call.location_address || null,
-      call.property_id || null,
-      call.latitude ?? null,
-      call.longitude ?? null,
-      call.description || null,
-      req.user!.userId,
-      call.zone_beat || null,
-      call.section_id || null,
-      call.zone_id || null,
-      call.beat_id || null,
-      call.domestic_violence ?? 0,
-      call.weapons_involved || null,
-      call.injuries_reported ?? 0
-    );
+    // Transaction: create incident + audit log atomically
+    const promoteTx = db.transaction(() => {
+      const result = db.prepare(`
+        INSERT INTO incidents (incident_number, call_id, incident_type, priority, status,
+          location_address, property_id, latitude, longitude, narrative, officer_id,
+          zone_beat, section_id, zone_id, beat_id, domestic_violence, weapons_involved,
+          injuries)
+        VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        incidentNumber,
+        call.id,
+        call.incident_type || 'general',
+        call.priority || 'P3',
+        call.location_address || null,
+        call.property_id || null,
+        call.latitude ?? null,
+        call.longitude ?? null,
+        call.description || null,
+        req.user!.userId,
+        call.zone_beat || null,
+        call.section_id || null,
+        call.zone_id || null,
+        call.beat_id || null,
+        call.domestic_violence ?? 0,
+        call.weapons_involved || null,
+        call.injuries_reported ?? 0
+      );
+
+      // Audit log the incident creation
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'incident_created', 'incident', ?, ?, ?)
+      `).run(req.user!.userId, Number(result.lastInsertRowid), `Promoted call ${call.call_number} to incident ${incidentNumber}`, req.ip || 'unknown');
+
+      return result;
+    });
+    const result = promoteTx();
 
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(Number(result.lastInsertRowid));
     if (!incident) { res.status(500).json({ error: 'Failed to retrieve created incident', code: 'FAILED_TO_RETRIEVE_CREATED' }); return; }
-
-    // Audit log the incident creation
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'incident_created', 'incident', ?, ?, ?)
-    `).run(req.user!.userId, Number(result.lastInsertRowid), `Promoted call ${call.call_number} to incident ${incidentNumber}`, req.ip || 'unknown');
 
     res.status(201).json(incident);
   } catch (error: any) {
@@ -818,31 +833,43 @@ router.post('/calls/:id/le-notification', validateParamIdMiddleware, requireRole
     const { agency, case_number, notes } = req.body;
     const now = localNow();
 
-    db.prepare(`
-      UPDATE calls_for_service
-      SET le_notified = 1, le_agency = ?, le_case_number = ?, le_notified_at = ?, le_notified_by = ?,
-          updated_at = ?
-      WHERE id = ?
-    `).run(
-      agency || 'Local PD',
-      case_number || null,
-      now,
-      req.user!.userId,
-      now,
-      req.params.id
-    );
+    // Validate agency/case_number length
+    if (agency && (typeof agency !== 'string' || agency.length > 200)) {
+      res.status(400).json({ error: 'Agency must be 200 characters or less', code: 'INVALID_AGENCY' }); return;
+    }
+    if (case_number && (typeof case_number !== 'string' || case_number.length > 100)) {
+      res.status(400).json({ error: 'Case number must be 100 characters or less', code: 'INVALID_CASE_NUMBER' }); return;
+    }
 
-    // Audit log — LE notification is a significant action requiring compliance trail
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'le_notification', 'call', ?, ?, ?, ?)
-    `).run(
-      req.user!.userId,
-      call.id,
-      `LE notified: ${agency || 'Local PD'}${case_number ? ` (Case #${case_number})` : ''}`,
-      req.ip || 'unknown',
-      now
-    );
+    // Transaction: update call + audit log atomically
+    const leTx = db.transaction(() => {
+      db.prepare(`
+        UPDATE calls_for_service
+        SET le_notified = 1, le_agency = ?, le_case_number = ?, le_notified_at = ?, le_notified_by = ?,
+            updated_at = ?
+        WHERE id = ?
+      `).run(
+        agency || 'Local PD',
+        case_number || null,
+        now,
+        req.user!.userId,
+        now,
+        req.params.id
+      );
+
+      // Audit log — LE notification is a significant action requiring compliance trail
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, 'le_notification', 'call', ?, ?, ?, ?)
+      `).run(
+        req.user!.userId,
+        call.id,
+        `LE notified: ${agency || 'Local PD'}${case_number ? ` (Case #${case_number})` : ''}`,
+        req.ip || 'unknown',
+        now
+      );
+    });
+    leTx();
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id);
     broadcastDispatchUpdate({ action: 'call_updated', call: updated });
@@ -954,7 +981,9 @@ router.post('/calls/:id/persons', validateParamIdMiddleware, requireRole('admin'
 router.put('/calls/:id/persons/:linkId', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const link = db.prepare('SELECT * FROM call_persons WHERE id = ? AND call_id = ?').get(req.params.linkId, req.params.id) as any;
+    const linkId = parseInt(req.params.linkId, 10);
+    if (isNaN(linkId) || linkId < 1) return res.status(400).json({ error: 'Invalid linkId', code: 'INVALID_LINK_ID' });
+    const link = db.prepare('SELECT * FROM call_persons WHERE id = ? AND call_id = ?').get(linkId, req.params.id) as any;
     if (!link) return res.status(404).json({ error: 'Person link not found', code: 'PERSON_LINK_NOT_FOUND' });
 
     const setClauses: string[] = [];
@@ -991,8 +1020,10 @@ router.put('/calls/:id/persons/:linkId', validateParamIdMiddleware, requireRole(
 router.delete('/calls/:id/persons/:linkId', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const delPLinkId = parseInt(req.params.linkId, 10);
+    if (isNaN(delPLinkId) || delPLinkId < 1) return res.status(400).json({ error: 'Invalid linkId', code: 'INVALID_LINK_ID' });
     const link = db.prepare('SELECT cp.*, p.first_name, p.last_name FROM call_persons cp LEFT JOIN persons p ON cp.person_id = p.id WHERE cp.id = ? AND cp.call_id = ?')
-      .get(req.params.linkId, req.params.id) as any;
+      .get(delPLinkId, req.params.id) as any;
     if (!link) return res.status(404).json({ error: 'Person link not found', code: 'PERSON_LINK_NOT_FOUND' });
 
     const call = db.prepare('SELECT call_number FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -1096,7 +1127,9 @@ router.post('/calls/:id/vehicles', validateParamIdMiddleware, requireRole('admin
 router.put('/calls/:id/vehicles/:linkId', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const link = db.prepare('SELECT * FROM call_vehicles WHERE id = ? AND call_id = ?').get(req.params.linkId, req.params.id) as any;
+    const vLinkId = parseInt(req.params.linkId, 10);
+    if (isNaN(vLinkId) || vLinkId < 1) return res.status(400).json({ error: 'Invalid linkId', code: 'INVALID_LINK_ID' });
+    const link = db.prepare('SELECT * FROM call_vehicles WHERE id = ? AND call_id = ?').get(vLinkId, req.params.id) as any;
     if (!link) return res.status(404).json({ error: 'Vehicle link not found', code: 'VEHICLE_LINK_NOT_FOUND' });
 
     const setClauses: string[] = [];
@@ -1135,9 +1168,11 @@ router.put('/calls/:id/vehicles/:linkId', validateParamIdMiddleware, requireRole
 router.delete('/calls/:id/vehicles/:linkId', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const delVLinkId = parseInt(req.params.linkId, 10);
+    if (isNaN(delVLinkId) || delVLinkId < 1) return res.status(400).json({ error: 'Invalid linkId', code: 'INVALID_LINK_ID' });
     const link = db.prepare(`SELECT cv.*, v.make, v.model, v.year, v.plate_number
       FROM call_vehicles cv LEFT JOIN vehicles_records v ON cv.vehicle_id = v.id
-      WHERE cv.id = ? AND cv.call_id = ?`).get(req.params.linkId, req.params.id) as any;
+      WHERE cv.id = ? AND cv.call_id = ?`).get(delVLinkId, req.params.id) as any;
     if (!link) return res.status(404).json({ error: 'Vehicle link not found', code: 'VEHICLE_LINK_NOT_FOUND' });
 
     const call = db.prepare('SELECT call_number FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -1201,7 +1236,7 @@ router.post('/calls/:id/send-to-serve', validateParamIdMiddleware, requireRole('
         const unit = db.prepare('SELECT officer_id FROM units WHERE id = ?').get(unitIds[0]) as any;
         if (unit?.officer_id) officerId = unit.officer_id;
       }
-    } catch {}
+    } catch (parseErr) { console.error('[CallActions] Failed to parse assigned_unit_ids for serve queue:', parseErr instanceof Error ? parseErr.message : parseErr); }
 
     // Map document type
     const docTypeMap: Record<string, string> = {
@@ -1251,7 +1286,7 @@ router.post('/calls/:id/send-to-serve', validateParamIdMiddleware, requireRole('
         details: `Sent to serve queue (ID: ${id})`,
       });
       db.prepare('UPDATE calls_for_service SET activity_log = ? WHERE id = ?').run(JSON.stringify(activities), call.id);
-    } catch {}
+    } catch (logErr) { console.error('[CallActions] Failed to update activity_log for serve queue:', logErr instanceof Error ? logErr.message : logErr); }
 
     broadcastDispatchUpdate({ action: 'call_updated', call: db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id) });
 
@@ -1290,6 +1325,14 @@ router.get('/calls/actions/export/csv', requireRole('admin', 'manager', 'supervi
   try {
     const db = getDb();
     const { from, to } = req.query;
+
+    // Validate date params
+    if (from && (typeof from !== 'string' || from.length > 50)) {
+      res.status(400).json({ error: 'Invalid from date', code: 'INVALID_FROM_DATE' }); return;
+    }
+    if (to && (typeof to !== 'string' || to.length > 50)) {
+      res.status(400).json({ error: 'Invalid to date', code: 'INVALID_TO_DATE' }); return;
+    }
 
     let where = "WHERE al.entity_type = 'call'";
     const params: any[] = [];
@@ -1341,10 +1384,14 @@ router.post('/calls/:id/escalate', validateParamIdMiddleware, requireRole('admin
     if (!newPriority) { res.status(400).json({ error: 'Call is already P1 or cannot be escalated', code: 'CALL_IS_ALREADY_P1' }); return; }
 
     const now = localNow();
-    db.prepare('UPDATE calls_for_service SET priority = ?, updated_at = ? WHERE id = ?').run(newPriority, now, call.id);
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'priority_escalated', 'call', ?, ?, ?)`).run(
-      req.user!.userId, call.id, `Escalated ${call.call_number} from ${call.priority} to ${newPriority}`, req.ip || 'unknown');
+    // Transaction: escalate priority + log atomically
+    const escalateTx = db.transaction(() => {
+      db.prepare('UPDATE calls_for_service SET priority = ?, updated_at = ? WHERE id = ?').run(newPriority, now, call.id);
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'priority_escalated', 'call', ?, ?, ?)`).run(
+        req.user!.userId, call.id, `Escalated ${call.call_number} from ${call.priority} to ${newPriority}`, req.ip || 'unknown');
+    });
+    escalateTx();
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
     broadcastDispatchUpdate({ action: 'call_updated', call: updated });
@@ -1425,7 +1472,7 @@ router.post('/calls/:id/auto-assign', validateParamIdMiddleware, requireRole('ad
     // Assign the nearest unit
     const now = localNow();
     let currentUnits: number[] = [];
-    try { currentUnits = JSON.parse(call.assigned_unit_ids || '[]'); } catch { /* ignore */ }
+    try { currentUnits = JSON.parse(call.assigned_unit_ids || '[]'); } catch (parseErr) { console.error('[CallActions] Failed to parse assigned_unit_ids for auto-assign:', parseErr instanceof Error ? parseErr.message : parseErr); }
     if (!currentUnits.includes(Number(nearest.id))) currentUnits.push(Number(nearest.id));
 
     const assignTx = db.transaction(() => {
@@ -1487,7 +1534,7 @@ router.post('/calls/:id/transfer', validateParamIdMiddleware, requireRole('admin
 
     const now = localNow();
     let currentUnits: number[] = [];
-    try { currentUnits = JSON.parse(call.assigned_unit_ids || '[]'); } catch { /* ignore */ }
+    try { currentUnits = JSON.parse(call.assigned_unit_ids || '[]'); } catch (parseErr) { console.error('[CallActions] Failed to parse assigned_unit_ids for transfer:', parseErr instanceof Error ? parseErr.message : parseErr); }
 
     // Remove source, add target
     currentUnits = currentUnits.filter(id => id !== Number(from_unit_id));
@@ -1524,21 +1571,21 @@ router.post('/calls/:id/broadcast-note', validateParamIdMiddleware, requireRole(
     if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
 
     const { message } = req.body;
-    if (!message || typeof message !== 'string' || message.trim().length < 2) {
-      res.status(400).json({ error: 'message is required (min 2 chars)', code: 'MESSAGE_IS_REQUIRED_MIN' });
+    if (!message || typeof message !== 'string' || message.trim().length < 2 || message.length > 2000) {
+      res.status(400).json({ error: 'message is required (2-2000 chars)', code: 'MESSAGE_IS_REQUIRED_MIN' });
       return;
     }
 
     const now = localNow();
     // Add note to call
     let notes: any[] = [];
-    try { notes = JSON.parse(call.notes || '[]'); } catch { /* ignore */ }
+    try { notes = JSON.parse(call.notes || '[]'); } catch (parseErr) { console.error('[CallActions] Failed to parse notes for broadcast:', parseErr instanceof Error ? parseErr.message : parseErr); }
     notes.push({ id: `bn-${Date.now()}`, author: 'DISPATCH BROADCAST', text: message.trim(), timestamp: now, broadcast: true });
     db.prepare('UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(notes), now, call.id);
 
     // Notify all assigned units' officers
     let unitIds: number[] = [];
-    try { unitIds = JSON.parse(call.assigned_unit_ids || '[]'); } catch { /* ignore */ }
+    try { unitIds = JSON.parse(call.assigned_unit_ids || '[]'); } catch (parseErr) { console.error('[CallActions] Failed to parse assigned_unit_ids for broadcast:', parseErr instanceof Error ? parseErr.message : parseErr); }
     for (const unitId of unitIds) {
       const unit = db.prepare('SELECT officer_id, call_sign FROM units WHERE id = ?').get(unitId) as any;
       if (unit?.officer_id) {
@@ -1549,7 +1596,7 @@ router.post('/calls/:id/broadcast-note', validateParamIdMiddleware, requireRole(
             message.trim(),
             'call', call.id, 'high',
           );
-        } catch { /* non-fatal */ }
+        } catch (notifErr) { console.error('[CallActions] Broadcast notification failed (non-fatal):', notifErr instanceof Error ? notifErr.message : notifErr); }
       }
     }
 

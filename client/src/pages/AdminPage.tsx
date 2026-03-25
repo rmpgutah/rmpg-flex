@@ -69,19 +69,19 @@ import AdminIntegrationsTab from './admin/AdminIntegrationsTab';
 // ============================================================
 
 const LoadingSpinner: React.FC = () => (
-  <div className="flex items-center justify-center py-20">
-    <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading" />
-    <span className="ml-2 text-sm text-rmpg-300">Loading...</span>
+  <div className="flex flex-col items-center justify-center py-20 gap-3" role="status" aria-label="Loading content">
+    <Loader2 className="w-6 h-6 text-brand-400 animate-spin" />
+    <span className="text-xs text-rmpg-400 tracking-wide uppercase">Loading...</span>
   </div>
 );
 
 function ErrorBanner({ error, setError }: { error: string | null; setError: (e: string | null) => void }) {
   if (!error) return null;
   return (
-    <div className="mx-4 mt-3 flex items-center gap-2 px-3 py-2 bg-red-900/30 border border-red-700/50 text-red-400 text-xs">
-      <AlertCircle className="w-4 h-4 shrink-0" />
-      {error}
-      <button type="button" onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300">
+    <div role="alert" className="mx-4 mt-3 flex items-center gap-2 px-3 py-2 bg-red-900/30 border border-red-700/50 text-red-400 text-xs animate-fade-in">
+      <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
+      <span className="flex-1">{error}</span>
+      <button type="button" onClick={() => setError(null)} className="ml-auto p-0.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 transition-colors" aria-label="Dismiss error">
         <XCircle className="w-3.5 h-3.5" />
       </button>
     </div>
@@ -325,6 +325,7 @@ export default function AdminPage() {
     } else {
       setUserActivity([]);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedUser?.id]);
 
   const fetchClients = useCallback(async (options?: { silent?: boolean }) => {
@@ -366,7 +367,7 @@ export default function AdminPage() {
   useEffect(() => {
     if (activeTab === 'users') fetchUsers();
     else if (activeTab === 'clients') fetchClients();
-    else if (activeTab === 'system') { if (users.length === 0) fetchUsers(); }
+    else if (activeTab === 'system') { if (users.length === 0 && !loadingUsers) fetchUsers(); }
     else if (activeTab === 'audit') fetchAuditLog();
   }, [activeTab, fetchUsers, fetchClients, fetchAuditLog]);
 
@@ -434,8 +435,8 @@ export default function AdminPage() {
           method: 'PUT',
           body: JSON.stringify(body),
         });
-        if (selectedUser && selectedUser.id === editingUser.id) {
-          setSelectedUser(prev => prev ? { ...prev, ...(updated as any) } : prev);
+        if (selectedUser && selectedUser.id === editingUser.id && updated) {
+          setSelectedUser(prev => prev ? { ...prev, ...(updated as Record<string, any>) } : prev);
         }
       } else {
         body.username = data.username;
@@ -488,7 +489,7 @@ export default function AdminPage() {
     }
   };
 
-  const handleStatusChange = async (userId: string, newStatus: string) => {
+  const handleStatusChange = useCallback(async (userId: string, newStatus: string) => {
     try {
       await apiFetch(`/personnel/${userId}`, {
         method: 'PUT',
@@ -498,7 +499,7 @@ export default function AdminPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update user status');
     }
-  };
+  }, [fetchUsers]);
 
   // ============================================================
   // Client CRUD handlers

@@ -105,7 +105,7 @@ export default function IncidentReportsPanel({
   const totalForBar = reports?.length || count || 1;
 
   return (
-    <div className="panel-beveled bg-surface-base overflow-hidden" style={{ maxWidth: 280 }}>
+    <div className="panel-beveled bg-surface-base overflow-hidden transition-all duration-200 ease-out shadow-lg" style={{ maxWidth: 280 }} role="complementary" aria-label="Incident reports panel">
       {/* Header */}
       <div
         className="flex items-center justify-between px-3 py-2"
@@ -127,7 +127,7 @@ export default function IncidentReportsPanel({
         </div>
         <button type="button"
           onClick={onClose}
-          className="toolbar-btn p-1"
+          className="toolbar-btn p-1 hover:bg-[#1a2636] transition-all duration-150 active:scale-[0.97] rounded-sm"
           aria-label="Close incident reports panel"
           title="Close"
         >
@@ -138,9 +138,14 @@ export default function IncidentReportsPanel({
       {/* Body */}
       <div className="px-3 py-2 space-y-2">
         {loading ? (
-          <div className="flex items-center gap-2 py-2">
-            <div className="w-3 h-3 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
-            <span className="text-[9px] font-mono text-rmpg-500">Loading reports...</span>
+          <div className="flex flex-col items-center gap-2 py-4">
+            <div className="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+            <span className="text-[9px] font-mono text-rmpg-500 animate-pulse">Loading reports...</span>
+            <div className="space-y-1 w-full">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="animate-pulse rounded-sm h-8" style={{ background: '#0d1520', opacity: 1 - i * 0.2 }} />
+              ))}
+            </div>
           </div>
         ) : (
           <>
@@ -153,12 +158,13 @@ export default function IncidentReportsPanel({
                     <button type="button"
                       key={d}
                       onClick={() => onDaysChange(d)}
-                      className={`toolbar-btn px-1.5 py-0.5 text-[9px] font-mono ${
+                      className={`toolbar-btn px-1.5 py-0.5 text-[9px] font-mono transition-all duration-150 active:scale-[0.97] ${
                         days === d
                           ? 'text-emerald-300 bg-emerald-900/40'
-                          : 'text-rmpg-500'
+                          : 'text-rmpg-500 hover:bg-[#1a2636]/50'
                       }`}
                       title={`Show last ${d} days`}
+                      aria-label={`Show last ${d} days`}
                     >
                       {d}d
                     </button>
@@ -219,7 +225,7 @@ export default function IncidentReportsPanel({
                 {topTypes.map(([type, cnt]) => (
                   <div
                     key={type}
-                    className="flex items-center justify-between text-[9px] font-mono px-1.5 py-0.5 rounded-sm"
+                    className="flex items-center justify-between text-[9px] font-mono px-1.5 py-0.5 rounded-sm hover:bg-[#1a2636]/50 transition-colors duration-100"
                     style={{ background: '#141e2b' }}
                   >
                     <span className="text-rmpg-300 truncate">{type}</span>
@@ -233,18 +239,19 @@ export default function IncidentReportsPanel({
             {recentReports.length > 0 && (
               <div className="space-y-0.5">
                 <span className="text-[9px] font-mono text-rmpg-500 uppercase">Recent</span>
-                <div className="max-h-[140px] overflow-y-auto space-y-0.5" style={{ scrollbarWidth: 'thin' }}>
+                <div className="max-h-[140px] overflow-y-auto space-y-0.5 scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
                   {recentReports.map((r) => {
                     const ss = getStatusStyle(r.status);
                     const hasCoords = r.latitude != null && r.longitude != null;
                     return (
                       <div
                         key={r.id}
-                        className="rounded-sm px-1.5 py-1 space-y-0.5"
-                        style={{ background: '#0d1520', border: '1px solid #1e2a3a' }}
+                        className="rounded-sm px-1.5 py-1 space-y-0.5 hover:bg-[#1a2636]/50 transition-colors duration-100"
+                        style={{ background: '#0d1520', border: '1px solid #1e2a3a', borderLeft: `2px solid ${ss.bg}` }}
                       >
                         <div className="flex items-center justify-between">
-                          <span className="text-[9px] font-mono text-rmpg-200 truncate">
+                          <span className="text-[9px] font-mono text-rmpg-200 truncate flex items-center gap-1">
+                            <FileText size={8} className="shrink-0 text-rmpg-500" />
                             {r.incident_type || 'Unknown'}
                           </span>
                           <span
@@ -269,8 +276,9 @@ export default function IncidentReportsPanel({
                           {onNavigate && hasCoords && (
                             <button type="button"
                               onClick={() => onNavigate(r.latitude!, r.longitude!)}
-                              className="toolbar-btn p-0.5 text-emerald-400 hover:text-emerald-300"
+                              className="toolbar-btn p-0.5 text-emerald-400 hover:text-emerald-300 transition-all duration-150 active:scale-[0.97]"
                               title="Navigate to location"
+                              aria-label={`Navigate to ${r.incident_type || 'incident'} location`}
                             >
                               <Navigation size={9} />
                             </button>

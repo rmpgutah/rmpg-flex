@@ -97,7 +97,7 @@ export default function AnalysisDashboardPanel({
 
   return (
     <div
-      className="panel-beveled rounded-sm flex flex-col overflow-hidden"
+      className="panel-beveled rounded-sm flex flex-col overflow-hidden transition-all duration-200 ease-out shadow-lg backdrop-blur-sm"
       style={{
         width: 320,
         maxHeight: 'calc(100vh - 160px)',
@@ -122,8 +122,9 @@ export default function AnalysisDashboardPanel({
         <div className="flex items-center gap-1">
           <button type="button"
             onClick={onRefresh}
-            className="p-1 rounded hover:bg-surface-raised/50 transition-colors"
+            className="p-1 rounded hover:bg-[#1a2636] transition-colors duration-150"
             title="Refresh analysis"
+            aria-label="Refresh analysis data"
           >
             <RefreshCw
               size={12}
@@ -132,8 +133,9 @@ export default function AnalysisDashboardPanel({
           </button>
           <button type="button"
             onClick={onClose}
-            className="p-1 rounded hover:bg-surface-raised/50 transition-colors"
+            className="p-1 rounded hover:bg-[#1a2636] transition-colors duration-150"
             title="Close panel"
+            aria-label="Close analysis dashboard"
           >
             <X size={12} className="text-rmpg-400" />
           </button>
@@ -141,7 +143,7 @@ export default function AnalysisDashboardPanel({
       </div>
 
       {/* ── Scrollable body ────────────────────────────────── */}
-      <div className="overflow-y-auto flex-1 custom-scrollbar">
+      <div className="overflow-y-auto flex-1 custom-scrollbar scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
         {loading && !data ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 size={18} className="animate-spin text-purple-400" />
@@ -177,7 +179,7 @@ export default function AnalysisDashboardPanel({
                     <button type="button"
                       key={i}
                       onClick={() => onNavigate(loc.latitude, loc.longitude)}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm hover:bg-surface-raised/50 transition-colors group"
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm hover:bg-surface-raised/50 transition-all duration-150 active:scale-[0.97] group"
                       style={{
                         background: '#0d1520',
                         borderLeft: `2px solid ${loc.safetyRisk === 'high' ? '#ef4444' : '#f59e0b'}`,
@@ -336,14 +338,14 @@ export default function AnalysisDashboardPanel({
                 <div className="flex items-center gap-3">
                   <div>
                     <span className="text-[8px] text-rmpg-500 font-mono uppercase block">This week</span>
-                    <span className="text-[11px] text-rmpg-200 font-mono font-bold">
+                    <span className="text-[11px] text-white font-mono font-bold tabular-nums">
                       {data.shiftTrend.currentPeriodCalls}
                     </span>
                     <span className="text-[8px] text-rmpg-600 font-mono ml-0.5">calls</span>
                   </div>
                   <div>
                     <span className="text-[8px] text-rmpg-500 font-mono uppercase block">Last week</span>
-                    <span className="text-[11px] text-rmpg-200 font-mono font-bold">
+                    <span className="text-[11px] text-white font-mono font-bold tabular-nums">
                       {data.shiftTrend.previousPeriodCalls}
                     </span>
                     <span className="text-[8px] text-rmpg-600 font-mono ml-0.5">calls</span>
@@ -392,10 +394,10 @@ function MetricCell({
 }) {
   return (
     <div
-      className="flex flex-col items-center justify-center py-2 px-1 rounded-sm"
-      style={{ background: '#0d1520' }}
+      className="flex flex-col items-center justify-center py-2 px-1 rounded-sm panel-inset"
+      style={{ background: '#0d1520', border: '1px solid #1e2a3a' }}
     >
-      <span className="text-[14px] font-mono font-bold leading-none" style={{ color }}>
+      <span className="text-[14px] font-mono font-bold leading-none tabular-nums" style={{ color }}>
         {value}
       </span>
       <span className="text-[7px] font-mono uppercase tracking-widest text-rmpg-500 mt-1 text-center leading-tight">
@@ -416,10 +418,10 @@ function SectionBlock({
 }) {
   return (
     <div
-      className="rounded-sm p-2"
+      className="rounded-sm p-2 panel-inset"
       style={{ background: '#141e2b', border: '1px solid #1e2a3a' }}
     >
-      <div className="flex items-center gap-1.5 mb-1.5">
+      <div className="flex items-center gap-1.5 mb-1.5 pb-1" style={{ borderBottom: '1px solid transparent', borderImage: 'linear-gradient(to right, #1e2a3a, #2a3f5a, #1e2a3a) 1' }}>
         {icon}
         <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-gray-400">
           {title}

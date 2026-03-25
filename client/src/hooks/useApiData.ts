@@ -43,9 +43,13 @@ export function useApiData<T>(endpoint: string, options?: UseApiDataOptions): Us
   const retryDelay = options?.retryDelay ?? 2000;
   const cacheTtl = options?.cacheTtl ?? 0;
 
+  // Use ref for lastFetchedAt in refetch to avoid stale closure + infinite re-render loop
+  const lastFetchedAtRef = useRef<number | null>(null);
+  lastFetchedAtRef.current = lastFetchedAt;
+
   const refetch = useCallback(async () => {
     // Skip if cache is still fresh
-    if (cacheTtl > 0 && lastFetchedAt && Date.now() - lastFetchedAt < cacheTtl) {
+    if (cacheTtl > 0 && lastFetchedAtRef.current && Date.now() - lastFetchedAtRef.current < cacheTtl) {
       return;
     }
 
@@ -89,7 +93,7 @@ export function useApiData<T>(endpoint: string, options?: UseApiDataOptions): Us
     };
 
     await attemptFetch();
-  }, [endpoint, maxRetries, retryDelay, cacheTtl, lastFetchedAt]);
+  }, [endpoint, maxRetries, retryDelay, cacheTtl]);
 
   const clearError = useCallback(() => setError(null), []);
 

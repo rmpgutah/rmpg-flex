@@ -74,6 +74,7 @@ function haversineKm(
   lat1: number, lng1: number,
   lat2: number, lng2: number,
 ): number {
+  if (!Number.isFinite(lat1) || !Number.isFinite(lng1) || !Number.isFinite(lat2) || !Number.isFinite(lng2)) return Infinity;
   const dLat = (lat2 - lat1) * DEG_TO_RAD;
   const dLng = (lng2 - lng1) * DEG_TO_RAD;
   const a =

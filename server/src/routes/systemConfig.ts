@@ -62,6 +62,18 @@ router.post('/config', requireRole('admin', 'manager'), (req: Request, res: Resp
       res.status(400).json({ error: 'config_key, config_value, and category are required', code: 'CONFIGKEY_CONFIGVALUE_AND_CATEGORY' });
       return;
     }
+    if (typeof config_key !== 'string' || config_key.length > 200) {
+      res.status(400).json({ error: 'config_key must be a string of 200 characters or less', code: 'INVALID_CONFIG_KEY' });
+      return;
+    }
+    if (typeof category !== 'string' || category.length > 100) {
+      res.status(400).json({ error: 'category must be a string of 100 characters or less', code: 'INVALID_CATEGORY' });
+      return;
+    }
+    if (typeof config_value === 'string' && config_value.length > 10000) {
+      res.status(400).json({ error: 'config_value must be 10000 characters or less', code: 'CONFIG_VALUE_TOO_LONG' });
+      return;
+    }
 
     // Get next sort order for this category
     const maxOrder = db.prepare(
@@ -122,6 +134,12 @@ router.put('/config/:id', requireRole('admin', 'manager'), (req: Request, res: R
       cfgVals.push(now, item.id);
       db.prepare(`UPDATE system_config SET ${cfgSet.join(', ')} WHERE id = ?`).run(...cfgVals);
     }
+
+    // Audit log
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'config_updated', 'system_config', ?, ?, ?)
+    `).run(req.user!.userId, item.id, `Updated config: ${item.config_key}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT * FROM system_config WHERE id = ?').get(item.id);
     res.json(updated);

@@ -30,12 +30,25 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
     return;
   }
 
+  // [FIX 1] Reject obviously malformed tokens before passing to jwt.verify
+  if (token.length > 4096) {
+    res.status(400).json({ error: 'Malformed token' });
+    return;
+  }
+
   try {
-    const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+    // [FIX 2] Explicitly specify allowed algorithms to prevent algorithm confusion attacks
+    const decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
 
     // Reject refresh tokens and 2FA-pending tokens used as access tokens
     if (decoded.type === 'refresh' || decoded.type === '2fa_pending') {
       res.status(403).json({ error: 'Invalid token type' });
+      return;
+    }
+
+    // [FIX 3] Validate required fields exist in decoded token payload
+    if (!decoded.userId || !decoded.username || !decoded.role) {
+      res.status(403).json({ error: 'Malformed token payload' });
       return;
     }
 
@@ -47,7 +60,13 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
           'SELECT ip_address FROM sessions WHERE session_id = ? AND is_active = 1'
         ).get(decoded.sessionId) as { ip_address: string } | undefined;
 
-        if (session && session.ip_address !== req.ip) {
+        // [FIX 4] Reject tokens whose sessionId references an inactive/missing session
+        if (!session) {
+          res.status(401).json({ error: 'Session not found or inactive', code: 'SESSION_INVALID' });
+          return;
+        }
+
+        if (session.ip_address !== req.ip) {
           const action = config.session.ipChangeAction;
           if (action === 'invalidate') {
             db.prepare('UPDATE sessions SET is_active = 0 WHERE session_id = ?')
@@ -59,6 +78,8 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
             return;
           }
           // 'warn' mode: log but allow through
+          // [FIX 5] Actually log the warning in warn mode
+          console.warn(`[AUTH] IP change detected for user ${decoded.username}: session IP ${session.ip_address} → request IP ${req.ip}`);
         }
       } catch { /* DB not available - allow through */ }
     }
@@ -68,6 +89,9 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
   } catch (err: any) {
     if (err.name === 'TokenExpiredError') {
       res.status(401).json({ error: 'Token expired', code: 'TOKEN_EXPIRED' });
+    // [FIX 6] Handle JsonWebTokenError separately from NotBeforeError
+    } else if (err.name === 'NotBeforeError') {
+      res.status(401).json({ error: 'Token not yet active', code: 'TOKEN_NOT_ACTIVE' });
     } else {
       res.status(403).json({ error: 'Invalid or expired token' });
     }
@@ -75,6 +99,13 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
 }
 
 export function requireRole(...roles: string[]) {
+  // [FIX 7] Validate that roles were actually provided to prevent accidental open access
+  if (roles.length === 0) {
+    throw new Error('requireRole() called with no roles — this would deny all access');
+  }
+  // [FIX 8] Flatten nested arrays (handles requireRole(['admin', 'officer']) pattern)
+  const flatRoles = roles.flat() as string[];
+
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.user) {
       res.status(401).json({ error: 'Authentication required' });
@@ -87,8 +118,8 @@ export function requireRole(...roles: string[]) {
       return;
     }
 
-    if (!roles.includes(req.user.role)) {
-      res.status(403).json({ error: 'Insufficient permissions', required: roles });
+    if (!flatRoles.includes(req.user.role)) {
+      res.status(403).json({ error: 'Insufficient permissions', required: flatRoles });
       return;
     }
 
@@ -115,9 +146,17 @@ export function generateRefreshToken(payload: Omit<JwtPayload, 'type'>): string 
 }
 
 export function verifyRefreshToken(token: string): JwtPayload {
-  const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+  // [FIX 9] Validate token string before verification
+  if (!token || typeof token !== 'string') {
+    throw new Error('Refresh token is required');
+  }
+  const decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
   if (decoded.type !== 'refresh') {
     throw new Error('Invalid token type');
+  }
+  // [FIX 10] Validate required fields in refresh token payload
+  if (!decoded.userId || !decoded.username) {
+    throw new Error('Malformed refresh token payload');
   }
   return decoded;
 }

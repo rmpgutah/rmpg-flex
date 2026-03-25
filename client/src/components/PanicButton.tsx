@@ -75,7 +75,7 @@ interface PanicButtonProps {
   longitude?: number | null;
 }
 
-export default function PanicButton({ latitude, longitude }: PanicButtonProps = {}) {
+export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
   const { user } = useAuth();
   const { subscribe } = useWebSocket();
   const panicAudio = usePanicAudio();
@@ -339,7 +339,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
                 </div>
                 <div className="text-xs font-mono" style={{ color: '#8a9aaa' }}>
                   {incomingAlert.badge_number && `Badge: ${incomingAlert.badge_number} | `}
-                  {incomingAlert.role?.toUpperCase()}
+                  {(incomingAlert.role || '').toUpperCase()}
                   {incomingAlert.unit_call_sign && ` | Unit: ${incomingAlert.unit_call_sign}`}
                 </div>
               </div>
@@ -442,6 +442,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
                 )}
                 <button type="button"
                   onClick={dismissAlert}
+                  aria-label="Acknowledge panic alert"
                   className={`${!panicAudio.isReceiving && panicAudio.panicSenderUserId ? '' : 'w-full'} btn-danger py-2 justify-center flex-1`}
                 >
                   ACKNOWLEDGE

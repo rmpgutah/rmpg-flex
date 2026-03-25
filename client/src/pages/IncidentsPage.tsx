@@ -155,8 +155,11 @@ function SortIcon({ colKey, sortKey, sortAsc }: { colKey: SortKey; sortKey: Sort
   );
 }
 
-const timeAgo = (date: string) => {
-  const ms = Date.now() - new Date(date).getTime();
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;

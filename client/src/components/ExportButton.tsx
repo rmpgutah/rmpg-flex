@@ -104,6 +104,9 @@ export default function ExportButton({
         onClick={() => setIsOpen((prev) => !prev)}
         disabled={isExporting}
         title="Export options"
+        aria-label="Export options"
+        aria-expanded={isOpen}
+        aria-haspopup="true"
       >
         <Download className="w-3.5 h-3.5" />
         <span>{isExporting ? 'Exporting...' : 'Export'}</span>
@@ -117,6 +120,7 @@ export default function ExportButton({
       {isOpen && (
         <div
           ref={dropdownRef}
+          role="menu"
           className="absolute z-50 mt-1"
           style={{
             top: '100%',

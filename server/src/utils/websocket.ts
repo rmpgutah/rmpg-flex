@@ -37,6 +37,12 @@ let wss: WebSocketServer | null = null;
 // Authentication timeout — disconnect clients that don't authenticate within 10 seconds
 const AUTH_TIMEOUT_MS = 10_000;
 
+// [FIX 29] Cap max concurrent WebSocket connections to prevent resource exhaustion
+const MAX_WS_CLIENTS = 500;
+
+// [FIX 30] Max message size to prevent memory exhaustion from large payloads
+const MAX_MESSAGE_SIZE = 1024 * 1024; // 1MB
+
 // All channels every authenticated client auto-subscribes to
 const DEFAULT_CHANNELS = ['dispatch', 'alerts', 'records', 'personnel', 'fleet', 'incidents', 'citations', 'patrol', 'admin', 'presence'];
 
@@ -65,6 +71,12 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
   wss = new WebSocketServer({ server });
 
   wss.on('connection', (ws: WebSocket, req) => {
+    // [FIX 31] Reject new connections when at capacity
+    if (clients.size >= MAX_WS_CLIENTS) {
+      ws.close(1013, 'Server at capacity');
+      return;
+    }
+
     const clientId = generateClientId();
     const client: WSClient = {
       ws,
@@ -80,8 +92,13 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
     const url = req.url || '';
     const tokenMatch = url.match(/[?&]token=([^&]+)/);
     if (tokenMatch) {
-      const token = decodeURIComponent(tokenMatch[1]);
-      authenticateClient(client, token);
+      // [FIX 32] Catch decodeURIComponent errors for malformed URI sequences
+      try {
+        const token = decodeURIComponent(tokenMatch[1]);
+        authenticateClient(client, token);
+      } catch {
+        // Malformed token in URL — continue, client can still authenticate via message
+      }
     }
 
     // Auto-disconnect unauthenticated clients after timeout
@@ -98,8 +115,17 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
     }, AUTH_TIMEOUT_MS);
 
     ws.on('message', (data: Buffer) => {
+      // [FIX 33] Reject oversized messages to prevent memory exhaustion
+      if (data.length > MAX_MESSAGE_SIZE) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Message too large' }));
+        return;
+      }
       try {
         const message = JSON.parse(data.toString());
+        // [FIX 34] Validate message has a type field before processing
+        if (!message || typeof message.type !== 'string') {
+          return;
+        }
         handleClientMessage(clientId, message);
       } catch {
         // Ignore malformed messages
@@ -124,13 +150,19 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
       setTimeout(() => broadcastPresence(), 100);
     });
 
-    // Send welcome message (but don't confirm authentication yet)
-    ws.send(JSON.stringify({
-      type: 'connected',
-      clientId,
-      authenticated: client.authenticated,
-      timestamp: new Date().toISOString(),
-    }));
+    // [FIX 35] Wrap welcome message send in try/catch in case connection closes during setup
+    try {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'connected',
+          clientId,
+          authenticated: client.authenticated,
+          timestamp: new Date().toISOString(),
+        }));
+      }
+    } catch {
+      // Connection may have closed between acceptance and this point
+    }
   });
 
   return wss;
@@ -141,8 +173,15 @@ function generateClientId(): string {
 }
 
 function authenticateClient(client: WSClient, token: string): boolean {
+  // [FIX 43] Validate token is a non-empty string
+  if (!token || typeof token !== 'string' || token.length > 4096) {
+    try {
+      client.ws.send(JSON.stringify({ type: 'auth_error', message: 'Invalid token format' }));
+    } catch { /* ignore */ }
+    return false;
+  }
   try {
-    const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+    const decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
 
     // Reject refresh tokens
     if (decoded.type === 'refresh') {
@@ -171,10 +210,17 @@ function authenticateClient(client: WSClient, token: string): boolean {
 
     return true;
   } catch (err: any) {
-    client.ws.send(JSON.stringify({
-      type: 'auth_error',
-      message: err.name === 'TokenExpiredError' ? 'Token expired' : 'Invalid token',
-    }));
+    // [FIX 44] Wrap error response in try/catch — client may already be disconnected
+    try {
+      if (client.ws.readyState === WebSocket.OPEN) {
+        client.ws.send(JSON.stringify({
+          type: 'auth_error',
+          message: err.name === 'TokenExpiredError' ? 'Token expired' : 'Invalid token',
+        }));
+      }
+    } catch {
+      // Client disconnected during auth error send
+    }
     return false;
   }
 }
@@ -201,8 +247,11 @@ function handleClientMessage(clientId: string, message: any): void {
         client.ws.send(JSON.stringify({ type: 'error', message: 'Authentication required' }));
         return;
       }
-      if (message.channel) {
-        client.channels.add(message.channel);
+      // [FIX 41] Validate channel name is a non-empty string and limit channel set size
+      if (message.channel && typeof message.channel === 'string' && message.channel.length <= 64) {
+        if (client.channels.size < 50) {
+          client.channels.add(message.channel);
+        }
       }
       break;
 
@@ -213,7 +262,14 @@ function handleClientMessage(clientId: string, message: any): void {
       break;
 
     case 'ping':
-      client.ws.send(JSON.stringify({ type: 'pong', timestamp: new Date().toISOString() }));
+      // [FIX 42] Wrap pong reply in try/catch
+      try {
+        if (client.ws.readyState === WebSocket.OPEN) {
+          client.ws.send(JSON.stringify({ type: 'pong', timestamp: new Date().toISOString() }));
+        }
+      } catch {
+        // Client may have disconnected
+      }
       break;
 
     case 'panic_audio':
@@ -291,31 +347,56 @@ function handleClientMessage(clientId: string, message: any): void {
 // ─── Generic Broadcast / Send ─────────────────────────────────
 
 export function broadcast(channel: string, type: string, data: any): void {
-  const payload = JSON.stringify({
-    channel,
-    type,
-    data,
-    timestamp: new Date().toISOString(),
-  });
+  // [FIX 36] Wrap JSON.stringify in try/catch to handle circular references or BigInt
+  let payload: string;
+  try {
+    payload = JSON.stringify({
+      channel,
+      type,
+      data,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('[WS] Failed to serialize broadcast payload:', err);
+    return;
+  }
 
   clients.forEach((client) => {
     if (client.authenticated && client.channels.has(channel) && client.ws.readyState === WebSocket.OPEN) {
-      client.ws.send(payload);
+      // [FIX 37] Wrap individual sends in try/catch so one failed client doesn't halt broadcast
+      try {
+        client.ws.send(payload);
+      } catch {
+        // Client may have disconnected between readyState check and send
+      }
     }
   });
 }
 
 export function sendToUser(userId: number, type: string, data: any): void {
-  const payload = JSON.stringify({
-    channel: 'direct',
-    type,
-    data,
-    timestamp: new Date().toISOString(),
-  });
+  // [FIX 38] Validate userId before iteration
+  if (!userId || typeof userId !== 'number') return;
+
+  let payload: string;
+  try {
+    payload = JSON.stringify({
+      channel: 'direct',
+      type,
+      data,
+      timestamp: new Date().toISOString(),
+    });
+  } catch {
+    return;
+  }
 
   clients.forEach((client) => {
     if (client.authenticated && client.userId === userId && client.ws.readyState === WebSocket.OPEN) {
-      client.ws.send(payload);
+      // [FIX 39] Wrap send in try/catch for resilience
+      try {
+        client.ws.send(payload);
+      } catch {
+        // Client may have disconnected
+      }
     }
   });
 }
@@ -340,15 +421,25 @@ export function broadcastNewMessage(data: any): void {
 
 export function broadcastPanic(data: any): void {
   // Panic alerts bypass channel filtering — send to ALL authenticated clients
-  const payload = JSON.stringify({
-    type: 'panic_alert',
-    data,
-    timestamp: new Date().toISOString(),
-  });
+  let payload: string;
+  try {
+    payload = JSON.stringify({
+      type: 'panic_alert',
+      data,
+      timestamp: new Date().toISOString(),
+    });
+  } catch {
+    return;
+  }
 
   clients.forEach((client) => {
     if (client.authenticated && client.ws.readyState === WebSocket.OPEN) {
-      client.ws.send(payload);
+      // [FIX 40] Wrap panic send in try/catch — panic must not crash server
+      try {
+        client.ws.send(payload);
+      } catch {
+        // Client disconnected during send
+      }
     }
   });
 }
@@ -476,11 +567,10 @@ function getRadioChannelUsers(radioChannel: string): Array<{ userId: number; use
 
 /** Send a message to all clients on a specific radio channel */
 function broadcastToRadioChannel(radioChannel: string, type: string, data: any, excludeClientId?: string): void {
-  const payload = JSON.stringify({
-    type,
-    data,
-    timestamp: new Date().toISOString(),
-  });
+  let payload: string;
+  try {
+    payload = JSON.stringify({ type, data, timestamp: new Date().toISOString() });
+  } catch { return; }
 
   clients.forEach((client, id) => {
     if (
@@ -489,7 +579,12 @@ function broadcastToRadioChannel(radioChannel: string, type: string, data: any, 
       client.ws.readyState === WebSocket.OPEN &&
       id !== excludeClientId
     ) {
-      client.ws.send(payload);
+      // [FIX 45] Wrap radio broadcast send in try/catch
+      try {
+        client.ws.send(payload);
+      } catch {
+        // Client disconnected during send
+      }
     }
   });
 }
@@ -528,19 +623,26 @@ function handleRadioJoin(clientId: string, radioChannel: string): void {
   const transmitterClientId = activeTransmitters.get(radioChannel);
   const transmitter = transmitterClientId ? clients.get(transmitterClientId) : null;
 
-  client.ws.send(JSON.stringify({
-    type: 'radio_channel_state',
-    data: {
-      radioChannel,
-      users: getRadioChannelUsers(radioChannel),
-      activeSpeaker: transmitter ? {
-        userId: transmitter.userId,
-        username: transmitter.username,
-        fullName: transmitter.fullName,
-      } : null,
-    },
-    timestamp: new Date().toISOString(),
-  }));
+  // [FIX 47] Wrap channel state send in try/catch
+  try {
+    if (client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(JSON.stringify({
+        type: 'radio_channel_state',
+        data: {
+          radioChannel,
+          users: getRadioChannelUsers(radioChannel),
+          activeSpeaker: transmitter ? {
+            userId: transmitter.userId,
+            username: transmitter.username,
+            fullName: transmitter.fullName,
+          } : null,
+        },
+        timestamp: new Date().toISOString(),
+      }));
+    }
+  } catch {
+    // Client disconnected during send
+  }
 }
 
 /** Handle a client leaving their radio channel */
@@ -967,15 +1069,21 @@ function handlePrivateCallEnd(clientId: string): void {
     }
   }
 
-  // Notify the ender too
-  client.ws.send(JSON.stringify({
-    type: 'private_call_ended',
-    data: {
-      callId,
-      endedBy: client.userId,
-      duration: durationSeconds,
-    },
-  }));
+  // [FIX 46] Wrap end-call notify in try/catch and readyState check
+  try {
+    if (client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(JSON.stringify({
+        type: 'private_call_ended',
+        data: {
+          callId,
+          endedBy: client.userId,
+          duration: durationSeconds,
+        },
+      }));
+    }
+  } catch {
+    // Client disconnected
+  }
 
   // Remove call from active map
   if (call) {

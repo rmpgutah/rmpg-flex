@@ -72,7 +72,7 @@ export default function StatuteAnalyticsPage() {
   };
 
   const filteredStatutes = topStatutes.filter(s =>
-    !search || s.statute_number.toLowerCase().includes(search.toLowerCase()) || s.title.toLowerCase().includes(search.toLowerCase())
+    !search || (s.statute_number || '').toLowerCase().includes(search.toLowerCase()) || (s.title || '').toLowerCase().includes(search.toLowerCase())
   );
 
   // ── Feature 36: Penalty Lookup ──

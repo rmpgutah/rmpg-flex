@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Shield, AlertTriangle, Search, ChevronUp, ChevronDown, AlertCircle } from 'lucide-react';
+import { Shield, AlertTriangle, Search, ChevronUp, ChevronDown, AlertCircle, Radio, PhoneOff } from 'lucide-react';
 import { formatIncidentType } from '../../../utils/caseNumbers';
 import type { UnitStatus } from '../../../types';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, getIncidentCategory } from '../utils/mapConstants';
@@ -56,16 +56,17 @@ export default function MapSidebar({
 
   return (
     <div
-      className="flex flex-col panel-beveled transition-all"
+      className={`flex flex-col panel-beveled transition-all duration-200 overflow-hidden ${sidebarOpen ? 'shadow-lg' : ''}`}
       style={{
         width: sidebarOpen ? 'clamp(220px, 20vw, 300px)' : 36,
         background: '#060c14',
         flexShrink: 0,
       }}
+      aria-label="Map sidebar"
     >
       <button type="button"
         onClick={() => setSidebarOpen(!sidebarOpen)}
-        className="toolbar-btn flex items-center justify-center h-7"
+        className="toolbar-btn flex items-center justify-center h-7 hover:bg-[#1a2636] transition-colors duration-150"
         style={{ borderRadius: 0 }}
         aria-expanded={sidebarOpen}
         aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
@@ -84,7 +85,7 @@ export default function MapSidebar({
               { label: 'ONS', count: unitsByStatus['onscene'] || 0, color: '#a855f7' },
               { label: 'BSY', count: unitsByStatus['busy'] || 0, color: '#ef4444' },
             ]).map(({ label, count, color }) => (
-              <div key={label} className="flex items-center gap-0.5" title={label}>
+              <div key={label} className="flex items-center gap-0.5 transition-all duration-150 hover:scale-105" title={label}>
                 <div className="led-dot" style={{ backgroundColor: color, width: 6, height: 6 }} />
                 <span className="text-[8px] font-mono font-bold" style={{ color }}>{count}</span>
               </div>
@@ -98,7 +99,7 @@ export default function MapSidebar({
           <div className="tab-bar" role="tablist">
             <button type="button"
               onClick={() => setSidebarTab('units')}
-              className={`tab-bar-item flex items-center justify-center gap-1.5 ${sidebarTab === 'units' ? 'active' : ''}`}
+              className={`tab-bar-item flex items-center justify-center gap-1.5 transition-colors duration-150 ${sidebarTab === 'units' ? 'active border-b-2 border-[#60a5fa]' : ''}`}
               role="tab"
               aria-selected={sidebarTab === 'units'}
             >
@@ -107,7 +108,7 @@ export default function MapSidebar({
             </button>
             <button type="button"
               onClick={() => setSidebarTab('calls')}
-              className={`tab-bar-item flex items-center justify-center gap-1.5 ${sidebarTab === 'calls' ? 'active' : ''}`}
+              className={`tab-bar-item flex items-center justify-center gap-1.5 transition-colors duration-150 ${sidebarTab === 'calls' ? 'active border-b-2 border-[#60a5fa]' : ''}`}
               role="tab"
               aria-selected={sidebarTab === 'calls'}
             >
@@ -121,7 +122,7 @@ export default function MapSidebar({
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
               <input
                 type="text"
-                className="input-dark w-full text-[10px] py-1 pl-6 pr-2"
+                className="input-dark w-full text-[10px] py-1 pl-6 pr-2 focus:ring-1 focus:ring-[#1a5a9e] focus:border-[#1a5a9e] placeholder:text-[#5a6e80]"
                 placeholder={sidebarTab === 'units' ? 'SEARCH UNITS...' : 'SEARCH CALLS...'}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -130,9 +131,9 @@ export default function MapSidebar({
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent">
             {sidebarTab === 'units' && (
-              <div className="divide-y divide-rmpg-700/50">
+              <div className="divide-y divide-rmpg-700/50" role="tabpanel">
                 {/* Fix 98: units sorted by status (available first) */}
                 {sortedUnits.map((unit) => {
                   const hasCoords = unit.latitude != null && unit.longitude != null;
@@ -145,7 +146,7 @@ export default function MapSidebar({
                     <button type="button"
                       key={unit.id}
                       onClick={() => hasCoords && panTo(unit.latitude!, unit.longitude!)}
-                      className={`w-full text-left px-3 py-2.5 hover:bg-rmpg-800/50 transition-colors ${
+                      className={`w-full text-left px-3 py-2.5 hover:bg-[#1a2636] transition-colors duration-100 ${
                         hasCoords ? 'cursor-pointer' : 'cursor-default opacity-60'
                       }`}
                     >
@@ -160,9 +161,9 @@ export default function MapSidebar({
                         )}
                         {/* Fix 100: stale GPS indicator */}
                         {isStale && (
-                          <span title="GPS position may be stale"><AlertCircle className="w-3 h-3 text-amber-500 shrink-0" /></span>
+                          <span title="GPS position may be stale"><AlertCircle className="w-3 h-3 text-amber-500 shrink-0 animate-pulse" /></span>
                         )}
-                        <span className="text-[9px] font-mono ml-auto uppercase font-bold" style={{ color: statusColor }}>{UNIT_STATUS_LABELS[unit.status]}</span>
+                        <span className="text-[9px] font-mono ml-auto uppercase font-bold rounded-sm px-1" style={{ color: statusColor, background: `${statusColor}15` }}>{UNIT_STATUS_LABELS[unit.status]}</span>
                       </div>
                       <div className="ml-5 mt-0.5">
                         <span className="text-[9px] text-rmpg-400">{unit.officer_name}</span>
@@ -176,14 +177,23 @@ export default function MapSidebar({
                     </button>
                   );
                 })}
-                {sortedUnits.length === 0 && (
-                  <div className="py-8 text-center text-[10px] text-rmpg-500 font-mono">No active units</div>
+                {sortedUnits.length === 0 && searchQuery && (
+                  <div className="py-8 text-center">
+                    <Search className="w-5 h-5 text-rmpg-600 mx-auto mb-2 opacity-50" />
+                    <div className="text-[10px] text-rmpg-500 font-mono">No matches found</div>
+                  </div>
+                )}
+                {sortedUnits.length === 0 && !searchQuery && (
+                  <div className="py-8 text-center">
+                    <Radio className="w-5 h-5 text-rmpg-600 mx-auto mb-2 opacity-50" />
+                    <div className="text-[10px] text-rmpg-500 font-mono">No active units</div>
+                  </div>
                 )}
               </div>
             )}
 
             {sidebarTab === 'calls' && (
-              <div className="divide-y divide-rmpg-700/50">
+              <div className="divide-y divide-rmpg-700/50" role="tabpanel">
                 {/* Fix 99: calls sorted by priority (P1 first) */}
                 {sortedCalls.map((call) => {
                   const hasCoords = call.latitude != null && call.longitude != null;
@@ -193,13 +203,14 @@ export default function MapSidebar({
                     <button type="button"
                       key={call.id}
                       onClick={() => hasCoords && panTo(call.latitude!, call.longitude!)}
-                      className={`w-full text-left px-3 py-2.5 hover:bg-rmpg-800/50 transition-colors ${
+                      className={`w-full text-left px-3 py-2.5 hover:bg-[#1a2636] transition-colors duration-100 border-l-2 ${
                         hasCoords ? 'cursor-pointer' : 'cursor-default opacity-60'
                       }`}
+                      style={{ borderLeftColor: pColor }}
                     >
                       <div className="flex items-center gap-2">
                         <span
-                          className="text-[8px] font-mono font-bold px-1.5 py-0.5"
+                          className="text-[8px] font-mono font-bold px-1.5 py-0.5 rounded-sm"
                           style={{ background: pColor + '25', color: pColor, border: `1px solid ${pColor}40` }}
                         >{call.priority}</span>
                         <span className="text-[10px] font-mono font-bold text-rmpg-100 flex-1">{call.call_number}</span>
@@ -251,8 +262,17 @@ export default function MapSidebar({
                     </button>
                   );
                 })}
-                {sortedCalls.length === 0 && (
-                  <div className="py-8 text-center text-[10px] text-rmpg-500 font-mono">No active calls</div>
+                {sortedCalls.length === 0 && searchQuery && (
+                  <div className="py-8 text-center">
+                    <Search className="w-5 h-5 text-rmpg-600 mx-auto mb-2 opacity-50" />
+                    <div className="text-[10px] text-rmpg-500 font-mono">No matches found</div>
+                  </div>
+                )}
+                {sortedCalls.length === 0 && !searchQuery && (
+                  <div className="py-8 text-center">
+                    <PhoneOff className="w-5 h-5 text-rmpg-600 mx-auto mb-2 opacity-50" />
+                    <div className="text-[10px] text-rmpg-500 font-mono">No active calls</div>
+                  </div>
                 )}
               </div>
             )}

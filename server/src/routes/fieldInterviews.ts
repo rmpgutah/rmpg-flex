@@ -19,7 +19,8 @@ function generateFiNumber(db: ReturnType<typeof getDb>): string {
   let seq = 1;
   if (row) {
     const parts = row.fi_number.split('-');
-    seq = parseInt(parts[2], 10) + 1;
+    const parsed = parseInt(parts[2], 10);
+    seq = isNaN(parsed) ? 1 : parsed + 1;
   }
   return `${prefix}${String(seq).padStart(4, '0')}`;
 }
@@ -76,7 +77,7 @@ router.get('/', (req: Request, res: Response) => {
 router.get('/map', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const days = parseInt(req.query.days as string, 10) || 30;
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
 
     const rows = db.prepare(`
       SELECT id, fi_number, subject_first_name, subject_last_name, latitude, longitude,
