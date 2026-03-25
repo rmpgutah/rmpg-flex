@@ -518,6 +518,15 @@ export default function DashboardPage() {
   // Set document title
   useEffect(() => { document.title = 'Dashboard \u2014 RMPG Flex'; }, []);
 
+  // Keyboard shortcut: Escape to close modals (must be before early return to preserve hook order)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setShowNewCallModal(false); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   if (loading && stats === DEFAULT_STATS) {
     return (
       <div className="p-4 space-y-4 animate-fade-in" role="status" aria-label="Loading dashboard" aria-busy="true">
@@ -537,15 +546,6 @@ export default function DashboardPage() {
       </div>
     );
   }
-
-  // Keyboard shortcut: Escape to close modals
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setShowNewCallModal(false); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
 
   return (
     <div className="p-4 space-y-4 animate-fade-in" role="main" aria-label="Command and Control Dashboard">
