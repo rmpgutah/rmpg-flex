@@ -189,6 +189,36 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
+// ─── Weather Proxy ────────────────────────────────────
+// Proxies Open-Meteo API to avoid browser CSP/CORS issues
+let weatherCache: { data: any; fetchedAt: number } | null = null;
+const WEATHER_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
+app.get('/api/weather', async (_req, res) => {
+  try {
+    // Return cached data if fresh
+    if (weatherCache && Date.now() - weatherCache.fetchedAt < WEATHER_CACHE_TTL) {
+      res.json(weatherCache.data);
+      return;
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    const resp = await fetch(
+      'https://api.open-meteo.com/v1/forecast?latitude=40.7608&longitude=-111.891&current=temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m,wind_direction_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/Denver',
+      { signal: controller.signal }
+    );
+    clearTimeout(timeout);
+    if (!resp.ok) { res.status(502).json({ error: 'Weather API returned ' + resp.status }); return; }
+    const data = await resp.json();
+    weatherCache = { data, fetchedAt: Date.now() };
+    res.json(data);
+  } catch (err: any) {
+    // Return stale cache if available
+    if (weatherCache) { res.json(weatherCache.data); return; }
+    res.status(502).json({ error: 'Weather API unavailable' });
+  }
+});
+
 // Fix 75: Health check endpoint for map subsystem
 app.get('/api/health/map', (_req, res) => {
   try {
