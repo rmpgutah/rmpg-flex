@@ -43,9 +43,23 @@ export function authenticateApiKey(requiredScope: string) {
       return;
     }
 
+    // [FIX 22] Reject obviously invalid API key lengths to prevent hash flooding
+    if (apiKey.length > 512) {
+      res.status(400).json({ error: 'Invalid API key format.' });
+      return;
+    }
+
     // Hash the provided key and look it up
     const keyHash = crypto.createHash('sha256').update(apiKey).digest('hex');
-    const db = getDb();
+    let db;
+    try {
+      db = getDb();
+    } catch (err) {
+      // [FIX 23] Handle database unavailability gracefully
+      console.error('[API_KEY_AUTH] Database unavailable:', err);
+      res.status(503).json({ error: 'Service temporarily unavailable' });
+      return;
+    }
 
     const row = db.prepare(
       'SELECT id, name, is_active, scopes FROM integration_api_keys WHERE key_hash = ?'
@@ -74,10 +88,14 @@ export function authenticateApiKey(requiredScope: string) {
       return;
     }
 
-    // Update usage tracking
-    db.prepare(
-      'UPDATE integration_api_keys SET last_used_at = ?, request_count = request_count + 1 WHERE id = ?'
-    ).run(localNow(), row.id);
+    // [FIX 24] Wrap usage tracking update in try/catch so tracking failure doesn't block the request
+    try {
+      db.prepare(
+        'UPDATE integration_api_keys SET last_used_at = ?, request_count = request_count + 1 WHERE id = ?'
+      ).run(localNow(), row.id);
+    } catch (err) {
+      console.error('[API_KEY_AUTH] Failed to update usage tracking:', err);
+    }
 
     // Attach key info to request for downstream use
     req.apiKeyId = row.id;

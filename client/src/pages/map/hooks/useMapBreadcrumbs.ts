@@ -13,6 +13,7 @@ const MIN_TRAIL_POINT_DISTANCE_M = 1;
 
 // Haversine distance in meters between two lat/lng points
 function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  if (!Number.isFinite(lat1) || !Number.isFinite(lng1) || !Number.isFinite(lat2) || !Number.isFinite(lng2)) return Infinity;
   const R = 6371000;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLng = (lng2 - lng1) * Math.PI / 180;
@@ -22,7 +23,7 @@ function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number)
 
 // Speed-to-color mapping for breadcrumb speed mode (m/s → mph thresholds)
 export const speedToColor = (mps: number | null): string => {
-  if (mps == null || mps < 0.5) return '#6b7280';
+  if (mps == null || !Number.isFinite(mps) || mps < 0.5) return '#6b7280';
   const mph = mps * 2.237;
   if (mph < 15) return '#22c55e';
   if (mph < 35) return '#eab308';

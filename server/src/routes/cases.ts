@@ -112,7 +112,8 @@ router.post('/', (req: Request, res: Response) => {
     const db = getDb();
     const now = localNow();
     const { title, case_type = 'general', priority: requestedPriority, summary, lead_investigator_id, linked_call_id } = req.body;
-    if (!title) return res.status(400).json({ error: 'Title is required', code: 'MISSING_TITLE' });
+    if (!title || (typeof title === 'string' && title.trim().length === 0)) return res.status(400).json({ error: 'Title is required', code: 'MISSING_TITLE' });
+    if (typeof title === 'string' && title.length > 500) return res.status(400).json({ error: 'Title must be 500 characters or less', code: 'TITLE_TOO_LONG' });
 
     // Input sanitization
     const cleanTitle = typeof title === 'string' ? title.trim() : title;
@@ -199,7 +200,9 @@ router.put('/:id/submit-review', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
-    const existing = db.prepare('SELECT * FROM cases WHERE id = ?').get(req.params.id) as any;
+    const reviewId = parseInt(req.params.id, 10);
+    if (isNaN(reviewId)) return res.status(400).json({ error: 'Invalid case ID', code: 'INVALID_CASE_ID' });
+    const existing = db.prepare('SELECT * FROM cases WHERE id = ?').get(reviewId) as any;
     if (!existing) return res.status(404).json({ error: 'Case not found', code: 'CASE_NOT_FOUND' });
 
     db.prepare(`UPDATE cases SET approval_status = 'pending_review', updated_at = ? WHERE id = ?`)
@@ -216,7 +219,7 @@ router.put('/:id/submit-review', (req: Request, res: Response) => {
           req.params.id, sup.id, now
         );
       }
-    } catch { /* notifications table may not exist */ }
+    } catch (e) { console.warn('Case review notification failed:', (e as Error).message); }
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
       VALUES (?, 'submit_review', 'case', ?, ?, ?)`).run(
@@ -242,7 +245,9 @@ router.put('/:id/approve', (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Only supervisors can approve cases', code: 'ONLY_SUPERVISORS_CAN_APPROVE' });
     }
 
-    const existing = db.prepare('SELECT * FROM cases WHERE id = ?').get(req.params.id) as any;
+    const approveId = parseInt(req.params.id, 10);
+    if (isNaN(approveId)) return res.status(400).json({ error: 'Invalid case ID', code: 'INVALID_CASE_ID' });
+    const existing = db.prepare('SELECT * FROM cases WHERE id = ?').get(approveId) as any;
     if (!existing) return res.status(404).json({ error: 'Case not found', code: 'CASE_NOT_FOUND' });
 
     if (action === 'approve') {
@@ -277,7 +282,9 @@ router.put('/:id/status', (req: Request, res: Response) => {
     const validStatuses = ['open', 'assigned', 'active', 'suspended', 'under_review', 'closed_cleared', 'closed_unfounded', 'closed_exception'];
     if (!validStatuses.includes(status)) return res.status(400).json({ error: 'Invalid status', code: 'INVALID_STATUS' });
 
-    const existing = db.prepare('SELECT * FROM cases WHERE id = ?').get(req.params.id) as any;
+    const statusId = parseInt(req.params.id, 10);
+    if (isNaN(statusId)) return res.status(400).json({ error: 'Invalid case ID', code: 'INVALID_CASE_ID' });
+    const existing = db.prepare('SELECT * FROM cases WHERE id = ?').get(statusId) as any;
     if (!existing) return res.status(404).json({ error: 'Case not found', code: 'CASE_NOT_FOUND' });
 
     const updates: any = { status, updated_at: now };
@@ -304,8 +311,11 @@ router.post('/:id/notes', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
+    const notesCaseId = parseInt(req.params.id, 10);
+    if (isNaN(notesCaseId)) return res.status(400).json({ error: 'Invalid case ID', code: 'INVALID_CASE_ID' });
     const { content, note_type = 'general' } = req.body;
-    if (!content) return res.status(400).json({ error: 'Content is required', code: 'MISSING_CONTENT' });
+    if (!content || (typeof content === 'string' && content.trim().length === 0)) return res.status(400).json({ error: 'Content is required', code: 'MISSING_CONTENT' });
+    if (typeof content === 'string' && content.length > 50000) return res.status(400).json({ error: 'Content must be 50000 characters or less', code: 'CONTENT_TOO_LONG' });
 
     // Input sanitization
     const cleanContent = typeof content === 'string' ? content.trim() : content;
@@ -345,7 +355,11 @@ router.post('/:id/calculate-solvability', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
+    const solvId = parseInt(req.params.id, 10);
+    if (isNaN(solvId)) return res.status(400).json({ error: 'Invalid case ID', code: 'INVALID_CASE_ID' });
     const { factors } = req.body; // { witness_available, physical_evidence, suspect_named, ... }
+
+    if (factors && typeof factors !== 'object') return res.status(400).json({ error: 'factors must be an object', code: 'INVALID_FACTORS' });
 
     const weights: Record<string, number> = {
       witness_available: 15, physical_evidence: 20, suspect_named: 25,

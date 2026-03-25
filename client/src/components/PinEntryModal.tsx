@@ -204,6 +204,9 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
     <div
       className="fixed inset-0 flex items-center justify-center"
       style={{ background: 'rgba(0,0,0,0.85)', zIndex: 99998 }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Offline authorization PIN entry"
     >
       <div
         className="w-full max-w-sm mx-4"
@@ -221,7 +224,8 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
           </div>
           <button type="button"
             onClick={onClose}
-            className="p-1 text-rmpg-400 hover:text-white transition-colors">
+            className="p-1 text-rmpg-400 hover:text-white transition-colors"
+            aria-label="Close PIN entry">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -302,6 +306,7 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
                   inputMode="numeric"
                   maxLength={1}
                   value={digit}
+                  aria-label={`PIN digit ${i + 1}`}
                   onChange={e => handleChange(i, e.target.value)}
                   onKeyDown={e => handleKeyDown(i, e)}
                   onPaste={i === 0 ? handlePaste : undefined}

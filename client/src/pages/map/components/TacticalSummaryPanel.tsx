@@ -102,11 +102,11 @@ export default function TacticalSummaryPanel({
 
   return (
     <div
-      className="bg-[#141e2b] border border-[#1a2636] rounded-[2px] shadow-lg max-w-[260px] font-mono"
+      className="bg-[#141e2b] border border-[#1a2636] rounded-[2px] shadow-lg max-w-[260px] font-mono transition-all duration-200 ease-out backdrop-blur-sm"
       style={{ boxShadow: '1px 1px 0 #0d1520, -1px -1px 0 #1e2d3d' }}
     >
       {/* ── Header ─────────────────────────────────── */}
-      <div className="flex items-center justify-between px-2 py-1.5 border-b border-[#1a2636]">
+      <div className="flex items-center justify-between px-2 py-1.5" style={{ borderBottom: '1px solid transparent', borderImage: 'linear-gradient(to right, #1a2636, #2a3f5a, #1a2636) 1' }}>
         <div className="flex items-center gap-1.5">
           <Layers size={11} className="text-blue-400" />
           <span className="text-[10px] font-bold tracking-wider text-slate-200 uppercase">
@@ -120,8 +120,9 @@ export default function TacticalSummaryPanel({
         </div>
         <button type="button"
           onClick={onClose}
-          className="text-slate-500 hover:text-slate-300 transition-colors p-0.5"
+          className="text-slate-500 hover:text-slate-300 hover:bg-[#1a2636] transition-colors duration-150 p-0.5 rounded-sm"
           title="Close"
+          aria-label="Close tactical summary"
         >
           <X size={12} />
         </button>
@@ -137,12 +138,12 @@ export default function TacticalSummaryPanel({
           <>
             {/* Patrol Checkpoints */}
             {showCheckpoints && (
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 hover:bg-[#1a2636]/50 rounded-sm px-1 -mx-1 transition-colors duration-150">
                 <DotIndicator color="#4ade80" />
                 <span className="text-[9px] text-slate-400 flex-shrink-0">
                   Checkpoints
                 </span>
-                <span className="text-[9px] text-slate-500 ml-auto flex-shrink-0">
+                <span className="text-[9px] text-slate-500 ml-auto flex-shrink-0 tabular-nums">
                   {overdueCount > 0 && (
                     <span className="text-amber-400">{overdueCount} overdue</span>
                   )}
@@ -160,7 +161,7 @@ export default function TacticalSummaryPanel({
 
             {/* Field Interviews */}
             {showFieldInterviews && (
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 hover:bg-[#1a2636]/50 rounded-sm px-1 -mx-1 transition-colors duration-150">
                 <DotIndicator color="#60a5fa" />
                 <span className="text-[9px] text-slate-400 flex-shrink-0">
                   Field Interviews
@@ -174,7 +175,7 @@ export default function TacticalSummaryPanel({
 
             {/* Dwell Time */}
             {showDwellTime && (
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 hover:bg-[#1a2636]/50 rounded-sm px-1 -mx-1 transition-colors duration-150">
                 <DotIndicator color="#fbbf24" />
                 <span className="text-[9px] text-slate-400 flex-shrink-0">
                   Dwell Time
@@ -191,7 +192,7 @@ export default function TacticalSummaryPanel({
 
             {/* Response Radius */}
             {showResponseRadius && (
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 hover:bg-[#1a2636]/50 rounded-sm px-1 -mx-1 transition-colors duration-150">
                 <DotIndicator color="#818cf8" />
                 <span className="text-[9px] text-slate-400 flex-shrink-0">
                   Response
@@ -208,7 +209,7 @@ export default function TacticalSummaryPanel({
 
             {/* Enforcement */}
             {showEnforcement && (
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 hover:bg-[#1a2636]/50 rounded-sm px-1 -mx-1 transition-colors duration-150">
                 <DotIndicator color="#fb7185" />
                 <span className="text-[9px] text-slate-400 flex-shrink-0">
                   Enforcement
@@ -224,7 +225,7 @@ export default function TacticalSummaryPanel({
 
             {/* Coverage */}
             {showCoverage && (
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 hover:bg-[#1a2636]/50 rounded-sm px-1 -mx-1 transition-colors duration-150">
                 <DotIndicator color="#2dd4bf" />
                 <span className="text-[9px] text-slate-400 flex-shrink-0">
                   Coverage
@@ -237,7 +238,7 @@ export default function TacticalSummaryPanel({
 
             {/* Fleet */}
             {showFleet && (
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 hover:bg-[#1a2636]/50 rounded-sm px-1 -mx-1 transition-colors duration-150">
                 <DotIndicator color="#38bdf8" />
                 <span className="text-[9px] text-slate-400 flex-shrink-0">
                   Fleet
@@ -250,7 +251,7 @@ export default function TacticalSummaryPanel({
 
             {/* Repeat Addresses */}
             {showRepeat && (
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 hover:bg-[#1a2636]/50 rounded-sm px-1 -mx-1 transition-colors duration-150">
                 <DotIndicator color="#fb923c" />
                 <span className="text-[9px] text-slate-400 flex-shrink-0">
                   Repeat Addresses
@@ -264,7 +265,7 @@ export default function TacticalSummaryPanel({
 
             {/* Daylight */}
             {showDaylight && (
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 hover:bg-[#1a2636]/50 rounded-sm px-1 -mx-1 transition-colors duration-150">
                 <DotIndicator color="#facc15" />
                 <span className="text-[9px] text-slate-400 flex-shrink-0">
                   Daylight

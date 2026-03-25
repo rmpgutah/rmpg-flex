@@ -34,7 +34,7 @@ export default function DocumentViewer({
   type = 'auto',
 }: DocumentViewerProps) {
   // Validate src protocol to prevent javascript:/data: XSS
-  const safeSrc = /^(https?:|blob:|data:image\/|data:application\/pdf|\/)/i.test(src) ? src : '';
+  const safeSrc = src && /^(https?:|blob:|data:image\/|data:application\/pdf|\/)/i.test(src) ? src : '';
 
   const [zoom, setZoom] = useState(100);
   const [rotation, setRotation] = useState(0);
@@ -216,6 +216,7 @@ export default function DocumentViewer({
               e.currentTarget.style.color = '';
             }}
             title="Close"
+            aria-label="Close document viewer"
           >
             <X style={{ width: 16, height: 16 }} />
           </button>

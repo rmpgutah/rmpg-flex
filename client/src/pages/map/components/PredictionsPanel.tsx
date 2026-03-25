@@ -39,7 +39,7 @@ export default function PredictionsPanel({
   const totalIncidents = hotspots.reduce((s, h) => s + h.incident_count, 0);
 
   return (
-    <div className="panel-beveled bg-surface-base overflow-hidden" style={{ width: 300 }}>
+    <div className="panel-beveled bg-surface-base overflow-hidden transition-all duration-200 ease-out shadow-lg backdrop-blur-sm" style={{ width: 300 }}>
       {/* ── Header ─────────────────────────────────────────── */}
       <div
         className="flex items-center justify-between px-3 py-2"
@@ -57,7 +57,7 @@ export default function PredictionsPanel({
           )}
         </div>
         {onClose && (
-          <button type="button" onClick={onClose} className="toolbar-btn p-1" title="Close">
+          <button type="button" onClick={onClose} className="toolbar-btn p-1 hover:bg-[#1a2636] transition-colors duration-150 rounded-sm" title="Close" aria-label="Close predictions panel">
             <X size={12} className="text-rmpg-400" />
           </button>
         )}
@@ -105,7 +105,7 @@ export default function PredictionsPanel({
             </div>
 
             {/* ── Hotspot list ────────────────────────────── */}
-            <div className="max-h-[360px] space-y-1.5 overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin' }}>
+            <div className="max-h-[360px] space-y-1.5 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-[#1e3048] scrollbar-track-transparent" style={{ scrollbarWidth: 'thin' }}>
               {hotspots.map((hs, idx) => {
                 const color = confidenceColor(hs.score);
                 const label = confidenceLabel(hs.score);
@@ -116,7 +116,7 @@ export default function PredictionsPanel({
                 return (
                   <div
                     key={`${hs.latitude}-${hs.longitude}-${idx}`}
-                    className="rounded-sm overflow-hidden"
+                    className="rounded-sm overflow-hidden transition-all duration-150 hover:bg-[#0f1926]"
                     style={{
                       background: '#0d1520',
                       border: '1px solid #1e2a3a',
@@ -146,10 +146,10 @@ export default function PredictionsPanel({
                       </div>
 
                       {/* Confidence bar */}
-                      <div className="h-1 rounded-full bg-rmpg-800 mb-1.5">
+                      <div className="h-1.5 rounded-full bg-rmpg-800 mb-1.5">
                         <div
-                          className="h-full rounded-full transition-all"
-                          style={{ width: `${barWidth}%`, background: color }}
+                          className="h-full rounded-full transition-all duration-300"
+                          style={{ width: `${barWidth}%`, background: color, boxShadow: `0 0 4px ${color}40` }}
                         />
                       </div>
 
@@ -177,8 +177,9 @@ export default function PredictionsPanel({
                       {/* Navigate */}
                       <button type="button"
                         onClick={() => { if (hs.latitude != null && hs.longitude != null) onNavigate(hs.latitude, hs.longitude); }}
-                        className="toolbar-btn flex items-center gap-1 px-2 py-0.5 text-[8px] w-full justify-center"
+                        className="toolbar-btn flex items-center gap-1 px-2 py-0.5 text-[8px] w-full justify-center transition-all duration-150 active:scale-[0.97]"
                         title="Center map on this hotspot"
+                        aria-label={`Navigate to hotspot with score ${hs.score}`}
                       >
                         <Crosshair size={9} />
                         <span>Navigate to Zone</span>

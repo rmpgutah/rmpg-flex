@@ -8,8 +8,11 @@ interface RateLimitEntry {
 
 const store = new Map<string, RateLimitEntry>();
 
-// Clean up expired entries every 5 minutes
-setInterval(() => {
+// [FIX 11] Cap store size to prevent unbounded memory growth from IP spoofing/DDoS
+const MAX_STORE_SIZE = 100_000;
+
+// [FIX 12] Store interval handle so it can be cleaned up; unref so it doesn't block shutdown
+const cleanupInterval = setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of store) {
     if (now > entry.resetAt) {
@@ -17,6 +20,7 @@ setInterval(() => {
     }
   }
 }, 5 * 60 * 1000);
+cleanupInterval.unref();
 
 export interface RateLimitOptions {
   windowMs?: number;
@@ -43,6 +47,11 @@ export function rateLimit(options: RateLimitOptions = {}) {
     let entry = store.get(key);
 
     if (!entry || now > entry.resetAt) {
+      // [FIX 13] Evict oldest entries when store exceeds max size to prevent memory exhaustion
+      if (!entry && store.size >= MAX_STORE_SIZE) {
+        const firstKey = store.keys().next().value;
+        if (firstKey !== undefined) store.delete(firstKey);
+      }
       entry = { count: 0, resetAt: now + windowMs };
       store.set(key, entry);
     }
@@ -92,6 +101,9 @@ export const apiRateLimit = rateLimit({
 
 const blockedIps = new Map<string, { reason: string; blockedAt: number; expiresAt: number }>();
 
+// [FIX 14] Cap blocked IPs map to prevent unbounded memory growth
+const MAX_BLOCKED_IPS = 10_000;
+
 export function getBlockedIps(): Array<{ ip: string; reason: string; blockedAt: string; expiresAt: string }> {
   const now = Date.now();
   const result: Array<{ ip: string; reason: string; blockedAt: string; expiresAt: string }> = [];
@@ -115,5 +127,12 @@ export function unblockIp(ip: string): boolean {
 }
 
 export function blockIp(ip: string, reason: string, durationMs = 30 * 60 * 1000): void {
+  // [FIX 15] Evict oldest blocked IP when at capacity
+  if (blockedIps.size >= MAX_BLOCKED_IPS && !blockedIps.has(ip)) {
+    const firstKey = blockedIps.keys().next().value;
+    if (firstKey !== undefined) blockedIps.delete(firstKey);
+  }
+  // [FIX 16] Validate IP string is not empty
+  if (!ip || typeof ip !== 'string') return;
   blockedIps.set(ip, { reason, blockedAt: Date.now(), expiresAt: Date.now() + durationMs });
 }

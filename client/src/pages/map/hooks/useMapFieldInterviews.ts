@@ -50,7 +50,8 @@ function createDiamondMarker(reason: string, createdAt?: string): HTMLDivElement
   // Fix 74: calculate opacity based on recency
   let opacity = 1;
   if (createdAt) {
-    const ageMs = Date.now() - new Date(createdAt).getTime();
+    const createdTime = new Date(createdAt).getTime();
+    const ageMs = isNaN(createdTime) ? 0 : Date.now() - createdTime;
     const ageDays = ageMs / (1000 * 60 * 60 * 24);
     opacity = Math.max(0.4, 1 - (ageDays / 60)); // fade over 60 days
   }

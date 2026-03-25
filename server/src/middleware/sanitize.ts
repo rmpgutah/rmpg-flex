@@ -9,29 +9,40 @@ function sanitizeStr(str: string): string {
     .replace(/>/g, '&gt;');
 }
 
+// [FIX 25] Add depth limit to prevent stack overflow from deeply nested malicious payloads
+const MAX_SANITIZE_DEPTH = 20;
+
 // Recursively sanitize an object's string values
-function sanitizeValue(value: unknown): unknown {
+function sanitizeValue(value: unknown, depth = 0): unknown {
+  // [FIX 26] Stop recursion at max depth to prevent stack overflow
+  if (depth > MAX_SANITIZE_DEPTH) return value;
   if (typeof value === 'string') {
     // Trim whitespace and strip dangerous HTML tag characters
     return sanitizeStr(value.trim());
   }
   if (Array.isArray(value)) {
-    return value.map(sanitizeValue);
+    return value.map(v => sanitizeValue(v, depth + 1));
   }
   if (value !== null && typeof value === 'object') {
-    return sanitizeObject(value as Record<string, unknown>);
+    return sanitizeObject(value as Record<string, unknown>, depth + 1);
   }
   return value;
 }
 
-function sanitizeObject(obj: Record<string, unknown>): Record<string, unknown> {
+function sanitizeObject(obj: Record<string, unknown>, depth = 0): Record<string, unknown> {
   const sanitized: Record<string, unknown> = {};
+  // [FIX 27] Limit number of keys to prevent large payload DoS
+  let keyCount = 0;
+  const MAX_KEYS = 1000;
   for (const [key, value] of Object.entries(obj)) {
+    if (++keyCount > MAX_KEYS) break;
+    // [FIX 28] Also sanitize keys themselves to prevent __proto__ pollution
+    const safeKey = key === '__proto__' || key === 'constructor' || key === 'prototype' ? `_${key}` : key;
     // Don't sanitize password fields (they get hashed) or config_value (JSON blob)
-    if (key === 'password' || key === 'currentPassword' || key === 'newPassword' || key === 'config_value') {
-      sanitized[key] = value;
+    if (safeKey === 'password' || safeKey === 'currentPassword' || safeKey === 'newPassword' || safeKey === 'config_value') {
+      sanitized[safeKey] = value;
     } else {
-      sanitized[key] = sanitizeValue(value);
+      sanitized[safeKey] = sanitizeValue(value, depth);
     }
   }
   return sanitized;

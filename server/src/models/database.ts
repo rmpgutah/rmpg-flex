@@ -39,6 +39,16 @@ export function initDatabase(): Database.Database {
   // Enable WAL mode for better concurrent read performance
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
+  // [FIX 64] Set synchronous to NORMAL for WAL mode (safe and faster than FULL)
+  db.pragma('synchronous = NORMAL');
+  // [FIX 65] Increase WAL autocheckpoint threshold for better write performance
+  db.pragma('wal_autocheckpoint = 1000');
+  // [FIX 66] Set busy timeout to prevent SQLITE_BUSY errors on concurrent access
+  db.pragma('busy_timeout = 5000');
+  // [FIX 67] Enable memory-mapped I/O for faster reads (256MB)
+  db.pragma('mmap_size = 268435456');
+  // [FIX 68] Set temp_store to memory for faster temp table operations
+  db.pragma('temp_store = MEMORY');
 
   createTables();
   migrateSchema();
@@ -4241,6 +4251,28 @@ function createIndexes(): void {
     -- Entity statutes indexes
     CREATE INDEX IF NOT EXISTS idx_entity_statutes_entity ON entity_statutes(entity_type, entity_id);
     CREATE INDEX IF NOT EXISTS idx_entity_statutes_statute ON entity_statutes(statute_id);
+
+    -- [FIX 69] Composite index for status+priority dispatch queries (common filter pattern)
+    CREATE INDEX IF NOT EXISTS idx_cfs_status_priority ON calls_for_service(status, priority);
+
+    -- [FIX 70] Composite index for sessions user+active lookup
+    CREATE INDEX IF NOT EXISTS idx_sessions_user_active ON sessions(user_id, is_active);
+
+    -- [FIX 71] Index on trusted_devices for user+fingerprint lookups
+    CREATE INDEX IF NOT EXISTS idx_trusted_devices_user_fp ON trusted_devices(user_id, device_fingerprint);
+
+    -- [FIX 72] Index on password_history for user+created_at ordering
+    CREATE INDEX IF NOT EXISTS idx_password_history_user ON password_history(user_id, created_at);
+
+    -- [FIX 73] Index for call_units junction table common queries
+    CREATE INDEX IF NOT EXISTS idx_call_units_call ON call_units(call_id, unassigned_at);
+    CREATE INDEX IF NOT EXISTS idx_call_units_unit ON call_units(unit_id, unassigned_at);
+
+    -- [FIX 74] Index on radio_transcripts for channel+time queries
+    CREATE INDEX IF NOT EXISTS idx_radio_transcripts_channel ON radio_transcripts(channel, transmitted_at);
+
+    -- [FIX 75] Index for security_notifications user lookup
+    CREATE INDEX IF NOT EXISTS idx_security_notifications_user ON security_notifications(user_id);
   `);
   } catch (err: any) {
     console.warn('[DB] createIndexes partially failed (non-fatal):', err?.message || 'Unknown error');

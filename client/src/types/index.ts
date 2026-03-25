@@ -50,7 +50,7 @@ export interface User {
   /** PNG base64 data URL of officer's digital signature */
   digital_signature?: string | null;
   /** Server returns status='active'|'inactive'|'terminated' */
-  status?: string;
+  status?: 'active' | 'inactive' | 'terminated';
   is_active: boolean;
   last_login?: string;
   created_at: string;
@@ -92,7 +92,7 @@ export interface SecurityNotification {
   details: string | null;
   ip_address: string | null;
   device_info: string | null;
-  is_read: number;
+  is_read: number | boolean;
   created_at: string;
 }
 
@@ -346,7 +346,7 @@ export interface VisitHistory {
   id: number;
   call_id: string;
   visit_number: number;
-  status: string;
+  status: CallStatus;
   dispatched_at?: string;
   enroute_at?: string;
   onscene_at?: string;
@@ -381,11 +381,11 @@ export interface Unit {
   officer_name: string;
   badge_number?: string;
   status: UnitStatus;
-  current_call_id?: string;
-  current_call_number?: string;
+  current_call_id?: string | null;
+  current_call_number?: string | null;
   location?: string;
-  latitude?: number;
-  longitude?: number;
+  latitude?: number | null;
+  longitude?: number | null;
   vehicle?: string;
   last_status_change: string;
   /** Feature 2: GPS timestamp for stale indicator */
@@ -441,7 +441,7 @@ export interface Person {
   middle_name?: string;
   alias_nickname?: string;
   date_of_birth?: string;
-  gender?: string;
+  gender?: 'male' | 'female' | 'non_binary' | 'unknown' | string;
   race?: string;
   height?: string;
   height_feet?: number | null;
@@ -644,7 +644,7 @@ export interface EmailMessage {
   hasAttachments: boolean;
   isRead: boolean;
   isFlagged: boolean;
-  importance: string;
+  importance: 'low' | 'normal' | 'high';
   receivedAt: string;
   sentAt?: string;
 }
@@ -817,13 +817,13 @@ export interface BodyCamera {
   camera_id: string;
   make: string;
   model: string;
-  firmware_version: string;
-  storage_capacity_gb: number;
+  firmware_version?: string;
+  storage_capacity_gb?: number;
   status: CameraStatus;
-  condition: string;
-  assigned_at: string;
-  returned_at: string;
-  notes: string;
+  condition?: 'new' | 'good' | 'fair' | 'poor' | 'damaged';
+  assigned_at?: string;
+  returned_at?: string | null;
+  notes?: string;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -842,12 +842,12 @@ export interface BodyCamVideo {
   duration_seconds: number;
   mime_type: string;
   recorded_at: string;
-  case_number: string;
+  case_number?: string;
   classification: VideoClassification;
   retention_status: VideoRetention;
   overlay_status?: OverlayStatus;
-  overlay_error?: string;
-  notes: string;
+  overlay_error?: string | null;
+  notes?: string;
   uploaded_by: string;
   created_at: string;
   updated_at: string;
@@ -877,23 +877,23 @@ export interface DashCamVideo {
   latitude?: number;
   longitude?: number;
   address?: string;
-  overlay_status?: string;
+  overlay_status?: OverlayStatus;
   overlay_error?: string;
   notes?: string;
-  source?: string;              // 'upload' | 'clearpathgps'
+  source?: 'upload' | 'clearpathgps';
   uploaded_by?: string;
   created_at: string;
   updated_at: string;
   // ClearPathGPS media sync fields
   cpg_device_id?: string;
-  cpg_channel?: string;         // "outside" | "inside"
+  cpg_channel?: 'outside' | 'inside';
   cpg_event_type?: string;
   cpg_thumbnail_url?: string;
   linked_dashcam_event_id?: number;
   /** JSON string of GPS track: [{latitude,longitude,speed,altitude,timestamp},...] */
   cpg_gps_track?: string;
   // DVD burn / export fields
-  burn_status?: string;
+  burn_status?: 'pending' | 'burning' | 'complete' | 'error';
   burn_progress?: number;
   burn_error?: string;
   thumbnail_path?: string;
@@ -1207,10 +1207,12 @@ export interface Notification {
   type: NotificationType;
   title: string;
   body?: string;
+  /** API may return `message` instead of `body` */
+  message?: string;
   entity_type?: string;
   entity_id?: string;
   priority: NotificationPriority;
-  is_read: boolean;
+  is_read: boolean | number;
   created_at: string;
 }
 
@@ -1219,11 +1221,11 @@ export interface Notification {
 export interface CallTemplate {
   id: string;
   name: string;
-  incident_type: string;
+  incident_type: IncidentType;
   priority: CallPriority;
   description_template?: string;
   default_notes?: string;
-  source: string;
+  source: CallSource;
   is_active: boolean;
   sort_order: number;
   created_by?: string;
@@ -1384,7 +1386,7 @@ export interface FleetPersonnelData {
     clock_in: string;
     clock_out?: string;
     total_hours?: number;
-    status: string;
+    status: 'clocked_in' | 'clocked_out' | 'on_break' | 'edited';
   } | null;
   notes: FleetPersonnelNote[];
 }
@@ -1510,6 +1512,18 @@ export interface ApiError {
   errors?: Record<string, string[]>;
 }
 
+/** Utility: Sort direction for list endpoints */
+export type SortDirection = 'asc' | 'desc';
+
+/** Utility: Paginated list response wrapper */
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  page: number;
+  per_page: number;
+  total_pages: number;
+}
+
 // --- WebSocket ---
 
 export type WSMessageType =
@@ -1608,7 +1622,7 @@ export interface LiveSyncEvent {
 export interface PresenceUser {
   userId: number;
   username: string;
-  role: string;
+  role: UserRole;
 }
 
 export interface PresenceUpdate {
@@ -2103,14 +2117,21 @@ export interface Case {
   priority: CasePriority;
   lead_investigator_id?: number;
   lead_investigator_name?: string;
-  assigned_officers: string; // JSON array
+  /** JSON-encoded array of officer IDs */
+  assigned_officers: string;
   assigned_at?: string;
   solvability_score: number;
-  solvability_factors: string; // JSON
+  /** JSON-encoded SolvabilityFactors */
+  solvability_factors: string;
+  /** JSON-encoded array of incident IDs */
   linked_incidents: string;
+  /** JSON-encoded array of citation IDs */
   linked_citations: string;
+  /** JSON-encoded array of evidence IDs */
   linked_evidence: string;
+  /** JSON-encoded array of person IDs */
   linked_persons: string;
+  /** JSON-encoded array of FI IDs */
   linked_field_interviews: string;
   summary?: string;
   narrative?: string;
@@ -2160,7 +2181,7 @@ export interface CodeViolation {
   compliance_deadline?: string;
   resolved_date?: string;
   resolution_notes?: string;
-  fine_amount: number;
+  fine_amount?: number;
   reporting_officer_id: number;
   reporting_officer_name?: string;
   created_at: string;
@@ -2177,7 +2198,7 @@ export interface VehicleTow {
   vehicle_plate?: string;
   vehicle_state?: string;
   vehicle_vin?: string;
-  vehicle_year?: string;
+  vehicle_year?: number;
   vehicle_make?: string;
   vehicle_model?: string;
   vehicle_color?: string;
@@ -2199,8 +2220,8 @@ export interface VehicleTow {
   completed_at?: string;
   released_at?: string;
   released_to?: string;
-  tow_fee: number;
-  storage_fee_daily: number;
+  tow_fee?: number;
+  storage_fee_daily?: number;
   officer_id: number;
   officer_name?: string;
   notes?: string;
@@ -2232,7 +2253,8 @@ export interface CourtEvent {
   defendant_name?: string;
   prosecutor?: string;
   defense_attorney?: string;
-  officers_required: string; // JSON array
+  /** JSON-encoded array of officer IDs */
+  officers_required: string;
   outcome?: CourtOutcome;
   sentence?: string;
   fine_amount?: number;
@@ -2337,7 +2359,7 @@ export interface SOROffense {
 }
 
 export interface SORVehicle {
-  year?: string;
+  year?: number | string;
   make: string;
   model: string;
   color?: string;

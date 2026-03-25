@@ -178,7 +178,7 @@ export default function VehicleFormModal({
         snapshot(EMPTY_FORM);
       }
     }
-  }, [isOpen, editingVehicle]);
+  }, [isOpen, editingVehicle, snapshot]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -191,6 +191,13 @@ export default function VehicleFormModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // Validate year if provided
+    if (form.year) {
+      const yearNum = parseInt(form.year, 10);
+      if (isNaN(yearNum) || yearNum < 1900 || yearNum > 2030) return;
+    }
+    // Validate VIN length if provided
+    if (form.vin && form.vin.length !== 17) return;
     onSubmit(form);
   };
 

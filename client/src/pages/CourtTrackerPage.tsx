@@ -68,8 +68,11 @@ const EMPTY_FORM = {
   notes: '',
 };
 
-const timeAgo = (date: string) => {
-  const ms = Date.now() - new Date(date).getTime();
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;
@@ -778,9 +781,11 @@ export default function CourtTrackerPage() {
 
               {/* Feature 5: Officer confirmations */}
               {(() => {
-                const confirmations = JSON.parse((selected as any).officer_confirmations || '{}');
-                const officers = JSON.parse((selected as any).officers_required || '[]');
-                if (officers.length === 0) return null;
+                let confirmations: Record<string, any> = {};
+                let officers: any[] = [];
+                try { confirmations = JSON.parse((selected as any).officer_confirmations || '{}'); } catch { /* invalid JSON */ }
+                try { officers = JSON.parse((selected as any).officers_required || '[]'); } catch { /* invalid JSON */ }
+                if (!Array.isArray(officers) || officers.length === 0) return null;
                 return (
                   <div className="panel-beveled p-3">
                     <div className="text-[9px] font-mono text-rmpg-500 uppercase mb-2 flex items-center gap-1">
@@ -821,8 +826,9 @@ export default function CourtTrackerPage() {
                   <FileText style={{ width: 10, height: 10 }} /> Court Documents
                 </div>
                 {(() => {
-                  const docs = JSON.parse((selected as any).documents || '[]');
-                  if (docs.length === 0) return <div className="text-[10px] text-rmpg-500">No documents uploaded.</div>;
+                  let docs: any[] = [];
+                  try { docs = JSON.parse((selected as any).documents || '[]'); } catch { /* invalid JSON */ }
+                  if (!Array.isArray(docs) || docs.length === 0) return <div className="text-[10px] text-rmpg-500">No documents uploaded.</div>;
                   return docs.map((d: any, i: number) => (
                     <div key={i} className="flex items-center gap-2 py-1 border-b border-rmpg-800 last:border-0">
                       <FileText style={{ width: 10, height: 10 }} className="text-brand-400" />
@@ -866,13 +872,15 @@ export default function CourtTrackerPage() {
                     <DollarSign style={{ width: 10, height: 10 }} /> Court Fees
                   </div>
                   <button type="button" onClick={() => {
-                    const fees = JSON.parse((selected as any).court_fees || '{}');
+                    let fees: any = {};
+                    try { fees = JSON.parse((selected as any).court_fees || '{}'); } catch { /* invalid JSON */ }
                     setFeeData({ filing_fee: fees.filing_fee || '', service_fee: fees.service_fee || '', other_fees: fees.other_fees || '', fee_notes: fees.fee_notes || '' });
                     setFeeOpen(true);
                   }} className="toolbar-btn text-[9px]">Edit</button>
                 </div>
                 {(() => {
-                  const fees = JSON.parse((selected as any).court_fees || '{}');
+                  let fees: any = {};
+                  try { fees = JSON.parse((selected as any).court_fees || '{}'); } catch { /* invalid JSON */ }
                   const total = (fees.filing_fee || 0) + (fees.service_fee || 0) + (fees.other_fees || 0);
                   return (
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">

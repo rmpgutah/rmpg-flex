@@ -34,6 +34,8 @@ export function useMarkerAnimation() {
       newLng: number,
       onUpdate: (lat: number, lng: number) => void,
     ) => {
+      if (!Number.isFinite(newLat) || !Number.isFinite(newLng)) return;
+
       const map = animationsRef.current;
       const existing = map.get(markerId);
 
