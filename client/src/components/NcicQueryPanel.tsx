@@ -270,22 +270,27 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             body.lastName = dlParts[0];
           }
 
-          const dlData = await apiFetch<{
-            hit: boolean;
-            source: string;
-            subjects: NcicDlSubject[];
-            resultCount: number;
-          }>('/microbilt/dl/search', {
-            method: 'POST',
-            body: JSON.stringify(body),
-          });
+          try {
+            const dlData = await apiFetch<{
+              hit: boolean;
+              source: string;
+              subjects: NcicDlSubject[];
+              resultCount: number;
+            }>('/microbilt/dl/search', {
+              method: 'POST',
+              body: JSON.stringify(body),
+            });
 
-          if (!dlData.hit || !dlData.subjects || dlData.subjects.length === 0) {
-            response = formatNoRecord('DL SEARCH', queryText);
-          } else {
-            response = formatDlResponse(dlData.subjects, queryText);
-            hasHit = true;
-            playTone('info');
+            if (!dlData.hit || !dlData.subjects || dlData.subjects.length === 0) {
+              response = formatNoRecord('DL SEARCH', queryText);
+            } else {
+              response = formatDlResponse(dlData.subjects, queryText);
+              hasHit = true;
+              playTone('info');
+            }
+          } catch {
+            response = '*** DL SEARCH UNAVAILABLE ***\n\n  MicroBilt DL Search service is currently offline.\n  Try again later or use Records > DL Search.\n\n*** END ***';
+            playTone('error');
           }
           break;
         }
@@ -302,22 +307,27 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             ofacBody.fullName = queryText;
           }
 
-          const ofacData = await apiFetch<{
-            hit: boolean;
-            sources: string[];
-            subjects: NcicOfacSubject[];
-            resultCount: number;
-          }>('/microbilt/ofac/search', {
-            method: 'POST',
-            body: JSON.stringify(ofacBody),
-          });
+          try {
+            const ofacData = await apiFetch<{
+              hit: boolean;
+              sources: string[];
+              subjects: NcicOfacSubject[];
+              resultCount: number;
+            }>('/microbilt/ofac/search', {
+              method: 'POST',
+              body: JSON.stringify(ofacBody),
+            });
 
-          if (!ofacData.hit || ofacData.subjects.length === 0) {
-            response = formatNoRecord('OFAC WATCHLIST', queryText);
-          } else {
-            response = formatOfacResponse(ofacData.subjects, queryText);
-            hasHit = true;
-            playTone('warning');
+            if (!ofacData.hit || ofacData.subjects.length === 0) {
+              response = formatNoRecord('OFAC WATCHLIST', queryText);
+            } else {
+              response = formatOfacResponse(ofacData.subjects, queryText);
+              hasHit = true;
+              playTone('warning');
+            }
+          } catch {
+            response = '*** OFAC SEARCH UNAVAILABLE ***\n\n  OFAC/SDN Watchlist service is currently offline.\n  Try again later.\n\n*** END ***';
+            playTone('error');
           }
           break;
         }
@@ -644,22 +654,27 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             arName = `${first} ${last}`;
           }
 
-          const arData = await apiFetch<{
-            hit: boolean;
-            records: NcicArrestRecord[];
-            resultCount: number;
-            cached: boolean;
-          }>(`/arrests/search?name=${encodeURIComponent(arName)}`);
+          try {
+            const arData = await apiFetch<{
+              hit: boolean;
+              records: NcicArrestRecord[];
+              resultCount: number;
+              cached: boolean;
+            }>(`/arrests/search?name=${encodeURIComponent(arName)}`);
 
-          if (!arData.hit || !arData.records?.length) {
-            response = formatNoRecord('ARREST RECORDS', queryText);
-          } else {
-            response = formatArrestResponse(arData.records, queryText);
-            hasHit = true;
+            if (!arData.hit || !arData.records?.length) {
+              response = formatNoRecord('ARREST RECORDS', queryText);
+            } else {
+              response = formatArrestResponse(arData.records, queryText);
+              hasHit = true;
 
-            const hasActive = arData.records.some(r => r.status === 'active');
-            const hasLinkedWarrants = arData.records.some(r => (r.cross_links?.warrants?.length || 0) > 0);
-            playTone(hasActive || hasLinkedWarrants ? 'warning' : 'info');
+              const hasActive = arData.records.some(r => r.status === 'active');
+              const hasLinkedWarrants = arData.records.some(r => (r.cross_links?.warrants?.length || 0) > 0);
+              playTone(hasActive || hasLinkedWarrants ? 'warning' : 'info');
+            }
+          } catch {
+            response = '*** ARREST RECORDS UNAVAILABLE ***\n\n  JailBase arrest search service timed out.\n  Cached local records may still be available in Records.\n\n*** END ***';
+            playTone('error');
           }
           break;
         }
